@@ -156,29 +156,42 @@ pnpm preview
 
 ```
 src/
-├── main.ts              # Application entry point
-├── core/                # Core game infrastructure
-│   ├── Game.ts          # Main game class, orchestrates systems
-│   ├── EntityManager.ts # Central entity registry with component queries
-│   ├── EventBus.ts      # Decoupled event communication
-│   ├── MathConversions.ts # Fixed-point ↔ Babylon.js vector conversions
-│   └── SceneManager.ts  # Babylon.js scene setup and management
-├── entities/            # Game entities (Units, Towers, Projectiles)
-├── components/          # ECS components (Health, Attack, Movement, Team)
-├── systems/             # ECS systems (Combat, Movement, Health, Selection)
-├── events/              # Event types and constants
-├── effects/             # Visual effects (Explosions)
-├── enums/               # Enumerations (TeamTag)
-└── interfaces/          # TypeScript interfaces
+├── main.ts                    # Application entry point
+├── core/                      # Core game infrastructure
+│   ├── Game.ts                # Main orchestrator (thin coordinator)
+│   ├── SystemRegistry.ts      # System lifecycle management
+│   ├── SystemContext.ts       # Shared dependencies for systems
+│   ├── GameInitializer.ts     # World setup and entity creation
+│   ├── GameEventCoordinator.ts # Game event subscriptions
+│   ├── NetworkCoordinator.ts  # Network events and tick handling
+│   ├── EntityCleanupService.ts # Entity destruction cleanup
+│   ├── EntityManager.ts       # Central entity registry with queries
+│   ├── EntityFactory.ts       # Entity creation with ownership
+│   ├── EventBus.ts            # Decoupled event communication
+│   ├── AssetManager.ts        # Asset preloading and management
+│   ├── LockstepManager.ts     # Deterministic simulation sync
+│   ├── NetworkCommands.ts     # Network command definitions
+│   ├── UIManager.ts           # UI interactions and updates
+│   ├── MathConversions.ts     # Fixed-point ↔ Babylon.js conversions
+│   └── SceneManager.ts        # Babylon.js scene setup
+├── entities/                  # Game entities (Units, Towers, Bases)
+├── components/                # ECS components (Health, Attack, Movement)
+├── systems/                   # ECS systems (extend GameSystem base class)
+├── events/                    # Event types and constants
+├── effects/                   # Visual effects (Explosions)
+├── enums/                     # Enumerations (TeamTag)
+├── visuals/                   # Visual components (health bars, etc.)
+└── interfaces/                # TypeScript interfaces
 ```
 
 ## Architecture
 
-This project follows an **Entity-Component-System (ECS)** architecture pattern:
+This project follows an **Entity-Component-System (ECS)** architecture pattern with **Single Responsibility Principle (SRP)** for core classes:
 
-- **Entities** are containers that hold components (Unit, Tower)
+- **Entities** are containers that hold components (Unit, Tower, Base)
 - **Components** are pure data containers (HealthComponent, AttackComponent)
-- **Systems** contain logic and operate on entities with specific components
+- **Systems** extend `GameSystem` base class and contain game logic
+- **Game** acts as a thin orchestrator, delegating to specialized coordinator classes
 
 For detailed architecture documentation and development guidelines, see [DEVELOPMENT_GUIDE.md](./DEVELOPMENT_GUIDE.md).
 

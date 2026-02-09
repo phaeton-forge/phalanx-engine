@@ -23,40 +23,71 @@ This guide explains the architectural approach used in the Babylon RTS Demo and 
 
 ## Architecture Overview
 
-This project uses a **component-based Entity-Component-System (ECS)** architecture with an **event-driven communication pattern**. It also supports **1v1 multiplayer** via the Phalanx Engine.
+This project uses a **component-based Entity-Component-System (ECS)** architecture with an **event-driven communication pattern** and **Single Responsibility Principle (SRP)** for core classes. It also supports **1v1 multiplayer** via the Phalanx Engine.
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                          Game.ts                             │
-│              (Orchestrates initialization & game loop)       │
-└─────────────────────────────────────────────────────────────┘
-                              │
-        ┌─────────────────────┼─────────────────────┐
-        │                     │                     │
-        ▼                     ▼                     ▼
-┌───────────────┐   ┌─────────────────┐   ┌───────────────────┐
-│ EntityManager │   │    EventBus     │   │   SceneManager    │
-│  (Registry)   │   │ (Communication) │   │ (Babylon.js Scene)│
-└───────────────┘   └─────────────────┘   └───────────────────┘
-        │                     │
-        │           ┌─────────┴─────────┐
-        │           │                   │
-        ▼           ▼                   ▼
-┌───────────────────────────────────────────────────────────────┐
-│                          Systems                               │
-│  CombatSystem │ MovementSystem │ HealthSystem │ FormationSystem│
-└───────────────────────────────────────────────────────────────┘
-        │
-        ▼
-┌───────────────────────────────────────────────────────────────┐
-│                          Entities                              │
-│               Unit        │        Tower        │   Projectile │
-│    ┌────────────────────────────────────────────────────────┐ │
-│    │                    Components                           │ │
-│    │  TeamComponent │ HealthComponent │ AttackComponent │... │ │
-│    └────────────────────────────────────────────────────────┘ │
-└───────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          Game.ts (Thin Orchestrator)                         │
+│                    Coordinates initialization & delegates to:                │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                      │
+    ┌─────────────┬─────────────┬─────┴─────┬─────────────┬─────────────┐
+    │             │             │           │             │             │
+    ▼             ▼             ▼           ▼             ▼             ▼
+┌─────────┐ ┌───────────┐ ┌───────────┐ ┌─────────┐ ┌──────────┐ ┌─────────┐
+│ System  │ │  Network  │ │ GameEvent │ │  Game   │ │ Entity   │ │  Asset  │
+│Registry │ │Coordinator│ │Coordinator│ │Initializer│ │Cleanup  │ │ Manager │
+└────┬────┘ └─────┬─────┘ └─────┬─────┘ └────┬────┘ └────┬─────┘ └────┬────┘
+     │            │             │            │           │            │
+     │            │             │            │           │            │
+     ▼            ▼             ▼            ▼           ▼            ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                             SystemContext                                    │
+│           (Shared dependencies: EventBus, EntityManager, Scene)              │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                      │
+            ┌─────────────────────────┼─────────────────────────┐
+            │                         │                         │
+            ▼                         ▼                         ▼
+    ┌───────────────┐       ┌─────────────────┐       ┌───────────────────┐
+    │ EntityManager │       │    EventBus     │       │   SceneManager    │
+    │  (Registry)   │       │ (Communication) │       │ (Babylon.js Scene)│
+    └───────────────┘       └─────────────────┘       └───────────────────┘
+            │                         │
+            │               ┌─────────┴─────────┐
+            │               │                   │
+            ▼               ▼                   ▼
+┌───────────────────────────────────────────────────────────────────────────────┐
+│                          Systems (extend GameSystem)                           │
+│  CombatSystem │ MovementSystem │ HealthSystem │ FormationGridSystem │ ...     │
+└───────────────────────────────────────────────────────────────────────────────┘
+            │
+            ▼
+┌───────────────────────────────────────────────────────────────────────────────┐
+│                              Entities                                          │
+│                Unit        │        Tower        │   Base   │   Projectile    │
+│    ┌────────────────────────────────────────────────────────────────────────┐ │
+│    │                          Components                                     │ │
+│    │  TeamComponent │ HealthComponent │ AttackComponent │ MovementComponent  │ │
+│    └────────────────────────────────────────────────────────────────────────┘ │
+└───────────────────────────────────────────────────────────────────────────────┘
 ```
+
+### Core Classes (SRP)
+
+| Class                    | Responsibility                                          |
+| ------------------------ | ------------------------------------------------------- |
+| `Game`                   | Thin orchestrator, coordinates initialization           |
+| `SystemRegistry`         | System lifecycle (creation, registration, tick/frame)   |
+| `SystemContext`          | Shared dependencies container for all systems           |
+| `NetworkCoordinator`     | Network events (tick, frame, disconnect, reconnect)     |
+| `GameEventCoordinator`   | Game event subscriptions (victory, territory, waves)    |
+| `GameInitializer`        | World setup, entity creation, asset preloading          |
+| `EntityCleanupService`   | Destroyed entity cleanup and disposal                   |
+| `AssetManager`           | 3D model preloading and instancing                      |
+| `LockstepManager`        | Deterministic command execution and simulation          |
+| `EntityFactory`          | Entity creation with ownership tracking                 |
+| `UIManager`              | UI updates, notifications, and drag interactions        |
 
 ### Key Principles
 
@@ -385,10 +416,18 @@ this.lockstepManager.queueCommand({
 | ------------------------------------ | ---------------------------------------------- |
 | `src/scenes/LobbyScene.ts`           | Matchmaking UI and server connection           |
 | `src/config/constants.ts`            | Server URL, tick rate, spawn positions         |
-| `src/core/Game.ts`                   | Network command handling and entity ownership  |
+| `src/core/Game.ts`                   | Thin orchestrator, coordinates all systems     |
+| `src/core/SystemRegistry.ts`         | System lifecycle (creation, tick/frame calls)  |
+| `src/core/SystemContext.ts`          | Shared dependencies for all systems            |
+| `src/core/NetworkCoordinator.ts`     | Network event handling (tick, frame)           |
+| `src/core/GameEventCoordinator.ts`   | Game event subscriptions (victory, waves)      |
+| `src/core/GameInitializer.ts`        | World setup and entity creation                |
+| `src/core/EntityCleanupService.ts`   | Destroyed entity cleanup                       |
 | `src/core/LockstepManager.ts`        | Lockstep synchronization and command execution |
 | `src/core/NetworkCommands.ts`        | Network command type definitions               |
 | `src/core/MathConversions.ts`        | Fixed-point ↔ Babylon.js vector conversions    |
+| `src/core/AssetManager.ts`           | 3D model preloading and instancing             |
+| `src/systems/GameSystem.ts`          | Abstract base class for all systems            |
 | `src/systems/InterpolationSystem.ts` | Smooth visual interpolation                    |
 
 ### Desync Detection
@@ -588,7 +627,7 @@ To verify desync detection is working:
 1. Start two clients with different player IDs
 2. One client should report the forced desync at tick 100
 3. Check console for desync event logs
-4. Verify match ends if server is configured with `action: 'end-match'`
+4. Verify match ends correctly (in production mode)
 
 #### Server Configuration
 
@@ -776,11 +815,52 @@ export const ComponentType = {
 
 ### Systems
 
-Systems contain game logic and operate on entities with specific component combinations. They:
+Systems contain game logic and operate on entities with specific component combinations. All systems extend the `GameSystem` abstract base class which provides:
 
-- Query entities through `EntityManager`
-- Communicate through `EventBus`
-- Have an `update()` method called each frame
+- Access to `SystemContext` (EventBus, EntityManager, Scene, Engine)
+- Automatic event subscription cleanup via `subscribe()` helper
+- Optional `processTick(tick)` for deterministic simulation
+- Optional `update(deltaTime)` for frame-based rendering
+- `enabled` flag to temporarily disable systems
+
+**GameSystem Base Class** (`src/systems/GameSystem.ts`):
+
+```typescript
+export abstract class GameSystem {
+  protected context!: SystemContext;
+  
+  // Convenience accessors
+  protected get eventBus(): EventBus { return this.context.eventBus; }
+  protected get entityManager(): EntityManager { return this.context.entityManager; }
+  
+  public enabled: boolean = true;
+  
+  // Called after all systems are created
+  public init(context: SystemContext): void { ... }
+  
+  // Deterministic tick-based logic (optional)
+  public processTick(_tick: number): void { }
+  
+  // Frame-based visual updates (optional)
+  public update(_deltaTime: number): void { }
+  
+  // Subscribe with automatic cleanup on dispose
+  protected subscribe<T>(event: string, handler: (event: T) => void): void { ... }
+  
+  // Must implement - call super.dispose() for auto-cleanup
+  public abstract dispose(): void;
+}
+```
+
+**Using SystemContext to Access Other Systems**:
+
+```typescript
+// In any system, get a reference to another system
+const movementSystem = this.context.getSystem(MovementSystem);
+if (movementSystem) {
+  movementSystem.moveEntity(entityId, targetPosition);
+}
+```
 
 **Existing Systems**:
 
@@ -789,15 +869,18 @@ Systems contain game logic and operate on entities with specific component combi
 | `CombatSystem`        | Target detection, attack logic         | Attack, Team, Health |
 | `MovementSystem`      | Entity movement commands               | Movement             |
 | `HealthSystem`        | Damage processing, entity destruction  | Health               |
-| `PhysicsSystem`       | Deterministic physics, collision       | -                    |
+| `PhysicsSystem`       | Deterministic physics, collision       | PhysicsBody          |
 | `ProjectileSystem`    | Projectile movement and collision      | -                    |
 | `InputManager`        | User input handling                    | -                    |
-| `InterpolationSystem` | Smooth visual movement between ticks   | -                    |
+| `InterpolationSystem` | Smooth visual movement between ticks   | Interpolation        |
 | `ResourceSystem`      | Resource generation and spending       | -                    |
 | `TerritorySystem`     | Territory control and aggression bonus | Team                 |
 | `FormationGridSystem` | Unit placement grid                    | -                    |
 | `WaveSystem`          | Wave-based unit deployment             | -                    |
 | `VictorySystem`       | Win/lose conditions                    | -                    |
+| `AnimationSystem`     | 3D model animations                    | -                    |
+| `RotationSystem`      | Entity rotation toward movement        | Movement             |
+| `HealthBarSystem`     | Health bar rendering                   | HealthBar            |
 
 **Core Managers**:
 
@@ -1003,74 +1086,96 @@ private createBuilding(config: BuildingConfig, position: Vector3): Building {
 
 ### Adding a New System
 
+Systems should extend the `GameSystem` base class for consistent lifecycle management and automatic cleanup.
+
 1. **Create the system file** in `src/systems/`:
 
 ```typescript
-// src/systems/ResourceSystem.ts
-import { Engine } from '@babylonjs/core';
-import { EntityManager } from '../core/EntityManager';
-import { EventBus } from '../core/EventBus';
+// src/systems/BuffSystem.ts
+import { GameSystem } from './GameSystem';
+import type { SystemContext } from '../core/SystemContext';
 import { ComponentType } from '../components';
 import { GameEvents, createEvent } from '../events';
+import type { EntityDestroyedEvent } from '../events';
 
-export class ResourceSystem {
-  private engine: Engine;
-  private entityManager: EntityManager;
-  private eventBus: EventBus;
-  private unsubscribers: (() => void)[] = [];
-
-  constructor(
-    engine: Engine,
-    entityManager: EntityManager,
-    eventBus: EventBus
-  ) {
-    this.engine = engine;
-    this.entityManager = entityManager;
-    this.eventBus = eventBus;
-
-    this.setupEventListeners();
-  }
-
-  private setupEventListeners(): void {
-    // Subscribe to relevant events
-    this.unsubscribers.push(
-      this.eventBus.on(GameEvents.ENTITY_DESTROYED, (event) => {
-        // Handle resource drops, etc.
-      })
+export class BuffSystem extends GameSystem {
+  /**
+   * Initialize the system - called after all systems are created
+   */
+  public init(context: SystemContext): void {
+    super.init(context);
+    
+    // Subscribe to events with automatic cleanup
+    this.subscribe<EntityDestroyedEvent>(
+      GameEvents.ENTITY_DESTROYED,
+      (event) => this.handleEntityDestroyed(event)
     );
   }
 
-  public update(): void {
-    const deltaTime = this.engine.getDeltaTime() / 1000;
-
-    // Query entities with Resource component
-    const resourceEntities = this.entityManager.queryEntities(
-      ComponentType.Resource
+  /**
+   * Deterministic tick-based logic (optional)
+   * Called once per network tick from LockstepManager
+   */
+  public processTick(tick: number): void {
+    if (!this.enabled) return;
+    
+    // Query entities with Buff component
+    const buffedEntities = this.entityManager.queryEntities(
+      ComponentType.Buff
     );
-
-    for (const entity of resourceEntities) {
-      // Process resource logic
+    
+    for (const entity of buffedEntities) {
+      // Process buff expiration, etc.
     }
   }
 
+  /**
+   * Frame-based visual updates (optional)
+   * Called every render frame
+   */
+  public update(deltaTime: number): void {
+    if (!this.enabled) return;
+    
+    // Update buff visual effects, particles, etc.
+  }
+
+  private handleEntityDestroyed(event: EntityDestroyedEvent): void {
+    // Clean up buff data for destroyed entity
+  }
+
+  /**
+   * Cleanup - must call super.dispose() for auto-cleanup
+   */
   public dispose(): void {
-    this.unsubscribers.forEach((unsub) => unsub());
+    // Custom cleanup here
+    super.dispose(); // Auto-unsubscribes all events
   }
 }
 ```
 
-2. **Initialize in `Game.ts`**:
+2. **Register in SystemRegistry** (in `Game.ts`):
 
 ```typescript
-// In constructor
-this.resourceSystem = new ResourceSystem(
-  this.engine,
-  this.entityManager,
-  this.eventBus
-);
+// Create the system
+const buffSystem = new BuffSystem();
 
-// In game loop (start method)
-this.resourceSystem.update();
+// Register with SystemRegistry
+// Tick systems run deterministically (order matters!)
+// Frame systems run every render frame
+this.systemRegistry.registerSystems(
+  [/* other tick systems */, buffSystem],  // tickSystems (if needed)
+  [/* other frame systems */, buffSystem]  // frameSystems (if needed)
+);
+```
+
+3. **Access from other systems via SystemContext**:
+
+```typescript
+// In another system
+const buffSystem = this.context.getSystem(BuffSystem);
+if (buffSystem) {
+  buffSystem.applyBuff(entity, buffType);
+}
 ```
 
 ---
@@ -1203,22 +1308,34 @@ src/
 │   └── constants.ts         # Server URL, tick rate, arena params, unit costs
 │
 ├── core/
-│   ├── Game.ts              # Main game orchestrator
-│   ├── EntityManager.ts     # Entity registry + queries
+│   ├── Game.ts              # Thin orchestrator - coordinates all systems
+│   ├── SystemRegistry.ts    # System lifecycle management
+│   ├── SystemContext.ts     # Shared dependencies container
+│   ├── GameInitializer.ts   # World setup and entity creation
+│   ├── GameEventCoordinator.ts # Game event subscriptions
+│   ├── NetworkCoordinator.ts # Network events (tick, frame, disconnect)
+│   ├── EntityCleanupService.ts # Destroyed entity cleanup
+│   ├── EntityManager.ts     # Entity registry + component queries
 │   ├── EntityFactory.ts     # Entity creation with ownership
 │   ├── EventBus.ts          # Pub/sub event system
 │   ├── SceneManager.ts      # Babylon.js scene setup
+│   ├── AssetManager.ts      # 3D model preloading and instancing
 │   ├── LockstepManager.ts   # Deterministic lockstep synchronization
 │   ├── NetworkCommands.ts   # Network command type definitions
-│   └── UIManager.ts         # UI updates and notifications
+│   ├── MathConversions.ts   # Fixed-point ↔ Babylon.js conversions
+│   ├── UIManager.ts         # UI updates and notifications
+│   ├── ModelLoader.ts       # Utility for loading 3D models
+│   └── GameRandom.ts        # Seeded random number generator
 │
 ├── scenes/
 │   └── LobbyScene.ts        # Matchmaking UI and connection
 │
 ├── entities/
 │   ├── Entity.ts            # Base entity class (simulation + visual position)
-│   ├── Unit.ts              # Movable combat unit
+│   ├── Unit.ts              # Base movable combat unit
 │   ├── PrismaUnit.ts        # Heavy combat unit (2x2 grid)
+│   ├── LanceUnit.ts         # Elongated unit (1x2 grid)
+│   ├── MutantUnit.ts        # Animated 3D model unit
 │   ├── Tower.ts             # Stationary defense
 │   ├── Base.ts              # Player base (win condition)
 │   └── Projectile.ts        # Attack projectile
@@ -1231,9 +1348,13 @@ src/
 │   ├── MovementComponent.ts # Movement capabilities
 │   ├── ResourceComponent.ts # Resource generation
 │   ├── UnitTypeComponent.ts # Unit type identifier
+│   ├── PhysicsBodyComponent.ts # Physics body for collision
+│   ├── HealthBarComponent.ts # Health bar visualization
+│   ├── InterpolationComponent.ts # Visual interpolation state
 │   └── index.ts             # Re-exports
 │
 ├── systems/
+│   ├── GameSystem.ts        # Abstract base class for all systems
 │   ├── CombatSystem.ts      # Attack logic (deterministic)
 │   ├── MovementSystem.ts    # Movement commands
 │   ├── PhysicsSystem.ts     # Deterministic physics simulation
@@ -1246,7 +1367,11 @@ src/
 │   ├── FormationGridSystem.ts # Unit placement grid
 │   ├── WaveSystem.ts        # Wave-based deployment
 │   ├── VictorySystem.ts     # Win/lose conditions
-│   └── CameraController.ts  # RTS camera controls
+│   ├── AnimationSystem.ts   # 3D model animations
+│   ├── RotationSystem.ts    # Entity rotation toward targets
+│   ├── HealthBarSystem.ts   # Health bar rendering
+│   ├── CameraController.ts  # RTS camera controls
+│   └── formation/           # Formation-related helpers
 │
 ├── events/
 │   ├── GameEvents.ts        # Event type constants
@@ -1255,6 +1380,9 @@ src/
 │
 ├── effects/
 │   └── ExplosionEffect.ts   # Visual explosion effect
+│
+├── visuals/
+│   └── ...                  # Visual helper components
 │
 ├── enums/
 │   └── TeamTag.ts           # Team enumeration
