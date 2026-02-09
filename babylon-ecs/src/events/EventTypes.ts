@@ -354,3 +354,37 @@ export interface WaveDeploymentEvent extends GameEvent {
   waveNumber: number;
   totalUnitsDeployed: number;
 }
+
+// ============================================
+// Animation Events (visual effects triggered by tick systems)
+// ============================================
+
+export interface PlayAttackAnimationEvent extends GameEvent {
+  entityId: number;
+}
+
+export interface PlayDeathAnimationEvent extends GameEvent {
+  entityId: number;
+}
+
+export interface ShowBloodEffectEvent extends GameEvent {
+  entityId: number;
+}
+
+export interface OrientToTargetEvent extends GameEvent {
+  entityId: number;
+  targetPosition: Vector3;
+}
+
+export interface NotifyMovementStartedEvent extends GameEvent {
+  entityId: number;
+}
+
+export interface EndCombatEvent extends GameEvent {
+  entityId: number;
+}
+
+export interface OrientToMovementDirectionEvent extends GameEvent {
+  entityId: number;
+}
+

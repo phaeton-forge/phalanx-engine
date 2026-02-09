@@ -1,71 +1,36 @@
 import { Engine, Scene } from '@babylonjs/core';
 import { EntityManager } from './EntityManager';
 import { EventBus } from './EventBus';
-import { SelectionSystem } from '../systems/SelectionSystem';
-import { MovementSystem } from '../systems/MovementSystem';
-import { PhysicsSystem } from '../systems/PhysicsSystem';
-import { HealthSystem } from '../systems/HealthSystem';
-import { ProjectileSystem } from '../systems/ProjectileSystem';
-import { CombatSystem } from '../systems/CombatSystem';
-import { ResourceSystem } from '../systems/ResourceSystem';
-import { TerritorySystem } from '../systems/TerritorySystem';
-import { FormationGridSystem } from '../systems/FormationGridSystem';
-import { VictorySystem } from '../systems/VictorySystem';
-import { WaveSystem } from '../systems/WaveSystem';
-import { InterpolationSystem } from '../systems/InterpolationSystem';
-import { AnimationSystem } from '../systems/AnimationSystem';
-import { RotationSystem } from '../systems/RotationSystem';
-import { HealthBarSystem } from '../systems/HealthBarSystem';
-import { CameraController } from '../systems/CameraController';
-import { InputManager } from '../systems/InputManager';
-import { SceneManager } from './SceneManager';
-import { TeamTag } from '../enums/TeamTag';
+import { SystemContext } from './SystemContext';
+import type { GameSystem } from '../systems/GameSystem';
 
 /**
- * All game systems in one place
- */
-export interface GameSystems {
-  // Core
-  eventBus: EventBus;
-  entityManager: EntityManager;
-  sceneManager: SceneManager;
-
-  // Gameplay systems
-  selectionSystem: SelectionSystem;
-  movementSystem: MovementSystem;
-  physicsSystem: PhysicsSystem;
-  healthSystem: HealthSystem;
-  projectileSystem: ProjectileSystem;
-  combatSystem: CombatSystem;
-  resourceSystem: ResourceSystem;
-  territorySystem: TerritorySystem;
-  formationGridSystem: FormationGridSystem;
-  victorySystem: VictorySystem;
-  waveSystem: WaveSystem;
-
-  // Visual systems
-  interpolationSystem: InterpolationSystem;
-  animationSystem: AnimationSystem;
-  rotationSystem: RotationSystem;
-  healthBarSystem: HealthBarSystem;
-
-  // Input/Camera
-  cameraController: CameraController;
-  inputManager: InputManager;
-}
-
-/**
- * SystemRegistry - Creates and wires all game systems
+ * SystemRegistry - Manages game systems lifecycle
  *
  * Responsible for:
- * - Instantiating all systems with correct dependencies
- * - Wiring inter-system callbacks
- * - Providing access to all systems
+ * - Creating core dependencies (EventBus, EntityManager, SystemContext)
+ * - Registering systems and calling their init() methods
+ * - Processing tick and frame updates for all systems
  */
 export class SystemRegistry {
-  private systems: Partial<GameSystems> = {};
   private engine: Engine;
   private scene: Scene;
+
+  // Core dependencies
+  public eventBus!: EventBus;
+  public entityManager!: EntityManager;
+  private context: SystemContext | null = null;
+
+  /**
+   * Ordered list of systems that need tick processing (deterministic simulation)
+   * Order matters for determinism!
+   */
+  private tickSystems: GameSystem[] = [];
+
+  /**
+   * Ordered list of systems that need frame updates (visual rendering)
+   */
+  private frameSystems: GameSystem[] = [];
 
   constructor(engine: Engine, scene: Scene) {
     this.engine = engine;
@@ -73,172 +38,103 @@ export class SystemRegistry {
   }
 
   /**
-   * Create all core systems (called in constructor phase)
+   * Create core dependencies (EventBus, EntityManager, SystemContext)
    */
-  public createCoreSystems(): void {
+  public createCoreDependencies(): void {
     // Initialize EventBus first (no dependencies)
-    this.systems.eventBus = new EventBus();
+    this.eventBus = new EventBus();
 
     // Initialize EntityManager
-    this.systems.entityManager = new EntityManager();
+    this.entityManager = new EntityManager();
 
-    // Initialize scene manager (with EventBus for destination marker events)
-    this.systems.sceneManager = new SceneManager(
-      this.scene,
-      this.systems.eventBus
-    );
-
-    // Initialize systems with EventBus for decoupled communication
-    this.systems.selectionSystem = new SelectionSystem(
-      this.systems.entityManager,
-      this.systems.eventBus
-    );
-
-    this.systems.movementSystem = new MovementSystem(
+    // Create SystemContext for systems
+    this.context = new SystemContext(
       this.engine,
-      this.systems.entityManager,
-      this.systems.eventBus
-    );
-
-    this.systems.physicsSystem = new PhysicsSystem(
-      this.systems.entityManager,
-      this.systems.eventBus
-    );
-
-    this.systems.healthSystem = new HealthSystem(
-      this.systems.entityManager,
-      this.systems.eventBus
-    );
-
-    this.systems.projectileSystem = new ProjectileSystem(
       this.scene,
-      this.engine,
-      this.systems.entityManager,
-      this.systems.eventBus
-    );
-
-    this.systems.combatSystem = new CombatSystem(
-      this.engine,
-      this.systems.entityManager,
-      this.systems.eventBus
-    );
-
-    // Initialize animation systems
-    this.systems.animationSystem = new AnimationSystem(
-      this.systems.entityManager,
-      this.scene
-    );
-    this.systems.rotationSystem = new RotationSystem(this.systems.entityManager);
-
-    // Initialize gameplay systems
-    this.systems.resourceSystem = new ResourceSystem(
-      this.engine,
-      this.systems.entityManager,
-      this.systems.eventBus
-    );
-
-    this.systems.territorySystem = new TerritorySystem(
-      this.systems.entityManager,
-      this.systems.eventBus
-    );
-
-    this.systems.formationGridSystem = new FormationGridSystem(
-      this.scene,
-      this.systems.entityManager,
-      this.systems.eventBus
-    );
-
-    this.systems.victorySystem = new VictorySystem(
-      this.systems.entityManager,
-      this.systems.eventBus
-    );
-
-    this.systems.waveSystem = new WaveSystem(this.systems.eventBus);
-
-    this.systems.interpolationSystem = new InterpolationSystem(
-      this.systems.entityManager
-    );
-
-    this.systems.inputManager = new InputManager(
-      this.scene,
-      this.systems.eventBus,
-      this.systems.selectionSystem,
-      this.systems.sceneManager
+      this.eventBus,
+      this.entityManager
     );
   }
 
   /**
-   * Wire inter-system callbacks
+   * Register systems and initialize them
+   * @param tickSystems - Systems that need deterministic tick processing (order matters!)
+   * @param frameSystems - Systems that need frame-based visual updates
    */
-  public wireSystemCallbacks(): void {
-    const {
-      combatSystem,
-      movementSystem,
-      animationSystem,
-      healthSystem,
-    } = this.systems;
+  public registerSystems(
+    tickSystems: GameSystem[],
+    frameSystems: GameSystem[]
+  ): void {
+    // Store system lists
+    this.tickSystems = tickSystems;
+    this.frameSystems = frameSystems;
 
-    // Set up combat system move callback for lockstep synchronization
-    combatSystem!.setMoveUnitCallback((entityId, target) => {
-      movementSystem!.moveEntityTo(entityId, target);
-    });
+    // Register all systems with context for getSystem() lookup
+    const allSystems = new Set([...tickSystems, ...frameSystems]);
+    for (const system of allSystems) {
+      this.context!.registerSystem(system);
+    }
 
-    // Wire up animation system to combat system
-    combatSystem!.setAnimationSystem(animationSystem!);
+    // Initialize all systems (call init() on each)
+    for (const system of allSystems) {
+      system.init(this.context!);
+    }
+  }
 
-    // Wire up animation system to health system for death sequences
-    healthSystem!.setAnimationSystem(animationSystem!);
+
+  /**
+   * Process all tick-based systems in order
+   * Called once per network tick for deterministic simulation
+   * @param tick Current simulation tick number
+   */
+  public processAllTicks(tick: number): void {
+    for (const system of this.tickSystems) {
+      if (system.enabled) {
+        system.processTick(tick);
+      }
+    }
   }
 
   /**
-   * Create late-initialized systems (need async initialization first)
+   * Update all frame-based systems
+   * Called every render frame for visual updates
+   * @param deltaTime Time elapsed since last frame in seconds
    */
-  public createLateSystems(localTeam: TeamTag): void {
-    // Initialize RTS-style camera controller for the local player
-    this.systems.cameraController = new CameraController(this.scene, localTeam);
-
-    // Initialize health bar system (uses GUI with automatic billboarding)
-    this.systems.healthBarSystem = new HealthBarSystem(
-      this.scene,
-      this.systems.entityManager!,
-      this.systems.eventBus!
-    );
+  public updateAll(deltaTime: number): void {
+    for (const system of this.frameSystems) {
+      if (system.enabled) {
+        system.update(deltaTime);
+      }
+    }
   }
 
   /**
-   * Get all systems
+   * Get SystemContext for creating systems
    */
-  public getSystems(): GameSystems {
-    return this.systems as GameSystems;
+  public getContext(): SystemContext {
+    if (!this.context) {
+      throw new Error('SystemContext not created. Call createCoreDependencies() first.');
+    }
+    return this.context;
   }
 
   /**
    * Dispose all systems
    */
   public dispose(): void {
-    const s = this.systems;
+    // Dispose all tick systems in reverse order
+    for (let i = this.tickSystems.length - 1; i >= 0; i--) {
+      this.tickSystems[i].dispose();
+    }
 
-    // Dispose in reverse order of dependencies
-    s.cameraController?.dispose();
-    s.inputManager?.dispose();
-    s.projectileSystem?.dispose();
-    s.combatSystem?.dispose();
-    s.healthSystem?.dispose();
-    s.physicsSystem?.dispose();
-    s.movementSystem?.dispose();
-    s.selectionSystem?.dispose();
-    s.sceneManager?.dispose();
-    s.resourceSystem?.dispose();
-    s.territorySystem?.dispose();
-    s.formationGridSystem?.dispose();
-    s.victorySystem?.dispose();
-    s.waveSystem?.dispose();
-    s.interpolationSystem?.dispose();
-    s.healthBarSystem?.dispose();
+    // Dispose all frame systems in reverse order
+    for (let i = this.frameSystems.length - 1; i >= 0; i--) {
+      this.frameSystems[i].dispose();
+    }
 
     // Clear core
-    s.eventBus?.clearAll();
-    s.entityManager?.clear();
+    this.eventBus?.clearAll();
+    this.entityManager?.clear();
   }
 }
 

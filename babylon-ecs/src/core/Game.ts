@@ -1,5 +1,5 @@
 import { Engine, Scene } from '@babylonjs/core';
-import { SystemRegistry, type GameSystems } from './SystemRegistry';
+import { SystemRegistry } from './SystemRegistry';
 import { LockstepManager } from './LockstepManager';
 import { EntityFactory } from './EntityFactory';
 import { UIManager } from './UIManager';
@@ -8,7 +8,25 @@ import { NetworkCoordinator } from './NetworkCoordinator';
 import { GameEventCoordinator } from './GameEventCoordinator';
 import { GameInitializer } from './GameInitializer';
 import { EntityCleanupService } from './EntityCleanupService';
+import { SceneManager } from './SceneManager';
 import type { ISelectableEntity } from '../systems/SelectionSystem';
+import { SelectionSystem } from '../systems/SelectionSystem';
+import { MovementSystem } from '../systems/MovementSystem';
+import { PhysicsSystem } from '../systems/PhysicsSystem';
+import { HealthSystem } from '../systems/HealthSystem';
+import { ProjectileSystem } from '../systems/ProjectileSystem';
+import { CombatSystem } from '../systems/CombatSystem';
+import { ResourceSystem } from '../systems/ResourceSystem';
+import { TerritorySystem } from '../systems/TerritorySystem';
+import { FormationGridSystem } from '../systems/FormationGridSystem';
+import { VictorySystem } from '../systems/VictorySystem';
+import { WaveSystem } from '../systems/WaveSystem';
+import { InterpolationSystem } from '../systems/InterpolationSystem';
+import { AnimationSystem } from '../systems/AnimationSystem';
+import { RotationSystem } from '../systems/RotationSystem';
+import { HealthBarSystem } from '../systems/HealthBarSystem';
+import { CameraController } from '../systems/CameraController';
+import { InputManager } from '../systems/InputManager';
 import { TeamTag } from '../enums/TeamTag';
 import type { PhalanxClient, MatchFoundEvent } from 'phalanx-client';
 
@@ -39,14 +57,40 @@ export class Game {
   private systemRegistry: SystemRegistry;
   private networkCoordinator!: NetworkCoordinator;
   private gameEventCoordinator!: GameEventCoordinator;
-  private gameInitializer: GameInitializer;
+  private gameInitializer!: GameInitializer;
   private entityCleanupService!: EntityCleanupService;
 
   // Managers
   private lockstepManager!: LockstepManager;
-  private entityFactory: EntityFactory;
-  private uiManager: UIManager;
-  private assetManager: AssetManager;
+  private entityFactory!: EntityFactory;
+  private uiManager!: UIManager;
+  private assetManager!: AssetManager;
+
+  // Core systems
+  private sceneManager!: SceneManager;
+
+  // Gameplay systems
+  private selectionSystem!: SelectionSystem;
+  private movementSystem!: MovementSystem;
+  private physicsSystem!: PhysicsSystem;
+  private healthSystem!: HealthSystem;
+  private projectileSystem!: ProjectileSystem;
+  private combatSystem!: CombatSystem;
+  private resourceSystem!: ResourceSystem;
+  private territorySystem!: TerritorySystem;
+  private formationGridSystem!: FormationGridSystem;
+  private victorySystem!: VictorySystem;
+  private waveSystem!: WaveSystem;
+
+  // Visual systems
+  private interpolationSystem!: InterpolationSystem;
+  private animationSystem!: AnimationSystem;
+  private rotationSystem!: RotationSystem;
+  private healthBarSystem!: HealthBarSystem;
+
+  // Input/Camera
+  private cameraController!: CameraController;
+  private inputManager!: InputManager;
 
   // Callbacks
   private onExit: (() => void) | null = null;
@@ -71,54 +115,70 @@ export class Game {
     this.engine = new Engine(canvas, true);
     this.scene = new Scene(this.engine);
 
-    // Create system registry and initialize core systems
+    // Create system registry and initialize core dependencies
     this.systemRegistry = new SystemRegistry(this.engine, this.scene);
-    this.systemRegistry.createCoreSystems();
-    this.systemRegistry.wireSystemCallbacks();
+    this.systemRegistry.createCoreDependencies();
 
-    const systems = this.systemRegistry.getSystems();
-
-    // Initialize entity factory
-    this.entityFactory = new EntityFactory(
-      systems.sceneManager,
-      systems.entityManager,
-      systems.selectionSystem,
-      systems.physicsSystem
-    );
-    this.entityFactory.setInterpolationSystem(systems.interpolationSystem);
-
-    // Initialize UI manager
-    this.uiManager = new UIManager(
-      systems.resourceSystem,
-      systems.formationGridSystem,
-      this.matchData.playerId
+    // Create scene manager (not a GameSystem, but needed by other systems)
+    this.sceneManager = new SceneManager(
+      this.scene,
+      this.systemRegistry.eventBus
     );
 
-    // Initialize AssetManager for preloading 3D models
-    this.assetManager = new AssetManager(this.scene);
+    // Create all gameplay systems (core simulation systems)
+    this.selectionSystem = new SelectionSystem();
+    this.movementSystem = new MovementSystem();
+    this.physicsSystem = new PhysicsSystem();
+    this.healthSystem = new HealthSystem();
+    this.projectileSystem = new ProjectileSystem();
+    this.combatSystem = new CombatSystem();
+    this.resourceSystem = new ResourceSystem();
+    this.territorySystem = new TerritorySystem();
+    this.formationGridSystem = new FormationGridSystem();
+    this.victorySystem = new VictorySystem();
+    this.waveSystem = new WaveSystem();
+    this.interpolationSystem = new InterpolationSystem();
 
-    // Initialize game initializer
-    this.gameInitializer = new GameInitializer(
-      this.entityFactory,
-      this.uiManager,
-      this.assetManager,
-      {
-        sceneManager: systems.sceneManager,
-        resourceSystem: systems.resourceSystem,
-        formationGridSystem: systems.formationGridSystem,
-        victorySystem: systems.victorySystem,
-        waveSystem: systems.waveSystem,
-        movementSystem: systems.movementSystem,
-        interpolationSystem: systems.interpolationSystem,
-      },
-      this.matchData,
-      this.localTeam,
-      this.client
-    );
+    // Create visual systems
+    this.animationSystem = new AnimationSystem();
+    this.rotationSystem = new RotationSystem();
+
+    // Define system processing order
+    // Tick systems - order matters for determinism!
+    // Physics must run first to update positions
+    // Movement checks for arrival after physics
+    // Combat uses updated positions for targeting
+    // Projectiles need combat results
+    // Health processes death timers
+    // Resources/Wave/Territory are independent
+    const tickSystems = [
+      this.physicsSystem,
+      this.movementSystem,
+      this.combatSystem,
+      this.projectileSystem,
+      this.healthSystem,
+      this.resourceSystem,
+      this.waveSystem,
+      this.territorySystem,
+      this.formationGridSystem,
+      this.selectionSystem,
+      this.victorySystem,
+    ];
+
+    // Frame systems - visual updates only
+    // Animation and rotation before interpolation
+    const frameSystems = [
+      this.resourceSystem, // UI updates
+      this.animationSystem,
+      this.rotationSystem,
+      this.interpolationSystem,
+      this.formationGridSystem,
+    ];
+
+    // Register systems and call init() on each
+    this.systemRegistry.registerSystems(tickSystems, frameSystems);
 
     this.setupResizeHandler();
-    this.uiManager.setupBeforeUnloadWarning();
-    this.uiManager.setupExitButton(() => this.handleExit());
   }
 
   /**
@@ -141,63 +201,106 @@ export class Game {
    * Initialize the game world
    */
   public async initialize(): Promise<void> {
-    // Phase 1: Preload assets (async)
+    // Phase 1: Initialize entity factory
+    this.entityFactory = new EntityFactory(
+      this.sceneManager,
+      this.systemRegistry.entityManager,
+      this.selectionSystem,
+      this.physicsSystem
+    );
+    this.entityFactory.setInterpolationSystem(this.interpolationSystem);
+
+    // Phase 2: Initialize UI manager
+    this.uiManager = new UIManager(
+      this.resourceSystem,
+      this.formationGridSystem,
+      this.matchData.playerId
+    );
+
+    // Phase 3: Initialize AssetManager for preloading 3D models
+    this.assetManager = new AssetManager(this.scene);
+
+    // Phase 4: Initialize game initializer
+    this.gameInitializer = new GameInitializer(
+      this.entityFactory,
+      this.uiManager,
+      this.assetManager,
+      {
+        sceneManager: this.sceneManager,
+        resourceSystem: this.resourceSystem,
+        formationGridSystem: this.formationGridSystem,
+        victorySystem: this.victorySystem,
+        waveSystem: this.waveSystem,
+        movementSystem: this.movementSystem,
+        interpolationSystem: this.interpolationSystem,
+      },
+      this.matchData,
+      this.localTeam,
+      this.client
+    );
+
+    this.uiManager.setupBeforeUnloadWarning();
+    this.uiManager.setupExitButton(() => this.handleExit());
+
+    // Phase 5: Preload assets (async)
     await this.gameInitializer.initialize();
 
-    // Phase 2: Create late-initialized systems
-    this.systemRegistry.createLateSystems(this.localTeam);
-    const systems = this.systemRegistry.getSystems();
+    // Phase 6: Create late-initialized systems
+    this.cameraController = new CameraController(this.scene, this.localTeam);
+    this.healthBarSystem = new HealthBarSystem();
+    this.healthBarSystem.init(this.systemRegistry.getContext());
 
     // Set late systems in initializer
     this.gameInitializer.setLateSystems(
-      systems.healthBarSystem,
-      systems.cameraController
+      this.healthBarSystem,
+      this.cameraController
     );
 
-    // Phase 3: Create lockstep manager (needs all systems)
-    this.lockstepManager = this.createLockstepManager(systems);
+    // Phase 7: Create input manager
+    this.inputManager = new InputManager(
+      this.selectionSystem,
+      this.sceneManager
+    );
+    this.inputManager.init(this.systemRegistry.getContext());
 
-    // Phase 4: Create entity cleanup service
+    // Phase 8: Create lockstep manager (needs all systems)
+    this.lockstepManager = this.createLockstepManager();
+
+    // Phase 9: Create entity cleanup service
     this.entityCleanupService = new EntityCleanupService(
-      systems.entityManager,
+      this.systemRegistry.entityManager,
       this.entityFactory,
-      systems.physicsSystem,
-      systems.interpolationSystem,
-      systems.healthBarSystem,
-      systems.selectionSystem
+      this.physicsSystem,
+      this.interpolationSystem,
+      this.healthBarSystem,
+      this.selectionSystem
     );
 
-    // Phase 5: Create coordinators
-    this.createCoordinators(systems);
+    // Phase 10: Create coordinators
+    this.createCoordinators();
 
-    // Phase 6: Setup scene and create entities
+    // Phase 11: Setup scene and create entities
     this.gameInitializer.setupScene();
 
-    // Phase 7: Setup unit placement UI
-    this.setupUnitPlacementUI(systems);
+    // Phase 12: Setup unit placement UI
+    this.setupUnitPlacementUI();
 
-    // Phase 8: Setup selection filter
-    this.setupSelectionFilter(systems);
+    // Phase 13: Setup selection filter
+    this.setupSelectionFilter();
   }
 
   /**
    * Create LockstepManager with all dependencies
    */
-  private createLockstepManager(systems: GameSystems): LockstepManager {
+  private createLockstepManager(): LockstepManager {
     return new LockstepManager(
       this.client,
       {
-        movementSystem: systems.movementSystem,
-        physicsSystem: systems.physicsSystem,
-        combatSystem: systems.combatSystem,
-        projectileSystem: systems.projectileSystem,
-        territorySystem: systems.territorySystem,
-        resourceSystem: systems.resourceSystem,
-        formationGridSystem: systems.formationGridSystem,
-        waveSystem: systems.waveSystem,
-        healthSystem: systems.healthSystem,
-        eventBus: systems.eventBus,
+        movementSystem: this.movementSystem,
+        formationGridSystem: this.formationGridSystem,
+        eventBus: this.systemRegistry.eventBus,
       },
+      this.systemRegistry,
       {
         onCleanupNeeded: () => this.entityCleanupService.cleanupDestroyedEntities(),
         onNotification: (msg, type) =>
@@ -212,21 +315,19 @@ export class Game {
   /**
    * Create network and game event coordinators
    */
-  private createCoordinators(systems: GameSystems): void {
+  private createCoordinators(): void {
     // Create network coordinator
     this.networkCoordinator = new NetworkCoordinator(
       this.client,
       this.lockstepManager,
+      this.systemRegistry,
       this.uiManager,
       this.scene,
       {
-        cameraController: systems.cameraController,
-        resourceSystem: systems.resourceSystem,
-        combatSystem: systems.combatSystem,
-        animationSystem: systems.animationSystem,
-        rotationSystem: systems.rotationSystem,
-        interpolationSystem: systems.interpolationSystem,
-        healthBarSystem: systems.healthBarSystem,
+        cameraController: this.cameraController,
+        combatSystem: this.combatSystem,
+        interpolationSystem: this.interpolationSystem,
+        healthBarSystem: this.healthBarSystem,
       },
       {
         onPlayerDisconnected: () => this.handleExit(),
@@ -240,10 +341,10 @@ export class Game {
 
     // Create game event coordinator
     this.gameEventCoordinator = new GameEventCoordinator(
-      systems.eventBus,
+      this.systemRegistry.eventBus,
       this.uiManager,
       this.lockstepManager,
-      systems.entityManager,
+      this.systemRegistry.entityManager,
       this.entityFactory,
       {
         localPlayerId: this.matchData.playerId,
@@ -264,32 +365,32 @@ export class Game {
   /**
    * Setup unit placement UI
    */
-  private setupUnitPlacementUI(systems: GameSystems): void {
+  private setupUnitPlacementUI(): void {
     this.uiManager.setupUnitPlacementButtons(
-      () => this.handleUnitButtonClick(systems, 'mutant'),
-      () => this.handleUnitButtonClick(systems, 'prisma'),
-      () => this.handleUnitButtonClick(systems, 'lance')
+      () => this.handleUnitButtonClick('mutant'),
+      () => this.handleUnitButtonClick('prisma'),
+      () => this.handleUnitButtonClick('lance')
     );
 
     // Setup touch drag callbacks for mobile unit placement
     this.uiManager.setDragCallbacks({
       onDragStart: (unitType) => {
-        systems.cameraController.enableDragMode();
-        systems.formationGridSystem.startTouchDrag(
+        this.cameraController.enableDragMode();
+        this.formationGridSystem.startTouchDrag(
           this.matchData.playerId,
           unitType
         );
       },
       onDragMove: (x, y) => {
-        systems.formationGridSystem.updateTouchDrag(x, y);
+        this.formationGridSystem.updateTouchDrag(x, y);
       },
       onDragEnd: (x, y) => {
-        systems.formationGridSystem.endTouchDrag(x, y);
-        systems.cameraController.disableDragMode();
+        this.formationGridSystem.endTouchDrag(x, y);
+        this.cameraController.disableDragMode();
       },
       onDragCancel: () => {
-        systems.formationGridSystem.cancelTouchDrag();
-        systems.cameraController.disableDragMode();
+        this.formationGridSystem.cancelTouchDrag();
+        this.cameraController.disableDragMode();
       },
     });
   }
@@ -298,11 +399,10 @@ export class Game {
    * Handle unit button click
    */
   private handleUnitButtonClick(
-    systems: GameSystems,
     unitType: 'mutant' | 'prisma' | 'lance'
   ): void {
     this.uiManager.setActiveUnitButton(unitType);
-    systems.formationGridSystem.enterPlacementMode(
+    this.formationGridSystem.enterPlacementMode(
       this.matchData.playerId,
       unitType
     );
@@ -311,12 +411,12 @@ export class Game {
   /**
    * Setup selection filter
    */
-  private setupSelectionFilter(systems: GameSystems): void {
-    const originalSelectEntity = systems.selectionSystem.selectEntity.bind(
-      systems.selectionSystem
+  private setupSelectionFilter(): void {
+    const originalSelectEntity = this.selectionSystem.selectEntity.bind(
+      this.selectionSystem
     );
 
-    systems.selectionSystem.selectEntity = (entity: ISelectableEntity) => {
+    this.selectionSystem.selectEntity = (entity: ISelectableEntity) => {
       originalSelectEntity(entity);
     };
   }
@@ -344,14 +444,21 @@ export class Game {
     this.networkCoordinator?.dispose();
 
     // Dispose UI
-    this.uiManager.dispose();
+    this.uiManager?.dispose();
 
-    // Dispose all systems
+    // Dispose late systems (not in SystemRegistry)
+    this.cameraController?.dispose();
+    this.inputManager?.dispose();
+
+    // Dispose scene manager
+    this.sceneManager?.dispose();
+
+    // Dispose all systems registered in SystemRegistry
     this.systemRegistry.dispose();
 
     // Clear managers
-    this.entityFactory.clear();
-    this.assetManager.dispose();
+    this.entityFactory?.clear();
+    this.assetManager?.dispose();
 
     // Dispose engine
     this.engine.dispose();

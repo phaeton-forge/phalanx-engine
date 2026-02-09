@@ -1,6 +1,6 @@
-import { Scene, Vector3, Mesh } from '@babylonjs/core';
-import { EntityManager } from '../core/EntityManager';
-import { EventBus } from '../core/EventBus';
+import { Vector3, Mesh } from '@babylonjs/core';
+import type { SystemContext } from '../core/SystemContext';
+import { GameSystem } from './GameSystem';
 import { GameEvents, createEvent } from '../events';
 import { TeamTag } from '../enums/TeamTag';
 import {
@@ -12,7 +12,6 @@ import {
   type FormationUnitType,
   type FormationGrid,
   type CreateUnitCallback,
-  type MoveUnitCallback,
   type CanAffordCallback,
   type PlacedUnit,
   type GridCoords,
@@ -30,7 +29,6 @@ import type {
 export type {
   FormationUnitType,
   CreateUnitCallback,
-  MoveUnitCallback,
   CanAffordCallback,
   FormationGrid,
   PlacedUnit,
@@ -40,6 +38,7 @@ export type {
 
 /**
  * FormationGridSystem - Main facade for the formation grid functionality
+ * Extends GameSystem for consistent lifecycle management
  *
  * This system coordinates several specialized components:
  * - FormationGridData: Grid state management
@@ -48,35 +47,36 @@ export type {
  * - FormationInputHandler: Mouse/pointer input
  * - FormationDeployer: Unit deployment
  */
-export class FormationGridSystem {
-  private eventBus: EventBus;
-  private unsubscribers: (() => void)[] = [];
-
-  // Composed components
-  private gridData: FormationGridData;
-  private renderer: FormationGridRenderer;
-  private hoverPreview: FormationHoverPreview;
-  private inputHandler: FormationInputHandler;
-  private deployer: FormationDeployer;
-
-  // Legacy: preview mesh for compatibility
+export class FormationGridSystem extends GameSystem {
+  private gridData!: FormationGridData;
+  private renderer!: FormationGridRenderer;
+  private hoverPreview!: FormationHoverPreview;
+  private inputHandler!: FormationInputHandler;
+  private deployer!: FormationDeployer;
   private previewMesh: Mesh | null = null;
 
-  constructor(scene: Scene, _entityManager: EntityManager, eventBus: EventBus) {
-    this.eventBus = eventBus;
+  constructor() {
+    super();
+  }
+
+  /**
+   * Initialize the system with context
+   */
+  public override init(context: SystemContext): void {
+    super.init(context);
 
     // Initialize components
     this.gridData = new FormationGridData();
-    this.renderer = new FormationGridRenderer(scene);
-    this.hoverPreview = new FormationHoverPreview(scene);
+    this.renderer = new FormationGridRenderer(this.context.scene);
+    this.hoverPreview = new FormationHoverPreview(this.context.scene);
     this.inputHandler = new FormationInputHandler(
-      scene,
-      eventBus,
+      this.context.scene,
+      this.eventBus,
       this.gridData,
       this.renderer,
       this.hoverPreview
     );
-    this.deployer = new FormationDeployer(eventBus, this.gridData);
+    this.deployer = new FormationDeployer(this.eventBus, this.gridData, this.context);
 
     this.setupEventListeners();
   }
@@ -86,13 +86,6 @@ export class FormationGridSystem {
    */
   public setCreateUnitCallback(callback: CreateUnitCallback): void {
     this.deployer.setCreateUnitCallback(callback);
-  }
-
-  /**
-   * Set the callback for moving units (for lockstep simulation)
-   */
-  public setMoveUnitCallback(callback: MoveUnitCallback): void {
-    this.deployer.setMoveUnitCallback(callback);
   }
 
   /**
@@ -106,13 +99,11 @@ export class FormationGridSystem {
    * Setup event listeners
    */
   private setupEventListeners(): void {
-    this.unsubscribers.push(
-      this.eventBus.on<UnitPurchaseCompletedEvent>(
-        GameEvents.UNIT_PURCHASE_COMPLETED,
-        (_event) => {
-          // Unit is queued for placement, actual spawn happens on commit
-        }
-      )
+    this.subscribe<UnitPurchaseCompletedEvent>(
+      GameEvents.UNIT_PURCHASE_COMPLETED,
+      (_event) => {
+        // Unit is queued for placement, actual spawn happens on commit
+      }
     );
   }
 
@@ -475,9 +466,8 @@ export class FormationGridSystem {
   /**
    * Cleanup
    */
-  public dispose(): void {
-    this.unsubscribers.forEach((unsub) => unsub());
-    this.unsubscribers = [];
+  public override dispose(): void {
+    super.dispose(); // Clean up subscriptions from base class
 
     this.inputHandler.dispose();
     this.deployer.dispose();

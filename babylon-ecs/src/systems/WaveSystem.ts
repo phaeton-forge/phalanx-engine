@@ -1,4 +1,5 @@
-import { EventBus } from '../core/EventBus';
+import type { SystemContext } from '../core/SystemContext';
+import { GameSystem } from './GameSystem';
 import { GameEvents, createEvent } from '../events';
 import { waveConfig, networkConfig } from '../config/constants';
 import type {
@@ -55,14 +56,12 @@ export type FinalizeDeploymentCallback = (
  *
  * The system is tick-based to ensure deterministic behavior
  * across all clients in lockstep simulation.
+ * Extends GameSystem for consistent lifecycle management
  *
  * Deployment can be staggered across multiple ticks to prevent
  * frame drops when spawning many units at once.
  */
-export class WaveSystem {
-  private eventBus: EventBus;
-  private unsubscribers: (() => void)[] = [];
-
+export class WaveSystem extends GameSystem {
   // Wave state
   private currentWave: number = 0;
   private ticksPerWave: number;
@@ -90,9 +89,8 @@ export class WaveSystem {
   private ticksSinceLastSpawn: number = 0;
   private useStaggeredDeployment: boolean;
 
-  constructor(eventBus: EventBus) {
-    this.eventBus = eventBus;
-
+  constructor() {
+    super();
     // Calculate ticks per wave based on wave duration and tick rate
     this.ticksPerWave = Math.floor(
       waveConfig.waveDuration * networkConfig.tickRate
@@ -105,6 +103,13 @@ export class WaveSystem {
     this.unitsPerTick = waveConfig.unitsPerTick ?? 3;
     this.ticksBetweenSpawns = waveConfig.ticksBetweenSpawns ?? 0;
     this.useStaggeredDeployment = waveConfig.useStaggeredDeployment ?? true;
+  }
+
+  /**
+   * Initialize the system with context
+   */
+  public override init(context: SystemContext): void {
+    super.init(context);
   }
 
   /**
@@ -160,7 +165,7 @@ export class WaveSystem {
    * Process a simulation tick
    * Called by LockstepManager during deterministic simulation
    */
-  public processTick(currentTick: number): void {
+  public override processTick(currentTick: number): void {
     if (!this.isActive) return;
 
     // Process staggered deployment if active
@@ -409,9 +414,8 @@ export class WaveSystem {
   /**
    * Cleanup
    */
-  public dispose(): void {
-    this.unsubscribers.forEach((unsub) => unsub());
-    this.unsubscribers = [];
+  public override dispose(): void {
+    super.dispose(); // Clean up subscriptions from base class
     this.isActive = false;
     this.isDeploying = false;
     this.playerIds = [];

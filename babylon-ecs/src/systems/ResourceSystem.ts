@@ -1,6 +1,5 @@
-import type { Engine } from '@babylonjs/core';
-import type { EntityManager } from '../core/EntityManager';
-import { EventBus } from '../core/EventBus';
+import type { SystemContext } from '../core/SystemContext';
+import { GameSystem } from './GameSystem';
 import { GameEvents, createEvent } from '../events';
 import { TeamTag } from '../enums/TeamTag';
 import { resourceConfig, unitConfig } from '../config/constants';
@@ -30,26 +29,26 @@ interface PlayerResources {
 /**
  * ResourceSystem - Manages passive resource generation and spending
  * Handles unit purchasing and territory-based bonuses
+ * Extends GameSystem for consistent lifecycle management
  *
  * IMPORTANT: Resource generation is deterministic based on network ticks,
  * not frame delta time. This ensures both clients have identical resource counts.
  */
-export class ResourceSystem {
-  private eventBus: EventBus;
-  private unsubscribers: (() => void)[] = [];
-
+export class ResourceSystem extends GameSystem {
   private playerResources: Map<string, PlayerResources> = new Map();
   private lastProcessedTick: number = 0;
   private tickRate: number = 20; // Default: 20 ticks per second
   private lastUIUpdateTime: number = 0;
 
-  constructor(
-    _engine: Engine,
-    _entityManager: EntityManager,
-    eventBus: EventBus
-  ) {
-    this.eventBus = eventBus;
+  constructor() {
+    super();
+  }
 
+  /**
+   * Initialize the system with context
+   */
+  public override init(context: SystemContext): void {
+    super.init(context);
     this.setupEventListeners();
   }
 
@@ -76,42 +75,34 @@ export class ResourceSystem {
 
   private setupEventListeners(): void {
     // Listen for tower destruction to grant bonus
-    this.unsubscribers.push(
-      this.eventBus.on<TowerDestroyedEvent>(
-        GameEvents.TOWER_DESTROYED,
-        (event) => {
-          this.handleTowerDestroyed(event);
-        }
-      )
+    this.subscribe<TowerDestroyedEvent>(
+      GameEvents.TOWER_DESTROYED,
+      (event) => {
+        this.handleTowerDestroyed(event);
+      }
     );
 
     // Listen for unit purchase requests
-    this.unsubscribers.push(
-      this.eventBus.on<UnitPurchaseRequestedEvent>(
-        GameEvents.UNIT_PURCHASE_REQUESTED,
-        (event) => {
-          this.handleUnitPurchaseRequest(event);
-        }
-      )
+    this.subscribe<UnitPurchaseRequestedEvent>(
+      GameEvents.UNIT_PURCHASE_REQUESTED,
+      (event) => {
+        this.handleUnitPurchaseRequest(event);
+      }
     );
 
     // Listen for aggression bonus events
-    this.unsubscribers.push(
-      this.eventBus.on<AggressionBonusActivatedEvent>(
-        GameEvents.AGGRESSION_BONUS_ACTIVATED,
-        (event) => {
-          this.setAggressionBonus(event.team, true, event.bonusMultiplier);
-        }
-      )
+    this.subscribe<AggressionBonusActivatedEvent>(
+      GameEvents.AGGRESSION_BONUS_ACTIVATED,
+      (event) => {
+        this.setAggressionBonus(event.team, true, event.bonusMultiplier);
+      }
     );
 
-    this.unsubscribers.push(
-      this.eventBus.on<AggressionBonusDeactivatedEvent>(
-        GameEvents.AGGRESSION_BONUS_DEACTIVATED,
-        (event) => {
-          this.setAggressionBonus(event.team, false);
-        }
-      )
+    this.subscribe<AggressionBonusDeactivatedEvent>(
+      GameEvents.AGGRESSION_BONUS_DEACTIVATED,
+      (event) => {
+        this.setAggressionBonus(event.team, false);
+      }
     );
   }
 
@@ -120,7 +111,7 @@ export class ResourceSystem {
    * Call this method for each network tick received from server
    * @param tick - The current network tick number
    */
-  public processTick(tick: number): void {
+  public override processTick(tick: number): void {
     // Skip if we've already processed this tick
     if (tick <= this.lastProcessedTick) {
       return;
@@ -144,7 +135,7 @@ export class ResourceSystem {
    * Update UI - call this each frame for smooth UI updates
    * This does NOT generate resources, only updates the display
    */
-  public update(_deltaTime: number): void {
+  public override update(_deltaTime: number): void {
     // Emit generation event periodically (not every frame to reduce noise)
     const currentTime = performance.now();
     if (currentTime - this.lastUIUpdateTime > 1000) {
@@ -335,9 +326,8 @@ export class ResourceSystem {
   /**
    * Cleanup
    */
-  public dispose(): void {
-    this.unsubscribers.forEach((unsub) => unsub());
-    this.unsubscribers = [];
+  public override dispose(): void {
+    super.dispose(); // Clean up subscriptions from base class
     this.playerResources.clear();
   }
 }

@@ -77,6 +77,15 @@ export const GameEvents = {
   WAVE_STARTED: 'wave:started',
   WAVE_COUNTDOWN: 'wave:countdown',
   WAVE_DEPLOYMENT: 'wave:deployment',
+
+  // Animation events (visual effects triggered by tick systems)
+  PLAY_ATTACK_ANIMATION: 'animation:playAttack',
+  PLAY_DEATH_ANIMATION: 'animation:playDeath',
+  SHOW_BLOOD_EFFECT: 'animation:showBlood',
+  ORIENT_TO_TARGET: 'animation:orientToTarget',
+  NOTIFY_MOVEMENT_STARTED: 'animation:movementStarted',
+  END_COMBAT: 'animation:endCombat',
+  ORIENT_TO_MOVEMENT_DIRECTION: 'animation:orientToMovementDirection',
 } as const;
 
 export type GameEventType = (typeof GameEvents)[keyof typeof GameEvents];

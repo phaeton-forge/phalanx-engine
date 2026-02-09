@@ -1,6 +1,7 @@
 import { Vector3 } from '@babylonjs/core';
 import { Entity } from '../entities/Entity';
-import { EntityManager } from '../core/EntityManager';
+import type { SystemContext } from '../core/SystemContext';
+import { GameSystem } from './GameSystem';
 import {
   ComponentType,
   AnimationComponent,
@@ -8,7 +9,16 @@ import {
   RotationComponent,
 } from '../components';
 import { BloodEffect } from '../effects/BloodEffect';
-import type { Scene } from '@babylonjs/core';
+import { GameEvents } from '../events';
+import type {
+  PlayAttackAnimationEvent,
+  PlayDeathAnimationEvent,
+  ShowBloodEffectEvent,
+  OrientToTargetEvent,
+  NotifyMovementStartedEvent,
+  EndCombatEvent,
+  OrientToMovementDirectionEvent,
+} from '../events';
 
 /**
  * AnimationSystem - Handles all animation logic for entities
@@ -20,21 +30,118 @@ import type { Scene } from '@babylonjs/core';
  * - Handle animation blending/crossfade
  * - Update animation state based on entity state
  * - Trigger visual effects (blood on damage)
+ *
+ * Subscribes to animation events from tick systems (CombatSystem, HealthSystem)
+ * to maintain separation between deterministic simulation and visual effects.
  */
-export class AnimationSystem {
-  private entityManager: EntityManager;
-  private scene: Scene;
+export class AnimationSystem extends GameSystem {
+  constructor() {
+    super();
+  }
 
-  constructor(entityManager: EntityManager, scene: Scene) {
-    this.entityManager = entityManager;
-    this.scene = scene;
+  /**
+   * Initialize the system with context
+   */
+  public override init(context: SystemContext): void {
+    super.init(context);
+    this.setupEventListeners();
+  }
+
+  /**
+   * Setup event listeners for animation events from tick systems
+   */
+  private setupEventListeners(): void {
+    // Play attack animation when combat system triggers an attack
+    this.subscribe<PlayAttackAnimationEvent>(
+      GameEvents.PLAY_ATTACK_ANIMATION,
+      (event) => {
+        const entity = this.entityManager.getEntity(event.entityId);
+        if (!entity) return;
+        const anim = entity.getComponent<AnimationComponent>(ComponentType.Animation);
+        if (anim) {
+          this.playAttackAnimation(anim);
+        }
+      }
+    );
+
+    // Play death animation when health system triggers death
+    this.subscribe<PlayDeathAnimationEvent>(
+      GameEvents.PLAY_DEATH_ANIMATION,
+      (event) => {
+        const entity = this.entityManager.getEntity(event.entityId);
+        if (!entity) return;
+        const anim = entity.getComponent<AnimationComponent>(ComponentType.Animation);
+        if (anim) {
+          this.playDeathAnimationVisualOnly(anim);
+        }
+      }
+    );
+
+    // Show blood effect when entity takes damage
+    this.subscribe<ShowBloodEffectEvent>(
+      GameEvents.SHOW_BLOOD_EFFECT,
+      (event) => {
+        const entity = this.entityManager.getEntity(event.entityId);
+        if (entity) {
+          this.showBloodEffect(entity);
+        }
+      }
+    );
+
+    // Orient entity to face target
+    this.subscribe<OrientToTargetEvent>(
+      GameEvents.ORIENT_TO_TARGET,
+      (event) => {
+        const entity = this.entityManager.getEntity(event.entityId);
+        if (entity) {
+          this.orientToTarget(entity, event.targetPosition);
+        }
+      }
+    );
+
+    // Notify movement started for run animation
+    this.subscribe<NotifyMovementStartedEvent>(
+      GameEvents.NOTIFY_MOVEMENT_STARTED,
+      (event) => {
+        const entity = this.entityManager.getEntity(event.entityId);
+        if (!entity) return;
+        const anim = entity.getComponent<AnimationComponent>(ComponentType.Animation);
+        if (anim) {
+          this.notifyMovementStarted(anim);
+        }
+      }
+    );
+
+    // End combat mode for entity
+    this.subscribe<EndCombatEvent>(
+      GameEvents.END_COMBAT,
+      (event) => {
+        const entity = this.entityManager.getEntity(event.entityId);
+        if (!entity) return;
+        const anim = entity.getComponent<AnimationComponent>(ComponentType.Animation);
+        if (anim) {
+          this.endCombat(anim);
+        }
+      }
+    );
+
+    // Orient entity to movement direction
+    this.subscribe<OrientToMovementDirectionEvent>(
+      GameEvents.ORIENT_TO_MOVEMENT_DIRECTION,
+      (event) => {
+        const entity = this.entityManager.getEntity(event.entityId);
+        if (entity) {
+          this.orientToMovementDirection(entity);
+        }
+      }
+    );
   }
 
   /**
    * Update animations for all entities with AnimationComponent
    * Should be called in the render loop
    */
-  public update(): void {
+  public override update(_deltaTime: number): void {
     const entities = this.entityManager.queryEntities(ComponentType.Animation);
 
     for (const entity of entities) {
@@ -296,7 +403,7 @@ export class AnimationSystem {
   public showBloodEffect(entity: Entity): void {
     const position = entity.position.clone();
     position.y += 1; // Blood at chest height
-    new BloodEffect(this.scene, position);
+    new BloodEffect(this.context.scene, position);
   }
 
   /**
@@ -339,7 +446,7 @@ export class AnimationSystem {
     }
   }
 
-  public dispose(): void {
-    // No cleanup needed currently
+  public override dispose(): void {
+    super.dispose(); // Clean up subscriptions from base class
   }
 }

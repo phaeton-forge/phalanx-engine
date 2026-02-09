@@ -1,10 +1,10 @@
 import {
-  Scene,
   PointerEventTypes,
   PointerInfo,
   PickingInfo,
 } from '@babylonjs/core';
-import { EventBus } from '../core/EventBus';
+import type { SystemContext } from '../core/SystemContext';
+import { GameSystem } from './GameSystem';
 import type { SelectionSystem } from './SelectionSystem';
 import type { SceneManager } from '../core/SceneManager';
 import { GameEvents, createEvent } from '../events';
@@ -13,34 +13,35 @@ import type { MoveCompletedEvent, HideDestinationMarkerEvent } from '../events';
 /**
  * InputManager - Handles all user input
  * Uses EventBus for decoupled command issuing
+ * Extends GameSystem for consistent lifecycle management
  */
-export class InputManager {
-  private scene: Scene;
-  private eventBus: EventBus;
+export class InputManager extends GameSystem {
   private selectionSystem: SelectionSystem;
   private sceneManager: SceneManager;
-  private unsubscribers: (() => void)[] = [];
 
   // Track entities that are moving to hide marker when all complete
   private movingEntities: Set<number> = new Set();
 
   constructor(
-    scene: Scene,
-    eventBus: EventBus,
     selectionSystem: SelectionSystem,
     sceneManager: SceneManager
   ) {
-    this.scene = scene;
-    this.eventBus = eventBus;
+    super();
     this.selectionSystem = selectionSystem;
     this.sceneManager = sceneManager;
+  }
 
+  /**
+   * Initialize the system with context
+   */
+  public override init(context: SystemContext): void {
+    super.init(context);
     this.setupPointerObserver();
     this.setupEventListeners();
   }
 
   private setupPointerObserver(): void {
-    this.scene.onPointerObservable.add((pointerInfo) => {
+    this.context.scene.onPointerObservable.add((pointerInfo) => {
       if (pointerInfo.type === PointerEventTypes.POINTERDOWN) {
         this.handlePointerDown(pointerInfo);
       }
@@ -49,22 +50,20 @@ export class InputManager {
 
   private setupEventListeners(): void {
     // Listen for move completed to potentially hide destination marker
-    this.unsubscribers.push(
-      this.eventBus.on<MoveCompletedEvent>(
-        GameEvents.MOVE_COMPLETED,
-        (event) => {
-          this.movingEntities.delete(event.entityId);
-          if (this.movingEntities.size === 0) {
-            // Emit hide destination marker event
-            this.eventBus.emit<HideDestinationMarkerEvent>(
-              GameEvents.HIDE_DESTINATION_MARKER,
-              {
-                ...createEvent(),
-              }
-            );
-          }
+    this.subscribe<MoveCompletedEvent>(
+      GameEvents.MOVE_COMPLETED,
+      (event) => {
+        this.movingEntities.delete(event.entityId);
+        if (this.movingEntities.size === 0) {
+          // Emit hide destination marker event
+          this.eventBus.emit<HideDestinationMarkerEvent>(
+            GameEvents.HIDE_DESTINATION_MARKER,
+            {
+              ...createEvent(),
+            }
+          );
         }
-      )
+      }
     );
   }
 
@@ -110,11 +109,8 @@ export class InputManager {
   /**
    * Dispose and unsubscribe from all events
    */
-  public dispose(): void {
-    for (const unsubscribe of this.unsubscribers) {
-      unsubscribe();
-    }
-    this.unsubscribers = [];
+  public override dispose(): void {
+    super.dispose(); // Clean up subscriptions from base class
     this.movingEntities.clear();
   }
 }

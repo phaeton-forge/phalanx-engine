@@ -1,5 +1,5 @@
-import type { EntityManager } from '../core/EntityManager';
-import { EventBus } from '../core/EventBus';
+import type { SystemContext } from '../core/SystemContext';
+import { GameSystem } from './GameSystem';
 import { GameEvents, createEvent } from '../events';
 import { TeamTag } from '../enums/TeamTag';
 import { resourceConfig } from '../config/constants';
@@ -13,11 +13,9 @@ import type {
 /**
  * VictorySystem - Monitors game state for victory conditions
  * Tracks base destruction and declares winners
+ * Extends GameSystem for consistent lifecycle management
  */
-export class VictorySystem {
-  private eventBus: EventBus;
-  private unsubscribers: (() => void)[] = [];
-
+export class VictorySystem extends GameSystem {
   private baseEntities: Map<TeamTag, number> = new Map(); // team -> entityId
   private towerEntities: Map<number, TeamTag> = new Map(); // entityId -> team
   private gameOver: boolean = false;
@@ -26,9 +24,15 @@ export class VictorySystem {
   // Player ID mapping
   private teamPlayers: Map<TeamTag, string> = new Map();
 
-  constructor(_entityManager: EntityManager, eventBus: EventBus) {
-    this.eventBus = eventBus;
+  constructor() {
+    super();
+  }
 
+  /**
+   * Initialize the system with context
+   */
+  public override init(context: SystemContext): void {
+    super.init(context);
     this.setupEventListeners();
   }
 
@@ -55,13 +59,11 @@ export class VictorySystem {
 
   private setupEventListeners(): void {
     // Listen for entity destruction
-    this.unsubscribers.push(
-      this.eventBus.on<EntityDestroyedEvent>(
-        GameEvents.ENTITY_DESTROYED,
-        (event) => {
-          this.handleEntityDestroyed(event);
-        }
-      )
+    this.subscribe<EntityDestroyedEvent>(
+      GameEvents.ENTITY_DESTROYED,
+      (event) => {
+        this.handleEntityDestroyed(event);
+      }
     );
   }
 
@@ -187,9 +189,8 @@ export class VictorySystem {
   /**
    * Cleanup
    */
-  public dispose(): void {
-    this.unsubscribers.forEach((unsub) => unsub());
-    this.unsubscribers = [];
+  public override dispose(): void {
+    super.dispose(); // Clean up subscriptions from base class
     this.reset();
   }
 }

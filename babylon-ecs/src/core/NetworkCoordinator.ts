@@ -1,24 +1,20 @@
 import type { PhalanxClient, CommandsBatch } from 'phalanx-client';
 import type { LockstepManager } from './LockstepManager';
+import type { SystemRegistry } from './SystemRegistry';
 import type { UIManager } from './UIManager';
 import type { InterpolationSystem } from '../systems/InterpolationSystem';
-import type { ResourceSystem } from '../systems/ResourceSystem';
 import type { CombatSystem } from '../systems/CombatSystem';
-import type { AnimationSystem } from '../systems/AnimationSystem';
-import type { RotationSystem } from '../systems/RotationSystem';
 import type { HealthBarSystem } from '../systems/HealthBarSystem';
 import type { CameraController } from '../systems/CameraController';
 import type { Scene } from '@babylonjs/core';
 
 /**
  * Frame update context passed to NetworkCoordinator
+ * These systems need special handling outside of SystemRegistry.updateAll()
  */
 export interface FrameUpdateSystems {
   cameraController: CameraController;
-  resourceSystem: ResourceSystem;
   combatSystem: CombatSystem;
-  animationSystem: AnimationSystem;
-  rotationSystem: RotationSystem;
   interpolationSystem: InterpolationSystem;
   healthBarSystem: HealthBarSystem;
 }
@@ -44,6 +40,7 @@ export interface NetworkCoordinatorCallbacks {
 export class NetworkCoordinator {
   private client: PhalanxClient;
   private lockstepManager: LockstepManager;
+  private systemRegistry: SystemRegistry;
   private uiManager: UIManager;
   private scene: Scene;
   private frameSystems: FrameUpdateSystems;
@@ -57,6 +54,7 @@ export class NetworkCoordinator {
   constructor(
     client: PhalanxClient,
     lockstepManager: LockstepManager,
+    systemRegistry: SystemRegistry,
     uiManager: UIManager,
     scene: Scene,
     frameSystems: FrameUpdateSystems,
@@ -64,6 +62,7 @@ export class NetworkCoordinator {
   ) {
     this.client = client;
     this.lockstepManager = lockstepManager;
+    this.systemRegistry = systemRegistry;
     this.uiManager = uiManager;
     this.scene = scene;
     this.frameSystems = frameSystems;
@@ -132,10 +131,7 @@ export class NetworkCoordinator {
   private processFrame(alpha: number, dt: number): void {
     const {
       cameraController,
-      resourceSystem,
       combatSystem,
-      animationSystem,
-      rotationSystem,
       interpolationSystem,
       healthBarSystem,
     } = this.frameSystems;
@@ -143,15 +139,14 @@ export class NetworkCoordinator {
     // Update camera controller (keyboard/touch input)
     cameraController.update(dt);
 
-    // Update systems that need frame-rate updates
-    resourceSystem.update(0);
+    // Update all frame-based systems through SystemRegistry
+    // This handles: resourceSystem, animationSystem, rotationSystem
+    this.systemRegistry.updateAll(dt);
 
     // Update tower turret rotations for smooth visual rotation
+    // (special handling - not part of standard update cycle)
     combatSystem.updateTowerTurrets(dt);
 
-    // Update MutantUnit animations and rotations based on movement state
-    animationSystem.update();
-    rotationSystem.update(dt);
 
     // Interpolate visual positions using alpha from PhalanxClient
     interpolationSystem.interpolate(alpha);

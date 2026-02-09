@@ -141,7 +141,6 @@ export class GameInitializer {
       formationGridSystem,
       victorySystem,
       waveSystem,
-      movementSystem,
     } = this.systems;
 
     // Initialize systems for both players
@@ -161,10 +160,6 @@ export class GameInitializer {
         this.localTeam,
         () => this.getOpponentId()
       );
-    });
-
-    formationGridSystem.setMoveUnitCallback((entityId, target) => {
-      movementSystem.moveEntityTo(entityId, target);
     });
 
     // Set up affordability check callback

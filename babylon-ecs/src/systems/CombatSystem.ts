@@ -1,8 +1,8 @@
-import { Engine, Vector3 } from '@babylonjs/core';
+import { Vector3 } from '@babylonjs/core';
 import { Entity } from '../entities/Entity';
 import { Tower } from '../entities/Tower';
-import { EntityManager } from '../core/EntityManager';
-import { EventBus } from '../core/EventBus';
+import type { SystemContext } from '../core/SystemContext';
+import { GameSystem } from './GameSystem';
 import { GameRandom } from '../core/GameRandom';
 import {
   AnimationComponent,
@@ -19,10 +19,14 @@ import type {
   DamageAppliedEvent,
   DamageRequestedEvent,
   ProjectileSpawnedEvent,
+  OrientToTargetEvent,
+  NotifyMovementStartedEvent,
+  EndCombatEvent,
+  OrientToMovementDirectionEvent,
+  PlayAttackAnimationEvent,
 } from '../events';
 import { createEvent, GameEvents } from '../events';
 import { networkConfig } from '../config/constants';
-import type { AnimationSystem } from './AnimationSystem';
 import {
   FP,
   FPVector3,
@@ -54,7 +58,8 @@ const DEFAULT_COMBAT_CONFIG: CombatConfig = {
 /**
  * CombatSystem - Handles attack range detection and combat logic
  * Uses component-based entity queries
- * Uses EventBus for decoupled projectile spawning
+ * Uses EventBus for decoupled communication (projectile spawning, movement requests)
+ * Extends GameSystem for consistent lifecycle management
  *
  * IMPORTANT: Uses fixed timestep for deterministic attack cooldown updates.
  * This ensures combat outcomes are identical across all clients.
@@ -65,71 +70,34 @@ const DEFAULT_COMBAT_CONFIG: CombatConfig = {
  * - When the enemy is killed, the unit resumes moving to its original target
  *
  * LOCKSTEP SYNCHRONIZATION:
- * Movement commands from combat use a direct callback instead of EventBus
- * to ensure they're executed synchronously during simulation.
+ * Movement commands from combat are emitted via EventBus and handled synchronously
+ * by MovementSystem during the same tick to ensure deterministic execution.
  */
-export class CombatSystem {
-  private entityManager: EntityManager;
-  private eventBus: EventBus;
+export class CombatSystem extends GameSystem {
   private config: CombatConfig;
-  private unsubscribers: (() => void)[] = [];
   private currentTargets: Map<number, number> = new Map(); // attacker ID -> target ID
   private storedMoveTargets: Map<number, Vector3> = new Map(); // attacker ID -> original move target
   private aggroTargets: Map<number, number> = new Map(); // entity ID -> attacker ID (who damaged them)
 
-
-  // Callback for moving units (bypasses EventBus for lockstep simulation)
-  private moveUnitCallback:
-    | ((entityId: number, target: Vector3) => void)
-    | null = null;
-
-  // AnimationSystem reference for triggering animations
-  private animationSystem: AnimationSystem | null = null;
-
-  constructor(
-    _engine: Engine,
-    entityManager: EntityManager,
-    eventBus: EventBus,
-    config?: Partial<CombatConfig>
-  ) {
-    this.entityManager = entityManager;
-    this.eventBus = eventBus;
+  constructor(config?: Partial<CombatConfig>) {
+    super();
     this.config = { ...DEFAULT_COMBAT_CONFIG, ...config };
-
-    this.setupEventListeners();
   }
 
   /**
-   * Set the callback for moving units (for lockstep simulation)
-   * This bypasses EventBus to ensure synchronous execution during simulation
+   * Initialize the system - set up event listeners
    */
-  public setMoveUnitCallback(
-    callback: (entityId: number, target: Vector3) => void
-  ): void {
-    this.moveUnitCallback = callback;
-  }
+  public override init(context: SystemContext): void {
+    super.init(context);
 
-  /**
-   * Set the AnimationSystem reference for triggering animations
-   */
-  public setAnimationSystem(animationSystem: AnimationSystem): void {
-    this.animationSystem = animationSystem;
-  }
-
-  /**
-   * Setup event listeners for damage tracking
-   */
-  private setupEventListeners(): void {
     // Listen for damage events to track who attacked whom
-    this.unsubscribers.push(
-      this.eventBus.on<DamageAppliedEvent>(
-        GameEvents.DAMAGE_APPLIED,
-        (event) => {
-          if (event.sourceId !== undefined) {
-            this.handleDamageReceived(event.entityId, event.sourceId);
-          }
+    this.subscribe<DamageAppliedEvent>(
+      GameEvents.DAMAGE_APPLIED,
+      (event) => {
+        if (event.sourceId !== undefined) {
+          this.handleDamageReceived(event.entityId, event.sourceId);
         }
-      )
+      }
     );
   }
 
@@ -164,10 +132,10 @@ export class CombatSystem {
 
 
   /**
-   * Simulate one network tick worth of combat
+   * Process one network tick worth of combat
    * Called exactly once per network tick for deterministic lockstep simulation
    */
-  public simulateTick(): void {
+  public override processTick(_tick: number): void {
     this.fixedUpdate(this.config.fixedTimestep);
   }
 
@@ -282,8 +250,12 @@ export class CombatSystem {
         // Orient units toward their target only when:
         // 1. It's a new target, OR
         // 2. Not currently in attack animation (to avoid jitter during attack)
-        if (rotationComp && this.animationSystem && !isAttackLocked) {
-          this.animationSystem.orientToTarget(attacker, target.position);
+        if (rotationComp && !isAttackLocked) {
+          this.eventBus.emit<OrientToTargetEvent>(GameEvents.ORIENT_TO_TARGET, {
+            ...createEvent(),
+            entityId: attacker.id,
+            targetPosition: target.position.clone(),
+          });
         }
 
         if (inAttackRange) {
@@ -329,12 +301,15 @@ export class CombatSystem {
             // Move towards the target (use callback for lockstep)
             this.requestMove(attacker.id, target.position.clone());
 
-            // Notify via AnimationSystem that movement started for animation sync
+            // Notify that movement started for animation sync
             const animCompMove = attacker.getComponent<AnimationComponent>(
               ComponentType.Animation
             );
-            if (animCompMove && this.animationSystem) {
-              this.animationSystem.notifyMovementStarted(animCompMove);
+            if (animCompMove) {
+              this.eventBus.emit<NotifyMovementStartedEvent>(GameEvents.NOTIFY_MOVEMENT_STARTED, {
+                ...createEvent(),
+                entityId: attacker.id,
+              });
             }
           }
         }
@@ -382,12 +357,15 @@ export class CombatSystem {
           // Move towards the aggro target (use callback for lockstep)
           this.requestMove(attacker.id, aggroTarget.position.clone());
 
-          // Notify via AnimationSystem that movement started for animation sync
+          // Notify that movement started for animation sync
           const animCompAggro = attacker.getComponent<AnimationComponent>(
             ComponentType.Animation
           );
-          if (animCompAggro && this.animationSystem) {
-            this.animationSystem.notifyMovementStarted(animCompAggro);
+          if (animCompAggro) {
+            this.eventBus.emit<NotifyMovementStartedEvent>(GameEvents.NOTIFY_MOVEMENT_STARTED, {
+              ...createEvent(),
+              entityId: attacker.id,
+            });
           }
         } else if (isAttackLockedAggro && movement.isMoving) {
           // Stop movement if attacking
@@ -408,8 +386,11 @@ export class CombatSystem {
           const animCompEnd = attacker.getComponent<AnimationComponent>(
             ComponentType.Animation
           );
-          if (animCompEnd && this.animationSystem) {
-            this.animationSystem.endCombat(animCompEnd);
+          if (animCompEnd) {
+            this.eventBus.emit<EndCombatEvent>(GameEvents.END_COMBAT, {
+              ...createEvent(),
+              entityId: attacker.id,
+            });
           }
         }
 
@@ -426,29 +407,25 @@ export class CombatSystem {
           this.requestMove(attacker.id, storedTarget);
           this.storedMoveTargets.delete(attacker.id);
 
-          // Orient entity along movement direction via AnimationSystem
-          if (this.animationSystem) {
-            this.animationSystem.orientToMovementDirection(attacker);
-          }
+          // Orient entity along movement direction
+          this.eventBus.emit<OrientToMovementDirectionEvent>(GameEvents.ORIENT_TO_MOVEMENT_DIRECTION, {
+            ...createEvent(),
+            entityId: attacker.id,
+          });
         }
       }
     }
   }
 
   /**
-   * Request movement for an entity (uses callback for lockstep synchronization)
+   * Request movement for an entity via EventBus
    */
   private requestMove(entityId: number, target: Vector3): void {
-    if (this.moveUnitCallback) {
-      this.moveUnitCallback(entityId, target);
-    } else {
-      // Fallback to EventBus (for non-networked testing)
-      this.eventBus.emit(GameEvents.MOVE_REQUESTED, {
-        ...createEvent(),
-        entityId,
-        target,
-      });
-    }
+    this.eventBus.emit(GameEvents.MOVE_REQUESTED, {
+      ...createEvent(),
+      entityId,
+      target,
+    });
   }
 
   /**
@@ -611,7 +588,7 @@ export class CombatSystem {
       sourceId: attacker.id,
     });
 
-    // Trigger attack animation via AnimationSystem (purely visual)
+    // Trigger attack animation (purely visual)
     const animComp = attacker.getComponent<AnimationComponent>(
       ComponentType.Animation
     );
@@ -619,9 +596,12 @@ export class CombatSystem {
       ComponentType.AttackLock
     );
 
-    if (animComp && this.animationSystem) {
-      // Start attack animation without damage callback - damage already applied above
-      this.animationSystem.playAttackAnimation(animComp);
+    if (animComp) {
+      // Emit event for attack animation - damage already applied above
+      this.eventBus.emit<PlayAttackAnimationEvent>(GameEvents.PLAY_ATTACK_ANIMATION, {
+        ...createEvent(),
+        entityId: attacker.id,
+      });
     }
 
     if (attackLockComp) {
@@ -694,9 +674,8 @@ export class CombatSystem {
   /**
    * Dispose and cleanup
    */
-  public dispose(): void {
-    this.unsubscribers.forEach((unsub) => unsub());
-    this.unsubscribers = [];
+  public override dispose(): void {
+    super.dispose(); // Clean up subscriptions from base class
     this.currentTargets.clear();
     this.storedMoveTargets.clear();
     this.aggroTargets.clear();

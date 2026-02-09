@@ -1,5 +1,5 @@
-import { EntityManager } from '../core/EntityManager';
-import { EventBus } from '../core/EventBus';
+import type { SystemContext } from '../core/SystemContext';
+import { GameSystem } from './GameSystem';
 import {
   ComponentType,
   HealthComponent,
@@ -15,8 +15,9 @@ import type {
   HealRequestedEvent,
   EntityDyingEvent,
   EntityDestroyedEvent,
+  ShowBloodEffectEvent,
+  PlayDeathAnimationEvent,
 } from '../events';
-import type { AnimationSystem } from './AnimationSystem';
 
 /**
  * HealthSystem - Manages entity health and destruction
@@ -27,26 +28,21 @@ import type { AnimationSystem } from './AnimationSystem';
  * NOT animation callbacks. This ensures all clients destroy entities at
  * exactly the same simulation tick.
  */
-export class HealthSystem {
-  private entityManager: EntityManager;
-  private eventBus: EventBus;
-  private unsubscribers: (() => void)[] = [];
-  private animationSystem: AnimationSystem | null = null;
+export class HealthSystem extends GameSystem {
   private currentTick: number = 0;
 
-  constructor(entityManager: EntityManager, eventBus: EventBus) {
-    this.entityManager = entityManager;
-    this.eventBus = eventBus;
-
-    this.setupEventListeners();
+  constructor() {
+    super();
   }
 
   /**
-   * Set the AnimationSystem reference for triggering death animations
+   * Initialize the system with context
    */
-  public setAnimationSystem(animationSystem: AnimationSystem): void {
-    this.animationSystem = animationSystem;
+  public override init(context: SystemContext): void {
+    super.init(context);
+    this.setupEventListeners();
   }
+
 
   /**
    * Update the current tick (call this from LockstepManager before processing)
@@ -59,10 +55,10 @@ export class HealthSystem {
   /**
    * Process death timers for all dying entities
    * Call this once per simulation tick for deterministic death timing
-   * @param tick Current simulation tick
+   * @param _tick Current simulation tick
    */
-  public processTick(tick: number): void {
-    this.currentTick = tick;
+  public override processTick(_tick: number): void {
+    this.currentTick = _tick;
 
     // Query all entities with DeathComponent
     const dyingEntities = this.entityManager.queryEntities(ComponentType.Death);
@@ -72,7 +68,7 @@ export class HealthSystem {
       if (!deathComp || !deathComp.isDying) continue;
 
       // Check if death timer has expired
-      if (deathComp.shouldCompleteThisTick(tick)) {
+      if (deathComp.shouldCompleteThisTick(_tick)) {
         // Emit entity destroyed event before destroying
         this.eventBus.emit<EntityDestroyedEvent>(GameEvents.ENTITY_DESTROYED, {
           ...createEvent(),
@@ -89,26 +85,22 @@ export class HealthSystem {
 
   private setupEventListeners(): void {
     // Listen for damage requests from other systems
-    this.unsubscribers.push(
-      this.eventBus.on<DamageRequestedEvent>(
-        GameEvents.DAMAGE_REQUESTED,
-        (event) => {
-          this.applyDamageById(event.entityId, event.amount, event.sourceId);
-        }
-      )
+    this.subscribe<DamageRequestedEvent>(
+      GameEvents.DAMAGE_REQUESTED,
+      (event) => {
+        this.applyDamageById(event.entityId, event.amount, event.sourceId);
+      }
     );
 
     // Listen for heal requests
-    this.unsubscribers.push(
-      this.eventBus.on<HealRequestedEvent>(
-        GameEvents.HEAL_REQUESTED,
-        (event) => {
-          const entity = this.entityManager.getEntity(event.entityId);
-          if (entity) {
-            this.heal(entity, event.amount);
-          }
+    this.subscribe<HealRequestedEvent>(
+      GameEvents.HEAL_REQUESTED,
+      (event) => {
+        const entity = this.entityManager.getEntity(event.entityId);
+        if (entity) {
+          this.heal(entity, event.amount);
         }
-      )
+      }
     );
   }
 
@@ -126,12 +118,15 @@ export class HealthSystem {
 
     const wasDestroyed = health.takeDamage(amount);
 
-    // Show blood effect via AnimationSystem if available
+    // Show blood effect via event (AnimationSystem will handle this)
     const animComp = entity.getComponent<AnimationComponent>(
       ComponentType.Animation
     );
-    if (animComp && this.animationSystem) {
-      this.animationSystem.showBloodEffect(entity);
+    if (animComp) {
+      this.eventBus.emit<ShowBloodEffectEvent>(GameEvents.SHOW_BLOOD_EFFECT, {
+        ...createEvent(),
+        entityId: entity.id,
+      });
     }
 
     // Emit damage applied event
@@ -173,9 +168,12 @@ export class HealthSystem {
           // The actual destroy happens there for determinism
         });
 
-        // Start visual death animation (purely cosmetic, does NOT control timing)
-        if (animComp && this.animationSystem) {
-          this.animationSystem.playDeathAnimationVisualOnly(animComp);
+        // Start visual death animation via event (purely cosmetic, does NOT control timing)
+        if (animComp) {
+          this.eventBus.emit<PlayDeathAnimationEvent>(GameEvents.PLAY_DEATH_ANIMATION, {
+            ...createEvent(),
+            entityId: entity.id,
+          });
         }
       } else {
         // For other entities (no DeathComponent), destroy immediately
@@ -235,10 +233,7 @@ export class HealthSystem {
   /**
    * Dispose and unsubscribe from all events
    */
-  public dispose(): void {
-    for (const unsubscribe of this.unsubscribers) {
-      unsubscribe();
-    }
-    this.unsubscribers = [];
+  public override dispose(): void {
+    super.dispose(); // Clean up subscriptions from base class
   }
 }

@@ -3,9 +3,11 @@ import { EventBus } from '../../core/EventBus';
 import {GameEvents, createEvent, type FormationUnitType} from '../../events';
 import { arenaParams } from '../../config/constants';
 import { FormationGridData } from './FormationGridData';
-import type { CreateUnitCallback, MoveUnitCallback } from './FormationTypes';
+import type { CreateUnitCallback } from './FormationTypes';
 import type { FormationCommittedEvent } from '../../events';
 import type {TeamTag} from "../../enums/TeamTag.ts";
+import type { SystemContext } from '../../core/SystemContext';
+import { MovementSystem } from '../MovementSystem';
 
 /**
  * Information about a unit pending deployment
@@ -25,13 +27,14 @@ export interface DeploymentUnitInfo {
 export class FormationDeployer {
   private eventBus: EventBus;
   private gridData: FormationGridData;
+  private context: SystemContext;
 
   private createUnitCallback: CreateUnitCallback | null = null;
-  private moveUnitCallback: MoveUnitCallback | null = null;
 
-  constructor(eventBus: EventBus, gridData: FormationGridData) {
+  constructor(eventBus: EventBus, gridData: FormationGridData, context: SystemContext) {
     this.eventBus = eventBus;
     this.gridData = gridData;
+    this.context = context;
   }
 
   /**
@@ -39,13 +42,6 @@ export class FormationDeployer {
    */
   public setCreateUnitCallback(callback: CreateUnitCallback): void {
     this.createUnitCallback = callback;
-  }
-
-  /**
-   * Set the callback for moving units (for lockstep simulation)
-   */
-  public setMoveUnitCallback(callback: MoveUnitCallback): void {
-    this.moveUnitCallback = callback;
   }
 
   /**
@@ -57,6 +53,7 @@ export class FormationDeployer {
    * For Team2 (right side), the formation is rotated 180 degrees
    */
   public commitFormation(playerId: string): number {
+    console.log(`Committing formation for player ${playerId}`);
     const grid = this.gridData.getGrid(playerId);
     if (!grid) return 0;
 
@@ -145,19 +142,17 @@ export class FormationDeployer {
       }
     );
 
-    // Issue move commands
+    // Issue move commands directly via MovementSystem
+    const movementSystem = this.context.getSystem(MovementSystem);
+    if (!movementSystem) {
+      console.error('[FormationDeployer] MovementSystem not found!');
+      return unitCount;
+    }
+
     for (const { unitId, position, targetX } of spawnedUnits) {
       const targetPos = new Vector3(targetX, 1, position.z);
-
-      if (this.moveUnitCallback) {
-        this.moveUnitCallback(unitId, targetPos);
-      } else {
-        this.eventBus.emit(GameEvents.MOVE_REQUESTED, {
-          ...createEvent(),
-          entityId: unitId,
-          target: targetPos,
-        });
-      }
+      console.log(`Moving ${unitId} to ${targetPos.x}, ${targetPos.z}`);
+      movementSystem.moveEntityTo(unitId, targetPos);
     }
 
     return unitCount;
@@ -191,13 +186,19 @@ export class FormationDeployer {
    * Deploy a single unit during staggered deployment
    */
   public deploySingleUnit(playerId: string, unitInfo: DeploymentUnitInfo): void {
+    console.log('[FormationDeployer] deploySingleUnit called', { playerId, unitInfo });
     const grid = this.gridData.getGrid(playerId);
-    if (!grid) return;
+    if (!grid) {
+      console.error('[FormationDeployer] Grid not found for player', playerId);
+      return;
+    }
+    console.log('[FormationDeployer] Grid found:', grid);
 
     if (!this.createUnitCallback) {
       console.error('[FormationDeployer] No createUnitCallback set!');
       return;
     }
+    console.log('[FormationDeployer] createUnitCallback exists');
 
     // Get spawn area and enemy base position
     const teamConfig =
@@ -237,26 +238,33 @@ export class FormationDeployer {
     // Spawn position
     const spawnX = spawnBaseX + relativeX * direction;
     const spawnPos = new Vector3(spawnX, 1, relativeZ);
+    console.log('[FormationDeployer] About to create unit at position:', spawnPos);
 
     // Create the unit
-    const createdUnit = this.createUnitCallback(
-      unitInfo.unitType,
-      unitInfo.team,
-      spawnPos
-    );
-
-    // Issue move command immediately
-    const targetPos = new Vector3(enemyBaseX, 1, spawnPos.z);
-
-    if (this.moveUnitCallback) {
-      this.moveUnitCallback(createdUnit.id, targetPos);
-    } else {
-      this.eventBus.emit(GameEvents.MOVE_REQUESTED, {
-        ...createEvent(),
-        entityId: createdUnit.id,
-        target: targetPos,
-      });
+    let createdUnit;
+    try {
+      createdUnit = this.createUnitCallback(
+        unitInfo.unitType,
+        unitInfo.team,
+        spawnPos
+      );
+      console.log('[FormationDeployer] Unit created', { id: createdUnit.id, position: spawnPos });
+    } catch (error) {
+      console.error('[FormationDeployer] Error creating unit:', error);
+      return;
     }
+
+    // Issue move command immediately via MovementSystem
+    const movementSystem = this.context.getSystem(MovementSystem);
+    if (!movementSystem) {
+      console.error('[FormationDeployer] MovementSystem not found!');
+      return;
+    }
+
+    const targetPos = new Vector3(enemyBaseX, 1, spawnPos.z);
+    console.log('[FormationDeployer] Calling moveEntityTo', { entityId: createdUnit.id, targetPos });
+    const result = movementSystem.moveEntityTo(createdUnit.id, targetPos);
+    console.log('[FormationDeployer] moveEntityTo result:', result);
   }
 
   /**
@@ -282,6 +290,5 @@ export class FormationDeployer {
    */
   public dispose(): void {
     this.createUnitCallback = null;
-    this.moveUnitCallback = null;
   }
 }

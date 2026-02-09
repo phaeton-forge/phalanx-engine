@@ -1,6 +1,6 @@
-import { Engine, Vector3 } from '@babylonjs/core';
-import { EntityManager } from '../core/EntityManager';
-import { EventBus } from '../core/EventBus';
+import { Vector3 } from '@babylonjs/core';
+import type { SystemContext } from '../core/SystemContext';
+import { GameSystem } from './GameSystem';
 import { ComponentType, MovementComponent } from '../components';
 import { GameEvents, createEvent } from '../events';
 import type {
@@ -22,22 +22,16 @@ import type {
  * The EventBus MOVE_REQUESTED event is used for network routing,
  * not for direct execution (to ensure lockstep synchronization).
  */
-export class MovementSystem {
-  // @ts-expect-error - engine stored for future use
-  private engine: Engine;
-  private entityManager: EntityManager;
-  private eventBus: EventBus;
-  private unsubscribers: (() => void)[] = [];
+export class MovementSystem extends GameSystem {
+  constructor() {
+    super();
+  }
 
-  constructor(
-    engine: Engine,
-    entityManager: EntityManager,
-    eventBus: EventBus
-  ) {
-    this.engine = engine;
-    this.entityManager = entityManager;
-    this.eventBus = eventBus;
-
+  /**
+   * Initialize the system with context
+   */
+  public override init(context: SystemContext): void {
+    super.init(context);
     this.setupEventListeners();
   }
 
@@ -47,21 +41,20 @@ export class MovementSystem {
     // moveEntityTo() calls from Game.ts executeTickCommands().
 
     // Listen for stop requests
-    this.unsubscribers.push(
-      this.eventBus.on<StopRequestedEvent>(
-        GameEvents.STOP_REQUESTED,
-        (event) => {
-          this.stopEntity(event.entityId);
-        }
-      )
+    this.subscribe<StopRequestedEvent>(
+      GameEvents.STOP_REQUESTED,
+      (event) => {
+        this.stopEntity(event.entityId);
+      }
     );
   }
 
   /**
-   * Update movement system - check for completed movements
+   * Process movement tick - check for completed movements
    * Physics movement is handled by PhysicsSystem
+   * Called once per tick for deterministic arrival detection
    */
-  public update(): void {
+  public override processTick(_tick: number): void {
     // Query all entities with Movement component to check for completed movements
     const movableEntities = this.entityManager.queryEntities(
       ComponentType.Movement
@@ -133,10 +126,7 @@ export class MovementSystem {
   /**
    * Dispose and unsubscribe from all events
    */
-  public dispose(): void {
-    for (const unsubscribe of this.unsubscribers) {
-      unsubscribe();
-    }
-    this.unsubscribers = [];
+  public override dispose(): void {
+    super.dispose(); // Clean up subscriptions from base class
   }
 }

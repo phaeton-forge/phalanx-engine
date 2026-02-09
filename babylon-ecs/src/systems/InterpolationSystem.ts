@@ -1,5 +1,6 @@
 import { Vector3 } from '@babylonjs/core';
-import type { EntityManager } from '../core/EntityManager';
+import type { SystemContext } from '../core/SystemContext';
+import { GameSystem } from './GameSystem';
 import {
   fpToVector3Ref,
   lerpVector3FromFpRef,
@@ -27,6 +28,7 @@ interface InterpolationState {
 
 /**
  * InterpolationSystem - Provides smooth visual movement between network ticks
+ * Extends GameSystem for consistent lifecycle management
  *
  * ARCHITECTURE:
  * - Simulation runs at 20 ticks/sec (deterministic, synchronized)
@@ -43,15 +45,21 @@ interface InterpolationState {
  * - alpha = 1: Show position from current tick
  * - alpha = 0.5: Show position halfway between
  */
-export class InterpolationSystem {
-  private entityManager: EntityManager;
+export class InterpolationSystem extends GameSystem {
   private states: Map<number, InterpolationState> = new Map();
 
   // Entities that should NOT be interpolated (static structures)
   private staticEntities: Set<number> = new Set();
 
-  constructor(entityManager: EntityManager) {
-    this.entityManager = entityManager;
+  constructor() {
+    super();
+  }
+
+  /**
+   * Initialize the system with context
+   */
+  public override init(context: SystemContext): void {
+    super.init(context);
   }
 
   /**
@@ -184,7 +192,8 @@ export class InterpolationSystem {
   /**
    * Dispose of the system
    */
-  public dispose(): void {
+  public override dispose(): void {
+    super.dispose(); // Clean up subscriptions from base class
     this.clear();
   }
 }

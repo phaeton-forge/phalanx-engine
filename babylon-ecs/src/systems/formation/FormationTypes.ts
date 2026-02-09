@@ -62,11 +62,6 @@ export type CreateUnitCallback = (
 ) => { id: number; position: Vector3 };
 
 /**
- * Callback type for moving units (bypasses event bus for lockstep simulation)
- */
-export type MoveUnitCallback = (entityId: number, target: Vector3) => void;
-
-/**
  * Callback type for checking affordability
  */
 export type CanAffordCallback = (

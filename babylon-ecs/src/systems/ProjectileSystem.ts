@@ -1,8 +1,8 @@
-import { Scene, Engine, Vector3 } from '@babylonjs/core';
+import { Vector3 } from '@babylonjs/core';
 import { Projectile } from '../entities/Projectile';
 import { ExplosionEffect } from '../effects/ExplosionEffect';
-import { EntityManager } from '../core/EntityManager';
-import { EventBus } from '../core/EventBus';
+import type { SystemContext } from '../core/SystemContext';
+import { GameSystem } from './GameSystem';
 import { Entity } from '../entities/Entity';
 import { ComponentType, TeamComponent } from '../components';
 import { GameEvents, createEvent } from '../events';
@@ -43,52 +43,40 @@ const DEFAULT_PROJECTILE_CONFIG: ProjectileConfig = {
  * ProjectileSystem - Manages all projectiles in the game
  * Uses EntityManager for target queries
  * Uses EventBus for decoupled damage dealing
+ * Extends GameSystem for consistent lifecycle management
  *
  * IMPORTANT: Uses fixed timestep for deterministic projectile movement.
  * This ensures projectile hit detection is identical across all clients.
  */
-export class ProjectileSystem {
-  private scene: Scene;
-  private engine: Engine;
-  private entityManager: EntityManager;
-  private eventBus: EventBus;
+export class ProjectileSystem extends GameSystem {
   private config: ProjectileConfig;
   private projectiles: Projectile[] = [];
-  private unsubscribers: (() => void)[] = [];
 
-  // Fixed timestep accumulator for deterministic updates
-  private accumulator: number = 0;
-
-  constructor(
-    scene: Scene,
-    engine: Engine,
-    entityManager: EntityManager,
-    eventBus: EventBus,
-    config?: Partial<ProjectileConfig>
-  ) {
-    this.scene = scene;
-    this.engine = engine;
-    this.entityManager = entityManager;
-    this.eventBus = eventBus;
+  constructor(config?: Partial<ProjectileConfig>) {
+    super();
     this.config = { ...DEFAULT_PROJECTILE_CONFIG, ...config };
+  }
 
+  /**
+   * Initialize the system with context
+   */
+  public override init(context: SystemContext): void {
+    super.init(context);
     this.setupEventListeners();
   }
 
   private setupEventListeners(): void {
     // Listen for projectile spawn requests from combat system
-    this.unsubscribers.push(
-      this.eventBus.on<ProjectileSpawnedEvent>(
-        GameEvents.PROJECTILE_SPAWNED,
-        (event) => {
-          this.spawnProjectile(event.origin, event.direction, {
-            damage: event.damage,
-            speed: event.speed,
-            team: event.team,
-            sourceId: event.sourceId,
-          });
-        }
-      )
+    this.subscribe<ProjectileSpawnedEvent>(
+      GameEvents.PROJECTILE_SPAWNED,
+      (event) => {
+        this.spawnProjectile(event.origin, event.direction, {
+          damage: event.damage,
+          speed: event.speed,
+          team: event.team,
+          sourceId: event.sourceId,
+        });
+      }
     );
   }
 
@@ -100,7 +88,7 @@ export class ProjectileSystem {
     direction: Vector3,
     config: ProjectileSpawnConfig
   ): Projectile {
-    const projectile = new Projectile(this.scene, origin, direction, {
+    const projectile = new Projectile(this.context.scene, origin, direction, {
       damage: config.damage,
       speed: config.speed,
       lifetime: config.lifetime,
@@ -112,25 +100,10 @@ export class ProjectileSystem {
   }
 
   /**
-   * Update all projectiles - uses fixed timestep for determinism (legacy)
-   * @deprecated Use simulateTick() for deterministic network synchronization
-   */
-  public update(): void {
-    const deltaTime = this.engine.getDeltaTime() / 1000;
-    this.accumulator += deltaTime;
-
-    // Run fixed timestep updates for deterministic projectile movement
-    while (this.accumulator >= this.config.fixedTimestep) {
-      this.fixedUpdate(this.config.fixedTimestep);
-      this.accumulator -= this.config.fixedTimestep;
-    }
-  }
-
-  /**
-   * Simulate one network tick worth of projectile updates
+   * Process one network tick worth of projectile updates
    * Called exactly once per network tick for deterministic lockstep simulation
    */
-  public simulateTick(): void {
+  public override processTick(_tick: number): void {
     this.fixedUpdate(this.config.fixedTimestep);
   }
 
@@ -238,7 +211,7 @@ export class ProjectileSystem {
 
     // Create explosion effect if projectile hit something
     if (projectile.isDestroyed) {
-      new ExplosionEffect(this.scene, projectile.position);
+      new ExplosionEffect(this.context.scene, projectile.position);
     }
 
     projectile.dispose();
@@ -254,12 +227,8 @@ export class ProjectileSystem {
     this.projectiles = [];
   }
 
-  public dispose(): void {
-    // Unsubscribe from all events
-    for (const unsubscribe of this.unsubscribers) {
-      unsubscribe();
-    }
-    this.unsubscribers = [];
+  public override dispose(): void {
+    super.dispose(); // Clean up subscriptions from base class
     this.clear();
   }
 }

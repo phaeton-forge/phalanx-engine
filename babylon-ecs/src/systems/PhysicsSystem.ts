@@ -1,4 +1,5 @@
-import { EntityManager } from '../core/EntityManager';
+import type { SystemContext } from '../core/SystemContext';
+import { GameSystem } from './GameSystem';
 import { ComponentType, MovementComponent, TeamComponent } from '../components';
 import { networkConfig } from '../config/constants';
 import {
@@ -134,9 +135,9 @@ class SpatialGrid {
  * Uses fixed-point arithmetic for reproducible results across clients
  * Uses spatial hashing for O(n) average-case collision detection
  * Minimizes allocations for mobile performance
+ * Extends GameSystem for consistent lifecycle management
  */
-export class PhysicsSystem {
-  private entityManager: EntityManager;
+export class PhysicsSystem extends GameSystem {
   private config: PhysicsConfig;
   private bodies: Map<number, PhysicsBody> = new Map();
   private spatialGrid: SpatialGrid;
@@ -147,16 +148,19 @@ export class PhysicsSystem {
   // Cached number values from fixed-point config (for spatial grid operations)
   private readonly unitRadiusNum: number;
 
-  constructor(
-    entityManager: EntityManager,
-    _eventBus?: unknown,
-    config?: Partial<PhysicsConfig>
-  ) {
-    this.entityManager = entityManager;
+  constructor(config?: Partial<PhysicsConfig>) {
+    super();
     this.config = { ...DEFAULT_PHYSICS_CONFIG, ...config };
     this.spatialGrid = new SpatialGrid(this.config.cellSize);
     // Cache number value for spatial grid operations
     this.unitRadiusNum = FP.ToFloat(this.config.unitRadius);
+  }
+
+  /**
+   * Initialize the system with context
+   */
+  public override init(context: SystemContext): void {
+    super.init(context);
   }
 
   /**
@@ -220,11 +224,11 @@ export class PhysicsSystem {
 
 
   /**
-   * Simulate one network tick worth of physics
+   * Process one network tick worth of physics
    * Called exactly once per network tick for deterministic lockstep simulation
    * Runs multiple physics substeps per tick for accuracy
    */
-  public simulateTick(): void {
+  public override processTick(_tick: number): void {
     const substepDt = this.config.fixedTimestep;
     const substeps = networkConfig.physicsSubsteps;
 
@@ -579,7 +583,8 @@ export class PhysicsSystem {
   /**
    * Dispose the physics system
    */
-  public dispose(): void {
+  public override dispose(): void {
+    super.dispose(); // Clean up subscriptions from base class
     this.bodies.clear();
     this.spatialGrid.clear();
     this.checkedPairs.clear();

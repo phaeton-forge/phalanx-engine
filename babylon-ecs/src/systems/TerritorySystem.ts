@@ -1,5 +1,5 @@
-import { EntityManager } from '../core/EntityManager';
-import { EventBus } from '../core/EventBus';
+import type { SystemContext } from '../core/SystemContext';
+import { GameSystem } from './GameSystem';
 import { GameEvents, createEvent } from '../events';
 import { TeamTag } from '../enums/TeamTag';
 import { ComponentType, TeamComponent } from '../components';
@@ -22,20 +22,17 @@ interface TeamTerritoryState {
 /**
  * TerritorySystem - Tracks unit positions and determines territorial control
  * Manages aggression bonus for teams that push past the center line
+ * Extends GameSystem for consistent lifecycle management
  */
-export class TerritorySystem {
-  private entityManager: EntityManager;
-  private eventBus: EventBus;
-  private unsubscribers: (() => void)[] = [];
-
+export class TerritorySystem extends GameSystem {
   private territoryState: Map<TeamTag, TeamTerritoryState> = new Map();
   private centerLine: number;
-  private updateInterval: number = 500; // Update every 500ms
-  private lastUpdateTime: number = 0;
+  // Update every 10 ticks (500ms at 20 ticks/sec) for deterministic throttling
+  private updateIntervalTicks: number = 10;
+  private lastUpdateTick: number = 0;
 
-  constructor(entityManager: EntityManager, eventBus: EventBus) {
-    this.entityManager = entityManager;
-    this.eventBus = eventBus;
+  constructor() {
+    super();
     this.centerLine = arenaParams.divider.x;
 
     // Initialize territory state for both teams
@@ -55,16 +52,22 @@ export class TerritorySystem {
   }
 
   /**
-   * Update territory tracking - call this each frame
+   * Initialize the system with context
    */
-  public update(_deltaTime: number): void {
-    const currentTime = performance.now();
+  public override init(context: SystemContext): void {
+    super.init(context);
+  }
 
-    // Only update periodically to reduce computation
-    if (currentTime - this.lastUpdateTime < this.updateInterval) {
+  /**
+   * Process territory tick - deterministic territory tracking
+   * Called once per simulation tick
+   */
+  public override processTick(tick: number): void {
+    // Only update periodically to reduce computation (every 10 ticks = 500ms)
+    if (tick - this.lastUpdateTick < this.updateIntervalTicks) {
       return;
     }
-    this.lastUpdateTime = currentTime;
+    this.lastUpdateTick = tick;
 
     // Calculate positions for both teams first
     this.calculateTeamPositions();
@@ -202,9 +205,8 @@ export class TerritorySystem {
   /**
    * Cleanup
    */
-  public dispose(): void {
-    this.unsubscribers.forEach((unsub) => unsub());
-    this.unsubscribers = [];
+  public override dispose(): void {
+    super.dispose(); // Clean up subscriptions from base class
     this.territoryState.clear();
   }
 }

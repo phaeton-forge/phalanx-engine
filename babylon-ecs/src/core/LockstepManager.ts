@@ -5,17 +5,10 @@ import type {
   CommandsBatch,
 } from 'phalanx-client';
 import type { EventBus } from './EventBus';
+import type { SystemRegistry } from './SystemRegistry';
 import type { MovementSystem } from '../systems/MovementSystem';
-import type { PhysicsSystem } from '../systems/PhysicsSystem';
-import type { CombatSystem } from '../systems/CombatSystem';
-import type { ProjectileSystem } from '../systems/ProjectileSystem';
-import type { TerritorySystem } from '../systems/TerritorySystem';
-import type { ResourceSystem } from '../systems/ResourceSystem';
 import type { FormationGridSystem } from '../systems/FormationGridSystem';
-import type { WaveSystem } from '../systems/WaveSystem';
-import type { HealthSystem } from '../systems/HealthSystem';
 import { TeamTag } from '../enums/TeamTag';
-import { networkConfig } from '../config/constants';
 import { GameEvents, createEvent } from '../events';
 import type {
   NetworkCommand,
@@ -41,18 +34,12 @@ export interface LockstepCallbacks {
 }
 
 /**
- * Systems required by LockstepManager
+ * Systems required by LockstepManager for command execution
+ * Note: Tick processing is now delegated to SystemRegistry
  */
 export interface LockstepSystems {
   movementSystem: MovementSystem;
-  physicsSystem: PhysicsSystem;
-  combatSystem: CombatSystem;
-  projectileSystem: ProjectileSystem;
-  territorySystem: TerritorySystem;
-  resourceSystem: ResourceSystem;
   formationGridSystem: FormationGridSystem;
-  waveSystem: WaveSystem;
-  healthSystem: HealthSystem;
   eventBus: EventBus;
 }
 
@@ -61,23 +48,26 @@ export interface LockstepSystems {
  *
  * Responsible for:
  * - Executing commands received from the network
- * - Running deterministic simulation ticks
+ * - Delegating tick processing to SystemRegistry
  * - Sending local commands to the server
  *
  * Network synchronization and timing are delegated to PhalanxClient.
  */
 export class LockstepManager {
   private systems: LockstepSystems;
+  private systemRegistry: SystemRegistry;
   private callbacks: LockstepCallbacks;
   private client: PhalanxClient;
 
   constructor(
     client: PhalanxClient,
     systems: LockstepSystems,
+    systemRegistry: SystemRegistry,
     callbacks: LockstepCallbacks
   ) {
     this.client = client;
     this.systems = systems;
+    this.systemRegistry = systemRegistry;
     this.callbacks = callbacks;
   }
 
@@ -97,19 +87,9 @@ export class LockstepManager {
     // Execute all commands for this tick
     this.executeTickCommands(allCommands);
 
-    // Run one tick of deterministic simulation
-    this.simulateTick();
-
-    // Process death timers (deterministic entity destruction)
-    // IMPORTANT: This must be called to ensure dying entities are destroyed
-    // at exactly the same tick across all clients
-    this.systems.healthSystem.processTick(tick);
-
-    // Process resources deterministically based on tick
-    this.systems.resourceSystem.processTick(tick);
-
-    // Process wave system (handles wave timing and auto-deployment)
-    this.systems.waveSystem.processTick(tick);
+    // Run one tick of deterministic simulation through SystemRegistry
+    // This processes all tick-based systems in the correct order
+    this.systemRegistry.processAllTicks(tick);
 
     // Cleanup destroyed entities
     this.callbacks.onCleanupNeeded();
@@ -251,7 +231,6 @@ export class LockstepManager {
 
     const { fromGridX, fromGridZ, toGridX, toGridZ } = cmd.data;
 
-
     this.systems.formationGridSystem.moveUnit(
       playerId,
       fromGridX,
@@ -259,29 +238,5 @@ export class LockstepManager {
       toGridX,
       toGridZ
     );
-  }
-
-  /**
-   * Run one tick of deterministic game simulation
-   * All systems update based on the fixed tick timestep
-   */
-  public simulateTick(): void {
-    // Update physics (runs multiple substeps internally for accuracy)
-    this.systems.physicsSystem.simulateTick();
-
-    // Update movement system (check for completed movements)
-    this.systems.movementSystem.update();
-
-    // Update combat (target selection, attack cooldowns)
-    this.systems.combatSystem.simulateTick();
-
-    // Update projectiles (movement, hit detection)
-    this.systems.projectileSystem.simulateTick();
-
-    // Update territory system (for visual feedback)
-    this.systems.territorySystem.update(networkConfig.tickTimestep);
-
-    // Cleanup destroyed entities
-    this.callbacks.onCleanupNeeded();
   }
 }

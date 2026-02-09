@@ -1,4 +1,5 @@
-import { EntityManager } from '../core/EntityManager';
+import type { SystemContext } from '../core/SystemContext';
+import { GameSystem } from './GameSystem';
 import { ComponentType, RotationComponent } from '../components';
 import { FP } from 'phalanx-math';
 
@@ -11,17 +12,23 @@ const FP_SNAP_THRESHOLD = FP.FromFloat(0.01);
  * RotationSystem - Handles smooth rotation interpolation for entities
  *
  * Follows ECS pattern: contains logic, entities store data in components
+ * Extends GameSystem for consistent lifecycle management
  *
  * Responsibilities:
  * - Interpolate rotation towards target
  * - Handle shortest rotation path
  * - Clear target when reached
  */
-export class RotationSystem {
-  private entityManager: EntityManager;
+export class RotationSystem extends GameSystem {
+  constructor() {
+    super();
+  }
 
-  constructor(entityManager: EntityManager) {
-    this.entityManager = entityManager;
+  /**
+   * Initialize the system with context
+   */
+  public override init(context: SystemContext): void {
+    super.init(context);
   }
 
   /**
@@ -29,7 +36,7 @@ export class RotationSystem {
    * Should be called in the render loop
    * @param deltaTime Time since last frame in seconds
    */
-  public update(deltaTime: number): void {
+  public override update(deltaTime: number): void {
     const entities = this.entityManager.queryEntities(ComponentType.Rotation);
 
     for (const entity of entities) {
@@ -101,7 +108,8 @@ export class RotationSystem {
     transformNode.rotation.y = FP.ToFloat(newRotation);
   }
 
-  public dispose(): void {
-    // No cleanup needed currently
+  public override dispose(): void {
+    super.dispose(); // Clean up subscriptions from base class
+    // No additional cleanup needed currently
   }
 }

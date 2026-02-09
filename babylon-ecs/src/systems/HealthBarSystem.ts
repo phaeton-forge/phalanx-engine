@@ -1,7 +1,6 @@
-import {Scene} from '@babylonjs/core';
 import {AdvancedDynamicTexture, Control, Rectangle} from '@babylonjs/gui';
-import {EntityManager} from '../core/EntityManager';
-import {EventBus} from '../core/EventBus';
+import type { SystemContext } from '../core/SystemContext';
+import { GameSystem } from './GameSystem';
 import {ComponentType, HealthComponent} from '../components';
 import {Entity} from '../entities/Entity';
 import type {DamageAppliedEvent, EntityDestroyedEvent, EntityDyingEvent,} from '../events';
@@ -17,6 +16,7 @@ interface HealthBar {
 
 /**
  * HealthBarSystem - Displays health bars above entities using BabylonJS GUI
+ * Extends GameSystem for consistent lifecycle management
  *
  * Features:
  * - Uses 2D GUI elements (Rectangle) instead of 3D meshes
@@ -24,28 +24,29 @@ interface HealthBar {
  * - Dynamic visibility: Hidden at 100% health, shown when damaged
  * - Color gradient: Green (100%) -> Yellow (50%) -> Red (0%)
  */
-export class HealthBarSystem {
-  private scene: Scene;
-  private entityManager: EntityManager;
-  private eventBus: EventBus;
-  private guiTexture: AdvancedDynamicTexture;
+export class HealthBarSystem extends GameSystem {
+  private guiTexture!: AdvancedDynamicTexture;
   private healthBars: Map<number, HealthBar> = new Map();
-  private unsubscribers: (() => void)[] = [];
 
   // Health bar dimensions (in pixels)
   private readonly BAR_WIDTH = 60;
   private readonly BAR_HEIGHT = 8;
 
-  constructor(scene: Scene, entityManager: EntityManager, eventBus: EventBus) {
-    this.scene = scene;
-    this.entityManager = entityManager;
-    this.eventBus = eventBus;
+  constructor() {
+    super();
+  }
+
+  /**
+   * Initialize the system with context
+   */
+  public override init(context: SystemContext): void {
+    super.init(context);
 
     // Create fullscreen GUI texture for health bars
     this.guiTexture = AdvancedDynamicTexture.CreateFullscreenUI(
       'healthBarUI',
       true,
-      this.scene
+      this.context.scene
     );
 
     this.setupEventListeners();
@@ -53,34 +54,31 @@ export class HealthBarSystem {
 
   private setupEventListeners(): void {
     // Listen for damage events to update health bars
-    this.unsubscribers.push(
-      this.eventBus.on<DamageAppliedEvent>(
-        GameEvents.DAMAGE_APPLIED,
-        (event) => {
-          this.updateHealthBar(
-            event.entityId,
-            event.newHealth,
-            event.maxHealth
-          );
-        }
-      )
+    this.subscribe<DamageAppliedEvent>(
+      GameEvents.DAMAGE_APPLIED,
+      (event) => {
+        this.updateHealthBar(
+          event.entityId,
+          event.newHealth,
+          event.maxHealth
+        );
+      }
     );
 
     // Listen for entity dying to remove health bar immediately (before death animation)
-    this.unsubscribers.push(
-      this.eventBus.on<EntityDyingEvent>(GameEvents.ENTITY_DYING, (event) => {
+    this.subscribe<EntityDyingEvent>(
+      GameEvents.ENTITY_DYING,
+      (event) => {
         this.removeHealthBar(event.entityId);
-      })
+      }
     );
 
     // Listen for entity destruction to cleanup health bars
-    this.unsubscribers.push(
-      this.eventBus.on<EntityDestroyedEvent>(
-        GameEvents.ENTITY_DESTROYED,
-        (event) => {
-          this.removeHealthBar(event.entityId);
-        }
-      )
+    this.subscribe<EntityDestroyedEvent>(
+      GameEvents.ENTITY_DESTROYED,
+      (event) => {
+        this.removeHealthBar(event.entityId);
+      }
     );
   }
 
@@ -255,11 +253,8 @@ export class HealthBarSystem {
   /**
    * Dispose of the health bar system
    */
-  public dispose(): void {
-    for (const unsubscribe of this.unsubscribers) {
-      unsubscribe();
-    }
-    this.unsubscribers = [];
+  public override dispose(): void {
+    super.dispose(); // Clean up subscriptions from base class
 
     for (const healthBar of this.healthBars.values()) {
       healthBar.foreground.dispose();
