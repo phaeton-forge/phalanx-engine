@@ -12,6 +12,7 @@ import type {
   TowerDestroyedEvent,
   AggressionBonusActivatedEvent,
   AggressionBonusDeactivatedEvent,
+  UIResourcesUpdatedEvent,
 } from '../events';
 
 /**
@@ -71,7 +72,33 @@ export class ResourceSystem extends GameSystem {
       baseGenerationRate: resourceConfig.baseGenerationRate,
       currentGenerationRate: resourceConfig.baseGenerationRate,
       hasAggressionBonus: false,
-    });  }
+    });
+
+    // Emit initial UI update
+    this.emitUIResourcesUpdate(playerId);
+  }
+
+  /**
+   * Emit UI resources update event with all data needed for UI rendering
+   */
+  private emitUIResourcesUpdate(playerId: string): void {
+    const resources = this.playerResources.get(playerId);
+    if (!resources) return;
+
+    this.eventBus.emit<UIResourcesUpdatedEvent>(
+      GameEvents.UI_RESOURCES_UPDATED,
+      {
+        ...createEvent(),
+        playerId,
+        currentResources: resources.currentResources,
+        currentGenerationRate: resources.currentGenerationRate,
+        hasAggressionBonus: resources.hasAggressionBonus,
+        canAffordMutant: resources.currentResources >= unitConfig.mutant.cost,
+        canAffordPrisma: resources.currentResources >= unitConfig.prisma.cost,
+        canAffordLance: resources.currentResources >= unitConfig.lance.cost,
+      }
+    );
+  }
 
   private setupEventListeners(): void {
     // Listen for tower destruction to grant bonus
@@ -154,6 +181,9 @@ export class ResourceSystem extends GameSystem {
             generationRate: resources.currentGenerationRate,
           }
         );
+
+        // Emit UI update event
+        this.emitUIResourcesUpdate(playerId);
       }
     }
   }
@@ -180,7 +210,11 @@ export class ResourceSystem extends GameSystem {
             oldAmount,
             newAmount: resources.currentResources,
           }
-        );      }
+        );
+
+        // Emit UI update event
+        this.emitUIResourcesUpdate(playerId);
+      }
     }
   }
 
@@ -248,7 +282,11 @@ export class ResourceSystem extends GameSystem {
         entityId: 0, // Will be set by formation system
         cost,
       }
-    );  }
+    );
+
+    // Emit UI update event
+    this.emitUIResourcesUpdate(resources.playerId);
+  }
 
   /**
    * Set aggression bonus for a team
@@ -258,7 +296,7 @@ export class ResourceSystem extends GameSystem {
     active: boolean,
     multiplier?: number
   ): void {
-    for (const [_playerId, resources] of this.playerResources) {
+    for (const [playerId, resources] of this.playerResources) {
       if (resources.team === team) {
         resources.hasAggressionBonus = active;
         if (active && multiplier) {
@@ -267,6 +305,9 @@ export class ResourceSystem extends GameSystem {
         } else {
           resources.currentGenerationRate = resources.baseGenerationRate;
         }
+
+        // Emit UI update event
+        this.emitUIResourcesUpdate(playerId);
       }
     }
   }

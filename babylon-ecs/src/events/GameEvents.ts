@@ -34,6 +34,8 @@ export const GameEvents = {
   // UI events
   SHOW_DESTINATION_MARKER: 'ui:showDestinationMarker',
   HIDE_DESTINATION_MARKER: 'ui:hideDestinationMarker',
+  UI_RESOURCES_UPDATED: 'ui:resourcesUpdated',
+  UI_FORMATION_UPDATED: 'ui:formationUpdated',
 
   // Resource events
   RESOURCES_CHANGED: 'resource:changed',

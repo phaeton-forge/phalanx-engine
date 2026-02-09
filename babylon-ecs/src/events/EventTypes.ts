@@ -150,6 +150,29 @@ export interface ShowDestinationMarkerEvent extends GameEvent {
 
 export type HideDestinationMarkerEvent = GameEvent;
 
+/**
+ * Event emitted when resource UI should be updated
+ * Contains all data needed to render the resource display
+ */
+export interface UIResourcesUpdatedEvent extends GameEvent {
+  playerId: string;
+  currentResources: number;
+  currentGenerationRate: number;
+  hasAggressionBonus: boolean;
+  canAffordMutant: boolean;
+  canAffordPrisma: boolean;
+  canAffordLance: boolean;
+}
+
+/**
+ * Event emitted when formation UI should be updated
+ * Contains all data needed to render the formation info
+ */
+export interface UIFormationUpdatedEvent extends GameEvent {
+  playerId: string;
+  placedUnitCount: number;
+}
+
 // ============================================
 // Resource Events
 // ============================================

@@ -83,7 +83,6 @@ export class GameEventCoordinator {
   public setupAllEventHandlers(): void {
     this.setupGameOverHandler();
     this.setupTerritoryHandlers();
-    this.setupResourceHandlers();
     this.setupFormationHandlers();
     this.setupWaveHandlers();
     this.setupMoveCommandInterceptor();
@@ -122,19 +121,6 @@ export class GameEventCoordinator {
         }
       }
     );
-  }
-
-  /**
-   * Setup resource change event handlers
-   */
-  private setupResourceHandlers(): void {
-    this.eventBus.on(GameEvents.RESOURCES_GENERATED, () => {
-      this.uiManager.updateResourceUI();
-    });
-
-    this.eventBus.on(GameEvents.RESOURCES_CHANGED, () => {
-      this.uiManager.updateResourceUI();
-    });
   }
 
   /**
@@ -178,18 +164,8 @@ export class GameEventCoordinator {
       }
     );
 
-    // Formation changes (UI updates)
-    this.eventBus.on(GameEvents.FORMATION_UNIT_PLACED, () => {
-      this.uiManager.updateFormationInfo();
-    });
-
-    this.eventBus.on(GameEvents.FORMATION_UNIT_REMOVED, () => {
-      this.uiManager.updateFormationInfo();
-    });
-
-    this.eventBus.on(GameEvents.FORMATION_UNIT_MOVED, () => {
-      this.uiManager.updateFormationInfo();
-    });
+    // Formation UI updates now happen via UI_FORMATION_UPDATED events
+    // No direct UIManager calls needed here
 
     // Formation mode changes (UI button highlighting)
     this.eventBus.on<FormationModeEnteredEvent>(

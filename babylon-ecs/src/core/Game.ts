@@ -137,6 +137,7 @@ export class Game {
     // Create visual systems
     this.animationSystem = new AnimationSystem();
     this.rotationSystem = new RotationSystem();
+    this.healthBarSystem = new HealthBarSystem();
 
     // Define system processing order
     // Tick systems - order matters for determinism!
@@ -168,6 +169,7 @@ export class Game {
       this.interpolationSystem,
       this.formationGridSystem,
       this.combatSystem, // Tower turret rotation
+      this.healthBarSystem,
     ];
 
     // Register systems and call init() on each
@@ -202,30 +204,22 @@ export class Game {
       this.systemRegistry.entityManager
     );
 
-    // Phase 2: Initialize UI manager
+    // Phase 2: Initialize UI manager (decoupled from systems, uses EventBus)
     this.uiManager = new UIManager(
-      this.resourceSystem,
-      this.formationGridSystem,
+      this.systemRegistry.eventBus,
       this.matchData.playerId
     );
 
     // Phase 3: Initialize AssetManager for preloading 3D models
     this.assetManager = new AssetManager(this.scene);
 
-    // Phase 4: Initialize game initializer
+    // Phase 4: Initialize game initializer (uses SystemContext to access systems)
     this.gameInitializer = new GameInitializer(
       this.entityFactory,
       this.uiManager,
       this.assetManager,
-      {
-        sceneManager: this.sceneManager,
-        resourceSystem: this.resourceSystem,
-        formationGridSystem: this.formationGridSystem,
-        victorySystem: this.victorySystem,
-        waveSystem: this.waveSystem,
-        movementSystem: this.movementSystem,
-        interpolationSystem: this.interpolationSystem,
-      },
+      this.systemRegistry.getContext(),
+      this.sceneManager,
       this.matchData,
       this.localTeam,
       this.client
@@ -239,11 +233,6 @@ export class Game {
 
     // Phase 6: Create late-initialized systems
     this.cameraController = new CameraController(this.scene, this.localTeam);
-    this.healthBarSystem = new HealthBarSystem();
-    this.healthBarSystem.init(this.systemRegistry.getContext());
-
-    // Register healthBarSystem as a frame system (late initialization)
-    this.systemRegistry.addFrameSystem(this.healthBarSystem);
 
     // Set late systems in initializer
     this.gameInitializer.setLateSystems(
@@ -251,9 +240,7 @@ export class Game {
     );
 
     // Phase 7: Create input manager
-    this.inputManager = new InputManager(
-      this.sceneManager
-    );
+    this.inputManager = new InputManager();
     this.inputManager.init(this.systemRegistry.getContext());
 
     // Phase 8: Create lockstep manager (needs all systems)
@@ -291,7 +278,8 @@ export class Game {
         onCleanupNeeded: () => this.entityCleanupService.cleanupDestroyedEntities(),
         onNotification: (msg, type) =>
           this.uiManager.showNotification(msg, type),
-        onCommitButtonUpdate: () => this.uiManager.updateFormationInfo(),
+        // Formation UI updates now happen via UI_FORMATION_UPDATED events
+        onCommitButtonUpdate: () => {},
         getLocalTeam: () => this.localTeam,
         getLocalPlayerId: () => this.matchData.playerId,
       }

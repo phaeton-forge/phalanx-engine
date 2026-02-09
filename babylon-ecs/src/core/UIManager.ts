@@ -1,5 +1,6 @@
-import type { ResourceSystem } from '../systems/ResourceSystem';
-import type { FormationGridSystem } from '../systems/FormationGridSystem';
+import type { EventBus } from './EventBus';
+import { GameEvents } from '../events';
+import type { UIResourcesUpdatedEvent, UIFormationUpdatedEvent } from '../events';
 
 /**
  * Unit type for placement
@@ -26,11 +27,17 @@ export interface UnitDragCallbacks {
  * - Wave timer display
  * - Exit/beforeunload handling
  * - Territory indicator
+ *
+ * Note: UIManager is decoupled from game systems.
+ * It receives UI data via EventBus events.
  */
 export class UIManager {
-  private resourceSystem: ResourceSystem;
-  private formationGridSystem: FormationGridSystem;
+  private eventBus: EventBus;
   private localPlayerId: string;
+
+  // Cached UI state from events
+  private cachedResources: UIResourcesUpdatedEvent | null = null;
+  private cachedFormation: UIFormationUpdatedEvent | null = null;
 
   // Callbacks
   private onExitCallback: (() => void) | null = null;
@@ -44,14 +51,48 @@ export class UIManager {
   private activeDragUnitType: UnitType | null = null;
   private isDragging: boolean = false;
 
+  // Unsubscribe functions for event listeners
+  private unsubscribers: (() => void)[] = [];
+
   constructor(
-    resourceSystem: ResourceSystem,
-    formationGridSystem: FormationGridSystem,
+    eventBus: EventBus,
     localPlayerId: string
   ) {
-    this.resourceSystem = resourceSystem;
-    this.formationGridSystem = formationGridSystem;
+    this.eventBus = eventBus;
     this.localPlayerId = localPlayerId;
+
+    this.setupEventListeners();
+  }
+
+  /**
+   * Setup event listeners for UI updates
+   */
+  private setupEventListeners(): void {
+    // Listen for resource updates
+    this.unsubscribers.push(
+      this.eventBus.on<UIResourcesUpdatedEvent>(
+        GameEvents.UI_RESOURCES_UPDATED,
+        (event) => {
+          if (event.playerId === this.localPlayerId) {
+            this.cachedResources = event;
+            this.renderResourceUI();
+          }
+        }
+      )
+    );
+
+    // Listen for formation updates
+    this.unsubscribers.push(
+      this.eventBus.on<UIFormationUpdatedEvent>(
+        GameEvents.UI_FORMATION_UPDATED,
+        (event) => {
+          if (event.playerId === this.localPlayerId) {
+            this.cachedFormation = event;
+            this.renderFormationInfo();
+          }
+        }
+      )
+    );
   }
 
   /**
@@ -186,23 +227,29 @@ export class UIManager {
 
   /**
    * Update resource UI display
+   * @deprecated Use event-driven approach. This method is kept for backward compatibility.
    */
   public updateResourceUI(): void {
-    const resources = this.resourceSystem.getPlayerResources(
-      this.localPlayerId
-    );
-    if (!resources) return;
+    // Now a no-op - UI updates happen automatically via events
+    // The renderResourceUI method is called when UI_RESOURCES_UPDATED event is received
+  }
+
+  /**
+   * Render the resource UI from cached event data
+   */
+  private renderResourceUI(): void {
+    if (!this.cachedResources) return;
 
     const amountEl = document.getElementById('resource-amount');
     const rateEl = document.getElementById('resource-rate');
 
     if (amountEl) {
-      amountEl.textContent = Math.floor(resources.currentResources).toString();
+      amountEl.textContent = Math.floor(this.cachedResources.currentResources).toString();
     }
 
     if (rateEl) {
-      rateEl.textContent = `(+${resources.currentGenerationRate.toFixed(1)}/s)`;
-      if (resources.hasAggressionBonus) {
+      rateEl.textContent = `(+${this.cachedResources.currentGenerationRate.toFixed(1)}/s)`;
+      if (this.cachedResources.hasAggressionBonus) {
         rateEl.classList.add('bonus');
       } else {
         rateEl.classList.remove('bonus');
@@ -210,32 +257,30 @@ export class UIManager {
     }
 
     // Update button states based on affordability
-    this.updateUnitButtonStates();
+    this.renderUnitButtonStates();
   }
 
   /**
    * Update unit button states based on resources
+   * @deprecated Use event-driven approach. This method is kept for backward compatibility.
    */
   public updateUnitButtonStates(): void {
+    // Now a no-op - UI updates happen automatically via events
+    // The renderUnitButtonStates method is called when UI_RESOURCES_UPDATED event is received
+  }
+
+  /**
+   * Render unit button states from cached event data
+   */
+  private renderUnitButtonStates(): void {
+    if (!this.cachedResources) return;
+
     const mutantBtn = document.getElementById('mutant-btn');
     const prismaBtn = document.getElementById('prisma-btn');
     const lanceBtn = document.getElementById('lance-btn');
 
-    const canAffordMutant = this.resourceSystem.canAfford(
-      this.localPlayerId,
-      'mutant'
-    );
-    const canAffordPrisma = this.resourceSystem.canAfford(
-      this.localPlayerId,
-      'prisma'
-    );
-    const canAffordLance = this.resourceSystem.canAfford(
-      this.localPlayerId,
-      'lance'
-    );
-
     if (mutantBtn) {
-      if (canAffordMutant) {
+      if (this.cachedResources.canAffordMutant) {
         mutantBtn.classList.remove('disabled');
       } else {
         mutantBtn.classList.add('disabled');
@@ -243,7 +288,7 @@ export class UIManager {
     }
 
     if (prismaBtn) {
-      if (canAffordPrisma) {
+      if (this.cachedResources.canAffordPrisma) {
         prismaBtn.classList.remove('disabled');
       } else {
         prismaBtn.classList.add('disabled');
@@ -251,7 +296,7 @@ export class UIManager {
     }
 
     if (lanceBtn) {
-      if (canAffordLance) {
+      if (this.cachedResources.canAffordLance) {
         lanceBtn.classList.remove('disabled');
       } else {
         lanceBtn.classList.add('disabled');
@@ -301,24 +346,23 @@ export class UIManager {
 
   /**
    * Update formation info display (shows how many units will deploy)
+   * @deprecated Use event-driven approach. This method is kept for backward compatibility.
    */
   public updateFormationInfo(): void {
-    const placedUnits = this.formationGridSystem.getPlacedUnitCount(
-      this.localPlayerId
-    );
-    const formationInfo = document.getElementById('formation-info');
-
-    if (formationInfo) {
-      formationInfo.textContent = `Units in formation: ${placedUnits}`;
-    }
+    // Now a no-op - UI updates happen automatically via events
+    // The renderFormationInfo method is called when UI_FORMATION_UPDATED event is received
   }
 
   /**
-   * Update commit button state (now just shows formation info, no button needed)
-   * @deprecated Use updateFormationInfo instead - waves are automatic now
+   * Render formation info from cached event data
    */
-  public updateCommitButton(): void {
-    this.updateFormationInfo();
+  private renderFormationInfo(): void {
+    if (!this.cachedFormation) return;
+
+    const formationInfo = document.getElementById('formation-info');
+    if (formationInfo) {
+      formationInfo.textContent = `Units in formation: ${this.cachedFormation.placedUnitCount}`;
+    }
   }
 
   /**
@@ -480,6 +524,12 @@ export class UIManager {
    * Cleanup
    */
   public dispose(): void {
+    // Unsubscribe from all events
+    for (const unsubscribe of this.unsubscribers) {
+      unsubscribe();
+    }
+    this.unsubscribers = [];
+
     this.removeBeforeUnloadWarning();
     if (this.notificationTimeout !== null) {
       clearTimeout(this.notificationTimeout);

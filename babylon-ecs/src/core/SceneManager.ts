@@ -25,14 +25,12 @@ import {arenaParams} from '../config/constants';
 /**
  * SceneManager - Handles scene setup and world object creation
  * Follows Single Responsibility: Only manages scene elements
- * Uses EventBus to react to destination marker events
  */
 export class SceneManager {
     private scene: Scene;
     private ground: Mesh | null = null;
     private destinationMarker: Mesh | null = null;
     private shadowGenerator: ShadowGenerator | null = null;
-    private unsubscribers: (() => void)[] = [];
 
     // Arena elements
     private arenaMeshes: Mesh[] = [];
@@ -343,12 +341,6 @@ export class SceneManager {
     }
 
     public dispose(): void {
-        // Unsubscribe from all events
-        for (const unsubscribe of this.unsubscribers) {
-            unsubscribe();
-        }
-        this.unsubscribers = [];
-
         // Dispose arena meshes
         for (const mesh of this.arenaMeshes) {
             mesh.dispose();

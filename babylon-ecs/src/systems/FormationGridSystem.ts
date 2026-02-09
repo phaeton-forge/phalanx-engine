@@ -23,6 +23,7 @@ import type {
   FormationUnitPlacedEvent,
   FormationUnitRemovedEvent,
   FormationUnitMovedEvent,
+  UIFormationUpdatedEvent,
 } from '../events';
 
 // Re-export types for backward compatibility
@@ -113,7 +114,25 @@ export class FormationGridSystem extends GameSystem {
   public initializeGrid(playerId: string, team: TeamTag): void {
     const grid = this.gridData.initializeGrid(playerId, team);
     this.renderer.createGridVisualization(playerId, grid);
-    this.renderer.createGridGroundPlane(playerId, grid);  }
+    this.renderer.createGridGroundPlane(playerId, grid);
+
+    // Emit initial UI update
+    this.emitUIFormationUpdate(playerId);
+  }
+
+  /**
+   * Emit UI formation update event with all data needed for UI rendering
+   */
+  private emitUIFormationUpdate(playerId: string): void {
+    this.eventBus.emit<UIFormationUpdatedEvent>(
+      GameEvents.UI_FORMATION_UPDATED,
+      {
+        ...createEvent(),
+        playerId,
+        placedUnitCount: this.gridData.getPlacedUnitCount(playerId),
+      }
+    );
+  }
 
   /**
    * Enter placement mode for a unit type
@@ -319,7 +338,11 @@ export class FormationGridSystem extends GameSystem {
           toGridX,
           toGridZ,
         }
-      );    }
+      );
+
+      // Emit UI update event (unit count may not change, but event keeps UI in sync)
+      this.emitUIFormationUpdate(playerId);
+    }
 
     return result.success;
   }
@@ -368,6 +391,9 @@ export class FormationGridSystem extends GameSystem {
           gridZ,
         }
       );
+
+      // Emit UI update event
+      this.emitUIFormationUpdate(playerId);
     }
 
     return success;
@@ -389,6 +415,9 @@ export class FormationGridSystem extends GameSystem {
           gridZ: result.originZ,
         }
       );
+
+      // Emit UI update event
+      this.emitUIFormationUpdate(playerId);
     }
 
     return result.success;

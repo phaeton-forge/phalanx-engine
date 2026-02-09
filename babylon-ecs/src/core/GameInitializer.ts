@@ -1,32 +1,18 @@
 import { Vector3, Color3 } from '@babylonjs/core';
 import type { EntityFactory } from './EntityFactory';
-import type { SceneManager } from './SceneManager';
 import type { UIManager } from './UIManager';
-import type { ResourceSystem } from '../systems/ResourceSystem';
-import type { FormationGridSystem } from '../systems/FormationGridSystem';
-import type { VictorySystem } from '../systems/VictorySystem';
-import type { WaveSystem } from '../systems/WaveSystem';
-import type { MovementSystem } from '../systems/MovementSystem';
+import type { SystemContext } from './SystemContext';
+import type { SceneManager } from './SceneManager';
+import { ResourceSystem } from '../systems/ResourceSystem';
+import { FormationGridSystem } from '../systems/FormationGridSystem';
+import { VictorySystem } from '../systems/VictorySystem';
+import { WaveSystem } from '../systems/WaveSystem';
 import type { CameraController } from '../systems/CameraController';
-import type { InterpolationSystem } from '../systems/InterpolationSystem';
 import type { AssetManager } from './AssetManager';
 import type { PhalanxClient, MatchFoundEvent } from 'phalanx-client';
 import { TeamTag } from '../enums/TeamTag';
 import { arenaParams } from '../config/constants';
 import { resetEntityIdCounter } from '../entities/Entity';
-
-/**
- * Systems required for GameInitializer
- */
-export interface InitializerSystems {
-  sceneManager: SceneManager;
-  resourceSystem: ResourceSystem;
-  formationGridSystem: FormationGridSystem;
-  victorySystem: VictorySystem;
-  waveSystem: WaveSystem;
-  movementSystem: MovementSystem;
-  interpolationSystem: InterpolationSystem;
-}
 
 /**
  * GameInitializer - Handles game world initialization
@@ -37,12 +23,16 @@ export interface InitializerSystems {
  * - Creating player entities (bases, towers)
  * - Initializing gameplay systems for players
  * - Setting up UI
+ *
+ * Uses SystemContext to access game systems via getSystem<T>() pattern.
+ * SceneManager is passed separately as it's not a GameSystem.
  */
 export class GameInitializer {
   private entityFactory: EntityFactory;
   private uiManager: UIManager;
   private assetManager: AssetManager;
-  private systems: InitializerSystems;
+  private context: SystemContext;
+  private sceneManager: SceneManager;
   private matchData: MatchFoundEvent;
   private localTeam: TeamTag;
   private client: PhalanxClient;
@@ -54,7 +44,8 @@ export class GameInitializer {
     entityFactory: EntityFactory,
     uiManager: UIManager,
     assetManager: AssetManager,
-    systems: InitializerSystems,
+    context: SystemContext,
+    sceneManager: SceneManager,
     matchData: MatchFoundEvent,
     localTeam: TeamTag,
     client: PhalanxClient
@@ -62,7 +53,8 @@ export class GameInitializer {
     this.entityFactory = entityFactory;
     this.uiManager = uiManager;
     this.assetManager = assetManager;
-    this.systems = systems;
+    this.context = context;
+    this.sceneManager = sceneManager;
     this.matchData = matchData;
     this.localTeam = localTeam;
     this.client = client;
@@ -95,9 +87,8 @@ export class GameInitializer {
     // Auto-fit camera to show formation grid at game start
     this.cameraController?.focusOnFormationGrid();
 
-
-    this.systems.sceneManager.setupLighting();
-    this.systems.sceneManager.createGround();
+    this.sceneManager.setupLighting();
+    this.sceneManager.createGround();
 
     // Update UI
     const color = this.localTeam === TeamTag.Team1 ? '#3366cc' : '#cc3333';
@@ -128,12 +119,11 @@ export class GameInitializer {
       team2PlayerId = this.matchData.playerId;
     }
 
-    const {
-      resourceSystem,
-      formationGridSystem,
-      victorySystem,
-      waveSystem,
-    } = this.systems;
+    // Get systems from context
+    const resourceSystem = this.context.getSystem(ResourceSystem)!;
+    const formationGridSystem = this.context.getSystem(FormationGridSystem)!;
+    const victorySystem = this.context.getSystem(VictorySystem)!;
+    const waveSystem = this.context.getSystem(WaveSystem)!;
 
     // Initialize systems for both players
     resourceSystem.initializePlayer(team1PlayerId, TeamTag.Team1);
@@ -190,11 +180,8 @@ export class GameInitializer {
     // Set default placement mode for local player (mutant selected by default)
     formationGridSystem.enterPlacementMode(this.matchData.playerId, 'mutant');
 
-    // Initial UI update
-    setTimeout(() => {
-      this.uiManager.updateResourceUI();
-      this.uiManager.updateFormationInfo();
-    }, 100);
+    // Note: UI updates now happen automatically via events emitted by
+    // ResourceSystem (UI_RESOURCES_UPDATED) and FormationGridSystem (UI_FORMATION_UPDATED)
   }
 
   /**
@@ -217,6 +204,8 @@ export class GameInitializer {
       team2OwnerId = this.matchData.playerId;
     }
 
+    const victorySystem = this.context.getSystem(VictorySystem)!;
+
     // Create Team 1 entities
     const team1Base = this.entityFactory.createBase(
       {
@@ -227,7 +216,7 @@ export class GameInitializer {
       new Vector3(arenaParams.teamA.base.x, 0, arenaParams.teamA.base.z)
     );
     this.entityFactory.setOwnership(team1Base.id, team1OwnerId);
-    this.systems.victorySystem.registerBase(team1Base.id, TeamTag.Team1);
+    victorySystem.registerBase(team1Base.id, TeamTag.Team1);
 
     for (const towerPos of arenaParams.teamA.towers) {
       const tower = this.entityFactory.createTower(
@@ -239,7 +228,7 @@ export class GameInitializer {
         new Vector3(towerPos.x, 0, towerPos.z)
       );
       this.entityFactory.setOwnership(tower.id, team1OwnerId);
-      this.systems.victorySystem.registerTower(tower.id, TeamTag.Team1);
+      victorySystem.registerTower(tower.id, TeamTag.Team1);
     }
 
     // Create Team 2 entities
@@ -252,7 +241,7 @@ export class GameInitializer {
       new Vector3(arenaParams.teamB.base.x, 0, arenaParams.teamB.base.z)
     );
     this.entityFactory.setOwnership(team2Base.id, team2OwnerId);
-    this.systems.victorySystem.registerBase(team2Base.id, TeamTag.Team2);
+    victorySystem.registerBase(team2Base.id, TeamTag.Team2);
 
     for (const towerPos of arenaParams.teamB.towers) {
       const tower = this.entityFactory.createTower(
@@ -264,7 +253,7 @@ export class GameInitializer {
         new Vector3(towerPos.x, 0, towerPos.z)
       );
       this.entityFactory.setOwnership(tower.id, team2OwnerId);
-      this.systems.victorySystem.registerTower(tower.id, TeamTag.Team2);
+      victorySystem.registerTower(tower.id, TeamTag.Team2);
     }
   }
 
