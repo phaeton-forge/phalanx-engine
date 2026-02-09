@@ -14,3 +14,4 @@ export { AnimationComponent, AnimationState } from './AnimationComponent';
 export type { AnimationStateType, AnimationNames } from './AnimationComponent';
 export { RotationComponent } from './RotationComponent';
 export { AttackLockComponent } from './AttackLockComponent';
+export { PhysicsBodyComponent } from './PhysicsBodyComponent';

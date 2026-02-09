@@ -1,6 +1,6 @@
 import type { SystemContext } from '../core/SystemContext';
 import { GameSystem } from './GameSystem';
-import { ComponentType, MovementComponent, TeamComponent } from '../components';
+import { ComponentType, MovementComponent, TeamComponent, PhysicsBodyComponent } from '../components';
 import { networkConfig } from '../config/constants';
 import {
   FP,
@@ -14,7 +14,7 @@ import {
  */
 export interface PhysicsConfig {
   fixedTimestep: FixedPoint; // Fixed delta time for deterministic updates
-  unitRadius: FixedPoint; // Collision radius for units
+  unitRadius: FixedPoint; // Collision radius for units (default for entities without custom radius)
   pushStrength: FixedPoint; // How strongly units push each other
   maxVelocity: FixedPoint; // Maximum velocity magnitude
   friction: FixedPoint; // Friction coefficient (0-1)
@@ -35,21 +35,6 @@ const DEFAULT_PHYSICS_CONFIG: PhysicsConfig = {
   friction: FP.FromFloat(0.92), // Velocity damping per frame
   cellSize: 8.0, // Should be >= 2 * max(unitRadius)
 };
-
-/**
- * PhysicsBody - Stores physics state for an entity
- * Uses fixed-point arithmetic for deterministic simulation
- */
-export interface PhysicsBody {
-  entityId: number;
-  velocity: FPVector3Type; // Fixed-point velocity for deterministic physics
-  radius: FixedPoint; // Fixed-point radius
-  mass: FixedPoint; // Fixed-point mass
-  isStatic: boolean; // Static bodies don't move (towers, bases)
-  // Cached position for spatial hashing (kept as numbers for grid indexing)
-  lastX: number;
-  lastZ: number;
-}
 
 /**
  * Spatial hash grid for O(n) average-case collision detection
@@ -136,10 +121,12 @@ class SpatialGrid {
  * Uses spatial hashing for O(n) average-case collision detection
  * Minimizes allocations for mobile performance
  * Extends GameSystem for consistent lifecycle management
+ *
+ * Following ECS principles: queries entities with PhysicsBodyComponent
+ * instead of maintaining internal state.
  */
 export class PhysicsSystem extends GameSystem {
   private config: PhysicsConfig;
-  private bodies: Map<number, PhysicsBody> = new Map();
   private spatialGrid: SpatialGrid;
 
   // Collision pair tracking to avoid duplicate checks
@@ -164,64 +151,26 @@ export class PhysicsSystem extends GameSystem {
   }
 
   /**
-   * Register an entity with the physics system
-   * @param entityId - The entity ID to register
-   * @param options - Optional physics body configuration (accepts numbers for convenience)
-   */
-  public registerBody(
-    entityId: number,
-    options: { radius?: number; mass?: number; isStatic?: boolean } = {}
-  ): void {
-    this.bodies.set(entityId, {
-      entityId,
-      velocity: { x: FP._0, y: FP._0, z: FP._0 },
-      radius: options.radius !== undefined ? FP.FromFloat(options.radius) : this.config.unitRadius,
-      mass: options.mass !== undefined ? FP.FromFloat(options.mass) : FP._1,
-      isStatic: options.isStatic ?? false,
-      lastX: 0,
-      lastZ: 0,
-    });
-  }
-
-  /**
-   * Unregister an entity from the physics system
-   */
-  public unregisterBody(entityId: number): void {
-    this.bodies.delete(entityId);
-  }
-
-  /**
-   * Get physics body for an entity
-   */
-  public getBody(entityId: number): PhysicsBody | undefined {
-    return this.bodies.get(entityId);
-  }
-
-  /**
    * Set velocity for an entity (using fixed-point)
    */
   public setVelocity(entityId: number, velocity: FPVector3Type): void {
-    const body = this.bodies.get(entityId);
+    const entity = this.entityManager.getEntity(entityId);
+    const body = entity?.getComponent<PhysicsBodyComponent>(ComponentType.PhysicsBody);
     if (body && !body.isStatic) {
-      body.velocity.x = velocity.x;
-      body.velocity.y = velocity.y;
-      body.velocity.z = velocity.z;
+      body.velocity = velocity;
     }
   }
-
 
   /**
    * Add velocity to an entity (using fixed-point)
    */
   public addVelocity(entityId: number, velocity: FPVector3Type): void {
-    const body = this.bodies.get(entityId);
+    const entity = this.entityManager.getEntity(entityId);
+    const body = entity?.getComponent<PhysicsBodyComponent>(ComponentType.PhysicsBody);
     if (body && !body.isStatic) {
-      body.velocity.x = FP.Add(body.velocity.x, velocity.x);
-      body.velocity.y = FP.Add(body.velocity.y, velocity.y);
-      body.velocity.z = FP.Add(body.velocity.z, velocity.z);
+      body.addVelocity(velocity);
     }
   }
-
 
   /**
    * Process one network tick worth of physics
@@ -262,25 +211,26 @@ export class PhysicsSystem extends GameSystem {
    * Uses fixed-point math to avoid floating-point determinism issues
    */
   private updateMovementVelocities(): void {
-    // Use sorted entity list for deterministic ordering
-    const movableEntities = this.entityManager.queryEntities(
-      ComponentType.Movement
+    // Query entities that have both Movement and PhysicsBody components
+    // entityManager.queryEntities returns sorted list for deterministic ordering
+    const physicsEntities = this.entityManager.queryEntities(
+      ComponentType.PhysicsBody
     );
 
-    for (const entity of movableEntities) {
-      const movement = entity.getComponent<MovementComponent>(
-        ComponentType.Movement
-      );
-      const body = this.bodies.get(entity.id);
+    for (const entity of physicsEntities) {
+      const body = entity.getComponent<PhysicsBodyComponent>(ComponentType.PhysicsBody);
+      const movement = entity.getComponent<MovementComponent>(ComponentType.Movement);
 
-      if (!movement || !body || body.isStatic) continue;
+      if (!body || body.isStatic) continue;
 
       // Skip entities that should be ignored by physics (e.g., dying units)
       if (entity.ignorePhysics) {
-        body.velocity.x = FP._0;
-        body.velocity.z = FP._0;
+        body.stopVelocity();
         continue;
       }
+
+      // If no movement component, entity doesn't move by itself
+      if (!movement) continue;
 
       if (movement.isMoving) {
         const target = movement.targetPosition;
@@ -297,20 +247,21 @@ export class PhysicsSystem extends GameSystem {
         if (FP.Lt(distSq, FP_ARRIVAL_THRESHOLD_SQ)) {
           // Arrived at destination
           movement.stop();
-          body.velocity.x = FP._0;
-          body.velocity.z = FP._0;
+          body.stopVelocity();
         } else {
           // Set velocity towards target using fixed-point
           const dist = FP.Sqrt(distSq);
           const speed = FP.FromFloat(movement.speed);
-          body.velocity.x = FP.Mul(FP.Div(dx, dist), speed);
-          body.velocity.z = FP.Mul(FP.Div(dz, dist), speed);
+          body.setVelocity(
+            FP.Mul(FP.Div(dx, dist), speed),
+            FP._0,
+            FP.Mul(FP.Div(dz, dist), speed)
+          );
         }
       } else {
         // Unit is not moving - stop any residual velocity
         // This handles cases where combat system stopped the unit
-        body.velocity.x = FP._0;
-        body.velocity.z = FP._0;
+        body.stopVelocity();
       }
     }
   }
@@ -319,27 +270,26 @@ export class PhysicsSystem extends GameSystem {
    * Rebuild spatial grid each physics tick
    * Caches entity positions for collision detection
    *
-   * IMPORTANT: Processes bodies in deterministic order (sorted by entity ID)
+   * IMPORTANT: Processes entities in deterministic order (sorted by entity ID)
    * for network synchronization.
    */
   private rebuildSpatialGrid(): void {
     this.spatialGrid.clear();
 
-    // Sort bodies by entity ID for deterministic iteration order
-    const sortedBodies = Array.from(this.bodies.values()).sort(
-      (a, b) => a.entityId - b.entityId
+    // Query entities with PhysicsBody component (already sorted by ID)
+    const physicsEntities = this.entityManager.queryEntities(
+      ComponentType.PhysicsBody
     );
 
-    for (const body of sortedBodies) {
-      const entity = this.entityManager.getEntity(body.entityId);
-      if (!entity) continue;
+    for (const entity of physicsEntities) {
+      const body = entity.getComponent<PhysicsBodyComponent>(ComponentType.PhysicsBody);
+      if (!body) continue;
 
       // Convert fixed-point position to numbers for spatial grid indexing
       const fpPos = entity.fpPosition;
       body.lastX = FP.ToFloat(fpPos.x);
       body.lastZ = FP.ToFloat(fpPos.z);
-      const radiusNum = FP.ToFloat(body.radius);
-      this.spatialGrid.insert(body.entityId, body.lastX, body.lastZ, radiusNum);
+      this.spatialGrid.insert(entity.id, body.lastX, body.lastZ, body.radiusFloat);
     }
   }
 
@@ -348,24 +298,24 @@ export class PhysicsSystem extends GameSystem {
    * Average case O(n) instead of O(n²)
    * Uses fixed-point arithmetic for deterministic collision resolution
    *
-   * IMPORTANT: Processes bodies in deterministic order (sorted by entity ID)
+   * IMPORTANT: Processes entities in deterministic order (sorted by entity ID)
    * for network synchronization.
    */
   private resolveCollisions(): void {
     this.checkedPairs.clear();
 
-    // Sort bodies by entity ID for deterministic iteration order
-    const sortedBodies = Array.from(this.bodies.values()).sort(
-      (a, b) => a.entityId - b.entityId
+    // Query entities with PhysicsBody component (already sorted by ID)
+    const physicsEntities = this.entityManager.queryEntities(
+      ComponentType.PhysicsBody
     );
 
-    for (const bodyA of sortedBodies) {
-      const entityA = this.entityManager.getEntity(bodyA.entityId);
-      if (!entityA) continue;
+    for (const entityA of physicsEntities) {
+      const bodyA = entityA.getComponent<PhysicsBodyComponent>(ComponentType.PhysicsBody);
+      if (!bodyA) continue;
 
       const posAx = bodyA.lastX;
       const posAz = bodyA.lastZ;
-      const radiusANum = FP.ToFloat(bodyA.radius);
+      const radiusANum = bodyA.radiusFloat;
 
       // Get only nearby bodies from spatial grid
       // Search radius includes own radius plus max possible other radius
@@ -377,17 +327,17 @@ export class PhysicsSystem extends GameSystem {
 
       for (const otherEntityId of nearby) {
         // Skip self and ensure we only check each pair once (lower ID first)
-        if (otherEntityId <= bodyA.entityId) continue;
+        if (otherEntityId <= entityA.id) continue;
 
-        const pairKey = `${bodyA.entityId},${otherEntityId}`;
+        const pairKey = `${entityA.id},${otherEntityId}`;
         if (this.checkedPairs.has(pairKey)) continue;
         this.checkedPairs.add(pairKey);
 
-        const bodyB = this.bodies.get(otherEntityId);
-        if (!bodyB) continue;
-
-        const entityB = this.entityManager.getEntity(bodyB.entityId);
+        const entityB = this.entityManager.getEntity(otherEntityId);
         if (!entityB) continue;
+
+        const bodyB = entityB.getComponent<PhysicsBodyComponent>(ComponentType.PhysicsBody);
+        if (!bodyB) continue;
 
         // Skip collision between units and friendly buildings (bases/towers)
         // Units should pass through their own team's structures
@@ -429,14 +379,22 @@ export class PhysicsSystem extends GameSystem {
           // Apply push velocities (fixed-point)
           if (!bodyA.isStatic) {
             const pushA = FP.Mul(pushForce, ratioA);
-            bodyA.velocity.x = FP.Sub(bodyA.velocity.x, FP.Mul(nx, pushA));
-            bodyA.velocity.z = FP.Sub(bodyA.velocity.z, FP.Mul(nz, pushA));
+            const vel = bodyA.velocity;
+            bodyA.setVelocity(
+              FP.Sub(vel.x, FP.Mul(nx, pushA)),
+              vel.y,
+              FP.Sub(vel.z, FP.Mul(nz, pushA))
+            );
           }
 
           if (!bodyB.isStatic) {
             const pushB = FP.Mul(pushForce, ratioB);
-            bodyB.velocity.x = FP.Add(bodyB.velocity.x, FP.Mul(nx, pushB));
-            bodyB.velocity.z = FP.Add(bodyB.velocity.z, FP.Mul(nz, pushB));
+            const vel = bodyB.velocity;
+            bodyB.setVelocity(
+              FP.Add(vel.x, FP.Mul(nx, pushB)),
+              vel.y,
+              FP.Add(vel.z, FP.Mul(nz, pushB))
+            );
           }
 
           // Separate positions to prevent overlap (fixed-point)
@@ -465,34 +423,37 @@ export class PhysicsSystem extends GameSystem {
   /**
    * Apply velocities to entity positions using fixed-point arithmetic
    *
-   * IMPORTANT: Processes bodies in deterministic order (sorted by entity ID)
+   * IMPORTANT: Processes entities in deterministic order (sorted by entity ID)
    * for network synchronization.
    */
   private applyVelocities(dt: FixedPoint): void {
     // Pre-compute max velocity squared for clamping
     const maxVelSq = FP.Mul(this.config.maxVelocity, this.config.maxVelocity);
 
-    // Sort bodies by entity ID for deterministic iteration order
-    const sortedBodies = Array.from(this.bodies.values()).sort(
-      (a, b) => a.entityId - b.entityId
+    // Query entities with PhysicsBody component (already sorted by ID)
+    const physicsEntities = this.entityManager.queryEntities(
+      ComponentType.PhysicsBody
     );
 
-    for (const body of sortedBodies) {
-      if (body.isStatic) continue;
+    for (const entity of physicsEntities) {
+      const body = entity.getComponent<PhysicsBodyComponent>(ComponentType.PhysicsBody);
+      if (!body || body.isStatic) continue;
 
-      const entity = this.entityManager.getEntity(body.entityId);
-      if (!entity) continue;
+      const vel = body.velocity;
 
       // Clamp velocity to max (using squared magnitude to avoid sqrt when possible)
       const velMagSq = FP.Add(
-        FP.Mul(body.velocity.x, body.velocity.x),
-        FP.Mul(body.velocity.z, body.velocity.z)
+        FP.Mul(vel.x, vel.x),
+        FP.Mul(vel.z, vel.z)
       );
 
       if (FP.Gt(velMagSq, maxVelSq)) {
         const scale = FP.Div(this.config.maxVelocity, FP.Sqrt(velMagSq));
-        body.velocity.x = FP.Mul(body.velocity.x, scale);
-        body.velocity.z = FP.Mul(body.velocity.z, scale);
+        body.setVelocity(
+          FP.Mul(vel.x, scale),
+          vel.y,
+          FP.Mul(vel.z, scale)
+        );
       }
 
       // Apply velocity to position using fixed-point
@@ -508,21 +469,18 @@ export class PhysicsSystem extends GameSystem {
   /**
    * Apply friction to slow down units using fixed-point arithmetic
    *
-   * IMPORTANT: Processes bodies in deterministic order (sorted by entity ID)
+   * IMPORTANT: Processes entities in deterministic order (sorted by entity ID)
    * for network synchronization.
    */
   private applyFriction(): void {
-    // Sort bodies by entity ID for deterministic iteration order
-    const sortedBodies = Array.from(this.bodies.values()).sort(
-      (a, b) => a.entityId - b.entityId
+    // Query entities with PhysicsBody component (already sorted by ID)
+    const physicsEntities = this.entityManager.queryEntities(
+      ComponentType.PhysicsBody
     );
 
-    for (const body of sortedBodies) {
-      if (body.isStatic) continue;
-
-      // Check if entity is actively moving to a target
-      const entity = this.entityManager.getEntity(body.entityId);
-      if (!entity) continue;
+    for (const entity of physicsEntities) {
+      const body = entity.getComponent<PhysicsBodyComponent>(ComponentType.PhysicsBody);
+      if (!body || body.isStatic) continue;
 
       const movement = entity.getComponent<MovementComponent>(
         ComponentType.Movement
@@ -531,16 +489,19 @@ export class PhysicsSystem extends GameSystem {
       // Only apply friction if not actively moving to a target
       // This allows pushing to have an effect while still allowing controlled movement
       if (!movement || !movement.isMoving) {
-        body.velocity.x = FP.Mul(body.velocity.x, this.config.friction);
-        body.velocity.z = FP.Mul(body.velocity.z, this.config.friction);
+        const vel = body.velocity;
+        let newVelX = FP.Mul(vel.x, this.config.friction);
+        let newVelZ = FP.Mul(vel.z, this.config.friction);
 
         // Stop very small velocities (using fixed-point comparison)
-        if (FP.Lt(FP.Abs(body.velocity.x), FP_VELOCITY_EPSILON)) {
-          body.velocity.x = FP._0;
+        if (FP.Lt(FP.Abs(newVelX), FP_VELOCITY_EPSILON)) {
+          newVelX = FP._0;
         }
-        if (FP.Lt(FP.Abs(body.velocity.z), FP_VELOCITY_EPSILON)) {
-          body.velocity.z = FP._0;
+        if (FP.Lt(FP.Abs(newVelZ), FP_VELOCITY_EPSILON)) {
+          newVelZ = FP._0;
         }
+
+        body.setVelocity(newVelX, vel.y, newVelZ);
       }
     }
   }
@@ -553,8 +514,8 @@ export class PhysicsSystem extends GameSystem {
   private shouldSkipCollision(
     entityA: import('../entities/Entity').Entity,
     entityB: import('../entities/Entity').Entity,
-    bodyA: PhysicsBody,
-    bodyB: PhysicsBody
+    bodyA: PhysicsBodyComponent,
+    bodyB: PhysicsBodyComponent
   ): boolean {
     // Skip collisions with entities that should be ignored (dying, phasing, etc.)
     if (entityA.ignorePhysics || entityB.ignorePhysics) {
@@ -585,7 +546,6 @@ export class PhysicsSystem extends GameSystem {
    */
   public override dispose(): void {
     super.dispose(); // Clean up subscriptions from base class
-    this.bodies.clear();
     this.spatialGrid.clear();
     this.checkedPairs.clear();
   }

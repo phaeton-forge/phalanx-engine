@@ -1,7 +1,6 @@
 import { Vector3, Color3 } from '@babylonjs/core';
 import type { SceneManager } from './SceneManager';
 import type { EntityManager } from './EntityManager';
-import type { PhysicsSystem } from '../systems/PhysicsSystem';
 import type { InterpolationSystem } from '../systems/InterpolationSystem';
 import type { HealthBarSystem } from '../systems/HealthBarSystem';
 import type { Unit, UnitConfig } from '../entities/Unit';
@@ -10,6 +9,7 @@ import type { LanceUnit, LanceUnitConfig } from '../entities/LanceUnit';
 import type { MutantUnit, MutantUnitConfig } from '../entities/MutantUnit';
 import type { Tower, TowerConfig } from '../entities/Tower';
 import type { Base, BaseConfig } from '../entities/Base';
+import { PhysicsBodyComponent } from '../components';
 import { TeamTag } from '../enums/TeamTag';
 import { arenaParams, unitConfig } from '../config/constants';
 
@@ -24,7 +24,6 @@ import { arenaParams, unitConfig } from '../config/constants';
 export class EntityFactory {
   private sceneManager: SceneManager;
   private entityManager: EntityManager;
-  private physicsSystem: PhysicsSystem;
   private interpolationSystem: InterpolationSystem | null = null;
   private healthBarSystem: HealthBarSystem | null = null;
 
@@ -33,12 +32,10 @@ export class EntityFactory {
 
   constructor(
     sceneManager: SceneManager,
-    entityManager: EntityManager,
-    physicsSystem: PhysicsSystem
+    entityManager: EntityManager
   ) {
     this.sceneManager = sceneManager;
     this.entityManager = entityManager;
-    this.physicsSystem = physicsSystem;
   }
 
   /**
@@ -65,15 +62,15 @@ export class EntityFactory {
   public createUnit(config: UnitConfig, position: Vector3): Unit {
     const unit = this.sceneManager.createUnit(config, position);
 
-    // Register with EntityManager
-    this.entityManager.addEntity(unit);
-
-    // Register with PhysicsSystem - units are dynamic bodies
-    this.physicsSystem.registerBody(unit.id, {
+    // Add PhysicsBodyComponent - units are dynamic bodies
+    unit.addComponent(new PhysicsBodyComponent({
       radius: 1.0,
       mass: 1.0,
       isStatic: false,
-    });
+    }));
+
+    // Register with EntityManager
+    this.entityManager.addEntity(unit);
 
     // Register with InterpolationSystem for smooth visual movement
     this.interpolationSystem?.registerEntity(unit.id, false);
@@ -93,15 +90,15 @@ export class EntityFactory {
   ): PrismaUnit {
     const unit = this.sceneManager.createPrismaUnit(config, position);
 
-    // Register with EntityManager
-    this.entityManager.addEntity(unit);
-
-    // Register with PhysicsSystem - prisma units are larger dynamic bodies
-    this.physicsSystem.registerBody(unit.id, {
+    // Add PhysicsBodyComponent - prisma units are larger dynamic bodies
+    unit.addComponent(new PhysicsBodyComponent({
       radius: 1.8, // Larger radius for 2x2 unit
       mass: 2.0, // Heavier unit
       isStatic: false,
-    });
+    }));
+
+    // Register with EntityManager
+    this.entityManager.addEntity(unit);
 
     // Register with InterpolationSystem for smooth visual movement
     this.interpolationSystem?.registerEntity(unit.id, false);
@@ -121,15 +118,15 @@ export class EntityFactory {
   ): LanceUnit {
     const unit = this.sceneManager.createLanceUnit(config, position);
 
-    // Register with EntityManager
-    this.entityManager.addEntity(unit);
-
-    // Register with PhysicsSystem - lance units are elongated 1x2 bodies
-    this.physicsSystem.registerBody(unit.id, {
+    // Add PhysicsBodyComponent - lance units are elongated 1x2 bodies
+    unit.addComponent(new PhysicsBodyComponent({
       radius: 1.4, // Medium radius for 1x2 unit
       mass: 1.5, // Between sphere and prisma
       isStatic: false,
-    });
+    }));
+
+    // Register with EntityManager
+    this.entityManager.addEntity(unit);
 
     // Register with InterpolationSystem for smooth visual movement
     this.interpolationSystem?.registerEntity(unit.id, false);
@@ -149,15 +146,15 @@ export class EntityFactory {
   ): MutantUnit {
     const unit = this.sceneManager.createMutantUnit(config, position);
 
-    // Register with EntityManager
-    this.entityManager.addEntity(unit);
-
-    // Register with PhysicsSystem - mutant units are 2x2 bodies
-    this.physicsSystem.registerBody(unit.id, {
+    // Add PhysicsBodyComponent - mutant units are 2x2 bodies
+    unit.addComponent(new PhysicsBodyComponent({
       radius: 2.0,
       mass: 2.0,
       isStatic: false,
-    });
+    }));
+
+    // Register with EntityManager
+    this.entityManager.addEntity(unit);
 
     // Register with InterpolationSystem for smooth visual movement
     this.interpolationSystem?.registerEntity(unit.id, false);
@@ -174,15 +171,15 @@ export class EntityFactory {
   public createTower(config: TowerConfig, position: Vector3): Tower {
     const tower = this.sceneManager.createTower(config, position);
 
-    // Register with EntityManager
-    this.entityManager.addEntity(tower);
-
-    // Register with PhysicsSystem - towers are static bodies (can push but don't move)
-    this.physicsSystem.registerBody(tower.id, {
+    // Add PhysicsBodyComponent - towers are static bodies (can push but don't move)
+    tower.addComponent(new PhysicsBodyComponent({
       radius: 1.5,
       mass: 10.0,
       isStatic: true,
-    });
+    }));
+
+    // Register with EntityManager
+    this.entityManager.addEntity(tower);
 
     // Register with InterpolationSystem as static (doesn't need smooth movement)
     this.interpolationSystem?.registerEntity(tower.id, true);
@@ -199,15 +196,15 @@ export class EntityFactory {
   public createBase(config: BaseConfig, position: Vector3): Base {
     const base = this.sceneManager.createBase(config, position);
 
-    // Register with EntityManager
-    this.entityManager.addEntity(base);
-
-    // Register with PhysicsSystem - bases are static bodies (can push but don't move)
-    this.physicsSystem.registerBody(base.id, {
+    // Add PhysicsBodyComponent - bases are static bodies (can push but don't move)
+    base.addComponent(new PhysicsBodyComponent({
       radius: 3.0,
       mass: 100.0,
       isStatic: true,
-    });
+    }));
+
+    // Register with EntityManager
+    this.entityManager.addEntity(base);
 
     // Register with InterpolationSystem as static (doesn't need smooth movement)
     this.interpolationSystem?.registerEntity(base.id, true);

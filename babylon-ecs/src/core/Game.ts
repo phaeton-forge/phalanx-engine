@@ -199,8 +199,7 @@ export class Game {
     // Phase 1: Initialize entity factory
     this.entityFactory = new EntityFactory(
       this.sceneManager,
-      this.systemRegistry.entityManager,
-      this.physicsSystem
+      this.systemRegistry.entityManager
     );
     this.entityFactory.setInterpolationSystem(this.interpolationSystem);
 
@@ -266,7 +265,6 @@ export class Game {
     this.entityCleanupService = new EntityCleanupService(
       this.systemRegistry.entityManager,
       this.entityFactory,
-      this.physicsSystem,
       this.interpolationSystem,
       this.healthBarSystem
     );
