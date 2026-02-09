@@ -122,7 +122,6 @@ export class Game {
     // Create scene manager (not a GameSystem, but needed by other systems)
     this.sceneManager = new SceneManager(
       this.scene,
-      this.systemRegistry.eventBus
     );
 
     // Create all gameplay systems (core simulation systems)
@@ -173,6 +172,7 @@ export class Game {
       this.rotationSystem,
       this.interpolationSystem,
       this.formationGridSystem,
+      this.combatSystem, // Tower turret rotation
     ];
 
     // Register systems and call init() on each
@@ -250,6 +250,9 @@ export class Game {
     this.healthBarSystem = new HealthBarSystem();
     this.healthBarSystem.init(this.systemRegistry.getContext());
 
+    // Register healthBarSystem as a frame system (late initialization)
+    this.systemRegistry.addFrameSystem(this.healthBarSystem);
+
     // Set late systems in initializer
     this.gameInitializer.setLateSystems(
       this.healthBarSystem,
@@ -325,9 +328,7 @@ export class Game {
       this.scene,
       {
         cameraController: this.cameraController,
-        combatSystem: this.combatSystem,
         interpolationSystem: this.interpolationSystem,
-        healthBarSystem: this.healthBarSystem,
       },
       {
         onPlayerDisconnected: () => this.handleExit(),

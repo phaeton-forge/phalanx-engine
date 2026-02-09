@@ -648,10 +648,18 @@ export class CombatSystem extends GameSystem {
 
 
   /**
+   * Frame-based update for visual elements
+   * Called every render frame for smooth visuals
+   */
+  public override update(deltaTime: number): void {
+    this.updateTowerTurrets(deltaTime);
+  }
+
+  /**
    * Update tower turret rotations for smooth visual rotation
    * Should be called in the render loop (not simulation tick) for smooth visuals
    */
-  public updateTowerTurrets(deltaTime: number): void {
+  private updateTowerTurrets(deltaTime: number): void {
     // Query all entities with Attack and Team components
     const attackers = this.entityManager.queryEntities(
       ComponentType.Attack,

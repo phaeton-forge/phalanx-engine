@@ -3,8 +3,6 @@ import type { LockstepManager } from './LockstepManager';
 import type { SystemRegistry } from './SystemRegistry';
 import type { UIManager } from './UIManager';
 import type { InterpolationSystem } from '../systems/InterpolationSystem';
-import type { CombatSystem } from '../systems/CombatSystem';
-import type { HealthBarSystem } from '../systems/HealthBarSystem';
 import type { CameraController } from '../systems/CameraController';
 import type { Scene } from '@babylonjs/core';
 
@@ -14,9 +12,7 @@ import type { Scene } from '@babylonjs/core';
  */
 export interface FrameUpdateSystems {
   cameraController: CameraController;
-  combatSystem: CombatSystem;
   interpolationSystem: InterpolationSystem;
-  healthBarSystem: HealthBarSystem;
 }
 
 /**
@@ -131,28 +127,20 @@ export class NetworkCoordinator {
   private processFrame(alpha: number, dt: number): void {
     const {
       cameraController,
-      combatSystem,
       interpolationSystem,
-      healthBarSystem,
     } = this.frameSystems;
 
     // Update camera controller (keyboard/touch input)
     cameraController.update(dt);
 
     // Update all frame-based systems through SystemRegistry
-    // This handles: resourceSystem, animationSystem, rotationSystem
+    // This handles: resourceSystem, animationSystem, rotationSystem,
+    // combatSystem (turret rotation), healthBarSystem
     this.systemRegistry.updateAll(dt);
-
-    // Update tower turret rotations for smooth visual rotation
-    // (special handling - not part of standard update cycle)
-    combatSystem.updateTowerTurrets(dt);
-
 
     // Interpolate visual positions using alpha from PhalanxClient
     interpolationSystem.interpolate(alpha);
 
-    // Update health bars (billboarding and position updates)
-    healthBarSystem.update();
 
     // Render the scene
     this.scene.render();

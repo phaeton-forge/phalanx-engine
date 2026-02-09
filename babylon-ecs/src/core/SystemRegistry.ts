@@ -81,6 +81,16 @@ export class SystemRegistry {
     }
   }
 
+  /**
+   * Add a late-initialized frame system
+   * Used for systems that need to be created after initial registration
+   * Note: The system's init() must be called before adding
+   */
+  public addFrameSystem(system: GameSystem): void {
+    this.frameSystems.push(system);
+    this.context!.registerSystem(system);
+  }
+
 
   /**
    * Process all tick-based systems in order
