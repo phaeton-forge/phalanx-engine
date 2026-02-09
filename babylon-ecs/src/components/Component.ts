@@ -24,6 +24,7 @@ export const ComponentType = {
   AttackLock: Symbol('AttackLock'),
   Death: Symbol('Death'),
   PhysicsBody: Symbol('PhysicsBody'),
+  HealthBar: Symbol('HealthBar'),
 } as const;
 
 export type ComponentTypeKey = keyof typeof ComponentType;

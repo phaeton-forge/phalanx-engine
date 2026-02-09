@@ -2,14 +2,13 @@ import { Vector3, Color3 } from '@babylonjs/core';
 import type { SceneManager } from './SceneManager';
 import type { EntityManager } from './EntityManager';
 import type { InterpolationSystem } from '../systems/InterpolationSystem';
-import type { HealthBarSystem } from '../systems/HealthBarSystem';
 import type { Unit, UnitConfig } from '../entities/Unit';
 import type { PrismaUnit, PrismaUnitConfig } from '../entities/PrismaUnit';
 import type { LanceUnit, LanceUnitConfig } from '../entities/LanceUnit';
 import type { MutantUnit, MutantUnitConfig } from '../entities/MutantUnit';
 import type { Tower, TowerConfig } from '../entities/Tower';
 import type { Base, BaseConfig } from '../entities/Base';
-import { PhysicsBodyComponent } from '../components';
+import { PhysicsBodyComponent, HealthBarComponent } from '../components';
 import { TeamTag } from '../enums/TeamTag';
 import { arenaParams, unitConfig } from '../config/constants';
 
@@ -25,7 +24,6 @@ export class EntityFactory {
   private sceneManager: SceneManager;
   private entityManager: EntityManager;
   private interpolationSystem: InterpolationSystem | null = null;
-  private healthBarSystem: HealthBarSystem | null = null;
 
   // Map entity IDs to player info
   private entityOwnership: Map<number, string> = new Map();
@@ -48,13 +46,6 @@ export class EntityFactory {
     this.interpolationSystem = interpolationSystem;
   }
 
-  /**
-   * Set the health bar system for displaying health bars above entities
-   * Called after construction to avoid circular dependency
-   */
-  public setHealthBarSystem(healthBarSystem: HealthBarSystem): void {
-    this.healthBarSystem = healthBarSystem;
-  }
 
   /**
    * Create a unit and register it with all necessary systems
@@ -69,14 +60,15 @@ export class EntityFactory {
       isStatic: false,
     }));
 
+    // Add HealthBarComponent for health visualization
+    unit.addComponent(new HealthBarComponent(2.5));
+
     // Register with EntityManager
     this.entityManager.addEntity(unit);
 
     // Register with InterpolationSystem for smooth visual movement
     this.interpolationSystem?.registerEntity(unit.id, false);
 
-    // Register with HealthBarSystem for health visualization
-    this.healthBarSystem?.registerEntity(unit, 2.5);
 
     return unit;
   }
@@ -97,14 +89,15 @@ export class EntityFactory {
       isStatic: false,
     }));
 
+    // Add HealthBarComponent for health visualization
+    unit.addComponent(new HealthBarComponent(3.5));
+
     // Register with EntityManager
     this.entityManager.addEntity(unit);
 
     // Register with InterpolationSystem for smooth visual movement
     this.interpolationSystem?.registerEntity(unit.id, false);
 
-    // Register with HealthBarSystem for health visualization
-    this.healthBarSystem?.registerEntity(unit, 3.5);
 
     return unit;
   }
@@ -125,14 +118,15 @@ export class EntityFactory {
       isStatic: false,
     }));
 
+    // Add HealthBarComponent for health visualization
+    unit.addComponent(new HealthBarComponent(3.0));
+
     // Register with EntityManager
     this.entityManager.addEntity(unit);
 
     // Register with InterpolationSystem for smooth visual movement
     this.interpolationSystem?.registerEntity(unit.id, false);
 
-    // Register with HealthBarSystem for health visualization
-    this.healthBarSystem?.registerEntity(unit, 3.0);
 
     return unit;
   }
@@ -153,14 +147,15 @@ export class EntityFactory {
       isStatic: false,
     }));
 
+    // Add HealthBarComponent for health visualization
+    unit.addComponent(new HealthBarComponent(4.5));
+
     // Register with EntityManager
     this.entityManager.addEntity(unit);
 
     // Register with InterpolationSystem for smooth visual movement
     this.interpolationSystem?.registerEntity(unit.id, false);
 
-    // Register with HealthBarSystem for health visualization (higher for larger unit)
-    this.healthBarSystem?.registerEntity(unit, 4.5);
 
     return unit;
   }
@@ -178,14 +173,15 @@ export class EntityFactory {
       isStatic: true,
     }));
 
+    // Add HealthBarComponent for health visualization
+    tower.addComponent(new HealthBarComponent(5.0));
+
     // Register with EntityManager
     this.entityManager.addEntity(tower);
 
     // Register with InterpolationSystem as static (doesn't need smooth movement)
     this.interpolationSystem?.registerEntity(tower.id, true);
 
-    // Register with HealthBarSystem for health visualization
-    this.healthBarSystem?.registerEntity(tower, 5.0);
 
     return tower;
   }
@@ -203,14 +199,15 @@ export class EntityFactory {
       isStatic: true,
     }));
 
+    // Add HealthBarComponent for health visualization
+    base.addComponent(new HealthBarComponent(5.5));
+
     // Register with EntityManager
     this.entityManager.addEntity(base);
 
     // Register with InterpolationSystem as static (doesn't need smooth movement)
     this.interpolationSystem?.registerEntity(base.id, true);
 
-    // Register with HealthBarSystem for health visualization
-    this.healthBarSystem?.registerEntity(base, 5.5);
 
     return base;
   }

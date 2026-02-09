@@ -1,7 +1,6 @@
 import type { EntityManager } from './EntityManager';
 import type { EntityFactory } from './EntityFactory';
 import type { InterpolationSystem } from '../systems/InterpolationSystem';
-import type { HealthBarSystem } from '../systems/HealthBarSystem';
 
 /**
  * EntityCleanupService - Handles cleanup of destroyed entities
@@ -10,30 +9,23 @@ import type { HealthBarSystem } from '../systems/HealthBarSystem';
  * - Removing destroyed entities from all systems
  * - Cleaning up ownership tracking
  * - Disposing entity resources
+ *
+ * Note: HealthBarSystem cleanup is automatic - it queries entities with
+ * HealthBarComponent and removes UI when entities are no longer found.
  */
 export class EntityCleanupService {
   private entityManager: EntityManager;
   private entityFactory: EntityFactory;
   private interpolationSystem: InterpolationSystem;
-  private healthBarSystem: HealthBarSystem;
 
   constructor(
     entityManager: EntityManager,
     entityFactory: EntityFactory,
-    interpolationSystem: InterpolationSystem,
-    healthBarSystem: HealthBarSystem
+    interpolationSystem: InterpolationSystem
   ) {
     this.entityManager = entityManager;
     this.entityFactory = entityFactory;
     this.interpolationSystem = interpolationSystem;
-    this.healthBarSystem = healthBarSystem;
-  }
-
-  /**
-   * Update health bar system reference (for late initialization)
-   */
-  public setHealthBarSystem(healthBarSystem: HealthBarSystem): void {
-    this.healthBarSystem = healthBarSystem;
   }
 
   /**
@@ -44,13 +36,11 @@ export class EntityCleanupService {
 
     for (const entity of destroyed) {
       this.entityFactory.removeOwnership(entity.id);
-      // PhysicsBodyComponent is cleaned up automatically when entity is disposed
-      // since it's part of the entity's component map
       this.interpolationSystem.unregisterEntity(entity.id);
-      this.healthBarSystem.unregisterEntity(entity.id);
+      // HealthBarComponent cleanup is automatic - HealthBarSystem's update()
+      // removes UI for entities that no longer exist
 
       entity.dispose();
     }
   }
 }
-

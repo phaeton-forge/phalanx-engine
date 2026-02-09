@@ -248,7 +248,6 @@ export class Game {
 
     // Set late systems in initializer
     this.gameInitializer.setLateSystems(
-      this.healthBarSystem,
       this.cameraController
     );
 
@@ -265,8 +264,7 @@ export class Game {
     this.entityCleanupService = new EntityCleanupService(
       this.systemRegistry.entityManager,
       this.entityFactory,
-      this.interpolationSystem,
-      this.healthBarSystem
+      this.interpolationSystem
     );
 
     // Phase 10: Create coordinators

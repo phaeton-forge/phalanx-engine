@@ -1,12 +1,11 @@
 import {AdvancedDynamicTexture, Control, Rectangle} from '@babylonjs/gui';
 import type { SystemContext } from '../core/SystemContext';
 import { GameSystem } from './GameSystem';
-import {ComponentType, HealthComponent} from '../components';
-import {Entity} from '../entities/Entity';
+import {ComponentType, HealthComponent, HealthBarComponent} from '../components';
 import type {DamageAppliedEvent, EntityDestroyedEvent, EntityDyingEvent,} from '../events';
 import {GameEvents} from '../events';
 
-interface HealthBar {
+interface HealthBarUI {
   entityId: number;
   container: Rectangle;
   background: Rectangle;
@@ -18,6 +17,9 @@ interface HealthBar {
  * HealthBarSystem - Displays health bars above entities using BabylonJS GUI
  * Extends GameSystem for consistent lifecycle management
  *
+ * Following ECS principles: queries entities with HealthBarComponent
+ * and automatically creates/removes health bar UI elements.
+ *
  * Features:
  * - Uses 2D GUI elements (Rectangle) instead of 3D meshes
  * - Automatic billboarding via linkWithMesh()
@@ -26,7 +28,9 @@ interface HealthBar {
  */
 export class HealthBarSystem extends GameSystem {
   private guiTexture!: AdvancedDynamicTexture;
-  private healthBars: Map<number, HealthBar> = new Map();
+  // Internal UI state - maps entity ID to GUI elements
+  // Note: This is UI state, not game state, so it's acceptable to track here
+  private healthBarUIs: Map<number, HealthBarUI> = new Map();
 
   // Health bar dimensions (in pixels)
   private readonly BAR_WIDTH = 60;
@@ -69,7 +73,7 @@ export class HealthBarSystem extends GameSystem {
     this.subscribe<EntityDyingEvent>(
       GameEvents.ENTITY_DYING,
       (event) => {
-        this.removeHealthBar(event.entityId);
+        this.removeHealthBarUI(event.entityId);
       }
     );
 
@@ -77,50 +81,15 @@ export class HealthBarSystem extends GameSystem {
     this.subscribe<EntityDestroyedEvent>(
       GameEvents.ENTITY_DESTROYED,
       (event) => {
-        this.removeHealthBar(event.entityId);
+        this.removeHealthBarUI(event.entityId);
       }
     );
   }
 
   /**
-   * Register an entity to have a health bar
-   * @param entity The entity to track
-   * @param heightOffset Y offset above the entity mesh (in world units)
+   * Create a health bar UI for an entity
    */
-  public registerEntity(entity: Entity, heightOffset: number = 3): void {
-    const healthComp = entity.getComponent<HealthComponent>(
-      ComponentType.Health
-    );
-    if (!healthComp) return;
-
-    // Don't create duplicate health bars
-    if (this.healthBars.has(entity.id)) return;
-
-    const mesh = entity.getMesh();
-    if (!mesh) return;
-
-    const healthBar = this.createHealthBar(entity.id, heightOffset);
-    this.healthBars.set(entity.id, healthBar);
-
-    // Link the container to the entity's mesh
-    healthBar.container.linkWithMesh(mesh);
-    healthBar.container.linkOffsetY = -heightOffset * 15; // Convert world units to pixels (approximate)
-
-    // Initially hidden if at full health
-    this.updateHealthBarVisibility(healthBar, healthComp.healthPercent);
-  }
-
-  /**
-   * Unregister an entity and remove its health bar
-   */
-  public unregisterEntity(entityId: number): void {
-    this.removeHealthBar(entityId);
-  }
-
-  /**
-   * Create a health bar using GUI elements
-   */
-  private createHealthBar(entityId: number, heightOffset: number): HealthBar {
+  private createHealthBarUI(entityId: number, heightOffset: number): HealthBarUI {
     // Container rectangle (groups background and foreground)
     const container = new Rectangle(`healthBar_container_${entityId}`);
     container.width = `${this.BAR_WIDTH + 4}px`;
@@ -171,27 +140,27 @@ export class HealthBarSystem extends GameSystem {
     currentHealth: number,
     maxHealth: number
   ): void {
-    const healthBar = this.healthBars.get(entityId);
-    if (!healthBar) return;
+    const healthBarUI = this.healthBarUIs.get(entityId);
+    if (!healthBarUI) return;
 
     const healthPercent = currentHealth / maxHealth;
 
     // Update foreground bar width
     const width = Math.max(healthPercent * this.BAR_WIDTH, 1);
-    healthBar.foreground.width = `${width}px`;
+    healthBarUI.foreground.width = `${width}px`;
 
     // Update color based on health percentage
-    this.updateHealthBarColor(healthBar, healthPercent);
+    this.updateHealthBarColor(healthBarUI, healthPercent);
 
     // Update visibility
-    this.updateHealthBarVisibility(healthBar, healthPercent);
+    this.updateHealthBarVisibility(healthBarUI, healthPercent);
   }
 
   /**
    * Update health bar color with gradient from green -> yellow -> red
    */
   private updateHealthBarColor(
-    healthBar: HealthBar,
+    healthBarUI: HealthBarUI,
     healthPercent: number
   ): void {
     let r: number, g: number, b: number;
@@ -210,42 +179,75 @@ export class HealthBarSystem extends GameSystem {
       b = 0;
     }
 
-    healthBar.foreground.background = `rgb(${r}, ${g}, ${b})`;
+    healthBarUI.foreground.background = `rgb(${r}, ${g}, ${b})`;
   }
 
   /**
    * Update health bar visibility (hidden at 100% health)
    */
   private updateHealthBarVisibility(
-    healthBar: HealthBar,
+    healthBarUI: HealthBarUI,
     healthPercent: number
   ): void {
-    healthBar.container.isVisible = healthPercent < 1;
+    healthBarUI.container.isVisible = healthPercent < 1;
   }
 
   /**
-   * Remove a health bar
+   * Remove a health bar UI
    */
-  private removeHealthBar(entityId: number): void {
-    const healthBar = this.healthBars.get(entityId);
-    if (!healthBar) return;
+  private removeHealthBarUI(entityId: number): void {
+    const healthBarUI = this.healthBarUIs.get(entityId);
+    if (!healthBarUI) return;
 
-    healthBar.foreground.dispose();
-    healthBar.background.dispose();
-    healthBar.container.dispose();
-    this.healthBars.delete(entityId);
+    healthBarUI.foreground.dispose();
+    healthBarUI.background.dispose();
+    healthBarUI.container.dispose();
+    this.healthBarUIs.delete(entityId);
   }
 
   /**
-   * Update method - no longer needed since linkWithMesh handles positioning
-   * Kept for cleanup of removed entities
+   * Update method - queries entities with HealthBarComponent and manages UI
+   * Called each frame to sync UI with entity state
    */
   public update(): void {
-    // Check for entities that no longer exist
-    for (const entityId of this.healthBars.keys()) {
-      const entity = this.entityManager.getEntity(entityId);
-      if (!entity) {
-        this.removeHealthBar(entityId);
+    // Query all entities with HealthBarComponent
+    const healthBarEntities = this.entityManager.queryEntities(
+      ComponentType.HealthBar
+    );
+
+    // Track which entities we've seen this frame
+    const seenEntityIds = new Set<number>();
+
+    for (const entity of healthBarEntities) {
+      seenEntityIds.add(entity.id);
+
+      // Skip if UI already exists for this entity
+      if (this.healthBarUIs.has(entity.id)) continue;
+
+      // Get required components
+      const healthBarComp = entity.getComponent<HealthBarComponent>(ComponentType.HealthBar);
+      const healthComp = entity.getComponent<HealthComponent>(ComponentType.Health);
+      if (!healthBarComp || !healthComp) continue;
+
+      const mesh = entity.getMesh();
+      if (!mesh) continue;
+
+      // Create health bar UI for this entity
+      const healthBarUI = this.createHealthBarUI(entity.id, healthBarComp.heightOffset);
+      this.healthBarUIs.set(entity.id, healthBarUI);
+
+      // Link the container to the entity's mesh
+      healthBarUI.container.linkWithMesh(mesh);
+      healthBarUI.container.linkOffsetY = -healthBarComp.heightOffset * 15; // Convert world units to pixels (approximate)
+
+      // Initially hidden if at full health
+      this.updateHealthBarVisibility(healthBarUI, healthComp.healthPercent);
+    }
+
+    // Remove UI for entities that no longer exist or lost their HealthBarComponent
+    for (const entityId of this.healthBarUIs.keys()) {
+      if (!seenEntityIds.has(entityId)) {
+        this.removeHealthBarUI(entityId);
       }
     }
   }
@@ -256,11 +258,11 @@ export class HealthBarSystem extends GameSystem {
   public override dispose(): void {
     super.dispose(); // Clean up subscriptions from base class
 
-    for (const healthBar of this.healthBars.values()) {
-      healthBar.foreground.dispose();
-      healthBar.background.dispose();
-      healthBar.container.dispose();
+    for (const healthBarUI of this.healthBarUIs.values()) {
+      healthBarUI.foreground.dispose();
+      healthBarUI.background.dispose();
+      healthBarUI.container.dispose();
     }
-    this.healthBars.clear();
+    this.healthBarUIs.clear();
   }
 }

@@ -7,7 +7,6 @@ import type { FormationGridSystem } from '../systems/FormationGridSystem';
 import type { VictorySystem } from '../systems/VictorySystem';
 import type { WaveSystem } from '../systems/WaveSystem';
 import type { MovementSystem } from '../systems/MovementSystem';
-import type { HealthBarSystem } from '../systems/HealthBarSystem';
 import type { CameraController } from '../systems/CameraController';
 import type { InterpolationSystem } from '../systems/InterpolationSystem';
 import type { AssetManager } from './AssetManager';
@@ -49,7 +48,6 @@ export class GameInitializer {
   private client: PhalanxClient;
 
   // Late-initialized systems (set after async init)
-  private healthBarSystem: HealthBarSystem | null = null;
   private cameraController: CameraController | null = null;
 
   constructor(
@@ -74,10 +72,8 @@ export class GameInitializer {
    * Set late-initialized systems
    */
   public setLateSystems(
-    healthBarSystem: HealthBarSystem,
     cameraController: CameraController
   ): void {
-    this.healthBarSystem = healthBarSystem;
     this.cameraController = cameraController;
   }
 
@@ -99,10 +95,6 @@ export class GameInitializer {
     // Auto-fit camera to show formation grid at game start
     this.cameraController?.focusOnFormationGrid();
 
-    // Wire up health bar system to entity factory
-    if (this.healthBarSystem) {
-      this.entityFactory.setHealthBarSystem(this.healthBarSystem);
-    }
 
     this.systems.sceneManager.setupLighting();
     this.systems.sceneManager.createGround();
