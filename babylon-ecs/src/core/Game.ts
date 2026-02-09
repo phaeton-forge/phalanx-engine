@@ -9,8 +9,6 @@ import { GameEventCoordinator } from './GameEventCoordinator';
 import { GameInitializer } from './GameInitializer';
 import { EntityCleanupService } from './EntityCleanupService';
 import { SceneManager } from './SceneManager';
-import type { ISelectableEntity } from '../systems/SelectionSystem';
-import { SelectionSystem } from '../systems/SelectionSystem';
 import { MovementSystem } from '../systems/MovementSystem';
 import { PhysicsSystem } from '../systems/PhysicsSystem';
 import { HealthSystem } from '../systems/HealthSystem';
@@ -70,7 +68,6 @@ export class Game {
   private sceneManager!: SceneManager;
 
   // Gameplay systems
-  private selectionSystem!: SelectionSystem;
   private movementSystem!: MovementSystem;
   private physicsSystem!: PhysicsSystem;
   private healthSystem!: HealthSystem;
@@ -125,7 +122,6 @@ export class Game {
     );
 
     // Create all gameplay systems (core simulation systems)
-    this.selectionSystem = new SelectionSystem();
     this.movementSystem = new MovementSystem();
     this.physicsSystem = new PhysicsSystem();
     this.healthSystem = new HealthSystem();
@@ -160,7 +156,6 @@ export class Game {
       this.waveSystem,
       this.territorySystem,
       this.formationGridSystem,
-      this.selectionSystem,
       this.victorySystem,
     ];
 
@@ -205,7 +200,6 @@ export class Game {
     this.entityFactory = new EntityFactory(
       this.sceneManager,
       this.systemRegistry.entityManager,
-      this.selectionSystem,
       this.physicsSystem
     );
     this.entityFactory.setInterpolationSystem(this.interpolationSystem);
@@ -261,7 +255,6 @@ export class Game {
 
     // Phase 7: Create input manager
     this.inputManager = new InputManager(
-      this.selectionSystem,
       this.sceneManager
     );
     this.inputManager.init(this.systemRegistry.getContext());
@@ -275,8 +268,7 @@ export class Game {
       this.entityFactory,
       this.physicsSystem,
       this.interpolationSystem,
-      this.healthBarSystem,
-      this.selectionSystem
+      this.healthBarSystem
     );
 
     // Phase 10: Create coordinators
@@ -287,9 +279,6 @@ export class Game {
 
     // Phase 12: Setup unit placement UI
     this.setupUnitPlacementUI();
-
-    // Phase 13: Setup selection filter
-    this.setupSelectionFilter();
   }
 
   /**
@@ -409,18 +398,6 @@ export class Game {
     );
   }
 
-  /**
-   * Setup selection filter
-   */
-  private setupSelectionFilter(): void {
-    const originalSelectEntity = this.selectionSystem.selectEntity.bind(
-      this.selectionSystem
-    );
-
-    this.selectionSystem.selectEntity = (entity: ISelectableEntity) => {
-      originalSelectEntity(entity);
-    };
-  }
 
   private setupResizeHandler(): void {
     window.addEventListener('resize', () => {

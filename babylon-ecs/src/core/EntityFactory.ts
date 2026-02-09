@@ -1,7 +1,6 @@
 import { Vector3, Color3 } from '@babylonjs/core';
 import type { SceneManager } from './SceneManager';
 import type { EntityManager } from './EntityManager';
-import type { SelectionSystem } from '../systems/SelectionSystem';
 import type { PhysicsSystem } from '../systems/PhysicsSystem';
 import type { InterpolationSystem } from '../systems/InterpolationSystem';
 import type { HealthBarSystem } from '../systems/HealthBarSystem';
@@ -25,7 +24,6 @@ import { arenaParams, unitConfig } from '../config/constants';
 export class EntityFactory {
   private sceneManager: SceneManager;
   private entityManager: EntityManager;
-  private selectionSystem: SelectionSystem;
   private physicsSystem: PhysicsSystem;
   private interpolationSystem: InterpolationSystem | null = null;
   private healthBarSystem: HealthBarSystem | null = null;
@@ -36,12 +34,10 @@ export class EntityFactory {
   constructor(
     sceneManager: SceneManager,
     entityManager: EntityManager,
-    selectionSystem: SelectionSystem,
     physicsSystem: PhysicsSystem
   ) {
     this.sceneManager = sceneManager;
     this.entityManager = entityManager;
-    this.selectionSystem = selectionSystem;
     this.physicsSystem = physicsSystem;
   }
 
@@ -72,9 +68,6 @@ export class EntityFactory {
     // Register with EntityManager
     this.entityManager.addEntity(unit);
 
-    // Register with SelectionSystem for mesh picking
-    this.selectionSystem.registerSelectable(unit);
-
     // Register with PhysicsSystem - units are dynamic bodies
     this.physicsSystem.registerBody(unit.id, {
       radius: 1.0,
@@ -102,9 +95,6 @@ export class EntityFactory {
 
     // Register with EntityManager
     this.entityManager.addEntity(unit);
-
-    // Register with SelectionSystem for mesh picking
-    this.selectionSystem.registerSelectable(unit);
 
     // Register with PhysicsSystem - prisma units are larger dynamic bodies
     this.physicsSystem.registerBody(unit.id, {
@@ -134,9 +124,6 @@ export class EntityFactory {
     // Register with EntityManager
     this.entityManager.addEntity(unit);
 
-    // Register with SelectionSystem for mesh picking
-    this.selectionSystem.registerSelectable(unit);
-
     // Register with PhysicsSystem - lance units are elongated 1x2 bodies
     this.physicsSystem.registerBody(unit.id, {
       radius: 1.4, // Medium radius for 1x2 unit
@@ -165,9 +152,6 @@ export class EntityFactory {
     // Register with EntityManager
     this.entityManager.addEntity(unit);
 
-    // Register with SelectionSystem for mesh picking
-    this.selectionSystem.registerSelectable(unit);
-
     // Register with PhysicsSystem - mutant units are 2x2 bodies
     this.physicsSystem.registerBody(unit.id, {
       radius: 2.0,
@@ -193,9 +177,6 @@ export class EntityFactory {
     // Register with EntityManager
     this.entityManager.addEntity(tower);
 
-    // Register with SelectionSystem for mesh picking
-    this.selectionSystem.registerSelectable(tower);
-
     // Register with PhysicsSystem - towers are static bodies (can push but don't move)
     this.physicsSystem.registerBody(tower.id, {
       radius: 1.5,
@@ -220,9 +201,6 @@ export class EntityFactory {
 
     // Register with EntityManager
     this.entityManager.addEntity(base);
-
-    // Register with SelectionSystem for mesh picking
-    this.selectionSystem.registerSelectable(base);
 
     // Register with PhysicsSystem - bases are static bodies (can push but don't move)
     this.physicsSystem.registerBody(base.id, {

@@ -38,9 +38,7 @@ export interface TowerConfig {
  * - Crystal: Glowing team-colored crystal on top of turret
  */
 export class Tower extends Entity {
-  private selectionIndicator: Mesh;
   private rangeIndicator: Mesh | null = null;
-  private _isSelected: boolean = false;
   private _debug: boolean;
   private _teamColor: Color3;
 
@@ -97,7 +95,6 @@ export class Tower extends Entity {
     this.mesh.position = position.clone();
     this.mesh.position.y = Tower.BASE_HEIGHT / 2;
 
-    this.selectionIndicator = this.createSelectionIndicator();
 
     // Sync simulation position with mesh position
     this.syncSimulationPosition();
@@ -316,46 +313,6 @@ export class Tower extends Entity {
     this.rangeIndicator.material = material;
   }
 
-  private createSelectionIndicator(): Mesh {
-    const indicator = MeshBuilder.CreateTorus(
-      `towerSelCircle_${this.id}`,
-      { diameter: 3, thickness: 0.2, tessellation: 32 },
-      this.scene
-    );
-    indicator.scaling.y = 0.01;
-    indicator.position.y = -1.45;
-    indicator.parent = this.mesh;
-    indicator.isVisible = false;
-    indicator.isPickable = false;
-
-    const material = new StandardMaterial(`towerSelMat_${this.id}`, this.scene);
-    material.diffuseColor = Color3.Green();
-    material.emissiveColor = Color3.Green();
-    indicator.material = material;
-
-    return indicator;
-  }
-
-  // Selection methods
-  public get isSelected(): boolean {
-    return this._isSelected;
-  }
-
-  public select(): void {
-    this._isSelected = true;
-    this.selectionIndicator.isVisible = true;
-  }
-
-  public deselect(): void {
-    this._isSelected = false;
-    this.selectionIndicator.isVisible = false;
-  }
-
-  public canBeSelected(): boolean {
-    // In multiplayer, ownership filtering is handled by Game.ts
-    // Towers are always selectable from a technical standpoint
-    return true;
-  }
 
   // Debug methods
   public get debug(): boolean {
@@ -574,7 +531,6 @@ export class Tower extends Entity {
   }
 
   public override dispose(): void {
-    this.selectionIndicator.dispose();
     if (this.rangeIndicator) {
       this.rangeIndicator.dispose();
     }

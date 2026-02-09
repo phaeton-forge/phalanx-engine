@@ -5,7 +5,6 @@ import {
 } from '@babylonjs/core';
 import type { SystemContext } from '../core/SystemContext';
 import { GameSystem } from './GameSystem';
-import type { SelectionSystem } from './SelectionSystem';
 import type { SceneManager } from '../core/SceneManager';
 import { GameEvents, createEvent } from '../events';
 import type { MoveCompletedEvent, HideDestinationMarkerEvent } from '../events';
@@ -16,18 +15,15 @@ import type { MoveCompletedEvent, HideDestinationMarkerEvent } from '../events';
  * Extends GameSystem for consistent lifecycle management
  */
 export class InputManager extends GameSystem {
-  private selectionSystem: SelectionSystem;
   private sceneManager: SceneManager;
 
   // Track entities that are moving to hide marker when all complete
   private movingEntities: Set<number> = new Set();
 
   constructor(
-    selectionSystem: SelectionSystem,
     sceneManager: SceneManager
   ) {
     super();
-    this.selectionSystem = selectionSystem;
     this.sceneManager = sceneManager;
   }
 
@@ -82,28 +78,12 @@ export class InputManager extends GameSystem {
 
   private handleLeftClick(pickResult: PickingInfo): void {
     const pickedMesh = pickResult.pickedMesh;
-    const ground = this.sceneManager.getGround();
 
     if (!pickedMesh) {
       return;
     }
 
-    // Check if we clicked on a selectable entity
-    const selectable = this.selectionSystem.findSelectableByMesh(pickedMesh);
-
-    if (selectable) {
-      if (selectable.isSelected) {
-        // Clicking on already selected entity - deselect it
-        this.selectionSystem.deselectEntity(selectable);
-      } else {
-        // Clicking on a new entity - deselect all others first, then select this one
-        this.selectionSystem.deselectAll();
-        this.selectionSystem.selectEntity(selectable);
-      }
-    } else if (pickedMesh === ground) {
-      // Clicked on empty ground - deselect all
-      this.selectionSystem.deselectAll();
-    }
+    // Left click handling can be extended for other purposes
   }
 
   /**

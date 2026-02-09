@@ -34,9 +34,7 @@ export interface UnitConfig {
  * Uses component-based architecture
  */
 export class Unit extends Entity {
-  private selectionIndicator: Mesh;
   private rangeIndicator: Mesh | null = null;
-  private _isSelected: boolean = false;
   private _debug: boolean;
   private _color: Color3;
 
@@ -53,7 +51,6 @@ export class Unit extends Entity {
     // Create mesh
     this.mesh = this.createMesh();
     this.mesh.position = position;
-    this.selectionIndicator = this.createSelectionIndicator();
 
     // Sync simulation position with mesh position
     this.syncSimulationPosition();
@@ -113,46 +110,6 @@ export class Unit extends Entity {
     this.rangeIndicator.material = material;
   }
 
-  private createSelectionIndicator(): Mesh {
-    const indicator = MeshBuilder.CreateTorus(
-      `selCircle_${this.id}`,
-      { diameter: 3, thickness: 0.2, tessellation: 32 },
-      this.scene
-    );
-    indicator.scaling.y = 0.01;
-    indicator.position.y = -0.95;
-    indicator.parent = this.mesh;
-    indicator.isVisible = false;
-    indicator.isPickable = false;
-
-    const material = new StandardMaterial(`selMat_${this.id}`, this.scene);
-    material.diffuseColor = Color3.Green();
-    material.emissiveColor = Color3.Green();
-    indicator.material = material;
-
-    return indicator;
-  }
-
-  // Selection methods
-  public get isSelected(): boolean {
-    return this._isSelected;
-  }
-
-  public select(): void {
-    this._isSelected = true;
-    this.selectionIndicator.isVisible = true;
-  }
-
-  public deselect(): void {
-    this._isSelected = false;
-    this.selectionIndicator.isVisible = false;
-  }
-
-  public canBeSelected(): boolean {
-    // In multiplayer, ownership filtering is handled by Game.ts
-    // Units are always selectable from a technical standpoint
-    return true;
-  }
 
   // Debug methods
   public get debug(): boolean {
@@ -170,7 +127,6 @@ export class Unit extends Entity {
   }
 
   public override dispose(): void {
-    this.selectionIndicator.dispose();
     if (this.rangeIndicator) {
       this.rangeIndicator.dispose();
     }

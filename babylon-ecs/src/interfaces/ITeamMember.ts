@@ -11,9 +11,4 @@ export interface ITeamMember {
    * Check if another team member is hostile
    */
   isHostileTo(other: ITeamMember): boolean;
-
-  /**
-   * Check if this entity can be selected by the player
-   */
-  canBeSelected(): boolean;
 }

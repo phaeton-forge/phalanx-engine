@@ -36,9 +36,7 @@ export interface PrismaUnitConfig {
  * Uses component-based architecture
  */
 export class PrismaUnit extends Entity {
-  private selectionIndicator: Mesh;
   private rangeIndicator: Mesh | null = null;
-  private _isSelected: boolean = false;
   private _debug: boolean;
   private _color: Color3;
 
@@ -55,7 +53,6 @@ export class PrismaUnit extends Entity {
     // Create mesh
     this.mesh = this.createPrismMesh();
     this.mesh.position = position;
-    this.selectionIndicator = this.createSelectionIndicator();
 
     // Sync simulation position with mesh position
     this.syncSimulationPosition();
@@ -235,29 +232,6 @@ export class PrismaUnit extends Entity {
     return mesh;
   }
 
-  private createSelectionIndicator(): Mesh {
-    // Larger indicator for 2x2 unit
-    const indicator = MeshBuilder.CreateTorus(
-      `prismaSelection_${this.id}`,
-      { diameter: 6, thickness: 0.2, tessellation: 32 },
-      this.scene
-    );
-
-    indicator.parent = this.mesh;
-    indicator.position.y = 0.1;
-    indicator.isPickable = false;
-    indicator.visibility = 0;
-
-    const material = new StandardMaterial(
-      `prismaSelMat_${this.id}`,
-      this.scene
-    );
-    material.diffuseColor = new Color3(0, 1, 0);
-    material.emissiveColor = new Color3(0, 0.5, 0);
-    indicator.material = material;
-
-    return indicator;
-  }
 
   private createRangeIndicator(): void {
     const attack = this.getComponent<AttackComponent>(ComponentType.Attack);
@@ -282,27 +256,7 @@ export class PrismaUnit extends Entity {
     this.rangeIndicator.material = material;
   }
 
-  // Selection interface
-  public get isSelected(): boolean {
-    return this._isSelected;
-  }
-
-  public select(): void {
-    this._isSelected = true;
-    this.selectionIndicator.visibility = 1;
-  }
-
-  public deselect(): void {
-    this._isSelected = false;
-    this.selectionIndicator.visibility = 0;
-  }
-
-  public canBeSelected(): boolean {
-    return !this.isDestroyed;
-  }
-
   public dispose(): void {
-    this.selectionIndicator?.dispose();
     this.rangeIndicator?.dispose();
     this.mesh?.dispose();
   }

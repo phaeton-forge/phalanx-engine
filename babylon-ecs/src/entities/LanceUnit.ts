@@ -38,9 +38,7 @@ export interface LanceUnitConfig {
  * For Team2, the unit is rotated 180 degrees to face the opposite direction
  */
 export class LanceUnit extends Entity {
-  private selectionIndicator: Mesh;
   private rangeIndicator: Mesh | null = null;
-  private _isSelected: boolean = false;
   private _debug: boolean;
   private _color: Color3;
 
@@ -64,7 +62,6 @@ export class LanceUnit extends Entity {
       this.mesh.rotation.y = Math.PI;
     }
 
-    this.selectionIndicator = this.createSelectionIndicator();
 
     // Sync simulation position with mesh position
     this.syncSimulationPosition();
@@ -209,28 +206,6 @@ export class LanceUnit extends Entity {
     return crystal;
   }
 
-  private createSelectionIndicator(): Mesh {
-    // Oval indicator for 2x1 unit (elongated along X-axis)
-    const indicator = MeshBuilder.CreateTorus(
-      `lanceSelection_${this.id}`,
-      { diameter: 5, thickness: 0.25, tessellation: 32 }, // Increased from diameter: 4, thickness: 0.2
-      this.scene
-    );
-
-    // Scale to make it oval (2x1 proportions - elongated along X)
-    indicator.scaling = new Vector3(1.8, 0.01, 1);
-    indicator.position.y = 0.1;
-    indicator.parent = this.mesh;
-    indicator.isPickable = false;
-    indicator.visibility = 0;
-
-    const material = new StandardMaterial(`lanceSelMat_${this.id}`, this.scene);
-    material.diffuseColor = new Color3(0, 1, 0);
-    material.emissiveColor = new Color3(0, 0.5, 0);
-    indicator.material = material;
-
-    return indicator;
-  }
 
   private createRangeIndicator(): void {
     const attack = this.getComponent<AttackComponent>(ComponentType.Attack);
@@ -255,27 +230,7 @@ export class LanceUnit extends Entity {
     this.rangeIndicator.material = material;
   }
 
-  // Selection interface
-  public get isSelected(): boolean {
-    return this._isSelected;
-  }
-
-  public select(): void {
-    this._isSelected = true;
-    this.selectionIndicator.visibility = 1;
-  }
-
-  public deselect(): void {
-    this._isSelected = false;
-    this.selectionIndicator.visibility = 0;
-  }
-
-  public canBeSelected(): boolean {
-    return !this.isDestroyed;
-  }
-
   public dispose(): void {
-    this.selectionIndicator?.dispose();
     this.rangeIndicator?.dispose();
     this.mesh?.dispose();
   }

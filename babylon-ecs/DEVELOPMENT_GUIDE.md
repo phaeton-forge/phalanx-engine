@@ -44,7 +44,7 @@ This project uses a **component-based Entity-Component-System (ECS)** architectu
         ▼           ▼                   ▼
 ┌───────────────────────────────────────────────────────────────┐
 │                          Systems                               │
-│  CombatSystem │ MovementSystem │ HealthSystem │ SelectionSystem│
+│  CombatSystem │ MovementSystem │ HealthSystem │ FormationSystem│
 └───────────────────────────────────────────────────────────────┘
         │
         ▼
@@ -791,7 +791,6 @@ Systems contain game logic and operate on entities with specific component combi
 | `HealthSystem`        | Damage processing, entity destruction  | Health               |
 | `PhysicsSystem`       | Deterministic physics, collision       | -                    |
 | `ProjectileSystem`    | Projectile movement and collision      | -                    |
-| `SelectionSystem`     | Entity selection management            | -                    |
 | `InputManager`        | User input handling                    | -                    |
 | `InterpolationSystem` | Smooth visual movement between ticks   | -                    |
 | `ResourceSystem`      | Resource generation and spending       | -                    |
@@ -841,7 +840,6 @@ unsubscribe();
 - **Combat**: `ATTACK_REQUESTED`, `PROJECTILE_SPAWNED`, `PROJECTILE_HIT`
 - **Health**: `DAMAGE_REQUESTED`, `DAMAGE_APPLIED`, `ENTITY_DESTROYED`
 - **Movement**: `MOVE_REQUESTED`, `MOVE_STARTED`, `MOVE_COMPLETED`
-- **Selection**: `SELECT_ENTITY_REQUESTED`, `ENTITY_SELECTED`, etc.
 - **Input**: `LEFT_CLICK`, `RIGHT_CLICK`, `GROUND_CLICKED`
 - **Lifecycle**: `ENTITY_CREATED`, `ENTITY_DISPOSED`
 
@@ -1241,7 +1239,6 @@ src/
 │   ├── PhysicsSystem.ts     # Deterministic physics simulation
 │   ├── HealthSystem.ts      # Damage processing
 │   ├── ProjectileSystem.ts  # Projectile management
-│   ├── SelectionSystem.ts   # Selection management
 │   ├── InputManager.ts      # User input handling
 │   ├── InterpolationSystem.ts # Smooth visual interpolation
 │   ├── ResourceSystem.ts    # Resource generation/spending
@@ -1266,6 +1263,5 @@ src/
     ├── IAttacker.ts
     ├── IDamageable.ts
     ├── IMovable.ts
-    ├── ISelectable.ts
     └── ITeamMember.ts
 ```

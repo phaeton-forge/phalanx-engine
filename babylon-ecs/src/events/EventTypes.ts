@@ -106,32 +106,6 @@ export interface StopRequestedEvent extends GameEvent {
   entityId: number;
 }
 
-// ============================================
-// Selection Events
-// ============================================
-
-export interface SelectEntityRequestedEvent extends GameEvent {
-  entityId: number;
-  exclusive?: boolean; // If true, deselect all others first
-}
-
-export interface DeselectEntityRequestedEvent extends GameEvent {
-  entityId: number;
-}
-
-export type DeselectAllRequestedEvent = GameEvent;
-
-export interface EntitySelectedEvent extends GameEvent {
-  entityId: number;
-}
-
-export interface EntityDeselectedEvent extends GameEvent {
-  entityId: number;
-}
-
-export interface SelectionClearedEvent extends GameEvent {
-  previouslySelectedIds: number[];
-}
 
 // ============================================
 // Input Events

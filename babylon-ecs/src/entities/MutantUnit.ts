@@ -64,9 +64,7 @@ export interface MutantUnitConfig {
  * - AttackLockComponent: Deterministic attack lock timing
  */
 export class MutantUnit extends Entity {
-  private selectionIndicator: Mesh;
   private rangeIndicator: Mesh | null = null;
-  private _isSelected: boolean = false;
   private _debug: boolean;
   private _color: Color3;
   private _team: TeamTag;
@@ -93,7 +91,6 @@ export class MutantUnit extends Entity {
     this.mesh = this.placeholderMesh;
     this.mesh.position = position.clone();
 
-    this.selectionIndicator = this.createSelectionIndicator();
 
     // Sync simulation position with mesh position
     this.syncSimulationPosition();
@@ -205,10 +202,6 @@ export class MutantUnit extends Entity {
       (m as unknown as { entityRef: MutantUnit }).entityRef = this;
     }
 
-    // Parent selection indicator to placeholder (which is the main mesh)
-    this.selectionIndicator.parent = this.placeholderMesh;
-    this.selectionIndicator.position.y = 0.1;
-
     // Update components with model data
     const animComponent = this.getComponent<AnimationComponent>(
       ComponentType.Animation
@@ -255,51 +248,8 @@ export class MutantUnit extends Entity {
     this.rangeIndicator.material = material;
   }
 
-  private createSelectionIndicator(): Mesh {
-    const indicator = MeshBuilder.CreateTorus(
-      `mutantSelCircle_${this.id}`,
-      { diameter: 5, thickness: 0.25, tessellation: 32 },
-      this.scene
-    );
-    indicator.scaling.y = 0.01;
-    indicator.position.y = 0.1;
-    indicator.parent = this.mesh;
-    indicator.isVisible = false;
-    indicator.isPickable = false;
-
-    const material = new StandardMaterial(
-      `mutantSelMat_${this.id}`,
-      this.scene
-    );
-    material.diffuseColor = Color3.Green();
-    material.emissiveColor = Color3.Green();
-    indicator.material = material;
-
-    return indicator;
-  }
-
-  // Selection methods
-  public get isSelected(): boolean {
-    return this._isSelected;
-  }
-
-  public select(): void {
-    this._isSelected = true;
-    this.selectionIndicator.isVisible = true;
-  }
-
-  public deselect(): void {
-    this._isSelected = false;
-    this.selectionIndicator.isVisible = false;
-  }
-
-  public canBeSelected(): boolean {
-    return true;
-  }
-
 
   public override dispose(): void {
-    this.selectionIndicator.dispose();
     if (this.rangeIndicator) {
       this.rangeIndicator.dispose();
     }

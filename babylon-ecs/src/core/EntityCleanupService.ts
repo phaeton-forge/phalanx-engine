@@ -3,7 +3,6 @@ import type { EntityFactory } from './EntityFactory';
 import type { PhysicsSystem } from '../systems/PhysicsSystem';
 import type { InterpolationSystem } from '../systems/InterpolationSystem';
 import type { HealthBarSystem } from '../systems/HealthBarSystem';
-import type { SelectionSystem, ISelectableEntity } from '../systems/SelectionSystem';
 
 /**
  * EntityCleanupService - Handles cleanup of destroyed entities
@@ -19,22 +18,19 @@ export class EntityCleanupService {
   private physicsSystem: PhysicsSystem;
   private interpolationSystem: InterpolationSystem;
   private healthBarSystem: HealthBarSystem;
-  private selectionSystem: SelectionSystem;
 
   constructor(
     entityManager: EntityManager,
     entityFactory: EntityFactory,
     physicsSystem: PhysicsSystem,
     interpolationSystem: InterpolationSystem,
-    healthBarSystem: HealthBarSystem,
-    selectionSystem: SelectionSystem
+    healthBarSystem: HealthBarSystem
   ) {
     this.entityManager = entityManager;
     this.entityFactory = entityFactory;
     this.physicsSystem = physicsSystem;
     this.interpolationSystem = interpolationSystem;
     this.healthBarSystem = healthBarSystem;
-    this.selectionSystem = selectionSystem;
   }
 
   /**
@@ -56,19 +52,8 @@ export class EntityCleanupService {
       this.interpolationSystem.unregisterEntity(entity.id);
       this.healthBarSystem.unregisterEntity(entity.id);
 
-      if (
-        'canBeSelected' in entity &&
-        typeof entity.canBeSelected === 'function'
-      ) {
-        this.selectionSystem.unregisterSelectable(
-          entity as unknown as ISelectableEntity
-        );
-      }
-
       entity.dispose();
     }
-
-    this.selectionSystem.cleanup();
   }
 }
 

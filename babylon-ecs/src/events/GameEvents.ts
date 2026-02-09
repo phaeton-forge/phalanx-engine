@@ -21,13 +21,6 @@ export const GameEvents = {
   MOVE_COMPLETED: 'movement:moveCompleted',
   STOP_REQUESTED: 'movement:stopRequested',
 
-  // Selection events
-  SELECT_ENTITY_REQUESTED: 'selection:selectRequested',
-  DESELECT_ENTITY_REQUESTED: 'selection:deselectRequested',
-  DESELECT_ALL_REQUESTED: 'selection:deselectAllRequested',
-  ENTITY_SELECTED: 'selection:entitySelected',
-  ENTITY_DESELECTED: 'selection:entityDeselected',
-  SELECTION_CLEARED: 'selection:selectionCleared',
 
   // Input events
   LEFT_CLICK: 'input:leftClick',

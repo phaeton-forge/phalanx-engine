@@ -32,9 +32,7 @@ export interface BaseConfig {
  * Uses component-based architecture
  */
 export class Base extends Entity {
-  private selectionIndicator: Mesh;
   private rangeIndicator: Mesh | null = null;
-  private _isSelected: boolean = false;
   private _debug: boolean;
   private _color: Color3;
 
@@ -52,7 +50,6 @@ export class Base extends Entity {
     this.mesh = this.createMesh();
     this.mesh.position = position.clone();
     this.mesh.position.y = 2; // Half height of base
-    this.selectionIndicator = this.createSelectionIndicator();
 
     // Sync simulation position with mesh position
     this.syncSimulationPosition();
@@ -124,46 +121,6 @@ export class Base extends Entity {
     this.rangeIndicator.material = material;
   }
 
-  private createSelectionIndicator(): Mesh {
-    const indicator = MeshBuilder.CreateTorus(
-      `baseSelCircle_${this.id}`,
-      { diameter: 6, thickness: 0.3, tessellation: 32 },
-      this.scene
-    );
-    indicator.scaling.y = 0.01;
-    indicator.position.y = -1.95;
-    indicator.parent = this.mesh;
-    indicator.isVisible = false;
-    indicator.isPickable = false;
-
-    const material = new StandardMaterial(`baseSelMat_${this.id}`, this.scene);
-    material.diffuseColor = Color3.Green();
-    material.emissiveColor = Color3.Green();
-    indicator.material = material;
-
-    return indicator;
-  }
-
-  // Selection methods
-  public get isSelected(): boolean {
-    return this._isSelected;
-  }
-
-  public select(): void {
-    this._isSelected = true;
-    this.selectionIndicator.isVisible = true;
-  }
-
-  public deselect(): void {
-    this._isSelected = false;
-    this.selectionIndicator.isVisible = false;
-  }
-
-  public canBeSelected(): boolean {
-    // In multiplayer, ownership filtering is handled by Game.ts
-    // Bases are always selectable from a technical standpoint
-    return true;
-  }
 
   // Debug methods
   public get debug(): boolean {
@@ -181,7 +138,6 @@ export class Base extends Entity {
   }
 
   public override dispose(): void {
-    this.selectionIndicator.dispose();
     if (this.rangeIndicator) {
       this.rangeIndicator.dispose();
     }
