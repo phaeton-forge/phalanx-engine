@@ -1,34 +1,16 @@
-import { Vector3 } from '@babylonjs/core';
 import type { SystemContext } from '../core/SystemContext';
 import { GameSystem } from './GameSystem';
 import {
   fpToVector3Ref,
   lerpVector3FromFpRef,
 } from '../core/MathConversions';
-import { FPVector3, type FPVector3 as FPVector3Type } from 'phalanx-math';
-
-/**
- * Interpolation state for an entity
- * Stores previous and current fixed-point simulation positions for smooth visual interpolation
- *
- * NOTE: We store FPVector3 (fixed-point) for deterministic snapshot/capture,
- * but interpolate to Vector3 (float) for rendering.
- */
-interface InterpolationState {
-  entityId: number;
-  /** Fixed-point position from previous simulation tick (authoritative) */
-  previousFpPosition: FPVector3Type;
-  /** Fixed-point position from current simulation tick (authoritative) */
-  currentFpPosition: FPVector3Type;
-  /** Visual position applied to mesh (interpolated, for rendering) */
-  visualPosition: Vector3;
-  /** Whether this entity needs interpolation */
-  active: boolean;
-}
+import { ComponentType, InterpolationComponent } from '../components';
 
 /**
  * InterpolationSystem - Provides smooth visual movement between network ticks
  * Extends GameSystem for consistent lifecycle management
+ *
+ * This is a core system that should always be present in multiplayer games.
  *
  * ARCHITECTURE:
  * - Simulation runs at 20 ticks/sec (deterministic, synchronized)
@@ -44,13 +26,11 @@ interface InterpolationState {
  * - alpha = 0: Show position from previous tick
  * - alpha = 1: Show position from current tick
  * - alpha = 0.5: Show position halfway between
+ *
+ * Following ECS principles: queries entities with InterpolationComponent
+ * instead of maintaining internal state.
  */
 export class InterpolationSystem extends GameSystem {
-  private states: Map<number, InterpolationState> = new Map();
-
-  // Entities that should NOT be interpolated (static structures)
-  private staticEntities: Set<number> = new Set();
-
   constructor() {
     super();
   }
@@ -63,53 +43,17 @@ export class InterpolationSystem extends GameSystem {
   }
 
   /**
-   * Register an entity for interpolation
-   * Call this when a new entity is created
-   */
-  public registerEntity(entityId: number, isStatic: boolean = false): void {
-    if (isStatic) {
-      this.staticEntities.add(entityId);
-      return;
-    }
-
-    const entity = this.entityManager.getEntity(entityId);
-    if (!entity) return;
-
-    // Clone the authoritative fixed-point position for interpolation state
-    const fpPos = entity.fpPosition;
-    const clonedFpPos: FPVector3Type = FPVector3.Create(fpPos.x, fpPos.y, fpPos.z);
-    const clonedFpPos2: FPVector3Type = FPVector3.Create(fpPos.x, fpPos.y, fpPos.z);
-
-    this.states.set(entityId, {
-      entityId,
-      previousFpPosition: clonedFpPos,
-      currentFpPosition: clonedFpPos2,
-      visualPosition: entity.position.clone(),
-      active: true,
-    });
-  }
-
-  /**
-   * Unregister an entity from interpolation
-   * Call this when an entity is destroyed
-   */
-  public unregisterEntity(entityId: number): void {
-    this.states.delete(entityId);
-    this.staticEntities.delete(entityId);
-  }
-
-  /**
    * Snapshot current positions as "previous" positions
    * Call this BEFORE running simulation tick
    */
   public snapshotPositions(): void {
-    for (const state of this.states.values()) {
-      // Previous becomes what was current (copy fixed-point values)
-      state.previousFpPosition = FPVector3.Create(
-        state.currentFpPosition.x,
-        state.currentFpPosition.y,
-        state.currentFpPosition.z
-      );
+    const entities = this.entityManager.queryEntities(ComponentType.Interpolation);
+
+    for (const entity of entities) {
+      const interpolation = entity.getComponent<InterpolationComponent>(ComponentType.Interpolation);
+      if (!interpolation || !interpolation.active) continue;
+
+      interpolation.snapshotPosition();
     }
   }
 
@@ -118,13 +62,13 @@ export class InterpolationSystem extends GameSystem {
    * Call this AFTER running simulation tick
    */
   public captureCurrentPositions(): void {
-    for (const state of this.states.values()) {
-      const entity = this.entityManager.getEntity(state.entityId);
-      if (!entity) continue;
+    const entities = this.entityManager.queryEntities(ComponentType.Interpolation);
 
-      // Capture the new authoritative fixed-point simulation position
-      const fpPos = entity.fpPosition;
-      state.currentFpPosition = FPVector3.Create(fpPos.x, fpPos.y, fpPos.z);
+    for (const entity of entities) {
+      const interpolation = entity.getComponent<InterpolationComponent>(ComponentType.Interpolation);
+      if (!interpolation || !interpolation.active) continue;
+
+      interpolation.capturePosition(entity.fpPosition);
     }
   }
 
@@ -141,21 +85,23 @@ export class InterpolationSystem extends GameSystem {
     // Clamp alpha to valid range
     alpha = Math.max(0, Math.min(1, alpha));
 
-    for (const state of this.states.values()) {
-      const entity = this.entityManager.getEntity(state.entityId);
-      if (!entity) continue;
+    const entities = this.entityManager.queryEntities(ComponentType.Interpolation);
+
+    for (const entity of entities) {
+      const interpolation = entity.getComponent<InterpolationComponent>(ComponentType.Interpolation);
+      if (!interpolation || !interpolation.active) continue;
 
       // Lerp between previous and current fixed-point positions,
       // writing result to the existing visualPosition Vector3 (no allocation)
       lerpVector3FromFpRef(
-        state.previousFpPosition,
-        state.currentFpPosition,
+        interpolation.previousFpPosition,
+        interpolation.currentFpPosition,
         alpha,
-        state.visualPosition
+        interpolation.visualPosition
       );
 
       // Apply visual position to the entity's mesh
-      entity.setVisualPosition(state.visualPosition);
+      entity.setVisualPosition(interpolation.visualPosition);
     }
   }
 
@@ -164,29 +110,22 @@ export class InterpolationSystem extends GameSystem {
    * Use this when teleporting or on initial spawn
    */
   public snapToCurrentPositions(): void {
-    for (const state of this.states.values()) {
-      const entity = this.entityManager.getEntity(state.entityId);
-      if (!entity) continue;
+    const entities = this.entityManager.queryEntities(ComponentType.Interpolation);
 
-      // Copy current fixed-point position to both previous and current
+    for (const entity of entities) {
+      const interpolation = entity.getComponent<InterpolationComponent>(ComponentType.Interpolation);
+      if (!interpolation) continue;
+
+      // Snap to current entity position
       const fpPos = entity.fpPosition;
-      state.previousFpPosition = FPVector3.Create(fpPos.x, fpPos.y, fpPos.z);
-      state.currentFpPosition = FPVector3.Create(fpPos.x, fpPos.y, fpPos.z);
+      interpolation.snapToPosition(fpPos);
 
       // Convert fixed-point to visual position (no allocation, reuse existing Vector3)
-      fpToVector3Ref(fpPos, state.visualPosition);
+      fpToVector3Ref(fpPos, interpolation.visualPosition);
 
       // Apply to mesh
-      entity.setVisualPosition(state.visualPosition);
+      entity.setVisualPosition(interpolation.visualPosition);
     }
-  }
-
-  /**
-   * Clear all interpolation states
-   */
-  public clear(): void {
-    this.states.clear();
-    this.staticEntities.clear();
   }
 
   /**
@@ -194,6 +133,5 @@ export class InterpolationSystem extends GameSystem {
    */
   public override dispose(): void {
     super.dispose(); // Clean up subscriptions from base class
-    this.clear();
   }
 }

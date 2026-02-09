@@ -201,7 +201,6 @@ export class Game {
       this.sceneManager,
       this.systemRegistry.entityManager
     );
-    this.entityFactory.setInterpolationSystem(this.interpolationSystem);
 
     // Phase 2: Initialize UI manager
     this.uiManager = new UIManager(
@@ -263,8 +262,7 @@ export class Game {
     // Phase 9: Create entity cleanup service
     this.entityCleanupService = new EntityCleanupService(
       this.systemRegistry.entityManager,
-      this.entityFactory,
-      this.interpolationSystem
+      this.entityFactory
     );
 
     // Phase 10: Create coordinators

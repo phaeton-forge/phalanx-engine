@@ -1,14 +1,12 @@
 import { Vector3, Color3 } from '@babylonjs/core';
 import type { SceneManager } from './SceneManager';
 import type { EntityManager } from './EntityManager';
-import type { InterpolationSystem } from '../systems/InterpolationSystem';
-import type { Unit, UnitConfig } from '../entities/Unit';
 import type { PrismaUnit, PrismaUnitConfig } from '../entities/PrismaUnit';
 import type { LanceUnit, LanceUnitConfig } from '../entities/LanceUnit';
 import type { MutantUnit, MutantUnitConfig } from '../entities/MutantUnit';
 import type { Tower, TowerConfig } from '../entities/Tower';
 import type { Base, BaseConfig } from '../entities/Base';
-import { PhysicsBodyComponent, HealthBarComponent } from '../components';
+import { PhysicsBodyComponent, HealthBarComponent, InterpolationComponent } from '../components';
 import { TeamTag } from '../enums/TeamTag';
 import { arenaParams, unitConfig } from '../config/constants';
 
@@ -23,7 +21,6 @@ import { arenaParams, unitConfig } from '../config/constants';
 export class EntityFactory {
   private sceneManager: SceneManager;
   private entityManager: EntityManager;
-  private interpolationSystem: InterpolationSystem | null = null;
 
   // Map entity IDs to player info
   private entityOwnership: Map<number, string> = new Map();
@@ -36,42 +33,6 @@ export class EntityFactory {
     this.entityManager = entityManager;
   }
 
-  /**
-   * Set the interpolation system for smooth visual updates
-   * Called after construction to avoid circular dependency
-   */
-  public setInterpolationSystem(
-    interpolationSystem: InterpolationSystem
-  ): void {
-    this.interpolationSystem = interpolationSystem;
-  }
-
-
-  /**
-   * Create a unit and register it with all necessary systems
-   */
-  public createUnit(config: UnitConfig, position: Vector3): Unit {
-    const unit = this.sceneManager.createUnit(config, position);
-
-    // Add PhysicsBodyComponent - units are dynamic bodies
-    unit.addComponent(new PhysicsBodyComponent({
-      radius: 1.0,
-      mass: 1.0,
-      isStatic: false,
-    }));
-
-    // Add HealthBarComponent for health visualization
-    unit.addComponent(new HealthBarComponent(2.5));
-
-    // Register with EntityManager
-    this.entityManager.addEntity(unit);
-
-    // Register with InterpolationSystem for smooth visual movement
-    this.interpolationSystem?.registerEntity(unit.id, false);
-
-
-    return unit;
-  }
 
   /**
    * Create a PrismaUnit and register it with all necessary systems
@@ -92,11 +53,12 @@ export class EntityFactory {
     // Add HealthBarComponent for health visualization
     unit.addComponent(new HealthBarComponent(3.5));
 
+    // Add InterpolationComponent for smooth visual movement
+    unit.addComponent(new InterpolationComponent(unit.fpPosition, false));
+
     // Register with EntityManager
     this.entityManager.addEntity(unit);
 
-    // Register with InterpolationSystem for smooth visual movement
-    this.interpolationSystem?.registerEntity(unit.id, false);
 
 
     return unit;
@@ -121,11 +83,12 @@ export class EntityFactory {
     // Add HealthBarComponent for health visualization
     unit.addComponent(new HealthBarComponent(3.0));
 
+    // Add InterpolationComponent for smooth visual movement
+    unit.addComponent(new InterpolationComponent(unit.fpPosition, false));
+
     // Register with EntityManager
     this.entityManager.addEntity(unit);
 
-    // Register with InterpolationSystem for smooth visual movement
-    this.interpolationSystem?.registerEntity(unit.id, false);
 
 
     return unit;
@@ -150,11 +113,12 @@ export class EntityFactory {
     // Add HealthBarComponent for health visualization
     unit.addComponent(new HealthBarComponent(4.5));
 
+    // Add InterpolationComponent for smooth visual movement
+    unit.addComponent(new InterpolationComponent(unit.fpPosition, false));
+
     // Register with EntityManager
     this.entityManager.addEntity(unit);
 
-    // Register with InterpolationSystem for smooth visual movement
-    this.interpolationSystem?.registerEntity(unit.id, false);
 
 
     return unit;
@@ -176,11 +140,12 @@ export class EntityFactory {
     // Add HealthBarComponent for health visualization
     tower.addComponent(new HealthBarComponent(5.0));
 
+    // Add InterpolationComponent - towers are static, don't need smooth movement
+    tower.addComponent(new InterpolationComponent(tower.fpPosition, true));
+
     // Register with EntityManager
     this.entityManager.addEntity(tower);
 
-    // Register with InterpolationSystem as static (doesn't need smooth movement)
-    this.interpolationSystem?.registerEntity(tower.id, true);
 
 
     return tower;
@@ -202,11 +167,12 @@ export class EntityFactory {
     // Add HealthBarComponent for health visualization
     base.addComponent(new HealthBarComponent(5.5));
 
+    // Add InterpolationComponent - bases are static, don't need smooth movement
+    base.addComponent(new InterpolationComponent(base.fpPosition, true));
+
     // Register with EntityManager
     this.entityManager.addEntity(base);
 
-    // Register with InterpolationSystem as static (doesn't need smooth movement)
-    this.interpolationSystem?.registerEntity(base.id, true);
 
 
     return base;
@@ -237,7 +203,7 @@ export class EntityFactory {
             arenaParams.colors.teamB.b
           );
 
-    let unit: Unit | PrismaUnit | LanceUnit | MutantUnit;
+    let unit: PrismaUnit | LanceUnit | MutantUnit;
 
     if (unitType === 'sphere') {
       // Sphere is deprecated, create mutant instead

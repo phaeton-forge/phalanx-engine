@@ -1,6 +1,5 @@
 import type { EntityManager } from './EntityManager';
 import type { EntityFactory } from './EntityFactory';
-import type { InterpolationSystem } from '../systems/InterpolationSystem';
 
 /**
  * EntityCleanupService - Handles cleanup of destroyed entities
@@ -10,22 +9,20 @@ import type { InterpolationSystem } from '../systems/InterpolationSystem';
  * - Cleaning up ownership tracking
  * - Disposing entity resources
  *
- * Note: HealthBarSystem cleanup is automatic - it queries entities with
- * HealthBarComponent and removes UI when entities are no longer found.
+ * Note: HealthBarSystem and InterpolationSystem cleanup is automatic -
+ * they query entities with their respective components and the components
+ * are disposed when entities are removed.
  */
 export class EntityCleanupService {
   private entityManager: EntityManager;
   private entityFactory: EntityFactory;
-  private interpolationSystem: InterpolationSystem;
 
   constructor(
     entityManager: EntityManager,
-    entityFactory: EntityFactory,
-    interpolationSystem: InterpolationSystem
+    entityFactory: EntityFactory
   ) {
     this.entityManager = entityManager;
     this.entityFactory = entityFactory;
-    this.interpolationSystem = interpolationSystem;
   }
 
   /**
@@ -36,9 +33,8 @@ export class EntityCleanupService {
 
     for (const entity of destroyed) {
       this.entityFactory.removeOwnership(entity.id);
-      this.interpolationSystem.unregisterEntity(entity.id);
-      // HealthBarComponent cleanup is automatic - HealthBarSystem's update()
-      // removes UI for entities that no longer exist
+      // InterpolationComponent and HealthBarComponent cleanup is automatic -
+      // they are removed with the entity when disposed
 
       entity.dispose();
     }

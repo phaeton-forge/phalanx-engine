@@ -16,3 +16,4 @@ export { RotationComponent } from './RotationComponent';
 export { AttackLockComponent } from './AttackLockComponent';
 export { PhysicsBodyComponent } from './PhysicsBodyComponent';
 export { HealthBarComponent } from './HealthBarComponent';
+export { InterpolationComponent } from './InterpolationComponent';

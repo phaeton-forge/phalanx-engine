@@ -10,8 +10,6 @@ import {
     Mesh,
     LinesMesh,
 } from '@babylonjs/core';
-import {Unit} from '../entities/Unit';
-import type {UnitConfig} from '../entities/Unit';
 import {PrismaUnit} from '../entities/PrismaUnit';
 import type {PrismaUnitConfig} from '../entities/PrismaUnit';
 import {LanceUnit} from '../entities/LanceUnit';
@@ -284,15 +282,6 @@ export class SceneManager {
         const destMat = new StandardMaterial('destMat', this.scene);
         destMat.diffuseColor = new Color3(1, 0.5, 0);
         this.destinationMarker.material = destMat;
-    }
-
-    public createUnit(config: UnitConfig = {}, position?: Vector3): Unit {
-        const unit = new Unit(this.scene, config, position);
-        const unitMesh = unit.getMesh();
-        if (this.shadowGenerator && unitMesh) {
-            this.shadowGenerator.addShadowCaster(unitMesh);
-        }
-        return unit;
     }
 
     public createPrismaUnit(

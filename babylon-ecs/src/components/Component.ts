@@ -25,6 +25,7 @@ export const ComponentType = {
   Death: Symbol('Death'),
   PhysicsBody: Symbol('PhysicsBody'),
   HealthBar: Symbol('HealthBar'),
+  Interpolation: Symbol('Interpolation'),
 } as const;
 
 export type ComponentTypeKey = keyof typeof ComponentType;
