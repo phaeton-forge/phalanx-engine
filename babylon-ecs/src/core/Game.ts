@@ -24,7 +24,6 @@ import { AnimationSystem } from '../systems/AnimationSystem';
 import { RotationSystem } from '../systems/RotationSystem';
 import { HealthBarSystem } from '../systems/HealthBarSystem';
 import { CameraController } from '../systems/CameraController';
-import { InputManager } from '../systems/InputManager';
 import { TeamTag } from '../enums/TeamTag';
 import type { PhalanxClient, MatchFoundEvent } from 'phalanx-client';
 
@@ -87,7 +86,6 @@ export class Game {
 
   // Input/Camera
   private cameraController!: CameraController;
-  private inputManager!: InputManager;
 
   // Callbacks
   private onExit: (() => void) | null = null;
@@ -239,26 +237,22 @@ export class Game {
       this.cameraController
     );
 
-    // Phase 7: Create input manager
-    this.inputManager = new InputManager();
-    this.inputManager.init(this.systemRegistry.getContext());
-
-    // Phase 8: Create lockstep manager (needs all systems)
+    // Phase 7: Create lockstep manager (needs all systems)
     this.lockstepManager = this.createLockstepManager();
 
-    // Phase 9: Create entity cleanup service
+    // Phase 8: Create entity cleanup service
     this.entityCleanupService = new EntityCleanupService(
       this.systemRegistry.entityManager,
       this.entityFactory
     );
 
-    // Phase 10: Create coordinators
+    // Phase 9: Create coordinators
     this.createCoordinators();
 
-    // Phase 11: Setup scene and create entities
+    // Phase 10: Setup scene and create entities
     this.gameInitializer.setupScene();
 
-    // Phase 12: Setup unit placement UI
+    // Phase 11: Setup unit placement UI
     this.setupUnitPlacementUI();
   }
 
@@ -408,7 +402,6 @@ export class Game {
 
     // Dispose late systems (not in SystemRegistry)
     this.cameraController?.dispose();
-    this.inputManager?.dispose();
 
     // Dispose scene manager
     this.sceneManager?.dispose();

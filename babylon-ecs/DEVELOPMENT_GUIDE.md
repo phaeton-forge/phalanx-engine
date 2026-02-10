@@ -285,10 +285,10 @@ JavaScript's `Number` type uses IEEE 754 floating-point, which can produce sligh
 **Movement Commands (Networked):**
 
 ```
-Player Right-Click → InputManager → EventBus (MOVE_REQUESTED)
-                                          ↓
-                                    Game intercepts
-                                          ↓
+Player Right-Click → EventBus (MOVE_REQUESTED)
+                           ↓
+                     Game intercepts
+                           ↓
                               LockstepManager.queueCommand()
                                           ↓
                               client.sendCommand() (automatic flush)
@@ -888,7 +888,6 @@ if (movementSystem) {
 | `HealthSystem`        | Damage processing, entity destruction  | Health               |
 | `PhysicsSystem`       | Deterministic physics, collision       | PhysicsBody          |
 | `ProjectileSystem`    | Projectile movement and collision      | -                    |
-| `InputManager`        | User input handling                    | -                    |
 | `InterpolationSystem` | Smooth visual movement between ticks   | Interpolation        |
 | `ResourceSystem`      | Resource generation and spending       | -                    |
 | `TerritorySystem`     | Territory control and aggression bonus | Team                 |
@@ -1377,7 +1376,6 @@ src/
 │   ├── PhysicsSystem.ts     # Deterministic physics simulation
 │   ├── HealthSystem.ts      # Damage processing
 │   ├── ProjectileSystem.ts  # Projectile management
-│   ├── InputManager.ts      # User input handling
 │   ├── InterpolationSystem.ts # Smooth visual interpolation
 │   ├── ResourceSystem.ts    # Resource generation/spending
 │   ├── TerritorySystem.ts   # Territory control
