@@ -71,14 +71,6 @@ export type {
   SocketManagerCallbacks,
 } from './SocketManager.js';
 
-// Tick simulation (advanced usage - for custom timing logic)
-export { TickSimulation } from './TickSimulation.js';
-export type {
-  TickSimulationConfig,
-  SimulationTickCallback,
-  BeforeTickCallback,
-  AfterTickCallback,
-} from './TickSimulation.js';
 
 // Deterministic random number generator
 export { DeterministicRandom } from './DeterministicRandom.js';

@@ -135,36 +135,53 @@ This ensures all clients see the exact same game state at all times.
 
 | Component             | Location       | Purpose                                     |
 | --------------------- | -------------- | ------------------------------------------- |
-| `PhalanxClient`       | phalanx-client | Network connection, matchmaking, events     |
-| `TickSimulation`      | phalanx-client | Tick timing, interpolation, command queue   |
+| `PhalanxClient`       | phalanx-client | Network connection, matchmaking, tick/frame |
 | `LockstepManager`     | babylon-ecs    | Game-specific command execution, simulation |
 | `InterpolationSystem` | babylon-ecs    | Smooth visual movement between ticks        |
 
-### TickSimulation (from phalanx-client)
+### PhalanxClient Tick/Frame API
 
-The `TickSimulation` class handles network-level synchronization:
+The `PhalanxClient` provides two simple callbacks for game synchronization:
 
 ```typescript
-import { PhalanxClient, TickSimulation } from 'phalanx-client';
+import { PhalanxClient } from 'phalanx-client';
 
-// Create tick simulation
-const simulation = new TickSimulation(client, { tickRate: 20 });
-
-// Register simulation callback - called for each tick
-simulation.onSimulationTick((tick, commands) => {
-  executeCommands(commands);
-  runGameSimulation();
+// Connect to server
+const client = await PhalanxClient.create({
+  serverUrl: 'http://localhost:3000',
+  playerId: 'player-123',
+  username: 'MyPlayer',
 });
 
-// Interpolation hooks for smooth visuals
-simulation.onBeforeTick(() => interpolationSystem.snapshotPositions());
-simulation.onAfterTick(() => interpolationSystem.captureCurrentPositions());
+// Tick callback - called once per network tick (deterministic simulation)
+client.onTick((tick, commands) => {
+  // Snapshot positions BEFORE simulation for interpolation
+  interpolationSystem.snapshotPositions();
+  
+  // Process commands and run simulation
+  lockstepManager.processTick(tick, commands);
+  
+  // Capture positions AFTER simulation
+  interpolationSystem.captureCurrentPositions();
+});
 
-// In render loop
-const alpha = simulation.getInterpolationAlpha();
-interpolationSystem.interpolate(alpha);
-simulation.flushCommands();
+// Frame callback - called every render frame (visual updates)
+client.onFrame((alpha, deltaTime) => {
+  // Interpolate between tick positions for smooth visuals
+  interpolationSystem.interpolate(alpha);
+  
+  // Render the scene
+  scene.render();
+});
+
+// Send commands to server
+client.sendCommand('move', { entityId: 1, targetX: 10, targetZ: 20 });
 ```
+
+**Key Points:**
+- `onTick(tick, commands)` - Called at fixed rate (20 ticks/sec), contains all player commands
+- `onFrame(alpha, deltaTime)` - Called every render frame, `alpha` (0-1) for interpolation
+- Commands are sent via `client.sendCommand(type, data)` - automatically batched and synced
 
 ### LockstepManager
 
@@ -274,11 +291,11 @@ Player Right-Click → InputManager → EventBus (MOVE_REQUESTED)
                                           ↓
                               LockstepManager.queueCommand()
                                           ↓
-                              TickSimulation.flushCommands()
+                              client.sendCommand() (automatic flush)
                                           ↓
                               Server receives, broadcasts
                                           ↓
-                              TickSimulation.onSimulationTick()
+                              client.onTick() callback
                                           ↓
                               LockstepManager.executeTickCommands()
                                           ↓
