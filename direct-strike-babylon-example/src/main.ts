@@ -40,9 +40,7 @@ lobbyScene.setOnGameStart(
     game = new Game(canvas, client, matchData);
     game.setOnExit(returnToLobby);
 
-    void game.initialize().then(() => {
-      game?.start();
-    });
+    void game.initialize();
   }
 );
 
