@@ -1,10 +1,10 @@
 import { Engine, Scene } from '@babylonjs/core';
-import { SystemRegistry } from 'phalanx-babylon-ecs';
+import { GameWorld } from 'phalanx-babylon-ecs';
+import type { CommandsBatch } from 'phalanx-babylon-ecs';
 import { LockstepManager } from './LockstepManager';
 import { EntityFactory } from './EntityFactory';
 import { UIManager } from './UIManager';
 import { AssetManager } from './AssetManager';
-import { NetworkCoordinator } from './NetworkCoordinator';
 import { GameEventCoordinator } from './GameEventCoordinator';
 import { GameInitializer } from './GameInitializer';
 import { EntityCleanupService } from './EntityCleanupService';
@@ -25,7 +25,7 @@ import { RotationSystem } from '../systems/RotationSystem';
 import { HealthBarSystem } from '../systems/HealthBarSystem';
 import { CameraController } from '../systems/CameraController';
 import { TeamTag } from '../enums/TeamTag';
-import { ComponentType } from '../components/Component';
+import { ComponentType } from '../components';
 import type { PhalanxClient, MatchFoundEvent } from 'phalanx-client';
 
 /**
@@ -33,8 +33,7 @@ import type { PhalanxClient, MatchFoundEvent } from 'phalanx-client';
  * Supports networked 1v1 multiplayer via Phalanx Engine
  *
  * This class acts as a thin orchestrator, delegating responsibilities to:
- * - SystemRegistry: System creation and wiring
- * - NetworkCoordinator: Network events and tick/frame handling
+ * - GameWorld: ECS facade (systems, entities, events, tick/frame loop)
  * - GameEventCoordinator: Game event subscriptions
  * - GameInitializer: World setup and entity creation
  * - EntityCleanupService: Entity destruction cleanup
@@ -51,9 +50,10 @@ export class Game {
   private matchData: MatchFoundEvent;
   private localTeam: TeamTag;
 
-  // Registries and coordinators
-  private systemRegistry: SystemRegistry;
-  private networkCoordinator!: NetworkCoordinator;
+  // ECS facade
+  private world: GameWorld;
+
+  // Coordinators
   private gameEventCoordinator!: GameEventCoordinator;
   private gameInitializer!: GameInitializer;
   private entityCleanupService!: EntityCleanupService;
@@ -66,6 +66,9 @@ export class Game {
 
   // Core systems
   private sceneManager!: SceneManager;
+
+  // Network event unsubscribers
+  private networkEventUnsubscribers: (() => void)[] = [];
 
   // Gameplay systems
   private movementSystem!: MovementSystem;
@@ -111,10 +114,13 @@ export class Game {
     this.engine = new Engine(canvas, true);
     this.scene = new Scene(this.engine);
 
-    // Create system registry and initialize core dependencies
-    this.systemRegistry = new SystemRegistry(this.engine, this.scene);
-    // Register component types for efficient entity queries
-    this.systemRegistry.createCoreDependencies(Object.values(ComponentType));
+    // Create GameWorld facade (replaces SystemRegistry + NetworkCoordinator)
+    this.world = new GameWorld({
+      engine: this.engine,
+      scene: this.scene,
+      componentTypes: Object.values(ComponentType),
+      tickFrameProvider: this.client,
+    });
 
     // Create scene manager (not a GameSystem, but needed by other systems)
     this.sceneManager = new SceneManager(
@@ -173,7 +179,7 @@ export class Game {
     ];
 
     // Register systems and call init() on each
-    this.systemRegistry.registerSystems(tickSystems, frameSystems);
+    this.world.registerSystems(tickSystems, frameSystems);
 
     this.setupResizeHandler();
   }
@@ -201,12 +207,12 @@ export class Game {
     // Phase 1: Initialize entity factory
     this.entityFactory = new EntityFactory(
       this.sceneManager,
-      this.systemRegistry.entityManager
+      this.world.entityManager
     );
 
     // Phase 2: Initialize UI manager (decoupled from systems, uses EventBus)
     this.uiManager = new UIManager(
-      this.systemRegistry.eventBus,
+      this.world.eventBus,
       this.matchData.playerId
     );
 
@@ -218,7 +224,7 @@ export class Game {
       this.entityFactory,
       this.uiManager,
       this.assetManager,
-      this.systemRegistry.getContext(),
+      this.world.context,
       this.sceneManager,
       this.matchData,
       this.localTeam,
@@ -244,7 +250,7 @@ export class Game {
 
     // Phase 8: Create entity cleanup service
     this.entityCleanupService = new EntityCleanupService(
-      this.systemRegistry.entityManager,
+      this.world.entityManager,
       this.entityFactory
     );
 
@@ -267,9 +273,8 @@ export class Game {
       {
         movementSystem: this.movementSystem,
         formationGridSystem: this.formationGridSystem,
-        eventBus: this.systemRegistry.eventBus,
+        eventBus: this.world.eventBus,
       },
-      this.systemRegistry,
       {
         onCleanupNeeded: () => this.entityCleanupService.cleanupDestroyedEntities(),
         onNotification: (msg, type) =>
@@ -283,37 +288,64 @@ export class Game {
   }
 
   /**
-   * Create network and game event coordinators
+   * Setup network event handlers and game event coordinators, then start the world loop
    */
   private createCoordinators(): void {
-    // Create network coordinator
-    this.networkCoordinator = new NetworkCoordinator(
-      this.client,
-      this.client, // PhalanxClient implements ITickFrameProvider interface
-      this.lockstepManager,
-      this.systemRegistry,
-      this.uiManager,
-      this.scene,
-      {
-        cameraController: this.cameraController,
-        interpolationSystem: this.interpolationSystem,
-      },
-      {
-        onPlayerDisconnected: () => this.handleExit(),
-        onPlayerReconnected: () => {},
-        onMatchEnd: () => this.handleExit(),
-      }
+    this.networkEventUnsubscribers.push(
+      this.client.on('playerDisconnected', (_event) => {
+        this.uiManager.showNotification('Opponent disconnected', 'warning');
+        setTimeout(() => {
+          this.handleExit();
+        }, 3000);
+      })
     );
 
-    this.networkCoordinator.setupNetworkEventHandlers();
-    this.networkCoordinator.setupPhalanxClientHandlers();
+    this.networkEventUnsubscribers.push(
+      this.client.on('playerReconnected', (_event) => {
+        this.uiManager.showNotification('Opponent reconnected', 'info');
+      })
+    );
+
+    this.networkEventUnsubscribers.push(
+      this.client.on('matchEnd', (event) => {
+        this.uiManager.showNotification(`Match ended: ${event.reason}`, 'info');
+        setTimeout(() => {
+          this.handleExit();
+        }, 2000);
+      })
+    );
+
+    this.world.start({
+      beforeTick: (tick: number, commandsBatch: CommandsBatch) => {
+        // Snapshot positions before simulation
+        this.interpolationSystem.snapshotPositions();
+
+        // Execute commands through lockstep manager (before tick systems run)
+        this.lockstepManager.processTick(tick, commandsBatch);
+      },
+      afterTick: (_tick: number) => {
+        // Capture new positions after simulation
+        this.interpolationSystem.captureCurrentPositions();
+
+        // Cleanup destroyed entities
+        this.lockstepManager.cleanup();
+      },
+      beforeFrame: (_alpha: number, dt: number) => {
+        // Update camera controller (keyboard/touch input)
+        this.cameraController.update(dt);
+      },
+      afterFrame: (alpha: number, _dt: number) => {
+        // Interpolate visual positions using alpha
+        this.interpolationSystem.interpolate(alpha);
+      },
+    });
 
     // Create game event coordinator
     this.gameEventCoordinator = new GameEventCoordinator(
-      this.systemRegistry.eventBus,
+      this.world.eventBus,
       this.uiManager,
       this.lockstepManager,
-      this.systemRegistry.entityManager,
+      this.world.entityManager,
       this.entityFactory,
       {
         localPlayerId: this.matchData.playerId,
@@ -384,33 +416,31 @@ export class Game {
     });
   }
 
-  /**
-   * Start the game
-   * The render loop is managed by PhalanxClient via onFrame handler
-   */
-  public start(): void {
-    // PhalanxClient manages the render loop via onFrame callback
-    // No need for engine.runRenderLoop() anymore
-  }
 
   /**
    * Cleanup resources
    */
   public dispose(): void {
-    // Dispose coordinators first
-    this.networkCoordinator?.dispose();
+    // Stop tick/frame loop
+    this.world.stop();
+
+    // Unsubscribe from network event handlers
+    for (const unsubscribe of this.networkEventUnsubscribers) {
+      unsubscribe();
+    }
+    this.networkEventUnsubscribers = [];
 
     // Dispose UI
     this.uiManager?.dispose();
 
-    // Dispose late systems (not in SystemRegistry)
+    // Dispose late systems (not in GameWorld)
     this.cameraController?.dispose();
 
     // Dispose scene manager
     this.sceneManager?.dispose();
 
-    // Dispose all systems registered in SystemRegistry
-    this.systemRegistry.dispose();
+    // Dispose all systems registered in GameWorld
+    this.world.dispose();
 
     // Clear managers
     this.entityFactory?.clear();

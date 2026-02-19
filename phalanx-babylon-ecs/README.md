@@ -4,13 +4,17 @@ A lightweight Entity-Component-System (ECS) library for Babylon.js with optional
 
 ## Features
 
-- **Pure ECS Architecture**: EntityManager, SystemRegistry, EventBus
+- **GameWorld Facade**: One-liner setup — construct, register systems, start
+- **Pure ECS Architecture**: EntityManager, GameSystem, EventBus
 - **Flexible Integration**: Use standalone or with Phalanx Client for multiplayer
 - **TypeScript First**: Full type safety and excellent IDE support
 - **Babylon.js Optimized**: Designed specifically for Babylon.js workflows
 - **Deterministic Tick/Frame**: Separate tick-based simulation from frame-based rendering
 
 ## Core Components
+
+### GameWorld (Recommended Entry Point)
+- **GameWorld**: High-level facade — creates all core dependencies, wires tick/frame loops, provides convenience accessors
 
 ### Entity Management
 - **Entity**: Abstract base class for all game objects
@@ -19,7 +23,7 @@ A lightweight Entity-Component-System (ECS) library for Babylon.js with optional
 
 ### System Architecture
 - **GameSystem**: Base class for all game systems
-- **SystemRegistry**: Manages system lifecycle and execution order
+- **SystemRegistry**: Low-level system lifecycle and execution order (used internally by GameWorld)
 - **SystemContext**: Dependency injection container
 
 ### Event System
@@ -37,62 +41,44 @@ npm install phalanx-babylon-ecs
 
 ## Usage
 
-### Single-player Mode (No-Op Client)
+### Single-player Mode
 
 ```typescript
 import { Engine, Scene } from '@babylonjs/core';
-import {
-  SystemRegistry,
-  TickFrameManager,
-  EntityManager,
-  EventBus
-} from 'phalanx-babylon-ecs';
+import { GameWorld } from 'phalanx-babylon-ecs';
 
 // Create Babylon.js engine and scene
 const canvas = document.getElementById('canvas') as HTMLCanvasElement;
 const engine = new Engine(canvas, true);
 const scene = new Scene(engine);
 
-// Create ECS core
-const systemRegistry = new SystemRegistry(engine, scene);
-systemRegistry.createCoreDependencies();
+// Create GameWorld (internally creates TickFrameManager)
+const world = new GameWorld({
+  engine,
+  scene,
+  tickRate: 60,        // optional, default 60
+  maxFrameTime: 0.25,  // optional, default 0.25
+});
 
-// Create your systems
+// Create and register your systems
 const movementSystem = new MovementSystem();
 const renderSystem = new RenderSystem();
 
-// Register systems
-systemRegistry.registerSystems(
-  [movementSystem],      // Tick systems
-  [renderSystem]         // Frame systems
+world.registerSystems(
+  [movementSystem],  // Tick systems (deterministic)
+  [renderSystem]     // Frame systems (visual)
 );
 
-// Create tick/frame manager
-const tickManager = new TickFrameManager({
-  tickRate: 60,  // 60 ticks per second
-  maxFrameTime: 0.25  // Max 250ms per frame
-});
-
-// Hook up tick and frame processing
-// onTick receives (tick, commands) - commands is empty in single-player mode
-tickManager.onTick((tick, _commands) => {
-  systemRegistry.processAllTicks(tick);
-});
-
-tickManager.onFrame((alpha, deltaTime) => {
-  systemRegistry.updateAll(deltaTime);
-  scene.render();
-});
-
-// Start the loop
-tickManager.start();
+// Start the game loop
+// Automatically runs: processAllTicks(tick), updateAll(dt), scene.render()
+world.start();
 ```
 
 ### Multiplayer Mode (with Phalanx Client)
 
 ```typescript
 import { PhalanxClient } from 'phalanx-client';
-import { SystemRegistry } from 'phalanx-babylon-ecs';
+import { GameWorld } from 'phalanx-babylon-ecs';
 
 // Initialize Phalanx Client
 const client = new PhalanxClient({
@@ -100,60 +86,97 @@ const client = new PhalanxClient({
   // ... other config
 });
 
-// Create ECS
-const systemRegistry = new SystemRegistry(engine, scene);
-systemRegistry.createCoreDependencies();
-systemRegistry.registerSystems(tickSystems, frameSystems);
-
-// Use PhalanxClient for tick/frame management
-client.onTick((tick, commandsBatch) => {
-  // Execute network commands
-  executeCommands(commandsBatch);
-
-  // Process simulation tick
-  systemRegistry.processAllTicks(tick);
+// Create GameWorld with external tick/frame provider
+const world = new GameWorld({
+  engine,
+  scene,
+  tickFrameProvider: client,
 });
 
-client.onFrame((alpha, deltaTime) => {
-  systemRegistry.updateAll(deltaTime);
-  scene.render();
+world.registerSystems(tickSystems, frameSystems);
+
+// Start with lifecycle hooks (tick systems and frame systems run automatically)
+world.start({
+  beforeTick(tick, commandsBatch) {
+    // Execute network commands before tick systems run
+    lockstepManager.processTick(tick, commandsBatch);
+  },
+  afterTick(tick) {
+    // Cleanup after tick systems have run
+    cleanupDestroyedEntities();
+  },
+  beforeFrame(alpha, dt) {
+    // Update camera before frame systems
+    cameraController.update(dt);
+  },
+  afterFrame(alpha, dt) {
+    // Interpolate after frame systems, before scene.render()
+    interpolationSystem.interpolate(alpha);
+  },
 });
 
 // Connect to match
 await client.connect();
 ```
 
-### Pluggable Architecture (ITickFrameProvider)
+### Low-level API (SystemRegistry + ITickFrameProvider)
 
-Both `TickFrameManager` and `PhalanxClient` implement the `ITickFrameProvider` interface,
-so you can write game code that works with either:
+For advanced use-cases you can still use `SystemRegistry` and `ITickFrameProvider` directly:
 
 ```typescript
-import { ITickFrameProvider, TickFrameManager, SystemRegistry } from 'phalanx-babylon-ecs';
+import { SystemRegistry, TickFrameManager } from 'phalanx-babylon-ecs';
 
-// Choose provider at initialization time
-function createGame(provider: ITickFrameProvider, systemRegistry: SystemRegistry, scene: Scene) {
-  provider.onTick((tick, commands) => {
-    // In single-player: commands is empty
-    // In multiplayer: commands contains all players' inputs
-    executeCommands(commands);
-    systemRegistry.processAllTicks(tick);
-  });
+const registry = new SystemRegistry(engine, scene, componentTypes);
+registry.registerSystems(tickSystems, frameSystems);
 
-  provider.onFrame((alpha, dt) => {
-    systemRegistry.updateAll(dt);
-    scene.render();
-  });
+const tickManager = new TickFrameManager({ tickRate: 60 });
+tickManager.onTick((tick) => registry.processAllTicks(tick));
+tickManager.onFrame((alpha, dt) => { registry.updateAll(dt); scene.render(); });
+tickManager.start();
+```## API Reference
+
+### GameWorld
+
+```typescript
+class GameWorld {
+  constructor(config: GameWorldConfig)
+
+  // Convenience accessors
+  get eventBus(): EventBus
+  get entityManager(): EntityManager
+  get context(): SystemContext
+  getSystem<T extends GameSystem>(systemClass: new (...args: any[]) => T): T | undefined
+
+  // System registration
+  registerSystems(tickSystems: GameSystem[], frameSystems: GameSystem[]): void
+  addFrameSystem(system: GameSystem): void
+
+  // Tick / Frame delegation
+  processAllTicks(tick: number): void
+  updateAll(dt: number): void
+
+  // Lifecycle
+  start(hooks?: GameWorldHooks): void
+  stop(): void
+  dispose(): void
 }
 
-// Single-player:
-const tickManager = new TickFrameManager({ tickRate: 60 });
-createGame(tickManager, systemRegistry, scene);
-tickManager.start();
+interface GameWorldConfig {
+  engine: Engine
+  scene: Scene
+  componentTypes?: symbol[]
+  tickRate?: number          // default 60
+  maxFrameTime?: number      // default 0.25
+  tickFrameProvider?: ITickFrameProvider  // e.g. PhalanxClient
+}
 
-// Multiplayer (PhalanxClient satisfies ITickFrameProvider):
-// createGame(phalanxClient, systemRegistry, scene);
-```## API Reference
+interface GameWorldHooks {
+  beforeTick?(tick: number, commands: CommandsBatch): void
+  afterTick?(tick: number): void
+  beforeFrame?(alpha: number, dt: number): void
+  afterFrame?(alpha: number, dt: number): void
+}
+```
 
 ### EntityManager
 
@@ -168,11 +191,11 @@ class EntityManager {
 }
 ```
 
-### SystemRegistry
+### SystemRegistry (Low-level)
 
 ```typescript
 class SystemRegistry {
-  createCoreDependencies(): void
+  constructor(engine: Engine, scene: Scene, componentTypes?: symbol[])
   registerSystems(tickSystems: GameSystem[], frameSystems: GameSystem[]): void
   processAllTicks(tick: number): void
   updateAll(deltaTime: number): void

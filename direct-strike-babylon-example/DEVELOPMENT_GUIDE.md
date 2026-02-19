@@ -35,8 +35,8 @@ This project uses a **component-based Entity-Component-System (ECS)** architectu
     │             │             │           │             │             │
     ▼             ▼             ▼           ▼             ▼             ▼
 ┌─────────┐ ┌───────────┐ ┌───────────┐ ┌─────────┐ ┌──────────┐ ┌─────────┐
-│ System  │ │  Network  │ │ GameEvent │ │  Game   │ │ Entity   │ │  Asset  │
-│Registry │ │Coordinator│ │Coordinator│ │Initializer│ │Cleanup  │ │ Manager │
+│GameWorld│ │ Lockstep  │ │ GameEvent │ │  Game   │ │ Entity   │ │  Asset  │
+│ (ECS)   │ │ Manager   │ │Coordinator│ │Initializer│ │Cleanup  │ │ Manager │
 └────┬────┘ └─────┬─────┘ └─────┬─────┘ └────┬────┘ └────┬─────┘ └────┬────┘
      │            │             │            │           │            │
      │            │             │            │           │            │
@@ -78,14 +78,13 @@ This project uses a **component-based Entity-Component-System (ECS)** architectu
 | Class                    | Responsibility                                          |
 | ------------------------ | ------------------------------------------------------- |
 | `Game`                   | Thin orchestrator, coordinates initialization           |
-| `SystemRegistry`         | System lifecycle (creation, registration, tick/frame)   |
+| `GameWorld`              | ECS facade (systems, entities, events, tick/frame loop) |
 | `SystemContext`          | Shared dependencies container for all systems           |
-| `NetworkCoordinator`     | Network events (tick, frame, disconnect, reconnect)     |
 | `GameEventCoordinator`   | Game event subscriptions (victory, territory, waves)    |
 | `GameInitializer`        | World setup, entity creation, asset preloading          |
 | `EntityCleanupService`   | Destroyed entity cleanup and disposal                   |
 | `AssetManager`           | 3D model preloading and instancing                      |
-| `LockstepManager`        | Deterministic command execution and simulation          |
+| `LockstepManager`        | Deterministic command execution                         |
 | `EntityFactory`          | Entity creation with ownership tracking                 |
 | `UIManager`              | UI updates, notifications, and drag interactions        |
 
@@ -133,45 +132,55 @@ This ensures all clients see the exact same game state at all times.
 
 ### Key Components
 
-| Component             | Location       | Purpose                                     |
-| --------------------- | -------------- | ------------------------------------------- |
-| `PhalanxClient`       | phalanx-client | Network connection, matchmaking, tick/frame |
-| `LockstepManager`     | babylon-ecs    | Game-specific command execution, simulation |
-| `InterpolationSystem` | babylon-ecs    | Smooth visual movement between ticks        |
+| Component             | Location           | Purpose                                     |
+| --------------------- | ------------------ | ------------------------------------------- |
+| `PhalanxClient`       | phalanx-client     | Network connection, matchmaking, tick/frame |
+| `GameWorld`           | phalanx-babylon-ecs| ECS facade, automatic tick/frame loop       |
+| `LockstepManager`     | direct-strike      | Game-specific command execution              |
+| `InterpolationSystem` | direct-strike      | Smooth visual movement between ticks        |
 
-### PhalanxClient Tick/Frame API
+### GameWorld Tick/Frame Loop
 
-The `PhalanxClient` provides two simple callbacks for game synchronization:
+The `GameWorld` manages the tick/frame loop and automatically runs all registered systems. You can inject custom logic via **lifecycle hooks**:
 
 ```typescript
-import { PhalanxClient } from 'phalanx-client';
+import { GameWorld } from 'phalanx-babylon-ecs';
 
-// Connect to server
-const client = await PhalanxClient.create({
-  serverUrl: 'http://localhost:3000',
-  playerId: 'player-123',
-  username: 'MyPlayer',
+// Create GameWorld with PhalanxClient as the tick/frame provider
+const world = new GameWorld({
+  engine,
+  scene,
+  componentTypes: Object.values(ComponentType),
+  tickFrameProvider: client,  // PhalanxClient implements ITickFrameProvider
 });
 
-// Tick callback - called once per network tick (deterministic simulation)
-client.onTick((tick, commands) => {
-  // Snapshot positions BEFORE simulation for interpolation
-  interpolationSystem.snapshotPositions();
-  
-  // Process commands and run simulation
-  lockstepManager.processTick(tick, commands);
-  
-  // Capture positions AFTER simulation
-  interpolationSystem.captureCurrentPositions();
-});
+// Register tick and frame systems
+world.registerSystems(tickSystems, frameSystems);
 
-// Frame callback - called every render frame (visual updates)
-client.onFrame((alpha, deltaTime) => {
-  // Interpolate between tick positions for smooth visuals
-  interpolationSystem.interpolate(alpha);
-  
-  // Render the scene
-  scene.render();
+// Start the loop — systems run automatically!
+// Pipeline per tick:  beforeTick → processAllTicks → afterTick
+// Pipeline per frame: beforeFrame → updateAll → afterFrame → scene.render()
+world.start({
+  beforeTick(tick, commands) {
+    // Snapshot positions BEFORE simulation for interpolation
+    interpolationSystem.snapshotPositions();
+    // Execute network commands before tick systems run
+    lockstepManager.processTick(tick, commands);
+  },
+  afterTick(tick) {
+    // Capture positions AFTER simulation
+    interpolationSystem.captureCurrentPositions();
+    // Cleanup destroyed entities
+    lockstepManager.cleanup();
+  },
+  beforeFrame(alpha, dt) {
+    // Update camera before frame systems
+    cameraController.update(dt);
+  },
+  afterFrame(alpha, dt) {
+    // Interpolate between tick positions for smooth visuals
+    interpolationSystem.interpolate(alpha);
+  },
 });
 
 // Send commands to server
@@ -179,48 +188,55 @@ client.sendCommand('move', { entityId: 1, targetX: 10, targetZ: 20 });
 ```
 
 **Key Points:**
-- `onTick(tick, commands)` - Called at fixed rate (20 ticks/sec), contains all player commands
-- `onFrame(alpha, deltaTime)` - Called every render frame, `alpha` (0-1) for interpolation
-- Commands are sent via `client.sendCommand(type, data)` - automatically batched and synced
+- `world.start(hooks?)` — Starts the loop. All registered systems run automatically.
+- Tick systems (`processTick`) run at fixed rate (20 ticks/sec), deterministically
+- Frame systems (`update`) run every render frame
+- `scene.render()` is called automatically after all frame processing
+- Lifecycle hooks (`beforeTick`, `afterTick`, `beforeFrame`, `afterFrame`) are optional — used to inject game-specific logic around the core pipeline
+- Commands are sent via `client.sendCommand(type, data)` — automatically batched and synced
 
 ### LockstepManager
 
-The `LockstepManager` handles deterministic command execution and simulation. It's called directly from `Game.ts` via the PhalanxClient's tick handler:
+The `LockstepManager` handles deterministic command execution. It is called from `Game.ts` via GameWorld's `beforeTick` hook, **before** tick systems run automatically:
 
 ```typescript
-// In Game.ts - setup
-this.client.onTick((tick, commands) => {
-  this.lockstepManager.processTick(tick, commands);
+// In Game.ts — setup via GameWorld lifecycle hooks
+world.start({
+  beforeTick(tick, commands) {
+    lockstepManager.processTick(tick, commands);
+  },
+  afterTick(tick) {
+    lockstepManager.cleanup();
+  },
 });
 
-// LockstepManager.processTick() implementation
-public processTick(tick: number, commandsBatch: CommandsBatch): void {
-  // Flatten commands from all players
+// LockstepManager.processTick() — command execution only
+public processTick(_tick: number, commandsBatch: CommandsBatch): void {
+  // Flatten commands from all players in deterministic order
   const allCommands: PlayerCommand[] = [];
-  for (const playerId in commandsBatch.commands) {
+  const sortedPlayerIds = Object.keys(commandsBatch.commands).sort();
+  for (const playerId of sortedPlayerIds) {
     allCommands.push(...commandsBatch.commands[playerId]);
   }
 
   // Execute all commands for this tick
   this.executeTickCommands(allCommands);  // Execute move, placeUnit, etc.
+}
 
-  // Run one tick of deterministic simulation
-  this.simulateTick();                    // Physics, combat, projectiles
+// Tick systems (Physics, Combat, Projectiles, etc.) run automatically
+// via GameWorld after beforeTick returns.
 
-  // Process systems that need tick-based updates
-  this.systems.resourceSystem.processTick(tick);
-  this.systems.waveSystem.processTick(tick);
-
-  // Cleanup destroyed entities
+// LockstepManager.cleanup() — called via afterTick hook
+public cleanup(): void {
   this.callbacks.onCleanupNeeded();
 }
 ```
 
 **Key Points:**
-- Network synchronization is handled by `PhalanxClient`
-- `LockstepManager` focuses on deterministic game logic
+- Tick system processing is handled automatically by `GameWorld` — no manual `processAllTicks()` calls needed
+- `LockstepManager` focuses solely on deterministic command execution
 - Commands from **all players** are executed (no filtering)
-- Simulation runs the same on all clients
+- Cleanup runs in `afterTick`, after all tick systems have processed
 
 ### Visual Interpolation
 
@@ -319,7 +335,7 @@ Player clicks unit button → FormationGridSystem
 **Combat (Local, Deterministic):**
 
 ```
-CombatSystem.simulateTick()
+CombatSystem.processTick()
         ↓
     Query enemies in range
         ↓
@@ -327,7 +343,7 @@ CombatSystem.simulateTick()
         ↓
     Spawn projectile
         ↓
-ProjectileSystem.simulateTick()
+ProjectileSystem.processTick()
         ↓
     Move projectiles
         ↓
@@ -434,17 +450,13 @@ this.lockstepManager.queueCommand({
 | `src/scenes/LobbyScene.ts`           | Matchmaking UI and server connection           |
 | `src/config/constants.ts`            | Server URL, tick rate, spawn positions         |
 | `src/core/Game.ts`                   | Thin orchestrator, coordinates all systems     |
-| `src/core/SystemRegistry.ts`         | System lifecycle (creation, tick/frame calls)  |
-| `src/core/SystemContext.ts`          | Shared dependencies for all systems            |
-| `src/core/NetworkCoordinator.ts`     | Network event handling (tick, frame)           |
 | `src/core/GameEventCoordinator.ts`   | Game event subscriptions (victory, waves)      |
 | `src/core/GameInitializer.ts`        | World setup and entity creation                |
 | `src/core/EntityCleanupService.ts`   | Destroyed entity cleanup                       |
-| `src/core/LockstepManager.ts`        | Lockstep synchronization and command execution |
+| `src/core/LockstepManager.ts`        | Deterministic command execution                |
 | `src/core/NetworkCommands.ts`        | Network command type definitions               |
 | `src/core/MathConversions.ts`        | Fixed-point ↔ Babylon.js vector conversions    |
 | `src/core/AssetManager.ts`           | 3D model preloading and instancing             |
-| `src/systems/GameSystem.ts`          | Abstract base class for all systems            |
 | `src/systems/InterpolationSystem.ts` | Smooth visual interpolation                    |
 
 ### Desync Detection
@@ -492,14 +504,19 @@ export class LockstepManager {
   }
 
   /**
-   * Process a tick with commands - called from Game.ts via client.onTick()
+   * Process a tick with commands - called via GameWorld's beforeTick hook
+   * Tick systems run automatically after this returns.
    */
   public processTick(tick: number, commandsBatch: CommandsBatch): void {
     // Execute all commands for this tick
     this.executeTickCommands(commandsBatch);
-    
-    // Run deterministic simulation
-    this.simulateTick();
+  }
+
+  /**
+   * Cleanup after tick systems have run - called via GameWorld's afterTick hook
+   */
+  public cleanup(tick: number): void {
+    this.callbacks.onCleanupNeeded();
 
     // Submit state hash at regular intervals
     if (tick % this.hashInterval === 0) {
@@ -561,12 +578,19 @@ export class LockstepManager {
 }
 ```
 
-The `processTick` method is called from `Game.ts` via the PhalanxClient's tick handler:
+The `processTick` and `cleanup` methods are called from `Game.ts` via the GameWorld's lifecycle hooks. Tick systems run automatically between them:
 
 ```typescript
 // In Game.ts
-this.client.onTick((tick, commands) => {
-  this.lockstepManager.processTick(tick, commands);
+world.start({
+  beforeTick(tick, commands) {
+    interpolationSystem.snapshotPositions();
+    lockstepManager.processTick(tick, commands);
+  },
+  afterTick(tick) {
+    interpolationSystem.captureCurrentPositions();
+    lockstepManager.cleanup(tick); // includes hash submission
+  },
 });
 ```
 
@@ -687,8 +711,9 @@ The following tasks need to be completed to fully integrate desync detection int
   - Include: position, health, movement state, attack cooldowns
   - Exclude: visual-only state (mesh positions, particles)
 
-- [ ] **Call `submitStateHash()` in `processTick()`**
+- [ ] **Call `submitStateHash()` in `afterTick` hook or in `cleanup()`**
   - Submit hash every N ticks (e.g., every 20 ticks = 1 second)
+  - Must be called after tick systems have run (i.e., in `afterTick` or `cleanup()`)
   - Use configurable interval via `networkConfig`
 
 - [ ] **Add desync event handler in Game.ts**
@@ -902,7 +927,7 @@ if (movementSystem) {
 
 | Manager           | Responsibility                                     |
 | ----------------- | -------------------------------------------------- |
-| `LockstepManager` | Deterministic command execution and simulation     |
+| `LockstepManager` | Deterministic command execution                    |
 | `EntityFactory`   | Entity creation with ownership tracking            |
 | `UIManager`       | UI updates and notifications                       |
 
@@ -1169,16 +1194,17 @@ export class BuffSystem extends GameSystem {
 }
 ```
 
-2. **Register in SystemRegistry** (in `Game.ts`):
+2. **Register in GameWorld** (in `Game.ts`):
 
 ```typescript
 // Create the system
 const buffSystem = new BuffSystem();
 
-// Register with SystemRegistry
+// Register with GameWorld
 // Tick systems run deterministically (order matters!)
 // Frame systems run every render frame
-this.systemRegistry.registerSystems(
+// Both are called automatically when world.start() is called
+world.registerSystems(
   [/* other tick systems */, buffSystem],  // tickSystems (if needed)
   [/* other frame systems */, buffSystem]  // frameSystems (if needed)
 );
@@ -1250,9 +1276,9 @@ this.eventBus.on<ResourceCollectedEvent>(
 ### Multiplayer / Lockstep Design
 
 - ✅ All gameplay-affecting logic must be **deterministic**
-- ✅ Use `simulateTick()` methods instead of frame-based `update(deltaTime)`
+- ✅ Use `processTick()` methods instead of frame-based `update(deltaTime)`
 - ✅ Send commands through `LockstepManager.queueCommand()`
-- ✅ Execute commands only in `onSimulationTick()` callback
+- ✅ Execute commands in the `beforeTick` hook, before tick systems run
 - ✅ Sort entity queries by ID for deterministic iteration order
 - ✅ Use `entity.fpPosition` (fixed-point) for all simulation calculations
 - ✅ Use `phalanx-math` FP functions for arithmetic (distances, lerp, etc.)
@@ -1260,6 +1286,7 @@ this.eventBus.on<ResourceCollectedEvent>(
 - ❌ Never use `Date.now()` or real time in simulation logic
 - ❌ Never execute commands immediately on input - queue them
 - ❌ Never use `entity.position` (float) for deterministic calculations
+- ❌ Never call `processAllTicks()` or `updateAll()` manually — `GameWorld.start()` handles it
 
 ### Interpolation Design
 
@@ -1325,18 +1352,13 @@ src/
 │
 ├── core/
 │   ├── Game.ts              # Thin orchestrator - coordinates all systems
-│   ├── SystemRegistry.ts    # System lifecycle management
-│   ├── SystemContext.ts     # Shared dependencies container
 │   ├── GameInitializer.ts   # World setup and entity creation
 │   ├── GameEventCoordinator.ts # Game event subscriptions
-│   ├── NetworkCoordinator.ts # Network events (tick, frame, disconnect)
 │   ├── EntityCleanupService.ts # Destroyed entity cleanup
-│   ├── EntityManager.ts     # Entity registry + component queries
 │   ├── EntityFactory.ts     # Entity creation with ownership
-│   ├── EventBus.ts          # Pub/sub event system
 │   ├── SceneManager.ts      # Babylon.js scene setup
 │   ├── AssetManager.ts      # 3D model preloading and instancing
-│   ├── LockstepManager.ts   # Deterministic lockstep synchronization
+│   ├── LockstepManager.ts   # Deterministic command execution
 │   ├── NetworkCommands.ts   # Network command type definitions
 │   ├── MathConversions.ts   # Fixed-point ↔ Babylon.js conversions
 │   ├── UIManager.ts         # UI updates and notifications

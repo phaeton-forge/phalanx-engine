@@ -16,10 +16,10 @@ export class SystemRegistry {
   private engine: Engine;
   private scene: Scene;
 
-  // Core dependencies
-  public eventBus!: EventBus;
-  public entityManager!: EntityManager;
-  private context: SystemContext | null = null;
+  // Core dependencies (eagerly initialized in constructor)
+  public readonly eventBus: EventBus;
+  public readonly entityManager: EntityManager;
+  private readonly context: SystemContext;
 
   /**
    * Ordered list of systems that need tick processing (deterministic simulation)
@@ -32,16 +32,10 @@ export class SystemRegistry {
    */
   private frameSystems: GameSystem[] = [];
 
-  constructor(engine: Engine, scene: Scene) {
+  constructor(engine: Engine, scene: Scene, componentTypes?: symbol[]) {
     this.engine = engine;
     this.scene = scene;
-  }
 
-  /**
-   * Create core dependencies (EventBus, EntityManager, SystemContext)
-   * @param componentTypes - Optional array of component type symbols for EntityManager indexing
-   */
-  public createCoreDependencies(componentTypes?: symbol[]): void {
     // Initialize EventBus first (no dependencies)
     this.eventBus = new EventBus();
 
@@ -78,12 +72,12 @@ export class SystemRegistry {
     // Register all systems with context for getSystem() lookup
     const allSystems = new Set([...tickSystems, ...frameSystems]);
     for (const system of allSystems) {
-      this.context!.registerSystem(system);
+      this.context.registerSystem(system);
     }
 
     // Initialize all systems (call init() on each)
     for (const system of allSystems) {
-      system.init(this.context!);
+      system.init(this.context);
     }
   }
 
@@ -94,7 +88,7 @@ export class SystemRegistry {
    */
   public addFrameSystem(system: GameSystem): void {
     this.frameSystems.push(system);
-    this.context!.registerSystem(system);
+    this.context.registerSystem(system);
   }
 
 
@@ -128,9 +122,6 @@ export class SystemRegistry {
    * Get SystemContext for creating systems
    */
   public getContext(): SystemContext {
-    if (!this.context) {
-      throw new Error('SystemContext not created. Call createCoreDependencies() first.');
-    }
     return this.context;
   }
 

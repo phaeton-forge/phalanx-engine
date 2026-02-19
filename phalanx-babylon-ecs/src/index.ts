@@ -11,6 +11,10 @@ export { SystemRegistry } from './SystemRegistry';
 export { SystemContext } from './SystemContext';
 export { GameSystem } from './GameSystem';
 
+// GameWorld facade
+export { GameWorld } from './GameWorld';
+export type { GameWorldConfig, GameWorldHooks } from './GameWorld';
+
 // Entity and Component
 export { Entity, resetEntityIdCounter } from './Entity';
 export { IComponent, createComponentTypeRegistry } from './Component';

@@ -2,7 +2,6 @@ import { Vector3 } from '@babylonjs/core';
 import type { PhalanxClient } from 'phalanx-client';
 import type {
   EventBus,
-  SystemRegistry,
   CommandsBatch,
   PlayerCommand,
 } from 'phalanx-babylon-ecs';
@@ -44,38 +43,35 @@ export interface LockstepSystems {
 }
 
 /**
- * LockstepManager - Handles deterministic command execution and simulation
+ * LockstepManager - Handles deterministic command execution
  *
  * Responsible for:
  * - Executing commands received from the network
- * - Delegating tick processing to SystemRegistry
  * - Sending local commands to the server
  *
+ * Tick processing is handled automatically by GameWorld (via lifecycle hooks).
  * Network synchronization and timing are delegated to PhalanxClient.
  */
 export class LockstepManager {
   private systems: LockstepSystems;
-  private systemRegistry: SystemRegistry;
   private callbacks: LockstepCallbacks;
   private client: PhalanxClient;
 
   constructor(
     client: PhalanxClient,
     systems: LockstepSystems,
-    systemRegistry: SystemRegistry,
     callbacks: LockstepCallbacks
   ) {
     this.client = client;
     this.systems = systems;
-    this.systemRegistry = systemRegistry;
     this.callbacks = callbacks;
   }
 
   /**
    * Process a tick with commands from all players
-   * This is called by PhalanxClient's onTick handler
+   * This is called via GameWorld's beforeTick hook, before tick systems run.
    */
-  public processTick(tick: number, commandsBatch: CommandsBatch): void {
+  public processTick(_tick: number, commandsBatch: CommandsBatch): void {
     // Flatten commands from all players in deterministic order
     // Sort player IDs to ensure consistent command ordering across all clients
     const allCommands: PlayerCommand[] = [];
@@ -86,12 +82,13 @@ export class LockstepManager {
 
     // Execute all commands for this tick
     this.executeTickCommands(allCommands);
+  }
 
-    // Run one tick of deterministic simulation through SystemRegistry
-    // This processes all tick-based systems in the correct order
-    this.systemRegistry.processAllTicks(tick);
-
-    // Cleanup destroyed entities
+  /**
+   * Cleanup destroyed entities after tick processing.
+   * Called via GameWorld's afterTick hook, after tick systems have run.
+   */
+  public cleanup(): void {
     this.callbacks.onCleanupNeeded();
   }
 

@@ -10,18 +10,19 @@
  *
  * Usage Pattern A: Single-player with TickFrameManager
  * ```typescript
- * const provider: ITickFrameProvider = new TickFrameManager({ tickRate: 60 });
- * provider.onTick((tick) => systemRegistry.processAllTicks(tick));
- * provider.onFrame((alpha, dt) => systemRegistry.updateAll(dt));
- * provider.start();
+ * const world = new GameWorld({ engine, scene });
+ * world.registerSystems(tickSystems, frameSystems);
+ * world.start(); // auto-runs processAllTicks, updateAll, scene.render()
  * ```
  *
  * Usage Pattern B: Multiplayer with PhalanxClient
  * ```typescript
- * const provider: ITickFrameProvider = client; // PhalanxClient implements ITickFrameProvider
- * provider.onTick((tick, commands) => lockstepManager.processTick(tick, commands));
- * provider.onFrame((alpha, dt) => renderFrame(alpha, dt));
- * // PhalanxClient manages start/stop internally via matchmaking
+ * const world = new GameWorld({ engine, scene, tickFrameProvider: client });
+ * world.registerSystems(tickSystems, frameSystems);
+ * world.start({
+ *   beforeTick(tick, commands) { lockstepManager.processTick(tick, commands); },
+ *   afterTick(tick) { cleanupDestroyedEntities(); },
+ * });
  * ```
  */
 
