@@ -1,0 +1,27 @@
+{
+  "name": "direct-strike-babylon-example",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "deploy": "node yc_bucket_deploy.js"
+  },
+  "dependencies": {
+    "@babylonjs/core": "^8.45.3",
+    "@babylonjs/gui": "^8.46.2",
+    "@babylonjs/loaders": "^8.46.2",
+    "phalanx-babylon-ecs": "workspace:*",
+    "phalanx-client": "workspace:*",
+    "phalanx-math": "workspace:*"
+  },
+  "devDependencies": {
+    "@aws-sdk/client-s3": "^3.705.0",
+    "@aws-sdk/lib-storage": "^3.705.0",
+    "dotenv": "^16.4.7",
+    "typescript": "~5.9.3",
+    "vite": "^7.2.4"
+  }
+}

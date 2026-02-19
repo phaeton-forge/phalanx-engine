@@ -1,0 +1,37 @@
+{
+  "name": "phalanx-babylon-ecs",
+  "version": "0.1.0",
+  "description": "ECS (Entity-Component-System) library for Babylon.js with optional multiplayer support via Phalanx Engine",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "rebuild": "npm run clean && npm run build"
+  },
+  "peerDependencies": {
+    "@babylonjs/core": "^8.0.0"
+  },
+  "dependencies": {
+    "phalanx-math": "workspace:*"
+  },
+  "devDependencies": {
+    "@babylonjs/core": "^8.45.3",
+    "typescript": "~5.9.3"
+  },
+  "keywords": [
+    "ecs",
+    "entity-component-system",
+    "babylon",
+    "babylonjs",
+    "game-engine",
+    "phalanx"
+  ]
+}

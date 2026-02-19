@@ -16,7 +16,7 @@
     "dev:game": "pnpm --filter game-test dev",
     "dev:game-server": "pnpm --filter game-test-server dev",
     "build:game-server": "pnpm --filter game-test-server build",
-    "deploy:babylon": "cd babylon-ecs && pnpm run deploy",
+    "deploy:babylon": "cd direct-strike-babylon-example && pnpm run deploy",
     "heroku-postbuild": "corepack enable && corepack prepare pnpm@10.6.0 --activate && pnpm install && pnpm --filter phalanx-math build && pnpm --filter phalanx-server build && pnpm --filter game-test-server build",
     "start": "node game-test-server/dist/main.js",
     "lint": "eslint . --ext .ts,.tsx",
