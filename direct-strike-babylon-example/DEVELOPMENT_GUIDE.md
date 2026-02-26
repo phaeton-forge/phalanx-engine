@@ -148,8 +148,6 @@ import { GameWorld } from 'phalanx-ecs';
 
 // Create GameWorld with PhalanxClient as the tick/frame provider
 const world = new GameWorld({
-  engine,
-  scene,
   componentTypes: Object.values(ComponentType),
   tickFrameProvider: client,  // PhalanxClient implements ITickFrameProvider
 });
@@ -159,7 +157,7 @@ world.registerSystems(tickSystems, frameSystems);
 
 // Start the loop — systems run automatically!
 // Pipeline per tick:  beforeTick → processAllTicks → afterTick
-// Pipeline per frame: beforeFrame → updateAll → afterFrame → scene.render()
+// Pipeline per frame: beforeFrame → updateAll → afterFrame
 world.start({
   beforeTick(tick, commands) {
     // Snapshot positions BEFORE simulation for interpolation
@@ -180,6 +178,8 @@ world.start({
   afterFrame(alpha, dt) {
     // Interpolate between tick positions for smooth visuals
     interpolationSystem.interpolate(alpha);
+    // Render the scene (must be called manually in afterFrame)
+    scene.render();
   },
 });
 
@@ -191,7 +191,7 @@ client.sendCommand('move', { entityId: 1, targetX: 10, targetZ: 20 });
 - `world.start(hooks?)` — Starts the loop. All registered systems run automatically.
 - Tick systems (`processTick`) run at fixed rate (20 ticks/sec), deterministically
 - Frame systems (`update`) run every render frame
-- `scene.render()` is called automatically after all frame processing
+- `scene.render()` must be called manually in the `afterFrame` hook — GameWorld does **not** call it automatically
 - Lifecycle hooks (`beforeTick`, `afterTick`, `beforeFrame`, `afterFrame`) are optional — used to inject game-specific logic around the core pipeline
 - Commands are sent via `client.sendCommand(type, data)` — automatically batched and synced
 
@@ -261,7 +261,7 @@ The entity position system uses three layers for deterministic simulation with s
 - `entity.mesh.position` - Visual position for rendering (can be interpolated for smooth visuals)
 
 ```typescript
-// Entity.ts - Fixed-point based position system
+// Unit.ts - Fixed-point based position system
 import { FPVector3, type FPVector3 as FPVector3Type } from 'phalanx-math';
 
 // Fixed-point simulation position (authoritative, deterministic)
@@ -303,7 +303,7 @@ JavaScript's `Number` type uses IEEE 754 floating-point, which can produce sligh
 ```
 Player Right-Click → EventBus (MOVE_REQUESTED)
                            ↓
-                     Game intercepts
+                     GameEventCoordinator intercepts
                            ↓
                               LockstepManager.queueCommand()
                                           ↓
@@ -314,7 +314,7 @@ Player Right-Click → EventBus (MOVE_REQUESTED)
                               client.onTick() callback
                                           ↓
                               LockstepManager.executeTickCommands()
-                                          ↓
+                                    ↓
                               MovementSystem.moveEntityTo()
 ```
 
@@ -364,13 +364,19 @@ interface NetworkMoveCommand extends PlayerCommand {
 // Place unit command
 interface NetworkPlaceUnitCommand extends PlayerCommand {
   type: 'placeUnit';
-  data: { unitType: 'sphere' | 'prisma'; gridX: number; gridZ: number };
+  data: { unitType: 'sphere' | 'mutant' | 'prisma' | 'lance'; gridX: number; gridZ: number };
 }
 
 // Deploy units command
 interface NetworkDeployUnitsCommand extends PlayerCommand {
   type: 'deployUnits';
   data: { playerId: string };
+}
+
+// Move grid unit command
+interface NetworkMoveGridUnitCommand extends PlayerCommand {
+  type: 'moveGridUnit';
+  data: { fromGridX: number; fromGridZ: number; toGridX: number; toGridZ: number };
 }
 ```
 
@@ -395,6 +401,8 @@ export interface NetworkAttackCommand extends PlayerCommand {
 export type NetworkCommand =
   | NetworkMoveCommand
   | NetworkPlaceUnitCommand
+  | NetworkDeployUnitsCommand
+  | NetworkMoveGridUnitCommand
   | NetworkAttackCommand;
 ```
 
@@ -410,7 +418,7 @@ if (cmd.type === 'attack') {
   const target = this.entityManager.getEntity(attackCmd.data.targetId);
   if (attacker && target) {
     // Set attack target via movement toward enemy
-    this.systems.movementSystem.moveEntity(attacker.id, target.position);
+    this.systems.movementSystem.moveEntityTo(attacker.id, target.position);
   }
 }
 ```
@@ -448,7 +456,7 @@ this.lockstepManager.queueCommand({
 | File                                 | Purpose                                        |
 | ------------------------------------ | ---------------------------------------------- |
 | `src/scenes/LobbyScene.ts`           | Matchmaking UI and server connection           |
-| `src/config/constants.ts`            | Server URL, tick rate, spawn positions         |
+| `src/config/constants.ts`            | Server URL, tick rate, spawn positions, unit costs, camera, resources, waves |
 | `src/core/Game.ts`                   | Thin orchestrator, coordinates all systems     |
 | `src/core/GameEventCoordinator.ts`   | Game event subscriptions (victory, waves)      |
 | `src/core/GameInitializer.ts`        | World setup and entity creation                |
@@ -483,16 +491,16 @@ export class LockstepManager {
   private hashInterval = 20; // Hash every 20 ticks (once per second)
   private client: PhalanxClient;
   private systems: LockstepSystems;
-  private entityManager: EntityManager;
+  private callbacks: LockstepCallbacks;
 
   constructor(
     client: PhalanxClient,
     systems: LockstepSystems,
-    entityManager: EntityManager
+    callbacks: LockstepCallbacks
   ) {
     this.client = client;
     this.systems = systems;
-    this.entityManager = entityManager;
+    this.callbacks = callbacks;
 
     // Handle desync events
     this.client.on('desync', (event) => {
@@ -515,24 +523,28 @@ export class LockstepManager {
   /**
    * Cleanup after tick systems have run - called via GameWorld's afterTick hook
    */
-  public cleanup(tick: number): void {
+  public cleanup(): void {
     this.callbacks.onCleanupNeeded();
+  }
 
-    // Submit state hash at regular intervals
+  /**
+   * Submit state hash - call from afterTick hook after cleanup
+   */
+  public submitHashIfNeeded(tick: number, entityManager: EntityManager): void {
     if (tick % this.hashInterval === 0) {
-      const hash = this.computeStateHash(tick);
+      const hash = this.computeStateHash(tick, entityManager);
       this.client.submitStateHash(tick, hash);
     }
   }
 
-  private computeStateHash(tick: number): string {
+  private computeStateHash(tick: number, entityManager: EntityManager): string {
     const hasher = new StateHasher();
 
     // Add tick number
     hasher.addInt(tick);
 
     // Get all entities sorted by ID for deterministic ordering
-    const entities = this.entityManager.getAllEntities()
+    const entities = entityManager.getAllEntities()
       .sort((a, b) => a.id - b.id);
 
     hasher.addInt(entities.length);
@@ -589,7 +601,8 @@ world.start({
   },
   afterTick(tick) {
     interpolationSystem.captureCurrentPositions();
-    lockstepManager.cleanup(tick); // includes hash submission
+    lockstepManager.cleanup(); // cleanup destroyed entities
+    // lockstepManager.submitHashIfNeeded(tick, entityManager); // when desync detection is enabled
   },
 });
 ```
@@ -747,13 +760,21 @@ The `MathConversions.ts` utility provides functions to convert between `phalanx-
 
 ```typescript
 import {
-  fpToVector3,        // FPVector3 → Vector3 (allocates new)
-  fpToVector3Ref,     // FPVector3 → Vector3 (writes to existing, no allocation)
-  vector3ToFp,        // Vector3 → FPVector3 (for user input, initialization)
-  lerpVector3FromFp,  // Interpolate FPVector3 → Vector3 (allocates new)
-  lerpVector3FromFpRef, // Interpolate FPVector3 → Vector3 (no allocation)
-  fpToVector2,        // FPVector2 → Vector2
-  vector2ToFp,        // Vector2 → FPVector2
+  fpToVector3,           // FPVector3 → Vector3 (allocates new)
+  fpToVector3Ref,        // FPVector3 → Vector3 (writes to existing, no allocation)
+  vector3ToFp,           // Vector3 → FPVector3 (for user input, initialization)
+  lerpVector3FromFp,     // Interpolate FPVector3 → Vector3 (allocates new)
+  lerpVector3FromFpRef,  // Interpolate FPVector3 → Vector3 (no allocation)
+  fpToVector2,           // FPVector2 → Vector2
+  fpToVector2Ref,        // FPVector2 → Vector2 (no allocation)
+  vector2ToFp,           // Vector2 → FPVector2
+  fpVector2ToVector3XZ,  // FPVector2 → Vector3 (on XZ plane)
+  fpVector2ToVector3XY,  // FPVector2 → Vector3 (on XY plane)
+  vector3XZToFpVector2,  // Vector3 XZ → FPVector2
+  lerpVector2FromFp,     // Interpolate FPVector2 → Vector2 (allocates new)
+  lerpVector2FromFpRef,  // Interpolate FPVector2 → Vector2 (no allocation)
+  fpToNumber,            // FixedPoint → number
+  numberToFp,            // number → FixedPoint
 } from './core/MathConversions';
 ```
 
@@ -781,8 +802,14 @@ const fpTarget = vector3ToFp(clickPosition);
 Edit `src/config/constants.ts` to change:
 
 - `SERVER_URL` - Phalanx server address
+- `authConfig` - Google OAuth client settings
 - `networkConfig.tickRate` - Simulation tick rate (must match server)
-- `arenaParams` - Starting positions for bases and towers
+- `cameraConfig` - RTS camera height, speed, and bounds
+- `resourceConfig` - Starting resources and generation rate
+- `unitConfig` - Unit costs, health, damage, speed stats for each unit type
+- `waveConfig` - Wave duration and staggered deployment settings
+- `arenaParams` - Arena dimensions, starting positions for bases and towers
+- `TEAM1_SPAWN` / `TEAM2_SPAWN` - Per-team spawn positions
 
 ---
 
@@ -790,20 +817,25 @@ Edit `src/config/constants.ts` to change:
 
 ### Entities
 
-Entities are containers for components. They have:
+Entities are containers for components. The base `Entity` class lives in `phalanx-ecs` and provides:
 
 - A unique `id`
+- A `Map` of components
+- Lifecycle methods (`destroy()`, `dispose()`)
+
+The game-specific base class is `Unit` (in `src/entities/Unit.ts`), which extends `Entity` and adds Babylon.js integration:
+
 - A reference to the Babylon.js `Scene`
 - A visual `Mesh`
-- A `Map` of components
+- Fixed-point position (`fpPosition`) for deterministic simulation
+- Cached Vector3 position for Babylon.js compatibility
+- Visual position management via `setVisualPosition()`
 
-**Base Entity Class** (`src/entities/Entity.ts`):
+**Entity Base Class** (from `phalanx-ecs`):
 
 ```typescript
-export abstract class Entity {
+export class Entity {
   public readonly id: number;
-  protected scene: Scene;
-  protected mesh: Mesh | null = null;
   protected components: Map<symbol, IComponent> = new Map();
 
   // Component management
@@ -812,14 +844,41 @@ export abstract class Entity {
   hasComponent(type: symbol): boolean;
   hasComponents(...types: symbol[]): boolean;
   removeComponent(type: symbol): boolean;
+
+  // Lifecycle
+  public get isDestroyed(): boolean;
+  public destroy(): void;
+  public dispose(): void;
+}
+```
+
+**Unit Game Class** (`src/entities/Unit.ts`):
+
+```typescript
+import { Entity } from 'phalanx-ecs';
+
+export class Unit extends Entity {
+  public scene: Scene;
+  public mesh: Mesh | TransformNode | null = null;
+  private _fpPosition: FPVector3Type = FPVector3.Zero;
+  private _simulationPosition: Vector3 = new Vector3();
+
+  public get fpPosition(): FPVector3Type { ... }
+  public set fpPosition(value: FPVector3Type) { ... }
+  public get position(): Vector3 { ... }
+  public setVisualPosition(value: Vector3): void { ... }
 }
 ```
 
 **Existing Entities**:
 
-- `Unit` - Movable combat unit with health, attack, movement, and team
-- `Tower` - Stationary defense structure with health, attack, and team
-- `Projectile` - Temporary entity for visual attack effects
+- `Unit` - Base game entity class with Babylon.js mesh, position management, and components (extends `Entity` from `phalanx-ecs`)
+- `Base` - Player base (win condition), extends `Unit`
+- `Tower` - Stationary defense structure with health, attack, and team, extends `Unit`
+- `PrismaUnit` - Heavy combat unit (2x2 grid), extends `Unit`
+- `LanceUnit` - Elongated combat unit (1x2 grid), extends `Unit`
+- `MutantUnit` - Animated 3D model melee unit, extends `Unit`
+- `Projectile` - Standalone attack projectile class (does **not** extend `Entity` or `Unit`)
 
 ---
 
@@ -830,42 +889,61 @@ Components are pure data containers that implement `IComponent`. Each component 
 **Component Interface** (`src/components/Component.ts`):
 
 ```typescript
-export interface IComponent {
-  readonly type: symbol;
-}
+import type { IComponent } from 'phalanx-ecs';
+import { createComponentTypeRegistry } from 'phalanx-ecs';
 
-export const ComponentType = {
-  Team: Symbol('Team'),
-  Health: Symbol('Health'),
-  Attack: Symbol('Attack'),
-  Movement: Symbol('Movement'),
-  Selectable: Symbol('Selectable'),
-  Renderable: Symbol('Renderable'),
-} as const;
+export type { IComponent };
+
+export const ComponentType = createComponentTypeRegistry({
+  Team: 'Team',
+  Health: 'Health',
+  Attack: 'Attack',
+  Movement: 'Movement',
+  Selectable: 'Selectable',
+  Renderable: 'Renderable',
+  UnitType: 'UnitType',
+  Resource: 'Resource',
+  Animation: 'Animation',
+  Rotation: 'Rotation',
+  AttackLock: 'AttackLock',
+  Death: 'Death',
+  PhysicsBody: 'PhysicsBody',
+  HealthBar: 'HealthBar',
+  Interpolation: 'Interpolation',
+});
 ```
 
 **Existing Components**:
 
-| Component           | Purpose               | Key Properties                               |
-| ------------------- | --------------------- | -------------------------------------------- |
-| `TeamComponent`     | Team affiliation      | `team: TeamTag`, `isHostileTo()`             |
-| `HealthComponent`   | Health management     | `health`, `maxHealth`, `takeDamage()`        |
-| `AttackComponent`   | Attack capabilities   | `range`, `damage`, `cooldown`, `canAttack()` |
-| `MovementComponent` | Movement capabilities | `speed`, `targetPosition`, `moveTo()`        |
+| Component                | Purpose                          | Key Properties                               |
+| ------------------------ | -------------------------------- | -------------------------------------------- |
+| `TeamComponent`          | Team affiliation                 | `team: TeamTag`, `isHostileTo()`             |
+| `HealthComponent`        | Health management                | `health`, `maxHealth`, `takeDamage()`        |
+| `AttackComponent`        | Attack capabilities              | `range`, `damage`, `cooldown`, `canAttack()` |
+| `MovementComponent`      | Movement capabilities            | `speed`, `targetPosition`, `moveTo()`        |
+| `ResourceComponent`      | Resource generation              | `resourceRate`, `lastGenerationTick`         |
+| `UnitTypeComponent`      | Unit type identifier             | `unitType`                                   |
+| `PhysicsBodyComponent`   | Physics body for collision       | `radius`, `isStatic`                         |
+| `HealthBarComponent`     | Health bar visualization         | `healthBar`, `offset`                        |
+| `InterpolationComponent` | Visual interpolation state       | `prevPosition`, `currPosition`               |
+| `AnimationComponent`     | 3D model animation state         | `animationGroups`, `currentAnimation`        |
+| `RotationComponent`      | Entity rotation toward targets   | `rotationSpeed`                              |
+| `AttackLockComponent`    | Attack lock state                | `lockedTargetId`                             |
+| `DeathComponent`         | Death animation/cleanup state    | `deathTime`                                  |
 
 ---
 
 ### Systems
 
-Systems contain game logic and operate on entities with specific component combinations. All systems extend the `GameSystem` abstract base class which provides:
+Systems contain game logic and operate on entities with specific component combinations. All systems extend the `GameSystem` base class from `phalanx-ecs`, which provides:
 
-- Access to `SystemContext` (EventBus, EntityManager, Scene, Engine)
+- Access to `SystemContext` (EventBus, EntityManager)
 - Automatic event subscription cleanup via `subscribe()` helper
 - Optional `processTick(tick)` for deterministic simulation
 - Optional `update(deltaTime)` for frame-based rendering
 - `enabled` flag to temporarily disable systems
 
-**GameSystem Base Class** (`src/systems/GameSystem.ts`):
+**GameSystem Base Class** (from `phalanx-ecs`):
 
 ```typescript
 export abstract class GameSystem {
@@ -886,11 +964,14 @@ export abstract class GameSystem {
   // Frame-based visual updates (optional)
   public update(_deltaTime: number): void { }
   
-  // Subscribe with automatic cleanup on dispose
-  protected subscribe<T>(event: string, handler: (event: T) => void): void { ... }
+  // Subscribe with automatic cleanup on dispose (returns unsubscribe function)
+  protected subscribe<T>(event: string, handler: (event: T) => void): () => void { ... }
   
-  // Must implement - call super.dispose() for auto-cleanup
-  public abstract dispose(): void;
+  // Subscribe once with automatic cleanup
+  protected subscribeOnce<T>(event: string, handler: (event: T) => void): () => void { ... }
+  
+  // Concrete dispose - auto-unsubscribes all events. Override and call super.dispose()
+  public dispose(): void { ... }
 }
 ```
 
@@ -962,10 +1043,17 @@ unsubscribe();
 **Event Categories** (defined in `src/events/GameEvents.ts`):
 
 - **Combat**: `ATTACK_REQUESTED`, `PROJECTILE_SPAWNED`, `PROJECTILE_HIT`
-- **Health**: `DAMAGE_REQUESTED`, `DAMAGE_APPLIED`, `ENTITY_DESTROYED`
-- **Movement**: `MOVE_REQUESTED`, `MOVE_STARTED`, `MOVE_COMPLETED`
+- **Health**: `DAMAGE_REQUESTED`, `DAMAGE_APPLIED`, `HEAL_REQUESTED`, `ENTITY_DYING`, `ENTITY_DESTROYED`
+- **Movement**: `MOVE_REQUESTED`, `MOVE_STARTED`, `MOVE_COMPLETED`, `STOP_REQUESTED`
 - **Input**: `LEFT_CLICK`, `RIGHT_CLICK`, `GROUND_CLICKED`
 - **Lifecycle**: `ENTITY_CREATED`, `ENTITY_DISPOSED`
+- **UI**: `SHOW_DESTINATION_MARKER`, `HIDE_DESTINATION_MARKER`, `UI_RESOURCES_UPDATED`, `UI_FORMATION_UPDATED`
+- **Resource**: `RESOURCES_CHANGED`, `RESOURCES_GENERATED`, `UNIT_PURCHASE_REQUESTED`, `UNIT_PURCHASE_COMPLETED`, `UNIT_PURCHASE_FAILED`
+- **Territory**: `TERRITORY_CHANGED`, `AGGRESSION_BONUS_ACTIVATED`, `AGGRESSION_BONUS_DEACTIVATED`
+- **Game State**: `GAME_STARTED`, `GAME_OVER`, `BASE_DESTROYED`, `TOWER_DESTROYED`
+- **Formation**: `FORMATION_MODE_ENTERED`, `FORMATION_MODE_EXITED`, `FORMATION_PLACEMENT_REQUESTED`, `FORMATION_PLACEMENT_FAILED`, `FORMATION_UNIT_PLACED`, `FORMATION_UNIT_REMOVED`, `FORMATION_COMMITTED`, `FORMATION_UPDATE_MODE_ENTERED`, `FORMATION_UPDATE_MODE_EXITED`, `FORMATION_UNIT_MOVE_REQUESTED`, `FORMATION_UNIT_MOVED`
+- **Wave**: `WAVE_STARTED`, `WAVE_COUNTDOWN`, `WAVE_DEPLOYMENT`
+- **Animation**: `PLAY_ATTACK_ANIMATION`, `PLAY_DEATH_ANIMATION`, `SHOW_BLOOD_EFFECT`, `ORIENT_TO_TARGET`, `NOTIFY_MOVEMENT_STARTED`, `END_COMBAT`, `ORIENT_TO_MOVEMENT_DIRECTION`
 
 ---
 
@@ -1028,10 +1116,10 @@ export class ArmorComponent implements IComponent {
 2. **Register the component type** in `src/components/Component.ts`:
 
 ```typescript
-export const ComponentType = {
+export const ComponentType = createComponentTypeRegistry({
   // ...existing types
-  Armor: Symbol('Armor'), // Add new type
-} as const;
+  Armor: 'Armor', // Add new type
+});
 ```
 
 3. **Export from index** in `src/components/index.ts`:
@@ -1063,7 +1151,7 @@ import {
   StandardMaterial,
   Color3,
 } from '@babylonjs/core';
-import { Entity } from './Entity';
+import { Unit } from './Unit';
 import { ComponentType, TeamComponent, HealthComponent } from '../components';
 import { TeamTag } from '../enums/TeamTag';
 
@@ -1073,7 +1161,7 @@ export interface BuildingConfig {
   color?: Color3;
 }
 
-export class Building extends Entity {
+export class Building extends Unit {
   constructor(scene: Scene, config: BuildingConfig, position: Vector3) {
     super(scene);
 
@@ -1133,8 +1221,8 @@ Systems should extend the `GameSystem` base class for consistent lifecycle manag
 
 ```typescript
 // src/systems/BuffSystem.ts
-import { GameSystem } from './GameSystem';
-import type { SystemContext } from '../core/SystemContext';
+import { GameSystem } from 'phalanx-ecs';
+import type { SystemContext } from 'phalanx-ecs';
 import { ComponentType } from '../components';
 import { GameEvents, createEvent } from '../events';
 import type { EntityDestroyedEvent } from '../events';
@@ -1348,7 +1436,7 @@ src/
 ├── style.css                # Global styles
 │
 ├── config/
-│   └── constants.ts         # Server URL, tick rate, arena params, unit costs
+│   └── constants.ts         # Server URL, tick rate, arena params, unit costs, camera, resources, waves
 │
 ├── core/
 │   ├── Game.ts              # Thin orchestrator - coordinates all systems
@@ -1368,18 +1456,17 @@ src/
 ├── scenes/
 │   └── LobbyScene.ts        # Matchmaking UI and connection
 │
-├── entities/
-│   ├── Entity.ts            # Base entity class (simulation + visual position)
-│   ├── Unit.ts              # Base movable combat unit
+├── entities/                # All extend Unit (which extends Entity from phalanx-ecs)
+│   ├── Unit.ts              # Base game entity class (Babylon.js mesh + fpPosition)
+│   ├── Base.ts              # Player base (win condition)
+│   ├── Tower.ts             # Stationary defense
 │   ├── PrismaUnit.ts        # Heavy combat unit (2x2 grid)
 │   ├── LanceUnit.ts         # Elongated unit (1x2 grid)
 │   ├── MutantUnit.ts        # Animated 3D model unit
-│   ├── Tower.ts             # Stationary defense
-│   ├── Base.ts              # Player base (win condition)
-│   └── Projectile.ts        # Attack projectile
+│   └── Projectile.ts        # Attack projectile (standalone, not an Entity)
 │
 ├── components/
-│   ├── Component.ts         # IComponent interface + types
+│   ├── Component.ts         # IComponent re-export + ComponentType registry
 │   ├── TeamComponent.ts     # Team affiliation
 │   ├── HealthComponent.ts   # Health management
 │   ├── AttackComponent.ts   # Attack capabilities
@@ -1389,10 +1476,13 @@ src/
 │   ├── PhysicsBodyComponent.ts # Physics body for collision
 │   ├── HealthBarComponent.ts # Health bar visualization
 │   ├── InterpolationComponent.ts # Visual interpolation state
+│   ├── AnimationComponent.ts # 3D model animation state
+│   ├── RotationComponent.ts # Entity rotation toward targets
+│   ├── AttackLockComponent.ts # Attack lock state
+│   ├── DeathComponent.ts    # Death animation/cleanup state
 │   └── index.ts             # Re-exports
 │
-├── systems/
-│   ├── GameSystem.ts        # Abstract base class for all systems
+├── systems/                 # All extend GameSystem from phalanx-ecs
 │   ├── CombatSystem.ts      # Attack logic (deterministic)
 │   ├── MovementSystem.ts    # Movement commands
 │   ├── PhysicsSystem.ts     # Deterministic physics simulation
@@ -1409,6 +1499,13 @@ src/
 │   ├── HealthBarSystem.ts   # Health bar rendering
 │   ├── CameraController.ts  # RTS camera controls
 │   └── formation/           # Formation-related helpers
+│       ├── FormationDeployer.ts
+│       ├── FormationGridData.ts
+│       ├── FormationGridRenderer.ts
+│       ├── FormationHoverPreview.ts
+│       ├── FormationInputHandler.ts
+│       ├── FormationTypes.ts
+│       └── index.ts
 │
 ├── events/
 │   ├── GameEvents.ts        # Event type constants
@@ -1416,10 +1513,11 @@ src/
 │   └── index.ts             # Re-exports
 │
 ├── effects/
-│   └── ExplosionEffect.ts   # Visual explosion effect
+│   ├── ExplosionEffect.ts   # Visual explosion effect
+│   └── BloodEffect.ts       # Visual blood effect
 │
 ├── visuals/
-│   └── ...                  # Visual helper components
+│   └── characters/          # 3D model assets (GLB files, preview images)
 │
 ├── enums/
 │   └── TeamTag.ts           # Team enumeration
@@ -1428,5 +1526,6 @@ src/
     ├── IAttacker.ts
     ├── IDamageable.ts
     ├── IMovable.ts
-    └── ITeamMember.ts
+    ├── ITeamMember.ts
+    └── index.ts
 ```

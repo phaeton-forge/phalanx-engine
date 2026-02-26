@@ -159,28 +159,25 @@ src/
 ├── main.ts                    # Application entry point
 ├── core/                      # Core game infrastructure
 │   ├── Game.ts                # Main orchestrator (thin coordinator)
-│   ├── SystemRegistry.ts      # System lifecycle management
-│   ├── SystemContext.ts       # Shared dependencies for systems
 │   ├── GameInitializer.ts     # World setup and entity creation
 │   ├── GameEventCoordinator.ts # Game event subscriptions
-│   ├── NetworkCoordinator.ts  # Network events and tick handling
 │   ├── EntityCleanupService.ts # Entity destruction cleanup
-│   ├── EntityManager.ts       # Central entity registry with queries
 │   ├── EntityFactory.ts       # Entity creation with ownership
-│   ├── EventBus.ts            # Decoupled event communication
 │   ├── AssetManager.ts        # Asset preloading and management
 │   ├── LockstepManager.ts     # Deterministic simulation sync
 │   ├── NetworkCommands.ts     # Network command definitions
 │   ├── UIManager.ts           # UI interactions and updates
 │   ├── MathConversions.ts     # Fixed-point ↔ Babylon.js conversions
-│   └── SceneManager.ts        # Babylon.js scene setup
+│   ├── SceneManager.ts        # Babylon.js scene setup
+│   ├── ModelLoader.ts         # Utility for loading 3D models
+│   └── GameRandom.ts          # Seeded random number generator
 ├── entities/                  # Game entities (Units, Towers, Bases)
-├── components/                # ECS components (Health, Attack, Movement)
-├── systems/                   # ECS systems (extend GameSystem base class)
+├── components/                # ECS components (Health, Attack, Movement, etc.)
+├── systems/                   # ECS systems (extend GameSystem from phalanx-ecs)
 ├── events/                    # Event types and constants
-├── effects/                   # Visual effects (Explosions)
+├── effects/                   # Visual effects (Explosions, Blood)
 ├── enums/                     # Enumerations (TeamTag)
-├── visuals/                   # Visual components (health bars, etc.)
+├── visuals/                   # 3D model assets
 └── interfaces/                # TypeScript interfaces
 ```
 
@@ -188,9 +185,9 @@ src/
 
 This project follows an **Entity-Component-System (ECS)** architecture pattern with **Single Responsibility Principle (SRP)** for core classes:
 
-- **Entities** are containers that hold components (Unit, Tower, Base)
-- **Components** are pure data containers (HealthComponent, AttackComponent)
-- **Systems** extend `GameSystem` base class and contain game logic
+- **Entities** are containers that hold components (Unit, Tower, Base, PrismaUnit, LanceUnit, MutantUnit)
+- **Components** are pure data containers (HealthComponent, AttackComponent, etc.)
+- **Systems** extend `GameSystem` base class from `phalanx-ecs` and contain game logic
 - **Game** acts as a thin orchestrator, delegating to specialized coordinator classes
 
 For detailed architecture documentation and development guidelines, see [DEVELOPMENT_GUIDE.md](./DEVELOPMENT_GUIDE.md).

@@ -226,15 +226,6 @@ export class UIManager {
   }
 
   /**
-   * Update resource UI display
-   * @deprecated Use event-driven approach. This method is kept for backward compatibility.
-   */
-  public updateResourceUI(): void {
-    // Now a no-op - UI updates happen automatically via events
-    // The renderResourceUI method is called when UI_RESOURCES_UPDATED event is received
-  }
-
-  /**
    * Render the resource UI from cached event data
    */
   private renderResourceUI(): void {
@@ -258,15 +249,6 @@ export class UIManager {
 
     // Update button states based on affordability
     this.renderUnitButtonStates();
-  }
-
-  /**
-   * Update unit button states based on resources
-   * @deprecated Use event-driven approach. This method is kept for backward compatibility.
-   */
-  public updateUnitButtonStates(): void {
-    // Now a no-op - UI updates happen automatically via events
-    // The renderUnitButtonStates method is called when UI_RESOURCES_UPDATED event is received
   }
 
   /**
@@ -342,15 +324,6 @@ export class UIManager {
         waveContainer.classList.remove('preparation');
       }
     }
-  }
-
-  /**
-   * Update formation info display (shows how many units will deploy)
-   * @deprecated Use event-driven approach. This method is kept for backward compatibility.
-   */
-  public updateFormationInfo(): void {
-    // Now a no-op - UI updates happen automatically via events
-    // The renderFormationInfo method is called when UI_FORMATION_UPDATED event is received
   }
 
   /**

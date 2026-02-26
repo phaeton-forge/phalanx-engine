@@ -62,7 +62,8 @@ world.registerSystems(
 );
 
 // Start the game loop
-// Automatically runs: processAllTicks(tick), updateAll(dt), scene.render()
+// Automatically runs: processAllTicks(tick), updateAll(dt)
+// Note: scene.render() is NOT called automatically — call it in afterFrame hook if needed
 world.start();
 ```
 
@@ -100,8 +101,10 @@ world.start({
     cameraController.update(dt);
   },
   afterFrame(alpha, dt) {
-    // Interpolate after frame systems, before scene.render()
+    // Interpolate after frame systems
     interpolationSystem.interpolate(alpha);
+    // Render the scene (must be called manually)
+    scene.render();
   },
 });
 

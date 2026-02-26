@@ -67,30 +67,4 @@ export class MovementComponent implements IComponent {
   public acknowledgeArrival(): void {
     this._justArrived = false;
   }
-
-  /**
-   * Calculate movement for this frame (legacy method - kept for compatibility)
-   * @deprecated Use PhysicsSystem for movement calculation
-   * @returns The new position after movement, or null if not moving
-   */
-  public calculateMovement(
-    currentPosition: Vector3,
-    deltaTime: number
-  ): Vector3 | null {
-    if (!this._isMoving) return null;
-
-    const direction = this._targetPosition.subtract(currentPosition);
-    const distance = direction.length();
-    const arrivalThreshold = 0.1;
-
-    if (distance < arrivalThreshold) {
-      this._isMoving = false;
-      this._justArrived = true;
-      return this._targetPosition.clone();
-    }
-
-    direction.normalize();
-    const movement = direction.scale(this._speed * deltaTime);
-    return currentPosition.add(movement);
-  }
 }

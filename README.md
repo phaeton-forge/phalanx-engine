@@ -8,6 +8,9 @@ A game-agnostic deterministic lockstep multiplayer engine with authentication, m
 
 - 📖 [Server Documentation](./phalanx-server/README.md)
 - 📖 [Client Documentation](./phalanx-client/README.md)
+- 📖 [ECS Documentation](./phalanx-ecs/README.md)
+- 📖 [Math Documentation](./phalanx-math/README.md)
+- 🎮 [Babylon RTS Demo](./direct-strike-babylon-example/README.md)
 
 ## Installation
 
@@ -16,7 +19,7 @@ A game-agnostic deterministic lockstep multiplayer engine with authentication, m
 ```bash
 git clone https://github.com/phaeton2040-AI/phalanx-engine.git
 cd phalanx-engine
-npm install
+pnpm install
 ```
 
 # Packages
@@ -27,6 +30,7 @@ This repository contains the following packages:
 | ---------------------------------- | ---------------------------------------------------------- |
 | [phalanx-server](./phalanx-server) | Server library for hosting multiplayer games               |
 | [phalanx-client](./phalanx-client) | Client library for connecting to Phalanx servers           |
+| [phalanx-ecs](./phalanx-ecs)       | Renderer-agnostic ECS library with GameWorld facade        |
 | [phalanx-math](./phalanx-math)     | Deterministic fixed-point math library for lockstep games  |
 
 ## Features
@@ -96,6 +100,9 @@ client.on('tick', (data) => {
 
 - [Server Documentation](./phalanx-server/README.md)
 - [Client Documentation](./phalanx-client/README.md)
+- [ECS Documentation](./phalanx-ecs/README.md)
+- [Math Documentation](./phalanx-math/README.md)
+- [Babylon RTS Demo & Dev Guide](./direct-strike-babylon-example/README.md)
 
 ## Requirements
 
