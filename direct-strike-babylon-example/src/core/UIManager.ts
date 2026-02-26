@@ -122,6 +122,50 @@ export class UIManager {
   }
 
   /**
+   * Setup pause button and resume button handlers.
+   * Clicking the Pause button fires onPause (which should send a request to the server).
+   * Clicking the Resume button fires onResume (also a server request).
+   * Neither handler freezes the game locally — the freeze happens when the
+   * server broadcasts the pause/resume event back to all clients.
+   */
+  public setupPauseButton(onPause: () => void, onResume: () => void): void {
+    const pauseBtn = document.getElementById('pause-btn');
+    const resumeBtn = document.getElementById('resume-btn');
+
+    if (pauseBtn) {
+      pauseBtn.addEventListener('click', () => {
+        onPause();
+      });
+    }
+
+    if (resumeBtn) {
+      resumeBtn.addEventListener('click', () => {
+        onResume();
+      });
+    }
+  }
+
+  /**
+   * Show the pause overlay and hide the pause button
+   */
+  public showPauseOverlay(): void {
+    const overlay = document.getElementById('pause-overlay');
+    const pauseBtn = document.getElementById('pause-btn');
+    if (overlay) overlay.classList.add('visible');
+    if (pauseBtn) pauseBtn.style.display = 'none';
+  }
+
+  /**
+   * Hide the pause overlay and show the pause button
+   */
+  public hidePauseOverlay(): void {
+    const overlay = document.getElementById('pause-overlay');
+    const pauseBtn = document.getElementById('pause-btn');
+    if (overlay) overlay.classList.remove('visible');
+    if (pauseBtn) pauseBtn.style.display = '';
+  }
+
+  /**
    * Setup warning when user tries to reload/close the page during game
    */
   public setupBeforeUnloadWarning(): void {

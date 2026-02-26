@@ -1,5 +1,5 @@
 import { Engine, Scene } from '@babylonjs/core';
-import { GameWorld } from 'phalanx-ecs';
+import { GameWorld, GameWorldEvents } from 'phalanx-ecs';
 import type { CommandsBatch } from 'phalanx-ecs';
 import { LockstepManager } from './LockstepManager';
 import { EntityFactory } from './EntityFactory';
@@ -231,6 +231,10 @@ export class Game {
 
     this.uiManager.setupBeforeUnloadWarning();
     this.uiManager.setupExitButton(() => this.handleExit());
+    this.uiManager.setupPauseButton(
+      () => this.world.pause(),
+      () => this.world.resume()
+    );
 
     // Phase 5: Preload assets (async)
     await this.gameInitializer.initialize();
@@ -312,6 +316,17 @@ export class Game {
         }, 2000);
       })
     );
+
+    // Pause / Resume — listen for world-level events driven by the provider pipeline.
+    // GameWorld subscribes to the provider's onPause/onResume (PhalanxClient fires
+    // these when the server broadcasts confirmation), sets _paused, and emits on eventBus.
+    this.world.eventBus.on(GameWorldEvents.PAUSED, () => {
+      this.uiManager.showPauseOverlay();
+    });
+
+    this.world.eventBus.on(GameWorldEvents.RESUMED, () => {
+      this.uiManager.hidePauseOverlay();
+    });
 
     this.world.start({
       beforeTick: (tick: number, commandsBatch: CommandsBatch) => {

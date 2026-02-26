@@ -23,6 +23,8 @@ import type {
   SubmitCommandsAck,
   MatchEndEvent,
   HashComparisonEvent,
+  GamePausedEvent,
+  GameResumedEvent,
   PhalanxError,
   ConnectionState,
   PlayerCommand,
@@ -83,6 +85,10 @@ export interface SocketManagerCallbacks {
 
   // Desync detection events
   onHashComparison: (data: HashComparisonEvent) => void;
+
+  // Pause events
+  onGamePaused: (data: GamePausedEvent) => void;
+  onGameResumed: (data: GameResumedEvent) => void;
 
   // State queries (for reconnection logic)
   isPlaying: () => boolean;
@@ -320,6 +326,22 @@ export class SocketManager {
     this.socket!.emit('state-hash', { tick, hash });
   }
 
+  /**
+   * Send a pause-game request to the server (fire-and-forget)
+   */
+  sendPauseGame(): void {
+    this.ensureConnected();
+    this.socket!.emit('pause-game');
+  }
+
+  /**
+   * Send a resume-game request to the server (fire-and-forget)
+   */
+  sendResumeGame(): void {
+    this.ensureConnected();
+    this.socket!.emit('resume-game');
+  }
+
   // ============================================
   // RECONNECTION
   // ============================================
@@ -442,6 +464,15 @@ export class SocketManager {
     // Hash comparison (for desync detection)
     this.socket.on('hash-comparison', (data: HashComparisonEvent) => {
       this.callbacks.onHashComparison(data);
+    });
+
+    // Pause events
+    this.socket.on('game-paused', (data: GamePausedEvent) => {
+      this.callbacks.onGamePaused(data);
+    });
+
+    this.socket.on('game-resumed', (data: GameResumedEvent) => {
+      this.callbacks.onGameResumed(data);
     });
 
     // Disconnection handling

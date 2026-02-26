@@ -317,6 +317,8 @@ export type PhalanxEventType =
   | 'match-created'
   | 'match-started'
   | 'match-ended'
+  | 'match-paused'
+  | 'match-resumed'
   | 'player-command'
   | 'player-timeout'
   | 'player-reconnected'
@@ -330,6 +332,8 @@ export interface PhalanxEventHandlers {
   'match-created': (match: MatchInfo) => void;
   'match-started': (match: MatchInfo) => void;
   'match-ended': (matchId: string, reason: string) => void;
+  'match-paused': (matchId: string, requestedBy: string) => void;
+  'match-resumed': (matchId: string, requestedBy: string) => void;
   'player-command': (
     playerId: string,
     command: PlayerCommand

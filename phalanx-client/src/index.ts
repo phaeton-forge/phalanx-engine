@@ -137,6 +137,7 @@ export type {
   TickHandler,
   FrameHandler,
   Unsubscribe,
+  PauseHandler,
 
   // Match events
   MatchPlayerInfo,
@@ -144,6 +145,10 @@ export type {
   CountdownEvent,
   GameStartEvent,
   MatchEndEvent,
+
+  // Pause events
+  GamePausedEvent,
+  GameResumedEvent,
 
   // Tick events
   TickSyncEvent,

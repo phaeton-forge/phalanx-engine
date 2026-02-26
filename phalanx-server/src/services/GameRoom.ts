@@ -569,6 +569,69 @@ export class GameRoom {
   }
 
   /**
+   * Pause the game.
+   * Stops the tick loop and broadcasts 'game-paused' to all clients.
+   * All clients freeze deterministically because the pause only takes effect
+   * when they receive this broadcast (after the last completed tick).
+   *
+   * @param requestedBy - Player ID who requested the pause
+   * @returns true if the game was paused, false if not in a pauseable state
+   */
+  pause(requestedBy: string): boolean {
+    if (this.state !== 'playing') return false;
+
+    // Stop sending ticks — the current tick has already been emitted
+    if (this.tickInterval) {
+      clearInterval(this.tickInterval);
+      this.tickInterval = null;
+    }
+
+    this.state = 'paused';
+
+    // Broadcast to all clients so they freeze at the same logical point
+    this.io.to(this.roomId).emit('game-paused', {
+      requestedBy,
+      lastTick: this.currentTick - 1,
+    });
+
+    this.eventEmitter('match-paused', this.id, requestedBy);
+    return true;
+  }
+
+  /**
+   * Resume the game after a pause.
+   * Restarts the tick loop and broadcasts 'game-resumed' to all clients.
+   *
+   * @param requestedBy - Player ID who requested the resume
+   * @returns true if the game was resumed, false if not currently paused
+   */
+  resume(requestedBy: string): boolean {
+    if (this.state !== 'paused') return false;
+
+    this.state = 'playing';
+
+    // Reset activity timestamps so no player is flagged as lagging right after resume
+    const now = Date.now();
+    for (const playerId of this.players.keys()) {
+      this.lastMessageTime.set(playerId, now);
+    }
+
+    // Broadcast to all clients so they unfreeze
+    this.io.to(this.roomId).emit('game-resumed', {
+      requestedBy,
+    });
+
+    // Restart tick loop
+    const tickIntervalMs = 1000 / this.config.tickRate;
+    this.tickInterval = setInterval(() => {
+      this.processTick();
+    }, tickIntervalMs);
+
+    this.eventEmitter('match-resumed', this.id, requestedBy);
+    return true;
+  }
+
+  /**
    * Get current tick number
    */
   getCurrentTick(): number {

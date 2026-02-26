@@ -67,11 +67,25 @@ export type FrameHandler = (alpha: number, dt: number) => void;
 export type Unsubscribe = () => void;
 
 /**
+ * Pause/Resume handler callback type
+ */
+export type PauseHandler = () => void;
+
+/**
  * ITickFrameProvider - The minimal interface for tick/frame loop providers
  *
  * Both TickFrameManager and PhalanxClient satisfy this interface,
  * allowing game code to be written against the interface and
  * swap implementations at initialization time.
+ *
+ * The optional pause/resume methods allow GameWorld.pause()/resume() to
+ * work transparently in both single-player and multiplayer:
+ *
+ * - **Single-player (TickFrameManager):** requestPause() stops the loop
+ *   immediately and fires onPause handlers synchronously.
+ * - **Multiplayer (PhalanxClient):** requestPause() sends a message to the
+ *   server. The actual pause happens only when the server broadcasts
+ *   confirmation back to all clients, ensuring deterministic freeze.
  */
 export interface ITickFrameProvider {
   /**
@@ -87,5 +101,34 @@ export interface ITickFrameProvider {
    * @returns Unsubscribe function
    */
   onFrame(handler: FrameHandler): Unsubscribe;
+
+  // ── Optional Pause / Resume ──────────────────────────────────────────
+
+  /**
+   * Request the provider to pause.
+   * In single-player this is immediate; in multiplayer this sends a request
+   * to the server, and the actual pause occurs when onPause fires.
+   */
+  requestPause?(): void;
+
+  /**
+   * Request the provider to resume.
+   * Same semantics as requestPause — the actual resume is signalled via onResume.
+   */
+  requestResume?(): void;
+
+  /**
+   * Subscribe to the "paused" signal.
+   * Fired when the provider has actually paused (after server confirmation
+   * in multiplayer, or immediately in single-player).
+   * @returns Unsubscribe function
+   */
+  onPause?(handler: PauseHandler): Unsubscribe;
+
+  /**
+   * Subscribe to the "resumed" signal.
+   * @returns Unsubscribe function
+   */
+  onResume?(handler: PauseHandler): Unsubscribe;
 }
 

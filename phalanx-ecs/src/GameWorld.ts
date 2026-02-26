@@ -7,6 +7,17 @@ import type { SystemContext } from './SystemContext';
 import type { GameSystem } from './GameSystem';
 
 /**
+ * Well-known event names emitted on the GameWorld's EventBus when the
+ * world is paused or resumed through the provider pipeline.
+ */
+export const GameWorldEvents = {
+  /** Emitted when the world has been paused (provider confirmed) */
+  PAUSED: 'gameWorld:paused',
+  /** Emitted when the world has been resumed (provider confirmed) */
+  RESUMED: 'gameWorld:resumed',
+} as const;
+
+/**
  * Configuration for GameWorld
  */
 export interface GameWorldConfig {
@@ -76,6 +87,13 @@ export class GameWorld {
   private unsubscribeTick: Unsubscribe | null = null;
   private unsubscribeFrame: Unsubscribe | null = null;
 
+  // Unsubscribe handles for provider pause/resume signals
+  private unsubscribePause: Unsubscribe | null = null;
+  private unsubscribeResume: Unsubscribe | null = null;
+
+  // Pause state – when true, both tick and frame pipelines are skipped
+  private _paused: boolean = false;
+
   constructor(config: GameWorldConfig) {
     // Create SystemRegistry with eagerly-initialized core deps
     this.systemRegistry = new SystemRegistry(
@@ -92,6 +110,57 @@ export class GameWorld {
         maxFrameTime: config.maxFrameTime,
       });
       this.ownsProvider = true;
+    }
+  }
+
+  // ── Pause / Resume ───────────────────────────────────────────────────
+
+  /** Whether the world is currently paused */
+  public get paused(): boolean {
+    return this._paused;
+  }
+
+  /**
+   * Pause the game world.
+   *
+   * If the provider implements requestPause (both TickFrameManager and
+   * PhalanxClient do), the request is forwarded to the provider. The world
+   * will actually freeze only when the provider fires the onPause callback —
+   * this ensures multiplayer clients all freeze at the same deterministic
+   * point after server confirmation, while single-player pauses immediately.
+   *
+   * If the provider does NOT implement requestPause, the world is paused
+   * directly as a fallback.
+   */
+  public pause(): void {
+    if (this._paused) return;
+
+    if (this.provider.requestPause) {
+      // Delegate to provider — _paused is set in the onPause callback
+      this.provider.requestPause();
+    } else {
+      // Fallback for providers that don't support pause
+      this._paused = true;
+      this.systemRegistry.eventBus.emit(GameWorldEvents.PAUSED, {});
+    }
+  }
+
+  /**
+   * Resume the game world after a pause.
+   *
+   * Same semantics as pause(): delegates to the provider when possible,
+   * and the actual resume happens in the onResume callback.
+   */
+  public resume(): void {
+    if (!this._paused) return;
+
+    if (this.provider.requestResume) {
+      // Delegate to provider — _paused is cleared in the onResume callback
+      this.provider.requestResume();
+    } else {
+      // Fallback for providers that don't support resume
+      this._paused = false;
+      this.systemRegistry.eventBus.emit(GameWorldEvents.RESUMED, {});
     }
   }
 
@@ -168,8 +237,23 @@ export class GameWorld {
    * @param hooks - Optional lifecycle hooks to inject custom logic around the core steps.
    */
   public start(hooks?: GameWorldHooks): void {
+    // Subscribe to provider pause/resume signals
+    if (this.provider.onPause) {
+      this.unsubscribePause = this.provider.onPause(() => {
+        this._paused = true;
+        this.systemRegistry.eventBus.emit(GameWorldEvents.PAUSED, {});
+      });
+    }
+    if (this.provider.onResume) {
+      this.unsubscribeResume = this.provider.onResume(() => {
+        this._paused = false;
+        this.systemRegistry.eventBus.emit(GameWorldEvents.RESUMED, {});
+      });
+    }
+
     // Subscribe to tick events
     this.unsubscribeTick = this.provider.onTick((tick, commands) => {
+      if (this._paused) return;
       hooks?.beforeTick?.(tick, commands);
       this.processAllTicks(tick);
       hooks?.afterTick?.(tick);
@@ -177,6 +261,7 @@ export class GameWorld {
 
     // Subscribe to frame events
     this.unsubscribeFrame = this.provider.onFrame((alpha, dt) => {
+      if (this._paused) return;
       hooks?.beforeFrame?.(alpha, dt);
       this.updateAll(dt);
       hooks?.afterFrame?.(alpha, dt);
@@ -199,6 +284,14 @@ export class GameWorld {
     if (this.unsubscribeFrame) {
       this.unsubscribeFrame();
       this.unsubscribeFrame = null;
+    }
+    if (this.unsubscribePause) {
+      this.unsubscribePause();
+      this.unsubscribePause = null;
+    }
+    if (this.unsubscribeResume) {
+      this.unsubscribeResume();
+      this.unsubscribeResume = null;
     }
 
     if (this.ownsProvider && this.provider instanceof TickFrameManager) {

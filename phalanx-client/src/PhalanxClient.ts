@@ -26,6 +26,7 @@ import type {
   TickHandler,
   FrameHandler,
   Unsubscribe,
+  PauseHandler,
 } from './types.js';
 
 /**
@@ -75,6 +76,10 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
 
   // Pending commands queue
   private pendingCommands: PlayerCommand[] = [];
+
+  // ITickFrameProvider pause/resume handler arrays
+  private pauseHandlers: PauseHandler[] = [];
+  private resumeHandlers: PauseHandler[] = [];
 
   constructor(config: PhalanxClientConfig) {
     super();
@@ -162,10 +167,30 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
         onReconnectState: (data) => {
           this.currentMatchId = data.matchId;
           this.currentTick = data.currentTick;
-          this.clientState = data.state === 'playing' ? 'playing' : 'idle';
+          if (data.state === 'paused') {
+            this.clientState = 'paused';
+          } else if (data.state === 'playing') {
+            this.clientState = 'playing';
+          } else {
+            this.clientState = 'idle';
+          }
           this.emit('reconnectState', data);
         },
         onReconnectStatus: (data) => this.emit('reconnectStatus', data),
+
+        // Pause events
+        onGamePaused: (data) => {
+          this.clientState = 'paused';
+          this.emit('gamePaused', data);
+          // Notify ITickFrameProvider subscribers (GameWorld listens here)
+          for (const handler of this.pauseHandlers) handler();
+        },
+        onGameResumed: (data) => {
+          this.clientState = 'playing';
+          this.emit('gameResumed', data);
+          // Notify ITickFrameProvider subscribers (GameWorld listens here)
+          for (const handler of this.resumeHandlers) handler();
+        },
 
         // Desync detection events
         onHashComparison: (data) => {
@@ -461,6 +486,31 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
     this.emit('queueLeft');
   }
 
+  // ============================================
+  // PAUSE / RESUME
+  // ============================================
+
+  /**
+   * Request the server to pause the game.
+   * The game will not freeze immediately — it freezes only when the server
+   * broadcasts the 'game-paused' event back to all clients, ensuring
+   * every client pauses at the same deterministic point.
+   */
+  pauseGame(): void {
+    this.ensureConnected();
+    this.socketManager.sendPauseGame();
+  }
+
+  /**
+   * Request the server to resume the game.
+   * Same as pause — the actual resume occurs when the server broadcasts
+   * 'game-resumed' to all clients.
+   */
+  resumeGame(): void {
+    this.ensureConnected();
+    this.socketManager.sendResumeGame();
+  }
+
   /**
    * Wait for a match to be found
    * @returns Promise that resolves with match found event
@@ -574,6 +624,52 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
    */
   onFrame(handler: FrameHandler): Unsubscribe {
     return this.renderLoop.onFrame(handler);
+  }
+
+  // ============================================
+  // ITickFrameProvider PAUSE / RESUME
+  // ============================================
+
+  /**
+   * Request the server to pause the game (ITickFrameProvider contract).
+   * The actual pause is signalled asynchronously via onPause when the
+   * server broadcasts 'game-paused' to all clients.
+   */
+  requestPause(): void {
+    this.pauseGame();
+  }
+
+  /**
+   * Request the server to resume the game (ITickFrameProvider contract).
+   * The actual resume is signalled asynchronously via onResume when the
+   * server broadcasts 'game-resumed' to all clients.
+   */
+  requestResume(): void {
+    this.resumeGame();
+  }
+
+  /**
+   * Subscribe to the "paused" signal (ITickFrameProvider contract).
+   * Fired when the server confirms the pause and broadcasts it.
+   */
+  onPause(handler: PauseHandler): Unsubscribe {
+    this.pauseHandlers.push(handler);
+    return () => {
+      const idx = this.pauseHandlers.indexOf(handler);
+      if (idx !== -1) this.pauseHandlers.splice(idx, 1);
+    };
+  }
+
+  /**
+   * Subscribe to the "resumed" signal (ITickFrameProvider contract).
+   * Fired when the server confirms the resume and broadcasts it.
+   */
+  onResume(handler: PauseHandler): Unsubscribe {
+    this.resumeHandlers.push(handler);
+    return () => {
+      const idx = this.resumeHandlers.indexOf(handler);
+      if (idx !== -1) this.resumeHandlers.splice(idx, 1);
+    };
   }
 
   // ============================================
@@ -704,7 +800,11 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
 
   private ensurePlaying(): void {
     this.ensureConnected();
-    if (this.clientState !== 'playing' && this.clientState !== 'reconnecting') {
+    if (
+      this.clientState !== 'playing' &&
+      this.clientState !== 'paused' &&
+      this.clientState !== 'reconnecting'
+    ) {
       throw new Error('Not in a game. Join a match first.');
     }
   }

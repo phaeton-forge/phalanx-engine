@@ -20,6 +20,7 @@ import type {
   FrameHandler,
   Unsubscribe,
   CommandsBatch,
+  PauseHandler,
 } from './ITickFrameProvider';
 
 export interface TickFrameManagerConfig {
@@ -36,11 +37,14 @@ export class TickFrameManager implements ITickFrameProvider {
 
   private tickCallbacks: TickHandler[] = [];
   private frameCallbacks: FrameHandler[] = [];
+  private pauseHandlers: PauseHandler[] = [];
+  private resumeHandlers: PauseHandler[] = [];
 
   private currentTick: number = 0;
   private accumulator: number = 0;
   private lastTime: number = 0;
   private isRunning: boolean = false;
+  private _isPaused: boolean = false;
   private rafId: number | null = null;
 
   constructor(config?: TickFrameManagerConfig) {
@@ -156,6 +160,50 @@ export class TickFrameManager implements ITickFrameProvider {
     this.rafId = requestAnimationFrame(this.loop);
   };
 
+  // ── Pause / Resume (ITickFrameProvider optional methods) ─────────────
+
+  /**
+   * Pause the loop immediately and notify all onPause subscribers.
+   */
+  public requestPause(): void {
+    if (this._isPaused) return;
+    this._isPaused = true;
+    this.stop();
+    for (const handler of this.pauseHandlers) handler();
+  }
+
+  /**
+   * Resume the loop immediately and notify all onResume subscribers.
+   */
+  public requestResume(): void {
+    if (!this._isPaused) return;
+    this._isPaused = false;
+    this.start();
+    for (const handler of this.resumeHandlers) handler();
+  }
+
+  /**
+   * Subscribe to "paused" events.
+   */
+  public onPause(handler: PauseHandler): Unsubscribe {
+    this.pauseHandlers.push(handler);
+    return () => {
+      const idx = this.pauseHandlers.indexOf(handler);
+      if (idx !== -1) this.pauseHandlers.splice(idx, 1);
+    };
+  }
+
+  /**
+   * Subscribe to "resumed" events.
+   */
+  public onResume(handler: PauseHandler): Unsubscribe {
+    this.resumeHandlers.push(handler);
+    return () => {
+      const idx = this.resumeHandlers.indexOf(handler);
+      if (idx !== -1) this.resumeHandlers.splice(idx, 1);
+    };
+  }
+
   /**
    * Get the current tick number
    */
@@ -184,5 +232,7 @@ export class TickFrameManager implements ITickFrameProvider {
     this.stop();
     this.tickCallbacks = [];
     this.frameCallbacks = [];
+    this.pauseHandlers = [];
+    this.resumeHandlers = [];
   }
 }

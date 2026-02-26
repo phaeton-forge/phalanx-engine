@@ -13,7 +13,7 @@ export { SystemContext } from './SystemContext';
 export { GameSystem } from './GameSystem';
 
 // GameWorld facade
-export { GameWorld } from './GameWorld';
+export { GameWorld, GameWorldEvents } from './GameWorld';
 export type { GameWorldConfig, GameWorldHooks } from './GameWorld';
 
 // Entity and Component
@@ -31,4 +31,5 @@ export type {
   Unsubscribe,
   CommandsBatch,
   PlayerCommand,
+  PauseHandler,
 } from './ITickFrameProvider';

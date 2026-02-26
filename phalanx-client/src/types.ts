@@ -248,6 +248,21 @@ export interface MatchEndEvent {
 }
 
 /**
+ * Event received when the game is paused
+ */
+export interface GamePausedEvent {
+  requestedBy: string;
+  lastTick: number;
+}
+
+/**
+ * Event received when the game is resumed
+ */
+export interface GameResumedEvent {
+  requestedBy: string;
+}
+
+/**
  * Hash comparison data received from server
  */
 export interface HashComparisonEvent {
@@ -281,6 +296,7 @@ export type ClientState =
   | 'match-found'
   | 'countdown'
   | 'playing'
+  | 'paused'
   | 'reconnecting'
   | 'finished';
 
@@ -308,6 +324,11 @@ export type FrameHandler = (alpha: number, dt: number) => void;
  * Unsubscribe function type
  */
 export type Unsubscribe = () => void;
+
+/**
+ * Pause/Resume handler callback type
+ */
+export type PauseHandler = () => void;
 
 /**
  * Auth user information
@@ -355,6 +376,10 @@ export interface PhalanxClientEvents {
   countdown: (event: CountdownEvent) => void;
   gameStart: (event: GameStartEvent) => void;
   matchEnd: (event: MatchEndEvent) => void;
+
+  // Pause events
+  gamePaused: (event: GamePausedEvent) => void;
+  gameResumed: (event: GameResumedEvent) => void;
 
   // Tick events
   tick: (event: TickSyncEvent) => void;
