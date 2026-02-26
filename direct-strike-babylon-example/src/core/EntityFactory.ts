@@ -1,6 +1,6 @@
 import { Vector3, Color3 } from '@babylonjs/core';
 import type { SceneManager } from './SceneManager';
-import type { EntityManager } from 'phalanx-babylon-ecs';
+import type { EntityManager } from 'phalanx-ecs';
 import type { PrismaUnit, PrismaUnitConfig } from '../entities/PrismaUnit';
 import type { LanceUnit, LanceUnitConfig } from '../entities/LanceUnit';
 import type { MutantUnit, MutantUnitConfig } from '../entities/MutantUnit';

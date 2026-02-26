@@ -1,5 +1,6 @@
-import type { SystemContext } from 'phalanx-babylon-ecs';
-import { GameSystem } from 'phalanx-babylon-ecs';
+import type { SystemContext } from 'phalanx-ecs';
+import { GameSystem } from 'phalanx-ecs';
+import type { Unit } from '../entities/Unit';
 import { GameEvents, createEvent } from '../events';
 import { TeamTag } from '../enums/TeamTag';
 import { ComponentType, TeamComponent } from '../components';
@@ -99,7 +100,7 @@ export class TerritorySystem extends GameSystem {
 
       const data = teamData.get(teamComponent.team);
       if (data) {
-        data.totalX += entity.position.x;
+        data.totalX += (entity as Unit).position.x;
         data.unitCount++;
       }
     }

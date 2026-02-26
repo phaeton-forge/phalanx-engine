@@ -1,4 +1,4 @@
-import type { EntityManager } from 'phalanx-babylon-ecs';
+import type { EntityManager } from 'phalanx-ecs';
 import type { EntityFactory } from './EntityFactory';
 
 /**

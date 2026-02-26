@@ -1,4 +1,3 @@
-import type { Engine, Scene } from '@babylonjs/core';
 import { SystemRegistry } from './SystemRegistry';
 import { TickFrameManager } from './TickFrameManager';
 import type { ITickFrameProvider, Unsubscribe } from './ITickFrameProvider';
@@ -11,10 +10,6 @@ import type { GameSystem } from './GameSystem';
  * Configuration for GameWorld
  */
 export interface GameWorldConfig {
-  /** Babylon.js engine instance (required) */
-  engine: Engine;
-  /** Babylon.js scene instance (required) */
-  scene: Scene;
   /** Optional component type symbols for EntityManager indexing */
   componentTypes?: symbol[];
   /** Target ticks per second (default: 60, only used when no tickFrameProvider) */
@@ -29,9 +24,10 @@ export interface GameWorldConfig {
  * Lifecycle hooks for the start() loop.
  *
  * The tick pipeline is:   beforeTick → processAllTicks → afterTick
- * The frame pipeline is:  beforeFrame → updateAll → afterFrame → scene.render()
+ * The frame pipeline is:  beforeFrame → updateAll → afterFrame
  *
  * All hooks are optional. If omitted the corresponding step is simply skipped.
+ * Rendering (e.g. scene.render()) should be called by the consumer in afterFrame.
  */
 export interface GameWorldHooks {
   /** Called before tick systems are processed (e.g. snapshot positions, execute commands) */
@@ -40,7 +36,7 @@ export interface GameWorldHooks {
   afterTick?: (tick: number) => void;
   /** Called before frame systems are updated (e.g. camera input) */
   beforeFrame?: (alpha: number, dt: number) => void;
-  /** Called after frame systems are updated but before scene.render() (e.g. interpolation) */
+  /** Called after frame systems are updated (e.g. interpolation, scene.render()) */
   afterFrame?: (alpha: number, dt: number) => void;
 }
 
@@ -48,30 +44,31 @@ export interface GameWorldHooks {
  * GameWorld - High-level facade for the ECS engine
  *
  * Replaces the manual wiring of SystemRegistry + TickFrameManager + NetworkCoordinator
- * with a single entry point.
+ * with a single entry point. Completely renderer-agnostic.
  *
  * Single-player usage:
  * ```ts
- * const world = new GameWorld({ engine, scene });
+ * const world = new GameWorld({ componentTypes });
  * world.registerSystems(tickSystems, frameSystems);
- * world.start(); // auto-runs processAllTicks, updateAll, scene.render()
+ * world.start({
+ *   afterFrame(alpha, dt) { scene.render(); },
+ * });
  * ```
  *
  * Multiplayer usage (with PhalanxClient as tickFrameProvider):
  * ```ts
- * const world = new GameWorld({ engine, scene, componentTypes, tickFrameProvider: client });
+ * const world = new GameWorld({ componentTypes, tickFrameProvider: client });
  * world.registerSystems(tickSystems, frameSystems);
  * world.start({
  *   beforeTick(tick, commands) { lockstepManager.processTick(tick, commands); },
  *   afterTick(tick) { interpolationSystem.captureCurrentPositions(); },
  *   beforeFrame(alpha, dt) { cameraController.update(dt); },
- *   afterFrame(alpha, dt) { interpolationSystem.interpolate(alpha); },
+ *   afterFrame(alpha, dt) { interpolationSystem.interpolate(alpha); scene.render(); },
  * });
  * ```
  */
 export class GameWorld {
   private readonly systemRegistry: SystemRegistry;
-  private readonly scene: Scene;
   private readonly provider: ITickFrameProvider;
   private readonly ownsProvider: boolean;
 
@@ -80,12 +77,8 @@ export class GameWorld {
   private unsubscribeFrame: Unsubscribe | null = null;
 
   constructor(config: GameWorldConfig) {
-    this.scene = config.scene;
-
     // Create SystemRegistry with eagerly-initialized core deps
     this.systemRegistry = new SystemRegistry(
-      config.engine,
-      config.scene,
       config.componentTypes
     );
 
@@ -167,7 +160,10 @@ export class GameWorld {
    * Start the tick/frame loop.
    *
    * The tick pipeline:  hooks.beforeTick → processAllTicks → hooks.afterTick
-   * The frame pipeline: hooks.beforeFrame → updateAll → hooks.afterFrame → scene.render()
+   * The frame pipeline: hooks.beforeFrame → updateAll → hooks.afterFrame
+   *
+   * Rendering is NOT called automatically. The consumer should call their
+   * renderer (e.g. scene.render()) in the afterFrame hook.
    *
    * @param hooks - Optional lifecycle hooks to inject custom logic around the core steps.
    */
@@ -184,9 +180,7 @@ export class GameWorld {
       hooks?.beforeFrame?.(alpha, dt);
       this.updateAll(dt);
       hooks?.afterFrame?.(alpha, dt);
-      this.scene.render();
     });
-
 
     // Start internal TickFrameManager if we own it
     if (this.ownsProvider && this.provider instanceof TickFrameManager) {
@@ -220,4 +214,3 @@ export class GameWorld {
     this.systemRegistry.dispose();
   }
 }
-

@@ -1,5 +1,5 @@
-import type { IComponent } from 'phalanx-babylon-ecs';
-import { createComponentTypeRegistry } from 'phalanx-babylon-ecs';
+import type { IComponent } from 'phalanx-ecs';
+import { createComponentTypeRegistry } from 'phalanx-ecs';
 
 // Re-export IComponent for convenience
 export type { IComponent };

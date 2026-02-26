@@ -1,6 +1,7 @@
 import { Vector3 } from '@babylonjs/core';
-import type { SystemContext } from 'phalanx-babylon-ecs';
-import { GameSystem } from 'phalanx-babylon-ecs';
+import type { SystemContext } from 'phalanx-ecs';
+import { GameSystem } from 'phalanx-ecs';
+import type { Unit } from '../entities/Unit';
 import { ComponentType, MovementComponent } from '../components';
 import { GameEvents, createEvent } from '../events';
 import type {
@@ -75,7 +76,7 @@ export class MovementSystem extends GameSystem {
         this.eventBus.emit<MoveCompletedEvent>(GameEvents.MOVE_COMPLETED, {
           ...createEvent(),
           entityId: entity.id,
-          position: entity.position.clone(),
+          position: (entity as Unit).position.clone(),
         });
       }
     }
@@ -85,7 +86,7 @@ export class MovementSystem extends GameSystem {
    * Command an entity to move to a position
    */
   public moveEntityTo(entityId: number, target: Vector3): boolean {
-    const entity = this.entityManager.getEntity(entityId);
+    const entity = this.entityManager.getEntity(entityId) as Unit | undefined;
     if (!entity) return false;
 
     // Don't allow entities ignored by physics to move (e.g., dying units)

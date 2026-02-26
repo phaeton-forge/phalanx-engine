@@ -6,7 +6,7 @@ import {
   Color3,
   Mesh,
 } from '@babylonjs/core';
-import { Entity } from 'phalanx-babylon-ecs';
+import { Unit } from './Unit';
 import {
   ComponentType,
   TeamComponent,
@@ -31,7 +31,7 @@ export interface BaseConfig {
  * Main objective for each team - destroy enemy base to win
  * Uses component-based architecture
  */
-export class Base extends Entity {
+export class Base extends Unit {
   private rangeIndicator: Mesh | null = null;
   private _debug: boolean;
   private _color: Color3;

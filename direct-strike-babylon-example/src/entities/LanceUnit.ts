@@ -6,7 +6,7 @@ import {
   Color3,
   Mesh,
 } from '@babylonjs/core';
-import { Entity } from 'phalanx-babylon-ecs';
+import { Unit } from './Unit';
 import {
   ComponentType,
   TeamComponent,
@@ -37,7 +37,7 @@ export interface LanceUnitConfig {
  * Visual design: Elongated spear/lance shape oriented along X-axis (forward)
  * For Team2, the unit is rotated 180 degrees to face the opposite direction
  */
-export class LanceUnit extends Entity {
+export class LanceUnit extends Unit {
   private rangeIndicator: Mesh | null = null;
   private _debug: boolean;
   private _color: Color3;

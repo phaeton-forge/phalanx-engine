@@ -1,4 +1,4 @@
-import type { EventBus } from 'phalanx-babylon-ecs';
+import type { EventBus } from 'phalanx-ecs';
 import { GameEvents } from '../events';
 import type { UIResourcesUpdatedEvent, UIFormationUpdatedEvent } from '../events';
 

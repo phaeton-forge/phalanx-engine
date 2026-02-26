@@ -1,5 +1,5 @@
-import type { SystemContext } from 'phalanx-babylon-ecs';
-import { GameSystem } from 'phalanx-babylon-ecs';
+import type { SystemContext } from 'phalanx-ecs';
+import { GameSystem } from 'phalanx-ecs';
 import { ComponentType, RotationComponent } from '../components';
 import { FP } from 'phalanx-math';
 

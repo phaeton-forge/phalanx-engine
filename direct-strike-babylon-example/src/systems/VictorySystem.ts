@@ -1,5 +1,5 @@
-import type { SystemContext } from 'phalanx-babylon-ecs';
-import { GameSystem } from 'phalanx-babylon-ecs';
+import type { SystemContext } from 'phalanx-ecs';
+import { GameSystem } from 'phalanx-ecs';
 import { GameEvents, createEvent } from '../events';
 import { TeamTag } from '../enums/TeamTag';
 import { resourceConfig } from '../config/constants';

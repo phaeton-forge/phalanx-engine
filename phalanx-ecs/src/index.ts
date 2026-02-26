@@ -1,7 +1,8 @@
 /**
- * Phalanx Babylon ECS - Entity Component System for Babylon.js
+ * Phalanx ECS - Renderer-agnostic Entity Component System
  *
- * A lightweight ECS library with optional multiplayer support via Phalanx Engine
+ * A lightweight ECS library with optional multiplayer support via Phalanx Engine.
+ * No rendering dependencies - bring your own renderer (Babylon.js, Three.js, etc.)
  */
 
 // Core ECS

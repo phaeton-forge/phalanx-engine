@@ -1,7 +1,7 @@
 import { Vector3, Color3 } from '@babylonjs/core';
 import type { EntityFactory } from './EntityFactory';
 import type { UIManager } from './UIManager';
-import type { SystemContext } from 'phalanx-babylon-ecs';
+import type { SystemContext } from 'phalanx-ecs';
 import type { SceneManager } from './SceneManager';
 import { ResourceSystem } from '../systems/ResourceSystem';
 import { FormationGridSystem } from '../systems/FormationGridSystem';
@@ -12,7 +12,7 @@ import type { AssetManager } from './AssetManager';
 import type { PhalanxClient, MatchFoundEvent } from 'phalanx-client';
 import { TeamTag } from '../enums/TeamTag';
 import { arenaParams } from '../config/constants';
-import { resetEntityIdCounter } from 'phalanx-babylon-ecs';
+import { resetEntityIdCounter } from 'phalanx-ecs';
 
 /**
  * GameInitializer - Handles game world initialization

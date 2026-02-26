@@ -1,14 +1,14 @@
-# Phalanx Babylon ECS
+# Phalanx ECS
 
-A lightweight Entity-Component-System (ECS) library for Babylon.js with optional multiplayer support via Phalanx Engine.
+A lightweight, renderer-agnostic Entity-Component-System (ECS) library with optional multiplayer support via Phalanx Engine.
 
 ## Features
 
 - **GameWorld Facade**: One-liner setup — construct, register systems, start
 - **Pure ECS Architecture**: EntityManager, GameSystem, EventBus
+- **Renderer Agnostic**: No rendering dependencies — bring your own renderer (Babylon.js, Three.js, etc.)
 - **Flexible Integration**: Use standalone or with Phalanx Client for multiplayer
 - **TypeScript First**: Full type safety and excellent IDE support
-- **Babylon.js Optimized**: Designed specifically for Babylon.js workflows
 - **Deterministic Tick/Frame**: Separate tick-based simulation from frame-based rendering
 
 ## Core Components
@@ -17,7 +17,7 @@ A lightweight Entity-Component-System (ECS) library for Babylon.js with optional
 - **GameWorld**: High-level facade — creates all core dependencies, wires tick/frame loops, provides convenience accessors
 
 ### Entity Management
-- **Entity**: Abstract base class for all game objects
+- **Entity**: Base class for all game objects (id + components only, no rendering)
 - **EntityManager**: Central registry with efficient component-based queries
 - **IComponent**: Interface for all components
 
@@ -36,7 +36,7 @@ A lightweight Entity-Component-System (ECS) library for Babylon.js with optional
 ## Installation
 
 ```bash
-npm install phalanx-babylon-ecs
+npm install phalanx-ecs
 ```
 
 ## Usage
@@ -44,18 +44,10 @@ npm install phalanx-babylon-ecs
 ### Single-player Mode
 
 ```typescript
-import { Engine, Scene } from '@babylonjs/core';
-import { GameWorld } from 'phalanx-babylon-ecs';
+import { GameWorld } from 'phalanx-ecs';
 
-// Create Babylon.js engine and scene
-const canvas = document.getElementById('canvas') as HTMLCanvasElement;
-const engine = new Engine(canvas, true);
-const scene = new Scene(engine);
-
-// Create GameWorld (internally creates TickFrameManager)
+// Create GameWorld (no rendering dependencies)
 const world = new GameWorld({
-  engine,
-  scene,
   tickRate: 60,        // optional, default 60
   maxFrameTime: 0.25,  // optional, default 0.25
 });
@@ -78,7 +70,7 @@ world.start();
 
 ```typescript
 import { PhalanxClient } from 'phalanx-client';
-import { GameWorld } from 'phalanx-babylon-ecs';
+import { GameWorld } from 'phalanx-ecs';
 
 // Initialize Phalanx Client
 const client = new PhalanxClient({
@@ -88,8 +80,6 @@ const client = new PhalanxClient({
 
 // Create GameWorld with external tick/frame provider
 const world = new GameWorld({
-  engine,
-  scene,
   tickFrameProvider: client,
 });
 
@@ -124,16 +114,18 @@ await client.connect();
 For advanced use-cases you can still use `SystemRegistry` and `ITickFrameProvider` directly:
 
 ```typescript
-import { SystemRegistry, TickFrameManager } from 'phalanx-babylon-ecs';
+import { SystemRegistry, TickFrameManager } from 'phalanx-ecs';
 
-const registry = new SystemRegistry(engine, scene, componentTypes);
+const registry = new SystemRegistry(componentTypes);
 registry.registerSystems(tickSystems, frameSystems);
 
 const tickManager = new TickFrameManager({ tickRate: 60 });
 tickManager.onTick((tick) => registry.processAllTicks(tick));
-tickManager.onFrame((alpha, dt) => { registry.updateAll(dt); scene.render(); });
+tickManager.onFrame((alpha, dt) => { registry.updateAll(dt); });
 tickManager.start();
-```## API Reference
+```
+
+## API Reference
 
 ### GameWorld
 
@@ -162,8 +154,6 @@ class GameWorld {
 }
 
 interface GameWorldConfig {
-  engine: Engine
-  scene: Scene
   componentTypes?: symbol[]
   tickRate?: number          // default 60
   maxFrameTime?: number      // default 0.25
@@ -195,7 +185,7 @@ class EntityManager {
 
 ```typescript
 class SystemRegistry {
-  constructor(engine: Engine, scene: Scene, componentTypes?: symbol[])
+  constructor(componentTypes?: symbol[])
   registerSystems(tickSystems: GameSystem[], frameSystems: GameSystem[]): void
   processAllTicks(tick: number): void
   updateAll(deltaTime: number): void
@@ -249,7 +239,7 @@ type FrameHandler = (alpha: number, dt: number) => void;
 ## Creating Custom Systems
 
 ```typescript
-import { GameSystem, SystemContext } from 'phalanx-babylon-ecs';
+import { GameSystem, SystemContext } from 'phalanx-ecs';
 
 class MySystem extends GameSystem {
   init(context: SystemContext): void {

@@ -135,7 +135,7 @@ This ensures all clients see the exact same game state at all times.
 | Component             | Location           | Purpose                                     |
 | --------------------- | ------------------ | ------------------------------------------- |
 | `PhalanxClient`       | phalanx-client     | Network connection, matchmaking, tick/frame |
-| `GameWorld`           | phalanx-babylon-ecs| ECS facade, automatic tick/frame loop       |
+| `GameWorld`           | phalanx-ecs| ECS facade, automatic tick/frame loop       |
 | `LockstepManager`     | direct-strike      | Game-specific command execution              |
 | `InterpolationSystem` | direct-strike      | Smooth visual movement between ticks        |
 
@@ -144,7 +144,7 @@ This ensures all clients see the exact same game state at all times.
 The `GameWorld` manages the tick/frame loop and automatically runs all registered systems. You can inject custom logic via **lifecycle hooks**:
 
 ```typescript
-import { GameWorld } from 'phalanx-babylon-ecs';
+import { GameWorld } from 'phalanx-ecs';
 
 // Create GameWorld with PhalanxClient as the tick/frame provider
 const world = new GameWorld({

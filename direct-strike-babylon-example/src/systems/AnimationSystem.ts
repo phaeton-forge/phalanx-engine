@@ -1,7 +1,8 @@
 import { Vector3 } from '@babylonjs/core';
-import { Entity } from 'phalanx-babylon-ecs';
-import type { SystemContext } from 'phalanx-babylon-ecs';
-import { GameSystem } from 'phalanx-babylon-ecs';
+import type { Scene } from '@babylonjs/core';
+import type { Unit } from '../entities/Unit';
+import type { SystemContext } from 'phalanx-ecs';
+import { GameSystem } from 'phalanx-ecs';
 import {
   ComponentType,
   AnimationComponent,
@@ -35,8 +36,11 @@ import type {
  * to maintain separation between deterministic simulation and visual effects.
  */
 export class AnimationSystem extends GameSystem {
-  constructor() {
+  private scene: Scene;
+
+  constructor(scene: Scene) {
     super();
+    this.scene = scene;
   }
 
   /**
@@ -81,7 +85,7 @@ export class AnimationSystem extends GameSystem {
     this.subscribe<ShowBloodEffectEvent>(
       GameEvents.SHOW_BLOOD_EFFECT,
       (event) => {
-        const entity = this.entityManager.getEntity(event.entityId);
+        const entity = this.entityManager.getEntity(event.entityId) as Unit | undefined;
         if (entity) {
           this.showBloodEffect(entity);
         }
@@ -92,7 +96,7 @@ export class AnimationSystem extends GameSystem {
     this.subscribe<OrientToTargetEvent>(
       GameEvents.ORIENT_TO_TARGET,
       (event) => {
-        const entity = this.entityManager.getEntity(event.entityId);
+        const entity = this.entityManager.getEntity(event.entityId) as Unit | undefined;
         if (entity) {
           this.orientToTarget(entity, event.targetPosition);
         }
@@ -129,7 +133,7 @@ export class AnimationSystem extends GameSystem {
     this.subscribe<OrientToMovementDirectionEvent>(
       GameEvents.ORIENT_TO_MOVEMENT_DIRECTION,
       (event) => {
-        const entity = this.entityManager.getEntity(event.entityId);
+        const entity = this.entityManager.getEntity(event.entityId) as Unit | undefined;
         if (entity) {
           this.orientToMovementDirection(entity);
         }
@@ -400,16 +404,16 @@ export class AnimationSystem extends GameSystem {
   /**
    * Show blood effect at entity position
    */
-  public showBloodEffect(entity: Entity): void {
+  public showBloodEffect(entity: Unit): void {
     const position = entity.position.clone();
     position.y += 1; // Blood at chest height
-    new BloodEffect(this.context.scene, position);
+    new BloodEffect(this.scene, position);
   }
 
   /**
    * Orient entity to face a target position (sets rotation target)
    */
-  public orientToTarget(entity: Entity, targetPosition: Vector3): void {
+  public orientToTarget(entity: Unit, targetPosition: Vector3): void {
     const rotation = entity.getComponent<RotationComponent>(
       ComponentType.Rotation
     );
@@ -429,7 +433,7 @@ export class AnimationSystem extends GameSystem {
   /**
    * Orient entity along its default movement direction and trigger run animation
    */
-  public orientToMovementDirection(entity: Entity): void {
+  public orientToMovementDirection(entity: Unit): void {
     const rotation = entity.getComponent<RotationComponent>(
       ComponentType.Rotation
     );

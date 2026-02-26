@@ -1,4 +1,3 @@
-import { Engine, Scene } from '@babylonjs/core';
 import { EntityManager } from './EntityManager';
 import { EventBus } from './EventBus';
 import { SystemContext } from './SystemContext';
@@ -13,9 +12,6 @@ import type { GameSystem } from './GameSystem';
  * - Processing tick and frame updates for all systems
  */
 export class SystemRegistry {
-  private engine: Engine;
-  private scene: Scene;
-
   // Core dependencies (eagerly initialized in constructor)
   public readonly eventBus: EventBus;
   public readonly entityManager: EntityManager;
@@ -32,10 +28,7 @@ export class SystemRegistry {
    */
   private frameSystems: GameSystem[] = [];
 
-  constructor(engine: Engine, scene: Scene, componentTypes?: symbol[]) {
-    this.engine = engine;
-    this.scene = scene;
-
+  constructor(componentTypes?: symbol[]) {
     // Initialize EventBus first (no dependencies)
     this.eventBus = new EventBus();
 
@@ -49,8 +42,6 @@ export class SystemRegistry {
 
     // Create SystemContext for systems
     this.context = new SystemContext(
-      this.engine,
-      this.scene,
       this.eventBus,
       this.entityManager
     );
@@ -144,4 +135,3 @@ export class SystemRegistry {
     this.entityManager?.clear();
   }
 }
-

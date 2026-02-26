@@ -1,6 +1,8 @@
 import {AdvancedDynamicTexture, Control, Rectangle} from '@babylonjs/gui';
-import type { SystemContext } from 'phalanx-babylon-ecs';
-import { GameSystem } from 'phalanx-babylon-ecs';
+import type { Scene } from '@babylonjs/core';
+import type { SystemContext } from 'phalanx-ecs';
+import { GameSystem } from 'phalanx-ecs';
+import type { Unit } from '../entities/Unit';
 import {ComponentType, HealthComponent, HealthBarComponent, DeathComponent} from '../components';
 import type {DamageAppliedEvent, EntityDestroyedEvent, EntityDyingEvent,} from '../events';
 import {GameEvents} from '../events';
@@ -35,9 +37,11 @@ export class HealthBarSystem extends GameSystem {
   // Health bar dimensions (in pixels)
   private readonly BAR_WIDTH = 60;
   private readonly BAR_HEIGHT = 8;
+  private scene: Scene;
 
-  constructor() {
+  constructor(scene: Scene) {
     super();
+    this.scene = scene;
   }
 
   /**
@@ -50,7 +54,7 @@ export class HealthBarSystem extends GameSystem {
     this.guiTexture = AdvancedDynamicTexture.CreateFullscreenUI(
       'healthBarUI',
       true,
-      this.context.scene
+      this.scene
     );
 
     this.setupEventListeners();
@@ -237,7 +241,7 @@ export class HealthBarSystem extends GameSystem {
       const healthComp = entity.getComponent<HealthComponent>(ComponentType.Health);
       if (!healthBarComp || !healthComp) continue;
 
-      const mesh = entity.getMesh();
+      const mesh = (entity as Unit).getMesh();
       if (!mesh) continue;
 
       // Create health bar UI for this entity

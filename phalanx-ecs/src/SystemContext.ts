@@ -1,4 +1,3 @@
-import type { Engine, Scene } from '@babylonjs/core';
 import type { EventBus } from './EventBus';
 import type { EntityManager } from './EntityManager';
 import type { GameSystem } from './GameSystem';
@@ -22,12 +21,6 @@ import type { GameSystem } from './GameSystem';
  * - Makes testing easier (mock the context)
  */
 export class SystemContext {
-  /** Babylon.js engine instance */
-  public readonly engine: Engine;
-
-  /** Babylon.js scene instance */
-  public readonly scene: Scene;
-
   /** Central event bus for decoupled communication */
   public readonly eventBus: EventBus;
 
@@ -38,13 +31,9 @@ export class SystemContext {
   private systemRegistry: Map<Function, GameSystem> = new Map();
 
   constructor(
-    engine: Engine,
-    scene: Scene,
     eventBus: EventBus,
     entityManager: EntityManager
   ) {
-    this.engine = engine;
-    this.scene = scene;
     this.eventBus = eventBus;
     this.entityManager = entityManager;
   }
@@ -68,4 +57,3 @@ export class SystemContext {
     return this.systemRegistry.get(systemClass) as T | undefined;
   }
 }
-

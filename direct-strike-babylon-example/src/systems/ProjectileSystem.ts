@@ -1,9 +1,9 @@
 import { Vector3 } from '@babylonjs/core';
+import type { Scene } from '@babylonjs/core';
 import { Projectile } from '../entities/Projectile';
 import { ExplosionEffect } from '../effects/ExplosionEffect';
-import type { SystemContext } from 'phalanx-babylon-ecs';
-import { GameSystem } from 'phalanx-babylon-ecs';
-import { Entity } from 'phalanx-babylon-ecs';
+import type { SystemContext } from 'phalanx-ecs';
+import { GameSystem } from 'phalanx-ecs';
 import { ComponentType, TeamComponent } from '../components';
 import { GameEvents, createEvent } from '../events';
 import type {
@@ -14,6 +14,7 @@ import type {
 import type { TeamTag } from '../enums/TeamTag';
 import { networkConfig } from '../config/constants';
 import { FP, FPVector3 } from 'phalanx-math';
+import type { Unit } from "../entities/Unit.ts";
 
 // Pre-computed fixed-point constants for projectile collision
 const FP_HIT_RADIUS_SQ = FP.FromFloat(1.5 * 1.5); // hitRadius^2 = 2.25
@@ -51,9 +52,11 @@ const DEFAULT_PROJECTILE_CONFIG: ProjectileConfig = {
 export class ProjectileSystem extends GameSystem {
   private config: ProjectileConfig;
   private projectiles: Projectile[] = [];
+  private scene: Scene;
 
-  constructor(config?: Partial<ProjectileConfig>) {
+  constructor(scene: Scene, config?: Partial<ProjectileConfig>) {
     super();
+    this.scene = scene;
     this.config = { ...DEFAULT_PROJECTILE_CONFIG, ...config };
   }
 
@@ -88,7 +91,7 @@ export class ProjectileSystem extends GameSystem {
     direction: Vector3,
     config: ProjectileSpawnConfig
   ): Projectile {
-    const projectile = new Projectile(this.context.scene, origin, direction, {
+    const projectile = new Projectile(this.scene, origin, direction, {
       damage: config.damage,
       speed: config.speed,
       lifetime: config.lifetime,
@@ -118,7 +121,7 @@ export class ProjectileSystem extends GameSystem {
     const potentialTargets = this.entityManager.queryEntities(
       ComponentType.Health,
       ComponentType.Team
-    );
+    ) as Unit[];
 
     for (const projectile of this.projectiles) {
       // Build target list for this projectile (only hostile entities)
@@ -152,7 +155,7 @@ export class ProjectileSystem extends GameSystem {
   private updateProjectile(
     projectile: Projectile,
     deltaTime: number,
-    targets: Entity[]
+    targets: Unit[]
   ): boolean {
     if (projectile.isDestroyed) return true;
 
@@ -211,7 +214,7 @@ export class ProjectileSystem extends GameSystem {
 
     // Create explosion effect if projectile hit something
     if (projectile.isDestroyed) {
-      new ExplosionEffect(this.context.scene, projectile.position);
+      new ExplosionEffect(this.scene, projectile.position);
     }
 
     projectile.dispose();

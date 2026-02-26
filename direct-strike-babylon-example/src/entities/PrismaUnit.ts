@@ -7,7 +7,7 @@ import {
   Mesh,
   VertexData,
 } from '@babylonjs/core';
-import { Entity } from 'phalanx-babylon-ecs';
+import { Unit } from './Unit';
 import {
   ComponentType,
   TeamComponent,
@@ -35,7 +35,7 @@ export interface PrismaUnitConfig {
  * PrismaUnit entity - A larger 2x2 combat unit built from triangular prisms
  * Uses component-based architecture
  */
-export class PrismaUnit extends Entity {
+export class PrismaUnit extends Unit {
   private rangeIndicator: Mesh | null = null;
   private _debug: boolean;
   private _color: Color3;

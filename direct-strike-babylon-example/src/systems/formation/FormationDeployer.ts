@@ -1,12 +1,12 @@
 import { Vector3 } from '@babylonjs/core';
-import { EventBus } from 'phalanx-babylon-ecs';
+import { EventBus } from 'phalanx-ecs';
 import {GameEvents, createEvent, type FormationUnitType} from '../../events';
 import { arenaParams } from '../../config/constants';
 import { FormationGridData } from './FormationGridData';
 import type { CreateUnitCallback } from './FormationTypes';
 import type { FormationCommittedEvent } from '../../events';
 import type {TeamTag} from "../../enums/TeamTag.ts";
-import type { SystemContext } from 'phalanx-babylon-ecs';
+import type { SystemContext } from 'phalanx-ecs';
 import { MovementSystem } from '../MovementSystem';
 
 /**

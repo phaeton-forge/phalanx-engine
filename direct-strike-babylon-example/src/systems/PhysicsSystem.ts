@@ -1,5 +1,6 @@
-import type { SystemContext, Entity } from 'phalanx-babylon-ecs';
-import { GameSystem } from 'phalanx-babylon-ecs';
+import type { SystemContext } from 'phalanx-ecs';
+import { GameSystem } from 'phalanx-ecs';
+import type { Unit } from '../entities/Unit';
 import { ComponentType, MovementComponent, TeamComponent, PhysicsBodyComponent } from '../components';
 import { networkConfig } from '../config/constants';
 import {
@@ -207,15 +208,20 @@ export class PhysicsSystem extends GameSystem {
   }
 
   /**
+   * Query physics entities, cast to Unit[] for access to fpPosition/ignorePhysics
+   */
+  private queryPhysicsEntities(): Unit[] {
+    return this.entityManager.queryEntities(ComponentType.PhysicsBody) as Unit[];
+  }
+
+  /**
    * Update velocities for entities with movement targets
    * Uses fixed-point math to avoid floating-point determinism issues
    */
   private updateMovementVelocities(): void {
     // Query entities that have both Movement and PhysicsBody components
     // entityManager.queryEntities returns sorted list for deterministic ordering
-    const physicsEntities = this.entityManager.queryEntities(
-      ComponentType.PhysicsBody
-    );
+    const physicsEntities = this.queryPhysicsEntities();
 
     for (const entity of physicsEntities) {
       const body = entity.getComponent<PhysicsBodyComponent>(ComponentType.PhysicsBody);
@@ -277,9 +283,7 @@ export class PhysicsSystem extends GameSystem {
     this.spatialGrid.clear();
 
     // Query entities with PhysicsBody component (already sorted by ID)
-    const physicsEntities = this.entityManager.queryEntities(
-      ComponentType.PhysicsBody
-    );
+    const physicsEntities = this.queryPhysicsEntities();
 
     for (const entity of physicsEntities) {
       const body = entity.getComponent<PhysicsBodyComponent>(ComponentType.PhysicsBody);
@@ -305,9 +309,7 @@ export class PhysicsSystem extends GameSystem {
     this.checkedPairs.clear();
 
     // Query entities with PhysicsBody component (already sorted by ID)
-    const physicsEntities = this.entityManager.queryEntities(
-      ComponentType.PhysicsBody
-    );
+    const physicsEntities = this.queryPhysicsEntities();
 
     for (const entityA of physicsEntities) {
       const bodyA = entityA.getComponent<PhysicsBodyComponent>(ComponentType.PhysicsBody);
@@ -333,7 +335,7 @@ export class PhysicsSystem extends GameSystem {
         if (this.checkedPairs.has(pairKey)) continue;
         this.checkedPairs.add(pairKey);
 
-        const entityB = this.entityManager.getEntity(otherEntityId);
+        const entityB = this.entityManager.getEntity(otherEntityId) as Unit | undefined;
         if (!entityB) continue;
 
         const bodyB = entityB.getComponent<PhysicsBodyComponent>(ComponentType.PhysicsBody);
@@ -431,9 +433,7 @@ export class PhysicsSystem extends GameSystem {
     const maxVelSq = FP.Mul(this.config.maxVelocity, this.config.maxVelocity);
 
     // Query entities with PhysicsBody component (already sorted by ID)
-    const physicsEntities = this.entityManager.queryEntities(
-      ComponentType.PhysicsBody
-    );
+    const physicsEntities = this.queryPhysicsEntities();
 
     for (const entity of physicsEntities) {
       const body = entity.getComponent<PhysicsBodyComponent>(ComponentType.PhysicsBody);
@@ -474,9 +474,7 @@ export class PhysicsSystem extends GameSystem {
    */
   private applyFriction(): void {
     // Query entities with PhysicsBody component (already sorted by ID)
-    const physicsEntities = this.entityManager.queryEntities(
-      ComponentType.PhysicsBody
-    );
+    const physicsEntities = this.queryPhysicsEntities();
 
     for (const entity of physicsEntities) {
       const body = entity.getComponent<PhysicsBodyComponent>(ComponentType.PhysicsBody);
@@ -512,8 +510,8 @@ export class PhysicsSystem extends GameSystem {
    * - Units don't collide with friendly buildings (bases, towers)
    */
   private shouldSkipCollision(
-    entityA: Entity,
-    entityB: Entity,
+    entityA: Unit,
+    entityB: Unit,
     bodyA: PhysicsBodyComponent,
     bodyB: PhysicsBodyComponent
   ): boolean {

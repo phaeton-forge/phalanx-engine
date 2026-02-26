@@ -1,6 +1,6 @@
 import { Engine, Scene } from '@babylonjs/core';
-import { GameWorld } from 'phalanx-babylon-ecs';
-import type { CommandsBatch } from 'phalanx-babylon-ecs';
+import { GameWorld } from 'phalanx-ecs';
+import type { CommandsBatch } from 'phalanx-ecs';
 import { LockstepManager } from './LockstepManager';
 import { EntityFactory } from './EntityFactory';
 import { UIManager } from './UIManager';
@@ -116,8 +116,6 @@ export class Game {
 
     // Create GameWorld facade (replaces SystemRegistry + NetworkCoordinator)
     this.world = new GameWorld({
-      engine: this.engine,
-      scene: this.scene,
       componentTypes: Object.values(ComponentType),
       tickFrameProvider: this.client,
     });
@@ -131,19 +129,19 @@ export class Game {
     this.movementSystem = new MovementSystem();
     this.physicsSystem = new PhysicsSystem();
     this.healthSystem = new HealthSystem();
-    this.projectileSystem = new ProjectileSystem();
+    this.projectileSystem = new ProjectileSystem(this.scene);
     this.combatSystem = new CombatSystem();
     this.resourceSystem = new ResourceSystem();
     this.territorySystem = new TerritorySystem();
-    this.formationGridSystem = new FormationGridSystem();
+    this.formationGridSystem = new FormationGridSystem(this.scene);
     this.victorySystem = new VictorySystem();
     this.waveSystem = new WaveSystem();
     this.interpolationSystem = new InterpolationSystem();
 
     // Create visual systems
-    this.animationSystem = new AnimationSystem();
+    this.animationSystem = new AnimationSystem(this.scene);
     this.rotationSystem = new RotationSystem();
-    this.healthBarSystem = new HealthBarSystem();
+    this.healthBarSystem = new HealthBarSystem(this.scene);
 
     // Define system processing order
     // Tick systems - order matters for determinism!
@@ -337,6 +335,8 @@ export class Game {
       afterFrame: (alpha: number, _dt: number) => {
         // Interpolate visual positions using alpha
         this.interpolationSystem.interpolate(alpha);
+        // Render the scene (GameWorld no longer calls scene.render automatically)
+        this.scene.render();
       },
     });
 

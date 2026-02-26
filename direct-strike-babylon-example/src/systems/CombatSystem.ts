@@ -1,8 +1,8 @@
 import { Vector3 } from '@babylonjs/core';
-import { Entity } from 'phalanx-babylon-ecs';
+import type { Unit } from '../entities/Unit';
 import { Tower } from '../entities/Tower';
-import type { SystemContext } from 'phalanx-babylon-ecs';
-import { GameSystem } from 'phalanx-babylon-ecs';
+import type { SystemContext } from 'phalanx-ecs';
+import { GameSystem } from 'phalanx-ecs';
 import { GameRandom } from '../core/GameRandom';
 import {
   AnimationComponent,
@@ -153,7 +153,7 @@ export class CombatSystem extends GameSystem {
       ComponentType.Attack,
       ComponentType.Team,
       ComponentType.Health
-    );
+    ) as Unit[];
 
     for (const attacker of attackers) {
       const health = attacker.getComponent<HealthComponent>(
@@ -188,10 +188,10 @@ export class CombatSystem extends GameSystem {
 
       // Check for aggro target first (unit that attacked us)
       const aggroTargetId = this.aggroTargets.get(attacker.id);
-      let aggroTarget: Entity | null = null;
+      let aggroTarget: Unit | null = null;
 
       if (aggroTargetId !== undefined) {
-        aggroTarget = this.entityManager.getEntity(aggroTargetId) ?? null;
+        aggroTarget = (this.entityManager.getEntity(aggroTargetId) as Unit | undefined) ?? null;
         const aggroHealth = aggroTarget?.getComponent<HealthComponent>(
           ComponentType.Health
         );
@@ -438,10 +438,10 @@ export class CombatSystem extends GameSystem {
    * is chosen. This ensures all clients select the same target.
    */
   private findTarget(
-    attacker: Entity,
-    allCombatants: Entity[],
-    aggroTarget: Entity | null
-  ): Entity | null {
+    attacker: Unit,
+    allCombatants: Unit[],
+    aggroTarget: Unit | null
+  ): Unit | null {
     const attackerTeam = attacker.getComponent<TeamComponent>(
       ComponentType.Team
     )!;
@@ -478,7 +478,7 @@ export class CombatSystem extends GameSystem {
       }
     }
 
-    let closestTarget: Entity | null = null;
+    let closestTarget: Unit | null = null;
     // Use fixed-point squared distance for deterministic comparison
     let closestDistanceSq: FixedPoint | null = null;
 
@@ -539,7 +539,7 @@ export class CombatSystem extends GameSystem {
    * For melee attacks (projectileSpeed === 0), damage is applied directly.
    * For ranged attacks, a projectile is spawned.
    */
-  private performAttack(attacker: Entity, target: Entity): void {
+  private performAttack(attacker: Unit, target: Unit): void {
     const attack = attacker.getComponent<AttackComponent>(
       ComponentType.Attack
     )!;
@@ -575,8 +575,8 @@ export class CombatSystem extends GameSystem {
    * This ensures all clients deal damage at exactly the same simulation tick.
    */
   private performMeleeAttack(
-    attacker: Entity,
-    target: Entity,
+    attacker: Unit,
+    target: Unit,
     damage: number
   ): void {
     // Apply damage immediately for deterministic simulation
@@ -613,8 +613,8 @@ export class CombatSystem extends GameSystem {
    * Perform a ranged attack by spawning a projectile
    */
   private performRangedAttack(
-    attacker: Entity,
-    target: Entity,
+    attacker: Unit,
+    target: Unit,
     attack: AttackComponent,
     team: TeamComponent,
     damage: number
@@ -665,7 +665,7 @@ export class CombatSystem extends GameSystem {
       ComponentType.Attack,
       ComponentType.Team,
       ComponentType.Health
-    );
+    ) as Unit[];
 
     for (const attacker of attackers) {
       if (attacker instanceof Tower) {

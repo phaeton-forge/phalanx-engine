@@ -6,7 +6,7 @@ import {
   StandardMaterial,
   Vector3,
 } from '@babylonjs/core';
-import { Entity } from 'phalanx-babylon-ecs';
+import { Unit } from './Unit';
 import {
   AnimationComponent,
   AttackComponent,
@@ -63,7 +63,7 @@ export interface MutantUnitConfig {
  * - RotationComponent: Rotation interpolation state
  * - AttackLockComponent: Deterministic attack lock timing
  */
-export class MutantUnit extends Entity {
+export class MutantUnit extends Unit {
   private rangeIndicator: Mesh | null = null;
   private _debug: boolean;
   private _color: Color3;

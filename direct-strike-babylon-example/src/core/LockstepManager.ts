@@ -4,7 +4,7 @@ import type {
   EventBus,
   CommandsBatch,
   PlayerCommand,
-} from 'phalanx-babylon-ecs';
+} from 'phalanx-ecs';
 import type { MovementSystem } from '../systems/MovementSystem';
 import type { FormationGridSystem } from '../systems/FormationGridSystem';
 import { TeamTag } from '../enums/TeamTag';

@@ -2,7 +2,7 @@ packages:
   - 'phalanx-math'
   - 'phalanx-server'
   - 'phalanx-client'
-  - 'phalanx-babylon-ecs'
+  - 'phalanx-ecs'
   - 'game-test'
   - 'game-test-server'
   - 'direct-strike-babylon-example'

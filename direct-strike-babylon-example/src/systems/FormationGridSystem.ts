@@ -1,6 +1,7 @@
 import { Vector3, Mesh } from '@babylonjs/core';
-import type { SystemContext } from 'phalanx-babylon-ecs';
-import { GameSystem } from 'phalanx-babylon-ecs';
+import type { Scene } from '@babylonjs/core';
+import type { SystemContext } from 'phalanx-ecs';
+import { GameSystem } from 'phalanx-ecs';
 import { GameEvents, createEvent } from '../events';
 import { TeamTag } from '../enums/TeamTag';
 import {
@@ -55,9 +56,11 @@ export class FormationGridSystem extends GameSystem {
   private inputHandler!: FormationInputHandler;
   private deployer!: FormationDeployer;
   private previewMesh: Mesh | null = null;
+  private scene: Scene;
 
-  constructor() {
+  constructor(scene: Scene) {
     super();
+    this.scene = scene;
   }
 
   /**
@@ -68,10 +71,10 @@ export class FormationGridSystem extends GameSystem {
 
     // Initialize components
     this.gridData = new FormationGridData();
-    this.renderer = new FormationGridRenderer(this.context.scene);
-    this.hoverPreview = new FormationHoverPreview(this.context.scene);
+    this.renderer = new FormationGridRenderer(this.scene);
+    this.hoverPreview = new FormationHoverPreview(this.scene);
     this.inputHandler = new FormationInputHandler(
-      this.context.scene,
+      this.scene,
       this.eventBus,
       this.gridData,
       this.renderer,

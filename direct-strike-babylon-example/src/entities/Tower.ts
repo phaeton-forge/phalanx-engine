@@ -7,7 +7,7 @@ import {
   Mesh,
   TransformNode,
 } from '@babylonjs/core';
-import { Entity } from 'phalanx-babylon-ecs';
+import { Unit } from './Unit';
 import {
   ComponentType,
   TeamComponent,
@@ -37,7 +37,7 @@ export interface TowerConfig {
  * - Barrel: Grey metallic cannon extending from turret
  * - Crystal: Glowing team-colored crystal on top of turret
  */
-export class Tower extends Entity {
+export class Tower extends Unit {
   private rangeIndicator: Mesh | null = null;
   private _debug: boolean;
   private _teamColor: Color3;

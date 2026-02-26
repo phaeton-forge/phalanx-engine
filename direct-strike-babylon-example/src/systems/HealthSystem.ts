@@ -1,5 +1,5 @@
-import type { SystemContext } from 'phalanx-babylon-ecs';
-import { GameSystem } from 'phalanx-babylon-ecs';
+import type { SystemContext } from 'phalanx-ecs';
+import { GameSystem } from 'phalanx-ecs';
 import {
   ComponentType,
   HealthComponent,
@@ -7,7 +7,7 @@ import {
   MovementComponent,
   DeathComponent,
 } from '../components';
-import { Entity } from 'phalanx-babylon-ecs';
+import type { Unit } from '../entities/Unit';
 import { GameEvents, createEvent } from '../events';
 import type {
   DamageRequestedEvent,
@@ -73,7 +73,7 @@ export class HealthSystem extends GameSystem {
         this.eventBus.emit<EntityDestroyedEvent>(GameEvents.ENTITY_DESTROYED, {
           ...createEvent(),
           entityId: entity.id,
-          position: entity.position.clone(),
+          position: (entity as Unit).position.clone(),
         });
 
         // Complete the death (invokes callback and destroys entity)
@@ -96,7 +96,7 @@ export class HealthSystem extends GameSystem {
     this.subscribe<HealRequestedEvent>(
       GameEvents.HEAL_REQUESTED,
       (event) => {
-        const entity = this.entityManager.getEntity(event.entityId);
+        const entity = this.entityManager.getEntity(event.entityId) as Unit | undefined;
         if (entity) {
           this.heal(entity, event.amount);
         }
@@ -109,7 +109,7 @@ export class HealthSystem extends GameSystem {
    * @returns true if entity was destroyed by this damage
    */
   public applyDamage(
-    entity: Entity,
+    entity: Unit,
     amount: number,
     sourceId?: number
   ): boolean {
@@ -200,7 +200,7 @@ export class HealthSystem extends GameSystem {
     amount: number,
     sourceId?: number
   ): boolean {
-    const entity = this.entityManager.getEntity(entityId);
+    const entity = this.entityManager.getEntity(entityId) as Unit | undefined;
     if (!entity) return false;
 
     return this.applyDamage(entity, amount, sourceId);
@@ -209,7 +209,7 @@ export class HealthSystem extends GameSystem {
   /**
    * Heal an entity
    */
-  public heal(entity: Entity, amount: number): void {
+  public heal(entity: Unit, amount: number): void {
     const health = entity.getComponent<HealthComponent>(ComponentType.Health);
     health?.heal(amount);
   }
@@ -217,7 +217,7 @@ export class HealthSystem extends GameSystem {
   /**
    * Get current health of an entity
    */
-  public getHealth(entity: Entity): number | undefined {
+  public getHealth(entity: Unit): number | undefined {
     const health = entity.getComponent<HealthComponent>(ComponentType.Health);
     return health?.health;
   }
@@ -225,7 +225,7 @@ export class HealthSystem extends GameSystem {
   /**
    * Get health percentage of an entity (0-1)
    */
-  public getHealthPercent(entity: Entity): number | undefined {
+  public getHealthPercent(entity: Unit): number | undefined {
     const health = entity.getComponent<HealthComponent>(ComponentType.Health);
     return health?.healthPercent;
   }

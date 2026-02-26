@@ -1,5 +1,6 @@
-import type { SystemContext } from 'phalanx-babylon-ecs';
-import { GameSystem } from 'phalanx-babylon-ecs';
+import type { SystemContext } from 'phalanx-ecs';
+import { GameSystem } from 'phalanx-ecs';
+import type { Unit } from '../entities/Unit';
 import {
   fpToVector3Ref,
   lerpVector3FromFpRef,
@@ -68,7 +69,7 @@ export class InterpolationSystem extends GameSystem {
       const interpolation = entity.getComponent<InterpolationComponent>(ComponentType.Interpolation);
       if (!interpolation || !interpolation.active) continue;
 
-      interpolation.capturePosition(entity.fpPosition);
+      interpolation.capturePosition((entity as Unit).fpPosition);
     }
   }
 
@@ -101,7 +102,7 @@ export class InterpolationSystem extends GameSystem {
       );
 
       // Apply visual position to the entity's mesh
-      entity.setVisualPosition(interpolation.visualPosition);
+      (entity as Unit).setVisualPosition(interpolation.visualPosition);
     }
   }
 
@@ -117,14 +118,14 @@ export class InterpolationSystem extends GameSystem {
       if (!interpolation) continue;
 
       // Snap to current entity position
-      const fpPos = entity.fpPosition;
+      const fpPos = (entity as Unit).fpPosition;
       interpolation.snapToPosition(fpPos);
 
       // Convert fixed-point to visual position (no allocation, reuse existing Vector3)
       fpToVector3Ref(fpPos, interpolation.visualPosition);
 
       // Apply to mesh
-      entity.setVisualPosition(interpolation.visualPosition);
+      (entity as Unit).setVisualPosition(interpolation.visualPosition);
     }
   }
 
