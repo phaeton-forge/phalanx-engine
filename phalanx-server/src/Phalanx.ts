@@ -514,31 +514,23 @@ export class Phalanx extends EventEmitter {
 
       // Handle pause request
       socket.on('pause-game', () => {
-        console.warn('[Phalanx] pause-game received', { playerId, matchId: (socket.data as SocketData).matchId });
         if (!playerId) return;
         const matchId = (socket.data as SocketData).matchId;
         if (!matchId) return;
         const gameRoom = this.matchmaking!.getMatch(matchId);
         if (gameRoom) {
-          const result = gameRoom.pause(playerId);
-          console.warn('[Phalanx] gameRoom.pause() =>', result);
-        } else {
-          console.warn('[Phalanx] no gameRoom found for matchId', matchId);
+          gameRoom.pause(playerId);
         }
       });
 
       // Handle resume request
       socket.on('resume-game', () => {
-        console.warn('[Phalanx] resume-game received', { playerId, matchId: (socket.data as SocketData).matchId });
         if (!playerId) return;
         const matchId = (socket.data as SocketData).matchId;
         if (!matchId) return;
         const gameRoom = this.matchmaking!.getMatch(matchId);
         if (gameRoom) {
-          const result = gameRoom.resume(playerId);
-          console.warn('[Phalanx] gameRoom.resume() =>', result);
-        } else {
-          console.warn('[Phalanx] no gameRoom found for matchId', matchId);
+          gameRoom.resume(playerId);
         }
       });
 

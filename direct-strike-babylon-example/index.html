@@ -379,6 +379,12 @@
         pointer-events: auto;
       }
 
+      #game-buttons {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+
       #player-info {
         background: rgba(0, 0, 0, 0.7);
         padding: 8px 12px;
@@ -1347,8 +1353,10 @@
           </div>
         </div>
 
-        <button id="pause-btn">⏸ Pause</button>
-        <button id="exit-btn">Exit Game</button>
+        <div id="game-buttons">
+          <button id="pause-btn">⏸ Pause</button>
+          <button id="exit-btn">Exit Game</button>
+        </div>
       </div>
 
       <!-- Pause Overlay -->
