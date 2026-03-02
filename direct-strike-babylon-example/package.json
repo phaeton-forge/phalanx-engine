@@ -9,20 +9,21 @@
     "build": "tsc && vite build",
     "build:dev": "tsc && vite build --mode development",
     "preview": "vite preview",
-    "deploy": "node yc_bucket_deploy.js"
+    "deploy": "node yc_bucket_deploy.mjs"
   },
   "dependencies": {
     "@babylonjs/core": "8.53.0",
     "@babylonjs/gui": "8.53.0",
     "@babylonjs/loaders": "8.53.0",
-    "phalanx-ecs": "workspace:*",
     "phalanx-client": "workspace:*",
+    "phalanx-ecs": "workspace:*",
     "phalanx-math": "workspace:*"
   },
   "devDependencies": {
     "@aws-sdk/client-s3": "^3.705.0",
     "@aws-sdk/lib-storage": "^3.705.0",
     "dotenv": "^16.4.7",
+    "mime-types": "^3.0.2",
     "typescript": "~5.9.3",
     "vite": "^7.2.4"
   }
