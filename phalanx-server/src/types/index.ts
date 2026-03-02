@@ -62,6 +62,25 @@ export interface DesyncConfig {
 }
 
 /**
+ * Configuration for pause/resume behavior
+ */
+export interface PauseConfig {
+  /**
+   * Maximum number of pauses allowed per player.
+   * Set to Infinity for unlimited pauses.
+   * @default Infinity
+   */
+  maxPausesPerPlayer: number;
+
+  /**
+   * Whether the game can only be resumed by the same player who paused it.
+   * If false, any player can resume the game.
+   * @default false
+   */
+  requireSamePlayerToResume: boolean;
+}
+
+/**
  * Token validator function type.
  * Implement this to validate tokens from your OAuth provider.
  */
@@ -175,6 +194,10 @@ export interface PhalanxConfig {
   stateHashInterval?: number;
   /** Desync detection behavior configuration */
   desync?: Partial<DesyncConfig>;
+
+  // === Pause/Resume Settings ===
+  /** Pause/resume behavior configuration */
+  pause?: Partial<PauseConfig>;
 }
 
 /**

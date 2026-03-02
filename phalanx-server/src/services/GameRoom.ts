@@ -8,6 +8,7 @@ import type {
   PlayerCommand,
   TickCommands,
   DesyncConfig,
+  PauseConfig,
 } from '../types/index.js';
 
 /**
@@ -66,6 +67,12 @@ export class GameRoom {
   private consecutiveDesyncs: number = 0;
   // Resolved desync config with defaults
   private readonly desyncConfig: Required<DesyncConfig>;
+  // Resolved pause config with defaults
+  private readonly pauseConfig: Required<PauseConfig>;
+  // Track number of pauses used by each player
+  private pauseCount: Map<string, number> = new Map();
+  // Track which player initiated the current pause (for requireSamePlayerToResume)
+  private pausedByPlayerId: string | null = null;
 
   constructor(
     id: string,
@@ -89,6 +96,12 @@ export class GameRoom {
       enabled: config.desync?.enabled ?? true,
       action: config.desync?.action ?? 'end-match',
       gracePeriodTicks: config.desync?.gracePeriodTicks ?? 1,
+    };
+
+    // Resolve pause config with defaults
+    this.pauseConfig = {
+      maxPausesPerPlayer: config.pause?.maxPausesPerPlayer ?? Infinity,
+      requireSamePlayerToResume: config.pause?.requireSamePlayerToResume ?? false,
     };
 
     // Initialize players from teams
@@ -575,10 +588,16 @@ export class GameRoom {
    * when they receive this broadcast (after the last completed tick).
    *
    * @param requestedBy - Player ID who requested the pause
-   * @returns true if the game was paused, false if not in a pauseable state
+   * @returns true if the game was paused, false if not in a pauseable state or player exceeded pause limit
    */
   pause(requestedBy: string): boolean {
     if (this.state !== 'playing') return false;
+
+    // Check if player has pauses remaining
+    const currentPauseCount = this.pauseCount.get(requestedBy) ?? 0;
+    if (currentPauseCount >= this.pauseConfig.maxPausesPerPlayer) {
+      return false;
+    }
 
     // Stop sending ticks — the current tick has already been emitted
     if (this.tickInterval) {
@@ -587,6 +606,10 @@ export class GameRoom {
     }
 
     this.state = 'paused';
+
+    // Track who paused and increment their pause count
+    this.pausedByPlayerId = requestedBy;
+    this.pauseCount.set(requestedBy, currentPauseCount + 1);
 
     // Broadcast to all clients so they freeze at the same logical point
     this.io.to(this.roomId).emit('game-paused', {
@@ -603,12 +626,24 @@ export class GameRoom {
    * Restarts the tick loop and broadcasts 'game-resumed' to all clients.
    *
    * @param requestedBy - Player ID who requested the resume
-   * @returns true if the game was resumed, false if not currently paused
+   * @returns true if the game was resumed, false if not currently paused or player not allowed to resume
    */
   resume(requestedBy: string): boolean {
     if (this.state !== 'paused') return false;
 
+    // Check if only the player who paused can resume
+    if (
+      this.pauseConfig.requireSamePlayerToResume &&
+      this.pausedByPlayerId !== null &&
+      this.pausedByPlayerId !== requestedBy
+    ) {
+      return false;
+    }
+
     this.state = 'playing';
+
+    // Clear the paused-by tracker
+    this.pausedByPlayerId = null;
 
     // Reset activity timestamps so no player is flagged as lagging right after resume
     const now = Date.now();

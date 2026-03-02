@@ -9,6 +9,25 @@ import type { DesyncEvent } from './DesyncDetector.js';
 export type { DesyncEvent };
 
 /**
+ * Configuration for pause/resume behavior
+ */
+export interface PauseConfig {
+  /**
+   * Maximum number of pauses allowed per player.
+   * Set to Infinity for unlimited pauses.
+   * @default Infinity
+   */
+  maxPausesPerPlayer: number;
+
+  /**
+   * Whether the game can only be resumed by the same player who paused it.
+   * If false, any player can resume the game.
+   * @default false
+   */
+  requireSamePlayerToResume: boolean;
+}
+
+/**
  * Configuration for the Phalanx client
  */
 export interface PhalanxClientConfig {
@@ -71,6 +90,12 @@ export interface PhalanxClientConfig {
    * @default 20
    */
   tickRate?: number;
+
+  /**
+   * Pause/resume behavior configuration.
+   * Should match server configuration for proper validation.
+   */
+  pause?: Partial<PauseConfig>;
 
   /**
    * Enable debug logging

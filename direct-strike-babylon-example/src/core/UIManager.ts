@@ -1,6 +1,7 @@
 import type { EventBus } from 'phalanx-ecs';
 import { GameEvents } from '../events';
 import type { UIResourcesUpdatedEvent, UIFormationUpdatedEvent } from '../events';
+import { pauseConfig } from '../config/constants';
 
 /**
  * Unit type for placement
@@ -27,6 +28,7 @@ export interface UnitDragCallbacks {
  * - Wave timer display
  * - Exit/beforeunload handling
  * - Territory indicator
+ * - Pause/resume UI with pause counter
  *
  * Note: UIManager is decoupled from game systems.
  * It receives UI data via EventBus events.
@@ -50,6 +52,10 @@ export class UIManager {
   private dragCallbacks: UnitDragCallbacks | null = null;
   private activeDragUnitType: UnitType | null = null;
   private isDragging: boolean = false;
+
+  // Pause tracking
+  private pausesUsed: number = 0;
+  private pausedByPlayerId: string | null = null;
 
   // Unsubscribe functions for event listeners
   private unsubscribers: (() => void)[] = [];
@@ -132,6 +138,9 @@ export class UIManager {
     const pauseBtn = document.getElementById('pause-btn');
     const resumeBtn = document.getElementById('resume-btn');
 
+    // Initialize pause counter display
+    this.updatePauseButtonText();
+
     if (pauseBtn) {
       pauseBtn.addEventListener('click', () => {
         onPause();
@@ -146,11 +155,91 @@ export class UIManager {
   }
 
   /**
-   * Show the pause overlay and hide the pause button
+   * Update pause button text to show remaining pauses
    */
-  public showPauseOverlay(): void {
+  private updatePauseButtonText(): void {
+    const pauseBtn = document.getElementById('pause-btn');
+    if (!pauseBtn) return;
+
+    const remaining = this.getRemainingPauses();
+    if (remaining === Infinity) {
+      pauseBtn.textContent = '⏸ Pause';
+    } else if (remaining > 0) {
+      pauseBtn.textContent = `⏸ Pause (${remaining})`;
+    } else {
+      pauseBtn.textContent = '⏸ No Pauses Left';
+      pauseBtn.setAttribute('disabled', 'true');
+    }
+  }
+
+  /**
+   * Get remaining pauses for the local player
+   */
+  public getRemainingPauses(): number {
+    if (pauseConfig.maxPausesPerPlayer === Infinity) {
+      return Infinity;
+    }
+    return Math.max(0, pauseConfig.maxPausesPerPlayer - this.pausesUsed);
+  }
+
+  /**
+   * Check if local player can pause the game
+   */
+  public canPause(): boolean {
+    return this.getRemainingPauses() > 0;
+  }
+
+  /**
+   * Get the player ID who initiated the current pause (if any)
+   */
+  public getPausedByPlayerId(): string | null {
+    return this.pausedByPlayerId;
+  }
+
+  /**
+   * Show the pause overlay and hide the pause button
+   * @param pausedByPlayerId - Player ID who paused the game
+   */
+  public showPauseOverlay(pausedByPlayerId?: string): void {
     const overlay = document.getElementById('pause-overlay');
     const pauseBtn = document.getElementById('pause-btn');
+    const pauseLabel = document.getElementById('pause-label');
+    const resumeBtn = document.getElementById('resume-btn');
+
+    // Track who paused
+    this.pausedByPlayerId = pausedByPlayerId ?? null;
+
+    // If local player paused, increment their counter
+    if (pausedByPlayerId === this.localPlayerId) {
+      this.pausesUsed++;
+      this.updatePauseButtonText();
+    }
+
+    // Update pause label
+    if (pauseLabel) {
+      if (pausedByPlayerId === this.localPlayerId) {
+        pauseLabel.textContent = 'Game Paused (by you)';
+      } else if (pausedByPlayerId) {
+        pauseLabel.textContent = `Game Paused (by opponent)`;
+      } else {
+        pauseLabel.textContent = 'Game Paused';
+      }
+    }
+
+    // Update resume button based on requireSamePlayerToResume
+    if (resumeBtn) {
+      const canResume = !pauseConfig.requireSamePlayerToResume ||
+        pausedByPlayerId === this.localPlayerId;
+
+      if (canResume) {
+        resumeBtn.removeAttribute('disabled');
+        resumeBtn.textContent = 'Resume Game';
+      } else {
+        resumeBtn.setAttribute('disabled', 'true');
+        resumeBtn.textContent = 'Waiting for opponent to resume...';
+      }
+    }
+
     if (overlay) overlay.classList.add('visible');
     if (pauseBtn) pauseBtn.style.display = 'none';
   }
@@ -161,8 +250,22 @@ export class UIManager {
   public hidePauseOverlay(): void {
     const overlay = document.getElementById('pause-overlay');
     const pauseBtn = document.getElementById('pause-btn');
+
+    // Clear pause state
+    this.pausedByPlayerId = null;
+
     if (overlay) overlay.classList.remove('visible');
-    if (pauseBtn) pauseBtn.style.display = '';
+
+    // Only show pause button if player has pauses remaining
+    if (pauseBtn) {
+      if (this.canPause()) {
+        pauseBtn.style.display = '';
+        pauseBtn.removeAttribute('disabled');
+      } else {
+        pauseBtn.style.display = '';
+        pauseBtn.setAttribute('disabled', 'true');
+      }
+    }
   }
 
   /**

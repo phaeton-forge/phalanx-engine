@@ -1,5 +1,5 @@
 import { Engine, Scene } from '@babylonjs/core';
-import { GameWorld, GameWorldEvents } from 'phalanx-ecs';
+import { GameWorld } from 'phalanx-ecs';
 import type { CommandsBatch } from 'phalanx-ecs';
 import { LockstepManager } from './LockstepManager';
 import { EntityFactory } from './EntityFactory';
@@ -317,16 +317,20 @@ export class Game {
       })
     );
 
-    // Pause / Resume — listen for world-level events driven by the provider pipeline.
-    // GameWorld subscribes to the provider's onPause/onResume (PhalanxClient fires
-    // these when the server broadcasts confirmation), sets _paused, and emits on eventBus.
-    this.world.eventBus.on(GameWorldEvents.PAUSED, () => {
-      this.uiManager.showPauseOverlay();
-    });
+    // Pause / Resume — listen to client events directly to get pausedBy info.
+    // Note: GameWorld also subscribes to pause/resume via ITickFrameProvider
+    // and handles stopping the tick loop. We just update the UI here.
+    this.networkEventUnsubscribers.push(
+      this.client.on('gamePaused', (event) => {
+        this.uiManager.showPauseOverlay(event.requestedBy);
+      })
+    );
 
-    this.world.eventBus.on(GameWorldEvents.RESUMED, () => {
-      this.uiManager.hidePauseOverlay();
-    });
+    this.networkEventUnsubscribers.push(
+      this.client.on('gameResumed', () => {
+        this.uiManager.hidePauseOverlay();
+      })
+    );
 
     this.world.start({
       beforeTick: (tick: number, commandsBatch: CommandsBatch) => {

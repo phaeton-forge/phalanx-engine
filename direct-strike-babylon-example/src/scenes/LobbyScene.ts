@@ -8,7 +8,7 @@ import type {
   CountdownEvent,
   PhalanxAuthState,
 } from 'phalanx-client';
-import { SERVER_URL, authConfig } from '../config/constants';
+import { SERVER_URL, authConfig, pauseConfig } from '../config/constants';
 import { GameRandom } from '../core/GameRandom';
 
 export class LobbyScene {
@@ -54,6 +54,7 @@ export class LobbyScene {
           tokenExchangeUrl: authConfig.tokenExchangeUrl,
         },
       } : undefined,
+      pause: pauseConfig,
     });
 
     // Subscribe to auth events

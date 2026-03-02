@@ -45,6 +45,11 @@ export type {
   AuthConfig,
   TokenValidator,
   TokenValidationResult,
+  // Desync config
+  DesyncConfig,
+  DesyncAction,
+  // Pause config
+  PauseConfig,
 } from './types/index.js';
 
 // Constants

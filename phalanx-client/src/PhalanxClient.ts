@@ -55,8 +55,8 @@ import type {
  * ```
  */
 export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
-  private config: Required<Omit<PhalanxClientConfig, 'authToken' | 'auth' | 'playerId' | 'username'>> &
-    Pick<PhalanxClientConfig, 'authToken' | 'auth' | 'playerId' | 'username'>;
+  private config: Required<Omit<PhalanxClientConfig, 'authToken' | 'auth' | 'playerId' | 'username' | 'pause'>> &
+    Pick<PhalanxClientConfig, 'authToken' | 'auth' | 'playerId' | 'username' | 'pause'>;
   private socketManager: SocketManager;
   private renderLoop: RenderLoop;
   private desyncDetector: DesyncDetector;

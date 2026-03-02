@@ -41,6 +41,20 @@ export const networkConfig = {
 };
 
 /**
+ * Pause/Resume configuration
+ * Controls how pausing works during the game
+ */
+export const pauseConfig = {
+  // Maximum number of pauses allowed per player
+  // Set to Infinity for unlimited pauses
+  maxPausesPerPlayer: 3,
+
+  // Whether only the player who paused can resume the game
+  // If false, any player can resume
+  requireSamePlayerToResume: true,
+};
+
+/**
  * Camera configuration for RTS-style top-down camera
  */
 export const cameraConfig = {

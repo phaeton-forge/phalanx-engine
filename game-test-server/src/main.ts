@@ -43,6 +43,11 @@ async function main() {
     gameMode: '1v1', // 2 players per match
     countdownSeconds: 3,
     matchmakingIntervalMs: 1000,
+    // Pause configuration
+    pause: {
+      maxPausesPerPlayer: 3,
+      requireSamePlayerToResume: true,
+    },
     // Authentication configuration
     auth: AUTH_ENABLED
       ? {
