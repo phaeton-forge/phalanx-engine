@@ -7,5 +7,11 @@ export default defineConfig({
     include: ['tests/**/*.test.ts'],
     testTimeout: 30000,
     hookTimeout: 10000,
+    pool: 'forks',
+    poolOptions: {
+      forks: {
+        singleFork: true,
+      },
+    },
   },
 });
