@@ -3,13 +3,60 @@ import type { Entity } from './Entity';
 /**
  * EntityManager - Central registry for all game entities
  * Provides efficient component-based queries for systems
+ *
+ * Performance optimization: Component indices are maintained as sorted arrays
+ * rather than Sets, eliminating the need to sort on every query. Since entity
+ * IDs are typically sequential, insertions are usually O(1) at the end.
  */
 export class EntityManager {
   private entities: Map<number, Entity> = new Map();
 
+  // Sorted array of all entity IDs for fast deterministic iteration
+  private sortedEntityIds: number[] = [];
+
   // Component indices for fast queries
-  // These are Sets of entity IDs that have each component
-  private componentIndices: Map<symbol, Set<number>> = new Map();
+  // These are sorted arrays of entity IDs that have each component
+  private componentIndices: Map<symbol, number[]> = new Map();
+
+  /**
+   * Binary search to find insertion index for maintaining sorted order
+   * Returns the index where the value should be inserted
+   */
+  private binarySearchInsertIndex(arr: number[], value: number): number {
+    let low = 0;
+    let high = arr.length;
+
+    while (low < high) {
+      const mid = (low + high) >>> 1;
+      if (arr[mid] < value) {
+        low = mid + 1;
+      } else {
+        high = mid;
+      }
+    }
+    return low;
+  }
+
+  /**
+   * Insert a value into a sorted array, maintaining sorted order
+   */
+  private sortedInsert(arr: number[], value: number): void {
+    const index = this.binarySearchInsertIndex(arr, value);
+    // Avoid duplicate insertion
+    if (arr[index] !== value) {
+      arr.splice(index, 0, value);
+    }
+  }
+
+  /**
+   * Remove a value from a sorted array using binary search
+   */
+  private sortedRemove(arr: number[], value: number): void {
+    const index = this.binarySearchInsertIndex(arr, value);
+    if (arr[index] === value) {
+      arr.splice(index, 1);
+    }
+  }
 
   /**
    * Register component types for efficient queries
@@ -19,7 +66,7 @@ export class EntityManager {
   public registerComponentTypes(componentTypes: symbol[]): void {
     for (const type of componentTypes) {
       if (!this.componentIndices.has(type)) {
-        this.componentIndices.set(type, new Set());
+        this.componentIndices.set(type, []);
       }
     }
   }
@@ -29,11 +76,12 @@ export class EntityManager {
    */
   public addEntity(entity: Entity): void {
     this.entities.set(entity.id, entity);
+    this.sortedInsert(this.sortedEntityIds, entity.id);
 
     // Update component indices for any registered component types
-    for (const [type] of this.componentIndices) {
+    for (const [type, index] of this.componentIndices) {
       if (entity.hasComponent(type)) {
-        this.componentIndices.get(type)?.add(entity.id);
+        this.sortedInsert(index, entity.id);
       }
     }
   }
@@ -44,9 +92,10 @@ export class EntityManager {
   public removeEntity(entity: Entity): void {
     // Remove from all component indices
     for (const index of this.componentIndices.values()) {
-      index.delete(entity.id);
+      this.sortedRemove(index, entity.id);
     }
 
+    this.sortedRemove(this.sortedEntityIds, entity.id);
     this.entities.delete(entity.id);
   }
 
@@ -62,9 +111,18 @@ export class EntityManager {
    *
    * IMPORTANT: Results are sorted by entity ID for deterministic ordering
    * across all clients in networked games.
+   *
+   * Performance: No sorting needed - entities are maintained in sorted order.
    */
   public getAllEntities(): Entity[] {
-    return Array.from(this.entities.values()).sort((a, b) => a.id - b.id);
+    const result: Entity[] = [];
+    for (const id of this.sortedEntityIds) {
+      const entity = this.entities.get(id);
+      if (entity) {
+        result.push(entity);
+      }
+    }
+    return result;
   }
 
   /**
@@ -73,7 +131,9 @@ export class EntityManager {
    *
    * IMPORTANT: Results are sorted by entity ID for deterministic ordering
    * across all clients in networked games. This ensures that iteration
-   * order is consistent, which is critical for deterministic combat.
+   * order is consistent, which is critical for deterministic gameplay.
+   *
+   * Performance: No sorting needed - component indices are maintained in sorted order.
    */
   public queryEntities(...componentTypes: symbol[]): Entity[] {
     if (componentTypes.length === 0) {
@@ -82,19 +142,20 @@ export class EntityManager {
 
     // Start with the smallest set for efficiency
     const sortedTypes = [...componentTypes].sort((a, b) => {
-      const sizeA = this.componentIndices.get(a)?.size ?? 0;
-      const sizeB = this.componentIndices.get(b)?.size ?? 0;
+      const sizeA = this.componentIndices.get(a)?.length ?? 0;
+      const sizeB = this.componentIndices.get(b)?.length ?? 0;
       return sizeA - sizeB;
     });
 
-    const firstSet = this.componentIndices.get(sortedTypes[0]);
-    if (!firstSet || firstSet.size === 0) {
+    const firstIndex = this.componentIndices.get(sortedTypes[0]);
+    if (!firstIndex || firstIndex.length === 0) {
       return [];
     }
 
     // Filter by intersection of all component sets
+    // Since firstIndex is already sorted, result will be in sorted order
     const result: Entity[] = [];
-    for (const entityId of firstSet) {
+    for (const entityId of firstIndex) {
       const entity = this.entities.get(entityId);
       if (
         entity &&
@@ -105,9 +166,6 @@ export class EntityManager {
       }
     }
 
-    // Sort by entity ID for deterministic ordering across all clients
-    result.sort((a, b) => a.id - b.id);
-
     return result;
   }
 
@@ -116,38 +174,90 @@ export class EntityManager {
    *
    * IMPORTANT: Results are sorted by entity ID for deterministic ordering
    * across all clients in networked games.
+   *
+   * Performance: Uses merge of pre-sorted arrays instead of Set + sort.
    */
   public queryEntitiesAny(...componentTypes: symbol[]): Entity[] {
-    const entityIds = new Set<number>();
+    if (componentTypes.length === 0) {
+      return [];
+    }
 
-    for (const type of componentTypes) {
-      const index = this.componentIndices.get(type);
-      if (index) {
-        for (const id of index) {
-          entityIds.add(id);
+    // Merge sorted arrays to get union of entity IDs
+    const mergedIds = this.mergeSortedArrays(
+      componentTypes
+        .map((type) => this.componentIndices.get(type))
+        .filter((arr): arr is number[] => arr !== undefined)
+    );
+
+    const result: Entity[] = [];
+    for (const id of mergedIds) {
+      const entity = this.entities.get(id);
+      if (entity && !entity.isDestroyed) {
+        result.push(entity);
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * Merge multiple sorted arrays into a single sorted array with unique values
+   */
+  private mergeSortedArrays(arrays: number[][]): number[] {
+    if (arrays.length === 0) return [];
+    if (arrays.length === 1) return arrays[0];
+
+    const result: number[] = [];
+    const pointers = arrays.map(() => 0);
+
+    while (true) {
+      let minValue = Infinity;
+      let minIndex = -1;
+
+      // Find the smallest current value across all arrays
+      for (let i = 0; i < arrays.length; i++) {
+        if (pointers[i] < arrays[i].length && arrays[i][pointers[i]] < minValue) {
+          minValue = arrays[i][pointers[i]];
+          minIndex = i;
+        }
+      }
+
+      if (minIndex === -1) break;
+
+      // Add to result if not duplicate
+      if (result.length === 0 || result[result.length - 1] !== minValue) {
+        result.push(minValue);
+      }
+
+      // Advance all pointers that point to this value
+      for (let i = 0; i < arrays.length; i++) {
+        if (pointers[i] < arrays[i].length && arrays[i][pointers[i]] === minValue) {
+          pointers[i]++;
         }
       }
     }
 
-    // Sort by entity ID for deterministic ordering across all clients
-    return Array.from(entityIds)
-      .sort((a, b) => a - b)
-      .map((id) => this.entities.get(id))
-      .filter((e): e is Entity => e !== undefined && !e.isDestroyed);
+    return result;
   }
 
   /**
    * Update component index when a component is added to an entity
    */
   public onComponentAdded(entity: Entity, componentType: symbol): void {
-    this.componentIndices.get(componentType)?.add(entity.id);
+    const index = this.componentIndices.get(componentType);
+    if (index) {
+      this.sortedInsert(index, entity.id);
+    }
   }
 
   /**
    * Update component index when a component is removed from an entity
    */
   public onComponentRemoved(entity: Entity, componentType: symbol): void {
-    this.componentIndices.get(componentType)?.delete(entity.id);
+    const index = this.componentIndices.get(componentType);
+    if (index) {
+      this.sortedRemove(index, entity.id);
+    }
   }
 
   /**
@@ -173,7 +283,7 @@ export class EntityManager {
    * Get count of entities with a specific component
    */
   public countWithComponent(componentType: symbol): number {
-    return this.componentIndices.get(componentType)?.size ?? 0;
+    return this.componentIndices.get(componentType)?.length ?? 0;
   }
 
   /**
@@ -191,9 +301,10 @@ export class EntityManager {
       entity.dispose();
     }
     this.entities.clear();
+    this.sortedEntityIds.length = 0;
 
     for (const index of this.componentIndices.values()) {
-      index.clear();
+      index.length = 0;
     }
   }
 }
