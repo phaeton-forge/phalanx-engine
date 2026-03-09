@@ -62,10 +62,6 @@ export class LanceUnit extends Unit {
       this.mesh.rotation.y = Math.PI;
     }
 
-
-    // Sync simulation position with mesh position
-    this.syncSimulationPosition();
-
     // Add components - Lance has medium stats between Sphere and Prisma
     this.addComponent(new TeamComponent(team));
     this.addComponent(new HealthComponent(config.health ?? 100)); // Between sphere (50) and prisma (150)

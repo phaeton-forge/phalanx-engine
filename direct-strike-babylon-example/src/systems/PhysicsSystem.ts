@@ -1,7 +1,7 @@
 import type { SystemContext } from 'phalanx-ecs';
 import { GameSystem } from 'phalanx-ecs';
 import type { Unit } from '../entities/Unit';
-import { ComponentType, MovementComponent, TeamComponent, PhysicsBodyComponent } from '../components';
+import { ComponentType, MovementComponent, TeamComponent, PhysicsBodyComponent, TransformComponent } from '../components';
 import { networkConfig } from '../config/constants';
 import {
   FP,
@@ -208,7 +208,7 @@ export class PhysicsSystem extends GameSystem {
   }
 
   /**
-   * Query physics entities, cast to Unit[] for access to fpPosition/ignorePhysics
+   * Query physics entities, cast to Unit[] for access to fpPosition
    */
   private queryPhysicsEntities(): Unit[] {
     return this.entityManager.queryEntities(ComponentType.PhysicsBody) as Unit[];
@@ -226,11 +226,12 @@ export class PhysicsSystem extends GameSystem {
     for (const entity of physicsEntities) {
       const body = entity.getComponent<PhysicsBodyComponent>(ComponentType.PhysicsBody);
       const movement = entity.getComponent<MovementComponent>(ComponentType.Movement);
+      const transform = entity.getComponent<TransformComponent>(ComponentType.Transform);
 
-      if (!body || body.isStatic) continue;
+      if (!body || body.isStatic || !transform) continue;
 
       // Skip entities that should be ignored by physics (e.g., dying units)
-      if (entity.ignorePhysics) {
+      if (body.ignorePhysics) {
         body.stopVelocity();
         continue;
       }
@@ -240,7 +241,7 @@ export class PhysicsSystem extends GameSystem {
 
       if (movement.isMoving) {
         const target = movement.targetPosition;
-        const pos = entity.fpPosition;
+        const pos = transform.fpPosition;
 
         // Calculate direction using fixed-point math
         const dx = FP.Sub(FP.FromFloat(target.x), pos.x);
@@ -287,10 +288,11 @@ export class PhysicsSystem extends GameSystem {
 
     for (const entity of physicsEntities) {
       const body = entity.getComponent<PhysicsBodyComponent>(ComponentType.PhysicsBody);
-      if (!body) continue;
+      const transform = entity.getComponent<TransformComponent>(ComponentType.Transform);
+      if (!body || !transform) continue;
 
       // Convert fixed-point position to numbers for spatial grid indexing
-      const fpPos = entity.fpPosition;
+      const fpPos = transform.fpPosition;
       body.lastX = FP.ToFloat(fpPos.x);
       body.lastZ = FP.ToFloat(fpPos.z);
       this.spatialGrid.insert(entity.id, body.lastX, body.lastZ, body.radiusFloat);
@@ -313,7 +315,8 @@ export class PhysicsSystem extends GameSystem {
 
     for (const entityA of physicsEntities) {
       const bodyA = entityA.getComponent<PhysicsBodyComponent>(ComponentType.PhysicsBody);
-      if (!bodyA) continue;
+      const transformA = entityA.getComponent<TransformComponent>(ComponentType.Transform);
+      if (!bodyA || !transformA) continue;
 
       const posAx = bodyA.lastX;
       const posAz = bodyA.lastZ;
@@ -339,7 +342,8 @@ export class PhysicsSystem extends GameSystem {
         if (!entityB) continue;
 
         const bodyB = entityB.getComponent<PhysicsBodyComponent>(ComponentType.PhysicsBody);
-        if (!bodyB) continue;
+        const transformB = entityB.getComponent<TransformComponent>(ComponentType.Transform);
+        if (!bodyB || !transformB) continue;
 
         // Skip collision between units and friendly buildings (bases/towers)
         // Units should pass through their own team's structures
@@ -348,8 +352,8 @@ export class PhysicsSystem extends GameSystem {
         }
 
         // Use fixed-point positions for deterministic collision calculation
-        const fpPosA = entityA.fpPosition;
-        const fpPosB = entityB.fpPosition;
+        const fpPosA = transformA.fpPosition;
+        const fpPosB = transformB.fpPosition;
 
         // Calculate distance in XZ plane using fixed-point
         const dx = FP.Sub(fpPosB.x, fpPosA.x);
@@ -403,7 +407,7 @@ export class PhysicsSystem extends GameSystem {
           const separation = FP.Mul(overlap, FP_SEPARATION_HALF);
           if (!bodyA.isStatic) {
             const sepA = FP.Mul(separation, ratioA);
-            entityA.fpPosition = {
+            transformA.fpPosition = {
               x: FP.Sub(fpPosA.x, FP.Mul(nx, sepA)),
               y: fpPosA.y,
               z: FP.Sub(fpPosA.z, FP.Mul(nz, sepA)),
@@ -411,7 +415,7 @@ export class PhysicsSystem extends GameSystem {
           }
           if (!bodyB.isStatic) {
             const sepB = FP.Mul(separation, ratioB);
-            entityB.fpPosition = {
+            transformB.fpPosition = {
               x: FP.Add(fpPosB.x, FP.Mul(nx, sepB)),
               y: fpPosB.y,
               z: FP.Add(fpPosB.z, FP.Mul(nz, sepB)),
@@ -437,7 +441,8 @@ export class PhysicsSystem extends GameSystem {
 
     for (const entity of physicsEntities) {
       const body = entity.getComponent<PhysicsBodyComponent>(ComponentType.PhysicsBody);
-      if (!body || body.isStatic) continue;
+      const transform = entity.getComponent<TransformComponent>(ComponentType.Transform);
+      if (!body || body.isStatic || !transform) continue;
 
       const vel = body.velocity;
 
@@ -457,8 +462,8 @@ export class PhysicsSystem extends GameSystem {
       }
 
       // Apply velocity to position using fixed-point
-      const fpPos = entity.fpPosition;
-      entity.fpPosition = {
+      const fpPos = transform.fpPosition;
+      transform.fpPosition = {
         x: FP.Add(fpPos.x, FP.Mul(body.velocity.x, dt)),
         y: fpPos.y, // Keep Y constant
         z: FP.Add(fpPos.z, FP.Mul(body.velocity.z, dt)),
@@ -516,7 +521,7 @@ export class PhysicsSystem extends GameSystem {
     bodyB: PhysicsBodyComponent
   ): boolean {
     // Skip collisions with entities that should be ignored (dying, phasing, etc.)
-    if (entityA.ignorePhysics || entityB.ignorePhysics) {
+    if (bodyA.ignorePhysics || bodyB.ignorePhysics) {
       return true;
     }
 

@@ -5,7 +5,7 @@ import {
   fpToVector3Ref,
   lerpVector3FromFpRef,
 } from '../core/MathConversions';
-import { ComponentType, InterpolationComponent } from '../components';
+import { ComponentType, InterpolationComponent, TransformComponent } from '../components';
 
 /**
  * InterpolationSystem - Provides smooth visual movement between network ticks
@@ -67,9 +67,10 @@ export class InterpolationSystem extends GameSystem {
 
     for (const entity of entities) {
       const interpolation = entity.getComponent<InterpolationComponent>(ComponentType.Interpolation);
-      if (!interpolation || !interpolation.active) continue;
+      const transform = entity.getComponent<TransformComponent>(ComponentType.Transform);
+      if (!interpolation || !interpolation.active || !transform) continue;
 
-      interpolation.capturePosition((entity as Unit).fpPosition);
+      interpolation.capturePosition(transform.fpPosition);
     }
   }
 
@@ -115,10 +116,11 @@ export class InterpolationSystem extends GameSystem {
 
     for (const entity of entities) {
       const interpolation = entity.getComponent<InterpolationComponent>(ComponentType.Interpolation);
-      if (!interpolation) continue;
+      const transform = entity.getComponent<TransformComponent>(ComponentType.Transform);
+      if (!interpolation || !transform) continue;
 
       // Snap to current entity position
-      const fpPos = (entity as Unit).fpPosition;
+      const fpPos = transform.fpPosition;
       interpolation.snapToPosition(fpPos);
 
       // Convert fixed-point to visual position (no allocation, reuse existing Vector3)

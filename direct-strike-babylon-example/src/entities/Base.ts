@@ -51,9 +51,6 @@ export class Base extends Unit {
     this.mesh.position = position.clone();
     this.mesh.position.y = 2; // Half height of base
 
-    // Sync simulation position with mesh position
-    this.syncSimulationPosition();
-
     // Add components
     this.addComponent(new TeamComponent(config.team));
     this.addComponent(new HealthComponent(config.health ?? 600));

@@ -1,0 +1,288 @@
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { defineSoASchema } from '../src';
+import { EntityManager } from '../src';
+import { SoAComponent } from '../src';
+
+// ── Test schema and component ──────────────────────────────────────────
+
+const TestSchema = defineSoASchema({
+  x: 'f64',
+  y: 'f64',
+  health: 'i32',
+  flags: 'u8',
+  rawValue: 'i64',
+}, 'Test');
+
+type TestSchemaDef = typeof TestSchema.definition;
+
+class TestComponent extends SoAComponent<TestSchemaDef> {
+  public readonly type = Symbol('Test');
+  // Expose protected members for testing
+  public getStoreForTest() { return this.store; }
+  public getIndexForTest() { return this.getIndex(); }
+  static readonly soaSchema = TestSchema;
+
+  constructor(entityId: number, x: number, y: number) {
+    super(TestComponent.soaSchema, entityId, {
+      x,
+      y,
+      health: 100,
+      flags: 1,
+      rawValue: 0n,
+    });
+  }
+
+  get x(): number { return this.getField('x'); }
+  set x(v: number) { this.setField('x', v); }
+
+  get y(): number { return this.getField('y'); }
+  set y(v: number) { this.setField('y', v); }
+
+  get health(): number { return this.getField('health'); }
+  set health(v: number) { this.setField('health', v); }
+
+  get flags(): number { return this.getField('flags'); }
+
+  get rawValue(): bigint { return this.getField('rawValue'); }
+  set rawValue(v: bigint) { this.setField('rawValue', v); }
+}
+
+// ── Tests ──────────────────────────────────────────────────────────────
+
+describe('EntityManager.getOrCreateSoAStore', () => {
+  let em: EntityManager;
+
+  beforeEach(() => {
+    em = new EntityManager();
+  });
+
+  it('creates a store on first call', () => {
+    const store = em.getOrCreateSoAStore(TestSchema);
+    expect(store).toBeDefined();
+    expect(store.count).toBe(0);
+  });
+
+  it('returns the same store on subsequent calls', () => {
+    const store1 = em.getOrCreateSoAStore(TestSchema);
+    const store2 = em.getOrCreateSoAStore(TestSchema);
+    expect(store1).toBe(store2);
+  });
+
+  it('respects custom initial capacity', () => {
+    const store = em.getOrCreateSoAStore(TestSchema, 2048);
+    expect(store.capacity).toBe(2048);
+  });
+
+  it('ignores capacity on subsequent calls', () => {
+    const store1 = em.getOrCreateSoAStore(TestSchema, 512);
+    const store2 = em.getOrCreateSoAStore(TestSchema, 4096);
+    expect(store2).toBe(store1);
+    expect(store2.capacity).toBe(512);
+  });
+
+  it('can be used alongside registerSoAStore', () => {
+    em.registerSoAStore(em.getOrCreateSoAStore(TestSchema));
+    expect(em.hasSoAStore(TestSchema)).toBe(true);
+  });
+});
+
+describe('SoAComponent', () => {
+  let em: EntityManager;
+
+  beforeEach(() => {
+    em = new EntityManager();
+    SoAComponent.useEntityManager(em);
+  });
+
+  afterEach(() => {
+    SoAComponent.resetContext();
+  });
+
+  it('throws when no EntityManager context is set', () => {
+    SoAComponent.resetContext();
+    expect(() => new TestComponent(1, 10, 20)).toThrow(
+      'SoAComponent: No EntityManager context'
+    );
+  });
+
+  it('constructs and stores initial values', () => {
+    const comp = new TestComponent(1, 10, 20);
+    expect(comp.x).toBe(10);
+    expect(comp.y).toBe(20);
+    expect(comp.health).toBe(100);
+    expect(comp.flags).toBe(1);
+    expect(comp.rawValue).toBe(0n);
+  });
+
+  it('setField updates the underlying store', () => {
+    const comp = new TestComponent(1, 0, 0);
+    comp.x = 42;
+    comp.y = 99;
+    expect(comp.x).toBe(42);
+    expect(comp.y).toBe(99);
+  });
+
+  it('supports bigint fields', () => {
+    const comp = new TestComponent(1, 0, 0);
+    comp.rawValue = 1234567890123456789n;
+    expect(comp.rawValue).toBe(1234567890123456789n);
+  });
+
+  it('lazily creates the store in EntityManager', () => {
+    expect(em.hasSoAStore(TestSchema)).toBe(false);
+    new TestComponent(1, 0, 0);
+    expect(em.hasSoAStore(TestSchema)).toBe(true);
+  });
+
+  it('shares the same store across multiple component instances', () => {
+    const comp1 = new TestComponent(1, 1, 2);
+    const comp2 = new TestComponent(2, 3, 4);
+    const store = em.getSoAStore(TestSchema)!;
+    expect(store.count).toBe(2);
+    expect(comp1.x).toBe(1);
+    expect(comp2.x).toBe(3);
+  });
+
+  it('handles index cache invalidation after entity removal', () => {
+    const comp1 = new TestComponent(1, 10, 20);
+    new TestComponent(2, 30, 40);
+    const comp3 = new TestComponent(3, 50, 60);
+
+    // Remove entity 2 — triggers swap-and-pop, entity 3 moves to index 1
+    const store = em.getSoAStore(TestSchema)!;
+    store.remove(2);
+
+    // comp1 should still read correctly
+    expect(comp1.x).toBe(10);
+    expect(comp1.y).toBe(20);
+
+    // comp3 should still read correctly after its index moved
+    expect(comp3.x).toBe(50);
+    expect(comp3.y).toBe(60);
+  });
+
+  it('resetContext isolates tests', () => {
+    SoAComponent.resetContext();
+    const em2 = new EntityManager();
+    SoAComponent.useEntityManager(em2);
+
+    const comp = new TestComponent(1, 7, 8);
+    expect(comp.x).toBe(7);
+
+    // Store was created in em2, not em
+    expect(em.hasSoAStore(TestSchema)).toBe(false);
+    expect(em2.hasSoAStore(TestSchema)).toBe(true);
+  });
+});
+
+// ── TransformComponent-like direct store access test ───────────────────
+
+const TransformLikeSchema = defineSoASchema({
+  fpX: 'i64',
+  fpY: 'i64',
+  fpZ: 'i64',
+  visX: 'f64',
+  visY: 'f64',
+  visZ: 'f64',
+}, 'TransformLike');
+
+type TransformLikeDef = typeof TransformLikeSchema.definition;
+
+class TransformLikeComponent extends SoAComponent<TransformLikeDef> {
+  public readonly type = Symbol('TransformLike');
+  private _cachedFp = { x: 0n, y: 0n, z: 0n };
+  private _cachedVis = { x: 0, y: 0, z: 0 };
+
+  constructor(entityId: number, fpX: bigint, fpY: bigint, fpZ: bigint, visX: number, visY: number, visZ: number) {
+    super(TransformLikeSchema, entityId, {
+      fpX, fpY, fpZ,
+      visX, visY, visZ,
+    });
+  }
+
+  // Mimic TransformComponent's direct array access pattern
+  get fpPosition() {
+    const idx = this.getIndex();
+    if (idx === -1) return this._cachedFp;
+    this._cachedFp.x = this.store.arrays.fpX[idx];
+    this._cachedFp.y = this.store.arrays.fpY[idx];
+    this._cachedFp.z = this.store.arrays.fpZ[idx];
+    return this._cachedFp;
+  }
+
+  set fpPosition(v: { x: bigint; y: bigint; z: bigint }) {
+    const idx = this.getIndex();
+    if (idx === -1) return;
+    this.store.arrays.fpX[idx] = v.x;
+    this.store.arrays.fpY[idx] = v.y;
+    this.store.arrays.fpZ[idx] = v.z;
+  }
+
+  get visualPosition() {
+    const idx = this.getIndex();
+    if (idx === -1) return this._cachedVis;
+    this._cachedVis.x = this.store.arrays.visX[idx];
+    this._cachedVis.y = this.store.arrays.visY[idx];
+    this._cachedVis.z = this.store.arrays.visZ[idx];
+    return this._cachedVis;
+  }
+}
+
+describe('TransformComponent-like direct store access', () => {
+  let em: EntityManager;
+
+  beforeEach(() => {
+    em = new EntityManager();
+    SoAComponent.useEntityManager(em);
+  });
+
+  afterEach(() => {
+    SoAComponent.resetContext();
+  });
+
+  it('reads back initial bigint and float values via direct array access', () => {
+    const comp = new TransformLikeComponent(1, 100n, 200n, 300n, 1.5, 2.5, 3.5);
+    const fp = comp.fpPosition;
+    expect(fp.x).toBe(100n);
+    expect(fp.y).toBe(200n);
+    expect(fp.z).toBe(300n);
+    const vis = comp.visualPosition;
+    expect(vis.x).toBe(1.5);
+    expect(vis.y).toBe(2.5);
+    expect(vis.z).toBe(3.5);
+  });
+
+  it('can write and read bigint values via setter', () => {
+    const comp = new TransformLikeComponent(1, 0n, 0n, 0n, 0, 0, 0);
+    comp.fpPosition = { x: 500n, y: 600n, z: 700n };
+    const fp = comp.fpPosition;
+    expect(fp.x).toBe(500n);
+    expect(fp.y).toBe(600n);
+    expect(fp.z).toBe(700n);
+  });
+
+  it('multiple entities share the same store with correct values', () => {
+    const c1 = new TransformLikeComponent(1, 10n, 20n, 30n, 1, 2, 3);
+    const c2 = new TransformLikeComponent(2, 40n, 50n, 60n, 4, 5, 6);
+
+    expect(c1.fpPosition.x).toBe(10n);
+    expect(c2.fpPosition.x).toBe(40n);
+    expect(c1.visualPosition.x).toBe(1);
+    expect(c2.visualPosition.x).toBe(4);
+  });
+
+  it('reads correct values after swap-and-pop from store removal', () => {
+    const c1 = new TransformLikeComponent(1, 10n, 20n, 30n, 1, 2, 3);
+    const c2 = new TransformLikeComponent(2, 40n, 50n, 60n, 4, 5, 6);
+    const c3 = new TransformLikeComponent(3, 70n, 80n, 90n, 7, 8, 9);
+
+    // Remove middle entity — triggers swap-and-pop
+    const store = em.getSoAStore(TransformLikeSchema)!;
+    store.remove(2);
+
+    expect(c1.fpPosition.x).toBe(10n);
+    expect(c1.visualPosition.x).toBe(1);
+    expect(c3.fpPosition.x).toBe(70n);
+    expect(c3.visualPosition.x).toBe(7);
+  });
+});

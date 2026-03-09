@@ -1,3 +1,4 @@
+import { Vector3 } from '@babylonjs/core';
 import type { SystemContext } from 'phalanx-ecs';
 import { GameSystem } from 'phalanx-ecs';
 import {
@@ -6,6 +7,8 @@ import {
   AnimationComponent,
   MovementComponent,
   DeathComponent,
+  PhysicsBodyComponent,
+  TransformComponent,
 } from '../components';
 import type { Unit } from '../entities/Unit';
 import { GameEvents, createEvent } from '../events';
@@ -69,11 +72,13 @@ export class HealthSystem extends GameSystem {
 
       // Check if death timer has expired
       if (deathComp.shouldCompleteThisTick(_tick)) {
+        const transform = entity.getComponent<TransformComponent>(ComponentType.Transform);
+
         // Emit entity destroyed event before destroying
         this.eventBus.emit<EntityDestroyedEvent>(GameEvents.ENTITY_DESTROYED, {
           ...createEvent(),
           entityId: entity.id,
-          position: (entity as Unit).position.clone(),
+          position: transform?.visualPosition.clone() ?? new Vector3(),
         });
 
         // Complete the death (invokes callback and destroys entity)
@@ -153,7 +158,10 @@ export class HealthSystem extends GameSystem {
         }
 
         // Mark entity to be ignored by physics (dying units shouldn't move or collide)
-        entity.ignorePhysics = true;
+        const body = entity.getComponent<PhysicsBodyComponent>(ComponentType.PhysicsBody);
+        if (body) {
+          body.ignorePhysics = true;
+        }
 
         // Emit entity dying event immediately (for health bar removal, etc.)
         this.eventBus.emit<EntityDyingEvent>(GameEvents.ENTITY_DYING, {
@@ -178,10 +186,11 @@ export class HealthSystem extends GameSystem {
       } else {
         // For other entities (no DeathComponent), destroy immediately
         // Emit entity destroyed event before destroying
+        const transform = entity.getComponent<TransformComponent>(ComponentType.Transform);
         this.eventBus.emit<EntityDestroyedEvent>(GameEvents.ENTITY_DESTROYED, {
           ...createEvent(),
           entityId: entity.id,
-          position: entity.position.clone(),
+          position: transform?.visualPosition.clone() ?? new Vector3(),
         });
 
         entity.destroy();

@@ -91,10 +91,6 @@ export class MutantUnit extends Unit {
     this.mesh = this.placeholderMesh;
     this.mesh.position = position.clone();
 
-
-    // Sync simulation position with mesh position
-    this.syncSimulationPosition();
-
     // Calculate default rotation based on team
     const defaultRotationY =
       this._team === TeamTag.Team1 ? Math.PI / 2 : -Math.PI / 2;

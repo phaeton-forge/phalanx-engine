@@ -205,7 +205,7 @@ export class Game {
     // Phase 1: Initialize entity factory
     this.entityFactory = new EntityFactory(
       this.sceneManager,
-      this.world.entityManager
+      this.world.entityManager,
     );
 
     // Phase 2: Initialize UI manager (decoupled from systems, uses EventBus)

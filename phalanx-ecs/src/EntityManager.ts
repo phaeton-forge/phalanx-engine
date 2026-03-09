@@ -1,4 +1,6 @@
 import type { Entity } from './Entity';
+import { SoAComponentStore } from './SoAComponentStore';
+import type { SoASchema, SoASchemaDefinition } from './SoASchema';
 
 /**
  * EntityManager - Central registry for all game entities
@@ -7,12 +9,20 @@ import type { Entity } from './Entity';
  * Performance optimization: Component indices are maintained as sorted arrays
  * rather than Sets, eliminating the need to sort on every query. Since entity
  * IDs are typically sequential, insertions are usually O(1) at the end.
+ *
+ * SoA Support: Can hold SoAComponentStore instances for high-performance
+ * component types. SoA stores are registered by schema type symbol and
+ * provide cache-friendly iteration for hot-path systems.
  */
 export class EntityManager {
   private entities: Map<number, Entity> = new Map();
 
   // Sorted array of all entity IDs for fast deterministic iteration
   private sortedEntityIds: number[] = [];
+
+  // SoA component stores indexed by schema type symbol
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private soaStores: Map<symbol, SoAComponentStore<any>> = new Map();
 
   // Component indices for fast queries
   // These are sorted arrays of entity IDs that have each component
@@ -94,6 +104,9 @@ export class EntityManager {
     for (const index of this.componentIndices.values()) {
       this.sortedRemove(index, entity.id);
     }
+
+    // Remove from all SoA stores
+    this.cleanupSoAStores(entity.id);
 
     this.sortedRemove(this.sortedEntityIds, entity.id);
     this.entities.delete(entity.id);
@@ -293,6 +306,82 @@ export class EntityManager {
     return this.entities.size;
   }
 
+  // ============ SoA Component Store Management ============
+
+  /**
+   * Register a SoA component store
+   * Call this during initialization for high-performance component types
+   *
+   * @param store - The SoAComponentStore instance to register
+   */
+  public registerSoAStore<S extends SoASchemaDefinition>(
+    store: SoAComponentStore<S>
+  ): void {
+    this.soaStores.set(store.schema.type, store);
+  }
+
+  /**
+   * Get a registered SoA component store by schema
+   *
+   * @param schema - The schema used to create the store
+   * @returns The store, or undefined if not registered
+   */
+  public getSoAStore<S extends SoASchemaDefinition>(
+    schema: SoASchema<S>
+  ): SoAComponentStore<S> | undefined {
+    return this.soaStores.get(schema.type) as SoAComponentStore<S> | undefined;
+  }
+
+  /**
+   * Get a registered SoA component store by schema type symbol
+   *
+   * @param schemaType - The schema type symbol
+   * @returns The store, or undefined if not registered
+   */
+  public getSoAStoreByType<S extends SoASchemaDefinition>(
+    schemaType: symbol
+  ): SoAComponentStore<S> | undefined {
+    return this.soaStores.get(schemaType) as SoAComponentStore<S> | undefined;
+  }
+
+  /**
+   * Get or lazily create a SoA store for the given schema.
+   * If a store already exists for this schema type, it is returned.
+   * Otherwise a new one is created, registered, and returned.
+   *
+   * @param schema - The schema definition
+   * @param initialCapacity - Initial entity capacity (default: 1024)
+   */
+  public getOrCreateSoAStore<S extends SoASchemaDefinition>(
+    schema: SoASchema<S>,
+    initialCapacity: number = 1024
+  ): SoAComponentStore<S> {
+    const existing = this.soaStores.get(schema.type) as SoAComponentStore<S> | undefined;
+    if (existing) {
+      return existing;
+    }
+    const store = new SoAComponentStore<S>(schema, initialCapacity);
+    this.soaStores.set(schema.type, store);
+    return store;
+  }
+
+  /**
+   * Check if a SoA store is registered for a schema
+   */
+  public hasSoAStore(schema: SoASchema): boolean {
+    return this.soaStores.has(schema.type);
+  }
+
+  /**
+   * Remove entity data from all SoA stores
+   * Called automatically when entity is removed
+   */
+  private cleanupSoAStores(entityId: number): void {
+    for (const store of this.soaStores.values()) {
+      store.remove(entityId);
+    }
+  }
+
   /**
    * Clear all entities
    */
@@ -305,6 +394,11 @@ export class EntityManager {
 
     for (const index of this.componentIndices.values()) {
       index.length = 0;
+    }
+
+    // Clear all SoA stores
+    for (const store of this.soaStores.values()) {
+      store.clear();
     }
   }
 }

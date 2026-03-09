@@ -6,7 +6,8 @@ import type { LanceUnit, LanceUnitConfig } from '../entities/LanceUnit';
 import type { MutantUnit, MutantUnitConfig } from '../entities/MutantUnit';
 import type { Tower, TowerConfig } from '../entities/Tower';
 import type { Base, BaseConfig } from '../entities/Base';
-import { PhysicsBodyComponent, HealthBarComponent, InterpolationComponent } from '../components';
+import { PhysicsBodyComponent, HealthBarComponent, InterpolationComponent, TransformComponent } from '../components';
+import { FPVector3 } from 'phalanx-math';
 import { TeamTag } from '../enums/TeamTag';
 import { arenaParams, unitConfig } from '../config/constants';
 
@@ -27,7 +28,7 @@ export class EntityFactory {
 
   constructor(
     sceneManager: SceneManager,
-    entityManager: EntityManager
+    entityManager: EntityManager,
   ) {
     this.sceneManager = sceneManager;
     this.entityManager = entityManager;
@@ -44,7 +45,7 @@ export class EntityFactory {
     const unit = this.sceneManager.createPrismaUnit(config, position);
 
     // Add PhysicsBodyComponent - prisma units are larger dynamic bodies
-    unit.addComponent(new PhysicsBodyComponent({
+    unit.addComponent(new PhysicsBodyComponent(unit.id, {
       radius: 1.8, // Larger radius for 2x2 unit
       mass: 2.0, // Heavier unit
       isStatic: false,
@@ -53,8 +54,13 @@ export class EntityFactory {
     // Add HealthBarComponent for health visualization
     unit.addComponent(new HealthBarComponent(3.5));
 
+    // Add TransformComponent for position storage
+    const initialPos = FPVector3.FromFloat(position.x, position.y, position.z);
+    const transform = new TransformComponent(unit.id, initialPos);
+    unit.addComponent(transform);
+
     // Add InterpolationComponent for smooth visual movement
-    unit.addComponent(new InterpolationComponent(unit.fpPosition, false));
+    unit.addComponent(new InterpolationComponent(transform.fpPosition, false));
 
     // Register with EntityManager
     this.entityManager.addEntity(unit);
@@ -72,7 +78,7 @@ export class EntityFactory {
     const unit = this.sceneManager.createLanceUnit(config, position);
 
     // Add PhysicsBodyComponent - lance units are elongated 1x2 bodies
-    unit.addComponent(new PhysicsBodyComponent({
+    unit.addComponent(new PhysicsBodyComponent(unit.id, {
       radius: 1.4, // Medium radius for 1x2 unit
       mass: 1.5, // Between sphere and prisma
       isStatic: false,
@@ -81,13 +87,16 @@ export class EntityFactory {
     // Add HealthBarComponent for health visualization
     unit.addComponent(new HealthBarComponent(3.0));
 
+    // Add TransformComponent for position storage
+    const initialPos = FPVector3.FromFloat(position.x, position.y, position.z);
+    const transform = new TransformComponent(unit.id, initialPos);
+    unit.addComponent(transform);
+
     // Add InterpolationComponent for smooth visual movement
-    unit.addComponent(new InterpolationComponent(unit.fpPosition, false));
+    unit.addComponent(new InterpolationComponent(transform.fpPosition, false));
 
     // Register with EntityManager
     this.entityManager.addEntity(unit);
-
-
 
     return unit;
   }
@@ -102,7 +111,7 @@ export class EntityFactory {
     const unit = this.sceneManager.createMutantUnit(config, position);
 
     // Add PhysicsBodyComponent - mutant units are 2x2 bodies
-    unit.addComponent(new PhysicsBodyComponent({
+    unit.addComponent(new PhysicsBodyComponent(unit.id, {
       radius: 2.0,
       mass: 2.0,
       isStatic: false,
@@ -111,13 +120,16 @@ export class EntityFactory {
     // Add HealthBarComponent for health visualization
     unit.addComponent(new HealthBarComponent(4.5));
 
+    // Add TransformComponent for position storage
+    const initialPos = FPVector3.FromFloat(position.x, position.y, position.z);
+    const transform = new TransformComponent(unit.id, initialPos);
+    unit.addComponent(transform);
+
     // Add InterpolationComponent for smooth visual movement
-    unit.addComponent(new InterpolationComponent(unit.fpPosition, false));
+    unit.addComponent(new InterpolationComponent(transform.fpPosition, false));
 
     // Register with EntityManager
     this.entityManager.addEntity(unit);
-
-
 
     return unit;
   }
@@ -129,7 +141,7 @@ export class EntityFactory {
     const tower = this.sceneManager.createTower(config, position);
 
     // Add PhysicsBodyComponent - towers are static bodies (can push but don't move)
-    tower.addComponent(new PhysicsBodyComponent({
+    tower.addComponent(new PhysicsBodyComponent(tower.id, {
       radius: 1.5,
       mass: 10.0,
       isStatic: true,
@@ -138,13 +150,16 @@ export class EntityFactory {
     // Add HealthBarComponent for health visualization
     tower.addComponent(new HealthBarComponent(5.0));
 
+    // Add TransformComponent for position storage
+    const initialPos = FPVector3.FromFloat(position.x, position.y, position.z);
+    const transform = new TransformComponent(tower.id, initialPos);
+    tower.addComponent(transform);
+
     // Add InterpolationComponent - towers are static, don't need smooth movement
-    tower.addComponent(new InterpolationComponent(tower.fpPosition, true));
+    tower.addComponent(new InterpolationComponent(transform.fpPosition, true));
 
     // Register with EntityManager
     this.entityManager.addEntity(tower);
-
-
 
     return tower;
   }
@@ -156,7 +171,7 @@ export class EntityFactory {
     const base = this.sceneManager.createBase(config, position);
 
     // Add PhysicsBodyComponent - bases are static bodies (can push but don't move)
-    base.addComponent(new PhysicsBodyComponent({
+    base.addComponent(new PhysicsBodyComponent(base.id, {
       radius: 3.0,
       mass: 100.0,
       isStatic: true,
@@ -165,13 +180,16 @@ export class EntityFactory {
     // Add HealthBarComponent for health visualization
     base.addComponent(new HealthBarComponent(5.5));
 
+    // Add TransformComponent for position storage
+    const initialPos = FPVector3.FromFloat(position.x, position.y, position.z);
+    const transform = new TransformComponent(base.id, initialPos);
+    base.addComponent(transform);
+
     // Add InterpolationComponent - bases are static, don't need smooth movement
-    base.addComponent(new InterpolationComponent(base.fpPosition, true));
+    base.addComponent(new InterpolationComponent(transform.fpPosition, true));
 
     // Register with EntityManager
     this.entityManager.addEntity(base);
-
-
 
     return base;
   }
@@ -264,7 +282,8 @@ export class EntityFactory {
     const playerId = team === localTeam ? localPlayerId : getOpponentId();
     this.entityOwnership.set(unit.id, playerId);
 
-    return { id: unit.id, position: unit.position.clone() };
+    // Return the initial position passed to factory (TransformComponent stores it)
+    return { id: unit.id, position: position.clone() };
   }
 
   /**

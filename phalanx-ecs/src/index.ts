@@ -21,6 +21,26 @@ export { Entity, resetEntityIdCounter } from './Entity';
 export { IComponent, createComponentTypeRegistry } from './Component';
 export type { IComponent as Component } from './Component';
 
+// SoA (Structure-of-Arrays) high-performance storage
+export { SoAComponentStore } from './SoAComponentStore';
+export { SoAComponent } from './SoAComponent';
+export {
+  defineSoASchema,
+  calculateSchemaByteSize,
+  TYPED_ARRAY_CONSTRUCTORS,
+  FIELD_BYTE_SIZES,
+} from './SoASchema';
+export type {
+  SoASchema,
+  SoASchemaDefinition,
+  SoAFieldType,
+  SoAFieldsOf,
+  SoAArraysOf,
+  SoAValueType,
+  SoAArrayType,
+  TypedArrayLike,
+} from './SoASchema';
+
 // Tick/Frame Management
 export { TickFrameManager } from './TickFrameManager';
 export type { TickFrameManagerConfig } from './TickFrameManager';

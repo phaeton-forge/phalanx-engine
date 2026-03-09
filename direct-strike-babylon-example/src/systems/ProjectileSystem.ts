@@ -4,7 +4,7 @@ import { Projectile } from '../entities/Projectile';
 import { ExplosionEffect } from '../effects/ExplosionEffect';
 import type { SystemContext } from 'phalanx-ecs';
 import { GameSystem } from 'phalanx-ecs';
-import { ComponentType, TeamComponent } from '../components';
+import { ComponentType, TeamComponent, TransformComponent } from '../components';
 import { GameEvents, createEvent } from '../events';
 import type {
   ProjectileSpawnedEvent,
@@ -171,9 +171,12 @@ export class ProjectileSystem extends GameSystem {
 
     // Check collisions with targets using fixed-point squared distance
     for (const target of targets) {
+      const targetTransform = target.getComponent<TransformComponent>(ComponentType.Transform);
+      if (!targetTransform) continue;
+
       const distanceSq = FPVector3.SqrDistance(
         projectile.fpPosition,
-        target.fpPosition
+        targetTransform.fpPosition
       );
 
       if (FP.Lt(distanceSq, FP_HIT_RADIUS_SQ)) {
