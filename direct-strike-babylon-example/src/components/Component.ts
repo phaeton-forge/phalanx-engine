@@ -25,6 +25,7 @@ export const ComponentType = createComponentTypeRegistry({
   HealthBar: 'HealthBar',
   Interpolation: 'Interpolation',
   Transform: 'Transform',
+  Projectile: 'Projectile',
 });
 
 export type ComponentTypeKey = keyof typeof ComponentType;

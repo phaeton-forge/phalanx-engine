@@ -1,5 +1,6 @@
 import { Scene, Vector3, Mesh } from '@babylonjs/core';
 import { Entity } from 'phalanx-ecs';
+import type { IMeshEntity } from '../interfaces/IMeshEntity';
 
 /**
  * Unit - Game-specific entity base class with Babylon.js rendering support
@@ -14,7 +15,7 @@ import { Entity } from 'phalanx-ecs';
  * All entity classes in Direct Strike (MutantUnit, PrismaUnit, LanceUnit,
  * Tower, Base) should extend this class.
  */
-export class Unit extends Entity {
+export class Unit extends Entity implements IMeshEntity {
   protected scene: Scene;
   protected mesh: Mesh | null = null;
 

@@ -22,3 +22,4 @@ export { PhysicsBodyComponent } from './PhysicsBodyComponent';
 export { HealthBarComponent } from './HealthBarComponent';
 export { InterpolationComponent } from './InterpolationComponent';
 export { TransformComponent } from './TransformComponent';
+export { ProjectileComponent } from './ProjectileComponent';

@@ -5,3 +5,4 @@
  * - IPhysicsIgnorable -> Entity.ignorePhysics property
  * - ICombatant, IAnimated, IDeathSequence -> AnimationComponent + AnimationSystem
  */
+export type { IMeshEntity } from './IMeshEntity';

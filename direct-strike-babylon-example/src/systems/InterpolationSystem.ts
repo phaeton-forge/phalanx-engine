@@ -1,6 +1,6 @@
 import type { SystemContext } from 'phalanx-ecs';
 import { GameSystem } from 'phalanx-ecs';
-import type { Unit } from '../entities/Unit';
+import type { IMeshEntity } from '../interfaces/IMeshEntity';
 import {
   fpToVector3Ref,
   lerpVector3FromFpRef,
@@ -103,7 +103,7 @@ export class InterpolationSystem extends GameSystem {
       );
 
       // Apply visual position to the entity's mesh
-      (entity as Unit).setVisualPosition(interpolation.visualPosition);
+      (entity as unknown as IMeshEntity).setVisualPosition(interpolation.visualPosition);
     }
   }
 
@@ -127,7 +127,7 @@ export class InterpolationSystem extends GameSystem {
       fpToVector3Ref(fpPos, interpolation.visualPosition);
 
       // Apply to mesh
-      (entity as Unit).setVisualPosition(interpolation.visualPosition);
+      (entity as unknown as IMeshEntity).setVisualPosition(interpolation.visualPosition);
     }
   }
 

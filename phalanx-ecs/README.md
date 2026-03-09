@@ -10,6 +10,7 @@ A lightweight, renderer-agnostic Entity-Component-System (ECS) library with opti
 - **Flexible Integration**: Use standalone or with Phalanx Client for multiplayer
 - **TypeScript First**: Full type safety and excellent IDE support
 - **Deterministic Tick/Frame**: Separate tick-based simulation from frame-based rendering
+- **SoA Storage**: Optional Structure-of-Arrays component storage for cache-friendly hot-path iteration
 
 ## Core Components
 
@@ -32,6 +33,11 @@ A lightweight, renderer-agnostic Entity-Component-System (ECS) library with opti
 ### Tick/Frame Management
 - **TickFrameManager**: Built-in no-op client for single-player games
 - Compatible with PhalanxClient for multiplayer
+
+### SoA (Structure-of-Arrays) Storage
+- **SoAComponent**: Base class for components backed by contiguous typed arrays
+- **SoAComponentStore**: Dense, cache-friendly storage with O(1) entity lookup
+- **defineSoASchema**: Type-safe schema definition for SoA field layout
 
 ## Installation
 
@@ -237,6 +243,111 @@ interface ITickFrameProvider {
 
 type TickHandler = (tick: number, commands: CommandsBatch) => void;
 type FrameHandler = (alpha: number, dt: number) => void;
+```
+
+## Component Types: IComponent vs SoAComponent
+
+Phalanx ECS offers two component types. Choose based on your performance and data layout needs.
+
+### IComponent (Standard Components)
+
+Simple class-based components that store data in regular object properties.
+
+**Use when:**
+- The component is accessed infrequently (e.g., flags, config, UI state)
+- There are few instances (e.g., a single `ResourceComponent` per player)
+- The data is complex or polymorphic (nested objects, arrays, callbacks)
+- You want maximum simplicity
+
+```typescript
+import type { IComponent } from 'phalanx-ecs';
+
+class ArmorComponent implements IComponent {
+  public readonly type = ComponentType.Armor;
+  constructor(public armor: number = 10) {}
+}
+
+// Usage: attach to entity as usual
+entity.addComponent(new ArmorComponent(15));
+```
+
+### SoAComponent (Structure-of-Arrays Components)
+
+Components backed by contiguous typed arrays (`Float64Array`, `BigInt64Array`, etc.) for cache-friendly memory layout.
+
+**Use when:**
+- The component is iterated every tick in a hot loop (physics, transforms, velocities)
+- There are many instances (hundreds/thousands of entities)
+- The data is flat numeric fields (positions, velocities, radii)
+- You need deterministic fixed-point storage via `BigInt64Array` (`'i64'` fields)
+
+**Avoid when:**
+- The data is complex (nested objects, strings, variable-length arrays)
+- There are very few instances — the typed-array overhead isn't worth it
+- The component is rarely queried
+
+```typescript
+import { SoAComponent, defineSoASchema } from 'phalanx-ecs';
+
+// 1. Define a schema — maps field names to typed-array element types
+const PhysicsSoASchema = defineSoASchema({
+  velocityX: 'i64',   // BigInt64Array — deterministic fixed-point
+  velocityY: 'i64',
+  velocityZ: 'i64',
+  radius: 'i64',
+  isStatic: 'u8',     // Uint8Array — boolean flag
+}, 'PhysicsBody');
+
+// 2. Extend SoAComponent
+class PhysicsBodyComponent extends SoAComponent<typeof PhysicsSoASchema.definition> {
+  public readonly type = ComponentType.PhysicsBody;
+  static readonly soaSchema = PhysicsSoASchema;
+
+  constructor(entityId: number, radius: bigint) {
+    super(PhysicsSoASchema, entityId, {
+      velocityX: 0n,
+      velocityY: 0n,
+      velocityZ: 0n,
+      radius: radius,
+      isStatic: 0,
+    });
+  }
+
+  // Getters/setters provide a clean API over raw array access
+  get radiusRaw(): bigint {
+    return this.store.arrays.radius[this.getIndex()];
+  }
+}
+
+// 3. Hot-path systems can bypass the component and access arrays directly
+const store = entityManager.getSoAStore(PhysicsSoASchema);
+for (const entityId of store.entityIds()) {
+  const idx = store.indexOf(entityId);
+  // Direct typed-array access — cache-friendly, zero overhead
+  store.arrays.velocityX[idx] += accelerationX;
+}
+```
+
+### SoA Field Types
+
+| Type   | TypedArray       | JS Value  | Use Case                                |
+| ------ | ---------------- | --------- | --------------------------------------- |
+| `f64`  | `Float64Array`   | `number`  | Floating-point values, visual positions |
+| `f32`  | `Float32Array`   | `number`  | Lower-precision floats                  |
+| `i32`  | `Int32Array`     | `number`  | Signed integers                         |
+| `u32`  | `Uint32Array`    | `number`  | Unsigned integers                       |
+| `u8`   | `Uint8Array`     | `number`  | Flags, booleans (0/1)                   |
+| `i64`  | `BigInt64Array`  | `bigint`  | Fixed-point raw values (deterministic)  |
+
+### SoA Store Lifecycle
+
+Stores are **lazily created** when the first `SoAComponent` of a given schema is instantiated. `GameWorld` sets the `EntityManager` context automatically — no manual store registration needed.
+
+```
+GameWorld created → SoAComponent.useEntityManager(em)
+First PhysicsBodyComponent constructed → store created in EntityManager
+Subsequent PhysicsBodyComponents → share the same store
+GameWorld disposed → SoAComponent.resetContext()
 ```
 
 ## Creating Custom Systems
