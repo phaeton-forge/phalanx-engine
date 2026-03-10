@@ -988,15 +988,64 @@ export class PhysicsBodyComponent extends SoAComponent<typeof PhysicsSoASchema.d
 
 **Direct store access for hot-path systems:**
 
+Systems should bypass the component facade and access SoA stores directly for maximum performance.
+The facade (getters/setters) is convenient for infrequent access (e.g., spawning, event handlers), but
+in hot loops the repeated `Map.get()` + index validation per field access negates the cache benefits.
+
+**Pattern: cache store references in `init()`, iterate `entityIds()` in hot methods:**
+
 ```typescript
-// Systems can bypass the component wrapper for maximum performance
-const store = entityManager.getSoAStore(PhysicsSoASchema);
-for (const entityId of store.entityIds()) {
-  const idx = store.indexOf(entityId);
-  // Direct typed-array access — cache-friendly, zero overhead
-  store.arrays.velocityX[idx] = FP.ToRaw(newVelocityX);
+import { GameSystem, SoAComponentStore } from 'phalanx-ecs';
+import { PhysicsSoASchema, TransformSoASchema } from '../components';
+
+class PhysicsSystem extends GameSystem {
+  // Cache store references — resolved once
+  private physicsStore!: SoAComponentStore<typeof PhysicsSoASchema.definition>;
+  private transformStore!: SoAComponentStore<typeof TransformSoASchema.definition>;
+
+  public override init(context: SystemContext): void {
+    super.init(context);
+    // getOrCreateSoAStore ensures the store exists even before entities are spawned
+    this.physicsStore = this.entityManager.getOrCreateSoAStore(PhysicsSoASchema);
+    this.transformStore = this.entityManager.getOrCreateSoAStore(TransformSoASchema);
+  }
+
+  private applyVelocities(dt: FixedPoint): void {
+    // Grab typed array references outside the loop
+    const velocityX = this.physicsStore.arrays.velocityX;
+    const velocityZ = this.physicsStore.arrays.velocityZ;
+    const fpPositionX = this.transformStore.arrays.fpPositionX;
+    const fpPositionZ = this.transformStore.arrays.fpPositionZ;
+
+    // Iterate in deterministic entity ID order
+    for (const entityId of this.physicsStore.entityIds()) {
+      const physIndex = this.physicsStore.indexOf(entityId);
+      // Cross-store lookup — needed when two stores track the same entities
+      const txIndex = this.transformStore.indexOf(entityId);
+      if (txIndex === -1) continue;
+
+      const velX = FP.FromRaw(velocityX[physIndex]);
+      const velZ = FP.FromRaw(velocityZ[physIndex]);
+      const posX = FP.FromRaw(fpPositionX[txIndex]);
+      const posZ = FP.FromRaw(fpPositionZ[txIndex]);
+
+      fpPositionX[txIndex] = FP.ToRaw(FP.Add(posX, FP.Mul(velX, dt)));
+      fpPositionZ[txIndex] = FP.ToRaw(FP.Add(posZ, FP.Mul(velZ, dt)));
+    }
+  }
 }
 ```
+
+**Key rules for direct SoA access in systems:**
+
+1. **Cache array references** outside the loop (`const velocityX = store.arrays.velocityX`).
+2. **Use `entityIds()`** for deterministic iteration (sorted by entity ID — required for lockstep).
+3. **Cross-store lookup** via `indexOf(entityId)` when two stores track the same entities (e.g., physics + transform). This is one `Map.get()` per entity, versus the facade's `Map.get()` per field access.
+4. **AoS fallback** for non-SoA components: when a hot loop also needs an AoS component (e.g., `MovementComponent`), get the entity via `entityManager.getEntity(entityId)` and access the AoS component normally. This is a hybrid pattern.
+5. **Single-store loops** are the ideal case — iterate dense indices with zero indirection.
+6. **Sync visual positions** when writing fp positions directly (the facade setter does this automatically, but direct writes must do it manually).
+
+See `PhysicsSystem.ts` for a complete real-world example of direct SoA access patterns.
 
 #### SoA Field Types
 

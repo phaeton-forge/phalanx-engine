@@ -1,7 +1,7 @@
 import type { SystemContext } from 'phalanx-ecs';
-import { GameSystem } from 'phalanx-ecs';
+import { GameSystem, SoAComponentStore } from 'phalanx-ecs';
 import type { Unit } from '../entities/Unit';
-import { ComponentType, MovementComponent, TeamComponent, PhysicsBodyComponent, TransformComponent } from '../components';
+import { ComponentType, MovementComponent, TeamComponent, PhysicsSoASchema, TransformSoASchema } from '../components';
 import { networkConfig } from '../config/constants';
 import {
   FP,
@@ -136,6 +136,10 @@ export class PhysicsSystem extends GameSystem {
   // Cached number values from fixed-point config (for spatial grid operations)
   private readonly unitRadiusNum: number;
 
+  // Direct SoA store references for hot-path access (bypasses facade overhead)
+  private physicsStore!: SoAComponentStore<typeof PhysicsSoASchema.definition>;
+  private transformStore!: SoAComponentStore<typeof TransformSoASchema.definition>;
+
   constructor(config?: Partial<PhysicsConfig>) {
     super();
     this.config = { ...DEFAULT_PHYSICS_CONFIG, ...config };
@@ -149,28 +153,41 @@ export class PhysicsSystem extends GameSystem {
    */
   public override init(context: SystemContext): void {
     super.init(context);
+
+    // Eagerly resolve SoA stores for direct array access in hot paths.
+    // getOrCreateSoAStore ensures stores exist even if no entities have been created yet.
+    this.physicsStore = this.entityManager.getOrCreateSoAStore(PhysicsSoASchema);
+    this.transformStore = this.entityManager.getOrCreateSoAStore(TransformSoASchema);
   }
 
   /**
    * Set velocity for an entity (using fixed-point)
    */
   public setVelocity(entityId: number, velocity: FPVector3Type): void {
-    const entity = this.entityManager.getEntity(entityId);
-    const body = entity?.getComponent<PhysicsBodyComponent>(ComponentType.PhysicsBody);
-    if (body && !body.isStatic) {
-      body.velocity = velocity;
-    }
+    const physIndex = this.physicsStore.indexOf(entityId);
+    if (physIndex === -1) return;
+    if (this.physicsStore.arrays.isStatic[physIndex] === 1) return;
+
+    this.physicsStore.arrays.velocityX[physIndex] = FP.ToRaw(velocity.x);
+    this.physicsStore.arrays.velocityY[physIndex] = FP.ToRaw(velocity.y);
+    this.physicsStore.arrays.velocityZ[physIndex] = FP.ToRaw(velocity.z);
   }
 
   /**
    * Add velocity to an entity (using fixed-point)
    */
   public addVelocity(entityId: number, velocity: FPVector3Type): void {
-    const entity = this.entityManager.getEntity(entityId);
-    const body = entity?.getComponent<PhysicsBodyComponent>(ComponentType.PhysicsBody);
-    if (body && !body.isStatic) {
-      body.addVelocity(velocity);
-    }
+    const physIndex = this.physicsStore.indexOf(entityId);
+    if (physIndex === -1) return;
+    if (this.physicsStore.arrays.isStatic[physIndex] === 1) return;
+
+    const currentX = FP.FromRaw(this.physicsStore.arrays.velocityX[physIndex]);
+    const currentY = FP.FromRaw(this.physicsStore.arrays.velocityY[physIndex]);
+    const currentZ = FP.FromRaw(this.physicsStore.arrays.velocityZ[physIndex]);
+
+    this.physicsStore.arrays.velocityX[physIndex] = FP.ToRaw(FP.Add(currentX, velocity.x));
+    this.physicsStore.arrays.velocityY[physIndex] = FP.ToRaw(FP.Add(currentY, velocity.y));
+    this.physicsStore.arrays.velocityZ[physIndex] = FP.ToRaw(FP.Add(currentZ, velocity.z));
   }
 
   /**
@@ -208,44 +225,56 @@ export class PhysicsSystem extends GameSystem {
   }
 
   /**
-   * Query physics entities, cast to Unit[] for access to fpPosition
-   */
-  private queryPhysicsEntities(): Unit[] {
-    return this.entityManager.queryEntities(ComponentType.PhysicsBody) as Unit[];
-  }
-
-  /**
    * Update velocities for entities with movement targets
-   * Uses fixed-point math to avoid floating-point determinism issues
+   * Uses direct SoA array access + AoS MovementComponent for mixed hot-path.
+   * Uses fixed-point math to avoid floating-point determinism issues.
+   *
+   * IMPORTANT: Iterates in deterministic entity ID order via physicsStore.entityIds().
    */
   private updateMovementVelocities(): void {
-    // Query entities that have both Movement and PhysicsBody components
-    // entityManager.queryEntities returns sorted list for deterministic ordering
-    const physicsEntities = this.queryPhysicsEntities();
+    const physVelocityX = this.physicsStore.arrays.velocityX;
+    const physVelocityY = this.physicsStore.arrays.velocityY;
+    const physVelocityZ = this.physicsStore.arrays.velocityZ;
+    const physIsStatic = this.physicsStore.arrays.isStatic;
+    const physIgnorePhysics = this.physicsStore.arrays.ignorePhysics;
 
-    for (const entity of physicsEntities) {
-      const body = entity.getComponent<PhysicsBodyComponent>(ComponentType.PhysicsBody);
-      const movement = entity.getComponent<MovementComponent>(ComponentType.Movement);
-      const transform = entity.getComponent<TransformComponent>(ComponentType.Transform);
+    const txFpPositionX = this.transformStore.arrays.fpPositionX;
+    const txFpPositionZ = this.transformStore.arrays.fpPositionZ;
 
-      if (!body || body.isStatic || !transform) continue;
+    const zeroRaw = FP.ToRaw(FP._0);
+
+    for (const entityId of this.physicsStore.entityIds()) {
+      const physIndex = this.physicsStore.indexOf(entityId);
+
+      // Skip static bodies
+      if (physIsStatic[physIndex] === 1) continue;
 
       // Skip entities that should be ignored by physics (e.g., dying units)
-      if (body.ignorePhysics) {
-        body.stopVelocity();
+      if (physIgnorePhysics[physIndex] === 1) {
+        physVelocityX[physIndex] = zeroRaw;
+        physVelocityY[physIndex] = zeroRaw;
+        physVelocityZ[physIndex] = zeroRaw;
         continue;
       }
 
-      // If no movement component, entity doesn't move by itself
+      // MovementComponent is AoS — need entity lookup
+      const entity = this.entityManager.getEntity(entityId);
+      if (!entity) continue;
+
+      const movement = entity.getComponent<MovementComponent>(ComponentType.Movement);
       if (!movement) continue;
 
       if (movement.isMoving) {
+        const transformIndex = this.transformStore.indexOf(entityId);
+        if (transformIndex === -1) continue;
+
         const target = movement.targetPosition;
-        const pos = transform.fpPosition;
+        const posX = FP.FromRaw(txFpPositionX[transformIndex]);
+        const posZ = FP.FromRaw(txFpPositionZ[transformIndex]);
 
         // Calculate direction using fixed-point math
-        const dx = FP.Sub(FP.FromFloat(target.x), pos.x);
-        const dz = FP.Sub(FP.FromFloat(target.z), pos.z);
+        const dx = FP.Sub(FP.FromFloat(target.x), posX);
+        const dz = FP.Sub(FP.FromFloat(target.z), posZ);
         const distSq = FP.Add(
           FP.Mul(dx, dx),
           FP.Mul(dz, dz)
@@ -254,115 +283,153 @@ export class PhysicsSystem extends GameSystem {
         if (FP.Lt(distSq, FP_ARRIVAL_THRESHOLD_SQ)) {
           // Arrived at destination
           movement.stop();
-          body.stopVelocity();
+          physVelocityX[physIndex] = zeroRaw;
+          physVelocityY[physIndex] = zeroRaw;
+          physVelocityZ[physIndex] = zeroRaw;
         } else {
           // Set velocity towards target using fixed-point
           const dist = FP.Sqrt(distSq);
           const speed = FP.FromFloat(movement.speed);
-          body.setVelocity(
-            FP.Mul(FP.Div(dx, dist), speed),
-            FP._0,
-            FP.Mul(FP.Div(dz, dist), speed)
-          );
+          physVelocityX[physIndex] = FP.ToRaw(FP.Mul(FP.Div(dx, dist), speed));
+          physVelocityY[physIndex] = zeroRaw;
+          physVelocityZ[physIndex] = FP.ToRaw(FP.Mul(FP.Div(dz, dist), speed));
         }
       } else {
         // Unit is not moving - stop any residual velocity
-        // This handles cases where combat system stopped the unit
-        body.stopVelocity();
+        physVelocityX[physIndex] = zeroRaw;
+        physVelocityY[physIndex] = zeroRaw;
+        physVelocityZ[physIndex] = zeroRaw;
       }
     }
   }
 
   /**
    * Rebuild spatial grid each physics tick
-   * Caches entity positions for collision detection
+   * Uses direct SoA array access — pure store iteration, no entity lookups.
    *
-   * IMPORTANT: Processes entities in deterministic order (sorted by entity ID)
-   * for network synchronization.
+   * IMPORTANT: Iterates in deterministic entity ID order via physicsStore.entityIds().
    */
   private rebuildSpatialGrid(): void {
     this.spatialGrid.clear();
 
-    // Query entities with PhysicsBody component (already sorted by ID)
-    const physicsEntities = this.queryPhysicsEntities();
+    const physLastX = this.physicsStore.arrays.lastX;
+    const physLastZ = this.physicsStore.arrays.lastZ;
+    const physRadius = this.physicsStore.arrays.radius;
 
-    for (const entity of physicsEntities) {
-      const body = entity.getComponent<PhysicsBodyComponent>(ComponentType.PhysicsBody);
-      const transform = entity.getComponent<TransformComponent>(ComponentType.Transform);
-      if (!body || !transform) continue;
+    const txFpPositionX = this.transformStore.arrays.fpPositionX;
+    const txFpPositionZ = this.transformStore.arrays.fpPositionZ;
+
+    for (const entityId of this.physicsStore.entityIds()) {
+      const physIndex = this.physicsStore.indexOf(entityId);
+      const transformIndex = this.transformStore.indexOf(entityId);
+      if (transformIndex === -1) continue;
 
       // Convert fixed-point position to numbers for spatial grid indexing
-      const fpPos = transform.fpPosition;
-      body.lastX = FP.ToFloat(fpPos.x);
-      body.lastZ = FP.ToFloat(fpPos.z);
-      this.spatialGrid.insert(entity.id, body.lastX, body.lastZ, body.radiusFloat);
+      const posXFloat = FP.ToFloat(FP.FromRaw(txFpPositionX[transformIndex]));
+      const posZFloat = FP.ToFloat(FP.FromRaw(txFpPositionZ[transformIndex]));
+      physLastX[physIndex] = posXFloat;
+      physLastZ[physIndex] = posZFloat;
+
+      const radiusFloat = FP.ToFloat(FP.FromRaw(physRadius[physIndex]));
+      this.spatialGrid.insert(entityId, posXFloat, posZFloat, radiusFloat);
     }
   }
 
   /**
    * Resolve collisions using spatial hashing
    * Average case O(n) instead of O(n²)
-   * Uses fixed-point arithmetic for deterministic collision resolution
+   * Uses direct SoA array access for all physics/transform data.
+   * Entity lookups only for TeamComponent (AoS) in shouldSkipCollision.
    *
-   * IMPORTANT: Processes entities in deterministic order (sorted by entity ID)
-   * for network synchronization.
+   * IMPORTANT: Iterates in deterministic entity ID order via physicsStore.entityIds().
    */
   private resolveCollisions(): void {
     this.checkedPairs.clear();
 
-    // Query entities with PhysicsBody component (already sorted by ID)
-    const physicsEntities = this.queryPhysicsEntities();
+    const physVelocityX = this.physicsStore.arrays.velocityX;
+    const physVelocityY = this.physicsStore.arrays.velocityY;
+    const physVelocityZ = this.physicsStore.arrays.velocityZ;
+    const physRadius = this.physicsStore.arrays.radius;
+    const physMass = this.physicsStore.arrays.mass;
+    const physIsStatic = this.physicsStore.arrays.isStatic;
+    const physIgnorePhysics = this.physicsStore.arrays.ignorePhysics;
+    const physLastX = this.physicsStore.arrays.lastX;
+    const physLastZ = this.physicsStore.arrays.lastZ;
 
-    for (const entityA of physicsEntities) {
-      const bodyA = entityA.getComponent<PhysicsBodyComponent>(ComponentType.PhysicsBody);
-      const transformA = entityA.getComponent<TransformComponent>(ComponentType.Transform);
-      if (!bodyA || !transformA) continue;
+    const txFpPositionX = this.transformStore.arrays.fpPositionX;
+    const txFpPositionY = this.transformStore.arrays.fpPositionY;
+    const txFpPositionZ = this.transformStore.arrays.fpPositionZ;
+    const txVisualPositionX = this.transformStore.arrays.visualPositionX;
+    const txVisualPositionY = this.transformStore.arrays.visualPositionY;
+    const txVisualPositionZ = this.transformStore.arrays.visualPositionZ;
 
-      const posAx = bodyA.lastX;
-      const posAz = bodyA.lastZ;
-      const radiusANum = bodyA.radiusFloat;
+    for (const entityIdA of this.physicsStore.entityIds()) {
+      const physIndexA = this.physicsStore.indexOf(entityIdA);
+
+      const posAx = physLastX[physIndexA];
+      const posAz = physLastZ[physIndexA];
+      const radiusAFloat = FP.ToFloat(FP.FromRaw(physRadius[physIndexA]));
 
       // Get only nearby bodies from spatial grid
-      // Search radius includes own radius plus max possible other radius
       const nearby = this.spatialGrid.getPotentialCollisions(
         posAx,
         posAz,
-        radiusANum + this.unitRadiusNum * 2
+        radiusAFloat + this.unitRadiusNum * 2
       );
 
-      for (const otherEntityId of nearby) {
+      for (const entityIdB of nearby) {
         // Skip self and ensure we only check each pair once (lower ID first)
-        if (otherEntityId <= entityA.id) continue;
+        if (entityIdB <= entityIdA) continue;
 
-        const pairKey = `${entityA.id},${otherEntityId}`;
+        const pairKey = `${entityIdA},${entityIdB}`;
         if (this.checkedPairs.has(pairKey)) continue;
         this.checkedPairs.add(pairKey);
 
-        const entityB = this.entityManager.getEntity(otherEntityId) as Unit | undefined;
-        if (!entityB) continue;
+        const physIndexB = this.physicsStore.indexOf(entityIdB);
+        if (physIndexB === -1) continue;
 
-        const bodyB = entityB.getComponent<PhysicsBodyComponent>(ComponentType.PhysicsBody);
-        const transformB = entityB.getComponent<TransformComponent>(ComponentType.Transform);
-        if (!bodyB || !transformB) continue;
-
-        // Skip collision between units and friendly buildings (bases/towers)
-        // Units should pass through their own team's structures
-        if (this.shouldSkipCollision(entityA, entityB, bodyA, bodyB)) {
+        // Skip collisions with entities that should be ignored (dying, phasing, etc.)
+        if (physIgnorePhysics[physIndexA] === 1 || physIgnorePhysics[physIndexB] === 1) {
           continue;
         }
 
+        const isStaticA = physIsStatic[physIndexA] === 1;
+        const isStaticB = physIsStatic[physIndexB] === 1;
+
+        // Skip collision between units and friendly buildings — needs TeamComponent (AoS)
+        if (isStaticA || isStaticB) {
+          const entityA = this.entityManager.getEntity(entityIdA) as Unit | undefined;
+          const entityB = this.entityManager.getEntity(entityIdB) as Unit | undefined;
+          if (!entityA || !entityB) continue;
+
+          const teamA = entityA.getComponent<TeamComponent>(ComponentType.Team);
+          const teamB = entityB.getComponent<TeamComponent>(ComponentType.Team);
+          if (teamA && teamB && teamA.team === teamB.team) {
+            continue;
+          }
+        }
+
+        const transformIndexA = this.transformStore.indexOf(entityIdA);
+        const transformIndexB = this.transformStore.indexOf(entityIdB);
+        if (transformIndexA === -1 || transformIndexB === -1) continue;
+
         // Use fixed-point positions for deterministic collision calculation
-        const fpPosA = transformA.fpPosition;
-        const fpPosB = transformB.fpPosition;
+        const fpPosAx = FP.FromRaw(txFpPositionX[transformIndexA]);
+        const fpPosAz = FP.FromRaw(txFpPositionZ[transformIndexA]);
+        const fpPosBx = FP.FromRaw(txFpPositionX[transformIndexB]);
+        const fpPosBz = FP.FromRaw(txFpPositionZ[transformIndexB]);
 
         // Calculate distance in XZ plane using fixed-point
-        const dx = FP.Sub(fpPosB.x, fpPosA.x);
-        const dz = FP.Sub(fpPosB.z, fpPosA.z);
+        const dx = FP.Sub(fpPosBx, fpPosAx);
+        const dz = FP.Sub(fpPosBz, fpPosAz);
         const distSq = FP.Add(
           FP.Mul(dx, dx),
           FP.Mul(dz, dz)
         );
-        const minDist = FP.Add(bodyA.radius, bodyB.radius);
+
+        const radiusA = FP.FromRaw(physRadius[physIndexA]);
+        const radiusB = FP.FromRaw(physRadius[physIndexB]);
+        const minDist = FP.Add(radiusA, radiusB);
         const minDistSq = FP.Mul(minDist, minDist);
 
         if (FP.Lt(distSq, minDistSq) && FP.Gt(distSq, FP_MIN_DIST_SQ_EPSILON)) {
@@ -378,48 +445,58 @@ export class PhysicsSystem extends GameSystem {
           const pushForce = FP.Mul(overlap, this.config.pushStrength);
 
           // Apply push based on mass ratio
-          const totalMass = FP.Add(bodyA.mass, bodyB.mass);
-          const ratioA = FP.Div(bodyB.mass, totalMass);
-          const ratioB = FP.Div(bodyA.mass, totalMass);
+          const massA = FP.FromRaw(physMass[physIndexA]);
+          const massB = FP.FromRaw(physMass[physIndexB]);
+          const totalMass = FP.Add(massA, massB);
+          const ratioA = FP.Div(massB, totalMass);
+          const ratioB = FP.Div(massA, totalMass);
 
-          // Apply push velocities (fixed-point)
-          if (!bodyA.isStatic) {
+          // Apply push velocities (fixed-point) — direct array writes
+          if (!isStaticA) {
             const pushA = FP.Mul(pushForce, ratioA);
-            const vel = bodyA.velocity;
-            bodyA.setVelocity(
-              FP.Sub(vel.x, FP.Mul(nx, pushA)),
-              vel.y,
-              FP.Sub(vel.z, FP.Mul(nz, pushA))
-            );
+            const velAx = FP.FromRaw(physVelocityX[physIndexA]);
+            const velAy = FP.FromRaw(physVelocityY[physIndexA]);
+            const velAz = FP.FromRaw(physVelocityZ[physIndexA]);
+            physVelocityX[physIndexA] = FP.ToRaw(FP.Sub(velAx, FP.Mul(nx, pushA)));
+            physVelocityY[physIndexA] = FP.ToRaw(velAy);
+            physVelocityZ[physIndexA] = FP.ToRaw(FP.Sub(velAz, FP.Mul(nz, pushA)));
           }
 
-          if (!bodyB.isStatic) {
+          if (!isStaticB) {
             const pushB = FP.Mul(pushForce, ratioB);
-            const vel = bodyB.velocity;
-            bodyB.setVelocity(
-              FP.Add(vel.x, FP.Mul(nx, pushB)),
-              vel.y,
-              FP.Add(vel.z, FP.Mul(nz, pushB))
-            );
+            const velBx = FP.FromRaw(physVelocityX[physIndexB]);
+            const velBy = FP.FromRaw(physVelocityY[physIndexB]);
+            const velBz = FP.FromRaw(physVelocityZ[physIndexB]);
+            physVelocityX[physIndexB] = FP.ToRaw(FP.Add(velBx, FP.Mul(nx, pushB)));
+            physVelocityY[physIndexB] = FP.ToRaw(velBy);
+            physVelocityZ[physIndexB] = FP.ToRaw(FP.Add(velBz, FP.Mul(nz, pushB)));
           }
 
           // Separate positions to prevent overlap (fixed-point)
           const separation = FP.Mul(overlap, FP_SEPARATION_HALF);
-          if (!bodyA.isStatic) {
+          if (!isStaticA) {
             const sepA = FP.Mul(separation, ratioA);
-            transformA.fpPosition = {
-              x: FP.Sub(fpPosA.x, FP.Mul(nx, sepA)),
-              y: fpPosA.y,
-              z: FP.Sub(fpPosA.z, FP.Mul(nz, sepA)),
-            };
+            const fpPosAy = FP.FromRaw(txFpPositionY[transformIndexA]);
+            const newPosAx = FP.Sub(fpPosAx, FP.Mul(nx, sepA));
+            const newPosAz = FP.Sub(fpPosAz, FP.Mul(nz, sepA));
+            txFpPositionX[transformIndexA] = FP.ToRaw(newPosAx);
+            txFpPositionZ[transformIndexA] = FP.ToRaw(newPosAz);
+            // Sync visual positions
+            txVisualPositionX[transformIndexA] = FP.ToFloat(newPosAx);
+            txVisualPositionY[transformIndexA] = FP.ToFloat(fpPosAy);
+            txVisualPositionZ[transformIndexA] = FP.ToFloat(newPosAz);
           }
-          if (!bodyB.isStatic) {
+          if (!isStaticB) {
             const sepB = FP.Mul(separation, ratioB);
-            transformB.fpPosition = {
-              x: FP.Add(fpPosB.x, FP.Mul(nx, sepB)),
-              y: fpPosB.y,
-              z: FP.Add(fpPosB.z, FP.Mul(nz, sepB)),
-            };
+            const fpPosBy = FP.FromRaw(txFpPositionY[transformIndexB]);
+            const newPosBx = FP.Add(fpPosBx, FP.Mul(nx, sepB));
+            const newPosBz = FP.Add(fpPosBz, FP.Mul(nz, sepB));
+            txFpPositionX[transformIndexB] = FP.ToRaw(newPosBx);
+            txFpPositionZ[transformIndexB] = FP.ToRaw(newPosBz);
+            // Sync visual positions
+            txVisualPositionX[transformIndexB] = FP.ToFloat(newPosBx);
+            txVisualPositionY[transformIndexB] = FP.ToFloat(fpPosBy);
+            txVisualPositionZ[transformIndexB] = FP.ToFloat(newPosBz);
           }
         }
       }
@@ -427,74 +504,98 @@ export class PhysicsSystem extends GameSystem {
   }
 
   /**
-   * Apply velocities to entity positions using fixed-point arithmetic
+   * Apply velocities to entity positions using fixed-point arithmetic.
+   * Uses direct SoA array access — pure store iteration, no entity lookups.
    *
-   * IMPORTANT: Processes entities in deterministic order (sorted by entity ID)
-   * for network synchronization.
+   * IMPORTANT: Iterates in deterministic entity ID order via physicsStore.entityIds().
    */
   private applyVelocities(dt: FixedPoint): void {
     // Pre-compute max velocity squared for clamping
     const maxVelSq = FP.Mul(this.config.maxVelocity, this.config.maxVelocity);
 
-    // Query entities with PhysicsBody component (already sorted by ID)
-    const physicsEntities = this.queryPhysicsEntities();
+    const physVelocityX = this.physicsStore.arrays.velocityX;
+    const physVelocityZ = this.physicsStore.arrays.velocityZ;
+    const physIsStatic = this.physicsStore.arrays.isStatic;
 
-    for (const entity of physicsEntities) {
-      const body = entity.getComponent<PhysicsBodyComponent>(ComponentType.PhysicsBody);
-      const transform = entity.getComponent<TransformComponent>(ComponentType.Transform);
-      if (!body || body.isStatic || !transform) continue;
+    const txFpPositionX = this.transformStore.arrays.fpPositionX;
+    const txFpPositionZ = this.transformStore.arrays.fpPositionZ;
+    const txVisualPositionX = this.transformStore.arrays.visualPositionX;
+    const txVisualPositionZ = this.transformStore.arrays.visualPositionZ;
 
-      const vel = body.velocity;
+    for (const entityId of this.physicsStore.entityIds()) {
+      const physIndex = this.physicsStore.indexOf(entityId);
+
+      // Skip static bodies
+      if (physIsStatic[physIndex] === 1) continue;
+
+      const transformIndex = this.transformStore.indexOf(entityId);
+      if (transformIndex === -1) continue;
+
+      // Read velocity directly from typed arrays
+      let velX = FP.FromRaw(physVelocityX[physIndex]);
+      let velZ = FP.FromRaw(physVelocityZ[physIndex]);
 
       // Clamp velocity to max (using squared magnitude to avoid sqrt when possible)
       const velMagSq = FP.Add(
-        FP.Mul(vel.x, vel.x),
-        FP.Mul(vel.z, vel.z)
+        FP.Mul(velX, velX),
+        FP.Mul(velZ, velZ)
       );
 
       if (FP.Gt(velMagSq, maxVelSq)) {
         const scale = FP.Div(this.config.maxVelocity, FP.Sqrt(velMagSq));
-        body.setVelocity(
-          FP.Mul(vel.x, scale),
-          vel.y,
-          FP.Mul(vel.z, scale)
-        );
+        velX = FP.Mul(velX, scale);
+        velZ = FP.Mul(velZ, scale);
+        physVelocityX[physIndex] = FP.ToRaw(velX);
+        physVelocityZ[physIndex] = FP.ToRaw(velZ);
       }
 
       // Apply velocity to position using fixed-point
-      const fpPos = transform.fpPosition;
-      transform.fpPosition = {
-        x: FP.Add(fpPos.x, FP.Mul(body.velocity.x, dt)),
-        y: fpPos.y, // Keep Y constant
-        z: FP.Add(fpPos.z, FP.Mul(body.velocity.z, dt)),
-      };
+      const posX = FP.FromRaw(txFpPositionX[transformIndex]);
+      const posZ = FP.FromRaw(txFpPositionZ[transformIndex]);
+
+      const newPosX = FP.Add(posX, FP.Mul(velX, dt));
+      const newPosZ = FP.Add(posZ, FP.Mul(velZ, dt));
+
+      // Write back fp positions
+      txFpPositionX[transformIndex] = FP.ToRaw(newPosX);
+      txFpPositionZ[transformIndex] = FP.ToRaw(newPosZ);
+
+      // Sync visual positions
+      txVisualPositionX[transformIndex] = FP.ToFloat(newPosX);
+      txVisualPositionZ[transformIndex] = FP.ToFloat(newPosZ);
     }
   }
 
   /**
-   * Apply friction to slow down units using fixed-point arithmetic
+   * Apply friction to slow down units using fixed-point arithmetic.
+   * Uses direct SoA array access + AoS MovementComponent check.
    *
-   * IMPORTANT: Processes entities in deterministic order (sorted by entity ID)
-   * for network synchronization.
+   * IMPORTANT: Iterates in deterministic entity ID order via physicsStore.entityIds().
    */
   private applyFriction(): void {
-    // Query entities with PhysicsBody component (already sorted by ID)
-    const physicsEntities = this.queryPhysicsEntities();
+    const physVelocityX = this.physicsStore.arrays.velocityX;
+    const physVelocityY = this.physicsStore.arrays.velocityY;
+    const physVelocityZ = this.physicsStore.arrays.velocityZ;
+    const physIsStatic = this.physicsStore.arrays.isStatic;
 
-    for (const entity of physicsEntities) {
-      const body = entity.getComponent<PhysicsBodyComponent>(ComponentType.PhysicsBody);
-      if (!body || body.isStatic) continue;
+    for (const entityId of this.physicsStore.entityIds()) {
+      const physIndex = this.physicsStore.indexOf(entityId);
 
-      const movement = entity.getComponent<MovementComponent>(
-        ComponentType.Movement
-      );
+      // Skip static bodies
+      if (physIsStatic[physIndex] === 1) continue;
+
+      // MovementComponent is AoS — need entity lookup
+      const entity = this.entityManager.getEntity(entityId);
+      const movement = entity?.getComponent<MovementComponent>(ComponentType.Movement);
 
       // Only apply friction if not actively moving to a target
-      // This allows pushing to have an effect while still allowing controlled movement
       if (!movement || !movement.isMoving) {
-        const vel = body.velocity;
-        let newVelX = FP.Mul(vel.x, this.config.friction);
-        let newVelZ = FP.Mul(vel.z, this.config.friction);
+        const velX = FP.FromRaw(physVelocityX[physIndex]);
+        const velY = FP.FromRaw(physVelocityY[physIndex]);
+        const velZ = FP.FromRaw(physVelocityZ[physIndex]);
+
+        let newVelX = FP.Mul(velX, this.config.friction);
+        let newVelZ = FP.Mul(velZ, this.config.friction);
 
         // Stop very small velocities (using fixed-point comparison)
         if (FP.Lt(FP.Abs(newVelX), FP_VELOCITY_EPSILON)) {
@@ -504,45 +605,14 @@ export class PhysicsSystem extends GameSystem {
           newVelZ = FP._0;
         }
 
-        body.setVelocity(newVelX, vel.y, newVelZ);
+        physVelocityX[physIndex] = FP.ToRaw(newVelX);
+        physVelocityY[physIndex] = FP.ToRaw(velY);
+        physVelocityZ[physIndex] = FP.ToRaw(newVelZ);
       }
     }
   }
 
-  /**
-   * Check if collision should be skipped between two entities
-   * - Entities with ignorePhysics flag set should not participate in collisions
-   * - Units don't collide with friendly buildings (bases, towers)
-   */
-  private shouldSkipCollision(
-    entityA: Unit,
-    entityB: Unit,
-    bodyA: PhysicsBodyComponent,
-    bodyB: PhysicsBodyComponent
-  ): boolean {
-    // Skip collisions with entities that should be ignored (dying, phasing, etc.)
-    if (bodyA.ignorePhysics || bodyB.ignorePhysics) {
-      return true;
-    }
-
-    // If neither is static, they should collide (unit vs unit)
-    if (!bodyA.isStatic && !bodyB.isStatic) {
-      return false;
-    }
-
-    // Get team components
-    const teamA = entityA.getComponent<TeamComponent>(ComponentType.Team);
-    const teamB = entityB.getComponent<TeamComponent>(ComponentType.Team);
-
-    // If either doesn't have a team, let them collide
-    if (!teamA || !teamB) {
-      return false;
-    }
-
-    // If they're on the same team and one is static (building),
-    // skip the collision so units can pass through friendly buildings
-    return teamA.team === teamB.team && (bodyA.isStatic || bodyB.isStatic);
-  }
+  // shouldSkipCollision logic is now inlined in resolveCollisions for direct SoA access
 
   /**
    * Dispose the physics system

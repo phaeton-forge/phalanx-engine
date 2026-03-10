@@ -187,6 +187,11 @@ class EntityManager {
   queryEntities(...componentTypes: symbol[]): Entity[]
   queryEntitiesAny(...componentTypes: symbol[]): Entity[]
   cleanupDestroyed(): Entity[]
+
+  // SoA store management
+  getSoAStore<S>(schema: SoASchema<S>): SoAComponentStore<S> | undefined
+  getOrCreateSoAStore<S>(schema: SoASchema<S>, capacity?: number): SoAComponentStore<S>
+  hasSoAStore(schema: SoASchema): boolean
 }
 ```
 
@@ -319,14 +324,31 @@ class PhysicsBodyComponent extends SoAComponent<typeof PhysicsSoASchema.definiti
   }
 }
 
-// 3. Hot-path systems can bypass the component and access arrays directly
-const store = entityManager.getSoAStore(PhysicsSoASchema);
+// 3. Hot-path systems should bypass the component facade and access arrays directly
+//    Cache store references in init(), iterate entityIds() in tick methods
+const store = entityManager.getSoAStore(PhysicsSoASchema)!;
+
+// Single-store loop — ideal case, zero cross-store overhead
 for (const entityId of store.entityIds()) {
   const idx = store.indexOf(entityId);
-  // Direct typed-array access — cache-friendly, zero overhead
   store.arrays.velocityX[idx] += accelerationX;
 }
+
+// Cross-store loop — needed when correlating two SoA stores
+const txStore = entityManager.getSoAStore(TransformSoASchema)!;
+const velocityX = store.arrays.velocityX;
+const fpPositionX = txStore.arrays.fpPositionX;
+for (const entityId of store.entityIds()) {
+  const physIdx = store.indexOf(entityId);
+  const txIdx = txStore.indexOf(entityId);  // one Map.get() per entity
+  if (txIdx === -1) continue;
+  fpPositionX[txIdx] += velocityX[physIdx];
+}
 ```
+
+**Important:** The facade (getters/setters on `SoAComponent`) is convenient for infrequent
+access (spawning, event handlers) but adds overhead in hot loops — each field access calls
+`getIndex()` (a `Map.get()` + stale check). Direct store access removes this overhead.
 
 ### SoA Field Types
 
