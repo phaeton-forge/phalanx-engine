@@ -1,11 +1,13 @@
-import type { IComponent } from './Component';
 import { ComponentType } from './Component';
 import { TeamTag } from '../enums/TeamTag';
+import type { IResettableComponent } from 'phalanx-ecs';
 
 /**
  * TeamComponent - Defines team affiliation for an entity
+ *
+ * Implements IResettableComponent for pool support.
  */
-export class TeamComponent implements IComponent {
+export class TeamComponent implements IResettableComponent {
   public readonly type = ComponentType.Team;
 
   private _team: TeamTag;
@@ -19,6 +21,16 @@ export class TeamComponent implements IComponent {
   }
 
   public setTeam(team: TeamTag): void {
+    this._team = team;
+  }
+
+  /** IPoolable: reset to neutral */
+  public reset(): void {
+    this._team = TeamTag.Neutral;
+  }
+
+  /** IResettableComponent: reinitialize with new team */
+  public reinitialize(team: TeamTag): void {
     this._team = team;
   }
 

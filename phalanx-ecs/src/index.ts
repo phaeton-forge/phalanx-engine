@@ -17,9 +17,26 @@ export { GameWorld, GameWorldEvents } from './GameWorld';
 export type { GameWorldConfig, GameWorldHooks } from './GameWorld';
 
 // Entity and Component
-export { Entity, resetEntityIdCounter } from './Entity';
+export { Entity, resetEntityIdCounter, nextEntityId } from './Entity';
 export { IComponent, createComponentTypeRegistry } from './Component';
 export type { IComponent as Component } from './Component';
+
+// Object Pooling
+export {
+  ObjectPool,
+  EntityPool,
+  PoolManager,
+} from './pool';
+export type {
+  IPoolable,
+  IResettableComponent,
+  PoolConfig,
+  PoolStats,
+  ComponentTemplate,
+  EntityPoolConfig,
+  EntityTypeConfig,
+  PoolingConfig,
+} from './pool';
 
 // SoA (Structure-of-Arrays) high-performance storage
 export { SoAComponentStore } from './SoAComponentStore';

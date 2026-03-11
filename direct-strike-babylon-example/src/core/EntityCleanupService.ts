@@ -1,4 +1,4 @@
-import type { EntityManager } from 'phalanx-ecs';
+import type { EntityManager, PoolManager } from 'phalanx-ecs';
 import type { EntityFactory } from './EntityFactory';
 
 /**
@@ -7,7 +7,7 @@ import type { EntityFactory } from './EntityFactory';
  * Responsible for:
  * - Removing destroyed entities from all systems
  * - Cleaning up ownership tracking
- * - Disposing entity resources
+ * - Releasing pooled entities back to pool or disposing non-pooled ones
  *
  * Note: HealthBarSystem and InterpolationSystem cleanup is automatic -
  * they query entities with their respective components and the components
@@ -16,27 +16,34 @@ import type { EntityFactory } from './EntityFactory';
 export class EntityCleanupService {
   private entityManager: EntityManager;
   private entityFactory: EntityFactory;
+  private pools: PoolManager | null;
 
   constructor(
     entityManager: EntityManager,
-    entityFactory: EntityFactory
+    entityFactory: EntityFactory,
+    pools: PoolManager | null = null
   ) {
     this.entityManager = entityManager;
     this.entityFactory = entityFactory;
+    this.pools = pools;
   }
 
   /**
-   * Remove destroyed entities from all systems
+   * Remove destroyed entities from all systems.
+   * Pooled entities (with _poolTypeKey) are released back to the pool.
+   * Non-pooled entities are disposed normally.
    */
   public cleanupDestroyedEntities(): void {
     const destroyed = this.entityManager.cleanupDestroyed();
 
     for (const entity of destroyed) {
       this.entityFactory.removeOwnership(entity.id);
-      // InterpolationComponent and HealthBarComponent cleanup is automatic -
-      // they are removed with the entity when disposed
 
-      entity.dispose();
+      if (entity._poolTypeKey && this.pools) {
+        this.pools.release(entity._poolTypeKey, entity);
+      } else {
+        entity.dispose();
+      }
     }
   }
 }
