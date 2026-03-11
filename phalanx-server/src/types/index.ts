@@ -195,6 +195,10 @@ export interface PhalanxConfig {
   /** Desync detection behavior configuration */
   desync?: Partial<DesyncConfig>;
 
+  // === Ready Handshake ===
+  /** Timeout in milliseconds for all clients to report ready after game-start (default: 30000) */
+  readyTimeoutMs?: number;
+
   // === Pause/Resume Settings ===
   /** Pause/resume behavior configuration */
   pause?: Partial<PauseConfig>;
@@ -229,7 +233,7 @@ export interface MatchInfo {
   id: string;
   players: PlayerInfo[];
   currentTick: number;
-  state: 'countdown' | 'playing' | 'paused' | 'finished';
+  state: 'countdown' | 'waiting-for-ready' | 'playing' | 'paused' | 'finished';
   createdAt: Date;
 }
 

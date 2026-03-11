@@ -162,6 +162,7 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
         // Player events
         onPlayerDisconnected: (data) => this.emit('playerDisconnected', data),
         onPlayerReconnected: (data) => this.emit('playerReconnected', data),
+        onPlayerReady: (data) => this.emit('playerReady', data),
 
         // Reconnection events
         onReconnectState: (data) => {
@@ -509,6 +510,16 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
   resumeGame(): void {
     this.ensureConnected();
     this.socketManager.sendResumeGame();
+  }
+
+  /**
+   * Notify the server that this client has finished loading and is ready to receive ticks.
+   * Must be called after assets are loaded and game systems are initialized.
+   * The server will not start the tick loop until all clients report ready.
+   */
+  sendReady(): void {
+    this.ensureConnected();
+    this.socketManager.sendReady();
   }
 
   /**

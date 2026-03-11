@@ -134,7 +134,9 @@ class Phalanx {
 | `queue-leave`         | ✅   |         | Leave matchmaking queue           |
 | `queue-status`        |      | ✅      | Queue join/leave confirmation     |
 | `match-found`         |      | ✅      | Match created, countdown starting |
-| `game-start`          |      | ✅      | Match gameplay begins             |
+| `game-start`          |      | ✅      | Countdown finished, load assets   |
+| `client-ready`        | ✅   |         | Client finished loading, ready for ticks |
+| `player-ready`        |      | ✅      | A player reported ready           |
 | `match-end`           |      | ✅      | Match has ended                   |
 | `submit-commands`     | ✅   |         | Send game commands                |
 | `submit-commands-ack` |      | ✅      | Command acknowledgment            |
@@ -146,6 +148,12 @@ class Phalanx {
 | `reconnect-state`     |      | ✅      | Game state for reconnection       |
 | `player-disconnected` |      | ✅      | Another player disconnected       |
 | `player-reconnected`  |      | ✅      | Another player reconnected        |
+
+### Game Start Synchronization
+
+After the countdown completes, the server emits `game-start` and enters a `waiting-for-ready` state. The tick loop does **not** start until all connected clients send `client-ready`. This prevents desync caused by clients with different asset loading times missing early ticks.
+
+If a client does not send `client-ready` within 30 seconds, the match ends with reason `'ready-timeout'`.
 
 ## Game Modes
 

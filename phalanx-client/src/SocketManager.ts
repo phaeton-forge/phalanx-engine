@@ -18,6 +18,7 @@ import type {
   QueueStatusEvent,
   PlayerDisconnectedEvent,
   PlayerReconnectedEvent,
+  PlayerReadyEvent,
   ReconnectStateEvent,
   ReconnectStatusEvent,
   SubmitCommandsAck,
@@ -78,6 +79,7 @@ export interface SocketManagerCallbacks {
   // Player events
   onPlayerDisconnected: (data: PlayerDisconnectedEvent) => void;
   onPlayerReconnected: (data: PlayerReconnectedEvent) => void;
+  onPlayerReady: (data: PlayerReadyEvent) => void;
 
   // Reconnection events
   onReconnectState: (data: ReconnectStateEvent) => void;
@@ -342,6 +344,14 @@ export class SocketManager {
     this.socket!.emit('resume-game');
   }
 
+  /**
+   * Notify the server that this client has finished loading and is ready to receive ticks.
+   */
+  sendReady(): void {
+    this.ensureConnected();
+    this.socket!.emit('client-ready');
+  }
+
   // ============================================
   // RECONNECTION
   // ============================================
@@ -454,6 +464,10 @@ export class SocketManager {
 
     this.socket.on('player-reconnected', (data: PlayerReconnectedEvent) => {
       this.callbacks.onPlayerReconnected(data);
+    });
+
+    this.socket.on('player-ready', (data: PlayerReadyEvent) => {
+      this.callbacks.onPlayerReady(data);
     });
 
     // Match end

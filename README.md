@@ -39,8 +39,34 @@ This repository contains the following packages:
 - **Fixed-Point Math**: Platform-independent fixed-point arithmetic via `phalanx-math` ensures identical calculations across all clients
 - **Matchmaking**: Built-in support for various game modes (1v1, 2v2, 3v3, 4v4, FFA)
 - **Tick System**: Configurable tick rate with command batching
+- **Game Start Synchronization**: Ready handshake ensures all clients finish loading before the tick loop begins
 - **Reconnection Support**: Players can rejoin matches after disconnection
 - **TypeScript**: Full TypeScript support with exported types
+
+## Game Start Synchronization
+
+Phalanx uses a **ready handshake** protocol to ensure all clients are fully initialized before the simulation begins. This prevents desync caused by clients with different asset download speeds missing early ticks.
+
+### How it works
+
+1. Server emits `game-start` after the countdown completes and enters a `waiting-for-ready` state
+2. Each client receives `game-start`, loads assets, sets up the game world, and initializes all systems
+3. Each client calls `client.sendReady()` to emit `client-ready` to the server
+4. Server receives `client-ready` from **all** connected players, then starts the tick loop
+5. All clients are guaranteed to be subscribed to tick events before tick 0
+
+If any client fails to send `client-ready` within 30 seconds, the match ends with reason `'ready-timeout'`.
+
+### Usage
+
+Clients **must** call `sendReady()` after initialization:
+
+```typescript
+client.on('gameStart', async () => {
+  await game.initialize(); // Load assets, set up ECS, etc.
+  client.sendReady();      // Tell the server we're ready
+});
+```
 
 ## Quick Start
 

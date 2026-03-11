@@ -25,7 +25,7 @@ export class LobbyScene {
 
   // Callbacks
   private onGameStart:
-    | ((client: PhalanxClient, matchData: MatchFoundEvent) => void)
+    | ((client: PhalanxClient, matchData: MatchFoundEvent) => void | Promise<void>)
     | null = null;
 
   // Network event unsubscribers (to clean up when returning to lobby)
@@ -155,7 +155,7 @@ export class LobbyScene {
    * Set callback for game start
    */
   setOnGameStart(
-    callback: (client: PhalanxClient, matchData: MatchFoundEvent) => void
+    callback: (client: PhalanxClient, matchData: MatchFoundEvent) => void | Promise<void>
   ): void {
     this.onGameStart = callback;
   }
@@ -284,7 +284,19 @@ export class LobbyScene {
     this.gameContainer.style.display = 'block';
 
     if (this.onGameStart && this.matchData) {
-      this.onGameStart(this.client, this.matchData);
+      const result = this.onGameStart(this.client, this.matchData);
+      if (result instanceof Promise) {
+        result.catch((error) => {
+          console.error('[LobbyScene] Game initialization failed:', error);
+          this.gameContainer.style.display = 'none';
+          this.lobbyElement.style.display = 'flex';
+          this.setStatus(
+            `Failed to initialize game: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            'error'
+          );
+          this.connectButton.disabled = false;
+        });
+      }
     }
   }
 

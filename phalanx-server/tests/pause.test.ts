@@ -83,6 +83,15 @@ describe('Game Pause Functionality', () => {
     // Wait for game to start
     await Promise.all([gameStartPromise1, gameStartPromise2]);
 
+    // Send client-ready from both clients to start tick loop
+    client1.emit('client-ready');
+    client2.emit('client-ready');
+
+    // Wait for tick loop to start
+    await new Promise<void>((resolve) => {
+      client1.once('tick-sync', () => resolve());
+    });
+
     return { client1, client2, matchId: matchFound1.matchId };
   }
 

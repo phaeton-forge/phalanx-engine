@@ -49,6 +49,9 @@ export const DEFAULT_CONFIG: PhalanxConfig = {
   enableStateHashing: false,
   stateHashInterval: 60, // 3 seconds at 20 TPS
 
+  // Ready Handshake
+  readyTimeoutMs: 30000,
+
   // Desync Detection Behavior
   desync: {
     enabled: true,
