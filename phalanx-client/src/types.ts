@@ -228,12 +228,19 @@ export interface PlayerReconnectedEvent {
 }
 
 /**
+ * Event received when another player reports ready during the loading phase
+ */
+export interface PlayerReadyEvent {
+  playerId: string;
+}
+
+/**
  * State received when reconnecting to a match
  */
 export interface ReconnectStateEvent {
   matchId: string;
   currentTick: number;
-  state: 'countdown' | 'playing' | 'paused' | 'finished';
+  state: 'countdown' | 'waiting-for-ready' | 'playing' | 'paused' | 'finished';
   recentCommands: TickCommandsHistory[];
 }
 
@@ -413,6 +420,7 @@ export interface PhalanxClientEvents {
   // Player events
   playerDisconnected: (event: PlayerDisconnectedEvent) => void;
   playerReconnected: (event: PlayerReconnectedEvent) => void;
+  playerReady: (event: PlayerReadyEvent) => void;
 
   // Reconnection events
   reconnectState: (event: ReconnectStateEvent) => void;

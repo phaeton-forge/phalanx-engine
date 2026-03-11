@@ -52,6 +52,10 @@ describe('NET-1: Server Validates Incoming Player Commands', () => {
       socket1.once('game-start', () => resolve());
     });
 
+    // Send client-ready from both clients to start tick loop
+    socket1.emit('client-ready');
+    socket2.emit('client-ready');
+
     // Wait a tick
     await new Promise<void>((resolve) => {
       socket1.once('tick-sync', () => resolve());

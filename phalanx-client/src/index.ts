@@ -161,6 +161,7 @@ export type {
   // Player events
   PlayerDisconnectedEvent,
   PlayerReconnectedEvent,
+  PlayerReadyEvent,
 
   // Reconnection
   ReconnectStateEvent,

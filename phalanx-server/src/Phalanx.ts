@@ -534,6 +534,17 @@ export class Phalanx extends EventEmitter {
         }
       });
 
+      // Handle client-ready (ready handshake after asset loading)
+      socket.on('client-ready', () => {
+        if (!playerId) return;
+        const matchId = (socket.data as SocketData).matchId;
+        if (!matchId) return;
+        const gameRoom = this.matchmaking!.getMatch(matchId);
+        if (gameRoom) {
+          gameRoom.handlePlayerReady(playerId);
+        }
+      });
+
       // Handle reconnection
       socket.on(
         'reconnect-match',

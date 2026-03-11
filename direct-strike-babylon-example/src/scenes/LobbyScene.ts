@@ -25,7 +25,7 @@ export class LobbyScene {
 
   // Callbacks
   private onGameStart:
-    | ((client: PhalanxClient, matchData: MatchFoundEvent) => void)
+    | ((client: PhalanxClient, matchData: MatchFoundEvent) => void | Promise<void>)
     | null = null;
 
   // Network event unsubscribers (to clean up when returning to lobby)
@@ -155,7 +155,7 @@ export class LobbyScene {
    * Set callback for game start
    */
   setOnGameStart(
-    callback: (client: PhalanxClient, matchData: MatchFoundEvent) => void
+    callback: (client: PhalanxClient, matchData: MatchFoundEvent) => void | Promise<void>
   ): void {
     this.onGameStart = callback;
   }

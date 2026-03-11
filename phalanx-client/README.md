@@ -138,6 +138,24 @@ await client.waitForCountdown((event) => {
 
 // Wait for game start
 const gameStart = await client.waitForGameStart();
+
+// After loading assets and initializing game systems, report ready.
+// The server will not start the tick loop until ALL clients call sendReady().
+await loadAssets();
+initializeGameWorld();
+client.sendReady();
+```
+
+#### sendReady(): void
+
+Notify the server that this client has finished loading and is ready to receive ticks. **Must** be called after assets are loaded and game systems are initialized. The server will not start the tick loop until all clients report ready.
+
+```typescript
+// Example: in your game-start handler
+client.on('gameStart', async () => {
+  await game.initialize(); // downloads assets, sets up ECS
+  client.sendReady();       // signals server to start tick loop
+});
 ```
 
 ### Commands
@@ -441,6 +459,7 @@ client.on('commands', (event) => {});
 // Player events
 client.on('playerDisconnected', (event) => {});
 client.on('playerReconnected', (event) => {});
+client.on('playerReady', (event) => {});  // Another player reported ready
 
 // Reconnection events
 client.on('reconnectState', (event) => {});

@@ -40,12 +40,17 @@ export class GameRoom {
   ) => boolean | void;
 
   private currentTick: number = 0;
-  private state: 'countdown' | 'playing' | 'paused' | 'finished' = 'countdown';
+  private state: 'countdown' | 'waiting-for-ready' | 'playing' | 'paused' | 'finished' = 'countdown';
   private createdAt: Date;
   private tickInterval: NodeJS.Timeout | null = null;
   private countdownTimer: NodeJS.Timeout | null = null;
   private countdownInterval: NodeJS.Timeout | null = null;
   private pendingCommands: Map<number, PlayerCommand[]> = new Map();
+
+  // Ready handshake: tracks which players have reported ready after asset loading
+  private readyPlayers: Set<string> = new Set();
+  private readyTimeout: NodeJS.Timeout | null = null;
+  private readonly readyTimeoutMs: number = 30000;
 
   // Command buffer for lockstep: Map<tick, { playerId: commands[] }>
   private commandBuffer: Map<number, TickCommands> = new Map();
@@ -184,7 +189,13 @@ export class GameRoom {
           matchId: this.id,
           randomSeed: this.randomSeed,
         });
-        this.startGame();
+        // Enter waiting-for-ready state instead of starting immediately.
+        // The tick loop will not begin until all clients send 'client-ready'.
+        this.state = 'waiting-for-ready';
+        this.readyPlayers.clear();
+        this.readyTimeout = setTimeout(() => {
+          this.endMatchDueToReadyTimeout();
+        }, this.readyTimeoutMs);
       }
     }, 1000);
   }
@@ -226,6 +237,54 @@ export class GameRoom {
         }
       });
     });
+  }
+
+  /**
+   * Handle a player reporting ready after asset loading.
+   * When all connected players are ready, the tick loop starts.
+   * @param playerId - The player reporting ready
+   */
+  handlePlayerReady(playerId: string): void {
+    const player = this.players.get(playerId);
+    if (!player || !player.connected) {
+      return;
+    }
+
+    if (this.state !== 'waiting-for-ready') {
+      return;
+    }
+
+    this.readyPlayers.add(playerId);
+
+    // Broadcast player-ready to the room so clients can update loading screens
+    this.io.to(this.roomId).emit('player-ready', { playerId });
+
+    // Check if all connected players are ready
+    const allReady = Array.from(this.players.entries()).every(
+      ([id, info]) => !info.connected || this.readyPlayers.has(id)
+    );
+
+    if (allReady) {
+      if (this.readyTimeout) {
+        clearTimeout(this.readyTimeout);
+        this.readyTimeout = null;
+      }
+      this.startGame();
+    }
+  }
+
+  /**
+   * End the match because not all clients reported ready within the timeout.
+   */
+  private endMatchDueToReadyTimeout(): void {
+    this.readyTimeout = null;
+    this.stop(true);
+
+    this.io.to(this.roomId).emit('match-end', {
+      reason: 'ready-timeout',
+    });
+
+    this.eventEmitter('match-ended', this.id, 'ready-timeout');
   }
 
   /**
@@ -690,6 +749,10 @@ export class GameRoom {
       clearInterval(this.countdownInterval);
       this.countdownInterval = null;
     }
+    if (this.readyTimeout) {
+      clearTimeout(this.readyTimeout);
+      this.readyTimeout = null;
+    }
     this.state = 'finished';
 
     if (!skipNotify) {
@@ -723,6 +786,22 @@ export class GameRoom {
         matchId: this.id,
         gracePeriodMs: this.config.reconnectGracePeriodMs,
       });
+
+      // If we're waiting for ready, re-check whether all remaining connected
+      // players are now ready (the disconnected player no longer blocks).
+      if (this.state === 'waiting-for-ready') {
+        const allReady = Array.from(this.players.entries()).every(
+          ([id, info]) => !info.connected || this.readyPlayers.has(id)
+        );
+
+        if (allReady) {
+          if (this.readyTimeout) {
+            clearTimeout(this.readyTimeout);
+            this.readyTimeout = null;
+          }
+          this.startGame();
+        }
+      }
     }
   }
 
@@ -775,6 +854,12 @@ export class GameRoom {
 
       // Notify other players
       socket.to(this.roomId).emit('player-reconnected', { playerId });
+    }
+
+    // If reconnecting during waiting-for-ready, clear their previous ready
+    // status so they must send client-ready again after re-loading.
+    if (this.state === 'waiting-for-ready') {
+      this.readyPlayers.delete(playerId);
     }
 
     return true;

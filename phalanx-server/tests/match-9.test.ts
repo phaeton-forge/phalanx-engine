@@ -59,6 +59,15 @@ describe('LOCKSTEP-3: Server Broadcasts Tick Commands on Timer', () => {
     await new Promise<void>((resolve) => {
       socket1.once('game-start', () => resolve());
     });
+
+    // Send client-ready from both clients to start tick loop
+    socket1.emit('client-ready');
+    socket2.emit('client-ready');
+
+    // Wait a tick to ensure game is running
+    await new Promise<void>((resolve) => {
+      socket1.once('tick-sync', () => resolve());
+    });
   });
 
   afterEach(async () => {

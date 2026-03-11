@@ -27,7 +27,7 @@ function returnToLobby(): void {
 
 // Handle game start
 lobbyScene.setOnGameStart(
-  (client: PhalanxClient, matchData: MatchFoundEvent) => {
+  async (client: PhalanxClient, matchData: MatchFoundEvent) => {
     console.warn('Game starting!', matchData);
 
     const canvas = document.getElementById('app') as HTMLCanvasElement;
@@ -40,7 +40,8 @@ lobbyScene.setOnGameStart(
     game = new Game(canvas, client, matchData);
     game.setOnExit(returnToLobby);
 
-    void game.initialize();
+    await game.initialize(); // Wait for asset loading + setup
+    client.sendReady(); // Tell server we're ready for ticks
   }
 );
 

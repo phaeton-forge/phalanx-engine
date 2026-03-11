@@ -52,6 +52,15 @@ describe('LOCKSTEP-5: Server Detects Unresponsive Players via Activity Tracking'
     await new Promise<void>((resolve) => {
       socket1.once('game-start', () => resolve());
     });
+
+    // Send client-ready from both clients to start tick loop
+    socket1.emit('client-ready');
+    socket2.emit('client-ready');
+
+    // Wait a tick to ensure game is running
+    await new Promise<void>((resolve) => {
+      socket1.once('tick-sync', () => resolve());
+    });
   });
 
   afterEach(async () => {

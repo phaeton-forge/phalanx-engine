@@ -71,6 +71,11 @@ describe('LOCKSTEP-1: Server Initializes Tick Clock and Synchronizes All Clients
     client2.emit('queue-join', { playerId: 'player2', username: 'bob' });
 
     await gameStartPromise;
+
+    // Send client-ready from both clients to start tick loop
+    client1.emit('client-ready');
+    client2.emit('client-ready');
+
     const firstTick = await firstTickPromise;
 
     // First tick should be 0
@@ -89,11 +94,17 @@ describe('LOCKSTEP-1: Server Initializes Tick Clock and Synchronizes All Clients
       tickEvents.push(data);
     });
 
+    const gameStartPromise = waitForGameStart(client1);
+
     client1.emit('queue-join', { playerId: 'player1', username: 'alice' });
     client2.emit('queue-join', { playerId: 'player2', username: 'bob' });
 
-    // Wait for countdown (1s) + some ticks (~500ms = 10 ticks at 20 TPS)
-    await new Promise((resolve) => setTimeout(resolve, 1800));
+    await gameStartPromise;
+    client1.emit('client-ready');
+    client2.emit('client-ready');
+
+    // Wait for some ticks (~500ms = 10 ticks at 20 TPS)
+    await new Promise((resolve) => setTimeout(resolve, 800));
 
     // Should have received multiple tick events
     expect(tickEvents.length).toBeGreaterThanOrEqual(5);
@@ -118,11 +129,17 @@ describe('LOCKSTEP-1: Server Initializes Tick Clock and Synchronizes All Clients
       tickEvents.push({ tick: data.tick, receivedAt: Date.now() });
     });
 
+    const gameStartPromise = waitForGameStart(client1);
+
     client1.emit('queue-join', { playerId: 'player1', username: 'alice' });
     client2.emit('queue-join', { playerId: 'player2', username: 'bob' });
 
-    // Wait for countdown + 1 second of ticks (20 ticks)
-    await new Promise((resolve) => setTimeout(resolve, 2200));
+    await gameStartPromise;
+    client1.emit('client-ready');
+    client2.emit('client-ready');
+
+    // Wait for 1 second of ticks (20 ticks)
+    await new Promise((resolve) => setTimeout(resolve, 1200));
 
     // Should have ~20 ticks in 1 second
     const ticksAfterFirst = tickEvents.filter(
@@ -152,11 +169,17 @@ describe('LOCKSTEP-1: Server Initializes Tick Clock and Synchronizes All Clients
       tickEvents2.push(data);
     });
 
+    const gameStartPromise = waitForGameStart(client1);
+
     client1.emit('queue-join', { playerId: 'player1', username: 'alice' });
     client2.emit('queue-join', { playerId: 'player2', username: 'bob' });
 
-    // Wait for countdown + some ticks
-    await new Promise((resolve) => setTimeout(resolve, 1800));
+    await gameStartPromise;
+    client1.emit('client-ready');
+    client2.emit('client-ready');
+
+    // Wait for some ticks
+    await new Promise((resolve) => setTimeout(resolve, 800));
 
     // Both players should receive same ticks
     expect(tickEvents1.length).toBeGreaterThanOrEqual(5);
@@ -174,12 +197,17 @@ describe('LOCKSTEP-1: Server Initializes Tick Clock and Synchronizes All Clients
     await connectClient(client1);
     await connectClient(client2);
 
+    const gameStartPromise = waitForGameStart(client1);
     const tickPromise = new Promise<TickSyncEvent>((resolve) => {
       client1.once('tick-sync', (data: TickSyncEvent) => resolve(data));
     });
 
     client1.emit('queue-join', { playerId: 'player1', username: 'alice' });
     client2.emit('queue-join', { playerId: 'player2', username: 'bob' });
+
+    await gameStartPromise;
+    client1.emit('client-ready');
+    client2.emit('client-ready');
 
     const tickEvent = await tickPromise;
 
@@ -201,11 +229,17 @@ describe('LOCKSTEP-1: Server Initializes Tick Clock and Synchronizes All Clients
       tickEvents.push(data);
     });
 
+    const gameStartPromise = waitForGameStart(client1);
+
     client1.emit('queue-join', { playerId: 'player1', username: 'alice' });
     client2.emit('queue-join', { playerId: 'player2', username: 'bob' });
 
+    await gameStartPromise;
+    client1.emit('client-ready');
+    client2.emit('client-ready');
+
     // Wait for 2 seconds of gameplay
-    await new Promise((resolve) => setTimeout(resolve, 3200));
+    await new Promise((resolve) => setTimeout(resolve, 2200));
 
     // Should have ~40 ticks in 2 seconds at 20 TPS
     expect(tickEvents.length).toBeGreaterThanOrEqual(30);
@@ -278,20 +312,36 @@ describe('LOCKSTEP-1: Independent Tick Counters Per Match', () => {
       client1.once('tick-sync', (data: TickSyncEvent) => resolve(data));
     });
 
+    const match1GameStart = new Promise<void>((resolve) => {
+      client1.once('game-start', () => resolve());
+    });
+
     // Start first match
     client1.emit('queue-join', { playerId: 'p1', username: 'alice' });
     client2.emit('queue-join', { playerId: 'p2', username: 'bob' });
 
-    // Wait for first match to start and progress
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    await match1GameStart;
+    client1.emit('client-ready');
+    client2.emit('client-ready');
+
+    // Wait for first match to progress
+    await new Promise((resolve) => setTimeout(resolve, 1000));
 
     const match2FirstTick = new Promise<TickSyncEvent>((resolve) => {
       client3.once('tick-sync', (data: TickSyncEvent) => resolve(data));
     });
 
+    const match2GameStart = new Promise<void>((resolve) => {
+      client3.once('game-start', () => resolve());
+    });
+
     // Start second match (delayed)
     client3.emit('queue-join', { playerId: 'p3', username: 'carol' });
     client4.emit('queue-join', { playerId: 'p4', username: 'dave' });
+
+    await match2GameStart;
+    client3.emit('client-ready');
+    client4.emit('client-ready');
 
     const firstTickMatch1 = await match1FirstTick;
     const firstTickMatch2 = await match2FirstTick;
@@ -358,11 +408,19 @@ describe('LOCKSTEP-1: Configurable Tick Rate', () => {
       tickEvents.push(data);
     });
 
+    const gameStartPromise = new Promise<void>((resolve) => {
+      client1.once('game-start', () => resolve());
+    });
+
     client1.emit('queue-join', { playerId: 'player1', username: 'alice' });
     client2.emit('queue-join', { playerId: 'player2', username: 'bob' });
 
-    // Wait for countdown + 1 second
-    await new Promise((resolve) => setTimeout(resolve, 2200));
+    await gameStartPromise;
+    client1.emit('client-ready');
+    client2.emit('client-ready');
+
+    // Wait for 1 second of ticks
+    await new Promise((resolve) => setTimeout(resolve, 1200));
 
     // At 10 TPS, should have ~10 ticks in 1 second
     const ticksInOneSecond = tickEvents.filter(

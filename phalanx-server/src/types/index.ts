@@ -229,7 +229,7 @@ export interface MatchInfo {
   id: string;
   players: PlayerInfo[];
   currentTick: number;
-  state: 'countdown' | 'playing' | 'paused' | 'finished';
+  state: 'countdown' | 'waiting-for-ready' | 'playing' | 'paused' | 'finished';
   createdAt: Date;
 }
 
