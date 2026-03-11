@@ -62,7 +62,10 @@ describe('LOCKSTEP-1: Server Initializes Tick Clock and Synchronizes All Clients
     await connectClient(client1);
     await connectClient(client2);
 
-    const gameStartPromise = waitForGameStart(client1);
+    const gameStartPromise = Promise.all([
+      waitForGameStart(client1),
+      waitForGameStart(client2),
+    ]);
     const firstTickPromise = new Promise<TickSyncEvent>((resolve) => {
       client1.on('tick-sync', (data: TickSyncEvent) => resolve(data));
     });
@@ -94,7 +97,10 @@ describe('LOCKSTEP-1: Server Initializes Tick Clock and Synchronizes All Clients
       tickEvents.push(data);
     });
 
-    const gameStartPromise = waitForGameStart(client1);
+    const gameStartPromise = Promise.all([
+      waitForGameStart(client1),
+      waitForGameStart(client2),
+    ]);
 
     client1.emit('queue-join', { playerId: 'player1', username: 'alice' });
     client2.emit('queue-join', { playerId: 'player2', username: 'bob' });
@@ -129,7 +135,10 @@ describe('LOCKSTEP-1: Server Initializes Tick Clock and Synchronizes All Clients
       tickEvents.push({ tick: data.tick, receivedAt: Date.now() });
     });
 
-    const gameStartPromise = waitForGameStart(client1);
+    const gameStartPromise = Promise.all([
+      waitForGameStart(client1),
+      waitForGameStart(client2),
+    ]);
 
     client1.emit('queue-join', { playerId: 'player1', username: 'alice' });
     client2.emit('queue-join', { playerId: 'player2', username: 'bob' });
@@ -169,7 +178,10 @@ describe('LOCKSTEP-1: Server Initializes Tick Clock and Synchronizes All Clients
       tickEvents2.push(data);
     });
 
-    const gameStartPromise = waitForGameStart(client1);
+    const gameStartPromise = Promise.all([
+      waitForGameStart(client1),
+      waitForGameStart(client2),
+    ]);
 
     client1.emit('queue-join', { playerId: 'player1', username: 'alice' });
     client2.emit('queue-join', { playerId: 'player2', username: 'bob' });
@@ -197,7 +209,10 @@ describe('LOCKSTEP-1: Server Initializes Tick Clock and Synchronizes All Clients
     await connectClient(client1);
     await connectClient(client2);
 
-    const gameStartPromise = waitForGameStart(client1);
+    const gameStartPromise = Promise.all([
+      waitForGameStart(client1),
+      waitForGameStart(client2),
+    ]);
     const tickPromise = new Promise<TickSyncEvent>((resolve) => {
       client1.once('tick-sync', (data: TickSyncEvent) => resolve(data));
     });
@@ -229,7 +244,10 @@ describe('LOCKSTEP-1: Server Initializes Tick Clock and Synchronizes All Clients
       tickEvents.push(data);
     });
 
-    const gameStartPromise = waitForGameStart(client1);
+    const gameStartPromise = Promise.all([
+      waitForGameStart(client1),
+      waitForGameStart(client2),
+    ]);
 
     client1.emit('queue-join', { playerId: 'player1', username: 'alice' });
     client2.emit('queue-join', { playerId: 'player2', username: 'bob' });
@@ -312,9 +330,10 @@ describe('LOCKSTEP-1: Independent Tick Counters Per Match', () => {
       client1.once('tick-sync', (data: TickSyncEvent) => resolve(data));
     });
 
-    const match1GameStart = new Promise<void>((resolve) => {
-      client1.once('game-start', () => resolve());
-    });
+    const match1GameStart = Promise.all([
+      new Promise<void>((resolve) => { client1.once('game-start', () => resolve()); }),
+      new Promise<void>((resolve) => { client2.once('game-start', () => resolve()); }),
+    ]);
 
     // Start first match
     client1.emit('queue-join', { playerId: 'p1', username: 'alice' });
@@ -331,9 +350,10 @@ describe('LOCKSTEP-1: Independent Tick Counters Per Match', () => {
       client3.once('tick-sync', (data: TickSyncEvent) => resolve(data));
     });
 
-    const match2GameStart = new Promise<void>((resolve) => {
-      client3.once('game-start', () => resolve());
-    });
+    const match2GameStart = Promise.all([
+      new Promise<void>((resolve) => { client3.once('game-start', () => resolve()); }),
+      new Promise<void>((resolve) => { client4.once('game-start', () => resolve()); }),
+    ]);
 
     // Start second match (delayed)
     client3.emit('queue-join', { playerId: 'p3', username: 'carol' });
@@ -408,9 +428,10 @@ describe('LOCKSTEP-1: Configurable Tick Rate', () => {
       tickEvents.push(data);
     });
 
-    const gameStartPromise = new Promise<void>((resolve) => {
-      client1.once('game-start', () => resolve());
-    });
+    const gameStartPromise = Promise.all([
+      new Promise<void>((resolve) => { client1.once('game-start', () => resolve()); }),
+      new Promise<void>((resolve) => { client2.once('game-start', () => resolve()); }),
+    ]);
 
     client1.emit('queue-join', { playerId: 'player1', username: 'alice' });
     client2.emit('queue-join', { playerId: 'player2', username: 'bob' });

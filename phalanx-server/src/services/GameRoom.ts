@@ -172,6 +172,16 @@ export class GameRoom {
    * Emits countdown events (5, 4, 3, 2, 1, 0) every second, then game-start
    */
   private startGameCountdown(): void {
+    if (this.config.countdownSeconds <= 0) {
+      // Skip countdown entirely — go straight to waiting-for-ready
+      this.io.to(this.roomId).emit('game-start', {
+        matchId: this.id,
+        randomSeed: this.randomSeed,
+      });
+      this.enterWaitingForReady();
+      return;
+    }
+
     let countdown = this.config.countdownSeconds;
 
     // Emit initial countdown
@@ -192,15 +202,21 @@ export class GameRoom {
           matchId: this.id,
           randomSeed: this.randomSeed,
         });
-        // Enter waiting-for-ready state instead of starting immediately.
-        // The tick loop will not begin until all clients send 'client-ready'.
-        this.state = 'waiting-for-ready';
-        this.readyPlayers.clear();
-        this.readyTimeout = setTimeout(() => {
-          this.endMatchDueToReadyTimeout();
-        }, this.readyTimeoutMs);
+        this.enterWaitingForReady();
       }
     }, 1000);
+  }
+
+  /**
+   * Transition to waiting-for-ready state.
+   * The tick loop will not begin until all clients send 'client-ready'.
+   */
+  private enterWaitingForReady(): void {
+    this.state = 'waiting-for-ready';
+    this.readyPlayers.clear();
+    this.readyTimeout = setTimeout(() => {
+      this.endMatchDueToReadyTimeout();
+    }, this.readyTimeoutMs);
   }
 
   /**
@@ -254,6 +270,11 @@ export class GameRoom {
     }
 
     if (this.state !== 'waiting-for-ready') {
+      return;
+    }
+
+    // Ignore duplicate ready signals
+    if (this.readyPlayers.has(playerId)) {
       return;
     }
 

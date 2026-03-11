@@ -37,6 +37,12 @@ describe('NET-1: Server Validates Incoming Player Commands', () => {
       new Promise<void>((resolve) => socket2.on('connect', resolve)),
     ]);
 
+    // Set up game-start listeners before joining queue (with countdownSeconds: 0, game-start fires immediately)
+    const gameStartPromise = Promise.all([
+      new Promise<void>((resolve) => { socket1.once('game-start', () => resolve()); }),
+      new Promise<void>((resolve) => { socket2.once('game-start', () => resolve()); }),
+    ]);
+
     // Join queue and wait for match
     const matchPromise = new Promise<void>((resolve) => {
       socket1.once('match-found', () => resolve());
@@ -47,10 +53,8 @@ describe('NET-1: Server Validates Incoming Player Commands', () => {
 
     await matchPromise;
 
-    // Wait for game to start
-    await new Promise<void>((resolve) => {
-      socket1.once('game-start', () => resolve());
-    });
+    // Wait for game to start on both sockets
+    await gameStartPromise;
 
     // Send client-ready from both clients to start tick loop
     socket1.emit('client-ready');
