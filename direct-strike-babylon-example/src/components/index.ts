@@ -2,6 +2,10 @@
 export { ComponentType } from './Component';
 export type { IComponent, ComponentTypeKey } from './Component';
 
+// SoA schemas (co-located with their component classes)
+export { TransformSoASchema } from './TransformComponent';
+export { PhysicsSoASchema } from './PhysicsBodyComponent';
+
 export { TeamComponent } from './TeamComponent';
 export { HealthComponent } from './HealthComponent';
 export { DeathComponent } from './DeathComponent'; // Add death timer component
@@ -17,3 +21,5 @@ export { AttackLockComponent } from './AttackLockComponent';
 export { PhysicsBodyComponent } from './PhysicsBodyComponent';
 export { HealthBarComponent } from './HealthBarComponent';
 export { InterpolationComponent } from './InterpolationComponent';
+export { TransformComponent } from './TransformComponent';
+export { ProjectileComponent } from './ProjectileComponent';

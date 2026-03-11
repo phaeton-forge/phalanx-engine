@@ -54,9 +54,6 @@ export class PrismaUnit extends Unit {
     this.mesh = this.createPrismMesh();
     this.mesh.position = position;
 
-    // Sync simulation position with mesh position
-    this.syncSimulationPosition();
-
     // Add components
     this.addComponent(new TeamComponent(config.team ?? TeamTag.Team1));
     this.addComponent(new HealthComponent(config.health ?? 150)); // Higher health than sphere

@@ -95,10 +95,6 @@ export class Tower extends Unit {
     this.mesh.position = position.clone();
     this.mesh.position.y = Tower.BASE_HEIGHT / 2;
 
-
-    // Sync simulation position with mesh position
-    this.syncSimulationPosition();
-
     // Add components
     this.addComponent(new TeamComponent(config.team));
     this.addComponent(new HealthComponent(config.health ?? 300));

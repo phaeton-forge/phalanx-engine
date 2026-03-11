@@ -2,7 +2,7 @@ import { Vector3 } from '@babylonjs/core';
 import type { SystemContext } from 'phalanx-ecs';
 import { GameSystem } from 'phalanx-ecs';
 import type { Unit } from '../entities/Unit';
-import { ComponentType, MovementComponent } from '../components';
+import { ComponentType, MovementComponent, PhysicsBodyComponent, TransformComponent } from '../components';
 import { GameEvents, createEvent } from '../events';
 import type {
   MoveStartedEvent,
@@ -72,11 +72,13 @@ export class MovementSystem extends GameSystem {
       if (movement.hasJustArrived()) {
         movement.acknowledgeArrival();
 
+        const transform = entity.getComponent<TransformComponent>(ComponentType.Transform);
+
         // Emit move completed event
         this.eventBus.emit<MoveCompletedEvent>(GameEvents.MOVE_COMPLETED, {
           ...createEvent(),
           entityId: entity.id,
-          position: (entity as Unit).position.clone(),
+          position: transform?.visualPosition.clone() ?? new Vector3(),
         });
       }
     }
@@ -90,16 +92,22 @@ export class MovementSystem extends GameSystem {
     if (!entity) return false;
 
     // Don't allow entities ignored by physics to move (e.g., dying units)
-    if (entity.ignorePhysics) return false;
+    const body = entity.getComponent<PhysicsBodyComponent>(ComponentType.PhysicsBody);
+    if (body?.ignorePhysics) return false;
 
     const movement = entity.getComponent<MovementComponent>(
       ComponentType.Movement
     );
     if (!movement) return false;
 
-    // Maintain Y position
+    const transform = entity.getComponent<TransformComponent>(
+      ComponentType.Transform
+    );
+    if (!transform) return false;
+
+    // Maintain Y position (from visual position)
     const targetWithY = target.clone();
-    targetWithY.y = entity.position.y;
+    targetWithY.y = transform.visualPosition.y;
 
     movement.moveTo(targetWithY);
 

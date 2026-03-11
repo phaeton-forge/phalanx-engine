@@ -1,5 +1,6 @@
 import { SystemRegistry } from './SystemRegistry';
 import { TickFrameManager } from './TickFrameManager';
+import { SoAComponent } from './SoAComponent';
 import type { ITickFrameProvider, Unsubscribe } from './ITickFrameProvider';
 import type { EventBus } from './EventBus';
 import type { EntityManager } from './EntityManager';
@@ -99,6 +100,9 @@ export class GameWorld {
     this.systemRegistry = new SystemRegistry(
       config.componentTypes
     );
+
+    // Set SoAComponent context so SoA-backed components can resolve stores
+    SoAComponent.useEntityManager(this.systemRegistry.entityManager);
 
     // Use external provider or create internal TickFrameManager
     if (config.tickFrameProvider) {
@@ -305,5 +309,6 @@ export class GameWorld {
   public dispose(): void {
     this.stop();
     this.systemRegistry.dispose();
+    SoAComponent.resetContext();
   }
 }

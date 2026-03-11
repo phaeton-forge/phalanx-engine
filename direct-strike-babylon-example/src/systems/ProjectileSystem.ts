@@ -1,10 +1,16 @@
 import { Vector3 } from '@babylonjs/core';
 import type { Scene } from '@babylonjs/core';
-import { Projectile } from '../entities/Projectile';
+import { ProjectileEntity } from '../entities/ProjectileEntity';
 import { ExplosionEffect } from '../effects/ExplosionEffect';
-import type { SystemContext } from 'phalanx-ecs';
+import type { SystemContext, Entity } from 'phalanx-ecs';
 import { GameSystem } from 'phalanx-ecs';
-import { ComponentType, TeamComponent } from '../components';
+import {
+  ComponentType,
+  TeamComponent,
+  TransformComponent,
+  InterpolationComponent,
+  ProjectileComponent,
+} from '../components';
 import { GameEvents, createEvent } from '../events';
 import type {
   ProjectileSpawnedEvent,
@@ -14,11 +20,15 @@ import type {
 import type { TeamTag } from '../enums/TeamTag';
 import { networkConfig } from '../config/constants';
 import { FP, FPVector3 } from 'phalanx-math';
-import type { Unit } from "../entities/Unit.ts";
 
 // Pre-computed fixed-point constants for projectile collision
 const FP_HIT_RADIUS_SQ = FP.FromFloat(1.5 * 1.5); // hitRadius^2 = 2.25
 const FP_GROUND_LEVEL = FP._0;
+const FP_TIMESTEP = FP.FromFloat(networkConfig.tickTimestep);
+
+// Default projectile config
+const DEFAULT_PROJECTILE_SPEED = 55;
+const DEFAULT_PROJECTILE_LIFETIME_SECS = 3;
 
 export interface ProjectileSpawnConfig {
   damage: number;
@@ -29,47 +39,32 @@ export interface ProjectileSpawnConfig {
 }
 
 /**
- * Projectile system configuration for deterministic simulation
- */
-export interface ProjectileConfig {
-  fixedTimestep: number; // Fixed delta time for deterministic updates (e.g., 1/60)
-}
-
-const DEFAULT_PROJECTILE_CONFIG: ProjectileConfig = {
-  // Projectiles update once per network tick for deterministic lockstep
-  fixedTimestep: networkConfig.tickTimestep,
-};
-
-/**
- * ProjectileSystem - Manages all projectiles in the game
- * Uses EntityManager for target queries
- * Uses EventBus for decoupled damage dealing
- * Extends GameSystem for consistent lifecycle management
+ * ProjectileSystem - Manages all projectiles as ECS entities
  *
- * IMPORTANT: Uses fixed timestep for deterministic projectile movement.
- * This ensures projectile hit detection is identical across all clients.
+ * Projectiles are proper ECS entities with:
+ * - ProjectileComponent: direction, speed, damage, lifetime, sourceId
+ * - TeamComponent: team affiliation for collision filtering
+ * - TransformComponent: authoritative fixed-point position (SoA-backed)
+ * - InterpolationComponent: smooth visual movement between ticks
+ *
+ * Collision detection uses fixed-point squared distance for determinism.
+ * Lifetime is tick-based (integer countdown) — fully deterministic.
+ * Visual interpolation is handled automatically by InterpolationSystem.
  */
 export class ProjectileSystem extends GameSystem {
-  private config: ProjectileConfig;
-  private projectiles: Projectile[] = [];
   private scene: Scene;
 
-  constructor(scene: Scene, config?: Partial<ProjectileConfig>) {
+  constructor(scene: Scene) {
     super();
     this.scene = scene;
-    this.config = { ...DEFAULT_PROJECTILE_CONFIG, ...config };
   }
 
-  /**
-   * Initialize the system with context
-   */
   public override init(context: SystemContext): void {
     super.init(context);
     this.setupEventListeners();
   }
 
   private setupEventListeners(): void {
-    // Listen for projectile spawn requests from combat system
     this.subscribe<ProjectileSpawnedEvent>(
       GameEvents.PROJECTILE_SPAWNED,
       (event) => {
@@ -84,154 +79,143 @@ export class ProjectileSystem extends GameSystem {
   }
 
   /**
-   * Spawn a new projectile
+   * Spawn a new projectile as an ECS entity
    */
   public spawnProjectile(
     origin: Vector3,
     direction: Vector3,
     config: ProjectileSpawnConfig
-  ): Projectile {
-    const projectile = new Projectile(this.scene, origin, direction, {
-      damage: config.damage,
-      speed: config.speed,
-      lifetime: config.lifetime,
-      team: config.team,
-      sourceId: config.sourceId,
-    });
-    this.projectiles.push(projectile);
-    return projectile;
+  ): ProjectileEntity {
+    const speed = config.speed ?? DEFAULT_PROJECTILE_SPEED;
+    const lifetimeSecs = config.lifetime ?? DEFAULT_PROJECTILE_LIFETIME_SECS;
+    const remainingTicks = Math.round(lifetimeSecs * networkConfig.tickRate);
+
+    // Create entity with mesh
+    const entity = new ProjectileEntity(this.scene, origin, direction, config.team);
+
+    // Add components
+    const fpDirection = FPVector3.Normalize(
+      FPVector3.FromFloat(direction.x, direction.y, direction.z)
+    );
+    const fpSpeed = FP.FromFloat(speed);
+    entity.addComponent(
+      new ProjectileComponent(fpDirection, fpSpeed, config.damage, remainingTicks, config.sourceId)
+    );
+    entity.addComponent(new TeamComponent(config.team));
+
+    const initialFpPos = FPVector3.FromFloat(origin.x, origin.y, origin.z);
+    const transform = new TransformComponent(entity.id, initialFpPos);
+    entity.addComponent(transform);
+
+    const interpolation = new InterpolationComponent(transform.fpPosition, false);
+    entity.addComponent(interpolation);
+
+    // Register with EntityManager
+    this.entityManager.addEntity(entity);
+
+    // Snap interpolation so the first frame doesn't blend from (0,0,0)
+    interpolation.snapToPosition(transform.fpPosition);
+
+    return entity;
   }
 
   /**
-   * Process one network tick worth of projectile updates
-   * Called exactly once per network tick for deterministic lockstep simulation
+   * Process one network tick — deterministic projectile update
    */
   public override processTick(_tick: number): void {
-    this.fixedUpdate(this.config.fixedTimestep);
-  }
+    const projectileEntities = this.entityManager.queryEntities(ComponentType.Projectile);
+    if (projectileEntities.length === 0) return;
 
-  /**
-   * Fixed timestep projectile update - deterministic
-   */
-  private fixedUpdate(deltaTime: number): void {
-    const projectilesToRemove: Projectile[] = [];
-
-    // Get all potential targets (entities with Health and Team components)
-    // queryEntities already returns entities sorted by ID for determinism
+    // Get all potential targets (entities with Health + Team + Transform)
     const potentialTargets = this.entityManager.queryEntities(
       ComponentType.Health,
-      ComponentType.Team
-    ) as Unit[];
+      ComponentType.Team,
+      ComponentType.Transform
+    );
 
-    for (const projectile of this.projectiles) {
-      // Build target list for this projectile (only hostile entities)
-      const targets = potentialTargets.filter((entity) => {
-        if (entity.isDestroyed) return false;
-        const team = entity.getComponent<TeamComponent>(ComponentType.Team);
-        if (!team) return false;
+    for (const entity of projectileEntities) {
+      if (entity.isDestroyed) continue;
 
-        // Only hit entities from different teams
-        return team.team !== projectile.team;
-      });
+      const projectile = entity.getComponent<ProjectileComponent>(ComponentType.Projectile)!;
+      const transform = entity.getComponent<TransformComponent>(ComponentType.Transform)!;
+      const team = entity.getComponent<TeamComponent>(ComponentType.Team)!;
 
-      // Update projectile and check collisions with fixed timestep
-      const shouldDestroy = this.updateProjectile(
-        projectile,
-        deltaTime,
-        targets
-      );
+      // Decrement tick-based lifetime
+      projectile.remainingTicks--;
+      if (projectile.remainingTicks <= 0) {
+        this.destroyProjectile(entity, transform);
+        continue;
+      }
 
-      if (shouldDestroy) {
-        projectilesToRemove.push(projectile);
+      // Move: displacement = direction * speed * timestep (all fixed-point)
+      const fpDistance = FP.Mul(projectile.fpSpeed, FP_TIMESTEP);
+      const movement = FPVector3.Scale(projectile.fpDirection, fpDistance);
+      transform.fpPosition = FPVector3.Add(transform.fpPosition, movement);
+
+      // Ground check
+      if (FP.Lte(transform.fpPosition.y, FP_GROUND_LEVEL)) {
+        this.destroyProjectile(entity, transform);
+        continue;
+      }
+
+      // Collision check against hostile entities
+      for (const target of potentialTargets) {
+        if (target.isDestroyed) continue;
+        // Don't collide with projectile entities
+        if (target.hasComponent(ComponentType.Projectile)) continue;
+
+        const targetTeam = target.getComponent<TeamComponent>(ComponentType.Team)!;
+        if (targetTeam.team === team.team) continue;
+
+        const targetTransform = target.getComponent<TransformComponent>(ComponentType.Transform)!;
+        const distanceSq = FPVector3.SqrDistance(transform.fpPosition, targetTransform.fpPosition);
+
+        if (FP.Lt(distanceSq, FP_HIT_RADIUS_SQ)) {
+          this.eventBus.emit<DamageRequestedEvent>(GameEvents.DAMAGE_REQUESTED, {
+            ...createEvent(),
+            entityId: target.id,
+            amount: projectile.damage,
+            sourceId: projectile.sourceId,
+          });
+
+          const floatPos = FPVector3.ToFloat(transform.fpPosition);
+          this.eventBus.emit<ProjectileHitEvent>(GameEvents.PROJECTILE_HIT, {
+            ...createEvent(),
+            targetId: target.id,
+            damage: projectile.damage,
+            position: new Vector3(floatPos.x, floatPos.y, floatPos.z),
+            team: team.team,
+            sourceId: projectile.sourceId,
+          });
+
+          this.destroyProjectile(entity, transform);
+          break;
+        }
       }
     }
-
-    // Remove and dispose destroyed projectiles
-    for (const projectile of projectilesToRemove) {
-      this.removeProjectile(projectile);
-    }
-  }
-
-  private updateProjectile(
-    projectile: Projectile,
-    deltaTime: number,
-    targets: Unit[]
-  ): boolean {
-    if (projectile.isDestroyed) return true;
-
-    // Update lifetime and movement (using fixed-point internally)
-    const wasDestroyed = projectile.update(deltaTime, []);
-    if (wasDestroyed && projectile.isDestroyed) return true;
-
-    // Check if projectile hit the ground using fixed-point
-    if (FP.Lte(projectile.fpPosition.y, FP_GROUND_LEVEL)) {
-      projectile.destroy();
-      return true;
-    }
-
-    // Check collisions with targets using fixed-point squared distance
-    for (const target of targets) {
-      const distanceSq = FPVector3.SqrDistance(
-        projectile.fpPosition,
-        target.fpPosition
-      );
-
-      if (FP.Lt(distanceSq, FP_HIT_RADIUS_SQ)) {
-        // Emit damage request event instead of directly calling HealthSystem
-        this.eventBus.emit<DamageRequestedEvent>(GameEvents.DAMAGE_REQUESTED, {
-          ...createEvent(),
-          entityId: target.id,
-          amount: projectile.damage,
-          sourceId: projectile.sourceId,
-        });
-
-        // Emit projectile hit event for effects/sounds
-        this.eventBus.emit<ProjectileHitEvent>(GameEvents.PROJECTILE_HIT, {
-          ...createEvent(),
-          targetId: target.id,
-          damage: projectile.damage,
-          position: projectile.position.clone(),
-          team: projectile.team,
-          sourceId: projectile.sourceId,
-        });
-
-        projectile.destroy();
-        return true;
-      }
-    }
-
-    return false;
   }
 
   /**
-   * Remove a projectile from the system
+   * Create explosion effect and mark entity for cleanup
    */
-  private removeProjectile(projectile: Projectile): void {
-    const index = this.projectiles.indexOf(projectile);
-    if (index > -1) {
-      this.projectiles.splice(index, 1);
-    }
-
-    // Create explosion effect if projectile hit something
-    if (projectile.isDestroyed) {
-      new ExplosionEffect(this.scene, projectile.position);
-    }
-
-    projectile.dispose();
+  private destroyProjectile(entity: Entity, transform: TransformComponent): void {
+    const floatPos = FPVector3.ToFloat(transform.fpPosition);
+    new ExplosionEffect(this.scene, new Vector3(floatPos.x, floatPos.y, floatPos.z));
+    entity.destroy();
   }
 
   /**
-   * Clear all projectiles
+   * Clear all projectile entities
    */
   public clear(): void {
-    for (const projectile of this.projectiles) {
-      projectile.dispose();
+    const projectileEntities = this.entityManager.queryEntities(ComponentType.Projectile);
+    for (const entity of projectileEntities) {
+      entity.destroy();
     }
-    this.projectiles = [];
   }
 
   public override dispose(): void {
-    super.dispose(); // Clean up subscriptions from base class
+    super.dispose();
     this.clear();
   }
 }

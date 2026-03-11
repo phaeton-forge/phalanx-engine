@@ -25,8 +25,8 @@ import { FixedPoint, fpFromDecimal, fpFromInt } from '@hastom/fixed-point';
 // Re-export FixedPoint class as the number type
 export { FixedPoint };
 
-/** Default precision for fixed-point operations (18 decimal places) */
-const DEFAULT_PRECISION = 18;
+/** Default precision for fixed-point operations (5 decimal places) */
+const DEFAULT_PRECISION = 5;
 
 /**
  * FP - Fixed-point number creation, conversion, and math utilities
@@ -46,10 +46,10 @@ export const FP = {
    * @param precision - Decimal precision (default: 18)
    */
   FromFloat: (value: number, precision: number = DEFAULT_PRECISION): FixedPoint => {
-    // Use toFixed(15) for deterministic conversion across all JS engines
+    // Use toFixed(precision) for deterministic conversion across all JS engines
     // This ensures the same string representation regardless of browser
-    // 15 significant digits is the safe limit for IEEE 754 double precision
-    return fpFromDecimal(value.toFixed(15), precision);
+    // and stays within the precision limit of the fixed-point library
+    return fpFromDecimal(value.toFixed(precision), precision);
   },
 
   /**
@@ -83,6 +83,28 @@ export const FP = {
     return fp.toDecimal();
   },
 
+  /**
+   * Get the raw bigint base value from a FixedPoint
+   * Used for SoA storage in BigInt64Array
+   *
+   * Note: This requires storing the precision separately or assuming
+   * all values use DEFAULT_PRECISION (18).
+   */
+  ToRaw: (fp: FixedPoint): bigint => {
+    return fp.base;
+  },
+
+  /**
+   * Create a FixedPoint from a raw bigint base value
+   * Used for reading from SoA storage (BigInt64Array)
+   *
+   * @param raw - The raw bigint base value
+   * @param precision - The precision (default: 18)
+   */
+  FromRaw: (raw: bigint, precision: number = DEFAULT_PRECISION): FixedPoint => {
+    return new FixedPoint(raw, BigInt(precision));
+  },
+
   // ============ Constants (Quantum naming convention) ============
 
   /** Zero constant */
@@ -91,14 +113,14 @@ export const FP = {
   /** One constant */
   _1: fpFromInt(1n, 0, DEFAULT_PRECISION),
 
-  /** Pi constant (approximation to 18 decimal places) */
-  Pi: fpFromDecimal('3.141592653589793238', DEFAULT_PRECISION),
+  /** Pi constant */
+  Pi: fpFromDecimal('3.14159', DEFAULT_PRECISION),
 
   /** 2*Pi constant (Quantum naming) */
-  Pi2: fpFromDecimal('6.283185307179586477', DEFAULT_PRECISION),
+  Pi2: fpFromDecimal('6.28318', DEFAULT_PRECISION),
 
   /** Pi/2 constant (Quantum naming) */
-  PiOver2: fpFromDecimal('1.570796326794896619', DEFAULT_PRECISION),
+  PiOver2: fpFromDecimal('1.57079', DEFAULT_PRECISION),
 
   // ============ Arithmetic Operations ============
 

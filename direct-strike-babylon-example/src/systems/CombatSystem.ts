@@ -14,6 +14,7 @@ import {
   MovementComponent,
   RotationComponent,
   TeamComponent,
+  TransformComponent,
 } from '../components';
 import type {
   DamageAppliedEvent,
@@ -45,7 +46,7 @@ export interface CombatConfig {
 // Pre-computed fixed-point constants for combat distance calculations
 // Using squared distances avoids expensive sqrt operations
 // Note: Using FromString for very small numbers to avoid BigInt conversion issues with scientific notation
-const FP_DISTANCE_EPSILON_SQ = FP.FromString('0.00000001'); // 0.0001^2 for tie-breaking comparison
+const FP_DISTANCE_EPSILON_SQ = FP.FromString('0.00001'); // Small epsilon for tie-breaking comparison
 
 const DEFAULT_COMBAT_CONFIG: CombatConfig = {
   // Combat updates once per network tick for deterministic lockstep
@@ -161,6 +162,11 @@ export class CombatSystem extends GameSystem {
       );
       if (health?.isDestroyed) continue;
 
+      const attackerTransform = attacker.getComponent<TransformComponent>(
+        ComponentType.Transform
+      );
+      if (!attackerTransform) continue;
+
       // Skip dying entities - check via DeathComponent for deterministic behavior
       // (AnimationComponent.isDying is set by frame-dependent animation system)
       const deathComp = attacker.getComponent<DeathComponent>(
@@ -208,11 +214,16 @@ export class CombatSystem extends GameSystem {
       const previousTargetId = this.currentTargets.get(attacker.id);
 
       if (target) {
+        const targetTransform = target.getComponent<TransformComponent>(
+          ComponentType.Transform
+        );
+        if (!targetTransform) continue;
+
         // We have a target in detection range
         // Use squared distances for deterministic comparison (avoids sqrt)
         const distanceSqToTarget = FPVector3.SqrDistance(
-          attacker.fpPosition,
-          target.fpPosition
+          attackerTransform.fpPosition,
+          targetTransform.fpPosition
         );
         const attackRangeFP = FP.FromFloat(attack.range);
         const attackRangeSq = FP.Mul(attackRangeFP, attackRangeFP);
@@ -233,7 +244,7 @@ export class CombatSystem extends GameSystem {
         // Handle tower turret aiming
         const isTower = attacker instanceof Tower;
         if (isTower) {
-          attacker.setTargetPosition(target.position);
+          attacker.setTargetPosition(targetTransform.visualPosition);
           // Update deterministic aiming state (tick-based, not frame-based)
           attacker.simulateTurretAiming(deltaTime);
         }
@@ -254,7 +265,7 @@ export class CombatSystem extends GameSystem {
           this.eventBus.emit<OrientToTargetEvent>(GameEvents.ORIENT_TO_TARGET, {
             ...createEvent(),
             entityId: attacker.id,
-            targetPosition: target.position.clone(),
+            targetPosition: targetTransform.visualPosition.clone(),
           });
         }
 
@@ -293,13 +304,13 @@ export class CombatSystem extends GameSystem {
               } else {
                 this.storedMoveTargets.set(
                   attacker.id,
-                  attacker.position.clone()
+                  attackerTransform.visualPosition.clone()
                 );
               }
             }
 
             // Move towards the target (use callback for lockstep)
-            this.requestMove(attacker.id, target.position.clone());
+            this.requestMove(attacker.id, targetTransform.visualPosition.clone());
 
             // Notify that movement started for animation sync
             const animCompMove = attacker.getComponent<AnimationComponent>(
@@ -324,11 +335,16 @@ export class CombatSystem extends GameSystem {
           }
         }
       } else if (aggroTarget && movement) {
+        const aggroTargetTransform = aggroTarget.getComponent<TransformComponent>(
+          ComponentType.Transform
+        );
+        if (!aggroTargetTransform) continue;
+
         // Aggro target exists but is out of range - move towards them
         // Use squared distance for deterministic comparison
         const distanceSq = FPVector3.SqrDistance(
-          attacker.fpPosition,
-          aggroTarget.fpPosition
+          attackerTransform.fpPosition,
+          aggroTargetTransform.fpPosition
         );
         const attackRangeFP = FP.FromFloat(attack.range);
         const attackRangeSq = FP.Mul(attackRangeFP, attackRangeFP);
@@ -351,11 +367,11 @@ export class CombatSystem extends GameSystem {
             !movement.isMoving
           ) {
             // If not moving, store current position as fallback
-            this.storedMoveTargets.set(attacker.id, attacker.position.clone());
+            this.storedMoveTargets.set(attacker.id, attackerTransform.visualPosition.clone());
           }
 
           // Move towards the aggro target (use callback for lockstep)
-          this.requestMove(attacker.id, aggroTarget.position.clone());
+          this.requestMove(attacker.id, aggroTargetTransform.visualPosition.clone());
 
           // Notify that movement started for animation sync
           const animCompAggro = attacker.getComponent<AnimationComponent>(
@@ -448,6 +464,10 @@ export class CombatSystem extends GameSystem {
     const attack = attacker.getComponent<AttackComponent>(
       ComponentType.Attack
     )!;
+    const attackerTransform = attacker.getComponent<TransformComponent>(
+      ComponentType.Transform
+    );
+    if (!attackerTransform) return null;
 
     // Use detectionRange for finding targets (defaults to attack range if not set)
     const detectionRange = attack.detectionRange;
@@ -466,11 +486,14 @@ export class CombatSystem extends GameSystem {
       const aggroHealth = aggroTarget.getComponent<HealthComponent>(
         ComponentType.Health
       );
-      if (!aggroHealth?.isDestroyed && !isDying) {
+      const aggroTransform = aggroTarget.getComponent<TransformComponent>(
+        ComponentType.Transform
+      );
+      if (!aggroHealth?.isDestroyed && !isDying && aggroTransform) {
         // Use squared distance for deterministic comparison
         const aggroDistanceSq = FPVector3.SqrDistance(
-          attacker.fpPosition,
-          aggroTarget.fpPosition
+          attackerTransform.fpPosition,
+          aggroTransform.fpPosition
         );
         if (FP.Lte(aggroDistanceSq, attackRangeSq)) {
           return aggroTarget;
@@ -501,10 +524,15 @@ export class CombatSystem extends GameSystem {
       );
       if (!targetTeam || !attackerTeam.isHostileTo(targetTeam)) continue;
 
+      const potentialTransform = potential.getComponent<TransformComponent>(
+        ComponentType.Transform
+      );
+      if (!potentialTransform) continue;
+
       // Use squared distance for deterministic comparison (avoids non-deterministic sqrt)
       const distanceSq = FPVector3.SqrDistance(
-        attacker.fpPosition,
-        potential.fpPosition
+        attackerTransform.fpPosition,
+        potentialTransform.fpPosition
       );
 
       // Use detectionRange (squared) for finding targets
@@ -619,6 +647,10 @@ export class CombatSystem extends GameSystem {
     team: TeamComponent,
     damage: number
   ): void {
+    const attackerTransform = attacker.getComponent<TransformComponent>(ComponentType.Transform);
+    const targetTransform = target.getComponent<TransformComponent>(ComponentType.Transform);
+    if (!attackerTransform || !targetTransform) return;
+
     // Calculate origin and direction (special handling for towers with rotating turrets)
     let origin: Vector3;
     let direction: Vector3;
@@ -627,11 +659,11 @@ export class CombatSystem extends GameSystem {
       // Use barrel tip position for towers, but calculate direction to target
       origin = attacker.getBarrelTipPosition();
       // Calculate the direction from barrel tip to target (not just horizontal barrel direction)
-      direction = target.position.subtract(origin).normalize();
+      direction = targetTransform.visualPosition.subtract(origin).normalize();
     } else {
       // Standard attack origin for other entities
-      origin = attack.getAttackOrigin(attacker.position);
-      direction = target.position.subtract(origin).normalize();
+      origin = attack.getAttackOrigin(attackerTransform.visualPosition);
+      direction = targetTransform.visualPosition.subtract(origin).normalize();
     }
 
     // Emit projectile spawn event instead of calling ProjectileSystem directly

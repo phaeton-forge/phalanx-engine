@@ -8,6 +8,7 @@ import {
   AnimationComponent,
   AnimationState,
   RotationComponent,
+  TransformComponent,
 } from '../components';
 import { BloodEffect } from '../effects/BloodEffect';
 import { GameEvents } from '../events';
@@ -405,7 +406,8 @@ export class AnimationSystem extends GameSystem {
    * Show blood effect at entity position
    */
   public showBloodEffect(entity: Unit): void {
-    const position = entity.position.clone();
+    const transform = entity.getComponent<TransformComponent>(ComponentType.Transform);
+    const position = transform?.visualPosition.clone() ?? new Vector3();
     position.y += 1; // Blood at chest height
     new BloodEffect(this.scene, position);
   }
@@ -419,8 +421,11 @@ export class AnimationSystem extends GameSystem {
     );
     if (!rotation || !rotation.transformNode) return;
 
+    const transform = entity.getComponent<TransformComponent>(ComponentType.Transform);
+    if (!transform) return;
+
     // Calculate direction from entity to target
-    const direction = targetPosition.subtract(entity.position);
+    const direction = targetPosition.subtract(transform.visualPosition);
     direction.y = 0; // Ignore vertical difference
 
     if (direction.lengthSquared() < 0.001) return; // Too close, skip rotation

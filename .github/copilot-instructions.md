@@ -27,10 +27,3 @@
 - Naming: camelCase for variables/functions, PascalCase for classes/interfaces.
 - File structure: Colocate tests with implementation (`foo.ts`, `foo.test.ts`).
 
-## C# & WASM Development Rules
-- Context: Shared Game Logic compiled to WebAssembly for a deterministic lockstep engine.
-- Constraints: NO System.Reflection, NO Threading (Wasm is single-threaded by default), NO File System access.
-- Memory: Use `Span<T>`, `Memory<T>`, and `unsafe` pointers for performance. Avoid LINQ in hot paths (update loops).
-- Interop: Use `[JSExport]` and `[JSImport]` from `System.Runtime.InteropServices.JavaScript` for JS communication.
-- Style: File-scoped namespaces, global usings for common types (Vector2, etc.).
-

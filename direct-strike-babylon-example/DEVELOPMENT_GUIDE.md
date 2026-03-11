@@ -65,10 +65,10 @@ This project uses a **component-based Entity-Component-System (ECS)** architectu
             ▼
 ┌───────────────────────────────────────────────────────────────────────────────┐
 │                              Entities                                          │
-│                Unit        │        Tower        │   Base   │   Projectile    │
+│        Unit        │  Tower  │  Base  │  ProjectileEntity (extends Entity)    │
 │    ┌────────────────────────────────────────────────────────────────────────┐ │
 │    │                          Components                                     │ │
-│    │  TeamComponent │ HealthComponent │ AttackComponent │ MovementComponent  │ │
+│    │  TeamComponent │ HealthComponent │ AttackComponent │ ProjectileComponent │ │
 │    └────────────────────────────────────────────────────────────────────────┘ │
 └───────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -827,9 +827,9 @@ The game-specific base class is `Unit` (in `src/entities/Unit.ts`), which extend
 
 - A reference to the Babylon.js `Scene`
 - A visual `Mesh`
-- Fixed-point position (`fpPosition`) for deterministic simulation
-- Cached Vector3 position for Babylon.js compatibility
-- Visual position management via `setVisualPosition()`
+- Visual position management via `setVisualPosition()` (implements `IMeshEntity`)
+
+Both `Unit` and `ProjectileEntity` implement the `IMeshEntity` interface, which enables `InterpolationSystem` to apply interpolated positions to any entity with a mesh without coupling to a specific class.
 
 **Entity Base Class** (from `phalanx-ecs`):
 
@@ -856,18 +856,25 @@ export class Entity {
 
 ```typescript
 import { Entity } from 'phalanx-ecs';
+import type { IMeshEntity } from '../interfaces/IMeshEntity';
 
-export class Unit extends Entity {
-  public scene: Scene;
-  public mesh: Mesh | TransformNode | null = null;
-  private _fpPosition: FPVector3Type = FPVector3.Zero;
-  private _simulationPosition: Vector3 = new Vector3();
+export class Unit extends Entity implements IMeshEntity {
+  protected scene: Scene;
+  protected mesh: Mesh | null = null;
 
-  public get fpPosition(): FPVector3Type { ... }
-  public set fpPosition(value: FPVector3Type) { ... }
-  public get position(): Vector3 { ... }
   public setVisualPosition(value: Vector3): void { ... }
+  public getMesh(): Mesh | null { ... }
 }
+```
+
+**IMeshEntity Interface** (`src/interfaces/IMeshEntity.ts`):
+
+```typescript
+export interface IMeshEntity {
+  setVisualPosition(position: Vector3): void;
+  getMesh(): Mesh | null;
+}
+```
 ```
 
 **Existing Entities**:
@@ -878,42 +885,21 @@ export class Unit extends Entity {
 - `PrismaUnit` - Heavy combat unit (2x2 grid), extends `Unit`
 - `LanceUnit` - Elongated combat unit (1x2 grid), extends `Unit`
 - `MutantUnit` - Animated 3D model melee unit, extends `Unit`
-- `Projectile` - Standalone attack projectile class (does **not** extend `Entity` or `Unit`)
+- `ProjectileEntity` - Projectile entity with laser beam mesh, extends `Entity` directly (implements `IMeshEntity`)
 
 ---
 
 ### Components
 
-Components are pure data containers that implement `IComponent`. Each component has a unique `type` symbol for identification.
+Components are data containers attached to entities. There are two types:
 
-**Component Interface** (`src/components/Component.ts`):
+#### Standard Components (IComponent)
 
-```typescript
-import type { IComponent } from 'phalanx-ecs';
-import { createComponentTypeRegistry } from 'phalanx-ecs';
+Simple class-based components for infrequently-accessed or complex data. Implement `IComponent` and store data in regular properties.
 
-export type { IComponent };
+**Use for:** flags, configuration, UI state, components with few instances, complex/polymorphic data.
 
-export const ComponentType = createComponentTypeRegistry({
-  Team: 'Team',
-  Health: 'Health',
-  Attack: 'Attack',
-  Movement: 'Movement',
-  Selectable: 'Selectable',
-  Renderable: 'Renderable',
-  UnitType: 'UnitType',
-  Resource: 'Resource',
-  Animation: 'Animation',
-  Rotation: 'Rotation',
-  AttackLock: 'AttackLock',
-  Death: 'Death',
-  PhysicsBody: 'PhysicsBody',
-  HealthBar: 'HealthBar',
-  Interpolation: 'Interpolation',
-});
-```
-
-**Existing Components**:
+**Existing standard components:**
 
 | Component                | Purpose                          | Key Properties                               |
 | ------------------------ | -------------------------------- | -------------------------------------------- |
@@ -923,13 +909,166 @@ export const ComponentType = createComponentTypeRegistry({
 | `MovementComponent`      | Movement capabilities            | `speed`, `targetPosition`, `moveTo()`        |
 | `ResourceComponent`      | Resource generation              | `resourceRate`, `lastGenerationTick`         |
 | `UnitTypeComponent`      | Unit type identifier             | `unitType`                                   |
-| `PhysicsBodyComponent`   | Physics body for collision       | `radius`, `isStatic`                         |
 | `HealthBarComponent`     | Health bar visualization         | `healthBar`, `offset`                        |
 | `InterpolationComponent` | Visual interpolation state       | `prevPosition`, `currPosition`               |
 | `AnimationComponent`     | 3D model animation state         | `animationGroups`, `currentAnimation`        |
 | `RotationComponent`      | Entity rotation toward targets   | `rotationSpeed`                              |
 | `AttackLockComponent`    | Attack lock state                | `lockedTargetId`                             |
 | `DeathComponent`         | Death animation/cleanup state    | `deathTime`                                  |
+| `ProjectileComponent`    | Projectile simulation state      | `fpDirection`, `fpSpeed`, `damage`, `remainingTicks`, `sourceId` |
+
+**Example:**
+
+```typescript
+import type { IComponent } from './Component';
+import { ComponentType } from './Component';
+
+export class HealthComponent implements IComponent {
+  public readonly type = ComponentType.Health;
+  private _health: number;
+  constructor(maxHealth: number = 100) { this._health = maxHealth; }
+  public get health(): number { return this._health; }
+}
+```
+
+#### SoA Components (SoAComponent)
+
+Components backed by contiguous typed arrays for cache-friendly hot-path iteration. Extend `SoAComponent` from `phalanx-ecs` and define a schema mapping field names to typed-array element types.
+
+**Use for:** data iterated every tick in hot loops (physics, transforms, velocities), components with many instances (hundreds/thousands of entities), flat numeric fields that benefit from cache-friendly memory layout, deterministic fixed-point storage via `BigInt64Array` (`'i64'` fields).
+
+**Avoid for:** complex data (nested objects, strings, variable-length arrays), components with very few instances, components that are rarely queried.
+
+**Existing SoA components:**
+
+| Component              | Schema Fields                                                                  | Purpose                              |
+| ---------------------- | ------------------------------------------------------------------------------ | ------------------------------------ |
+| `TransformComponent`   | `fpPositionX/Y/Z` (`i64`), `visualPositionX/Y/Z` (`f64`)                      | Entity position (authoritative + visual) |
+| `PhysicsBodyComponent` | `velocityX/Y/Z` (`i64`), `radius` (`i64`), `mass` (`i64`), `isStatic` (`u8`), `ignorePhysics` (`u8`), `lastX/Z` (`f64`) | Physics simulation data              |
+
+**Example:**
+
+```typescript
+import { SoAComponent, defineSoASchema } from 'phalanx-ecs';
+import { FP } from 'phalanx-math';
+
+const PhysicsSoASchema = defineSoASchema({
+  velocityX: 'i64',  // BigInt64Array — raw FixedPoint base values
+  velocityY: 'i64',
+  velocityZ: 'i64',
+  radius: 'i64',
+  isStatic: 'u8',    // Uint8Array — boolean flag
+}, 'PhysicsBody');
+
+export class PhysicsBodyComponent extends SoAComponent<typeof PhysicsSoASchema.definition> {
+  public readonly type = ComponentType.PhysicsBody;
+  static readonly soaSchema = PhysicsSoASchema;
+
+  constructor(entityId: number, radius: FixedPoint) {
+    super(PhysicsSoASchema, entityId, {
+      velocityX: FP.ToRaw(FP._0),
+      velocityY: FP.ToRaw(FP._0),
+      velocityZ: FP.ToRaw(FP._0),
+      radius: FP.ToRaw(radius),
+      isStatic: 0,
+    });
+  }
+
+  // Getters provide a clean API over raw typed-array access
+  get velocity(): FPVector3Type {
+    const idx = this.getIndex();
+    return {
+      x: FP.FromRaw(this.store.arrays.velocityX[idx]),
+      y: FP.FromRaw(this.store.arrays.velocityY[idx]),
+      z: FP.FromRaw(this.store.arrays.velocityZ[idx]),
+    };
+  }
+}
+```
+
+**Direct store access for hot-path systems:**
+
+Systems should bypass the component facade and access SoA stores directly for maximum performance.
+The facade (getters/setters) is convenient for infrequent access (e.g., spawning, event handlers), but
+in hot loops the repeated `Map.get()` + index validation per field access negates the cache benefits.
+
+**Pattern: cache store references in `init()`, iterate `entityIds()` in hot methods:**
+
+```typescript
+import { GameSystem, SoAComponentStore } from 'phalanx-ecs';
+import { PhysicsSoASchema, TransformSoASchema } from '../components';
+
+class PhysicsSystem extends GameSystem {
+  // Cache store references — resolved once
+  private physicsStore!: SoAComponentStore<typeof PhysicsSoASchema.definition>;
+  private transformStore!: SoAComponentStore<typeof TransformSoASchema.definition>;
+
+  public override init(context: SystemContext): void {
+    super.init(context);
+    // getOrCreateSoAStore ensures the store exists even before entities are spawned
+    this.physicsStore = this.entityManager.getOrCreateSoAStore(PhysicsSoASchema);
+    this.transformStore = this.entityManager.getOrCreateSoAStore(TransformSoASchema);
+  }
+
+  private applyVelocities(dt: FixedPoint): void {
+    // Grab typed array references outside the loop
+    const velocityX = this.physicsStore.arrays.velocityX;
+    const velocityZ = this.physicsStore.arrays.velocityZ;
+    const fpPositionX = this.transformStore.arrays.fpPositionX;
+    const fpPositionZ = this.transformStore.arrays.fpPositionZ;
+
+    // Iterate in deterministic entity ID order
+    for (const entityId of this.physicsStore.entityIds()) {
+      const physIndex = this.physicsStore.indexOf(entityId);
+      // Cross-store lookup — needed when two stores track the same entities
+      const txIndex = this.transformStore.indexOf(entityId);
+      if (txIndex === -1) continue;
+
+      const velX = FP.FromRaw(velocityX[physIndex]);
+      const velZ = FP.FromRaw(velocityZ[physIndex]);
+      const posX = FP.FromRaw(fpPositionX[txIndex]);
+      const posZ = FP.FromRaw(fpPositionZ[txIndex]);
+
+      fpPositionX[txIndex] = FP.ToRaw(FP.Add(posX, FP.Mul(velX, dt)));
+      fpPositionZ[txIndex] = FP.ToRaw(FP.Add(posZ, FP.Mul(velZ, dt)));
+    }
+  }
+}
+```
+
+**Key rules for direct SoA access in systems:**
+
+1. **Cache array references** outside the loop (`const velocityX = store.arrays.velocityX`).
+2. **Use `entityIds()`** for deterministic iteration (sorted by entity ID — required for lockstep).
+3. **Cross-store lookup** via `indexOf(entityId)` when two stores track the same entities (e.g., physics + transform). This is one `Map.get()` per entity, versus the facade's `Map.get()` per field access.
+4. **AoS fallback** for non-SoA components: when a hot loop also needs an AoS component (e.g., `MovementComponent`), get the entity via `entityManager.getEntity(entityId)` and access the AoS component normally. This is a hybrid pattern.
+5. **Single-store loops** are the ideal case — iterate dense indices with zero indirection.
+6. **Sync visual positions** when writing fp positions directly (the facade setter does this automatically, but direct writes must do it manually).
+
+See `PhysicsSystem.ts` for a complete real-world example of direct SoA access patterns.
+
+#### SoA Field Types
+
+| Type   | TypedArray       | JS Value  | Use Case                                |
+| ------ | ---------------- | --------- | --------------------------------------- |
+| `f64`  | `Float64Array`   | `number`  | Floating-point values, visual positions |
+| `f32`  | `Float32Array`   | `number`  | Lower-precision floats                  |
+| `i32`  | `Int32Array`     | `number`  | Signed integers                         |
+| `u32`  | `Uint32Array`    | `number`  | Unsigned integers                       |
+| `u8`   | `Uint8Array`     | `number`  | Flags, booleans (0/1)                   |
+| `i64`  | `BigInt64Array`  | `bigint`  | Fixed-point raw values (deterministic)  |
+
+#### When to Choose Which
+
+| Criterion                        | IComponent           | SoAComponent         |
+| -------------------------------- | -------------------- | -------------------- |
+| Iterated every tick in hot loop  | ❌                    | ✅                    |
+| Hundreds/thousands of instances  | ❌                    | ✅                    |
+| Flat numeric fields              | Either               | ✅                    |
+| Complex/nested data              | ✅                    | ❌                    |
+| Few instances                    | ✅                    | ❌                    |
+| Needs deterministic i64 storage  | ❌                    | ✅                    |
+| Simple to implement              | ✅                    | Moderate              |
 
 ---
 
@@ -993,7 +1132,7 @@ if (movementSystem) {
 | `MovementSystem`      | Entity movement commands               | Movement             |
 | `HealthSystem`        | Damage processing, entity destruction  | Health               |
 | `PhysicsSystem`       | Deterministic physics, collision       | PhysicsBody          |
-| `ProjectileSystem`    | Projectile movement and collision      | -                    |
+| `ProjectileSystem`    | Projectile movement and collision      | Projectile, Team, Transform |
 | `InterpolationSystem` | Smooth visual movement between ticks   | Interpolation        |
 | `ResourceSystem`      | Resource generation and spending       | -                    |
 | `TerritorySystem`     | Territory control and aggression bonus | Team                 |
@@ -1087,6 +1226,10 @@ const entity = entityManager.getEntity(id);
 
 ### Adding a New Component
 
+#### Standard Component (IComponent)
+
+Use this for simple, infrequently-iterated, or complex data.
+
 1. **Create the component file** in `src/components/`:
 
 ```typescript
@@ -1131,9 +1274,77 @@ export * from './ArmorComponent';
 4. **Add to entities** that need it:
 
 ```typescript
-// In Unit.ts or Tower.ts constructor
 this.addComponent(new ArmorComponent(5));
 ```
+
+#### SoA Component (SoAComponent)
+
+Use this for hot-path numeric data iterated every tick with many instances.
+
+1. **Create the component file** in `src/components/`:
+
+```typescript
+// src/components/SteeringComponent.ts
+import { SoAComponent, defineSoASchema } from 'phalanx-ecs';
+import { ComponentType } from './Component';
+import { FP, type FixedPoint } from 'phalanx-math';
+
+export const SteeringSoASchema = defineSoASchema({
+  desiredVelocityX: 'i64', // BigInt64Array for deterministic fixed-point
+  desiredVelocityZ: 'i64',
+  weight: 'f64',           // Float64Array for non-deterministic visual weight
+  isActive: 'u8',          // Uint8Array for boolean flag
+}, 'Steering');
+
+export class SteeringComponent extends SoAComponent<typeof SteeringSoASchema.definition> {
+  public readonly type = ComponentType.Steering;
+  static readonly soaSchema = SteeringSoASchema;
+
+  constructor(entityId: number) {
+    super(SteeringSoASchema, entityId, {
+      desiredVelocityX: FP.ToRaw(FP._0),
+      desiredVelocityZ: FP.ToRaw(FP._0),
+      weight: 1.0,
+      isActive: 1,
+    });
+  }
+
+  public get desiredVelocityX(): FixedPoint {
+    return FP.FromRaw(this.store.arrays.desiredVelocityX[this.getIndex()]);
+  }
+
+  public set desiredVelocityX(value: FixedPoint) {
+    this.store.arrays.desiredVelocityX[this.getIndex()] = FP.ToRaw(value);
+  }
+}
+```
+
+2. **Register the component type** (same as standard):
+
+```typescript
+export const ComponentType = createComponentTypeRegistry({
+  // ...existing types
+  Steering: 'Steering',
+});
+```
+
+3. **Export and add to entities** (same as standard).
+
+4. **Access in hot-path systems** — bypass the component wrapper:
+
+```typescript
+// In SteeringSystem.processTick()
+const store = this.entityManager.getSoAStore(SteeringSoASchema);
+for (const entityId of store.entityIds()) {
+  const idx = store.indexOf(entityId);
+  if (store.arrays.isActive[idx] === 0) continue;
+  // Direct typed-array access for maximum performance
+  const dvx = store.arrays.desiredVelocityX[idx];
+  // ... compute steering forces
+}
+```
+
+> **Note:** SoA stores are lazily created when the first component of that schema is constructed. No manual store registration is needed — `GameWorld` handles the `EntityManager` context automatically.
 
 ---
 
@@ -1392,8 +1603,13 @@ this.eventBus.on<ResourceCollectedEvent>(
 - ✅ Keep components as **pure data containers**
 - ✅ Include helper methods for common calculations
 - ✅ Use private fields with getters for read-only access
+- ✅ Use `SoAComponent` for hot-path data iterated every tick (physics, transforms)
+- ✅ Use standard `IComponent` for infrequent, complex, or few-instance data
+- ✅ Use `'i64'` fields in SoA schemas for deterministic fixed-point values
+- ✅ Use `FP.ToRaw()` / `FP.FromRaw()` when writing/reading `'i64'` fields
 - ❌ Avoid putting complex game logic in components
 - ❌ Avoid component-to-component dependencies
+- ❌ Avoid SoA for complex data (nested objects, strings, variable-length arrays)
 
 ### System Design
 
@@ -1456,30 +1672,32 @@ src/
 ├── scenes/
 │   └── LobbyScene.ts        # Matchmaking UI and connection
 │
-├── entities/                # All extend Unit (which extends Entity from phalanx-ecs)
-│   ├── Unit.ts              # Base game entity class (Babylon.js mesh + fpPosition)
-│   ├── Base.ts              # Player base (win condition)
-│   ├── Tower.ts             # Stationary defense
-│   ├── PrismaUnit.ts        # Heavy combat unit (2x2 grid)
-│   ├── LanceUnit.ts         # Elongated unit (1x2 grid)
-│   ├── MutantUnit.ts        # Animated 3D model unit
-│   └── Projectile.ts        # Attack projectile (standalone, not an Entity)
+├── entities/                # Game entities (extend Entity from phalanx-ecs)
+│   ├── Unit.ts              # Base game entity class (Babylon.js mesh, implements IMeshEntity)
+│   ├── Base.ts              # Player base (win condition), extends Unit
+│   ├── Tower.ts             # Stationary defense, extends Unit
+│   ├── PrismaUnit.ts        # Heavy combat unit (2x2 grid), extends Unit
+│   ├── LanceUnit.ts         # Elongated unit (1x2 grid), extends Unit
+│   ├── MutantUnit.ts        # Animated 3D model unit, extends Unit
+│   └── ProjectileEntity.ts  # Projectile entity (extends Entity, implements IMeshEntity)
 │
 ├── components/
 │   ├── Component.ts         # IComponent re-export + ComponentType registry
-│   ├── TeamComponent.ts     # Team affiliation
-│   ├── HealthComponent.ts   # Health management
-│   ├── AttackComponent.ts   # Attack capabilities
-│   ├── MovementComponent.ts # Movement capabilities
-│   ├── ResourceComponent.ts # Resource generation
-│   ├── UnitTypeComponent.ts # Unit type identifier
-│   ├── PhysicsBodyComponent.ts # Physics body for collision
-│   ├── HealthBarComponent.ts # Health bar visualization
-│   ├── InterpolationComponent.ts # Visual interpolation state
-│   ├── AnimationComponent.ts # 3D model animation state
-│   ├── RotationComponent.ts # Entity rotation toward targets
+│   ├── TeamComponent.ts     # Team affiliation (IComponent)
+│   ├── HealthComponent.ts   # Health management (IComponent)
+│   ├── AttackComponent.ts   # Attack capabilities (IComponent)
+│   ├── MovementComponent.ts # Movement capabilities (IComponent)
+│   ├── ResourceComponent.ts # Resource generation (IComponent)
+│   ├── UnitTypeComponent.ts # Unit type identifier (IComponent)
+│   ├── TransformComponent.ts # Entity position — SoA (i64 fp + f64 visual)
+│   ├── PhysicsBodyComponent.ts # Physics body — SoA (i64 velocity/radius/mass)
+│   ├── HealthBarComponent.ts # Health bar visualization (IComponent)
+│   ├── InterpolationComponent.ts # Visual interpolation state (IComponent)
+│   ├── AnimationComponent.ts # 3D model animation state (IComponent)
+│   ├── RotationComponent.ts # Entity rotation toward targets (IComponent)
 │   ├── AttackLockComponent.ts # Attack lock state
 │   ├── DeathComponent.ts    # Death animation/cleanup state
+│   ├── ProjectileComponent.ts # Projectile simulation state (IComponent)
 │   └── index.ts             # Re-exports
 │
 ├── systems/                 # All extend GameSystem from phalanx-ecs
@@ -1487,7 +1705,7 @@ src/
 │   ├── MovementSystem.ts    # Movement commands
 │   ├── PhysicsSystem.ts     # Deterministic physics simulation
 │   ├── HealthSystem.ts      # Damage processing
-│   ├── ProjectileSystem.ts  # Projectile management
+│   ├── ProjectileSystem.ts  # Projectile ECS entity management (deterministic)
 │   ├── InterpolationSystem.ts # Smooth visual interpolation
 │   ├── ResourceSystem.ts    # Resource generation/spending
 │   ├── TerritorySystem.ts   # Territory control
@@ -1523,6 +1741,7 @@ src/
 │   └── TeamTag.ts           # Team enumeration
 │
 └── interfaces/
+    ├── IMeshEntity.ts       # Interface for entities with visual mesh (Unit, ProjectileEntity)
     ├── IAttacker.ts
     ├── IDamageable.ts
     ├── IMovable.ts

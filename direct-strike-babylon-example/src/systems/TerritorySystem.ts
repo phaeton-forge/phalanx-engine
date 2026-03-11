@@ -1,9 +1,8 @@
 import type { SystemContext } from 'phalanx-ecs';
 import { GameSystem } from 'phalanx-ecs';
-import type { Unit } from '../entities/Unit';
 import { GameEvents, createEvent } from '../events';
 import { TeamTag } from '../enums/TeamTag';
-import { ComponentType, TeamComponent } from '../components';
+import { ComponentType, TeamComponent, TransformComponent } from '../components';
 import { arenaParams, resourceConfig } from '../config/constants';
 import type {
   AggressionBonusActivatedEvent,
@@ -98,9 +97,12 @@ export class TerritorySystem extends GameSystem {
       // Only count mobile units (not bases or towers)
       if (!entity.hasComponent(ComponentType.Movement)) continue;
 
+      const transform = entity.getComponent<TransformComponent>(ComponentType.Transform);
+      if (!transform) continue;
+
       const data = teamData.get(teamComponent.team);
       if (data) {
-        data.totalX += (entity as Unit).position.x;
+        data.totalX += transform.visualPosition.x;
         data.unitCount++;
       }
     }
