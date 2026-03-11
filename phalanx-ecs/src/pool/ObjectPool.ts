@@ -1,5 +1,6 @@
 import type { IPoolable } from './IPoolable';
-import type { PoolConfig, PoolStats } from './types';
+import type { PoolConfig, PoolStats, ResolvedPoolConfig } from './types';
+import { resolvePoolConfig } from './types';
 
 /**
  * Generic object pool for any IPoolable type.
@@ -8,7 +9,7 @@ import type { PoolConfig, PoolStats } from './types';
 export class ObjectPool<T extends IPoolable> {
   private readonly available: T[] = [];
   private readonly factory: () => T;
-  private readonly config: Required<PoolConfig>;
+  private readonly config: ResolvedPoolConfig;
 
   private _totalCreated: number = 0;
   private _acquireCount: number = 0;
@@ -17,12 +18,7 @@ export class ObjectPool<T extends IPoolable> {
 
   constructor(factory: () => T, config?: PoolConfig) {
     this.factory = factory;
-    this.config = {
-      initialSize: config?.initialSize ?? 0,
-      maxSize: config?.maxSize ?? 0,
-      growthStrategy: config?.growthStrategy ?? 'create',
-      growthBatchSize: config?.growthBatchSize ?? 8,
-    };
+    this.config = resolvePoolConfig(config);
   }
 
   /** Take an object from the pool, or create a new one. */

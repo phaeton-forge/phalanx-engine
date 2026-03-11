@@ -40,3 +40,19 @@ export interface PoolingConfig {
   /** Automatically prewarm all pools on start(). Default: true */
   autoPrewarm?: boolean;
 }
+
+export interface ResolvedPoolConfig {
+  initialSize: number;
+  maxSize: number;
+  growthStrategy: 'create' | 'grow';
+  growthBatchSize: number;
+}
+
+export function resolvePoolConfig(config?: PoolConfig): ResolvedPoolConfig {
+  return {
+    initialSize: config?.initialSize ?? 0,
+    maxSize: config?.maxSize ?? 0,
+    growthStrategy: config?.growthStrategy ?? 'create',
+    growthBatchSize: config?.growthBatchSize ?? 8,
+  };
+}

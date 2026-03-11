@@ -127,6 +127,30 @@ describe('EntityPool', () => {
     expect(pool.availableCount).toBe(0);
   });
 
+  it('preserves template components across release/acquire', () => {
+    const pool = new EntityPool(() => new Entity(), {
+      componentTemplates: [
+        { type: TestType, factory: () => new TestResettableComponent() },
+      ],
+    });
+
+    const entity = pool.acquire();
+    expect(entity.hasComponent(TestType)).toBe(true);
+
+    const comp = entity.getComponent<TestResettableComponent>(TestType)!;
+    comp.reinitialize(42);
+    expect(comp.value).toBe(42);
+
+    pool.release(entity);
+    const reused = pool.acquire();
+
+    expect(reused).toBe(entity); // same instance
+    expect(reused.hasComponent(TestType)).toBe(true);
+    const reusedComp = reused.getComponent<TestResettableComponent>(TestType)!;
+    expect(reusedComp).toBe(comp); // same component instance
+    expect(reusedComp.value).toBe(0); // was reset
+  });
+
   it('IDs are globally sequential', () => {
     const pool = new EntityPool(() => new Entity());
 

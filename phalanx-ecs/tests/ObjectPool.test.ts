@@ -133,6 +133,18 @@ describe('ObjectPool', () => {
     expect(pool.totalCreated).toBe(4);
   });
 
+  it('uses LIFO order (stack)', () => {
+    const pool = new ObjectPool<TestPoolable>(() => new TestPoolable());
+
+    const a = pool.acquire();
+    const b = pool.acquire();
+    pool.release(a);
+    pool.release(b);
+
+    expect(pool.acquire()).toBe(b); // last in, first out
+    expect(pool.acquire()).toBe(a);
+  });
+
   it('growth strategy "create" creates single object', () => {
     const pool = new ObjectPool<TestPoolable>(() => new TestPoolable(), {
       growthStrategy: 'create',

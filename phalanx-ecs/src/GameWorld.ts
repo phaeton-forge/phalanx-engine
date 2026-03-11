@@ -61,6 +61,27 @@ export interface GameWorldHooks {
  *
  * Replaces the manual wiring of SystemRegistry + TickFrameManager + NetworkCoordinator
  * with a single entry point. Completely renderer-agnostic.
+ *
+ * Single-player usage:
+ * ```ts
+ * const world = new GameWorld({ componentTypes });
+ * world.registerSystems(tickSystems, frameSystems);
+ * world.start({
+ *   afterFrame(alpha, dt) { scene.render(); },
+ * });
+ * ```
+ *
+ * Multiplayer usage (with PhalanxClient as tickFrameProvider):
+ * ```ts
+ * const world = new GameWorld({ componentTypes, tickFrameProvider: client });
+ * world.registerSystems(tickSystems, frameSystems);
+ * world.start({
+ *   beforeTick(tick, commands) { lockstepManager.processTick(tick, commands); },
+ *   afterTick(tick) { interpolationSystem.captureCurrentPositions(); },
+ *   beforeFrame(alpha, dt) { cameraController.update(dt); },
+ *   afterFrame(alpha, dt) { interpolationSystem.interpolate(alpha); scene.render(); },
+ * });
+ * ```
  */
 export class GameWorld {
   private readonly systemRegistry: SystemRegistry;
@@ -123,13 +144,24 @@ export class GameWorld {
 
   /**
    * Pause the game world.
+   *
+   * If the provider implements requestPause (both TickFrameManager and
+   * PhalanxClient do), the request is forwarded to the provider. The world
+   * will actually freeze only when the provider fires the onPause callback —
+   * this ensures multiplayer clients all freeze at the same deterministic
+   * point after server confirmation, while single-player pauses immediately.
+   *
+   * If the provider does NOT implement requestPause, the world is paused
+   * directly as a fallback.
    */
   public pause(): void {
     if (this._paused) return;
 
     if (this.provider.requestPause) {
+      // Delegate to provider — _paused is set in the onPause callback
       this.provider.requestPause();
     } else {
+      // Fallback for providers that don't support pause
       this._paused = true;
       this.systemRegistry.eventBus.emit(GameWorldEvents.PAUSED, {});
     }
@@ -137,13 +169,18 @@ export class GameWorld {
 
   /**
    * Resume the game world after a pause.
+   *
+   * Same semantics as pause(): delegates to the provider when possible,
+   * and the actual resume happens in the onResume callback.
    */
   public resume(): void {
     if (!this._paused) return;
 
     if (this.provider.requestResume) {
+      // Delegate to provider — _paused is cleared in the onResume callback
       this.provider.requestResume();
     } else {
+      // Fallback for providers that don't support resume
       this._paused = false;
       this.systemRegistry.eventBus.emit(GameWorldEvents.RESUMED, {});
     }
@@ -217,6 +254,14 @@ export class GameWorld {
 
   /**
    * Start the tick/frame loop.
+   *
+   * The tick pipeline:  hooks.beforeTick → processAllTicks → hooks.afterTick
+   * The frame pipeline: hooks.beforeFrame → updateAll → hooks.afterFrame
+   *
+   * Rendering is NOT called automatically. The consumer should call their
+   * renderer (e.g. scene.render()) in the afterFrame hook.
+   *
+   * @param hooks - Optional lifecycle hooks to inject custom logic around the core steps.
    */
   public start(hooks?: GameWorldHooks): void {
     // Prewarm pools if configured

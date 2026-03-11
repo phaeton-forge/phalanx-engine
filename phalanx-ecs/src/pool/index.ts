@@ -7,7 +7,9 @@ export type {
   EntityPoolConfig,
   EntityTypeConfig,
   PoolingConfig,
+  ResolvedPoolConfig,
 } from './types';
+export { resolvePoolConfig } from './types';
 export { ObjectPool } from './ObjectPool';
 export { EntityPool } from './EntityPool';
 export { PoolManager } from './PoolManager';

@@ -102,22 +102,11 @@ export class ProjectileSystem extends GameSystem {
       entity = this.pools.acquire<ProjectileEntity>('projectile');
       entity.initVisual(this.scene, origin, direction, config.team);
 
-      // Reinitialize template components (already attached during prewarm)
-      const projectileComp = entity.getComponent<ProjectileComponent>(ComponentType.Projectile);
-      if (projectileComp) {
-        projectileComp.reinitialize(fpDirection, fpSpeed, config.damage, remainingTicks, config.sourceId);
-      } else {
-        entity.addComponent(
-          new ProjectileComponent(fpDirection, fpSpeed, config.damage, remainingTicks, config.sourceId)
-        );
-      }
-
-      const teamComp = entity.getComponent<TeamComponent>(ComponentType.Team);
-      if (teamComp) {
-        teamComp.reinitialize(config.team);
-      } else {
-        entity.addComponent(new TeamComponent(config.team));
-      }
+      // Template components are guaranteed to be attached after acquire
+      entity.getComponent<ProjectileComponent>(ComponentType.Projectile)!
+        .reinitialize(fpDirection, fpSpeed, config.damage, remainingTicks, config.sourceId);
+      entity.getComponent<TeamComponent>(ComponentType.Team)!
+        .reinitialize(config.team);
     } else {
       // Fallback: create new entity without pooling
       entity = new ProjectileEntity();

@@ -34,7 +34,7 @@ export class ProjectileComponent implements IResettableComponent {
     remainingTicks?: number,
     sourceId?: number
   ) {
-    this.fpDirection = fpDirection ?? FPVector3.FromFloat(0, 0, 0);
+    this.fpDirection = fpDirection ?? FPVector3.Zero;
     this.fpSpeed = fpSpeed ?? FP._0;
     this.damage = damage ?? 0;
     this.remainingTicks = remainingTicks ?? 0;
@@ -43,7 +43,7 @@ export class ProjectileComponent implements IResettableComponent {
 
   /** IPoolable: reset to default state */
   reset(): void {
-    this.fpDirection = FPVector3.FromFloat(0, 0, 0);
+    this.fpDirection = FPVector3.Zero;
     this.fpSpeed = FP._0;
     this.damage = 0;
     this.remainingTicks = 0;
