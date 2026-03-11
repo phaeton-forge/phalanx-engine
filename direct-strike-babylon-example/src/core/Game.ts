@@ -1,6 +1,8 @@
 import { Engine, Scene } from '@babylonjs/core';
 import { GameWorld } from 'phalanx-ecs';
 import type { CommandsBatch } from 'phalanx-ecs';
+import { ProjectileEntity } from '../entities/ProjectileEntity';
+import { ProjectileComponent, TeamComponent } from '../components';
 import { LockstepManager } from './LockstepManager';
 import { EntityFactory } from './EntityFactory';
 import { UIManager } from './UIManager';
@@ -118,6 +120,18 @@ export class Game {
     this.world = new GameWorld({
       componentTypes: Object.values(ComponentType),
       tickFrameProvider: this.client,
+      pooling: {
+        entityTypes: {
+          'projectile': {
+            factory: () => new ProjectileEntity(),
+            pool: { initialSize: 50, maxSize: 200 },
+            components: [
+              { type: ComponentType.Projectile, factory: () => new ProjectileComponent() },
+              { type: ComponentType.Team, factory: () => new TeamComponent() },
+            ],
+          },
+        },
+      },
     });
 
     // Create scene manager (not a GameSystem, but needed by other systems)
@@ -178,6 +192,9 @@ export class Game {
 
     // Register systems and call init() on each
     this.world.registerSystems(tickSystems, frameSystems);
+
+    // Wire pool manager to ProjectileSystem
+    this.projectileSystem.setPoolManager(this.world.pools);
 
     this.setupResizeHandler();
   }
@@ -250,10 +267,11 @@ export class Game {
     // Phase 7: Create lockstep manager (needs all systems)
     this.lockstepManager = this.createLockstepManager();
 
-    // Phase 8: Create entity cleanup service
+    // Phase 8: Create entity cleanup service (pool-aware)
     this.entityCleanupService = new EntityCleanupService(
       this.world.entityManager,
-      this.entityFactory
+      this.entityFactory,
+      this.world.pools
     );
 
     // Phase 9: Create coordinators

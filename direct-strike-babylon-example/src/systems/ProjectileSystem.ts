@@ -2,7 +2,7 @@ import { Vector3 } from '@babylonjs/core';
 import type { Scene } from '@babylonjs/core';
 import { ProjectileEntity } from '../entities/ProjectileEntity';
 import { ExplosionEffect } from '../effects/ExplosionEffect';
-import type { SystemContext, Entity } from 'phalanx-ecs';
+import type { SystemContext, Entity, PoolManager } from 'phalanx-ecs';
 import { GameSystem } from 'phalanx-ecs';
 import {
   ComponentType,
@@ -41,18 +41,13 @@ export interface ProjectileSpawnConfig {
 /**
  * ProjectileSystem - Manages all projectiles as ECS entities
  *
- * Projectiles are proper ECS entities with:
- * - ProjectileComponent: direction, speed, damage, lifetime, sourceId
- * - TeamComponent: team affiliation for collision filtering
- * - TransformComponent: authoritative fixed-point position (SoA-backed)
- * - InterpolationComponent: smooth visual movement between ticks
- *
- * Collision detection uses fixed-point squared distance for determinism.
- * Lifetime is tick-based (integer countdown) — fully deterministic.
- * Visual interpolation is handled automatically by InterpolationSystem.
+ * Supports object pooling: when world.pools has a 'projectile' pool registered,
+ * entities are acquired from the pool and template components are reinitialized
+ * instead of creating new instances.
  */
 export class ProjectileSystem extends GameSystem {
   private scene: Scene;
+  private pools: PoolManager | null = null;
 
   constructor(scene: Scene) {
     super();
@@ -62,6 +57,11 @@ export class ProjectileSystem extends GameSystem {
   public override init(context: SystemContext): void {
     super.init(context);
     this.setupEventListeners();
+  }
+
+  /** Set the pool manager reference (called by Game after world creation) */
+  public setPoolManager(pools: PoolManager | null): void {
+    this.pools = pools;
   }
 
   private setupEventListeners(): void {
@@ -90,19 +90,45 @@ export class ProjectileSystem extends GameSystem {
     const lifetimeSecs = config.lifetime ?? DEFAULT_PROJECTILE_LIFETIME_SECS;
     const remainingTicks = Math.round(lifetimeSecs * networkConfig.tickRate);
 
-    // Create entity with mesh
-    const entity = new ProjectileEntity(this.scene, origin, direction, config.team);
-
-    // Add components
     const fpDirection = FPVector3.Normalize(
       FPVector3.FromFloat(direction.x, direction.y, direction.z)
     );
     const fpSpeed = FP.FromFloat(speed);
-    entity.addComponent(
-      new ProjectileComponent(fpDirection, fpSpeed, config.damage, remainingTicks, config.sourceId)
-    );
-    entity.addComponent(new TeamComponent(config.team));
 
+    let entity: ProjectileEntity;
+
+    if (this.pools) {
+      // Pool path: acquire from pool, reinitialize template components
+      entity = this.pools.acquire<ProjectileEntity>('projectile');
+      entity.initVisual(this.scene, origin, direction, config.team);
+
+      // Reinitialize template components (already attached during prewarm)
+      const projectileComp = entity.getComponent<ProjectileComponent>(ComponentType.Projectile);
+      if (projectileComp) {
+        projectileComp.reinitialize(fpDirection, fpSpeed, config.damage, remainingTicks, config.sourceId);
+      } else {
+        entity.addComponent(
+          new ProjectileComponent(fpDirection, fpSpeed, config.damage, remainingTicks, config.sourceId)
+        );
+      }
+
+      const teamComp = entity.getComponent<TeamComponent>(ComponentType.Team);
+      if (teamComp) {
+        teamComp.reinitialize(config.team);
+      } else {
+        entity.addComponent(new TeamComponent(config.team));
+      }
+    } else {
+      // Fallback: create new entity without pooling
+      entity = new ProjectileEntity();
+      entity.initVisual(this.scene, origin, direction, config.team);
+      entity.addComponent(
+        new ProjectileComponent(fpDirection, fpSpeed, config.damage, remainingTicks, config.sourceId)
+      );
+      entity.addComponent(new TeamComponent(config.team));
+    }
+
+    // SoA components are always created new (data lives in typed arrays)
     const initialFpPos = FPVector3.FromFloat(origin.x, origin.y, origin.z);
     const transform = new TransformComponent(entity.id, initialFpPos);
     entity.addComponent(transform);
