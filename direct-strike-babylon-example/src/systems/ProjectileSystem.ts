@@ -49,6 +49,9 @@ export class ProjectileSystem extends GameSystem {
   private scene: Scene;
   private pools: PoolManager | null = null;
 
+  /** Scratch Vector3 reused for explosion/hit positions — avoids per-event allocation */
+  private readonly _scratchPos: Vector3 = new Vector3();
+
   constructor(scene: Scene) {
     super();
     this.scene = scene;
@@ -107,6 +110,22 @@ export class ProjectileSystem extends GameSystem {
         .reinitialize(fpDirection, fpSpeed, config.damage, remainingTicks, config.sourceId);
       entity.getComponent<TeamComponent>(ComponentType.Team)!
         .reinitialize(config.team);
+
+      // SoA components: always allocate new (data lives in typed arrays)
+      const initialFpPos = FPVector3.FromFloat(origin.x, origin.y, origin.z);
+      const transform = new TransformComponent(entity.id, initialFpPos);
+      entity.addComponent(transform);
+
+      // Interpolation is a template component — reinitialize in-place
+      entity.getComponent<InterpolationComponent>(ComponentType.Interpolation)!
+        .reinitialize(transform.fpPosition, false);
+
+      // Register with EntityManager
+      this.entityManager.addEntity(entity);
+
+      // Snap so the first frame doesn't blend from (0,0,0)
+      entity.getComponent<InterpolationComponent>(ComponentType.Interpolation)!
+        .snapToPosition(transform.fpPosition);
     } else {
       // Fallback: create new entity without pooling
       entity = new ProjectileEntity();
@@ -115,21 +134,20 @@ export class ProjectileSystem extends GameSystem {
         new ProjectileComponent(fpDirection, fpSpeed, config.damage, remainingTicks, config.sourceId)
       );
       entity.addComponent(new TeamComponent(config.team));
+
+      const initialFpPos = FPVector3.FromFloat(origin.x, origin.y, origin.z);
+      const transform = new TransformComponent(entity.id, initialFpPos);
+      entity.addComponent(transform);
+
+      const interpolation = new InterpolationComponent(transform.fpPosition, false);
+      entity.addComponent(interpolation);
+
+      // Register with EntityManager
+      this.entityManager.addEntity(entity);
+
+      // Snap interpolation so the first frame doesn't blend from (0,0,0)
+      interpolation.snapToPosition(transform.fpPosition);
     }
-
-    // SoA components are always created new (data lives in typed arrays)
-    const initialFpPos = FPVector3.FromFloat(origin.x, origin.y, origin.z);
-    const transform = new TransformComponent(entity.id, initialFpPos);
-    entity.addComponent(transform);
-
-    const interpolation = new InterpolationComponent(transform.fpPosition, false);
-    entity.addComponent(interpolation);
-
-    // Register with EntityManager
-    this.entityManager.addEntity(entity);
-
-    // Snap interpolation so the first frame doesn't blend from (0,0,0)
-    interpolation.snapToPosition(transform.fpPosition);
 
     return entity;
   }
@@ -193,12 +211,14 @@ export class ProjectileSystem extends GameSystem {
             sourceId: projectile.sourceId,
           });
 
+          // Reuse scratch vector — event bus dispatches synchronously
           const floatPos = FPVector3.ToFloat(transform.fpPosition);
+          this._scratchPos.set(floatPos.x, floatPos.y, floatPos.z);
           this.eventBus.emit<ProjectileHitEvent>(GameEvents.PROJECTILE_HIT, {
             ...createEvent(),
             targetId: target.id,
             damage: projectile.damage,
-            position: new Vector3(floatPos.x, floatPos.y, floatPos.z),
+            position: this._scratchPos,
             team: team.team,
             sourceId: projectile.sourceId,
           });
@@ -215,7 +235,8 @@ export class ProjectileSystem extends GameSystem {
    */
   private destroyProjectile(entity: Entity, transform: TransformComponent): void {
     const floatPos = FPVector3.ToFloat(transform.fpPosition);
-    new ExplosionEffect(this.scene, new Vector3(floatPos.x, floatPos.y, floatPos.z));
+    this._scratchPos.set(floatPos.x, floatPos.y, floatPos.z);
+    new ExplosionEffect(this.scene, this._scratchPos);
     entity.destroy();
   }
 

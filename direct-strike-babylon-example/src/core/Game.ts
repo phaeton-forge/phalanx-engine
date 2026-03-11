@@ -2,7 +2,7 @@ import { Engine, Scene } from '@babylonjs/core';
 import { GameWorld } from 'phalanx-ecs';
 import type { CommandsBatch } from 'phalanx-ecs';
 import { ProjectileEntity } from '../entities/ProjectileEntity';
-import { ProjectileComponent, TeamComponent } from '../components';
+import { ProjectileComponent, TeamComponent, InterpolationComponent } from '../components';
 import { LockstepManager } from './LockstepManager';
 import { EntityFactory } from './EntityFactory';
 import { UIManager } from './UIManager';
@@ -128,6 +128,7 @@ export class Game {
             components: [
               { type: ComponentType.Projectile, factory: () => new ProjectileComponent() },
               { type: ComponentType.Team, factory: () => new TeamComponent() },
+              { type: ComponentType.Interpolation, factory: () => new InterpolationComponent() },
             ],
           },
         },

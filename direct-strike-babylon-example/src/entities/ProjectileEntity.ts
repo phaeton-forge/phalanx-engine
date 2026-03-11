@@ -1,14 +1,7 @@
-import {
-  Scene,
-  Vector3,
-  MeshBuilder,
-  StandardMaterial,
-  Color3,
-  Mesh,
-} from '@babylonjs/core';
-import { Entity } from 'phalanx-ecs';
-import { TeamTag } from '../enums/TeamTag';
-import type { IMeshEntity } from '../interfaces/IMeshEntity';
+import {Color3, Mesh, MeshBuilder, Scene, StandardMaterial, Vector3,} from '@babylonjs/core';
+import {Entity} from 'phalanx-ecs';
+import {TeamTag} from '../enums/TeamTag';
+import type {IMeshEntity} from '../interfaces';
 
 /**
  * ProjectileEntity - ECS entity with laser beam mesh
@@ -19,6 +12,12 @@ import type { IMeshEntity } from '../interfaces/IMeshEntity';
 export class ProjectileEntity extends Entity implements IMeshEntity {
   private scene: Scene | null = null;
   private mesh: Mesh | null = null;
+
+  // Pre-allocated temporaries — reused across every orientToDirection call
+  private readonly _upVec: Vector3 = new Vector3(0, 1, 0);
+  private readonly _axisVec: Vector3 = new Vector3();
+  private readonly _normalizedDir: Vector3 = new Vector3();
+  private readonly _targetPos: Vector3 = new Vector3();
 
   constructor() {
     super();
@@ -55,8 +54,7 @@ export class ProjectileEntity extends Entity implements IMeshEntity {
       scene
     );
 
-    const material = new StandardMaterial('projectileMat', scene);
-    mesh.material = material;
+    mesh.material = new StandardMaterial('projectileMat', scene);
     this.applyTeamColors(mesh, team);
 
     return mesh;
@@ -75,16 +73,16 @@ export class ProjectileEntity extends Entity implements IMeshEntity {
   }
 
   private orientToDirection(direction: Vector3): void {
-    const normalized = direction.normalize();
-    const up = new Vector3(0, 1, 0);
-    const axis = Vector3.Cross(up, normalized);
+    // Reuse pre-allocated vectors — zero heap allocation
+    direction.normalizeToRef(this._normalizedDir);
+    Vector3.CrossToRef(this._upVec, this._normalizedDir, this._axisVec);
 
-    if (axis.length() > 0.001) {
+    if (this._axisVec.length() > 0.001) {
       this.mesh!.rotationQuaternion = null;
-      this.mesh!.rotation = Vector3.Zero();
+      this.mesh!.rotation.setAll(0);
 
-      const targetPos = this.mesh!.position.add(normalized);
-      this.mesh!.lookAt(targetPos);
+      this._targetPos.copyFrom(this.mesh!.position).addInPlace(this._normalizedDir);
+      this.mesh!.lookAt(this._targetPos);
       this.mesh!.rotation.x += Math.PI / 2;
     }
   }

@@ -1,19 +1,23 @@
 import { ComponentType } from './Component';
 import type { IResettableComponent } from 'phalanx-ecs';
 import type { FPVector3 as FPVector3Type, FixedPoint } from 'phalanx-math';
-import { FP, FPVector3 } from 'phalanx-math';
+import { FP } from 'phalanx-math';
 
 /**
  * ProjectileComponent - Data-only component for projectile state
  *
  * Implements IResettableComponent for pool support.
- * Fields are mutable to allow reinitialize() without allocation.
+ * fpDirection is pre-allocated and mutated in-place on reinitialize()
+ * to avoid per-spawn heap allocation.
  */
 export class ProjectileComponent implements IResettableComponent {
   public readonly type = ComponentType.Projectile;
 
-  /** Normalized direction of travel (fixed-point, deterministic) */
-  public fpDirection: FPVector3Type;
+  /**
+   * Normalized direction of travel (fixed-point, deterministic).
+   * Pre-allocated once — mutated in-place by reinitialize().
+   */
+  public readonly fpDirection: FPVector3Type = { x: FP._0, y: FP._0, z: FP._0 };
 
   /** Movement speed per second (fixed-point, deterministic) */
   public fpSpeed: FixedPoint;
@@ -34,7 +38,11 @@ export class ProjectileComponent implements IResettableComponent {
     remainingTicks?: number,
     sourceId?: number
   ) {
-    this.fpDirection = fpDirection ?? FPVector3.Zero;
+    if (fpDirection) {
+      this.fpDirection.x = fpDirection.x;
+      this.fpDirection.y = fpDirection.y;
+      this.fpDirection.z = fpDirection.z;
+    }
     this.fpSpeed = fpSpeed ?? FP._0;
     this.damage = damage ?? 0;
     this.remainingTicks = remainingTicks ?? 0;
@@ -43,14 +51,16 @@ export class ProjectileComponent implements IResettableComponent {
 
   /** IPoolable: reset to default state */
   reset(): void {
-    this.fpDirection = FPVector3.Zero;
+    this.fpDirection.x = FP._0;
+    this.fpDirection.y = FP._0;
+    this.fpDirection.z = FP._0;
     this.fpSpeed = FP._0;
     this.damage = 0;
     this.remainingTicks = 0;
     this.sourceId = 0;
   }
 
-  /** IResettableComponent: reinitialize with new parameters */
+  /** IResettableComponent: reinitialize with new parameters — zero allocation */
   reinitialize(
     fpDirection: FPVector3Type,
     fpSpeed: FixedPoint,
@@ -58,7 +68,9 @@ export class ProjectileComponent implements IResettableComponent {
     remainingTicks: number,
     sourceId: number
   ): void {
-    this.fpDirection = fpDirection;
+    this.fpDirection.x = fpDirection.x;
+    this.fpDirection.y = fpDirection.y;
+    this.fpDirection.z = fpDirection.z;
     this.fpSpeed = fpSpeed;
     this.damage = damage;
     this.remainingTicks = remainingTicks;
