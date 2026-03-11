@@ -459,7 +459,7 @@ client.on('commands', (event) => {});
 // Player events
 client.on('playerDisconnected', (event) => {});
 client.on('playerReconnected', (event) => {});
-client.on('playerReady', (event) => {});  // Another player reported ready
+client.on('playerReady', (event) => {});  // A player reported ready (local or remote)
 
 // Reconnection events
 client.on('reconnectState', (event) => {});

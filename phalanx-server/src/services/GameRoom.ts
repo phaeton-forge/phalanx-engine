@@ -50,7 +50,7 @@ export class GameRoom {
   // Ready handshake: tracks which players have reported ready after asset loading
   private readyPlayers: Set<string> = new Set();
   private readyTimeout: NodeJS.Timeout | null = null;
-  private readonly readyTimeoutMs: number = 30000;
+  private readonly readyTimeoutMs: number;
 
   // Command buffer for lockstep: Map<tick, { playerId: commands[] }>
   private commandBuffer: Map<number, TickCommands> = new Map();
@@ -95,6 +95,9 @@ export class GameRoom {
     this.createdAt = new Date();
     // Generate deterministic random seed for this match (32-bit unsigned integer)
     this.randomSeed = randomBytes(4).readUInt32BE();
+
+    // Resolve ready timeout from config
+    this.readyTimeoutMs = config.readyTimeoutMs ?? 30000;
 
     // Resolve desync config with defaults
     this.desyncConfig = {

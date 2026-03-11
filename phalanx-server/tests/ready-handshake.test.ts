@@ -175,6 +175,7 @@ describe('Ready Handshake Protocol', () => {
       server = new Phalanx({
         port: TEST_PORT,
         countdownSeconds: 0,
+        readyTimeoutMs: 200,
       });
       await server.start();
 
@@ -212,22 +213,8 @@ describe('Ready Handshake Protocol', () => {
       client1.emit('client-ready');
       // Don't send client2 ready — wait for timeout
 
-      // The default timeout is 30s which is too long for tests.
-      // Instead, we verify the match state shows waiting-for-ready
-      // and that no ticks arrive. The full timeout test would require
-      // lowering the timeout constant.
-
-      // Verify no ticks arrive within a short window
-      const tickReceived = new Promise<boolean>((resolve) => {
-        const timeout = setTimeout(() => resolve(false), 500);
-        client1.on('tick-sync', () => {
-          clearTimeout(timeout);
-          resolve(true);
-        });
-      });
-
-      const didReceiveTick = await tickReceived;
-      expect(didReceiveTick).toBe(false);
+      const matchEnd = await matchEndPromise;
+      expect(matchEnd.reason).toBe('ready-timeout');
     });
   });
 

@@ -228,7 +228,7 @@ export interface PlayerReconnectedEvent {
 }
 
 /**
- * Event received when another player reports ready during the loading phase
+ * Event received when a player reports ready during the loading phase
  */
 export interface PlayerReadyEvent {
   playerId: string;

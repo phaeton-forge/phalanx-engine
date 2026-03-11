@@ -136,7 +136,7 @@ class Phalanx {
 | `match-found`         |      | ✅      | Match created, countdown starting |
 | `game-start`          |      | ✅      | Countdown finished, load assets   |
 | `client-ready`        | ✅   |         | Client finished loading, ready for ticks |
-| `player-ready`        |      | ✅      | Another player reported ready     |
+| `player-ready`        |      | ✅      | A player reported ready           |
 | `match-end`           |      | ✅      | Match has ended                   |
 | `submit-commands`     | ✅   |         | Send game commands                |
 | `submit-commands-ack` |      | ✅      | Command acknowledgment            |
