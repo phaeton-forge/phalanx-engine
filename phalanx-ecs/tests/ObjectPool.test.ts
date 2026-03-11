@@ -48,10 +48,13 @@ describe('ObjectPool', () => {
     const pool = new ObjectPool<TestPoolable>(() => new TestPoolable());
 
     const obj = pool.acquire();
+    // acquire() calls reset() once on the new object
+    expect(obj.resetCount).toBe(1);
     obj.value = 100;
     pool.release(obj);
     expect(obj.value).toBe(0);
-    expect(obj.resetCount).toBe(1);
+    // reset() called once on acquire + once on release = 2
+    expect(obj.resetCount).toBe(2);
   });
 
   it('respects maxSize limit', () => {

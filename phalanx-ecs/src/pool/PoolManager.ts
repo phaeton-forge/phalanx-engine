@@ -7,7 +7,7 @@ import type { EntityTypeConfig, PoolStats } from './types';
  * One PoolManager per GameWorld.
  */
 export class PoolManager {
-  private readonly pools: Map<string, EntityPool<any>> = new Map();
+  private readonly pools: Map<string, EntityPool<Entity>> = new Map();
   private readonly initialSizes: Map<string, number> = new Map();
 
   /**

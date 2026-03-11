@@ -1,5 +1,7 @@
+import type { IComponent } from '../Component';
 import type { Entity } from '../Entity';
 import { nextEntityId } from '../Entity';
+import type { IPoolable } from './IPoolable';
 import type { EntityPoolConfig, PoolStats, ComponentTemplate, ResolvedPoolConfig } from './types';
 import { resolvePoolConfig } from './types';
 
@@ -32,9 +34,11 @@ export class EntityPool<T extends Entity = Entity> {
     this._acquireCount++;
 
     let entity: T;
+    let fromPool = false;
 
     if (this.available.length > 0) {
       entity = this.available.pop()!;
+      fromPool = true;
     } else {
       this._missCount++;
 
@@ -44,28 +48,28 @@ export class EntityPool<T extends Entity = Entity> {
 
       if (this.available.length > 0) {
         entity = this.available.pop()!;
+        fromPool = true;
       } else {
         entity = this.createEntity();
       }
     }
 
-    // Assign new ID and revive
-    entity._setId(nextEntityId());
-    entity._revive();
+    if (fromPool) {
+      // Reused entity — assign fresh ID and revive
+      entity._setId(nextEntityId());
+      entity._revive();
+    }
+    // For fresh entities: constructor already assigned ID, _isDestroyed is false
 
-    // For pool hits: template components survived from release, reset them.
-    // For misses: template components were just created in createEntity(), also reset them.
+    // Reset template components
     for (const template of this.componentTemplates) {
-      let comp = entity.getComponent(template.type);
-      if (!comp) {
-        // Component was removed somehow - recreate from template
-        comp = template.factory();
-        entity.addComponent(comp);
-        this._totalCreated++;
+      const comp = entity.getComponent(template.type);
+      if (comp) {
+        if ('reset' in comp && typeof (comp as IPoolable).reset === 'function') {
+          (comp as IPoolable).reset();
+        }
       }
-      if ('reset' in comp && typeof comp.reset === 'function') {
-        (comp as any).reset();
-      }
+      // No need to recreate — templates are preserved via prepareForPool/createEntity
     }
 
     return entity;
@@ -76,26 +80,11 @@ export class EntityPool<T extends Entity = Entity> {
     this._releaseCount++;
 
     if (this.config.maxSize > 0 && this.available.length >= this.config.maxSize) {
-      return; // Pool is full — discard
+      entity.dispose(); // Clean up resources for entities that won't be pooled
+      return;
     }
 
-    // Save template components before reset clears the map
-    const saved: any[] = [];
-    for (const template of this.componentTemplates) {
-      const comp = entity.getComponent(template.type);
-      if (comp) saved.push(comp);
-    }
-
-    entity.reset(); // clears component map
-
-    // Re-attach template components (reset them too)
-    for (const comp of saved) {
-      if ('reset' in comp && typeof comp.reset === 'function') {
-        comp.reset();
-      }
-      entity.addComponent(comp);
-    }
-
+    this.prepareForPool(entity);
     this.available.push(entity);
   }
 
@@ -107,7 +96,7 @@ export class EntityPool<T extends Entity = Entity> {
         break;
       }
       const entity = this.createEntity();
-      entity.reset();
+      this.prepareForPool(entity);
       this.available.push(entity);
     }
   }
@@ -119,8 +108,26 @@ export class EntityPool<T extends Entity = Entity> {
         break;
       }
       const entity = this.createEntity();
-      entity.reset();
+      this.prepareForPool(entity);
       this.available.push(entity);
+    }
+  }
+
+  /** Prepare an entity for storage in the pool — reset while preserving templates. */
+  private prepareForPool(entity: T): void {
+    const savedComps: IComponent[] = [];
+    for (const template of this.componentTemplates) {
+      const comp = entity.getComponent(template.type);
+      if (comp) savedComps.push(comp);
+    }
+
+    entity.reset();
+
+    for (const comp of savedComps) {
+      if ('reset' in comp && typeof (comp as IPoolable).reset === 'function') {
+        (comp as IPoolable).reset();
+      }
+      entity.addComponent(comp);
     }
   }
 

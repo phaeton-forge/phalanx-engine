@@ -33,6 +33,9 @@ export class ProjectileEntity extends Entity implements IMeshEntity {
 
     if (!this.mesh) {
       this.mesh = this.createMesh(team);
+    } else {
+      // Update team colors on the existing material for reuse
+      this.applyTeamColors(this.mesh, team);
     }
 
     this.mesh.position.copyFrom(origin);
@@ -53,6 +56,15 @@ export class ProjectileEntity extends Entity implements IMeshEntity {
     );
 
     const material = new StandardMaterial('projectileMat', scene);
+    mesh.material = material;
+    this.applyTeamColors(mesh, team);
+
+    return mesh;
+  }
+
+  private applyTeamColors(mesh: Mesh, team: TeamTag): void {
+    const material = mesh.material as StandardMaterial;
+    if (!material) return;
     if (team === TeamTag.Team1) {
       material.diffuseColor = new Color3(0, 0.8, 1);
       material.emissiveColor = new Color3(0, 0.4, 0.5);
@@ -60,9 +72,6 @@ export class ProjectileEntity extends Entity implements IMeshEntity {
       material.diffuseColor = new Color3(1, 0.2, 0);
       material.emissiveColor = new Color3(0.5, 0.1, 0);
     }
-    mesh.material = material;
-
-    return mesh;
   }
 
   private orientToDirection(direction: Vector3): void {

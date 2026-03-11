@@ -25,24 +25,33 @@ export class ObjectPool<T extends IPoolable> {
   acquire(): T {
     this._acquireCount++;
 
-    if (this.available.length > 0) {
-      return this.available.pop()!;
-    }
+    if (this.available.length === 0) {
+      // Pool miss
+      this._missCount++;
 
-    // Pool miss
-    this._missCount++;
+      if (this.config.growthStrategy === 'grow') {
+        // Batch create with maxSize respect
+        const batch = this.config.growthBatchSize;
+        for (let i = 0; i < batch; i++) {
+          if (this.config.maxSize > 0 && this.available.length >= this.config.maxSize) break;
+          const obj = this.factory();
+          obj.reset();
+          this._totalCreated++;
+          this.available.push(obj);
+        }
+      }
 
-    if (this.config.growthStrategy === 'grow') {
-      // Batch create, push all but one to available
-      const batch = this.config.growthBatchSize;
-      for (let i = 1; i < batch; i++) {
-        this.available.push(this.factory());
+      if (this.available.length === 0) {
         this._totalCreated++;
+        const obj = this.factory();
+        obj.reset();
+        return obj;
       }
     }
 
-    this._totalCreated++;
-    return this.factory();
+    const obj = this.available.pop()!;
+    obj.reset();
+    return obj;
   }
 
   /** Return an object to the pool. Calls reset(). */
@@ -60,8 +69,11 @@ export class ObjectPool<T extends IPoolable> {
   prewarm(count: number): void {
     const toCreate = count - this.available.length;
     for (let i = 0; i < toCreate; i++) {
-      this.available.push(this.factory());
+      if (this.config.maxSize > 0 && this.available.length >= this.config.maxSize) break;
+      const obj = this.factory();
+      obj.reset();
       this._totalCreated++;
+      this.available.push(obj);
     }
   }
 
