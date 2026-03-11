@@ -1,6 +1,8 @@
 import { SystemRegistry } from './SystemRegistry';
 import { TickFrameManager } from './TickFrameManager';
 import { SoAComponent } from './SoAComponent';
+import { PoolManager } from './pool/PoolManager';
+import type { EntityTypeConfig } from './pool/PoolManager';
 import type { ITickFrameProvider, Unsubscribe } from './ITickFrameProvider';
 import type { EventBus } from './EventBus';
 import type { EntityManager } from './EntityManager';
@@ -30,6 +32,18 @@ export interface GameWorldConfig {
   maxFrameTime?: number;
   /** External tick/frame provider (e.g. PhalanxClient for multiplayer). If omitted, an internal TickFrameManager is created. */
   tickFrameProvider?: ITickFrameProvider;
+  /** Object pooling configuration. If omitted, pooling is disabled. */
+  pooling?: PoolingConfig;
+}
+
+/**
+ * Configuration for the object pooling subsystem.
+ */
+export interface PoolingConfig {
+  /** Entity type definitions for pooling, keyed by type name. */
+  entityTypes: Record<string, EntityTypeConfig>;
+  /** Automatically prewarm all pools on start(). Default: true */
+  autoPrewarm?: boolean;
 }
 
 /**
@@ -84,6 +98,9 @@ export class GameWorld {
   private readonly provider: ITickFrameProvider;
   private readonly ownsProvider: boolean;
 
+  /** Pool manager. null if pooling is not configured. */
+  public readonly pools: PoolManager | null;
+
   // Unsubscribe handles for tick/frame
   private unsubscribeTick: Unsubscribe | null = null;
   private unsubscribeFrame: Unsubscribe | null = null;
@@ -114,6 +131,16 @@ export class GameWorld {
         maxFrameTime: config.maxFrameTime,
       });
       this.ownsProvider = true;
+    }
+
+    // Initialize pooling if configured
+    if (config.pooling) {
+      this.pools = new PoolManager();
+      for (const [typeKey, typeConfig] of Object.entries(config.pooling.entityTypes)) {
+        this.pools.registerEntityType(typeKey, typeConfig);
+      }
+    } else {
+      this.pools = null;
     }
   }
 
@@ -308,6 +335,7 @@ export class GameWorld {
    */
   public dispose(): void {
     this.stop();
+    this.pools?.drainAll();
     this.systemRegistry.dispose();
     SoAComponent.resetContext();
   }

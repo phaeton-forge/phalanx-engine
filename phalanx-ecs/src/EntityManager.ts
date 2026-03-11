@@ -28,6 +28,18 @@ export class EntityManager {
   // These are sorted arrays of entity IDs that have each component
   private componentIndices: Map<symbol, number[]> = new Map();
 
+  // ── Query Cache ────────────────────────────────────────────────────
+  // Reusable result buffers keyed by a cache key derived from component types.
+  // The cache is invalidated (cleared) whenever entities or components change.
+  private queryCache: Map<string, Entity[]> = new Map();
+  private queryCacheDirty: boolean = true;
+
+  /** Build a deterministic cache key from an array of component type symbols. */
+  private buildQueryCacheKey(componentTypes: symbol[]): string {
+    // Symbol.toString() is deterministic for the same symbol instance
+    return componentTypes.map((s) => s.toString()).sort().join('|');
+  }
+
   /**
    * Binary search to find insertion index for maintaining sorted order
    * Returns the index where the value should be inserted
@@ -94,6 +106,8 @@ export class EntityManager {
         this.sortedInsert(index, entity.id);
       }
     }
+
+    this.invalidateQueryCache();
   }
 
   /**
@@ -110,6 +124,8 @@ export class EntityManager {
 
     this.sortedRemove(this.sortedEntityIds, entity.id);
     this.entities.delete(entity.id);
+
+    this.invalidateQueryCache();
   }
 
   /**
@@ -213,6 +229,47 @@ export class EntityManager {
     return result;
   }
 
+  // ============ Cached Queries ============
+
+  /**
+   * Query entities with a reusable result buffer.
+   * Does not allocate a new array when the cache is still valid.
+   *
+   * IMPORTANT: The returned array is owned by the cache — do NOT modify it.
+   *
+   * @param componentTypes — Component types to filter by
+   * @returns Readonly array of matching entities (sorted by ID)
+   */
+  public queryEntitiesCached(...componentTypes: symbol[]): readonly Entity[] {
+    const key = this.buildQueryCacheKey(componentTypes);
+
+    if (!this.queryCacheDirty) {
+      const cached = this.queryCache.get(key);
+      if (cached) {
+        return cached;
+      }
+    }
+
+    // Perform the actual query
+    const result = this.queryEntities(...componentTypes);
+
+    // Store in cache. Clear dirty so subsequent cached queries also
+    // rebuild lazily on their next call.
+    this.queryCache.set(key, result);
+    this.queryCacheDirty = false;
+
+    return result;
+  }
+
+  /**
+   * Invalidate all cached query results.
+   * Called automatically when entities or components change.
+   */
+  public invalidateQueryCache(): void {
+    this.queryCacheDirty = true;
+    this.queryCache.clear();
+  }
+
   /**
    * Merge multiple sorted arrays into a single sorted array with unique values
    */
@@ -261,6 +318,7 @@ export class EntityManager {
     if (index) {
       this.sortedInsert(index, entity.id);
     }
+    this.invalidateQueryCache();
   }
 
   /**
@@ -271,6 +329,7 @@ export class EntityManager {
     if (index) {
       this.sortedRemove(index, entity.id);
     }
+    this.invalidateQueryCache();
   }
 
   /**

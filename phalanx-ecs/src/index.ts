@@ -14,10 +14,10 @@ export { GameSystem } from './GameSystem';
 
 // GameWorld facade
 export { GameWorld, GameWorldEvents } from './GameWorld';
-export type { GameWorldConfig, GameWorldHooks } from './GameWorld';
+export type { GameWorldConfig, GameWorldHooks, PoolingConfig } from './GameWorld';
 
 // Entity and Component
-export { Entity, resetEntityIdCounter } from './Entity';
+export { Entity, resetEntityIdCounter, nextEntityId } from './Entity';
 export { IComponent, createComponentTypeRegistry } from './Component';
 export type { IComponent as Component } from './Component';
 
@@ -53,3 +53,14 @@ export type {
   PlayerCommand,
   PauseHandler,
 } from './ITickFrameProvider';
+
+// Object Pooling
+export type { IPoolable } from './pool/IPoolable';
+export type { IResettableComponent } from './pool/IResettableComponent';
+export type { PoolConfig, PoolStats } from './pool/types';
+export { ObjectPool } from './pool/ObjectPool';
+export { EntityPool } from './pool/EntityPool';
+export type { ComponentTemplate, EntityPoolConfig } from './pool/EntityPool';
+export { PoolManager } from './pool/PoolManager';
+export type { EntityTypeConfig } from './pool/PoolManager';
+export { ComponentPoolRegistry } from './pool/ComponentPoolRegistry';

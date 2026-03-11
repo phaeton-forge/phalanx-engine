@@ -1,4 +1,5 @@
 import type { IComponent } from './Component';
+import type { IPoolable } from './pool/IPoolable';
 
 let entityIdCounter = 0;
 
@@ -11,6 +12,14 @@ export function resetEntityIdCounter(): void {
 }
 
 /**
+ * Allocate the next entity ID from the global counter.
+ * Exported for use by EntityPool.
+ */
+export function nextEntityId(): number {
+  return ++entityIdCounter;
+}
+
+/**
  * Base Entity class - Container for components
  * Uses composition over inheritance
  *
@@ -18,13 +27,37 @@ export function resetEntityIdCounter(): void {
  * Game-specific subclasses (e.g. Unit) can add mesh, position, and other
  * rendering-related properties.
  */
-export class Entity {
-  public readonly id: number;
+export class Entity implements IPoolable {
+  private _id: number;
   protected components: Map<symbol, IComponent> = new Map();
   private _isDestroyed: boolean = false;
 
   constructor() {
-    this.id = ++entityIdCounter;
+    this._id = ++entityIdCounter;
+  }
+
+  /** Entity ID (unique per lifecycle, reassigned on pool acquire) */
+  public get id(): number {
+    return this._id;
+  }
+
+  /** @internal Assign a new ID — used by the pool on acquire. */
+  public _setId(id: number): void {
+    this._id = id;
+  }
+
+  /** @internal Clear the destroyed flag so a pooled entity can be reused. */
+  public _revive(): void {
+    this._isDestroyed = false;
+  }
+
+  /**
+   * IPoolable: reset the entity to a clean state.
+   * Map.clear() reuses internal storage — no new allocations.
+   */
+  public reset(): void {
+    this._isDestroyed = false;
+    this.components.clear();
   }
 
   /**
@@ -84,5 +117,13 @@ export class Entity {
   public dispose(): void {
     this._isDestroyed = true;
     this.components.clear();
+  }
+
+  /**
+   * Get all component type symbols currently attached to this entity.
+   * Used by EntityPool to track which component indices need updating.
+   */
+  public getComponentTypes(): symbol[] {
+    return [...this.components.keys()];
   }
 }
