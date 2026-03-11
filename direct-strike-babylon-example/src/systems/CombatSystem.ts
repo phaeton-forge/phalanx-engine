@@ -4,6 +4,7 @@ import { Tower } from '../entities/Tower';
 import type { SystemContext } from 'phalanx-ecs';
 import { GameSystem } from 'phalanx-ecs';
 import { GameRandom } from '../core/GameRandom';
+import { MovementSystem } from './MovementSystem';
 import {
   AnimationComponent,
   AttackComponent,
@@ -59,7 +60,7 @@ const DEFAULT_COMBAT_CONFIG: CombatConfig = {
 /**
  * CombatSystem - Handles attack range detection and combat logic
  * Uses component-based entity queries
- * Uses EventBus for decoupled communication (projectile spawning, movement requests)
+ * Uses EventBus for decoupled communication (projectile spawning, animations)
  * Extends GameSystem for consistent lifecycle management
  *
  * IMPORTANT: Uses fixed timestep for deterministic attack cooldown updates.
@@ -71,14 +72,16 @@ const DEFAULT_COMBAT_CONFIG: CombatConfig = {
  * - When the enemy is killed, the unit resumes moving to its original target
  *
  * LOCKSTEP SYNCHRONIZATION:
- * Movement commands from combat are emitted via EventBus and handled synchronously
- * by MovementSystem during the same tick to ensure deterministic execution.
+ * Combat-initiated movement (chasing targets, resuming after combat) calls
+ * MovementSystem.moveEntityTo() directly. These are deterministic simulation
+ * decisions that all clients compute identically during tick processing.
  */
 export class CombatSystem extends GameSystem {
   private config: CombatConfig;
   private currentTargets: Map<number, number> = new Map(); // attacker ID -> target ID
   private storedMoveTargets: Map<number, Vector3> = new Map(); // attacker ID -> original move target
   private aggroTargets: Map<number, number> = new Map(); // entity ID -> attacker ID (who damaged them)
+  private movementSystem!: MovementSystem;
 
   constructor(config?: Partial<CombatConfig>) {
     super();
@@ -90,6 +93,13 @@ export class CombatSystem extends GameSystem {
    */
   public override init(context: SystemContext): void {
     super.init(context);
+
+    // Resolve MovementSystem for direct moveEntityTo calls during tick processing.
+    // Combat-initiated moves are deterministic simulation decisions — they must
+    // execute immediately in the same tick, not go through the network.
+    const ms = context.getSystem(MovementSystem);
+    if (!ms) throw new Error('CombatSystem requires MovementSystem to be registered first');
+    this.movementSystem = ms;
 
     // Listen for damage events to track who attacked whom
     this.subscribe<DamageAppliedEvent>(
@@ -434,14 +444,13 @@ export class CombatSystem extends GameSystem {
   }
 
   /**
-   * Request movement for an entity via EventBus
+   * Move an entity directly via MovementSystem.
+   * Combat-initiated moves are deterministic simulation decisions that all
+   * clients compute identically during tick processing, so they bypass
+   * the network event path and execute immediately in the same tick.
    */
   private requestMove(entityId: number, target: Vector3): void {
-    this.eventBus.emit(GameEvents.MOVE_REQUESTED, {
-      ...createEvent(),
-      entityId,
-      target,
-    });
+    this.movementSystem.moveEntityTo(entityId, target);
   }
 
   /**
