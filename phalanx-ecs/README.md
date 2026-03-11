@@ -11,6 +11,7 @@ A lightweight, renderer-agnostic Entity-Component-System (ECS) library with opti
 - **TypeScript First**: Full type safety and excellent IDE support
 - **Deterministic Tick/Frame**: Separate tick-based simulation from frame-based rendering
 - **SoA Storage**: Optional Structure-of-Arrays component storage for cache-friendly hot-path iteration
+- **Object Pooling**: Built-in entity and object pools to minimize GC pressure in hot loops
 
 ## Core Components
 
@@ -38,6 +39,11 @@ A lightweight, renderer-agnostic Entity-Component-System (ECS) library with opti
 - **SoAComponent**: Base class for components backed by contiguous typed arrays
 - **SoAComponentStore**: Dense, cache-friendly storage with O(1) entity lookup
 - **defineSoASchema**: Type-safe schema definition for SoA field layout
+
+### Object Pooling
+- **ObjectPool**: Generic LIFO pool for any `IPoolable` object
+- **EntityPool**: Entity-specific pool with component template support and automatic ID assignment
+- **PoolManager**: Central manager for named entity pools (one per GameWorld)
 
 ## Installation
 
@@ -372,6 +378,103 @@ Subsequent PhysicsBodyComponents → share the same store
 GameWorld disposed → SoAComponent.resetContext()
 ```
 
+## Object Pooling
+
+Phalanx ECS includes a built-in pooling system to avoid garbage collection spikes in hot loops. This is critical for deterministic lockstep games where GC pauses can cause missed ticks.
+
+### ObjectPool
+
+Generic pool for any object implementing `IPoolable`:
+
+```typescript
+import { ObjectPool } from 'phalanx-ecs';
+import type { IPoolable } from 'phalanx-ecs';
+
+class Particle implements IPoolable {
+  x = 0; y = 0; life = 0;
+  reset(): void { this.x = 0; this.y = 0; this.life = 0; }
+}
+
+const pool = new ObjectPool(() => new Particle(), { initialSize: 100 });
+pool.prewarm(100);
+
+const p = pool.acquire();  // reuses an existing object or creates new
+p.x = 10; p.life = 60;
+pool.release(p);           // returns to pool, calls reset()
+```
+
+### EntityPool
+
+Entity-specific pool with component template support:
+
+```typescript
+import { EntityPool } from 'phalanx-ecs';
+
+const projectilePool = new EntityPool(
+  () => new ProjectileEntity(),
+  {
+    initialSize: 50,
+    componentTemplates: [
+      { type: ComponentType.Transform, factory: () => new TransformComponent() },
+      { type: ComponentType.Projectile, factory: () => new ProjectileComponent() },
+    ],
+  }
+);
+
+const entity = projectilePool.acquire();  // new ID, revived, template components reset
+projectilePool.release(entity);           // returned to pool
+```
+
+### PoolManager
+
+Central registry for named entity pools:
+
+```typescript
+import { PoolManager } from 'phalanx-ecs';
+
+const poolManager = new PoolManager();
+
+poolManager.registerEntityType('projectile', {
+  factory: () => new ProjectileEntity(),
+  pool: { initialSize: 50, maxSize: 200 },
+  components: [
+    { type: ComponentType.Projectile, factory: () => new ProjectileComponent() },
+  ],
+});
+
+poolManager.prewarmAll();
+
+const entity = poolManager.acquire<ProjectileEntity>('projectile');
+poolManager.release('projectile', entity);
+
+// Diagnostics
+const stats = poolManager.getStats(); // Map<string, PoolStats>
+```
+
+### IResettableComponent
+
+Components that support pooling should implement `IResettableComponent`:
+
+```typescript
+import type { IResettableComponent } from 'phalanx-ecs';
+
+class ProjectileComponent implements IResettableComponent {
+  public readonly type = ComponentType.Projectile;
+  public damage = 0;
+  public speed = 0n;
+
+  reset(): void {
+    this.damage = 0;
+    this.speed = 0n;
+  }
+
+  reinitialize(damage: number, speed: bigint): void {
+    this.damage = damage;
+    this.speed = speed;
+  }
+}
+```
+
 ## Creating Custom Systems
 
 ```typescript
@@ -405,6 +508,41 @@ class MySystem extends GameSystem {
   }
 }
 ```
+
+## EventBus vs Direct System Calls
+
+In a deterministic lockstep game, not every action needs to go through the network. Use this guideline to decide:
+
+| Scenario | Mechanism | Why |
+| --- | --- | --- |
+| **Player commands** (move, attack, place unit) | Network → EventBus | Only player intent crosses the wire; all clients execute the same commands |
+| **Simulation-internal decisions** (combat chase, resume movement after target dies, AI pathing) | Direct system call via `context.getSystem()` | These are deterministic outcomes computed identically on every client during tick processing — sending them through the network would be redundant and add latency |
+| **Cross-system notifications** (damage dealt, entity spawned, animation trigger) | EventBus (local) | Keeps systems decoupled without network overhead |
+
+### Example: Direct System Call for Combat Movement
+
+When CombatSystem decides a unit should chase a target or resume its original waypoint after killing an enemy, it calls `MovementSystem.moveEntityTo()` directly instead of emitting a network event:
+
+```typescript
+export class CombatSystem extends GameSystem {
+  private movementSystem!: MovementSystem;
+
+  init(context: SystemContext): void {
+    super.init(context);
+    // Resolve at init — guaranteed to be available during tick processing
+    const ms = context.getSystem(MovementSystem);
+    if (!ms) throw new Error('CombatSystem requires MovementSystem');
+    this.movementSystem = ms;
+  }
+
+  private requestMove(entityId: number, target: Vector3): void {
+    // Direct call — deterministic, no network round-trip
+    this.movementSystem.moveEntityTo(entityId, target);
+  }
+}
+```
+
+**Rule of thumb:** if every client will compute the same result from the same game state, call the system directly. If the action originates from a specific player's input, send it through the network.
 
 ## License
 

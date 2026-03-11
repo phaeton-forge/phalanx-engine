@@ -130,11 +130,26 @@ client.on('gameStart', (event) => {
 
 client.on('matchEnd', (event) => {
   console.log(`Match ended: ${event.reason}`);
-  // event.reason can be: 'normal', 'desync', 'disconnect', etc.
+  // event.reason can be: 'normal', 'desync', 'disconnect', 'ready-timeout', etc.
 });
 
 await client.joinQueue();
 ```
+
+### 4b. Game Start Synchronization (Ready Handshake)
+
+After `gameStart` fires, the server waits for **all** clients to call `sendReady()` before starting the tick loop. This prevents desync caused by clients with different asset loading times missing early ticks.
+
+```typescript
+client.on('gameStart', async () => {
+  // Load assets, set up ECS world, initialize all systems
+  await game.initialize();
+  // Signal the server that this client is ready for ticks
+  client.sendReady();
+});
+```
+
+If any client fails to call `sendReady()` within 30 seconds, the match ends with reason `'ready-timeout'`.
 
 ### 5. Game Loop — Simplified API (Recommended)
 

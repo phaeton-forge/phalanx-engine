@@ -316,7 +316,9 @@ await phalanx.stop();
 | `queue-leave`         | Client → Server  | Leave matchmaking queue           |
 | `queue-status`        | Server → Client  | Queue join/leave confirmation     |
 | `match-found`         | Server → Client  | Match created, countdown starting |
-| `game-start`          | Server → Client  | Match gameplay begins             |
+| `game-start`          | Server → Client  | Countdown finished, load assets   |
+| `client-ready`        | Client → Server  | Client finished loading, ready for ticks |
+| `player-ready`        | Server → Client  | A player reported ready           |
 | `match-end`           | Server → Client  | Match has ended                   |
 | `submit-commands`     | Client → Server  | Send game commands for a tick     |
 | `submit-commands-ack` | Server → Client  | Command acknowledgment            |

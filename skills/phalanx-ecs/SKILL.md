@@ -496,11 +496,45 @@ world.registerSystems(
 
 #### Accessing Other Systems
 
+Use `context.getSystem()` to resolve another system by its class:
+
 ```typescript
 // In any system
 const movementSystem = this.context.getSystem(MovementSystem);
 if (movementSystem) {
   movementSystem.moveEntity(entityId, targetPosition);
+}
+```
+
+#### EventBus vs Direct System Calls
+
+Not every inter-system action should go through EventBus. Use this decision matrix:
+
+| Scenario | Mechanism | Why |
+| --- | --- | --- |
+| **Player commands** (move, attack, place unit) | Network → EventBus | Only player intent crosses the wire; all clients execute the same commands |
+| **Simulation-internal decisions** (combat chase, resume movement after target dies, AI pathing) | Direct system call via `context.getSystem()` | Deterministic outcomes computed identically on every client — network would be redundant |
+| **Cross-system notifications** (damage dealt, entity spawned, animation trigger) | EventBus (local) | Keeps systems decoupled without network overhead |
+
+**Rule of thumb:** if every client will compute the same result from the same game state, call the system directly. If the action originates from a specific player's input, send it through the network.
+
+Example — CombatSystem calls MovementSystem directly for chase/resume:
+
+```typescript
+class CombatSystem extends GameSystem {
+  private movementSystem!: MovementSystem;
+
+  init(context: SystemContext): void {
+    super.init(context);
+    const ms = context.getSystem(MovementSystem);
+    if (!ms) throw new Error('CombatSystem requires MovementSystem');
+    this.movementSystem = ms;
+  }
+
+  private requestMove(entityId: number, target: Vector3): void {
+    // Direct call — deterministic, no network round-trip
+    this.movementSystem.moveEntityTo(entityId, target);
+  }
 }
 ```
 
@@ -739,6 +773,14 @@ import { IComponent, createComponentTypeRegistry } from 'phalanx-ecs';
 import { SoAComponent, SoAComponentStore, defineSoASchema } from 'phalanx-ecs';
 import type { SoASchema, SoASchemaDefinition, SoAFieldType, SoAFieldsOf } from 'phalanx-ecs';
 
+// Object Pooling
+import { ObjectPool, EntityPool, PoolManager } from 'phalanx-ecs';
+import type {
+  IPoolable, IResettableComponent,
+  PoolConfig, PoolStats, ComponentTemplate,
+  EntityPoolConfig, EntityTypeConfig, PoolingConfig,
+} from 'phalanx-ecs';
+
 // Tick/Frame management
 import { TickFrameManager } from 'phalanx-ecs';
 import type { ITickFrameProvider, TickHandler, FrameHandler, Unsubscribe, CommandsBatch, PlayerCommand } from 'phalanx-ecs';
@@ -767,7 +809,8 @@ import type { ITickFrameProvider, TickHandler, FrameHandler, Unsubscribe, Comman
 ### System Design
 
 - Each system should have a **single responsibility**
-- Communicate between systems via **EventBus only** — no direct references
+- Use **EventBus** for cross-system notifications (damage, spawns, animations)
+- Use **direct system calls** via `context.getSystem()` for simulation-internal decisions that all clients compute identically (combat chase, movement resume, AI pathing)
 - Query entities fresh each tick — don't cache entity references (entities can be destroyed)
 - Use `subscribe()` helper for automatic event cleanup on dispose
 - Cache SoA store references in `init()` for hot-path access
@@ -779,10 +822,78 @@ import type { ITickFrameProvider, TickHandler, FrameHandler, Unsubscribe, Comman
 - Include all necessary data in the event payload
 - Avoid circular event chains
 
+### Object Pooling
+
+- Use `ObjectPool` for generic poolable objects (particles, effects, temporary data)
+- Use `EntityPool` for entity-specific pooling with component template support
+- Use `PoolManager` as a central registry for named entity pools
+- Components in pooled entities should implement `IResettableComponent` (extends `IComponent` + `IPoolable`)
+- Prewarm pools at game start with `prewarmAll()` to avoid allocation spikes during gameplay
+- Check `pool.stats` for diagnostics (acquireCount, releaseCount, missCount)
+
+#### EntityPool Example
+
+```typescript
+import { EntityPool } from 'phalanx-ecs';
+import type { IResettableComponent } from 'phalanx-ecs';
+
+// Components must implement IResettableComponent for pooling
+class ProjectileComponent implements IResettableComponent {
+  public readonly type = ComponentType.Projectile;
+  public damage = 0;
+  public speed = 0n;
+
+  reset(): void { this.damage = 0; this.speed = 0n; }
+  reinitialize(damage: number, speed: bigint): void {
+    this.damage = damage;
+    this.speed = speed;
+  }
+}
+
+// Create pool with component templates
+const pool = new EntityPool(
+  () => new ProjectileEntity(),
+  {
+    initialSize: 50,
+    maxSize: 200,
+    componentTemplates: [
+      { type: ComponentType.Transform, factory: () => new TransformComponent() },
+      { type: ComponentType.Projectile, factory: () => new ProjectileComponent() },
+    ],
+  }
+);
+
+pool.prewarm(50);
+const entity = pool.acquire();   // new ID, revived, template components reset
+pool.release(entity);            // returned to pool
+```
+
+#### PoolManager Example
+
+```typescript
+import { PoolManager } from 'phalanx-ecs';
+
+const poolManager = new PoolManager();
+
+poolManager.registerEntityType('projectile', {
+  factory: () => new ProjectileEntity(),
+  pool: { initialSize: 50, maxSize: 200 },
+  components: [
+    { type: ComponentType.Projectile, factory: () => new ProjectileComponent() },
+  ],
+});
+
+poolManager.prewarmAll();
+
+const entity = poolManager.acquire<ProjectileEntity>('projectile');
+poolManager.release('projectile', entity);
+```
+
 ### Performance
 
 - Use SoA direct store access in hot-path systems (bypass component facade)
 - Cache array references outside loops
-- Avoid `new` inside update loops (reuse objects, use pools)
+- Avoid `new` inside update loops — use object/entity pools to minimize GC pressure
 - Use `queryEntities()` efficiently — it uses indexed lookups
 - Dispose meshes and materials when entities are destroyed
+- Prewarm pools at game start to avoid mid-game allocation spikes
