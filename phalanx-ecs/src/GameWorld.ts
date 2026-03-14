@@ -181,6 +181,7 @@ export class GameWorld {
     } else {
       // Fallback for providers that don't support pause
       this._paused = true;
+      if (this._debugProvider) this._debugProvider.paused = true;
       this.systemRegistry.eventBus.emit(GameWorldEvents.PAUSED, {});
     }
   }
@@ -200,6 +201,7 @@ export class GameWorld {
     } else {
       // Fallback for providers that don't support resume
       this._paused = false;
+      if (this._debugProvider) this._debugProvider.paused = false;
       this.systemRegistry.eventBus.emit(GameWorldEvents.RESUMED, {});
     }
   }

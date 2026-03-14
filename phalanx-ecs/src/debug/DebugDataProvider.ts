@@ -62,7 +62,7 @@ export class DebugDataProvider {
     this.updateInterval = config?.updateInterval ?? DEFAULT_UPDATE_INTERVAL;
   }
 
-  // ── Observable API ──────────────────────────────────────────────
+  // ── Observable API ──────────────────────────────────────────────────
 
   /**
    * Subscribe to periodic snapshot updates.
@@ -75,7 +75,7 @@ export class DebugDataProvider {
     };
   }
 
-  // ── Pull API ──────────────────────────────────────────────────
+  // ── Pull API ────────────────────────────────────────────────────────
 
   /**
    * Collect and return a snapshot immediately (no timer dependency).
@@ -84,7 +84,7 @@ export class DebugDataProvider {
     return this.collectSnapshot();
   }
 
-  // ── Lifecycle ─────────────────────────────────────────────────
+  // ── Lifecycle ───────────────────────────────────────────────────────
 
   /**
    * Start the automatic push interval.
@@ -117,7 +117,7 @@ export class DebugDataProvider {
     this.subscribers.clear();
   }
 
-  // ── Internals ─────────────────────────────────────────────────
+  // ── Internals ───────────────────────────────────────────────────────
 
   private push(): void {
     if (this.subscribers.size === 0) return;
@@ -128,15 +128,16 @@ export class DebugDataProvider {
   }
 
   private collectSnapshot(): DebugSnapshot {
+    const soaStores = this.collectSoAStores();
     return {
       timestamp: Date.now(),
       world: {
         entityCount: this.entityManager.count,
-        soaStoreCount: this.entityManager.getAllSoAStores().size,
+        soaStoreCount: soaStores.length,
         paused: this._paused,
       },
       entities: this.collectEntities(),
-      soaStores: this.collectSoAStores(),
+      soaStores,
       pools: this.collectPools(),
     };
   }
