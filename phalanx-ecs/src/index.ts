@@ -58,6 +58,17 @@ export type {
   TypedArrayLike,
 } from './SoASchema';
 
+// Debug / Introspection
+export { DebugDataProvider } from './debug';
+export type {
+  DebugSnapshot,
+  DebugEntitySnapshot,
+  DebugComponentSnapshot,
+  DebugSoAStoreSnapshot,
+  DebugPoolSnapshot,
+  DebugDataProviderConfig,
+} from './debug';
+
 // Tick/Frame Management
 export { TickFrameManager } from './TickFrameManager';
 export type { TickFrameManagerConfig } from './TickFrameManager';

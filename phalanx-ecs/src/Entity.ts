@@ -107,6 +107,22 @@ export class Entity implements IPoolable {
   }
 
   /**
+   * Get all component type symbols attached to this entity.
+   * Useful for debugging and introspection.
+   */
+  public getComponentTypes(): symbol[] {
+    return Array.from(this.components.keys());
+  }
+
+  /**
+   * Get a read-only view of all components attached to this entity.
+   * Useful for debugging and introspection.
+   */
+  public getComponents(): ReadonlyMap<symbol, IComponent> {
+    return this.components;
+  }
+
+  /**
    * Check if entity is destroyed
    */
   public get isDestroyed(): boolean {
