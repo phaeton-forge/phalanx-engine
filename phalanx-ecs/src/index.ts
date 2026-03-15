@@ -59,7 +59,7 @@ export type {
 } from './SoASchema';
 
 // Debug / Introspection
-export { DebugDataProvider } from './debug';
+export { DebugDataProvider, DebugPanel } from './debug';
 export type {
   DebugSnapshot,
   DebugEntitySnapshot,
@@ -67,6 +67,7 @@ export type {
   DebugSoAStoreSnapshot,
   DebugPoolSnapshot,
   DebugDataProviderConfig,
+  DebugPanelConfig,
 } from './debug';
 
 // Tick/Frame Management
