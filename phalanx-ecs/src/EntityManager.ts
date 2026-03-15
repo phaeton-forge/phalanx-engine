@@ -382,6 +382,30 @@ export class EntityManager {
     }
   }
 
+  // ============ Debug / Introspection ============
+
+  /**
+   * Get a read-only view of all registered SoA component stores.
+   * Useful for debugging and introspection tools.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  public getAllSoAStores(): ReadonlyMap<symbol, SoAComponentStore<any>> {
+    return this.soaStores;
+  }
+
+  /**
+   * Get entity counts per registered component type.
+   * Returns a map of component type symbol → number of entities with that component.
+   * Useful for debugging and introspection tools.
+   */
+  public getComponentTypeStats(): Map<symbol, number> {
+    const stats = new Map<symbol, number>();
+    for (const [type, index] of this.componentIndices) {
+      stats.set(type, index.length);
+    }
+    return stats;
+  }
+
   /**
    * Clear all entities
    */

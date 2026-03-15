@@ -2,6 +2,8 @@ import { SystemRegistry } from './SystemRegistry';
 import { TickFrameManager } from './TickFrameManager';
 import { SoAComponent } from './SoAComponent';
 import { PoolManager } from './pool/PoolManager';
+import { DebugDataProvider } from './debug/DebugDataProvider';
+import type { DebugDataProviderConfig } from './debug/types';
 import type { PoolingConfig } from './pool/types';
 import type { ITickFrameProvider, Unsubscribe } from './ITickFrameProvider';
 import type { EventBus } from './EventBus';
@@ -34,6 +36,10 @@ export interface GameWorldConfig {
   tickFrameProvider?: ITickFrameProvider;
   /** Object pooling configuration. If omitted, pooling is disabled. */
   pooling?: PoolingConfig;
+  /** Enable debug data collection. When true, a DebugDataProvider is created. Default: false */
+  debug?: boolean;
+  /** Configuration for the debug data provider (update interval, etc.). Only used when debug is true. */
+  debugConfig?: DebugDataProviderConfig;
 }
 
 /**
@@ -89,6 +95,7 @@ export class GameWorld {
   private readonly ownsProvider: boolean;
   private readonly _pools: PoolManager | null;
   private readonly _poolingConfig: PoolingConfig | undefined;
+  private readonly _debugProvider: DebugDataProvider | null;
 
   // Unsubscribe handles for tick/frame
   private unsubscribeTick: Unsubscribe | null = null;
@@ -133,6 +140,17 @@ export class GameWorld {
       });
       this.ownsProvider = true;
     }
+
+    // Setup debug data provider if configured
+    if (config.debug) {
+      this._debugProvider = new DebugDataProvider(
+        this.systemRegistry.entityManager,
+        this._pools,
+        config.debugConfig,
+      );
+    } else {
+      this._debugProvider = null;
+    }
   }
 
   // ── Pause / Resume ───────────────────────────────────────────────────
@@ -163,6 +181,7 @@ export class GameWorld {
     } else {
       // Fallback for providers that don't support pause
       this._paused = true;
+      if (this._debugProvider) this._debugProvider.paused = true;
       this.systemRegistry.eventBus.emit(GameWorldEvents.PAUSED, {});
     }
   }
@@ -182,6 +201,7 @@ export class GameWorld {
     } else {
       // Fallback for providers that don't support resume
       this._paused = false;
+      if (this._debugProvider) this._debugProvider.paused = false;
       this.systemRegistry.eventBus.emit(GameWorldEvents.RESUMED, {});
     }
   }
@@ -201,6 +221,24 @@ export class GameWorld {
   /** Pool manager. null if pooling is not configured. */
   public get pools(): PoolManager | null {
     return this._pools;
+  }
+
+  /**
+   * Debug data provider. null if debug mode is not enabled.
+   *
+   * Use this to subscribe to periodic debug snapshots or pull
+   * snapshots on demand for custom debug tooling.
+   *
+   * @example
+   * ```ts
+   * const world = new GameWorld({ debug: true });
+   * const unsub = world.debugProvider!.subscribe((snap) => {
+   *   console.log('Entities:', snap.world.entityCount);
+   * });
+   * ```
+   */
+  public get debugProvider(): DebugDataProvider | null {
+    return this._debugProvider;
   }
 
   /** System context (for advanced use) */
@@ -273,12 +311,14 @@ export class GameWorld {
     if (this.provider.onPause) {
       this.unsubscribePause = this.provider.onPause(() => {
         this._paused = true;
+        if (this._debugProvider) this._debugProvider.paused = true;
         this.systemRegistry.eventBus.emit(GameWorldEvents.PAUSED, {});
       });
     }
     if (this.provider.onResume) {
       this.unsubscribeResume = this.provider.onResume(() => {
         this._paused = false;
+        if (this._debugProvider) this._debugProvider.paused = false;
         this.systemRegistry.eventBus.emit(GameWorldEvents.RESUMED, {});
       });
     }
@@ -302,6 +342,11 @@ export class GameWorld {
     // Start internal TickFrameManager if we own it
     if (this.ownsProvider && this.provider instanceof TickFrameManager) {
       (this.provider as TickFrameManager).start();
+    }
+
+    // Start debug data provider if configured
+    if (this._debugProvider) {
+      this._debugProvider.start();
     }
   }
 
@@ -329,6 +374,11 @@ export class GameWorld {
     if (this.ownsProvider && this.provider instanceof TickFrameManager) {
       (this.provider as TickFrameManager).stop();
     }
+
+    // Stop debug data provider
+    if (this._debugProvider) {
+      this._debugProvider.stop();
+    }
   }
 
   /**
@@ -336,6 +386,9 @@ export class GameWorld {
    */
   public dispose(): void {
     this.stop();
+    if (this._debugProvider) {
+      this._debugProvider.dispose();
+    }
     if (this._pools) {
       this._pools.drainAll();
     }
