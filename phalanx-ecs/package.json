@@ -17,8 +17,8 @@
     "rebuild": "npm run clean && npm run build",
     "test": "vitest run"
   },
-  "dependencies": {},
   "devDependencies": {
+    "happy-dom": "^20.8.4",
     "typescript": "~5.9.3"
   },
   "keywords": [

@@ -1,4 +1,5 @@
 export { DebugDataProvider } from './DebugDataProvider';
+export { DebugPanel } from './DebugPanel';
 export type {
   DebugSnapshot,
   DebugEntitySnapshot,
@@ -6,4 +7,5 @@ export type {
   DebugSoAStoreSnapshot,
   DebugPoolSnapshot,
   DebugDataProviderConfig,
+  DebugPanelConfig,
 } from './types';

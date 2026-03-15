@@ -3,7 +3,8 @@ import { TickFrameManager } from './TickFrameManager';
 import { SoAComponent } from './SoAComponent';
 import { PoolManager } from './pool/PoolManager';
 import { DebugDataProvider } from './debug/DebugDataProvider';
-import type { DebugDataProviderConfig } from './debug/types';
+import { DebugPanel } from './debug/DebugPanel';
+import type { DebugDataProviderConfig, DebugPanelConfig } from './debug/types';
 import type { PoolingConfig } from './pool/types';
 import type { ITickFrameProvider, Unsubscribe } from './ITickFrameProvider';
 import type { EventBus } from './EventBus';
@@ -40,6 +41,15 @@ export interface GameWorldConfig {
   debug?: boolean;
   /** Configuration for the debug data provider (update interval, etc.). Only used when debug is true. */
   debugConfig?: DebugDataProviderConfig;
+  /**
+   * Configuration for the built-in DebugPanel DOM overlay.
+   * Only used when `debug` is true.
+   *
+   * When provided (even as `{}`), a DebugPanel is auto-created in `start()`
+   * if a DOM environment is detected. Omit to use DebugDataProvider without
+   * the built-in panel (e.g. for custom tooling or headless environments).
+   */
+  debugPanelConfig?: DebugPanelConfig;
 }
 
 /**
@@ -96,6 +106,8 @@ export class GameWorld {
   private readonly _pools: PoolManager | null;
   private readonly _poolingConfig: PoolingConfig | undefined;
   private readonly _debugProvider: DebugDataProvider | null;
+  private readonly _debugPanelConfig: DebugPanelConfig | undefined;
+  private _debugPanel: DebugPanel | null = null;
 
   // Unsubscribe handles for tick/frame
   private unsubscribeTick: Unsubscribe | null = null;
@@ -148,8 +160,10 @@ export class GameWorld {
         this._pools,
         config.debugConfig,
       );
+      this._debugPanelConfig = config.debugPanelConfig;
     } else {
       this._debugProvider = null;
+      this._debugPanelConfig = undefined;
     }
   }
 
@@ -239,6 +253,11 @@ export class GameWorld {
    */
   public get debugProvider(): DebugDataProvider | null {
     return this._debugProvider;
+  }
+
+  /** Debug panel DOM renderer. null if debug mode is not enabled or panel not yet created. */
+  public get debugPanel(): DebugPanel | null {
+    return this._debugPanel;
   }
 
   /** System context (for advanced use) */
@@ -347,6 +366,14 @@ export class GameWorld {
     // Start debug data provider if configured
     if (this._debugProvider) {
       this._debugProvider.start();
+
+      // Auto-create panel only when debugPanelConfig was explicitly provided
+      // and a DOM environment is available. This keeps the overlay opt-in so
+      // consumers who only need DebugDataProvider aren't surprised by DOM
+      // side effects.
+      if (this._debugPanelConfig !== undefined && typeof document !== 'undefined') {
+        this._debugPanel = new DebugPanel(this._debugProvider, this._debugPanelConfig);
+      }
     }
   }
 
@@ -373,6 +400,12 @@ export class GameWorld {
 
     if (this.ownsProvider && this.provider instanceof TickFrameManager) {
       (this.provider as TickFrameManager).stop();
+    }
+
+    // Destroy debug panel
+    if (this._debugPanel) {
+      this._debugPanel.destroy();
+      this._debugPanel = null;
     }
 
     // Stop debug data provider
