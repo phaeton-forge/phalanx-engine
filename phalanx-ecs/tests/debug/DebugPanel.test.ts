@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { Entity, resetEntityIdCounter } from '../../src/Entity';
 import { EntityManager } from '../../src/EntityManager';
 import { SoAComponent } from '../../src/SoAComponent';
@@ -93,34 +93,42 @@ describe('DebugPanel', () => {
     });
 
     it('unsubscribes from provider on destroy()', () => {
+      vi.useFakeTimers();
+
+      // Use a provider with a real update interval so it pushes snapshots
+      const timedProvider = new DebugDataProvider(em, null, { updateInterval: 200 });
+      timedProvider.start();
+
       const entity = new Entity();
       entity.addComponent(new HealthComponent(100));
       em.addEntity(entity);
 
-      panel = new DebugPanel(provider);
+      panel = new DebugPanel(timedProvider);
 
-      // Get initial text content
-      const initialText = panel.element.textContent;
-      expect(initialText).toContain('1');
+      // Advance timers so the provider pushes a snapshot
+      vi.advanceTimersByTime(200);
+      expect(panel.element.textContent).toContain('1');
 
-      // Destroy the panel
+      // Destroy the panel (should unsubscribe)
       panel.destroy();
 
-      // Add more entities — panel should NOT update since it's destroyed
+      // Add another entity
       const e2 = new Entity();
       e2.addComponent(new HealthComponent(200));
       em.addEntity(e2);
 
-      // The element is detached, but its content should not have been updated
-      // since destroy() unsubscribed. We can verify by checking the text still
-      // reflects the old state (1 entity, not 2).
-      // After destroy the element is removed, but we can check that
-      // provider.getSnapshot shows 2 while the detached element doesn't update.
-      const snap = provider.getSnapshot();
+      // Advance timers again — provider pushes a new snapshot, but
+      // the panel should NOT update because destroy() unsubscribed.
+      vi.advanceTimersByTime(200);
+
+      // Provider sees 2 entities, but the detached panel still shows 1
+      const snap = timedProvider.getSnapshot();
       expect(snap.world.entityCount).toBe(2);
-      // The panel element content should still show the old "1" count, not "2"
-      // (since we unsubscribed and the panel doesn't get new snapshots)
       expect(panel.element.textContent).not.toContain('[ID: ' + e2.id + ']');
+
+      timedProvider.stop();
+      timedProvider.dispose();
+      vi.useRealTimers();
     });
   });
 

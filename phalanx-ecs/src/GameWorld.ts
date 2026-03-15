@@ -41,7 +41,14 @@ export interface GameWorldConfig {
   debug?: boolean;
   /** Configuration for the debug data provider (update interval, etc.). Only used when debug is true. */
   debugConfig?: DebugDataProviderConfig;
-  /** Configuration for the debug panel UI. Only used when debug is true. */
+  /**
+   * Configuration for the built-in DebugPanel DOM overlay.
+   * Only used when `debug` is true.
+   *
+   * When provided (even as `{}`), a DebugPanel is auto-created in `start()`
+   * if a DOM environment is detected. Omit to use DebugDataProvider without
+   * the built-in panel (e.g. for custom tooling or headless environments).
+   */
   debugPanelConfig?: DebugPanelConfig;
 }
 
@@ -360,8 +367,11 @@ export class GameWorld {
     if (this._debugProvider) {
       this._debugProvider.start();
 
-      // Auto-create panel if DOM is available
-      if (typeof document !== 'undefined') {
+      // Auto-create panel only when debugPanelConfig was explicitly provided
+      // and a DOM environment is available. This keeps the overlay opt-in so
+      // consumers who only need DebugDataProvider aren't surprised by DOM
+      // side effects.
+      if (this._debugPanelConfig !== undefined && typeof document !== 'undefined') {
         this._debugPanel = new DebugPanel(this._debugProvider, this._debugPanelConfig);
       }
     }

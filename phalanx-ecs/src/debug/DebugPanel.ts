@@ -199,7 +199,11 @@ export class DebugPanel {
     };
     document.addEventListener('keydown', this.keydownHandler);
 
-    // Toggle button click
+    // Toggle button – stop mousedown so title-bar drag doesn't fire,
+    // and handle click for the actual collapse toggle.
+    this.toggleBtn.addEventListener('mousedown', (e: MouseEvent) => {
+      e.stopPropagation();
+    });
     this.toggleBtn.addEventListener('click', (e: MouseEvent) => {
       e.stopPropagation();
       this.toggleCollapse();
