@@ -116,10 +116,18 @@ export class Game {
     this.engine = new Engine(canvas, true);
     this.scene = new Scene(this.engine);
 
+    const debugPanelEnabled = import.meta.env.DEV;
+
     // Create GameWorld facade (replaces SystemRegistry + NetworkCoordinator)
     this.world = new GameWorld({
       componentTypes: Object.values(ComponentType),
       tickFrameProvider: this.client,
+      debug: debugPanelEnabled,
+      debugPanelConfig: debugPanelEnabled
+        ? {
+          toggleKey: 'Backquote',
+        }
+        : undefined,
       pooling: {
         entityTypes: {
           'projectile': {

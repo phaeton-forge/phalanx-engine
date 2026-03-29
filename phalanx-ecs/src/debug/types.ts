@@ -99,7 +99,7 @@ export interface DebugDataProviderConfig {
  * Configuration for the built-in DebugPanel DOM renderer.
  */
 export interface DebugPanelConfig {
-  /** Keyboard shortcut to toggle panel. Set to '' to disable. Default: '`' (backtick) */
+  /** Keyboard shortcut to toggle panel (KeyboardEvent.key or KeyboardEvent.code). Set to '' to disable. Default: '`' (backtick) */
   toggleKey?: string;
   /** Initial collapsed state. Default: false */
   startCollapsed?: boolean;

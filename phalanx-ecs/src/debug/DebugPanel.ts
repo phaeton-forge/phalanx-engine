@@ -192,7 +192,11 @@ export class DebugPanel {
     // Keyboard shortcut
     this.keydownHandler = (e: KeyboardEvent) => {
       if (this.toggleKey === '') return;
-      if (e.key !== this.toggleKey) return;
+      const isToggleMatch =
+        e.key === this.toggleKey ||
+        e.code === this.toggleKey ||
+        (this.toggleKey === '`' && e.code === 'Backquote');
+      if (!isToggleMatch) return;
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
       this.toggleCollapse();
