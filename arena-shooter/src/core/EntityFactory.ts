@@ -133,9 +133,10 @@ export class EntityFactory {
 
     const mesh = this.createProjectileMesh(entity.id, dirX, dirZ);
     // Set mesh position to spawn point BEFORE creating trails
-    // to prevent TrailMesh from recording a line from origin to spawn
     mesh.position.x = FP.ToFloat(fpX);
     mesh.position.z = FP.ToFloat(fpZ);
+    // Force world matrix update so TrailMesh reads the correct position
+    mesh.computeWorldMatrix(true);
     this.meshMap.set(entity.id, mesh);
 
     // Projectile trail particle
@@ -144,6 +145,7 @@ export class EntityFactory {
     // TrailMesh visual trail
     if (vfxConfig.enabled) {
       const trail = new ProjectileTrail(this.scene, mesh);
+      trail.start();
       this.projectileTrails.set(entity.id, trail);
     }
 
@@ -203,8 +205,8 @@ export class EntityFactory {
       diameter: 0.12,
     }, this.scene);
     const stickMat = new StandardMaterial(`stick_mat_${entityId}`, this.scene);
-    stickMat.diffuseColor = new Color3(0, 0, 0);
-    stickMat.emissiveColor = new Color3(0, 1, 1); // #00FFFF
+    stickMat.diffuseColor = new Color3(0.1, 0, 0);
+    stickMat.emissiveColor = new Color3(1, 0.4, 0); // Orange
     stickMat.disableLighting = true;
     stick.material = stickMat;
     stick.rotation.x = Math.PI / 2;
@@ -296,6 +298,24 @@ export class EntityFactory {
     box.material = mat;
     box.position.y = 0.3;
 
+    // Tilt 45 degrees on each axis
+    box.rotation.x = Math.PI / 4;
+    box.rotation.z = Math.PI / 4;
+
+    // Slow rotation around vertical axis
+    const spinAnim = new Animation(
+      `pickup_spin_${entityId}`,
+      'rotation.y',
+      20,
+      Animation.ANIMATIONTYPE_FLOAT,
+      Animation.ANIMATIONLOOPMODE_CYCLE,
+    );
+    spinAnim.setKeys([
+      { frame: 0, value: 0 },
+      { frame: 60, value: Math.PI * 2 },
+    ]);
+    box.animations.push(spinAnim);
+
     // Bobbing animation
     const bobAnim = new Animation(
       `pickup_bob_${entityId}`,
@@ -306,8 +326,8 @@ export class EntityFactory {
     );
     bobAnim.setKeys([
       { frame: 0, value: 0.3 },
-      { frame: 15, value: 0.45 },
-      { frame: 30, value: 0.3 },
+      { frame: 30, value: 0.45 },
+      { frame: 60, value: 0.3 },
     ]);
     box.animations.push(bobAnim);
 
@@ -321,12 +341,12 @@ export class EntityFactory {
     );
     emissiveAnim.setKeys([
       { frame: 0, value: 1.0 },
-      { frame: 15, value: 0.5 },
-      { frame: 30, value: 1.0 },
+      { frame: 30, value: 0.5 },
+      { frame: 60, value: 1.0 },
     ]);
     box.animations.push(emissiveAnim);
 
-    this.scene.beginAnimation(box, 0, 30, true);
+    this.scene.beginAnimation(box, 0, 60, true);
 
     return box;
   }

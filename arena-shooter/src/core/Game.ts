@@ -31,7 +31,7 @@ import { VFXSystem } from '../systems/VFXSystem.ts';
 import { ScreenShakeSystem } from '../systems/ScreenShakeSystem.ts';
 import { TICK_RATE, RANDOM_SEED, ARENA_SIZE, WAVE_INTRO_DELAY_TICKS } from '../config/constants.ts';
 import type { EntityTypeComponent } from '../components/EntityTypeComponent.ts';
-import { GameEvents, type EnemyKilledEvent, type WeaponFiredEvent } from '../events/GameEvents.ts';
+import { GameEvents, type WeaponFiredEvent } from '../events/GameEvents.ts';
 
 export class Game {
   private engine: Engine;
@@ -183,10 +183,7 @@ export class Game {
     // Babylon GUI HUD
     this.hud = new HUD(this.scene);
 
-    // Event listeners for particles
-    this.world.eventBus.on<EnemyKilledEvent>(GameEvents.COMBAT_ENEMY_KILLED, (event) => {
-      this.entityFactory.createExplosion(event.positionX, event.positionZ);
-    });
+    // Event listeners for particles (death explosions handled by VFXSystem with pooling)
     this.world.eventBus.on<WeaponFiredEvent>(GameEvents.WEAPON_FIRED, (event) => {
       this.entityFactory.createMuzzleFlash(event.originX, event.originZ);
     });

@@ -39,6 +39,7 @@ export class ParticlePool {
   }
 
   public release(ps: ParticleSystem): void {
+    ps.onStoppedObservable.clear();
     ps.stop();
     ps.reset();
     if (this.pool.length < vfxConfig.pool.maxSize) {

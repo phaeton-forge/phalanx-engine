@@ -7,14 +7,14 @@ export const vfxConfig = {
     radius: 25,                   // zoom distance
     lowerRadiusLimit: 15,
     upperRadiusLimit: 40,
-    followLerp: 0.08,             // camera follow smoothness (0-1)
+    followLerp: 0.1,             // camera follow smoothness (0-1)
   },
 
   glow: {
     enabled: true,
     mainTextureFixedSize: 512,
     blurKernelSize: 32,
-    intensity: 0.3,
+    intensity: 0.4,
   },
 
   pipeline: {
@@ -22,7 +22,7 @@ export const vfxConfig = {
     bloomThreshold: 0.7,
     bloomWeight: 0.15,
     bloomKernel: 32,
-    bloomScale: 0.25,
+    bloomScale: 0.4,
     fxaaEnabled: true,
     chromaticAberrationEnabled: true,
     chromaticAberrationAmount: 15,
@@ -129,7 +129,7 @@ export const vfxConfig = {
   },
 
   pool: {
-    initialSize: 5,      // pre-allocate this many particle systems
-    maxSize: 20,          // never exceed this many pooled systems
+    initialSize: 10,     // pre-allocate this many particle systems
+    maxSize: 50,          // never exceed this many pooled systems
   },
 };

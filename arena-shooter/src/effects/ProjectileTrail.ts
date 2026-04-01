@@ -17,7 +17,7 @@ export class ProjectileTrail {
       diameter: cfg.diameter,
       length: cfg.length,
       sections: cfg.sections,
-      autoStart: true,
+      autoStart: false,
     });
 
     this.material = new StandardMaterial('trailMat_' + sourceMesh.name, scene);
@@ -30,6 +30,10 @@ export class ProjectileTrail {
     this.material.backFaceCulling = false;
     this.material.disableLighting = true;
     this.trail.material = this.material;
+  }
+
+  public start(): void {
+    this.trail.start();
   }
 
   public dispose(): void {

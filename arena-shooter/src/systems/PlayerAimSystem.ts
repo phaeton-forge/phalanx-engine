@@ -45,9 +45,41 @@ export class PlayerAimSystem extends GameSystem {
     }
   }
 
+  /**
+   * Update aim world position from the right joystick direction,
+   * projecting a point relative to the player position.
+   */
+  private updateAimFromJoystick(): void {
+    const aimDirX = this.inputManager.joystickAimX;
+    const aimDirZ = this.inputManager.joystickAimZ;
+    const mag = Math.sqrt(aimDirX * aimDirX + aimDirZ * aimDirZ);
+
+    // Deadzone — keep last aim direction
+    if (mag < 0.15) return;
+
+    const entities = this.entityManager.queryEntities(ComponentType.PlayerInput);
+    if (entities.length === 0) return;
+
+    const entity = entities[0];
+    const transform = entity.getComponent<TransformComponent>(ComponentType.Transform);
+    if (!transform) return;
+
+    const pos = transform.fpPosition;
+    const playerX = FP.ToFloat(pos.x);
+    const playerZ = FP.ToFloat(pos.z);
+
+    const aimDistance = 10;
+    this.inputManager.aimWorldX = playerX + (aimDirX / mag) * aimDistance;
+    this.inputManager.aimWorldZ = playerZ + (aimDirZ / mag) * aimDistance;
+  }
+
   public override processTick(_tick: number): void {
-    // Update aim world position from latest screen coordinates
-    this.updateAimFromScreenCoords();
+    if (this.inputManager.joystickAimActive) {
+      this.updateAimFromJoystick();
+    } else {
+      // Update aim world position from latest screen coordinates
+      this.updateAimFromScreenCoords();
+    }
 
     const entities = this.entityManager.queryEntities(ComponentType.PlayerInput);
     for (const entity of entities) {
