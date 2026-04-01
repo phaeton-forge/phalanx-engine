@@ -48,7 +48,7 @@ export class Game {
   private playerId: number = -1;
   private waveEntityId: number = -1;
 
-  private pendingDestroy: Set<number> = new Set();
+  private onResize!: () => void;
 
   constructor(canvas: HTMLCanvasElement) {
     canvas.oncontextmenu = (e) => { e.preventDefault(); return false; };
@@ -124,16 +124,21 @@ export class Game {
     const playerMovementSystem = new PlayerMovementSystem();
     const playerAimSystem = new PlayerAimSystem(this.inputManager, this.scene);
     const weaponSystem = new WeaponSystem(this.entityFactory);
-    const projectileMovementSystem = new ProjectileMovementSystem(this.pendingDestroy);
+    const projectileMovementSystem = new ProjectileMovementSystem();
     const enemyAISystem = new EnemyAISystem();
-    const combatSystem = new CombatSystem(this.pendingDestroy, this.entityFactory);
+    const combatSystem = new CombatSystem(this.entityFactory);
     const healthSystem = new HealthSystem();
-    const pickupSystem = new PickupSystem(this.pendingDestroy);
+    const pickupSystem = new PickupSystem();
     const waveSystem = new WaveSystem(this.entityFactory);
     const gameStateSystem = new GameStateSystem();
 
     this.interpolationSystem = new InterpolationSystem();
     const meshSyncSystem = new MeshSyncSystem(this.meshMap);
+
+    // Scene setup (before registerSystems so camera is available for CameraSystem)
+    const gameInitializer = new GameInitializer(this.scene, this.world.entityManager);
+    const camera = gameInitializer.setupScene();
+    const cameraSystem = new CameraSystem(camera, this.meshMap);
 
     const tickSystems = [
       playerInputSystem,
@@ -151,18 +156,12 @@ export class Game {
     ];
 
     const frameSystems = [
+      this.interpolationSystem,
       meshSyncSystem,
+      cameraSystem,
     ];
 
     this.world.registerSystems(tickSystems, frameSystems);
-
-    // Scene setup
-    const gameInitializer = new GameInitializer(this.scene, this.world.entityManager);
-    const camera = gameInitializer.setupScene();
-
-    // Camera system
-    const cameraSystem = new CameraSystem(camera, this.meshMap);
-    this.world.addFrameSystem(cameraSystem);
 
     // Create player
     this.playerId = this.entityFactory.createPlayer();
@@ -219,7 +218,6 @@ export class Game {
         this.interpolationSystem.captureCurrentPositions();
         this.inputManager.endTick();
         this.entityCleanupService.cleanupDestroyedEntities();
-        this.pendingDestroy.clear();
       },
       afterFrame: (alpha: number, _dt: number) => {
         this.interpolationSystem.interpolate(alpha);
@@ -278,15 +276,17 @@ export class Game {
   }
 
   private setupResizeHandler(): void {
-    window.addEventListener('resize', () => {
+    this.onResize = () => {
       this.engine.resize();
-    });
+    };
+    window.addEventListener('resize', this.onResize);
   }
 
   public dispose(): void {
     this.world.stop();
     this.hud.dispose();
     this.inputManager.dispose();
+    window.removeEventListener('resize', this.onResize);
     this.world.dispose();
     this.engine.dispose();
   }

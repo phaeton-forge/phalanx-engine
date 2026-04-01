@@ -1,6 +1,7 @@
 import { GameSystem, type SystemContext } from 'phalanx-ecs';
 import { FP } from 'phalanx-math';
 import { ComponentType } from '../components/ComponentType.ts';
+import type { TransformComponent } from '../components/TransformComponent.ts';
 import type { WaveComponent } from '../components/WaveComponent.ts';
 import { GameRandom } from '../core/GameRandom.ts';
 import type { EntityFactory } from '../core/EntityFactory.ts';
@@ -93,7 +94,13 @@ export class WaveSystem extends GameSystem {
 
     const speed = FP.Add(ENEMY_BASE_SPEED, FP.Mul(ENEMY_SPEED_INCREMENT, FP.FromFloat(wave.currentWave - 1)));
     const halfArena = ARENA_SIZE / 2;
-    const minDist = FP.ToFloat(ENEMY_MIN_SPAWN_DISTANCE);
+    const minDistSq = FP.Mul(ENEMY_MIN_SPAWN_DISTANCE, ENEMY_MIN_SPAWN_DISTANCE);
+
+    // Get player position for distance check
+    const playerEntity = this.playerId >= 0 ? this.entityManager.getEntity(this.playerId) : null;
+    const playerTransform = playerEntity?.getComponent<TransformComponent>(ComponentType.Transform);
+    const playerFpX = playerTransform ? playerTransform.fpPosition.x : FP._0;
+    const playerFpZ = playerTransform ? playerTransform.fpPosition.z : FP._0;
 
     for (let i = 0; i < enemyCount; i++) {
       let x: number;
@@ -120,7 +127,11 @@ export class WaveSystem extends GameSystem {
             z = GameRandom.floatRange(-halfArena + 1, halfArena - 1);
             break;
         }
-      } while (Math.sqrt(x * x + z * z) < minDist);
+        const dx = FP.Sub(FP.FromFloat(x), playerFpX);
+        const dz = FP.Sub(FP.FromFloat(z), playerFpZ);
+        const distSq = FP.Add(FP.Mul(dx, dx), FP.Mul(dz, dz));
+        if (FP.Gte(distSq, minDistSq)) break;
+      } while (true);
 
       this.entityFactory.createEnemy(FP.FromFloat(x), FP.FromFloat(z), speed, this.playerId);
     }

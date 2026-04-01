@@ -1,4 +1,4 @@
-import { GameSystem, type SystemContext } from 'phalanx-ecs';
+import { GameSystem } from 'phalanx-ecs';
 import { FP } from 'phalanx-math';
 import { ComponentType } from '../components/ComponentType.ts';
 import type { ProjectileComponent } from '../components/ProjectileComponent.ts';
@@ -9,16 +9,7 @@ const FP_TIMESTEP = FP.Div(FP._1, FP.FromFloat(TICK_RATE));
 const ARENA_HALF = ARENA_SIZE / 2;
 
 export class ProjectileMovementSystem extends GameSystem {
-  private pendingDestroy: Set<number>;
-
-  constructor(pendingDestroy: Set<number>) {
-    super();
-    this.pendingDestroy = pendingDestroy;
-  }
-
-  public override init(context: SystemContext): void {
-    super.init(context);
-  }
+  private readonly _tempPosition = { x: FP._0, y: FP._0, z: FP._0 };
 
   public override processTick(_tick: number): void {
     const entities = this.entityManager.queryEntities(ComponentType.Projectile);
@@ -32,7 +23,6 @@ export class ProjectileMovementSystem extends GameSystem {
       projectile.lifetime--;
       if (projectile.lifetime <= 0) {
         entity.destroy();
-        this.pendingDestroy.add(entity.id);
         continue;
       }
 
@@ -47,11 +37,13 @@ export class ProjectileMovementSystem extends GameSystem {
       const nz = FP.ToFloat(newZ);
       if (nx < -ARENA_HALF || nx > ARENA_HALF || nz < -ARENA_HALF || nz > ARENA_HALF) {
         entity.destroy();
-        this.pendingDestroy.add(entity.id);
         continue;
       }
 
-      transform.fpPosition = { x: newX, y: pos.y, z: newZ };
+      this._tempPosition.x = newX;
+      this._tempPosition.y = pos.y;
+      this._tempPosition.z = newZ;
+      transform.fpPosition = this._tempPosition;
     }
   }
 }

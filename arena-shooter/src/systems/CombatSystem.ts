@@ -12,13 +12,11 @@ import type { TransformComponent } from '../components/TransformComponent.ts';
 import { FP } from 'phalanx-math';
 
 export class CombatSystem extends GameSystem {
-  private pendingDestroy: Set<number>;
   private entityFactory: EntityFactory;
   private collisionQueue: CollisionEvent[] = [];
 
-  constructor(pendingDestroy: Set<number>, entityFactory: EntityFactory) {
+  constructor(entityFactory: EntityFactory) {
     super();
-    this.pendingDestroy = pendingDestroy;
     this.entityFactory = entityFactory;
   }
 
@@ -77,9 +75,7 @@ export class CombatSystem extends GameSystem {
 
     // Destroy both
     enemy.destroy();
-    this.pendingDestroy.add(enemyId);
     projectile.destroy();
-    this.pendingDestroy.add(projectileId);
 
     this.eventBus.emit<EnemyKilledEvent>(GameEvents.COMBAT_ENEMY_KILLED, {
       enemyId,
@@ -111,7 +107,6 @@ export class CombatSystem extends GameSystem {
 
     // Destroy enemy
     enemy.destroy();
-    this.pendingDestroy.add(enemyId);
 
     this.eventBus.emit<EnemyKilledEvent>(GameEvents.COMBAT_ENEMY_KILLED, {
       enemyId,
@@ -137,6 +132,5 @@ export class CombatSystem extends GameSystem {
     health.pendingHeal += pickupComp.healAmount;
 
     pickup.destroy();
-    this.pendingDestroy.add(pickupId);
   }
 }

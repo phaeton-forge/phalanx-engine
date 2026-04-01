@@ -8,20 +8,28 @@ import { Scene } from '@babylonjs/core';
 export class PlayerAimSystem extends GameSystem {
   private inputManager: InputManager;
   private scene: Scene;
+  private onMouseMove: (e: MouseEvent) => void;
+  private canvas: HTMLCanvasElement | null = null;
 
   constructor(inputManager: InputManager, scene: Scene) {
     super();
     this.inputManager = inputManager;
     this.scene = scene;
+    this.onMouseMove = (e: MouseEvent) => {
+      this.updateAimPosition(e);
+    };
   }
 
   public override init(context: SystemContext): void {
     super.init(context);
 
     // Listen for mouse move to update aim world position via raycast
-    this.scene.getEngine().getRenderingCanvas()?.addEventListener('mousemove', (e: MouseEvent) => {
-      this.updateAimPosition(e);
-    });
+    this.canvas = this.scene.getEngine().getRenderingCanvas() ?? null;
+    this.canvas?.addEventListener('mousemove', this.onMouseMove);
+  }
+
+  public dispose(): void {
+    this.canvas?.removeEventListener('mousemove', this.onMouseMove);
   }
 
   private updateAimPosition(e: MouseEvent): void {

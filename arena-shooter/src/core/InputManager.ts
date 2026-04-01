@@ -4,6 +4,7 @@ export class InputManager {
   private keys: Set<string> = new Set();
   public mouseDown: boolean = false;
   private mouseJustPressed: boolean = false;
+  private spaceJustPressed: boolean = false;
   private reloadJustPressed: boolean = false;
 
   public aimWorldX: number = 0;
@@ -24,6 +25,9 @@ export class InputManager {
       this.keys.add(e.code);
       if (e.code === 'KeyR') {
         this.reloadJustPressed = true;
+      }
+      if (e.code === 'Space') {
+        this.spaceJustPressed = true;
       }
     };
 
@@ -75,7 +79,7 @@ export class InputManager {
   }
 
   public get isFiring(): boolean {
-    return this.mouseJustPressed || (this.keys.has('Space') && this.mouseJustPressed);
+    return this.mouseJustPressed || this.spaceJustPressed;
   }
 
   public get isSpaceFiring(): boolean {
@@ -99,9 +103,9 @@ export class InputManager {
   }
 
   public consumeSpaceFire(): boolean {
-    if (this.keys.has('Space')) {
-      // Space is treated as single-fire: we track it via a separate flag
-      return false;
+    if (this.spaceJustPressed) {
+      this.spaceJustPressed = false;
+      return true;
     }
     return false;
   }
@@ -109,6 +113,7 @@ export class InputManager {
   /** Call at end of each tick to clear per-tick state */
   public endTick(): void {
     this.mouseJustPressed = false;
+    this.spaceJustPressed = false;
     this.reloadJustPressed = false;
   }
 
