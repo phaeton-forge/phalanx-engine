@@ -13,16 +13,16 @@ export const vfxConfig = {
   glow: {
     enabled: true,
     mainTextureFixedSize: 512,
-    blurKernelSize: 64,
-    intensity: 0.8,
+    blurKernelSize: 32,
+    intensity: 0.3,
   },
 
   pipeline: {
     bloomEnabled: true,
-    bloomThreshold: 0.3,
-    bloomWeight: 0.4,
-    bloomKernel: 64,
-    bloomScale: 0.5,
+    bloomThreshold: 0.7,
+    bloomWeight: 0.15,
+    bloomKernel: 32,
+    bloomScale: 0.25,
     fxaaEnabled: true,
     chromaticAberrationEnabled: true,
     chromaticAberrationAmount: 15,
@@ -39,9 +39,21 @@ export const vfxConfig = {
   },
 
   colors: {
-    playerEmissive: { r: 0, g: 1, b: 1 },          // cyan
-    enemyEmissive: { r: 1, g: 0.2, b: 0.1 },       // red-orange
-    projectileEmissive: { r: 0, g: 1, b: 1 },       // cyan
+    player: {
+      diffuse: { r: 0, g: 0.9, b: 1 },
+      emissive: { r: 0, g: 0.35, b: 0.4 },
+    },
+    enemy: {
+      diffuse: { r: 1, g: 0.3, b: 0.15 },
+      emissive: { r: 0.4, g: 0.08, b: 0.04 },
+    },
+    projectile: {
+      diffuse: { r: 0, g: 0.9, b: 1 },
+      emissive: { r: 0, g: 0.9, b: 1 },
+    },
+    wall: {
+      emissive: { r: 0, g: 0.8, b: 0.9 },
+    },
     arenaGrid: {
       mainColor: { r: 0.05, g: 0.08, b: 0.12 },
       lineColor: { r: 0, g: 0.4, b: 0.5 },

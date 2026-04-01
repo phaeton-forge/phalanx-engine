@@ -132,6 +132,10 @@ export class EntityFactory {
     transform.fpRotationY = FP.ToRaw(angle);
 
     const mesh = this.createProjectileMesh(entity.id, dirX, dirZ);
+    // Set mesh position to spawn point BEFORE creating trails
+    // to prevent TrailMesh from recording a line from origin to spawn
+    mesh.position.x = FP.ToFloat(fpX);
+    mesh.position.z = FP.ToFloat(fpZ);
     this.meshMap.set(entity.id, mesh);
 
     // Projectile trail particle
@@ -177,15 +181,20 @@ export class EntityFactory {
     }, this.scene);
 
     const mat = new StandardMaterial(`player_mat_${entityId}`, this.scene);
-    mat.diffuseColor = new Color3(0.051, 0.106, 0.165); // #0D1B2A
+    mat.diffuseColor = new Color3(
+      vfxConfig.colors.player.diffuse.r,
+      vfxConfig.colors.player.diffuse.g,
+      vfxConfig.colors.player.diffuse.b,
+    );
     mat.emissiveColor = new Color3(
-      vfxConfig.colors.playerEmissive.r,
-      vfxConfig.colors.playerEmissive.g,
-      vfxConfig.colors.playerEmissive.b,
+      vfxConfig.colors.player.emissive.r,
+      vfxConfig.colors.player.emissive.g,
+      vfxConfig.colors.player.emissive.b,
     );
     mat.specularColor = new Color3(0, 0.749, 1);
-    mat.disableLighting = true;
+    mat.disableLighting = false;
     capsule.material = mat;
+    capsule.metadata = { team: 'player' };
     capsule.position.y = 0.9;
 
     // Weapon barrel with emissive glow
@@ -211,14 +220,19 @@ export class EntityFactory {
       diameter: 1.0,
     }, this.scene);
     const mat = new StandardMaterial(`enemy_mat_${entityId}`, this.scene);
-    mat.diffuseColor = new Color3(0.102, 0, 0); // #1A0000
-    mat.emissiveColor = new Color3(
-      vfxConfig.colors.enemyEmissive.r,
-      vfxConfig.colors.enemyEmissive.g,
-      vfxConfig.colors.enemyEmissive.b,
+    mat.diffuseColor = new Color3(
+      vfxConfig.colors.enemy.diffuse.r,
+      vfxConfig.colors.enemy.diffuse.g,
+      vfxConfig.colors.enemy.diffuse.b,
     );
-    mat.disableLighting = true;
+    mat.emissiveColor = new Color3(
+      vfxConfig.colors.enemy.emissive.r,
+      vfxConfig.colors.enemy.emissive.g,
+      vfxConfig.colors.enemy.emissive.b,
+    );
+    mat.disableLighting = false;
     sphere.material = mat;
+    sphere.metadata = { team: 'enemy' };
     sphere.position.y = 0.5;
 
     // Pulsing emissive animation
@@ -245,14 +259,19 @@ export class EntityFactory {
       diameter: 0.3,
     }, this.scene);
     const mat = new StandardMaterial(`projectile_mat_${entityId}`, this.scene);
-    mat.diffuseColor = new Color3(0, 0, 0);
+    mat.diffuseColor = new Color3(
+      vfxConfig.colors.projectile.diffuse.r,
+      vfxConfig.colors.projectile.diffuse.g,
+      vfxConfig.colors.projectile.diffuse.b,
+    );
     mat.emissiveColor = new Color3(
-      vfxConfig.colors.projectileEmissive.r,
-      vfxConfig.colors.projectileEmissive.g,
-      vfxConfig.colors.projectileEmissive.b,
+      vfxConfig.colors.projectile.emissive.r,
+      vfxConfig.colors.projectile.emissive.g,
+      vfxConfig.colors.projectile.emissive.b,
     );
     mat.disableLighting = true;
     sphere.material = mat;
+    sphere.metadata = { isProjectile: true };
     sphere.position.y = 0.9;
     // Elongate in flight direction
     sphere.scaling.z = 3;

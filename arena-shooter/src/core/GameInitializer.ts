@@ -1,5 +1,6 @@
 import {
   PointLight,
+  HemisphericLight,
   Vector3,
   ArcRotateCamera,
   MeshBuilder,
@@ -27,11 +28,17 @@ export class GameInitializer {
     // Dark background
     this.scene.clearColor = new Color4(0.01, 0.02, 0.03, 1);
 
-    // No ambient light — only point lights and emissive
     // Centre fill light
     const centreLight = new PointLight('centreLight', new Vector3(0, 10, 0), this.scene);
     centreLight.intensity = 0.3;
     centreLight.diffuse = new Color3(0, 0.133, 0.267); // #002244
+
+    // Ambient hemispheric light so diffuse colors are visible on entities
+    const ambientLight = new HemisphericLight('ambientLight', new Vector3(0, 1, 0), this.scene);
+    ambientLight.intensity = 0.9;
+    ambientLight.diffuse = new Color3(0.9, 0.9, 1);
+    ambientLight.groundColor = new Color3(0.1, 0.1, 0.15);
+    ambientLight.specular = Color3.Black();
 
     // Floor with grid
     this.setupArenaFloor(ARENA_SIZE, ARENA_SIZE);
@@ -72,6 +79,22 @@ export class GameInitializer {
       blurKernelSize: cfg.blurKernelSize,
     });
     gl.intensity = cfg.intensity;
+
+    // Per-mesh glow control: walls/projectiles glow bright, entities subtle, floor none
+    gl.customEmissiveColorSelector = (mesh, _subMesh, _material, result) => {
+      if (mesh.metadata?.isWall) {
+        result.set(0, 0.8, 0.9, 1);
+      } else if (mesh.metadata?.isProjectile) {
+        result.set(0, 0.9, 1, 1);
+      } else if (mesh.metadata?.team === 'player') {
+        result.set(0, 0.15, 0.18, 1);
+      } else if (mesh.metadata?.team === 'enemy') {
+        result.set(0.18, 0.04, 0.02, 1);
+      } else {
+        result.set(0, 0, 0, 0);
+      }
+    };
+
     return gl;
   }
 
@@ -155,12 +178,13 @@ export class GameInitializer {
     }, this.scene);
     const mat = new StandardMaterial(name + 'Mat', this.scene);
     mat.emissiveColor = new Color3(
-      vfxConfig.colors.playerEmissive.r,
-      vfxConfig.colors.playerEmissive.g,
-      vfxConfig.colors.playerEmissive.b,
+      vfxConfig.colors.wall.emissive.r,
+      vfxConfig.colors.wall.emissive.g,
+      vfxConfig.colors.wall.emissive.b,
     );
     mat.disableLighting = true;
     tube.material = mat;
+    tube.metadata = { isWall: true };
     return tube;
   }
 }

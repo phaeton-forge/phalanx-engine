@@ -22,9 +22,9 @@ export class ProjectileTrail {
 
     this.material = new StandardMaterial('trailMat_' + sourceMesh.name, scene);
     this.material.emissiveColor = new Color3(
-      vfxConfig.colors.projectileEmissive.r,
-      vfxConfig.colors.projectileEmissive.g,
-      vfxConfig.colors.projectileEmissive.b,
+      vfxConfig.colors.projectile.emissive.r,
+      vfxConfig.colors.projectile.emissive.g,
+      vfxConfig.colors.projectile.emissive.b,
     );
     this.material.alpha = cfg.alpha;
     this.material.backFaceCulling = false;

@@ -21,14 +21,14 @@ export class VFXSystem extends GameSystem {
   private scene: Scene;
 
   private readonly enemyColor = new Color3(
-    vfxConfig.colors.enemyEmissive.r,
-    vfxConfig.colors.enemyEmissive.g,
-    vfxConfig.colors.enemyEmissive.b,
+    vfxConfig.colors.enemy.diffuse.r,
+    vfxConfig.colors.enemy.diffuse.g,
+    vfxConfig.colors.enemy.diffuse.b,
   );
   private readonly playerColor = new Color3(
-    vfxConfig.colors.playerEmissive.r,
-    vfxConfig.colors.playerEmissive.g,
-    vfxConfig.colors.playerEmissive.b,
+    vfxConfig.colors.player.diffuse.r,
+    vfxConfig.colors.player.diffuse.g,
+    vfxConfig.colors.player.diffuse.b,
   );
 
   constructor(scene: Scene) {
