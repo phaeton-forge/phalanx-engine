@@ -61,7 +61,7 @@ export class EntityFactory {
       radius: PLAYER_RADIUS,
       mass: FP._1,
       isStatic: false,
-      friction: FP.FromFloat(0.9),
+      // No friction — velocity is explicitly set each tick by PlayerMovementSystem
     }));
 
     this.entityManager.addEntity(entity);

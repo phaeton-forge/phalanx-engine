@@ -10,22 +10,13 @@ import {
   DefaultRenderingPipeline,
 } from '@babylonjs/core';
 import { GridMaterial } from '@babylonjs/materials';
-import type { EntityManager } from 'phalanx-ecs';
-import { FP } from 'phalanx-math';
-import { PhysicsBodyComponent } from 'phalanx-physics';
-import { Entity } from 'phalanx-ecs';
 import { ARENA_SIZE } from '../config/constants.ts';
-import { TransformComponent } from '../components/TransformComponent.ts';
-import { EntityTypeComponent } from '../components/EntityTypeComponent.ts';
-import { FPVector3 } from 'phalanx-math';
 
 export class GameInitializer {
   private scene: Scene;
-  private entityManager: EntityManager;
 
-  constructor(scene: Scene, entityManager: EntityManager) {
+  constructor(scene: Scene) {
     this.scene = scene;
-    this.entityManager = entityManager;
   }
 
   public setupScene(): ArcRotateCamera {
@@ -82,6 +73,12 @@ export class GameInitializer {
     return camera;
   }
 
+  /**
+   * Create visual-only wall meshes. Physics boundary is handled by
+   * PhysicsWorld.worldBounds — no wall physics bodies needed.
+   * Circle-vs-circle collision with huge wall radii would incorrectly
+   * push entities inside the arena.
+   */
   private createWalls(): void {
     const half = ARENA_SIZE / 2;
     const wallThickness = 1;
@@ -95,18 +92,7 @@ export class GameInitializer {
     ];
 
     for (const cfg of wallConfigs) {
-      const entity = new Entity();
-      const fpPos = FPVector3.FromFloat(cfg.x, wallHeight / 2, cfg.z);
-      entity.addComponent(new TransformComponent(entity.id, fpPos));
-      entity.addComponent(new EntityTypeComponent('wall'));
-      entity.addComponent(new PhysicsBodyComponent(entity.id, {
-        radius: FP.FromFloat(Math.max(cfg.w, cfg.d) / 2),
-        mass: FP._0,
-        isStatic: true,
-      }));
-      this.entityManager.addEntity(entity);
-
-      // Visual mesh — dark wall with emissive top edge
+      // Visual mesh only — dark wall with emissive top edge
       const box = MeshBuilder.CreateBox(cfg.name, {
         width: cfg.w,
         height: wallHeight,

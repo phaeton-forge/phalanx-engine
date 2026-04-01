@@ -13,9 +13,9 @@ export class InputManager {
   private canvas: HTMLCanvasElement;
   private onKeyDown: (e: KeyboardEvent) => void;
   private onKeyUp: (e: KeyboardEvent) => void;
-  private onMouseDown: (e: MouseEvent) => void;
-  private onMouseUp: (e: MouseEvent) => void;
-  private onMouseMove: (e: MouseEvent) => void;
+  private onPointerDown: (e: PointerEvent) => void;
+  private onPointerUp: (e: PointerEvent) => void;
+  private onPointerMove: (e: PointerEvent) => void;
   private onContextMenu: (e: MouseEvent) => void;
 
   constructor(canvas: HTMLCanvasElement) {
@@ -35,21 +35,24 @@ export class InputManager {
       this.keys.delete(e.code);
     };
 
-    this.onMouseDown = (e: MouseEvent) => {
+    this.onPointerDown = (e: PointerEvent) => {
       if (e.button === 0) {
         this.mouseDown = true;
         this.mouseJustPressed = true;
       }
     };
 
-    this.onMouseUp = (e: MouseEvent) => {
+    this.onPointerUp = (e: PointerEvent) => {
       if (e.button === 0) {
         this.mouseDown = false;
       }
     };
 
-    this.onMouseMove = (_e: MouseEvent) => {
-      // Aim position is updated via raycasting in PlayerAimSystem
+    this.onPointerMove = (e: PointerEvent) => {
+      // Track mouse position for aim raycasting
+      const rect = this.canvas.getBoundingClientRect();
+      this._lastMouseX = e.clientX - rect.left;
+      this._lastMouseY = e.clientY - rect.top;
     };
 
     this.onContextMenu = (e: MouseEvent) => {
@@ -58,9 +61,9 @@ export class InputManager {
 
     window.addEventListener('keydown', this.onKeyDown);
     window.addEventListener('keyup', this.onKeyUp);
-    canvas.addEventListener('mousedown', this.onMouseDown);
-    canvas.addEventListener('mouseup', this.onMouseUp);
-    canvas.addEventListener('mousemove', this.onMouseMove);
+    canvas.addEventListener('pointerdown', this.onPointerDown);
+    canvas.addEventListener('pointerup', this.onPointerUp);
+    canvas.addEventListener('pointermove', this.onPointerMove);
     canvas.addEventListener('contextmenu', this.onContextMenu);
   }
 
@@ -128,18 +131,12 @@ export class InputManager {
   private _lastMouseX: number = 0;
   private _lastMouseY: number = 0;
 
-  public updateMousePosition(e: PointerEvent | MouseEvent): void {
-    const rect = this.canvas.getBoundingClientRect();
-    this._lastMouseX = e.clientX - rect.left;
-    this._lastMouseY = e.clientY - rect.top;
-  }
-
   public dispose(): void {
     window.removeEventListener('keydown', this.onKeyDown);
     window.removeEventListener('keyup', this.onKeyUp);
-    this.canvas.removeEventListener('mousedown', this.onMouseDown);
-    this.canvas.removeEventListener('mouseup', this.onMouseUp);
-    this.canvas.removeEventListener('mousemove', this.onMouseMove);
+    this.canvas.removeEventListener('pointerdown', this.onPointerDown);
+    this.canvas.removeEventListener('pointerup', this.onPointerUp);
+    this.canvas.removeEventListener('pointermove', this.onPointerMove);
     this.canvas.removeEventListener('contextmenu', this.onContextMenu);
   }
 }

@@ -8,37 +8,24 @@ import { Scene } from '@babylonjs/core';
 export class PlayerAimSystem extends GameSystem {
   private inputManager: InputManager;
   private scene: Scene;
-  private onMouseMove: (e: MouseEvent) => void;
-  private canvas: HTMLCanvasElement | null = null;
 
   constructor(inputManager: InputManager, scene: Scene) {
     super();
     this.inputManager = inputManager;
     this.scene = scene;
-    this.onMouseMove = (e: MouseEvent) => {
-      this.updateAimPosition(e);
-    };
   }
 
   public override init(context: SystemContext): void {
     super.init(context);
-
-    // Listen for mouse move to update aim world position via raycast
-    this.canvas = this.scene.getEngine().getRenderingCanvas() ?? null;
-    this.canvas?.addEventListener('mousemove', this.onMouseMove);
   }
 
-  public dispose(): void {
-    this.canvas?.removeEventListener('mousemove', this.onMouseMove);
-  }
-
-  private updateAimPosition(e: MouseEvent): void {
-    const canvas = this.scene.getEngine().getRenderingCanvas();
-    if (!canvas) return;
-
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+  /**
+   * Update aim world position by raycasting from camera through screen mouse coords.
+   * Called each tick before rotation is computed.
+   */
+  private updateAimFromScreenCoords(): void {
+    const x = this.inputManager.mouseScreenX;
+    const y = this.inputManager.mouseScreenY;
 
     // Create a ray from camera through screen position
     const ray = this.scene.createPickingRay(
@@ -59,6 +46,9 @@ export class PlayerAimSystem extends GameSystem {
   }
 
   public override processTick(_tick: number): void {
+    // Update aim world position from latest screen coordinates
+    this.updateAimFromScreenCoords();
+
     const entities = this.entityManager.queryEntities(ComponentType.PlayerInput);
     for (const entity of entities) {
       const transform = entity.getComponent<TransformComponent>(ComponentType.Transform);

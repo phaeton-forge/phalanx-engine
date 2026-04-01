@@ -81,7 +81,7 @@ export class Game {
       },
     });
 
-    // Collision filter
+    // Collision filter — walls are visual-only (worldBounds handles containment)
     const entityManager = this.world.entityManager;
     this.physicsWorld.setCollisionFilter((entityIdA: number, entityIdB: number) => {
       const eA = entityManager.getEntity(entityIdA);
@@ -98,10 +98,6 @@ export class Game {
       // Projectiles don't hit player or other projectiles
       if ((a === 'projectile' && b === 'player') || (a === 'player' && b === 'projectile')) return false;
       if (a === 'projectile' && b === 'projectile') return false;
-
-      // Walls only collide with player
-      if (a === 'wall' && b === 'wall') return false;
-      if ((a === 'wall' && b !== 'player') || (b === 'wall' && a !== 'player')) return false;
 
       // Enemies don't collide with each other
       if (a === 'enemy' && b === 'enemy') return false;
@@ -136,7 +132,7 @@ export class Game {
     const meshSyncSystem = new MeshSyncSystem(this.meshMap);
 
     // Scene setup (before registerSystems so camera is available for CameraSystem)
-    const gameInitializer = new GameInitializer(this.scene, this.world.entityManager);
+    const gameInitializer = new GameInitializer(this.scene);
     const camera = gameInitializer.setupScene();
     const cameraSystem = new CameraSystem(camera, this.meshMap);
 
