@@ -975,47 +975,26 @@ Components backed by contiguous typed arrays for cache-friendly hot-path iterati
 | Component              | Schema Fields                                                                  | Purpose                              |
 | ---------------------- | ------------------------------------------------------------------------------ | ------------------------------------ |
 | `TransformComponent`   | `fpPositionX/Y/Z` (`i64`), `visualPositionX/Y/Z` (`f64`)                      | Entity position (authoritative + visual) |
-| `PhysicsBodyComponent` | `velocityX/Y/Z` (`i64`), `radius` (`i64`), `mass` (`i64`), `isStatic` (`u8`), `ignorePhysics` (`u8`), `lastX/Z` (`f64`) | Physics simulation data              |
+| `PhysicsBodyComponent` | `velocityX/Y/Z` (`i64`), `radius` (`i64`), `mass` (`i64`), `restitution` (`i64`), `friction` (`i64`), `isStatic` (`u8`), `ignorePhysics` (`u8`), `lastX/Z` (`f64`) | Physics simulation data (from `phalanx-physics`) |
 
-**Example:**
+**Example (custom SoA component):**
 
 ```typescript
 import { SoAComponent, defineSoASchema } from 'phalanx-ecs';
 import { FP } from 'phalanx-math';
 
-const PhysicsSoASchema = defineSoASchema({
-  velocityX: 'i64',  // BigInt64Array — raw FixedPoint base values
-  velocityY: 'i64',
-  velocityZ: 'i64',
-  radius: 'i64',
-  isStatic: 'u8',    // Uint8Array — boolean flag
-}, 'PhysicsBody');
-
-export class PhysicsBodyComponent extends SoAComponent<typeof PhysicsSoASchema.definition> {
-  public readonly type = ComponentType.PhysicsBody;
-  static readonly soaSchema = PhysicsSoASchema;
-
-  constructor(entityId: number, radius: FixedPoint) {
-    super(PhysicsSoASchema, entityId, {
-      velocityX: FP.ToRaw(FP._0),
-      velocityY: FP.ToRaw(FP._0),
-      velocityZ: FP.ToRaw(FP._0),
-      radius: FP.ToRaw(radius),
-      isStatic: 0,
-    });
-  }
-
-  // Getters provide a clean API over raw typed-array access
-  get velocity(): FPVector3Type {
-    const idx = this.getIndex();
-    return {
-      x: FP.FromRaw(this.store.arrays.velocityX[idx]),
-      y: FP.FromRaw(this.store.arrays.velocityY[idx]),
-      z: FP.FromRaw(this.store.arrays.velocityZ[idx]),
-    };
-  }
-}
+// Define a schema — each field maps to a typed array
+const TransformSoASchema = defineSoASchema({
+  fpPositionX: 'i64',   // BigInt64Array — raw FixedPoint
+  fpPositionY: 'i64',
+  fpPositionZ: 'i64',
+  visualPositionX: 'f64', // Float64Array — visual cache
+  visualPositionY: 'f64',
+  visualPositionZ: 'f64',
+}, 'Transform');
 ```
+
+> **Note:** `PhysicsBodyComponent` and `PhysicsSoASchema` are provided by the `phalanx-physics` package and re-exported from `components/index.ts`. You do not need to define them — just import and use them.
 
 **Direct store access for hot-path systems:**
 
@@ -1029,7 +1008,7 @@ in hot loops the repeated `Map.get()` + index validation per field access negate
 import { GameSystem, SoAComponentStore } from 'phalanx-ecs';
 import { PhysicsSoASchema, TransformSoASchema } from '../components';
 
-class PhysicsSystem extends GameSystem {
+class MovementSystem extends GameSystem {
   // Cache store references — resolved once
   private physicsStore!: SoAComponentStore<typeof PhysicsSoASchema.definition>;
   private transformStore!: SoAComponentStore<typeof TransformSoASchema.definition>;
@@ -1041,27 +1020,37 @@ class PhysicsSystem extends GameSystem {
     this.transformStore = this.entityManager.getOrCreateSoAStore(TransformSoASchema);
   }
 
-  private applyVelocities(dt: FixedPoint): void {
+  public override processTick(tick: number): void {
     // Grab typed array references outside the loop
     const velocityX = this.physicsStore.arrays.velocityX;
     const velocityZ = this.physicsStore.arrays.velocityZ;
-    const fpPositionX = this.transformStore.arrays.fpPositionX;
-    const fpPositionZ = this.transformStore.arrays.fpPositionZ;
+
+    const zeroRaw = FP.ToRaw(FP._0);
 
     // Iterate in deterministic entity ID order
     for (const entityId of this.physicsStore.entityIds()) {
       const physIndex = this.physicsStore.indexOf(entityId);
-      // Cross-store lookup — needed when two stores track the same entities
-      const txIndex = this.transformStore.indexOf(entityId);
-      if (txIndex === -1) continue;
+      if (this.physicsStore.arrays.isStatic[physIndex] === 1) continue;
 
-      const velX = FP.FromRaw(velocityX[physIndex]);
-      const velZ = FP.FromRaw(velocityZ[physIndex]);
-      const posX = FP.FromRaw(fpPositionX[txIndex]);
-      const posZ = FP.FromRaw(fpPositionZ[txIndex]);
+      const entity = this.entityManager.getEntity(entityId);
+      if (!entity) continue;
 
-      fpPositionX[txIndex] = FP.ToRaw(FP.Add(posX, FP.Mul(velX, dt)));
-      fpPositionZ[txIndex] = FP.ToRaw(FP.Add(posZ, FP.Mul(velZ, dt)));
+      // AoS fallback — get movement target from IComponent
+      const movement = entity.getComponent<MovementComponent>(ComponentType.Movement);
+      if (movement?.isMoving) {
+        // Cross-store lookup for position (to compute direction)
+        const txIndex = this.transformStore.indexOf(entityId);
+        if (txIndex === -1) continue;
+
+        const posX = FP.FromRaw(this.transformStore.arrays.fpPositionX[txIndex]);
+        const posZ = FP.FromRaw(this.transformStore.arrays.fpPositionZ[txIndex]);
+        // ... compute direction, set velocity
+        velocityX[physIndex] = FP.ToRaw(FP.Mul(dirX, speed));
+        velocityZ[physIndex] = FP.ToRaw(FP.Mul(dirZ, speed));
+      } else {
+        velocityX[physIndex] = zeroRaw;
+        velocityZ[physIndex] = zeroRaw;
+      }
     }
   }
 }
@@ -1076,7 +1065,9 @@ class PhysicsSystem extends GameSystem {
 5. **Single-store loops** are the ideal case — iterate dense indices with zero indirection.
 6. **Sync visual positions** when writing fp positions directly (the facade setter does this automatically, but direct writes must do it manually).
 
-See `PhysicsSystem.ts` for a complete real-world example of direct SoA access patterns.
+See `MovementSystem.ts` for a complete real-world example of direct SoA access patterns.
+
+> **Note:** Velocity integration and collision resolution are handled by `PhysicsSystem` and `CollisionSystem` from the `phalanx-physics` package. Game-specific systems like `MovementSystem` only need to set velocities — the physics pipeline takes care of the rest.
 
 #### SoA Field Types
 
@@ -1160,9 +1151,10 @@ if (movementSystem) {
 | System                | Responsibility                         | Required Components  |
 | --------------------- | -------------------------------------- | -------------------- |
 | `CombatSystem`        | Target detection, attack logic         | Attack, Team, Health |
-| `MovementSystem`      | Entity movement commands               | Movement             |
+| `MovementSystem`      | Set velocities for moving entities     | Movement, PhysicsBody |
 | `HealthSystem`        | Damage processing, entity destruction  | Health               |
-| `PhysicsSystem`       | Deterministic physics, collision       | PhysicsBody          |
+| `PhysicsSystem`       | Velocity integration (from `phalanx-physics`) | PhysicsBody, Transform |
+| `CollisionSystem`     | Collision detection & resolution (from `phalanx-physics`) | PhysicsBody, Transform |
 | `ProjectileSystem`    | Projectile movement and collision      | Projectile, Team, Transform |
 | `InterpolationSystem` | Smooth visual movement between ticks   | Interpolation        |
 | `ResourceSystem`      | Resource generation and spending       | -                    |
@@ -1721,7 +1713,6 @@ src/
 │   ├── ResourceComponent.ts # Resource generation (IComponent)
 │   ├── UnitTypeComponent.ts # Unit type identifier (IComponent)
 │   ├── TransformComponent.ts # Entity position — SoA (i64 fp + f64 visual)
-│   ├── PhysicsBodyComponent.ts # Physics body — SoA (i64 velocity/radius/mass)
 │   ├── HealthBarComponent.ts # Health bar visualization (IComponent)
 │   ├── InterpolationComponent.ts # Visual interpolation state (IComponent)
 │   ├── AnimationComponent.ts # 3D model animation state (IComponent)
@@ -1729,12 +1720,11 @@ src/
 │   ├── AttackLockComponent.ts # Attack lock state
 │   ├── DeathComponent.ts    # Death animation/cleanup state
 │   ├── ProjectileComponent.ts # Projectile simulation state (IComponent)
-│   └── index.ts             # Re-exports
+│   └── index.ts             # Re-exports (includes PhysicsBodyComponent from phalanx-physics)
 │
 ├── systems/                 # All extend GameSystem from phalanx-ecs
 │   ├── CombatSystem.ts      # Attack logic (deterministic)
-│   ├── MovementSystem.ts    # Movement commands
-│   ├── PhysicsSystem.ts     # Deterministic physics simulation
+│   ├── MovementSystem.ts    # Set velocities for moving entities
 │   ├── HealthSystem.ts      # Damage processing
 │   ├── ProjectileSystem.ts  # Projectile ECS entity management (deterministic)
 │   ├── InterpolationSystem.ts # Smooth visual interpolation
