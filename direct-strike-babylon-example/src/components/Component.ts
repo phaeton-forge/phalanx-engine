@@ -1,5 +1,6 @@
 import type { IComponent } from 'phalanx-ecs';
 import { createComponentTypeRegistry } from 'phalanx-ecs';
+import { PHYSICS_BODY_COMPONENT_TYPE } from 'phalanx-physics';
 
 // Re-export IComponent for convenience
 export type { IComponent };
@@ -21,11 +22,15 @@ export const ComponentType = createComponentTypeRegistry({
   Rotation: 'Rotation',
   AttackLock: 'AttackLock',
   Death: 'Death',
-  PhysicsBody: 'PhysicsBody',
   HealthBar: 'HealthBar',
   Interpolation: 'Interpolation',
   Transform: 'Transform',
   Projectile: 'Projectile',
+  PhysicsBody: 'PhysicsBody',
 });
+
+// Override PhysicsBody to use the canonical symbol from phalanx-physics
+// so that entity.getComponent(ComponentType.PhysicsBody) resolves correctly
+(ComponentType as Record<string, symbol>).PhysicsBody = PHYSICS_BODY_COMPONENT_TYPE;
 
 export type ComponentTypeKey = keyof typeof ComponentType;

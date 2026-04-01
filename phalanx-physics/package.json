@@ -1,0 +1,39 @@
+{
+  "name": "phalanx-physics",
+  "version": "0.1.0",
+  "description": "Deterministic fixed-point physics engine for Phalanx Engine - spatial hashing, collision detection, and resolution",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "rebuild": "npm run clean && npm run build",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "phalanx-ecs": "^0.1.0",
+    "phalanx-math": "^0.1.0"
+  },
+  "devDependencies": {
+    "phalanx-ecs": "workspace:*",
+    "phalanx-math": "workspace:*",
+    "typescript": "~5.9.3",
+    "vitest": "^1.0.0"
+  },
+  "keywords": [
+    "physics",
+    "deterministic",
+    "fixed-point",
+    "collision-detection",
+    "spatial-hash",
+    "ecs",
+    "phalanx"
+  ]
+}

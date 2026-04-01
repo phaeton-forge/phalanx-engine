@@ -1,8 +1,8 @@
 import { Engine, Scene } from '@babylonjs/core';
 import { GameWorld } from 'phalanx-ecs';
-import type { CommandsBatch } from 'phalanx-ecs';
+import type { SoASchemaDefinition, SoAComponentStore, CommandsBatch } from 'phalanx-ecs';
 import { ProjectileEntity } from '../entities/ProjectileEntity';
-import { ProjectileComponent, TeamComponent, InterpolationComponent } from '../components';
+import { ProjectileComponent, TeamComponent, InterpolationComponent, TransformSoASchema } from '../components';
 import { LockstepManager } from './LockstepManager';
 import { EntityFactory } from './EntityFactory';
 import { UIManager } from './UIManager';
@@ -12,7 +12,8 @@ import { GameInitializer } from './GameInitializer';
 import { EntityCleanupService } from './EntityCleanupService';
 import { SceneManager } from './SceneManager';
 import { MovementSystem } from '../systems/MovementSystem';
-import { PhysicsSystem } from '../systems/PhysicsSystem';
+import { PhysicsWorld } from 'phalanx-physics';
+import { FP } from 'phalanx-math';
 import { HealthSystem } from '../systems/HealthSystem';
 import { ProjectileSystem } from '../systems/ProjectileSystem';
 import { CombatSystem } from '../systems/CombatSystem';
@@ -28,6 +29,7 @@ import { HealthBarSystem } from '../systems/HealthBarSystem';
 import { CameraController } from '../systems/CameraController';
 import { TeamTag } from '../enums/TeamTag';
 import { ComponentType } from '../components';
+import { networkConfig } from '../config/constants';
 import type { PhalanxClient, MatchFoundEvent } from 'phalanx-client';
 
 /**
@@ -74,7 +76,7 @@ export class Game {
 
   // Gameplay systems
   private movementSystem!: MovementSystem;
-  private physicsSystem!: PhysicsSystem;
+  private physicsWorld!: PhysicsWorld;
   private healthSystem!: HealthSystem;
   private projectileSystem!: ProjectileSystem;
   private combatSystem!: CombatSystem;
@@ -150,7 +152,38 @@ export class Game {
 
     // Create all gameplay systems (core simulation systems)
     this.movementSystem = new MovementSystem();
-    this.physicsSystem = new PhysicsSystem();
+
+    // Create PhysicsWorld (phalanx-physics facade)
+    this.physicsWorld = new PhysicsWorld({
+      gridCellSize: FP.FromFloat(8),
+      subSteps: networkConfig.physicsSubsteps,
+      tickRate: networkConfig.tickRate,
+      maxVelocity: FP.FromFloat(15.0),
+      pushStrength: FP.FromFloat(15.0),
+    });
+    const { physicsSystem, collisionSystem } = this.physicsWorld.getSystems();
+
+    // Wire game-specific collision filter:
+    // Skip collisions between units and friendly buildings (same-team static entities)
+    const entityManager = this.world.entityManager;
+    collisionSystem.setCollisionFilter((entityIdA: number, entityIdB: number) => {
+      const eA = entityManager.getEntity(entityIdA);
+      const eB = entityManager.getEntity(entityIdB);
+      if (!eA || !eB) return false;
+
+      const bodyA = eA.getComponent<import('phalanx-physics').PhysicsBodyComponent>(ComponentType.PhysicsBody);
+      const bodyB = eB.getComponent<import('phalanx-physics').PhysicsBodyComponent>(ComponentType.PhysicsBody);
+
+      if ((bodyA?.isStatic || bodyB?.isStatic)) {
+        const teamA = eA.getComponent<TeamComponent>(ComponentType.Team);
+        const teamB = eB.getComponent<TeamComponent>(ComponentType.Team);
+        if (teamA && teamB && teamA.team === teamB.team) {
+          return false; // skip same-team static collisions
+        }
+      }
+      return true;
+    });
+
     this.healthSystem = new HealthSystem();
     this.projectileSystem = new ProjectileSystem(this.scene);
     this.combatSystem = new CombatSystem();
@@ -168,15 +201,14 @@ export class Game {
 
     // Define system processing order
     // Tick systems - order matters for determinism!
-    // Physics must run first to update positions
-    // Movement checks for arrival after physics
-    // Combat uses updated positions for targeting
-    // Projectiles need combat results
-    // Health processes death timers
-    // Resources/Wave/Territory are independent
+    // 1. MovementSystem sets velocities on PhysicsBodyComponent
+    // 2. PhysicsSystem integrates velocities into positions
+    // 3. CollisionSystem detects and resolves collisions
+    // 4. Combat/Health/etc. react to updated positions and collision events
     const tickSystems = [
-      this.physicsSystem,
       this.movementSystem,
+      physicsSystem,
+      collisionSystem,
       this.combatSystem,
       this.projectileSystem,
       this.healthSystem,
@@ -364,6 +396,21 @@ export class Game {
 
     this.world.start({
       beforeTick: (tick: number, commandsBatch: CommandsBatch) => {
+        // Link transform store to physics on first tick
+        if (tick === 0) {
+          const txStore = this.world.entityManager.getOrCreateSoAStore(TransformSoASchema);
+          this.physicsWorld.setTransformStore(
+            txStore as unknown as SoAComponentStore<SoASchemaDefinition>,
+            {
+              fpPositionX: 'fpPositionX',
+              fpPositionY: 'fpPositionY',
+              fpPositionZ: 'fpPositionZ',
+              visualPositionX: 'visualPositionX',
+              visualPositionZ: 'visualPositionZ',
+            },
+          );
+        }
+
         // Snapshot positions before simulation
         this.interpolationSystem.snapshotPositions();
 
