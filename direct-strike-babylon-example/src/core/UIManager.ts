@@ -128,6 +128,19 @@ export class UIManager {
   }
 
   /**
+   * Setup "Switch To Base" button handler
+   */
+  public setupBaseButton(onBaseClick: () => void): void {
+    const baseBtn = document.getElementById('base-btn');
+    if (baseBtn) {
+      baseBtn.addEventListener('click', () => {
+        onBaseClick();
+      });
+      this.addTouchFeedback(baseBtn);
+    }
+  }
+
+  /**
    * Setup pause button and resume button handlers.
    * Clicking the Pause button fires onPause (which should send a request to the server).
    * Clicking the Resume button fires onResume (also a server request).

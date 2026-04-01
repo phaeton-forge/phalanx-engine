@@ -410,7 +410,7 @@
         flex-shrink: 0;
       }
 
-      #exit-btn, #pause-btn {
+      #exit-btn, #pause-btn, #base-btn {
         background: #e74c3c;
         color: white;
         border: none;
@@ -424,8 +424,16 @@
         min-width: 44px;
       }
 
-      #exit-btn:hover, #pause-btn:hover {
+      #exit-btn:hover, #pause-btn:hover, #base-btn:hover {
         background: #c0392b;
+      }
+
+      #base-btn {
+        background: #3498db;
+      }
+
+      #base-btn:hover {
+        background: #2980b9;
       }
 
       #pause-btn {
@@ -474,6 +482,13 @@
           min-height: 36px;
           border-radius: 6px;
         }
+
+        #base-btn {
+          padding: 8px 14px;
+          font-size: 0.7rem;
+          min-height: 36px;
+          border-radius: 6px;
+        }
       }
 
       @media (max-width: 480px) {
@@ -501,6 +516,12 @@
         }
 
         #pause-btn {
+          padding: 6px 10px;
+          font-size: 0.65rem;
+          min-height: 32px;
+        }
+
+        #base-btn {
           padding: 6px 10px;
           font-size: 0.65rem;
           min-height: 32px;
@@ -1045,6 +1066,12 @@
           min-height: 28px;
         }
 
+        #base-btn {
+          padding: 5px 8px;
+          font-size: 0.6rem;
+          min-height: 28px;
+        }
+
         #unit-panel {
           bottom: 8px;
           padding: 5px 6px;
@@ -1147,6 +1174,12 @@
         }
 
         #pause-btn {
+          padding: 4px 10px;
+          font-size: 0.6rem;
+          min-height: 28px;
+        }
+
+        #base-btn {
           padding: 4px 10px;
           font-size: 0.6rem;
           min-height: 28px;
@@ -1263,6 +1296,12 @@
           min-height: 24px;
         }
 
+        #base-btn {
+          padding: 3px 8px;
+          font-size: 0.55rem;
+          min-height: 24px;
+        }
+
         #unit-panel {
           right: max(14px, calc(env(safe-area-inset-right) + 8px));
           padding: 4px;
@@ -1366,6 +1405,7 @@
         </div>
 
         <div id="game-buttons">
+          <button id="base-btn">🏠 Base</button>
           <button id="pause-btn">⏸ Pause</button>
           <button id="exit-btn">Exit Game</button>
         </div>

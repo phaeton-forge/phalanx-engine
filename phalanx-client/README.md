@@ -64,7 +64,7 @@ client.onFrame((alpha, dt) => {
 client.sendCommand('move', { targetX: 10, targetZ: 20 });
 
 // Disconnect when done
-await client.destroy();
+client.destroy();
 ```
 
 ## API Reference
@@ -73,15 +73,18 @@ await client.destroy();
 
 ```typescript
 interface PhalanxClientConfig {
-  serverUrl: string; // Server URL (e.g., 'http://localhost:3000')
-  playerId: string; // Unique player identifier
-  username: string; // Display name
-  autoReconnect?: boolean; // Auto-reconnect on disconnect (default: true)
-  maxReconnectAttempts?: number; // Max reconnection attempts (default: 5)
-  reconnectDelayMs?: number; // Delay between attempts (default: 1000)
-  connectionTimeoutMs?: number; // Connection timeout (default: 10000)
-  tickRate?: number; // Ticks per second, must match server (default: 20)
-  debug?: boolean; // Enable debug logging (default: false)
+  serverUrl: string;                    // Server URL (e.g., 'http://localhost:3000')
+  playerId?: string;                    // Unique player identifier (auto-generated if omitted)
+  username?: string;                    // Display name (auto-generated if omitted)
+  authToken?: string;                   // Auth token for server authentication
+  auth?: PhalanxAuthConfig;             // OAuth config for managed authentication
+  autoReconnect?: boolean;              // Auto-reconnect on disconnect (default: true)
+  maxReconnectAttempts?: number;        // Max reconnection attempts (default: 5)
+  reconnectDelayMs?: number;            // Delay between attempts (default: 1000)
+  connectionTimeoutMs?: number;         // Connection timeout (default: 10000)
+  tickRate?: number;                    // Ticks per second, must match server (default: 20)
+  pause?: Partial<PauseConfig>;         // Pause behavior configuration
+  debug?: boolean;                      // Enable debug logging (default: false)
 }
 ```
 
@@ -103,7 +106,7 @@ await client.connect();
 client.disconnect();
 
 // Destroy (disconnect + cleanup all resources)
-await client.destroy();
+client.destroy();
 
 // Check connection status
 const connected = client.isConnected();
@@ -421,6 +424,57 @@ client.onTick((tick, commands) => {
 });
 ```
 
+### Pause / Resume
+
+```typescript
+// Pause the game (notifies server, which broadcasts to all clients)
+client.pauseGame();
+
+// Resume the game
+client.resumeGame();
+
+// Listen for pause/resume events
+client.on('gamePaused', (event) => {
+  console.log(`Game paused by ${event.requestedBy} at tick ${event.lastTick}`);
+});
+
+client.on('gameResumed', (event) => {
+  console.log(`Game resumed by ${event.requestedBy}`);
+});
+```
+
+### Authentication
+
+For games that require authentication (e.g., ranked matchmaking), `PhalanxClient` supports managed OAuth:
+
+```typescript
+const client = await PhalanxClient.create({
+  serverUrl: 'http://localhost:3000',
+  auth: {
+    provider: 'google',
+    google: {
+      clientId: 'your-google-client-id',
+      tokenExchangeUrl: 'http://localhost:3000/auth/token',
+    },
+  },
+});
+
+// Trigger login flow
+client.login();
+
+// Check auth state
+const authState = client.getAuthState();
+console.log(authState.isAuthenticated, authState.user);
+
+// Listen for auth changes
+client.on('authStateChanged', (state) => {
+  console.log('Auth changed:', state.isAuthenticated);
+});
+
+// Logout
+await client.logout();
+```
+
 ### State Getters
 
 ```typescript
@@ -452,6 +506,10 @@ client.on('countdown', (event) => {});
 client.on('gameStart', (event) => {});
 client.on('matchEnd', (event) => {});
 
+// Pause events
+client.on('gamePaused', (event) => {});
+client.on('gameResumed', (event) => {});
+
 // Tick events
 client.on('tick', (event) => {});
 client.on('commands', (event) => {});
@@ -464,6 +522,10 @@ client.on('playerReady', (event) => {});  // A player reported ready (local or r
 // Reconnection events
 client.on('reconnectState', (event) => {});
 client.on('reconnectStatus', (event) => {});
+
+// Auth events
+client.on('authStateChanged', (state) => {});
+client.on('authError', (error) => {});
 
 // Desync detection events
 client.on('desync', (event) => {});  // Local hash mismatch detected
@@ -490,6 +552,7 @@ The client tracks its lifecycle state:
 | `match-found`  | Match found, waiting for countdown |
 | `countdown`    | Countdown in progress              |
 | `playing`      | Game is active                     |
+| `paused`       | Game is paused                     |
 | `reconnecting` | Attempting to reconnect to match   |
 | `finished`     | Match has ended                    |
 

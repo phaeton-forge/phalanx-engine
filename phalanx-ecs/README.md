@@ -152,6 +152,8 @@ class GameWorld {
   get eventBus(): EventBus
   get entityManager(): EntityManager
   get context(): SystemContext
+  get pools(): PoolManager | null
+  get paused(): boolean
   getSystem<T extends GameSystem>(systemClass: new (...args: any[]) => T): T | undefined
 
   // System registration
@@ -162,6 +164,10 @@ class GameWorld {
   processAllTicks(tick: number): void
   updateAll(dt: number): void
 
+  // Pause / Resume (delegates to tick/frame provider if available)
+  pause(): void
+  resume(): void
+
   // Lifecycle
   start(hooks?: GameWorldHooks): void
   stop(): void
@@ -170,9 +176,13 @@ class GameWorld {
 
 interface GameWorldConfig {
   componentTypes?: symbol[]
-  tickRate?: number          // default 60
-  maxFrameTime?: number      // default 0.25
+  tickRate?: number                    // default 60
+  maxFrameTime?: number                // default 0.25
   tickFrameProvider?: ITickFrameProvider  // e.g. PhalanxClient
+  pooling?: PoolingConfig              // Object pooling configuration
+  debug?: boolean                      // Enable debug features (default: false)
+  debugConfig?: DebugDataProviderConfig
+  debugPanelConfig?: DebugPanelConfig
 }
 
 interface GameWorldHooks {
@@ -190,9 +200,11 @@ class EntityManager {
   addEntity(entity: Entity): void
   removeEntity(entity: Entity): void
   getEntity(id: number): Entity | undefined
+  getAllEntities(): Entity[]
   queryEntities(...componentTypes: symbol[]): Entity[]
   queryEntitiesAny(...componentTypes: symbol[]): Entity[]
   cleanupDestroyed(): Entity[]
+  count: number
 
   // SoA store management
   getSoAStore<S>(schema: SoASchema<S>): SoAComponentStore<S> | undefined
@@ -224,6 +236,7 @@ class EventBus {
   emit<T>(eventType: string, data: T): void
   clear(eventType: string): void
   clearAll(): void
+  listenerCount(eventType: string): number
 }
 ```
 
@@ -234,9 +247,16 @@ class TickFrameManager implements ITickFrameProvider {
   constructor(config?: { tickRate?: number; maxFrameTime?: number })
   onTick(callback: (tick: number, commands: CommandsBatch) => void): Unsubscribe
   onFrame(callback: (alpha: number, deltaTime: number) => void): Unsubscribe
+  onPause(handler: PauseHandler): Unsubscribe
+  onResume(handler: PauseHandler): Unsubscribe
   start(): void
   stop(): void
+  requestPause(): void
+  requestResume(): void
   dispose(): void
+  getCurrentTick(): number
+  getTickRate(): number
+  isActive(): boolean
 }
 ```
 
@@ -250,10 +270,17 @@ single-player and multiplayer modes.
 interface ITickFrameProvider {
   onTick(handler: TickHandler): Unsubscribe;
   onFrame(handler: FrameHandler): Unsubscribe;
+
+  // Optional pause/resume support
+  requestPause?(): void;
+  requestResume?(): void;
+  onPause?(handler: PauseHandler): Unsubscribe;
+  onResume?(handler: PauseHandler): Unsubscribe;
 }
 
 type TickHandler = (tick: number, commands: CommandsBatch) => void;
 type FrameHandler = (alpha: number, dt: number) => void;
+type PauseHandler = () => void;
 ```
 
 ## Component Types: IComponent vs SoAComponent

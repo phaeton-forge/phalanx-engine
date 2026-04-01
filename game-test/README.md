@@ -47,9 +47,9 @@ The Phalanx server is configured for 1v1 matchmaking:
 
 The `PhalanxClient` handles:
 
-- **Connection**: Connects to the server with unique player ID and username
+- **Connection**: Creates client and connects to the server with unique player ID and username via `PhalanxClient.create()`
 - **Matchmaking**: Joins the queue and waits for an opponent
-- **Match Events**: Listens for `match-found` and `countdown` events
+- **Match Events**: Listens for `matchFound` and `countdown` events
 
 ### 2. **Deterministic Lockstep Synchronization**
 
@@ -60,12 +60,12 @@ The game uses Phalanx Engine's lockstep system to ensure all clients see the sam
 When a player clicks on the ground:
 
 1. A `MoveCommand` is created with target coordinates
-2. Command is submitted to the server via `client.submitCommand()`
-3. Command is queued locally in `pendingLocalCommands`
+2. Command is sent to the server via `client.sendCommand('move', data)`
+3. Server queues and broadcasts the command to all clients at the next tick
 
 #### Command Batch Processing
 
-Every tick, the server broadcasts a `commands-batch` event containing:
+The game uses the simplified `onTick` API. Every tick, the client invokes the registered tick handler with:
 
 - Commands from ALL players for that tick
 - Tick number for synchronization
@@ -126,32 +126,30 @@ The client listens to Phalanx Engine events:
 
 | Event                 | Handler                | Purpose                        |
 | --------------------- | ---------------------- | ------------------------------ |
-| `match-found`         | LobbyScene             | Match details and player list  |
+| `matchFound`          | LobbyScene             | Match details and player list  |
 | `countdown`           | LobbyScene             | Countdown before game starts   |
-| `game-start`          | LobbyScene → GameScene | Transition to game             |
-| `commands-batch`      | GameScene              | Tick commands from all players |
-| `player-disconnected` | GameScene              | Handle opponent leaving        |
+| `gameStart`           | LobbyScene → GameScene | Transition to game             |
+| `onTick` handler      | GameScene              | Tick commands from all players |
+| `matchEnd`            | GameScene              | Handle match ending            |
 
 ### 6. **Key Integration Points**
 
 #### Connection Flow
 
 ```typescript
-const client = new PhalanxClient({
+const client = await PhalanxClient.create({
   serverUrl: SERVER_URL,
   playerId: uniqueId,
   username: playerName,
 });
 
-await client.connect();
 const match = await client.joinQueueAndWaitForMatch();
 ```
 
 #### Command Submission
 
 ```typescript
-client.submitCommand({
-  type: 'move',
+client.sendCommand('move', {
   targetX: x,
   targetZ: z,
 });
@@ -160,9 +158,14 @@ client.submitCommand({
 #### Receiving Synchronized Commands
 
 ```typescript
-client.on('commands-batch', (data: CommandsBatchEvent) => {
+client.onTick((tick, commands) => {
   // All players' commands for this tick
-  simulation.applyCommands(data.commands);
+  for (const [playerId, playerCommands] of Object.entries(commands.commands)) {
+    for (const cmd of playerCommands) {
+      simulation.processCommand(playerId, cmd);
+    }
+  }
+  simulation.step();
 });
 ```
 

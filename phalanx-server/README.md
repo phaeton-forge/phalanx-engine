@@ -50,6 +50,11 @@ const config: Partial<PhalanxConfig> = {
     certPath: '/path/to/fullchain.pem',
   },
 
+  // === Authentication (optional) ===
+  auth: {
+    enabled: false, // Set true to require auth tokens
+  },
+
   // === Tick System ===
   tickRate: 20, // Ticks per second (default: 20)
   tickDeadlineMs: 50, // Max wait for commands per tick
@@ -69,6 +74,27 @@ const config: Partial<PhalanxConfig> = {
   // === Command Validation ===
   maxTickBehind: 10,
   maxTickAhead: 5,
+
+  // === Command History (for reconnection) ===
+  commandHistoryTicks: 200, // Ticks of command history to keep
+
+  // === Ready Handshake ===
+  readyTimeoutMs: 30000, // Max time for clients to send ready (default: 30000)
+
+  // === Determinism / Desync Detection ===
+  enableStateHashing: true, // Enable server-side hash comparison
+  stateHashInterval: 60, // Hint interval for hash submission (default: 60)
+  desync: {
+    enabled: true,
+    action: 'end-match', // 'log-only' | 'end-match'
+    gracePeriodTicks: 1, // Consecutive desyncs before taking action
+  },
+
+  // === Pause/Resume ===
+  pause: {
+    maxPausesPerPlayer: 3,
+    requireSamePlayerToResume: true,
+  },
 };
 
 const app = new Phalanx(config);
@@ -143,6 +169,12 @@ class Phalanx {
 | `commands-batch`      |      | ✅      | All commands for a tick           |
 | `tick-sync`           |      | ✅      | Periodic tick synchronization     |
 | `countdown`           |      | ✅      | Countdown before game starts      |
+| `submit-state-hash`   | ✅   |         | Submit state hash for desync detection |
+| `hash-comparison`     |      | ✅      | Server hash comparison result     |
+| `pause-game`          | ✅   |         | Request game pause                |
+| `resume-game`         | ✅   |         | Request game resume               |
+| `game-paused`         |      | ✅      | Game was paused                   |
+| `game-resumed`        |      | ✅      | Game was resumed                  |
 | `reconnect-match`     | ✅   |         | Attempt to rejoin a match         |
 | `reconnect-status`    |      | ✅      | Reconnection result               |
 | `reconnect-state`     |      | ✅      | Game state for reconnection       |
@@ -252,11 +284,12 @@ const app = new Phalanx({
 When connecting to a TLS-enabled server from the client:
 
 ```typescript
-import { Phalanx } from 'phalanx-client';
+import { PhalanxClient } from 'phalanx-client';
 
-const phalanx = await Phalanx.init({
-  serverUrl: 'wss://game.example.com', // Use wss:// instead of ws://
+const client = await PhalanxClient.create({
+  serverUrl: 'https://game.example.com', // Use https:// for TLS
   playerId: 'player-123',
+  username: 'MyPlayer',
 });
 ```
 

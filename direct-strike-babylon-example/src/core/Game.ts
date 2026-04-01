@@ -268,6 +268,9 @@ export class Game {
     // Phase 6: Create late-initialized systems
     this.cameraController = new CameraController(this.scene, this.localTeam);
 
+    // Setup "Switch To Base" button (needs cameraController)
+    this.uiManager.setupBaseButton(() => this.cameraController.focusOnFormationGrid());
+
     // Set late systems in initializer
     this.gameInitializer.setLateSystems(
       this.cameraController
