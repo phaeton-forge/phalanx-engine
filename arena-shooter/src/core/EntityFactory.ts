@@ -33,12 +33,15 @@ import {
   PICKUP_LIFETIME_TICKS,
   PICKUP_RADIUS,
 } from '../config/constants.ts';
+import { vfxConfig } from '../config/vfxConfig.ts';
+import { ProjectileTrail } from '../effects/ProjectileTrail.ts';
 
 export class EntityFactory {
   private scene: Scene;
   private entityManager: EntityManager;
   private meshMap: Map<number, Mesh>;
   private particleSystems: Map<number, ParticleSystem[]> = new Map();
+  private projectileTrails: Map<number, ProjectileTrail> = new Map();
   public playerLight: PointLight | null = null;
 
   constructor(scene: Scene, entityManager: EntityManager, meshMap: Map<number, Mesh>) {
@@ -129,6 +132,12 @@ export class EntityFactory {
     // Projectile trail particle
     this.createProjectileTrail(entity.id, mesh);
 
+    // TrailMesh visual trail
+    if (vfxConfig.enabled) {
+      const trail = new ProjectileTrail(this.scene, mesh);
+      this.projectileTrails.set(entity.id, trail);
+    }
+
     return entity.id;
   }
 
@@ -164,8 +173,13 @@ export class EntityFactory {
 
     const mat = new StandardMaterial(`player_mat_${entityId}`, this.scene);
     mat.diffuseColor = new Color3(0.051, 0.106, 0.165); // #0D1B2A
-    mat.emissiveColor = new Color3(0, 0.749, 1); // #00BFFF
+    mat.emissiveColor = new Color3(
+      vfxConfig.colors.playerEmissive.r,
+      vfxConfig.colors.playerEmissive.g,
+      vfxConfig.colors.playerEmissive.b,
+    );
     mat.specularColor = new Color3(0, 0.749, 1);
+    mat.disableLighting = true;
     capsule.material = mat;
     capsule.position.y = 0.9;
 
@@ -177,6 +191,7 @@ export class EntityFactory {
     const stickMat = new StandardMaterial(`stick_mat_${entityId}`, this.scene);
     stickMat.diffuseColor = new Color3(0, 0, 0);
     stickMat.emissiveColor = new Color3(0, 1, 1); // #00FFFF
+    stickMat.disableLighting = true;
     stick.material = stickMat;
     stick.rotation.x = Math.PI / 2;
     stick.position.z = 0.5;
@@ -192,7 +207,12 @@ export class EntityFactory {
     }, this.scene);
     const mat = new StandardMaterial(`enemy_mat_${entityId}`, this.scene);
     mat.diffuseColor = new Color3(0.102, 0, 0); // #1A0000
-    mat.emissiveColor = new Color3(1, 0.133, 0); // #FF2200
+    mat.emissiveColor = new Color3(
+      vfxConfig.colors.enemyEmissive.r,
+      vfxConfig.colors.enemyEmissive.g,
+      vfxConfig.colors.enemyEmissive.b,
+    );
+    mat.disableLighting = true;
     sphere.material = mat;
     sphere.position.y = 0.5;
 
@@ -221,7 +241,12 @@ export class EntityFactory {
     }, this.scene);
     const mat = new StandardMaterial(`projectile_mat_${entityId}`, this.scene);
     mat.diffuseColor = new Color3(0, 0, 0);
-    mat.emissiveColor = new Color3(0, 1, 1); // #00FFFF
+    mat.emissiveColor = new Color3(
+      vfxConfig.colors.projectileEmissive.r,
+      vfxConfig.colors.projectileEmissive.g,
+      vfxConfig.colors.projectileEmissive.b,
+    );
+    mat.disableLighting = true;
     sphere.material = mat;
     sphere.position.y = 0.9;
     // Elongate in flight direction
@@ -243,6 +268,7 @@ export class EntityFactory {
     const mat = new StandardMaterial(`pickup_mat_${entityId}`, this.scene);
     mat.diffuseColor = new Color3(0, 0.102, 0.039); // #001A0A
     mat.emissiveColor = new Color3(0, 1, 0.4); // #00FF66
+    mat.disableLighting = true;
     box.material = mat;
     box.position.y = 0.3;
 
@@ -358,6 +384,11 @@ export class EntityFactory {
         ps.dispose();
       }
       this.particleSystems.delete(entityId);
+    }
+    const trail = this.projectileTrails.get(entityId);
+    if (trail) {
+      trail.dispose();
+      this.projectileTrails.delete(entityId);
     }
   }
 }

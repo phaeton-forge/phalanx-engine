@@ -27,6 +27,8 @@ import { GameStateSystem } from '../systems/GameStateSystem.ts';
 import { InterpolationSystem } from '../systems/InterpolationSystem.ts';
 import { MeshSyncSystem } from '../systems/MeshSyncSystem.ts';
 import { CameraSystem } from '../systems/CameraSystem.ts';
+import { VFXSystem } from '../systems/VFXSystem.ts';
+import { ScreenShakeSystem } from '../systems/ScreenShakeSystem.ts';
 import { TICK_RATE, RANDOM_SEED, ARENA_SIZE, WAVE_INTRO_DELAY_TICKS } from '../config/constants.ts';
 import type { EntityTypeComponent } from '../components/EntityTypeComponent.ts';
 import { GameEvents, type EnemyKilledEvent, type WeaponFiredEvent } from '../events/GameEvents.ts';
@@ -135,6 +137,8 @@ export class Game {
     const gameInitializer = new GameInitializer(this.scene);
     const camera = gameInitializer.setupScene();
     const cameraSystem = new CameraSystem(camera, this.meshMap);
+    const vfxSystem = new VFXSystem(this.scene);
+    const screenShakeSystem = new ScreenShakeSystem();
 
     const tickSystems = [
       playerInputSystem,
@@ -155,6 +159,8 @@ export class Game {
       this.interpolationSystem,
       meshSyncSystem,
       cameraSystem,
+      vfxSystem,
+      screenShakeSystem,
     ];
 
     this.world.registerSystems(tickSystems, frameSystems);
@@ -163,6 +169,7 @@ export class Game {
     this.playerId = this.entityFactory.createPlayer();
     waveSystem.setPlayerId(this.playerId);
     cameraSystem.setPlayerId(this.playerId);
+    screenShakeSystem.setCamera(camera);
 
     // Create wave entity (singleton)
     const waveEntity = new Entity();

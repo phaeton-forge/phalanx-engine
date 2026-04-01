@@ -8,6 +8,7 @@ export const GameEvents = {
   WEAPON_FIRED: 'weapon:fired',
   WEAPON_RELOAD_START: 'weapon:reloadStart',
   WEAPON_RELOAD_COMPLETE: 'weapon:reloadComplete',
+  SCREEN_SHAKE: 'screen_shake',
 } as const;
 
 export interface EnemyKilledEvent {
@@ -34,4 +35,8 @@ export interface WeaponFiredEvent {
   originZ: number;
   dirX: number;
   dirZ: number;
+}
+
+export interface ScreenShakeEvent {
+  intensity: number;
 }
