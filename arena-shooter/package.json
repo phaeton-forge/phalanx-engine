@@ -1,0 +1,23 @@
+{
+  "name": "arena-shooter",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host --mode development",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@babylonjs/core": "8.53.0",
+    "@babylonjs/gui": "8.53.0",
+    "@babylonjs/materials": "8.53.0",
+    "phalanx-ecs": "workspace:*",
+    "phalanx-math": "workspace:*",
+    "phalanx-physics": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.3",
+    "vite": "^7.2.4"
+  }
+}

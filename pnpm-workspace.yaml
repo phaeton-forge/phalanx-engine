@@ -7,3 +7,4 @@ packages:
   - 'game-test'
   - 'game-test-server'
   - 'direct-strike-babylon-example'
+  - 'arena-shooter'
