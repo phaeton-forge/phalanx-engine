@@ -86,7 +86,7 @@ This project uses a **component-based Entity-Component-System (ECS)** architectu
 | `AssetManager`           | 3D model preloading and instancing                      |
 | `LockstepManager`        | Deterministic command execution                         |
 | `EntityFactory`          | Entity creation with ownership tracking                 |
-| `UIManager`              | UI updates, notifications, and drag interactions        |
+| `UIManager`              | UI updates, notifications, pause/resume, and drag interactions |
 
 ### Key Principles
 
@@ -256,39 +256,61 @@ Interpolation: Blends between tick positions based on alpha (0-1)
 
 The entity position system uses three layers for deterministic simulation with smooth rendering:
 
-- `entity.fpPosition` - Authoritative fixed-point position (FPVector3, deterministic across all platforms)
-- `entity.position` - Cached Vector3 derived from fpPosition (for Babylon.js compatibility, deprecated)
-- `entity.mesh.position` - Visual position for rendering (can be interpolated for smooth visuals)
+- `TransformComponent.fpPosition` - Authoritative fixed-point position (FPVector3, SoA-backed `i64` fields, deterministic across all platforms)
+- `TransformComponent.visualPosition` - Cached Vector3 derived from fpPosition (for Babylon.js rendering)
+- `entity.mesh.position` - Visual position on the actual mesh (set via `IMeshEntity.setVisualPosition()`, can be interpolated)
+
+Position is stored in `TransformComponent` (a SoA component), NOT on the entity class itself. `Unit` is a thin class with only mesh and scene references.
 
 ```typescript
-// Unit.ts - Fixed-point based position system
-import { FPVector3, type FPVector3 as FPVector3Type } from 'phalanx-math';
+// TransformComponent.ts - SoA-backed position (authoritative + visual)
+import { SoAComponent, defineSoASchema } from 'phalanx-ecs';
+import { FP, FPVector3, type FPVector3 as FPVector3Type } from 'phalanx-math';
 
-// Fixed-point simulation position (authoritative, deterministic)
-private _fpPosition: FPVector3Type = FPVector3.Zero;
+export const TransformSoASchema = defineSoASchema({
+  fpPositionX: 'i64',       // BigInt64Array — deterministic fixed-point
+  fpPositionY: 'i64',
+  fpPositionZ: 'i64',
+  visualPositionX: 'f64',   // Float64Array — for rendering
+  visualPositionY: 'f64',
+  visualPositionZ: 'f64',
+}, 'Transform');
 
-// Cached Vector3 (derived from _fpPosition for Babylon.js compatibility)
-private _simulationPosition: Vector3 = new Vector3();
-
-public get fpPosition(): FPVector3Type {
+export class TransformComponent extends SoAComponent<typeof TransformSoASchema.definition> {
+  // Facade getter — reads from SoA store
+  public get fpPosition(): FPVector3Type {
+    const idx = this.getIndex();
+    this._fpPosition.x = FP.FromRaw(this.store.arrays.fpPositionX[idx]);
+    this._fpPosition.y = FP.FromRaw(this.store.arrays.fpPositionY[idx]);
+    this._fpPosition.z = FP.FromRaw(this.store.arrays.fpPositionZ[idx]);
     return this._fpPosition;
+  }
+
+  // Facade setter — writes to SoA store and syncs visual position
+  public set fpPosition(value: FPVector3Type) {
+    const idx = this.getIndex();
+    this.store.arrays.fpPositionX[idx] = FP.ToRaw(value.x);
+    this.store.arrays.fpPositionY[idx] = FP.ToRaw(value.y);
+    this.store.arrays.fpPositionZ[idx] = FP.ToRaw(value.z);
+    // Also update visual position
+    this.store.arrays.visualPositionX[idx] = FP.ToFloat(value.x);
+    this.store.arrays.visualPositionY[idx] = FP.ToFloat(value.y);
+    this.store.arrays.visualPositionZ[idx] = FP.ToFloat(value.z);
+  }
 }
 
-public set fpPosition(value: FPVector3Type) {
-    this._fpPosition = value;
-    // Update cached Vector3 for Babylon.js compatibility
-    const nums = FPVector3.ToFloat(value);
-    this._simulationPosition.set(nums.x, nums.y, nums.z);
-    // Also update mesh position (visual) by default
-    if (this.mesh) {
-        this.mesh.position.copyFrom(this._simulationPosition);
-    }
-}
+// Unit.ts - Thin entity class with mesh support (no position properties)
+import { Entity } from 'phalanx-ecs';
+import type { IMeshEntity } from '../interfaces/IMeshEntity';
 
-public setVisualPosition(value: Vector3): void {
-    if (this.mesh) {
-        this.mesh.position.copyFrom(value);  // Override visual only
-    }
+export class Unit extends Entity implements IMeshEntity {
+  protected scene: Scene;
+  protected mesh: Mesh | null = null;
+
+  public setVisualPosition(value: Vector3): void {
+    if (this.mesh) { this.mesh.position.copyFrom(value); }
+  }
+  public getMesh(): Mesh | null { return this.mesh; }
 }
 ```
 
@@ -552,21 +574,24 @@ export class LockstepManager {
     for (const entity of entities) {
       hasher.addInt(entity.id);
 
-      // Hash position
-      const pos = entity.position;
-      hasher.addFloat(pos.x);
-      hasher.addFloat(pos.y);
-      hasher.addFloat(pos.z);
+      // Hash position via TransformComponent
+      const transform = entity.getComponent(ComponentType.Transform) as TransformComponent | undefined;
+      if (transform) {
+        const pos = transform.fpPosition;
+        hasher.addFloat(FP.ToFloat(pos.x));
+        hasher.addFloat(FP.ToFloat(pos.y));
+        hasher.addFloat(FP.ToFloat(pos.z));
+      }
 
       // Hash health (if has HealthComponent)
-      const health = entity.getComponent(HealthComponent);
+      const health = entity.getComponent(ComponentType.Health) as HealthComponent | undefined;
       if (health) {
         hasher.addInt(health.health);
         hasher.addInt(health.maxHealth);
       }
 
       // Hash movement state (if has MovementComponent)
-      const movement = entity.getComponent(MovementComponent);
+      const movement = entity.getComponent(ComponentType.Movement) as MovementComponent | undefined;
       if (movement) {
         hasher.addBool(movement.isMoving);
         if (movement.isMoving) {
@@ -578,7 +603,7 @@ export class LockstepManager {
       }
 
       // Hash attack state (if has AttackComponent)
-      const attack = entity.getComponent(AttackComponent);
+      const attack = entity.getComponent(ComponentType.Attack) as AttackComponent | undefined;
       if (attack) {
         hasher.addFloat(attack.currentCooldown);
         hasher.addBool(attack.canAttack());
@@ -611,24 +636,26 @@ world.start({
 
 1. **Always sort entities** by a stable ID before hashing
 2. **Include only deterministic state** - no timestamps, no random values
-3. **Use `entity.fpPosition`** for hashing positions (fixed-point for determinism)
+3. **Use `TransformComponent.fpPosition`** for hashing positions (fixed-point for determinism)
 4. **Include relevant game state** - health, targets, cooldowns, etc.
 5. **Exclude visual-only state** - interpolated positions, particle effects
 
 ```typescript
-// Good: Deterministic state
-const fpPos = entity.fpPosition;
+// Good: Deterministic state via components
+const transform = entity.getComponent(ComponentType.Transform) as TransformComponent;
+const fpPos = transform.fpPosition;
 hasher.addFloat(FP.ToFloat(fpPos.x)); // Fixed-point position (deterministic)
 hasher.addFloat(FP.ToFloat(fpPos.y));
 hasher.addFloat(FP.ToFloat(fpPos.z));
-hasher.addInt(entity.health);            // Game state
+const health = entity.getComponent(ComponentType.Health) as HealthComponent;
+hasher.addInt(health.health);            // Game state
 hasher.addInt(entity.targetId ?? -1);    // Nullable with default
 
 // Bad: Non-deterministic state
 hasher.addFloat(Date.now());             // ❌ Time varies
 hasher.addFloat(Math.random());          // ❌ Random
 hasher.addFloat(entity.mesh.position.x); // ❌ Visual position (interpolated)
-hasher.addFloat(entity.position.x);      // ❌ Cached float (may have precision issues)
+// Use TransformComponent.fpPosition instead of visual position for hashing
 ```
 
 #### Handling Desync Events
@@ -782,7 +809,8 @@ import {
 
 ```typescript
 // Convert fixed-point position to Babylon Vector3 for rendering
-const renderPos = fpToVector3(entity.fpPosition);
+const transform = entity.getComponent<TransformComponent>(ComponentType.Transform)!;
+const renderPos = fpToVector3(transform.fpPosition);
 
 // Interpolate between two fixed-point positions for smooth visuals (no allocation)
 lerpVector3FromFpRef(prevFpPos, currFpPos, alpha, visualPosition);
@@ -804,11 +832,14 @@ Edit `src/config/constants.ts` to change:
 - `SERVER_URL` - Phalanx server address
 - `authConfig` - Google OAuth client settings
 - `networkConfig.tickRate` - Simulation tick rate (must match server)
+- `networkConfig.physicsSubsteps` - Physics sub-steps per tick (default: 3)
+- `pauseConfig` - Max pauses per player, resume rules
 - `cameraConfig` - RTS camera height, speed, and bounds
 - `resourceConfig` - Starting resources and generation rate
 - `unitConfig` - Unit costs, health, damage, speed stats for each unit type
 - `waveConfig` - Wave duration and staggered deployment settings
 - `arenaParams` - Arena dimensions, starting positions for bases and towers
+- `UNITS_PER_PLAYER` / `TOWERS_PER_PLAYER` - Per-team entity counts
 - `TEAM1_SPAWN` / `TEAM2_SPAWN` - Per-team spawn positions
 
 ---
@@ -910,7 +941,7 @@ Simple class-based components for infrequently-accessed or complex data. Impleme
 | `ResourceComponent`      | Resource generation              | `resourceRate`, `lastGenerationTick`         |
 | `UnitTypeComponent`      | Unit type identifier             | `unitType`                                   |
 | `HealthBarComponent`     | Health bar visualization         | `healthBar`, `offset`                        |
-| `InterpolationComponent` | Visual interpolation state       | `prevPosition`, `currPosition`               |
+| `InterpolationComponent` | Visual interpolation state       | `previousFpPosition`, `currentFpPosition`, `visualPosition`, `active` |
 | `AnimationComponent`     | 3D model animation state         | `animationGroups`, `currentAnimation`        |
 | `RotationComponent`      | Entity rotation toward targets   | `rotationSpeed`                              |
 | `AttackLockComponent`    | Attack lock state                | `lockedTargetId`                             |
@@ -1579,24 +1610,24 @@ this.eventBus.on<ResourceCollectedEvent>(
 - ✅ Send commands through `LockstepManager.queueCommand()`
 - ✅ Execute commands in the `beforeTick` hook, before tick systems run
 - ✅ Sort entity queries by ID for deterministic iteration order
-- ✅ Use `entity.fpPosition` (fixed-point) for all simulation calculations
+- ✅ Use `TransformComponent.fpPosition` (fixed-point) for all simulation calculations
 - ✅ Use `phalanx-math` FP functions for arithmetic (distances, lerp, etc.)
 - ❌ Never use `Math.random()` - use seeded PRNG if needed
 - ❌ Never use `Date.now()` or real time in simulation logic
 - ❌ Never execute commands immediately on input - queue them
-- ❌ Never use `entity.position` (float) for deterministic calculations
+- ❌ Never use visual/float positions for deterministic calculations
 - ❌ Never call `processAllTicks()` or `updateAll()` manually — `GameWorld.start()` handles it
 
 ### Interpolation Design
 
-- ✅ Separate `fpPosition` (authoritative fixed-point) from `visualPosition` (interpolated)
+- ✅ Separate `TransformComponent.fpPosition` (authoritative fixed-point) from `visualPosition` (interpolated)
 - ✅ Use `MathConversions` utilities for FPVector3 ↔ Vector3 conversion
 - ✅ Call `snapshotPositions()` BEFORE simulation tick
 - ✅ Call `captureCurrentPositions()` AFTER simulation tick
 - ✅ Use `getInterpolationAlpha()` each render frame
 - ✅ Register entities with `InterpolationSystem` on creation
 - ✅ Unregister entities on destruction
-- ❌ Never modify `entity.fpPosition` outside simulation tick
+- ❌ Never modify `TransformComponent.fpPosition` outside simulation tick
 
 ### Component Design
 
