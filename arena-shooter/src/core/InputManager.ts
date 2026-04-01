@@ -69,15 +69,15 @@ export class InputManager {
 
   public get moveX(): FixedPoint {
     let x = 0;
-    if (this.keys.has('KeyA') || this.keys.has('ArrowLeft')) x -= 1;
-    if (this.keys.has('KeyD') || this.keys.has('ArrowRight')) x += 1;
+    if (this.keys.has('KeyW') || this.keys.has('ArrowUp')) x -= 1;
+    if (this.keys.has('KeyS') || this.keys.has('ArrowDown')) x += 1;
     return FP.FromFloat(x);
   }
 
   public get moveZ(): FixedPoint {
     let z = 0;
-    if (this.keys.has('KeyW') || this.keys.has('ArrowUp')) z -= 1;
-    if (this.keys.has('KeyS') || this.keys.has('ArrowDown')) z += 1;
+    if (this.keys.has('KeyA') || this.keys.has('ArrowLeft')) z -= 1;
+    if (this.keys.has('KeyD') || this.keys.has('ArrowRight')) z += 1;
     return FP.FromFloat(z);
   }
 

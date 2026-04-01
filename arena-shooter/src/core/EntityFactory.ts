@@ -108,7 +108,8 @@ export class EntityFactory {
     const entity = new Entity();
     const fpPos = FPVector3.Create(fpX, FP.FromFloat(0.9), fpZ);
 
-    entity.addComponent(new TransformComponent(entity.id, fpPos));
+    const transform = new TransformComponent(entity.id, fpPos);
+    entity.addComponent(transform);
     entity.addComponent(new InterpolationComponent(fpPos));
     entity.addComponent(new ProjectileComponent(
       PROJECTILE_LIFETIME_TICKS,
@@ -125,6 +126,10 @@ export class EntityFactory {
     }));
 
     this.entityManager.addEntity(entity);
+
+    // Set rotation to face movement direction
+    const angle = FP.Atan2(dirX, dirZ);
+    transform.fpRotationY = FP.ToRaw(angle);
 
     const mesh = this.createProjectileMesh(entity.id, dirX, dirZ);
     this.meshMap.set(entity.id, mesh);
