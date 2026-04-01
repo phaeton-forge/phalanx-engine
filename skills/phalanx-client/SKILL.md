@@ -131,6 +131,8 @@ client.on('gameStart', (event) => {
 client.on('matchEnd', (event) => {
   console.log(`Match ended: ${event.reason}`);
   // event.reason can be: 'normal', 'desync', 'disconnect', 'ready-timeout', etc.
+  // event.winner — winner info (null on desync)
+  // event.details — additional details (e.g., desync info)
 });
 
 await client.joinQueue();
@@ -340,6 +342,16 @@ client.on('matchEnd', (event) => {
 });
 ```
 
+#### Configuring Desync Detection
+
+```typescript
+// Disable desync detection
+client.configureDesyncDetection({ enabled: false });
+
+// Adjust stored hash limit
+client.configureDesyncDetection({ maxStoredHashes: 50 });
+```
+
 #### StateHasher API
 
 ```typescript
@@ -386,7 +398,8 @@ client.on('reconnectFailed', () => {
 
 client.on('reconnectState', (event) => {
   // event contains command history for fast-forward replay
-  console.log(`Replaying from tick ${event.fromTick} to ${event.currentTick}`);
+  console.log(`Replaying to tick ${event.currentTick}, state: ${event.state}`);
+  console.log(`Recent commands:`, event.recentCommands);
 });
 ```
 
@@ -394,14 +407,14 @@ client.on('reconnectState', (event) => {
 
 ```typescript
 // Request pause (server must confirm)
-client.requestPause();
+client.pauseGame();
 
 // Request resume
-client.requestResume();
+client.resumeGame();
 
 // Listen for pause/resume events
 client.on('gamePaused', (event) => {
-  console.log(`Game paused by ${event.pausedBy}`);
+  console.log(`Game paused by ${event.requestedBy}, last tick: ${event.lastTick}`);
 });
 
 client.on('gameResumed', (event) => {
@@ -412,9 +425,11 @@ client.on('gameResumed', (event) => {
 When PhalanxClient is used as a `tickFrameProvider` in GameWorld, you can also use:
 
 ```typescript
-world.pause();   // Calls client.requestPause()
-world.resume();  // Calls client.requestResume()
+world.pause();   // Calls client.requestPause() → client.pauseGame()
+world.resume();  // Calls client.requestResume() → client.resumeGame()
 ```
+
+> **Note:** `requestPause()` / `requestResume()` are ITickFrameProvider contract methods that delegate to `pauseGame()` / `resumeGame()`. Use the latter directly when calling on the client.
 
 ### 11. Authentication
 
@@ -431,6 +446,7 @@ const client = new PhalanxClient({
 const client = new PhalanxClient({
   serverUrl: 'https://game.example.com',
   auth: {
+    provider: 'google',
     google: {
       clientId: 'your-google-client-id',
       redirectUri: window.location.origin + '/auth/callback',
@@ -452,7 +468,7 @@ const tick = client.getCurrentTick();
 const matchId = client.getMatchId();
 const playerId = client.getPlayerId();
 const username = client.getUsername();
-const clientState = client.getClientState();      // 'idle' | 'in-queue' | 'match-found' | 'countdown' | 'playing' | 'reconnecting' | 'finished'
+const clientState = client.getClientState();      // 'idle' | 'in-queue' | 'match-found' | 'countdown' | 'playing' | 'paused' | 'reconnecting' | 'finished'
 const connectionState = client.getConnectionState(); // 'disconnected' | 'connecting' | 'connected' | 'reconnecting'
 const isConnected = client.isConnected();
 ```
@@ -477,6 +493,10 @@ client.on('reconnecting', (attempt: number) => {});
 client.on('reconnectFailed', () => {});
 client.on('error', (error: PhalanxError) => {});
 
+// Auth
+client.on('authStateChanged', (state: PhalanxAuthState) => {});
+client.on('authError', (error: PhalanxError) => {});
+
 // Queue
 client.on('queueJoined', (status: QueueStatusEvent) => {});
 client.on('queueLeft', () => {});
@@ -495,6 +515,7 @@ client.on('commands', (event: CommandsBatchEvent) => {});
 // Player events
 client.on('playerDisconnected', (event: PlayerDisconnectedEvent) => {});
 client.on('playerReconnected', (event: PlayerReconnectedEvent) => {});
+client.on('playerReady', (event: PlayerReadyEvent) => {});
 
 // Reconnection
 client.on('reconnectState', (event: ReconnectStateEvent) => {});
@@ -517,6 +538,8 @@ unsub();
 ```
 idle → in-queue → match-found → countdown → playing → finished
                                                 ↕
+                                             paused
+                                                ↕
                                           reconnecting
 ```
 
@@ -538,17 +561,50 @@ import {
 
 // Fixed-point math (re-exported from phalanx-math)
 import { FP, FPVector2, FPVector3, FixedPoint } from 'phalanx-client';
+import type { FPVector2Interface, FPVector3Interface } from 'phalanx-client';
 
 // Authentication
 import { AuthManager, GoogleOAuthAdapter, LocalStorageAdapter, MemoryStorageAdapter } from 'phalanx-client';
 
-// Types
+// Types — Configuration
 import type {
-  PhalanxClientConfig, PlayerCommand, CommandsBatch,
-  TickHandler, FrameHandler, Unsubscribe,
-  MatchFoundEvent, CountdownEvent, GameStartEvent, MatchEndEvent,
+  PhalanxClientConfig, PhalanxAuthConfig, PauseConfig,
+  RenderLoopConfig, CommandFlushCallback,
+  SocketManagerConfig, SocketManagerCallbacks,
+  AuthManagerConfig, AuthStorage,
+} from 'phalanx-client';
+
+// Types — Auth
+import type {
+  AuthAdapter, AuthResult, AuthState, AuthUser, AuthError,
+  CallbackParams, LoginOptions,
+  GoogleOAuthConfig, DiscordOAuthConfig, SteamAuthConfig, StoredAuthData,
+  PhalanxAuthState, PhalanxAuthUser,
+} from 'phalanx-client';
+
+// Types — Commands & Handlers
+import type {
+  PlayerCommand, CommandsBatch,
+  TickHandler, FrameHandler, PauseHandler, Unsubscribe,
+} from 'phalanx-client';
+
+// Types — Events
+import type {
+  MatchPlayerInfo, MatchFoundEvent, CountdownEvent,
+  GameStartEvent, MatchEndEvent,
   TickSyncEvent, CommandsBatchEvent, QueueStatusEvent,
-  ConnectionState, ClientState, PhalanxClientEvents,
+  PlayerDisconnectedEvent, PlayerReconnectedEvent, PlayerReadyEvent,
+  GamePausedEvent, GameResumedEvent,
+  ReconnectStateEvent, TickCommandsHistory, ReconnectStatusEvent,
+  SubmitCommandsAck, HashComparisonEvent,
+  PhalanxError,
+} from 'phalanx-client';
+
+// Types — State & Desync
+import type {
+  ConnectionState, ClientState,
+  DesyncConfig, DesyncEvent,
+  PhalanxClientEvents,
 } from 'phalanx-client';
 ```
 

@@ -653,16 +653,34 @@ const movableOrPhysics = em.queryEntitiesAny(ComponentType.Movement, ComponentTy
 // Get specific entity by ID
 const entity = em.getEntity(42);
 
+// Get all entities (sorted by ID — deterministic)
+const all = em.getAllEntities();
+
+// Count entities
+const total = em.count;                                   // Total entity count
+const withHealth = em.countWithComponent(ComponentType.Health); // Count with specific component
+
 // Cleanup destroyed entities (returns removed entities for disposal)
 const removed = em.cleanupDestroyed();
 for (const e of removed) {
   e.dispose();
 }
 
+// Clear all entities
+em.clear();
+
+// Register component types for indexing
+em.registerComponentTypes(Object.values(ComponentType));
+
 // SoA store access
 const store = em.getSoAStore(TransformSoASchema);
 const store2 = em.getOrCreateSoAStore(PhysicsSoASchema, 1024);
 const hasStore = em.hasSoAStore(PhysicsSoASchema);
+const storeByType = em.getSoAStoreByType(TransformSoASchema.type);
+
+// Debug / introspection
+const allStores = em.getAllSoAStores();           // ReadonlyMap<symbol, SoAComponentStore>
+const stats = em.getComponentTypeStats();         // Map<symbol, number> — component type → entity count
 ```
 
 ### 7. GameWorld Lifecycle Hooks
@@ -694,7 +712,157 @@ world.stop();
 world.dispose();
 ```
 
-### 8. Implementing a LockstepManager
+### 8. GameWorld Full API Reference
+
+```typescript
+// Constructor
+const world = new GameWorld(config: GameWorldConfig);
+
+interface GameWorldConfig {
+  componentTypes?: symbol[];           // Component type symbols for EntityManager indexing
+  tickRate?: number;                   // Default: 60 (only used when no tickFrameProvider)
+  maxFrameTime?: number;               // Default: 0.25s (only used when no tickFrameProvider)
+  tickFrameProvider?: ITickFrameProvider; // External provider (e.g. PhalanxClient)
+  pooling?: PoolingConfig;             // Object pooling configuration
+  debug?: boolean;                     // Enable debug data collection (default: false)
+  debugConfig?: DebugDataProviderConfig; // Debug provider config (update interval, etc.)
+  debugPanelConfig?: DebugPanelConfig; // Built-in DOM panel config (toggle key, etc.)
+}
+
+// Pause / Resume
+world.paused;                          // boolean getter
+world.pause();                         // Delegates to provider.requestPause() if available
+world.resume();                        // Delegates to provider.requestResume() if available
+
+// Accessors
+world.eventBus;                        // EventBus
+world.entityManager;                   // EntityManager
+world.pools;                           // PoolManager | null
+world.debugProvider;                   // DebugDataProvider | null
+world.debugPanel;                      // DebugPanel | null (created in start() if debug + debugPanelConfig)
+world.context;                         // SystemContext
+
+// System management
+world.registerSystems(tickSystems, frameSystems);
+world.addFrameSystem(system);          // For late-initialized systems
+world.getSystem(MySystem);             // Look up a registered system by class
+
+// Tick / Frame delegation (used internally — avoid calling manually)
+world.processAllTicks(tick);
+world.updateAll(dt);
+
+// Lifecycle
+world.start(hooks?);                   // Starts provider, debug panel, tick/frame loop
+world.stop();
+world.dispose();                       // Full cleanup: stop, drain pools, dispose systems
+
+// Well-known EventBus event names
+import { GameWorldEvents } from 'phalanx-ecs';
+GameWorldEvents.PAUSED;   // 'gameWorld:paused'
+GameWorldEvents.RESUMED;  // 'gameWorld:resumed'
+```
+
+### 9. Debug Tools
+
+Phalanx ECS includes built-in debug tooling for inspecting entities, components, SoA stores, and pools at runtime.
+
+#### Enabling Debug Mode
+
+```typescript
+const world = new GameWorld({
+  debug: true,                          // Enables DebugDataProvider
+  debugConfig: { updateInterval: 500 }, // Snapshot push interval (ms). 0 = pull-only
+  debugPanelConfig: {                   // Optional: enables built-in DOM overlay
+    toggleKey: '`',                     // Keyboard shortcut to show/hide (default: backtick)
+    startCollapsed: false,              // Start collapsed? (default: false)
+  },
+});
+```
+
+When `debug: true`, a `DebugDataProvider` is created automatically. If `debugPanelConfig` is also provided and a DOM environment is detected, a `DebugPanel` overlay is auto-created in `world.start()`.
+
+#### DebugDataProvider API
+
+```typescript
+const provider = world.debugProvider!;
+
+// Observable pattern — receive periodic snapshots
+const unsub = provider.subscribe((snapshot: DebugSnapshot) => {
+  console.log('Entities:', snapshot.world.entityCount);
+  console.log('SoA stores:', snapshot.world.soaStoreCount);
+  console.log('Paused:', snapshot.world.paused);
+});
+
+// On-demand pull — get snapshot immediately
+const snapshot = provider.getSnapshot();
+
+// Lifecycle
+provider.start();   // Start automatic push interval
+provider.dispose();  // Stop and clean up
+```
+
+#### DebugSnapshot Structure
+
+```typescript
+interface DebugSnapshot {
+  timestamp: number;                     // ms when snapshot was collected
+  world: {
+    entityCount: number;
+    soaStoreCount: number;
+    paused: boolean;
+  };
+  entities: DebugEntitySnapshot[];       // Per-entity data (IComponent entities)
+  soaStores: DebugSoAStoreSnapshot[];    // SoA store snapshots
+  pools: DebugPoolSnapshot[];            // Pool statistics
+}
+
+interface DebugEntitySnapshot {
+  id: number;
+  destroyed: boolean;
+  components: DebugComponentSnapshot[];
+}
+
+interface DebugComponentSnapshot {
+  typeName: string;                      // From symbol.description
+  typeSymbol: symbol;
+  data: Record<string, unknown>;         // Shallow copy of component properties
+}
+
+interface DebugSoAStoreSnapshot {
+  name: string;
+  fieldNames: string[];
+  fieldTypes: Record<string, SoAFieldType>;
+  count: number;
+  capacity: number;
+  bytesPerEntity: number;
+  entities: { entityId: number; fields: Record<string, number | bigint> }[];
+}
+
+interface DebugPoolSnapshot {
+  typeKey: string;
+  stats: PoolStats;
+}
+```
+
+#### Custom Debug Tooling (without built-in panel)
+
+```typescript
+// Use DebugDataProvider without the DOM panel (e.g. headless server, custom UI)
+const world = new GameWorld({
+  debug: true,
+  debugConfig: { updateInterval: 1000 },
+  // Omit debugPanelConfig — no DOM panel created
+});
+
+world.start();
+
+// Subscribe to snapshots for custom visualization
+world.debugProvider!.subscribe((snap) => {
+  myCustomUI.update(snap);
+});
+```
+
+### 10. Implementing a LockstepManager
 
 For multiplayer, create a LockstepManager to handle deterministic command execution:
 
@@ -759,7 +927,7 @@ import { GameWorld, GameWorldEvents } from 'phalanx-ecs';
 import type { GameWorldConfig, GameWorldHooks } from 'phalanx-ecs';
 
 // Core ECS
-import { Entity, resetEntityIdCounter } from 'phalanx-ecs';
+import { Entity, resetEntityIdCounter, nextEntityId } from 'phalanx-ecs';
 import { EntityManager } from 'phalanx-ecs';
 import { EventBus, globalEventBus } from 'phalanx-ecs';
 import { GameSystem } from 'phalanx-ecs';
@@ -768,10 +936,15 @@ import { SystemContext } from 'phalanx-ecs';
 
 // Components
 import { IComponent, createComponentTypeRegistry } from 'phalanx-ecs';
+import type { IComponent as Component } from 'phalanx-ecs';
 
 // SoA storage
 import { SoAComponent, SoAComponentStore, defineSoASchema } from 'phalanx-ecs';
-import type { SoASchema, SoASchemaDefinition, SoAFieldType, SoAFieldsOf } from 'phalanx-ecs';
+import { calculateSchemaByteSize, TYPED_ARRAY_CONSTRUCTORS, FIELD_BYTE_SIZES } from 'phalanx-ecs';
+import type {
+  SoASchema, SoASchemaDefinition, SoAFieldType, SoAFieldsOf,
+  SoAArraysOf, SoAValueType, SoAArrayType, TypedArrayLike,
+} from 'phalanx-ecs';
 
 // Object Pooling
 import { ObjectPool, EntityPool, PoolManager } from 'phalanx-ecs';
@@ -781,9 +954,21 @@ import type {
   EntityPoolConfig, EntityTypeConfig, PoolingConfig,
 } from 'phalanx-ecs';
 
+// Debug / Introspection
+import { DebugDataProvider, DebugPanel } from 'phalanx-ecs';
+import type {
+  DebugSnapshot, DebugEntitySnapshot, DebugComponentSnapshot,
+  DebugSoAStoreSnapshot, DebugPoolSnapshot,
+  DebugDataProviderConfig, DebugPanelConfig,
+} from 'phalanx-ecs';
+
 // Tick/Frame management
 import { TickFrameManager } from 'phalanx-ecs';
-import type { ITickFrameProvider, TickHandler, FrameHandler, Unsubscribe, CommandsBatch, PlayerCommand } from 'phalanx-ecs';
+import type { TickFrameManagerConfig } from 'phalanx-ecs';
+import type {
+  ITickFrameProvider, TickHandler, FrameHandler,
+  Unsubscribe, CommandsBatch, PlayerCommand, PauseHandler,
+} from 'phalanx-ecs';
 ```
 
 ## Best Practices

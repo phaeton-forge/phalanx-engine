@@ -181,6 +181,9 @@ interface PhalanxConfig {
   enableStateHashing?: boolean;    // Default: false
   stateHashInterval?: number;      // Default: 60
 
+  // === Ready Handshake ===
+  readyTimeoutMs?: number;         // Default: 30000 (30s for clients to call sendReady)
+
   // === Desync Detection ===
   desync?: Partial<DesyncConfig>;
 
@@ -306,6 +309,27 @@ const config: PhalanxConfig = phalanx.getConfig();
 
 // Stop the server
 await phalanx.stop();
+```
+
+#### Key Types
+
+```typescript
+// Match information returned by getActiveMatches() and event hooks
+interface MatchInfo {
+  id: string;
+  players: PlayerInfo[];
+  currentTick: number;
+  state: 'countdown' | 'waiting-for-ready' | 'playing' | 'paused' | 'finished';
+  createdAt: Date;
+}
+
+// Player information within a match
+interface PlayerInfo {
+  id: string;
+  teamId: number;
+  connected: boolean;
+  lastTick: number;
+}
 ```
 
 ### 6. Client ↔ Server Socket Events Reference
@@ -446,15 +470,29 @@ import { TokenValidatorService, createDevValidator, createEndpointValidator } fr
 
 // Math utilities (re-exported from phalanx-math)
 import { DeterministicRandom, FP, FPVector2, FPVector3, FixedPoint } from 'phalanx-server';
+import type { FPVector2Interface, FPVector3Interface } from 'phalanx-server';
 
 // Game mode presets
 import { GAME_MODES } from 'phalanx-server';
 
-// Types
+// Types — Configuration
 import type {
-  PhalanxConfig, PlayerCommand, MatchInfo, MatchFoundEvent,
-  GameStartEvent, TickSyncEvent, CommandsBatchEvent, AuthConfig,
-  DesyncConfig, PauseConfig, PhalanxEventType, PhalanxEventHandlers,
+  PhalanxConfig, AuthConfig,
+  CorsConfig, TlsConfig,
+  DesyncConfig, DesyncAction,
+  PauseConfig,
+  GameMode, GameModePreset, CustomGameMode,
+  TokenValidator, TokenValidationResult,
+} from 'phalanx-server';
+
+// Types — Events & Data
+import type {
+  PhalanxEventType, PhalanxEventHandlers,
+  PlayerCommand, TickCommands, SubmitCommandsEvent,
+  PlayerInfo, MatchInfo, MatchFoundEvent,
+  GameStartEvent, TickSyncEvent, CommandsBatchEvent,
+  QueuedPlayer, QueueStatusEvent,
+  StateHashEvent, DesyncDetectedEvent,
 } from 'phalanx-server';
 ```
 
