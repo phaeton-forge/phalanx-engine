@@ -6,8 +6,9 @@ import type { LanceUnit, LanceUnitConfig } from '../entities/LanceUnit';
 import type { MutantUnit, MutantUnitConfig } from '../entities/MutantUnit';
 import type { Tower, TowerConfig } from '../entities/Tower';
 import type { Base, BaseConfig } from '../entities/Base';
-import { PhysicsBodyComponent, HealthBarComponent, InterpolationComponent, TransformComponent } from '../components';
-import { FPVector3 } from 'phalanx-math';
+import { PhysicsBodyComponent } from 'phalanx-physics';
+import { HealthBarComponent, InterpolationComponent, TransformComponent } from '../components';
+import { FP, FPVector3 } from 'phalanx-math';
 import { TeamTag } from '../enums/TeamTag';
 import { arenaParams, unitConfig } from '../config/constants';
 
@@ -46,8 +47,8 @@ export class EntityFactory {
 
     // Add PhysicsBodyComponent - prisma units are larger dynamic bodies
     unit.addComponent(new PhysicsBodyComponent(unit.id, {
-      radius: 1.8, // Larger radius for 2x2 unit
-      mass: 2.0, // Heavier unit
+      radius: FP.FromFloat(1.8), // Larger radius for 2x2 unit
+      mass: FP.FromFloat(2.0), // Heavier unit
       isStatic: false,
     }));
 
@@ -79,8 +80,8 @@ export class EntityFactory {
 
     // Add PhysicsBodyComponent - lance units are elongated 1x2 bodies
     unit.addComponent(new PhysicsBodyComponent(unit.id, {
-      radius: 1.4, // Medium radius for 1x2 unit
-      mass: 1.5, // Between sphere and prisma
+      radius: FP.FromFloat(1.4), // Medium radius for 1x2 unit
+      mass: FP.FromFloat(1.5), // Between sphere and prisma
       isStatic: false,
     }));
 
@@ -112,8 +113,8 @@ export class EntityFactory {
 
     // Add PhysicsBodyComponent - mutant units are 2x2 bodies
     unit.addComponent(new PhysicsBodyComponent(unit.id, {
-      radius: 2.0,
-      mass: 2.0,
+      radius: FP.FromFloat(2.0),
+      mass: FP.FromFloat(2.0),
       isStatic: false,
     }));
 
@@ -142,8 +143,8 @@ export class EntityFactory {
 
     // Add PhysicsBodyComponent - towers are static bodies (can push but don't move)
     tower.addComponent(new PhysicsBodyComponent(tower.id, {
-      radius: 1.5,
-      mass: 10.0,
+      radius: FP.FromFloat(1.5),
+      mass: FP.FromFloat(10.0),
       isStatic: true,
     }));
 
@@ -172,8 +173,8 @@ export class EntityFactory {
 
     // Add PhysicsBodyComponent - bases are static bodies (can push but don't move)
     base.addComponent(new PhysicsBodyComponent(base.id, {
-      radius: 3.0,
-      mass: 100.0,
+      radius: FP.FromFloat(3.0),
+      mass: FP.FromFloat(100.0),
       isStatic: true,
     }));
 

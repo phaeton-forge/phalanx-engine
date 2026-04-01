@@ -1,8 +1,10 @@
 import { Vector3 } from '@babylonjs/core';
-import type { SystemContext } from 'phalanx-ecs';
+import type { SystemContext, SoAComponentStore } from 'phalanx-ecs';
 import { GameSystem } from 'phalanx-ecs';
 import type { Unit } from '../entities/Unit';
-import { ComponentType, MovementComponent, PhysicsBodyComponent, TransformComponent } from '../components';
+import { ComponentType, MovementComponent, TransformSoASchema, TransformComponent } from '../components';
+import { PhysicsSoASchema, type PhysicsBodyComponent } from 'phalanx-physics';
+import { FP } from 'phalanx-math';
 import { GameEvents, createEvent } from '../events';
 import type {
   MoveStartedEvent,
@@ -10,29 +12,32 @@ import type {
   StopRequestedEvent,
 } from '../events';
 
+// Pre-computed constants for deterministic physics calculations
+const FP_ARRIVAL_THRESHOLD_SQ = FP.FromFloat(0.25); // 0.5^2
+
 /**
- * MovementSystem - Handles entity movement commands
- * Follows Single Responsibility: Only handles movement logic
- * Uses EventBus for decoupled communication
+ * MovementSystem - Handles entity movement commands and velocity updates
  *
- * Note: Actual physics movement is handled by PhysicsSystem.
- * This system manages movement intent (targets) and emits events.
+ * Responsibilities:
+ * - Set velocities on PhysicsBodyComponent based on movement targets
+ * - Check for arrival at targets
+ * - Emit movement events
  *
- * LOCKSTEP SYNCHRONIZATION:
- * Movement commands are executed via direct moveEntityTo() calls only.
- * The EventBus MOVE_REQUESTED event is used for network routing,
- * not for direct execution (to ensure lockstep synchronization).
+ * Friction is handled per sub-step by PhysicsSystem (phalanx-physics).
+ *
+ * Runs BEFORE PhysicsSystem in tick order so velocities are set
+ * before integration.
  */
 export class MovementSystem extends GameSystem {
-  constructor() {
-    super();
-  }
-
+  private physicsStore!: SoAComponentStore<typeof PhysicsSoASchema.definition>;
+  private transformStore!: SoAComponentStore<typeof TransformSoASchema.definition>;
   /**
    * Initialize the system with context
    */
   public override init(context: SystemContext): void {
     super.init(context);
+    this.physicsStore = this.entityManager.getOrCreateSoAStore(PhysicsSoASchema);
+    this.transformStore = this.entityManager.getOrCreateSoAStore(TransformSoASchema);
     this.setupEventListeners();
   }
 
@@ -51,12 +56,84 @@ export class MovementSystem extends GameSystem {
   }
 
   /**
-   * Process movement tick - check for completed movements
-   * Physics movement is handled by PhysicsSystem
-   * Called once per tick for deterministic arrival detection
+   * Process movement tick:
+   * 1. Set velocities on PhysicsBody from movement targets
+   * 2. Check for completed movements and emit events
    */
   public override processTick(_tick: number): void {
-    // Query all entities with Movement component to check for completed movements
+    this.updateMovementVelocities();
+    this.checkArrivals();
+  }
+
+  /**
+   * Set velocities for entities with active movement targets.
+   * Uses direct SoA array access for performance.
+   */
+  private updateMovementVelocities(): void {
+    const physVelocityX = this.physicsStore.arrays.velocityX;
+    const physVelocityY = this.physicsStore.arrays.velocityY;
+    const physVelocityZ = this.physicsStore.arrays.velocityZ;
+    const physIsStatic = this.physicsStore.arrays.isStatic;
+    const physIgnorePhysics = this.physicsStore.arrays.ignorePhysics;
+
+    const txFpPositionX = this.transformStore.arrays.fpPositionX;
+    const txFpPositionZ = this.transformStore.arrays.fpPositionZ;
+
+    const zeroRaw = FP.ToRaw(FP._0);
+
+    for (const entityId of this.physicsStore.entityIds()) {
+      const physIndex = this.physicsStore.indexOf(entityId);
+
+      if (physIsStatic[physIndex] === 1) continue;
+      if (physIgnorePhysics[physIndex] === 1) {
+        physVelocityX[physIndex] = zeroRaw;
+        physVelocityY[physIndex] = zeroRaw;
+        physVelocityZ[physIndex] = zeroRaw;
+        continue;
+      }
+
+      const entity = this.entityManager.getEntity(entityId);
+      if (!entity) continue;
+
+      const movement = entity.getComponent<MovementComponent>(ComponentType.Movement);
+      if (!movement) continue;
+
+      if (movement.isMoving) {
+        const transformIndex = this.transformStore.indexOf(entityId);
+        if (transformIndex === -1) continue;
+
+        const target = movement.targetPosition;
+        const posX = FP.FromRaw(txFpPositionX[transformIndex]);
+        const posZ = FP.FromRaw(txFpPositionZ[transformIndex]);
+
+        const dx = FP.Sub(FP.FromFloat(target.x), posX);
+        const dz = FP.Sub(FP.FromFloat(target.z), posZ);
+        const distSq = FP.Add(FP.Mul(dx, dx), FP.Mul(dz, dz));
+
+        if (FP.Lt(distSq, FP_ARRIVAL_THRESHOLD_SQ)) {
+          movement.stop();
+          physVelocityX[physIndex] = zeroRaw;
+          physVelocityY[physIndex] = zeroRaw;
+          physVelocityZ[physIndex] = zeroRaw;
+        } else {
+          const dist = FP.Sqrt(distSq);
+          const speed = FP.FromFloat(movement.speed);
+          physVelocityX[physIndex] = FP.ToRaw(FP.Mul(FP.Div(dx, dist), speed));
+          physVelocityY[physIndex] = zeroRaw;
+          physVelocityZ[physIndex] = FP.ToRaw(FP.Mul(FP.Div(dz, dist), speed));
+        }
+      } else {
+        physVelocityX[physIndex] = zeroRaw;
+        physVelocityY[physIndex] = zeroRaw;
+        physVelocityZ[physIndex] = zeroRaw;
+      }
+    }
+  }
+
+  /**
+   * Check for completed movements and emit arrival events.
+   */
+  private checkArrivals(): void {
     const movableEntities = this.entityManager.queryEntities(
       ComponentType.Movement
     );
@@ -67,14 +144,11 @@ export class MovementSystem extends GameSystem {
       );
       if (!movement) continue;
 
-      // Check if movement just completed (isMoving became false but we haven't emitted event)
-      // The PhysicsSystem sets isMoving to false when arrival threshold is reached
       if (movement.hasJustArrived()) {
         movement.acknowledgeArrival();
 
         const transform = entity.getComponent<TransformComponent>(ComponentType.Transform);
 
-        // Emit move completed event
         this.eventBus.emit<MoveCompletedEvent>(GameEvents.MOVE_COMPLETED, {
           ...createEvent(),
           entityId: entity.id,

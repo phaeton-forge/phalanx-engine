@@ -3,6 +3,7 @@ packages:
   - 'phalanx-server'
   - 'phalanx-client'
   - 'phalanx-ecs'
+  - 'phalanx-physics'
   - 'game-test'
   - 'game-test-server'
   - 'direct-strike-babylon-example'

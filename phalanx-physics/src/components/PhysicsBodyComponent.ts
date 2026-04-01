@@ -1,12 +1,12 @@
 import { SoAComponent, defineSoASchema } from 'phalanx-ecs';
-import { ComponentType } from './Component';
 import { FP, type FixedPoint, type FPVector3 as FPVector3Type } from 'phalanx-math';
+import type { PhysicsBodyConfig } from '../types';
 
 /**
  * PhysicsBody SoA Schema
  *
- * Stores physics simulation data using fixed-point math.
- * Optimized for the physics system's hot loops.
+ * Stores physics simulation data using fixed-point math for determinism.
+ * All i64 fields store raw FixedPoint base values (BigInt64Array).
  */
 export const PhysicsSoASchema = defineSoASchema({
   velocityX: 'i64',
@@ -14,6 +14,8 @@ export const PhysicsSoASchema = defineSoASchema({
   velocityZ: 'i64',
   radius: 'i64',
   mass: 'i64',
+  restitution: 'i64',
+  friction: 'i64',
   isStatic: 'u8',
   ignorePhysics: 'u8',
   lastX: 'f64',
@@ -21,44 +23,46 @@ export const PhysicsSoASchema = defineSoASchema({
 }, 'PhysicsBody');
 
 /**
- * PhysicsBodyComponent - Stores physics state for an entity
+ * Unique symbol identifying PhysicsBody components.
+ * Consumers register this into their own ComponentType registry.
+ */
+export const PHYSICS_BODY_COMPONENT_TYPE: symbol = Symbol('PhysicsBody');
+
+/**
+ * PhysicsBodyComponent — SoA-backed physics state for an entity.
  *
- * Uses SoA (Structure-of-Arrays) storage for cache-friendly iteration in hot paths.
- * This component provides a façade API over the underlying typed arrays while
- * maintaining the same interface as before.
+ * Stores velocity, radius, mass, restitution, friction, and flags
+ * in cache-friendly typed arrays. Provides a convenience façade for
+ * reading/writing individual entity values.
  *
- * For maximum performance in hot loops, systems can access the SoA store directly:
+ * For hot-path access in systems, use the SoA store directly:
  * ```typescript
- * const store = entityManager.getSoAStore(PhysicsSoASchema);
+ * const store = entityManager.getOrCreateSoAStore(PhysicsSoASchema);
  * const idx = store.indexOf(entityId);
- * store.arrays.velocityX[idx] = FP.ToRaw(newVelocity);
+ * store.arrays.velocityX[idx] = FP.ToRaw(newVel);
  * ```
  */
 export class PhysicsBodyComponent extends SoAComponent<typeof PhysicsSoASchema.definition> {
-  public readonly type = ComponentType.PhysicsBody;
+  public readonly type = PHYSICS_BODY_COMPONENT_TYPE;
   static readonly soaSchema = PhysicsSoASchema;
 
   /** Reusable velocity object to avoid allocation */
   private readonly _velocity: FPVector3Type = { x: FP._0, y: FP._0, z: FP._0 };
 
-  constructor(
-    entityId: number,
-    options: {
-      radius?: number;
-      mass?: number;
-      isStatic?: boolean;
-    } = {}
-  ) {
-    const radius = options.radius !== undefined ? FP.FromFloat(options.radius) : FP._1;
-    const mass = options.mass !== undefined ? FP.FromFloat(options.mass) : FP._1;
-    const isStatic = options.isStatic ?? false;
+  constructor(entityId: number, config: PhysicsBodyConfig) {
+    const mass = config.mass ?? FP._1;
+    const restitution = config.restitution ?? FP.FromFloat(0.5);
+    const friction = config.friction ?? FP._0;
+    const isStatic = config.isStatic ?? false;
 
     super(PhysicsSoASchema, entityId, {
       velocityX: FP.ToRaw(FP._0),
       velocityY: FP.ToRaw(FP._0),
       velocityZ: FP.ToRaw(FP._0),
-      radius: FP.ToRaw(radius),
+      radius: FP.ToRaw(config.radius),
       mass: FP.ToRaw(mass),
+      restitution: FP.ToRaw(restitution),
+      friction: FP.ToRaw(friction),
       isStatic: isStatic ? 1 : 0,
       ignorePhysics: 0,
       lastX: 0,
@@ -69,13 +73,11 @@ export class PhysicsBodyComponent extends SoAComponent<typeof PhysicsSoASchema.d
   // ============ Velocity ============
 
   /**
-   * Get velocity as FPVector3 (creates FixedPoint objects)
-   * Returns cached object - do not mutate directly
+   * Get velocity as FPVector3. Returns a cached object — do not mutate directly.
    */
   public get velocity(): FPVector3Type {
     const idx = this.getIndex();
     if (idx === -1) return this._velocity;
-
     this._velocity.x = FP.FromRaw(this.store.arrays.velocityX[idx]);
     this._velocity.y = FP.FromRaw(this.store.arrays.velocityY[idx]);
     this._velocity.z = FP.FromRaw(this.store.arrays.velocityZ[idx]);
@@ -85,38 +87,36 @@ export class PhysicsBodyComponent extends SoAComponent<typeof PhysicsSoASchema.d
   public set velocity(value: FPVector3Type) {
     const idx = this.getIndex();
     if (idx === -1) return;
-
     this.store.arrays.velocityX[idx] = FP.ToRaw(value.x);
     this.store.arrays.velocityY[idx] = FP.ToRaw(value.y);
     this.store.arrays.velocityZ[idx] = FP.ToRaw(value.z);
   }
 
+  /** Set velocity by components */
   public setVelocity(x: FixedPoint, y: FixedPoint, z: FixedPoint): void {
     const idx = this.getIndex();
     if (idx === -1) return;
-
     this.store.arrays.velocityX[idx] = FP.ToRaw(x);
     this.store.arrays.velocityY[idx] = FP.ToRaw(y);
     this.store.arrays.velocityZ[idx] = FP.ToRaw(z);
   }
 
+  /** Add to current velocity */
   public addVelocity(velocity: FPVector3Type): void {
     const idx = this.getIndex();
     if (idx === -1) return;
-
     const currentX = FP.FromRaw(this.store.arrays.velocityX[idx]);
     const currentY = FP.FromRaw(this.store.arrays.velocityY[idx]);
     const currentZ = FP.FromRaw(this.store.arrays.velocityZ[idx]);
-
     this.store.arrays.velocityX[idx] = FP.ToRaw(FP.Add(currentX, velocity.x));
     this.store.arrays.velocityY[idx] = FP.ToRaw(FP.Add(currentY, velocity.y));
     this.store.arrays.velocityZ[idx] = FP.ToRaw(FP.Add(currentZ, velocity.z));
   }
 
+  /** Zero out velocity */
   public stopVelocity(): void {
     const idx = this.getIndex();
     if (idx === -1) return;
-
     const zero = FP.ToRaw(FP._0);
     this.store.arrays.velocityX[idx] = zero;
     this.store.arrays.velocityY[idx] = zero;
@@ -143,6 +143,22 @@ export class PhysicsBodyComponent extends SoAComponent<typeof PhysicsSoASchema.d
     const idx = this.getIndex();
     if (idx === -1) return FP._1;
     return FP.FromRaw(this.store.arrays.mass[idx]);
+  }
+
+  // ============ Restitution ============
+
+  public get restitution(): FixedPoint {
+    const idx = this.getIndex();
+    if (idx === -1) return FP.FromFloat(0.5);
+    return FP.FromRaw(this.store.arrays.restitution[idx]);
+  }
+
+  // ============ Friction ============
+
+  public get friction(): FixedPoint {
+    const idx = this.getIndex();
+    if (idx === -1) return FP.FromFloat(0.3);
+    return FP.FromRaw(this.store.arrays.friction[idx]);
   }
 
   // ============ Static Flag ============
@@ -193,4 +209,3 @@ export class PhysicsBodyComponent extends SoAComponent<typeof PhysicsSoASchema.d
     this.store.arrays.lastZ[idx] = value;
   }
 }
-

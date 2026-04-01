@@ -4,7 +4,7 @@ export type { IComponent, ComponentTypeKey } from './Component';
 
 // SoA schemas (co-located with their component classes)
 export { TransformSoASchema } from './TransformComponent';
-export { PhysicsSoASchema } from './PhysicsBodyComponent';
+export { PhysicsSoASchema } from 'phalanx-physics';
 
 export { TeamComponent } from './TeamComponent';
 export { HealthComponent } from './HealthComponent';
@@ -18,7 +18,7 @@ export { AnimationComponent, AnimationState } from './AnimationComponent';
 export type { AnimationStateType, AnimationNames } from './AnimationComponent';
 export { RotationComponent } from './RotationComponent';
 export { AttackLockComponent } from './AttackLockComponent';
-export { PhysicsBodyComponent } from './PhysicsBodyComponent';
+export { PhysicsBodyComponent } from 'phalanx-physics';
 export { HealthBarComponent } from './HealthBarComponent';
 export { InterpolationComponent } from './InterpolationComponent';
 export { TransformComponent } from './TransformComponent';
