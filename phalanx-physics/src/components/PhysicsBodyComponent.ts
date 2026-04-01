@@ -52,7 +52,7 @@ export class PhysicsBodyComponent extends SoAComponent<typeof PhysicsSoASchema.d
   constructor(entityId: number, config: PhysicsBodyConfig) {
     const mass = config.mass ?? FP._1;
     const restitution = config.restitution ?? FP.FromFloat(0.5);
-    const friction = config.friction ?? FP.FromFloat(0.3);
+    const friction = config.friction ?? FP._0;
     const isStatic = config.isStatic ?? false;
 
     super(PhysicsSoASchema, entityId, {

@@ -2,22 +2,20 @@ import { type EventBus, type SoAComponentStore } from 'phalanx-ecs';
 import type { SoASchemaDefinition } from 'phalanx-ecs';
 import { FP } from 'phalanx-math';
 import { PhysicsSystem } from './systems/PhysicsSystem';
-import { CollisionSystem } from './systems/CollisionSystem';
 import { SpatialHashGrid } from './collision/SpatialHashGrid';
 import { PhysicsEvents } from './events';
 import type { PhysicsWorldConfig } from './PhysicsWorldConfig';
 import type { TransformFieldMapping, CollisionEvent, PhysicsConfig } from './types';
 
 /**
- * PhysicsWorld — high-level facade that wires PhysicsSystem + CollisionSystem.
+ * PhysicsWorld — high-level facade that wires PhysicsSystem.
  *
- * Consumers create a PhysicsWorld, get the two systems from getSystems(),
- * register them with GameWorld, and then link their TransformComponent store
+ * Consumers create a PhysicsWorld, get the system from getSystems(),
+ * register it with GameWorld, and then link their TransformComponent store
  * via setTransformStore().
  */
 export class PhysicsWorld {
   private readonly physicsSystem: PhysicsSystem;
-  private readonly collisionSystem: CollisionSystem;
   private eventBusRef: EventBus | null = null;
   private readonly unsubscribers: (() => void)[] = [];
 
@@ -28,38 +26,46 @@ export class PhysicsWorld {
     const gridCellSize = config?.gridCellSize ?? FP.FromFloat(4);
     const maxVelocity = config?.maxVelocity ?? FP.FromFloat(15.0);
     const pushStrength = config?.pushStrength ?? FP.FromFloat(15.0);
+    const defaultFriction = config?.defaultFriction ?? FP.FromFloat(0.92);
 
     const physicsConfig: PhysicsConfig = {
       tickDt,
       subSteps,
       maxVelocity,
+      defaultFriction,
+      pushStrength,
+      gridCellSize,
       worldBounds: config?.worldBounds,
     };
 
     this.physicsSystem = new PhysicsSystem(physicsConfig);
-    this.collisionSystem = new CollisionSystem(gridCellSize, pushStrength);
   }
 
   /**
-   * Returns the two systems to register with GameWorld.
-   * PhysicsSystem should run before CollisionSystem in tick system order.
+   * Returns the physics system to register with GameWorld.
    */
-  public getSystems(): { physicsSystem: PhysicsSystem; collisionSystem: CollisionSystem } {
+  public getSystems(): { physicsSystem: PhysicsSystem } {
     return {
       physicsSystem: this.physicsSystem,
-      collisionSystem: this.collisionSystem,
     };
   }
 
   /**
-   * Link the consumer's TransformComponent SoA store to both systems.
+   * Set an optional collision filter. Return false to skip a pair.
+   * Useful for game-specific rules like team-based collision filtering.
+   */
+  public setCollisionFilter(filter: (entityA: number, entityB: number) => boolean): void {
+    this.physicsSystem.setCollisionFilter(filter);
+  }
+
+  /**
+   * Link the consumer's TransformComponent SoA store.
    */
   public setTransformStore(
     store: SoAComponentStore<SoASchemaDefinition>,
     fieldMapping: TransformFieldMapping
   ): void {
     this.physicsSystem.setTransformStore(store, fieldMapping);
-    this.collisionSystem.setTransformStore(store, fieldMapping);
   }
 
   /**
@@ -105,7 +111,7 @@ export class PhysicsWorld {
 
   /** Direct access to the spatial grid for custom queries (e.g. range finding) */
   public get spatialGrid(): SpatialHashGrid {
-    return this.collisionSystem.getSpatialGrid();
+    return this.physicsSystem.getSpatialGrid();
   }
 
   /** Clean up all subscriptions and system resources */
@@ -118,9 +124,8 @@ export class PhysicsWorld {
 
   private getEventBus(): EventBus | null {
     if (this.eventBusRef) return this.eventBusRef;
-    // Try to access from the system's context (set after init)
     try {
-      this.eventBusRef = (this.physicsSystem as unknown as { context: { eventBus: EventBus } }).context?.eventBus ?? null;
+      this.eventBusRef = this.physicsSystem.getEventBus() ?? null;
     } catch {
       return null;
     }

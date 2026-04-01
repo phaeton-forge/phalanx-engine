@@ -23,8 +23,10 @@ export interface TransformFieldMapping {
 }
 
 /**
- * Collision filter using bitmask layers.
- * Allows fine-grained control over which entities can collide.
+ * Bitmask-based collision filtering.
+ * @remarks Defined for future use. Not yet integrated into PhysicsSystem.
+ * The current per-pair callback filter (`setCollisionFilter`) is the active API.
+ * Bitmask integration is planned for v2 as a performance optimization.
  */
 export interface CollisionFilter {
   /** Bitmask: what layer this entity is on */
@@ -52,6 +54,12 @@ export interface PhysicsConfig {
   subSteps: number;
   /** Maximum velocity magnitude */
   maxVelocity: FixedPoint;
+  /** Default friction applied per sub-step when entity friction field is 0 */
+  defaultFriction: FixedPoint;
+  /** Push strength for collision resolution */
+  pushStrength: FixedPoint;
+  /** Spatial hash grid cell size */
+  gridCellSize: FixedPoint;
   /** World bounds for position clamping (optional) */
   worldBounds?: {
     minX: FixedPoint;

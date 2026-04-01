@@ -54,6 +54,10 @@ export class NarrowPhase {
   /**
    * Circle vs AABB collision test (XZ plane).
    * The normal points from the circle to the AABB.
+   *
+   * @remarks Implemented and tested but not yet wired into collision dispatch.
+   * AABB collision requires a `shapeType` field on PhysicsBodyComponent to determine
+   * which narrow-phase algorithm to use. Planned for v2.
    */
   static circleVsAABB(
     circlePosX: FixedPoint, circlePosZ: FixedPoint, circleRadius: FixedPoint,
@@ -125,6 +129,10 @@ export class NarrowPhase {
   /**
    * AABB vs AABB collision test (XZ plane).
    * Returns a manifold with the minimum penetration axis.
+   *
+   * @remarks Implemented and tested but not yet wired into collision dispatch.
+   * AABB collision requires a `shapeType` field on PhysicsBodyComponent to determine
+   * which narrow-phase algorithm to use. Planned for v2.
    */
   static aabbVsAABB(
     aMinX: FixedPoint, aMinZ: FixedPoint, aMaxX: FixedPoint, aMaxZ: FixedPoint,

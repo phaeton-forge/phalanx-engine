@@ -9,7 +9,6 @@ export type { CollisionManifold } from './collision/CollisionManifold';
 
 // Systems
 export { PhysicsSystem } from './systems/PhysicsSystem';
-export { CollisionSystem } from './systems/CollisionSystem';
 
 // Facade
 export { PhysicsWorld } from './PhysicsWorld';

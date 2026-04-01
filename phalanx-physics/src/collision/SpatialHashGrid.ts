@@ -78,6 +78,11 @@ export class SpatialHashGrid {
   /**
    * Return all candidate collision pairs from the grid.
    * Pairs are deduplicated and ordered (A < B) for determinism.
+   *
+   * NOTE: This implementation does NOT scan the 9-cell neighborhood explicitly.
+   * Instead, entities are inserted into ALL cells their bounding circle overlaps
+   * (see insert()). Two circles that overlap will always share at least one cell,
+   * so intra-cell pair checking is sufficient. The 9-cell scan is redundant here.
    */
   public queryPairs(): [number, number][] {
     this._pairsResult.length = 0;

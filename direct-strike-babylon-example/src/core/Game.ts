@@ -161,12 +161,12 @@ export class Game {
       maxVelocity: FP.FromFloat(15.0),
       pushStrength: FP.FromFloat(15.0),
     });
-    const { physicsSystem, collisionSystem } = this.physicsWorld.getSystems();
+    const { physicsSystem } = this.physicsWorld.getSystems();
 
     // Wire game-specific collision filter:
     // Skip collisions between units and friendly buildings (same-team static entities)
     const entityManager = this.world.entityManager;
-    collisionSystem.setCollisionFilter((entityIdA: number, entityIdB: number) => {
+    this.physicsWorld.setCollisionFilter((entityIdA: number, entityIdB: number) => {
       const eA = entityManager.getEntity(entityIdA);
       const eB = entityManager.getEntity(entityIdB);
       if (!eA || !eB) return false;
@@ -202,13 +202,11 @@ export class Game {
     // Define system processing order
     // Tick systems - order matters for determinism!
     // 1. MovementSystem sets velocities on PhysicsBodyComponent
-    // 2. PhysicsSystem integrates velocities into positions
-    // 3. CollisionSystem detects and resolves collisions
-    // 4. Combat/Health/etc. react to updated positions and collision events
+    // 2. PhysicsSystem runs full pipeline per sub-step: integrate → collide → friction
+    // 3. Combat/Health/etc. react to updated positions and collision events
     const tickSystems = [
       this.movementSystem,
       physicsSystem,
-      collisionSystem,
       this.combatSystem,
       this.projectileSystem,
       this.healthSystem,

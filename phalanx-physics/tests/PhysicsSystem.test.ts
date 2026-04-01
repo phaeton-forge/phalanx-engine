@@ -10,7 +10,8 @@ import {
 } from 'phalanx-ecs';
 import { PhysicsSystem } from '../src/systems/PhysicsSystem';
 import { PhysicsSoASchema } from '../src/components/PhysicsBodyComponent';
-import type { PhysicsConfig } from '../src/types';
+import { PhysicsEvents } from '../src/events';
+import type { PhysicsConfig, CollisionEvent } from '../src/types';
 
 // A minimal transform schema for testing
 const TestTransformSchema = defineSoASchema({
@@ -30,6 +31,9 @@ function createPhysicsConfig(overrides?: Partial<PhysicsConfig>): PhysicsConfig 
     tickDt: FP.FromFloat(0.05),
     subSteps: 1,
     maxVelocity: FP.FromFloat(100),
+    defaultFriction: FP.FromFloat(0.92),
+    pushStrength: FP.FromFloat(15.0),
+    gridCellSize: FP.FromFloat(4),
     ...overrides,
   };
 }
@@ -171,10 +175,124 @@ describe('PhysicsSystem', () => {
     const { system, physicsStore, transformStore } = setupSystem({ subSteps: 2 });
     addEntity(physicsStore, transformStore, 1, 0, 0, 10, 0);
 
+    // Set friction to 1.0 (no damping) to isolate integration behavior
+    const physIdx = physicsStore.indexOf(1);
+    physicsStore.arrays.friction[physIdx] = FP.ToRaw(FP._1);
+
     system.processTick(1);
 
     const idx = transformStore.indexOf(1);
     const posX = FP.ToFloat(FP.FromRaw(transformStore.arrays.fpPositionX[idx]));
     expect(posX).toBeCloseTo(0.5, 1);
+  });
+
+  it('collision detection runs inside each sub-step (no tunneling)', () => {
+    // Two circles (radius=1) moving toward each other at high velocity.
+    // With 3 sub-steps, they must not tunnel through each other.
+    const { system, physicsStore, transformStore } = setupSystem({
+      subSteps: 3,
+      maxVelocity: FP.FromFloat(100),
+    });
+    // Entity 1 at x=0, moving right; Entity 2 at x=3, moving left
+    addEntity(physicsStore, transformStore, 1, 0, 0, 20, 0);
+    addEntity(physicsStore, transformStore, 2, 3, 0, -20, 0);
+
+    system.processTick(1);
+
+    const idx1 = transformStore.indexOf(1);
+    const idx2 = transformStore.indexOf(2);
+    const pos1X = FP.ToFloat(FP.FromRaw(transformStore.arrays.fpPositionX[idx1]));
+    const pos2X = FP.ToFloat(FP.FromRaw(transformStore.arrays.fpPositionX[idx2]));
+
+    // After collision resolution, entity 1 should be to the left of entity 2
+    expect(pos1X).toBeLessThan(pos2X);
+  });
+
+  it('two overlapping circles are pushed apart via collision resolution', () => {
+    const { system, physicsStore, transformStore } = setupSystem();
+    // Two entities with radius 1, distance 1 apart (overlap 1)
+    addEntity(physicsStore, transformStore, 1, 0, 0, 0, 0);
+    addEntity(physicsStore, transformStore, 2, 1, 0, 0, 0);
+
+    system.processTick(1);
+
+    const idx1 = transformStore.indexOf(1);
+    const idx2 = transformStore.indexOf(2);
+    const pos1X = FP.ToFloat(FP.FromRaw(transformStore.arrays.fpPositionX[idx1]));
+    const pos2X = FP.ToFloat(FP.FromRaw(transformStore.arrays.fpPositionX[idx2]));
+
+    // They should be pushed apart
+    expect(pos1X).toBeLessThan(0);
+    expect(pos2X).toBeGreaterThan(1);
+  });
+
+  it('emits collision events via EventBus', () => {
+    const { system, physicsStore, transformStore } = setupSystem();
+    addEntity(physicsStore, transformStore, 1, 0, 0, 0, 0);
+    addEntity(physicsStore, transformStore, 2, 1, 0, 0, 0);
+
+    const events: CollisionEvent[] = [];
+    eventBus.on<CollisionEvent>(PhysicsEvents.COLLISION, (e) => events.push(e));
+
+    system.processTick(1);
+
+    expect(events.length).toBe(1);
+    expect(events[0].entityA).toBe(1);
+    expect(events[0].entityB).toBe(2);
+    expect(events[0].manifold).toBeDefined();
+  });
+
+  it('friction with subSteps=3 gives effective friction of ~0.92^3', () => {
+    // With subSteps=3 and friction=0.92, effective per-tick friction = 0.92^3 ≈ 0.778
+    const { system, physicsStore, transformStore } = setupSystem({
+      subSteps: 3,
+      defaultFriction: FP.FromFloat(0.92),
+    });
+    addEntity(physicsStore, transformStore, 1, 0, 0, 10, 0);
+
+    // Set friction to 0 so it uses defaultFriction
+    const physIdx = physicsStore.indexOf(1);
+    physicsStore.arrays.friction[physIdx] = 0n;
+
+    system.processTick(1);
+
+    // After one tick, velocity should be ~10 * 0.92^3 ≈ 7.78
+    const velX = FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityX[physIdx]));
+    const expected = 10 * Math.pow(0.92, 3);
+    expect(velX).toBeCloseTo(expected, 0);
+  });
+
+  it('per-entity friction field is used when non-zero', () => {
+    const { system, physicsStore, transformStore } = setupSystem({
+      subSteps: 1,
+      defaultFriction: FP.FromFloat(0.92),
+    });
+    addEntity(physicsStore, transformStore, 1, 0, 0, 10, 0);
+
+    // Set explicit per-entity friction of 0.5
+    const physIdx = physicsStore.indexOf(1);
+    physicsStore.arrays.friction[physIdx] = FP.ToRaw(FP.FromFloat(0.5));
+
+    system.processTick(1);
+
+    const velX = FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityX[physIdx]));
+    // With friction=0.5 and 1 sub-step: velocity ≈ 10 * 0.5 = 5
+    expect(velX).toBeCloseTo(5, 0);
+  });
+
+  it('collision filter can skip pairs', () => {
+    const { system, physicsStore, transformStore } = setupSystem();
+    addEntity(physicsStore, transformStore, 1, 0, 0, 0, 0);
+    addEntity(physicsStore, transformStore, 2, 1, 0, 0, 0);
+
+    // Filter: skip all collisions
+    system.setCollisionFilter(() => false);
+
+    const events: CollisionEvent[] = [];
+    eventBus.on<CollisionEvent>(PhysicsEvents.COLLISION, (e) => events.push(e));
+
+    system.processTick(1);
+
+    expect(events.length).toBe(0);
   });
 });

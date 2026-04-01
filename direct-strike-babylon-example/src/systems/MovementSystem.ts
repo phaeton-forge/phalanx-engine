@@ -14,8 +14,6 @@ import type {
 
 // Pre-computed constants for deterministic physics calculations
 const FP_ARRIVAL_THRESHOLD_SQ = FP.FromFloat(0.25); // 0.5^2
-const FP_VELOCITY_EPSILON = FP.FromFloat(0.01);
-const FP_FRICTION = FP.FromFloat(0.92);
 
 /**
  * MovementSystem - Handles entity movement commands and velocity updates
@@ -23,8 +21,9 @@ const FP_FRICTION = FP.FromFloat(0.92);
  * Responsibilities:
  * - Set velocities on PhysicsBodyComponent based on movement targets
  * - Check for arrival at targets
- * - Apply friction to non-moving entities
  * - Emit movement events
+ *
+ * Friction is handled per sub-step by PhysicsSystem (phalanx-physics).
  *
  * Runs BEFORE PhysicsSystem in tick order so velocities are set
  * before integration.
@@ -60,12 +59,10 @@ export class MovementSystem extends GameSystem {
    * Process movement tick:
    * 1. Set velocities on PhysicsBody from movement targets
    * 2. Check for completed movements and emit events
-   * 3. Apply friction to non-moving entities
    */
   public override processTick(_tick: number): void {
     this.updateMovementVelocities();
     this.checkArrivals();
-    this.applyFriction();
   }
 
   /**
@@ -157,41 +154,6 @@ export class MovementSystem extends GameSystem {
           entityId: entity.id,
           position: transform?.visualPosition.clone() ?? new Vector3(),
         });
-      }
-    }
-  }
-
-  /**
-   * Apply friction to non-moving entities.
-   * Uses direct SoA array access for performance.
-   */
-  private applyFriction(): void {
-    const physVelocityX = this.physicsStore.arrays.velocityX;
-    const physVelocityY = this.physicsStore.arrays.velocityY;
-    const physVelocityZ = this.physicsStore.arrays.velocityZ;
-    const physIsStatic = this.physicsStore.arrays.isStatic;
-
-    for (const entityId of this.physicsStore.entityIds()) {
-      const physIndex = this.physicsStore.indexOf(entityId);
-      if (physIsStatic[physIndex] === 1) continue;
-
-      const entity = this.entityManager.getEntity(entityId);
-      const movement = entity?.getComponent<MovementComponent>(ComponentType.Movement);
-
-      if (!movement || !movement.isMoving) {
-        const velX = FP.FromRaw(physVelocityX[physIndex]);
-        const velY = FP.FromRaw(physVelocityY[physIndex]);
-        const velZ = FP.FromRaw(physVelocityZ[physIndex]);
-
-        let newVelX = FP.Mul(velX, FP_FRICTION);
-        let newVelZ = FP.Mul(velZ, FP_FRICTION);
-
-        if (FP.Lt(FP.Abs(newVelX), FP_VELOCITY_EPSILON)) newVelX = FP._0;
-        if (FP.Lt(FP.Abs(newVelZ), FP_VELOCITY_EPSILON)) newVelZ = FP._0;
-
-        physVelocityX[physIndex] = FP.ToRaw(newVelX);
-        physVelocityY[physIndex] = FP.ToRaw(velY);
-        physVelocityZ[physIndex] = FP.ToRaw(newVelZ);
       }
     }
   }

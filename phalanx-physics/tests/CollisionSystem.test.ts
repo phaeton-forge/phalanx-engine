@@ -8,10 +8,10 @@ import {
   defineSoASchema,
   type SoAComponentStore,
 } from 'phalanx-ecs';
-import { CollisionSystem } from '../src/systems/CollisionSystem';
+import { PhysicsSystem } from '../src/systems/PhysicsSystem';
 import { PhysicsSoASchema } from '../src/components/PhysicsBodyComponent';
 import { PhysicsEvents } from '../src/events';
-import type { CollisionEvent } from '../src/types';
+import type { PhysicsConfig, CollisionEvent } from '../src/types';
 
 const TestTransformSchema = defineSoASchema({
   fpPositionX: 'i64',
@@ -25,7 +25,23 @@ const FIELD_MAPPING = {
   fpPositionZ: 'fpPositionZ',
 };
 
-describe('CollisionSystem', () => {
+function createPhysicsConfig(overrides?: Partial<PhysicsConfig>): PhysicsConfig {
+  return {
+    tickDt: FP.FromFloat(0.05),
+    subSteps: 1,
+    maxVelocity: FP.FromFloat(100),
+    defaultFriction: FP.FromFloat(0.92),
+    pushStrength: FP.FromFloat(15.0),
+    gridCellSize: FP.FromFloat(4),
+    ...overrides,
+  };
+}
+
+/**
+ * Collision tests — now tested through PhysicsSystem which owns the full pipeline.
+ * CollisionSystem is no longer a standalone GameSystem.
+ */
+describe('Collision (via PhysicsSystem)', () => {
   let entityManager: EntityManager;
   let eventBus: EventBus;
   let context: SystemContext;
@@ -41,12 +57,13 @@ describe('CollisionSystem', () => {
     SoAComponent.resetContext();
   });
 
-  function setupSystem(): {
-    system: CollisionSystem;
+  function setupSystem(overrides?: Partial<PhysicsConfig>): {
+    system: PhysicsSystem;
     physicsStore: SoAComponentStore<typeof PhysicsSoASchema.definition>;
     transformStore: SoAComponentStore<typeof TestTransformSchema.definition>;
   } {
-    const system = new CollisionSystem(FP.FromFloat(4));
+    const config = createPhysicsConfig(overrides);
+    const system = new PhysicsSystem(config);
     system.init(context);
 
     const physicsStore = entityManager.getOrCreateSoAStore(PhysicsSoASchema);

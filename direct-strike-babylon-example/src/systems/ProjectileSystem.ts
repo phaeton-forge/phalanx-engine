@@ -185,13 +185,9 @@ export class ProjectileSystem extends GameSystem {
       const movement = FPVector3.Scale(projectile.fpDirection, fpDistance);
       transform.fpPosition = FPVector3.Add(transform.fpPosition, movement);
 
-      // Ground check
-      if (FP.Lte(transform.fpPosition.y, FP_GROUND_LEVEL)) {
-        this.destroyProjectile(entity, transform);
-        continue;
-      }
-
-      // Collision check against hostile entities
+      // Collision check against hostile entities (before ground check so
+      // projectiles aimed at ground-level targets can register hits)
+      let hit = false;
       for (const target of potentialTargets) {
         if (target.isDestroyed) continue;
         // Don't collide with projectile entities
@@ -224,8 +220,17 @@ export class ProjectileSystem extends GameSystem {
           });
 
           this.destroyProjectile(entity, transform);
+          hit = true;
           break;
         }
+      }
+      if (hit) continue;
+
+      // Ground check (after collision so projectiles at ground-level targets
+      // can register hits before being destroyed)
+      if (FP.Lte(transform.fpPosition.y, FP_GROUND_LEVEL)) {
+        this.destroyProjectile(entity, transform);
+        continue;
       }
     }
   }
