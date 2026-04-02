@@ -11,6 +11,7 @@ export class InterpolationComponent implements IComponent {
   public readonly visualPosition: Vector3 = new Vector3();
   public previousRotationY: number = 0;
   public currentRotationY: number = 0;
+  public visualRotationY: number = 0;
   public active: boolean = false;
 
   constructor(initialPosition?: FPVector3Type, isStatic: boolean = false) {

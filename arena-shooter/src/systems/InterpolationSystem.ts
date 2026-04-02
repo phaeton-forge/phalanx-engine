@@ -43,6 +43,10 @@ export class InterpolationSystem extends GameSystem {
         FP.ToFloat(interp.currentFpPosition.y) * alpha;
       interp.visualPosition.z = FP.ToFloat(interp.previousFpPosition.z) * (1 - alpha) +
         FP.ToFloat(interp.currentFpPosition.z) * alpha;
+
+      // Lerp rotation
+      interp.visualRotationY = interp.previousRotationY * (1 - alpha) +
+        interp.currentRotationY * alpha;
     }
   }
 }

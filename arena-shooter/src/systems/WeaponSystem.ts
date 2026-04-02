@@ -75,7 +75,15 @@ export class WeaponSystem extends GameSystem {
         const aimZ = input.aimZ;
         const dx = FP.Sub(aimX, originX);
         const dz = FP.Sub(aimZ, originZ);
-        const dirVec = FPVector3.Normalize(FPVector3.Create(dx, FP._0, dz));
+        const rawDir = FPVector3.Create(dx, FP._0, dz);
+
+        // Deadzone: if aim point ≈ origin, use player's facing direction instead
+        if (FPVector3.SqrMagnitude(rawDir).isZero()) {
+          rawDir.x = sinR;
+          rawDir.z = cosR;
+        }
+
+        const dirVec = FPVector3.Normalize(rawDir);
 
         this.entityFactory.createProjectile(originX, originZ, dirVec.x, dirVec.z, entity.id);
 

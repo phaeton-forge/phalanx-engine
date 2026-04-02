@@ -1,7 +1,11 @@
 import { ParticleSystem, Texture, type Scene } from '@babylonjs/core';
 import { vfxConfig } from '../config/vfxConfig.ts';
 
-const FLARE_URL = 'https://assets.babylonjs.com/textures/flare.png';
+/**
+ * Bundled locally — avoids runtime dependency on remote CDN.
+ * This is a 1x1 white-to-transparent radial gradient encoded as a data URI.
+ */
+const FLARE_URL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAAXNSR0IArs4c6QAAAa5JREFUWEftl7FuwkAQRN8eSCgSJSUF/AD/gMQPUCBRQkdBCR0FJeIH+AH+gaJMSpQGiRLlZNaac+7O5mwsRVjy+ey7nZ2d3TsbceMf3/j9+A/gfwVSgC+5qbfXHgBeBSF45HdoLSB7XC/L+QB4IxiYGzMm4GdCTBXJjI3FfAB8z4x5DPx6XR+A9wZiSpMVkVxiYi9VxDMA7/LJZ5U2VxXwLIqKQzLkgOmP2RkP+QyBeQi0eSU5k6cJGFYkc4Nk05J7MaTZJzPAOeSEZ5L+oR8moSHJMelz3kmPhHPJiU8krAI+TAOeaIoShK2JilR6c8k3RMG6VjSE0lPksQ08JHkzCQcKxIbCTb2ALA15HCQ4pGiCkqTBqYXzS8BzSQ5+9gK1p5jUSSxJAYpYUFCQzaX5+C1Ql0qk3UjOJZOQThVQxQZwKsBvJI1CnhhYbSuJI4NnRPRJ0g1JHSuJUwN3SrIjLCXBx4Aeq0ioqjqpIYgpLCb0bHKiPaP+Q6CixAI+Osu3nNF9ofqiuFPT/VuuaLBYSq8bwL+8H8Fvur+6T/gfQ3+BfAABU6BITwtwxAAAAAElFTkSuQmCC';
 
 export class ParticlePool {
   private pool: ParticleSystem[] = [];
@@ -17,8 +21,13 @@ export class ParticlePool {
     }
   }
 
+  /** Counter for unique particle system names (render-only, determinism not required). */
+  private static nextId = 0;
+
   private createSystem(): ParticleSystem {
-    const ps = new ParticleSystem('pooled_' + Math.random(), 100, this.scene);
+    // VFX-only: Math.random() usage below is acceptable — particle systems are
+    // render-frame effects and do not participate in deterministic tick simulation.
+    const ps = new ParticleSystem('pooled_' + ParticlePool.nextId++, 100, this.scene);
     ps.particleTexture = this.texture;
     ps.disposeOnStop = false;
     return ps;

@@ -106,6 +106,11 @@ export class PlayerAimSystem extends GameSystem {
       FP.ToFloat(pos.z) + this.lastAimDirZ * PlayerAimSystem.AIM_PROJECT_DIST;
   }
 
+  public override dispose(): void {
+    // No DOM listeners to clean up — aim uses BabylonJS scene raycasting
+    super.dispose();
+  }
+
   public override processTick(_tick: number): void {
     if (this.inputManager.hasTouchControls) {
       this.updateTouchAim(_tick);

@@ -43,8 +43,12 @@ export class MeshSyncSystem extends GameSystem {
         mesh.position.z = vis.z;
       }
 
-      // Apply rotation
-      mesh.rotation.y = transform.visualRotationY;
+      // Apply rotation — prefer interpolated rotation when available
+      if (interp && interp.active) {
+        mesh.rotation.y = interp.visualRotationY;
+      } else {
+        mesh.rotation.y = transform.visualRotationY;
+      }
     }
   }
 }
