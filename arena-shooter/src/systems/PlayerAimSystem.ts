@@ -9,6 +9,19 @@ export class PlayerAimSystem extends GameSystem {
   private inputManager: InputManager;
   private scene: Scene;
 
+  /** Remembered normalized aim direction — survives joystick release. */
+  private lastAimDirX: number = 0;
+  private lastAimDirZ: number = 1; // default: face +Z
+
+  /** Tick when the aim joystick was last active (for grace-period logic). */
+  private lastAimActiveTick: number = Number.NEGATIVE_INFINITY;
+
+  private static readonly DEADZONE = 0.15;
+  private static readonly AIM_PROJECT_DIST = 10;
+  /** Ticks to keep the aim direction locked after the aim joystick is released.
+   *  Prevents movement direction from overwriting aim during a double-tap. */
+  private static readonly AIM_GRACE_TICKS = 20;
+
   constructor(inputManager: InputManager, scene: Scene) {
     super();
     this.inputManager = inputManager;
@@ -46,17 +59,39 @@ export class PlayerAimSystem extends GameSystem {
   }
 
   /**
-   * Update aim world position from the right joystick direction,
-   * projecting a point relative to the player position.
+   * Touch-specific aim handling.
+   * Stores a persistent aim direction that is re-projected each tick from the
+   * player's current position, avoiding stale world-space aim coordinates.
+   *
+   * Priority:
+   *  1. Right (aim) joystick — updates stored direction immediately.
+   *  2. Left (move) joystick — updates stored direction only after the aim
+   *     grace period expires, so a double-tap never overwrites the aim.
+   *  3. Neither active — stored direction is preserved as-is.
    */
-  private updateAimFromJoystick(): void {
-    const aimDirX = this.inputManager.joystickAimX;
-    const aimDirZ = this.inputManager.joystickAimZ;
-    const mag = Math.sqrt(aimDirX * aimDirX + aimDirZ * aimDirZ);
+  private updateTouchAim(tick: number): void {
+    if (this.inputManager.joystickAimActive) {
+      this.lastAimActiveTick = tick;
+      const ax = this.inputManager.joystickAimX;
+      const az = this.inputManager.joystickAimZ;
+      const mag = Math.sqrt(ax * ax + az * az);
+      if (mag >= PlayerAimSystem.DEADZONE) {
+        this.lastAimDirX = ax / mag;
+        this.lastAimDirZ = az / mag;
+      }
+    } else if ((tick - this.lastAimActiveTick) > PlayerAimSystem.AIM_GRACE_TICKS) {
+      // Aim joystick released long enough — allow movement to drive facing
+      const mx = FP.ToFloat(this.inputManager.moveX);
+      const mz = FP.ToFloat(this.inputManager.moveZ);
+      const mag = Math.sqrt(mx * mx + mz * mz);
+      if (mag >= PlayerAimSystem.DEADZONE) {
+        this.lastAimDirX = mx / mag;
+        this.lastAimDirZ = mz / mag;
+      }
+    }
+    // If neither branch updates the direction, it is preserved from last tick.
 
-    // Deadzone — keep last aim direction
-    if (mag < 0.15) return;
-
+    // Re-project aim point from current player position + stored direction
     const entities = this.entityManager.queryEntities(ComponentType.PlayerInput);
     if (entities.length === 0) return;
 
@@ -65,19 +100,16 @@ export class PlayerAimSystem extends GameSystem {
     if (!transform) return;
 
     const pos = transform.fpPosition;
-    const playerX = FP.ToFloat(pos.x);
-    const playerZ = FP.ToFloat(pos.z);
-
-    const aimDistance = 10;
-    this.inputManager.aimWorldX = playerX + (aimDirX / mag) * aimDistance;
-    this.inputManager.aimWorldZ = playerZ + (aimDirZ / mag) * aimDistance;
+    this.inputManager.aimWorldX =
+      FP.ToFloat(pos.x) + this.lastAimDirX * PlayerAimSystem.AIM_PROJECT_DIST;
+    this.inputManager.aimWorldZ =
+      FP.ToFloat(pos.z) + this.lastAimDirZ * PlayerAimSystem.AIM_PROJECT_DIST;
   }
 
   public override processTick(_tick: number): void {
-    if (this.inputManager.joystickAimActive) {
-      this.updateAimFromJoystick();
+    if (this.inputManager.hasTouchControls) {
+      this.updateTouchAim(_tick);
     } else {
-      // Update aim world position from latest screen coordinates
       this.updateAimFromScreenCoords();
     }
 

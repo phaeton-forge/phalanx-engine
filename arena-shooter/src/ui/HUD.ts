@@ -59,9 +59,9 @@ export class HUD {
     this.healthBarContainer.thickness = 1;
     this.healthBarContainer.background = '#111';
     this.healthBarContainer.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-    this.healthBarContainer.verticalAlignment = Control.VERTICAL_ALIGNMENT_BOTTOM;
+    this.healthBarContainer.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
     this.healthBarContainer.left = 20;
-    this.healthBarContainer.top = -60;
+    this.healthBarContainer.top = 20;
     this.ui.addControl(this.healthBarContainer);
 
     this.healthBarFill = new Rectangle('healthBarFill');
@@ -83,9 +83,9 @@ export class HUD {
     this.ammoPanel.height = '20px';
     this.ammoPanel.width = '200px';
     this.ammoPanel.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-    this.ammoPanel.verticalAlignment = Control.VERTICAL_ALIGNMENT_BOTTOM;
+    this.ammoPanel.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
     this.ammoPanel.left = 20;
-    this.ammoPanel.top = -30;
+    this.ammoPanel.top = 50;
     this.ui.addControl(this.ammoPanel);
 
     for (let i = 0; i < WEAPON_MAX_AMMO; i++) {
@@ -108,9 +108,9 @@ export class HUD {
     this.reloadContainer.thickness = 1;
     this.reloadContainer.background = '#111';
     this.reloadContainer.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_LEFT;
-    this.reloadContainer.verticalAlignment = Control.VERTICAL_ALIGNMENT_BOTTOM;
+    this.reloadContainer.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
     this.reloadContainer.left = 20;
-    this.reloadContainer.top = -30;
+    this.reloadContainer.top = 50;
     this.reloadContainer.isVisible = false;
     this.ui.addControl(this.reloadContainer);
 

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Arena Shooter</string>
+    <string name="title_activity_main">Arena Shooter</string>
+    <string name="package_name">com.phalanx.arenashooter</string>
+    <string name="custom_url_scheme">com.phalanx.arenashooter</string>
+</resources>

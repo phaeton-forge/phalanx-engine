@@ -150,6 +150,10 @@ export class InputManager {
   private _lastMouseX: number = 0;
   private _lastMouseY: number = 0;
 
+  public get hasTouchControls(): boolean {
+    return this.touchControls !== null;
+  }
+
   public get joystickAimActive(): boolean {
     return this.touchControls?.aimActive ?? false;
   }
