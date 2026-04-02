@@ -14,6 +14,12 @@ import type { Scene } from '@babylonjs/core';
 import type { GameState } from '../components/WaveComponent.ts';
 import { WEAPON_MAX_AMMO } from '../config/constants.ts';
 
+export interface HUDCallbacks {
+  onStart: () => void;
+  onPause: () => void;
+  onResume: () => void;
+}
+
 export class HUD {
   private ui: AdvancedDynamicTexture;
 
@@ -48,7 +54,17 @@ export class HUD {
   private victoryTitle: TextBlock;
   private victorySubtitle: TextBlock;
 
-  constructor(scene: Scene) {
+  // Start screen
+  private startScreenPanel: Rectangle;
+
+  // Pause
+  private pauseButton: Button;
+  private pausePanel: Rectangle;
+
+  private callbacks: HUDCallbacks;
+
+  constructor(scene: Scene, callbacks: HUDCallbacks) {
+    this.callbacks = callbacks;
     this.ui = AdvancedDynamicTexture.CreateFullscreenUI('hud', true, scene);
 
     // Health bar
@@ -216,6 +232,94 @@ export class HUD {
     const vicBtn = this.createRestartButton('#00FFFF');
     vicBtn.top = 60;
     this.victoryPanel.addControl(vicBtn);
+
+    // Start screen overlay
+    this.startScreenPanel = this.createOverlayPanel('#000000DD');
+    this.ui.addControl(this.startScreenPanel);
+
+    const startTitle = new TextBlock('startTitle', 'ARENA SHOOTER');
+    startTitle.color = '#00FFFF';
+    startTitle.fontSize = 48;
+    startTitle.fontFamily = 'Orbitron';
+    startTitle.fontWeight = 'bold';
+    startTitle.top = -60;
+    this.startScreenPanel.addControl(startTitle);
+
+    const startSubtitle = new TextBlock('startSubtitle', 'Survive 10 waves');
+    startSubtitle.color = '#88CCFF';
+    startSubtitle.fontSize = 18;
+    startSubtitle.fontFamily = 'Orbitron';
+    startSubtitle.top = 0;
+    this.startScreenPanel.addControl(startSubtitle);
+
+    const startBtn = Button.CreateSimpleButton('startBtn', 'START');
+    startBtn.width = '220px';
+    startBtn.height = '60px';
+    startBtn.color = '#00FFFF';
+    startBtn.background = '#112233';
+    startBtn.thickness = 2;
+    startBtn.fontFamily = 'Orbitron';
+    startBtn.fontSize = 24;
+    startBtn.top = 70;
+    const startBtnText = startBtn.textBlock;
+    if (startBtnText) {
+      startBtnText.color = '#00FFFF';
+    }
+    startBtn.onPointerClickObservable.add(() => {
+      this.callbacks.onStart();
+    });
+    this.startScreenPanel.addControl(startBtn);
+
+    // Pause button (top-right, below wave info)
+    this.pauseButton = Button.CreateSimpleButton('pauseBtn', '❚❚');
+    this.pauseButton.width = '40px';
+    this.pauseButton.height = '40px';
+    this.pauseButton.color = '#88CCFF';
+    this.pauseButton.background = '#00000066';
+    this.pauseButton.thickness = 1;
+    this.pauseButton.fontSize = 16;
+    this.pauseButton.horizontalAlignment = Control.HORIZONTAL_ALIGNMENT_RIGHT;
+    this.pauseButton.verticalAlignment = Control.VERTICAL_ALIGNMENT_TOP;
+    this.pauseButton.left = -20;
+    this.pauseButton.top = 74;
+    this.pauseButton.isVisible = false;
+    this.pauseButton.onPointerClickObservable.add(() => {
+      this.callbacks.onPause();
+      this.showPauseOverlay();
+    });
+    this.ui.addControl(this.pauseButton);
+
+    // Pause overlay
+    this.pausePanel = this.createOverlayPanel('#00000099');
+    this.pausePanel.isVisible = false;
+    this.ui.addControl(this.pausePanel);
+
+    const pauseTitle = new TextBlock('pauseTitle', 'PAUSED');
+    pauseTitle.color = '#88CCFF';
+    pauseTitle.fontSize = 48;
+    pauseTitle.fontFamily = 'Orbitron';
+    pauseTitle.fontWeight = 'bold';
+    pauseTitle.top = -30;
+    this.pausePanel.addControl(pauseTitle);
+
+    const resumeBtn = Button.CreateSimpleButton('resumeBtn', 'RESUME');
+    resumeBtn.width = '220px';
+    resumeBtn.height = '60px';
+    resumeBtn.color = '#00FFFF';
+    resumeBtn.background = '#112233';
+    resumeBtn.thickness = 2;
+    resumeBtn.fontFamily = 'Orbitron';
+    resumeBtn.fontSize = 24;
+    resumeBtn.top = 40;
+    const resumeBtnText = resumeBtn.textBlock;
+    if (resumeBtnText) {
+      resumeBtnText.color = '#00FFFF';
+    }
+    resumeBtn.onPointerClickObservable.add(() => {
+      this.callbacks.onResume();
+      this.hidePauseOverlay();
+    });
+    this.pausePanel.addControl(resumeBtn);
   }
 
   private createOverlayPanel(bg: string): Rectangle {
@@ -240,6 +344,21 @@ export class HUD {
       window.location.reload();
     });
     return btn;
+  }
+
+  public hideStartScreen(): void {
+    this.startScreenPanel.isVisible = false;
+    this.pauseButton.isVisible = true;
+  }
+
+  private showPauseOverlay(): void {
+    this.pausePanel.isVisible = true;
+    this.pauseButton.isVisible = false;
+  }
+
+  private hidePauseOverlay(): void {
+    this.pausePanel.isVisible = false;
+    this.pauseButton.isVisible = true;
   }
 
   public update(
@@ -296,9 +415,13 @@ export class HUD {
     this.gameOverPanel.isVisible = state === 'GAME_OVER';
     if (state === 'GAME_OVER') {
       this.gameOverSubtitle.text = `You survived ${currentWave} waves`;
+      this.pauseButton.isVisible = false;
     }
 
     this.victoryPanel.isVisible = state === 'VICTORY';
+    if (state === 'VICTORY') {
+      this.pauseButton.isVisible = false;
+    }
   }
 
   public dispose(): void {

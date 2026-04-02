@@ -181,7 +181,20 @@ export class Game {
     this.waveEntityId = waveEntity.id;
 
     // Babylon GUI HUD
-    this.hud = new HUD(this.scene);
+    this.hud = new HUD(this.scene, {
+      onStart: () => this.start(),
+      onPause: () => {
+        this.world.pause();
+        // Keep rendering so the pause overlay is visible
+        this.engine.runRenderLoop(() => {
+          this.scene.render();
+        });
+      },
+      onResume: () => {
+        this.engine.stopRenderLoop();
+        this.world.resume();
+      },
+    });
 
     // Event listeners for particles (death explosions handled by VFXSystem with pooling)
     this.world.eventBus.on<WeaponFiredEvent>(GameEvents.WEAPON_FIRED, (event) => {
@@ -195,7 +208,16 @@ export class Game {
     this.setupResizeHandler();
   }
 
+  /** Show the scene with the start screen overlay, without running game ticks. */
+  public init(): void {
+    this.engine.runRenderLoop(() => {
+      this.scene.render();
+    });
+  }
+
   public start(): void {
+    this.engine.stopRenderLoop();
+    this.hud.hideStartScreen();
     this.world.start({
       beforeTick: (tick: number) => {
         if (tick === 0) {
