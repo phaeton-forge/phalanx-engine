@@ -1,11 +1,27 @@
-import { ParticleSystem, Texture, type Scene } from '@babylonjs/core';
+import { ParticleSystem, Texture, type Scene, DynamicTexture } from '@babylonjs/core';
 import { vfxConfig } from '../config/vfxConfig.ts';
 
 /**
- * Bundled locally — avoids runtime dependency on remote CDN.
- * This is a 1x1 white-to-transparent radial gradient encoded as a data URI.
+ * Generate a soft radial-gradient flare texture at runtime.
+ * Avoids dependency on remote CDN or possibly-corrupt base64 blobs.
  */
-const FLARE_URL = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAAXNSR0IArs4c6QAAAa5JREFUWEftl7FuwkAQRN8eSCgSJSUF/AD/gMQPUCBRQkdBCR0FJeIH+AH+gaJMSpQGiRLlZNaac+7O5mwsRVjy+ey7nZ2d3TsbceMf3/j9+A/gfwVSgC+5qbfXHgBeBSF45HdoLSB7XC/L+QB4IxiYGzMm4GdCTBXJjI3FfAB8z4x5DPx6XR+A9wZiSpMVkVxiYi9VxDMA7/LJZ5U2VxXwLIqKQzLkgOmP2RkP+QyBeQi0eSU5k6cJGFYkc4Nk05J7MaTZJzPAOeSEZ5L+oR8moSHJMelz3kmPhHPJiU8krAI+TAOeaIoShK2JilR6c8k3RMG6VjSE0lPksQ08JHkzCQcKxIbCTb2ALA15HCQ4pGiCkqTBqYXzS8BzSQ5+9gK1p5jUSSxJAYpYUFCQzaX5+C1Ql0qk3UjOJZOQThVQxQZwKsBvJI1CnhhYbSuJI4NnRPRJ0g1JHSuJUwN3SrIjLCXBx4Aeq0ioqjqpIYgpLCb0bHKiPaP+Q6CixAI+Osu3nNF9ofqiuFPT/VuuaLBYSq8bwL+8H8Fvur+6T/gfQ3+BfAABU6BITwtwxAAAAAElFTkSuQmCC';
+function createFlareTexture(scene: Scene): Texture {
+  const size = 64;
+  const dt = new DynamicTexture('flare', size, scene, false);
+  const ctx = dt.getContext();
+  const half = size / 2;
+
+  const gradient = ctx.createRadialGradient(half, half, 0, half, half, half);
+  gradient.addColorStop(0, 'rgba(255,255,255,1)');
+  gradient.addColorStop(0.4, 'rgba(255,255,255,0.6)');
+  gradient.addColorStop(1, 'rgba(255,255,255,0)');
+
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, size, size);
+  dt.update();
+  dt.hasAlpha = true;
+  return dt;
+}
 
 export class ParticlePool {
   private pool: ParticleSystem[] = [];
@@ -14,7 +30,7 @@ export class ParticlePool {
 
   constructor(scene: Scene) {
     this.scene = scene;
-    this.texture = new Texture(FLARE_URL, scene);
+    this.texture = createFlareTexture(scene);
     // Pre-allocate
     for (let i = 0; i < vfxConfig.pool.initialSize; i++) {
       this.pool.push(this.createSystem());
@@ -51,6 +67,16 @@ export class ParticlePool {
     ps.onStoppedObservable.clear();
     ps.stop();
     ps.reset();
+    // Reset configuration state that persists across reset()
+    ps.gravity.set(0, 0, 0);
+    ps.minEmitPower = 1;
+    ps.maxEmitPower = 1;
+    ps.minSize = 1;
+    ps.maxSize = 1;
+    ps.minLifeTime = 1;
+    ps.maxLifeTime = 1;
+    ps.emitRate = 10;
+    ps.targetStopDuration = 0;
     if (this.pool.length < vfxConfig.pool.maxSize) {
       this.pool.push(ps);
     } else {
