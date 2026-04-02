@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Arena Shooter</title>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
+    #game-container {
+      width: 100%;
+      height: 100%;
+      position: relative;
+      touch-action: none;
+    }
+    #render-canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+      outline: none;
+      touch-action: none;
+    }
+    #hud {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      font-family: 'Orbitron', monospace;
+      color: #88CCFF;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div id="game-container">
+    <canvas id="render-canvas"></canvas>
+    <div id="hud"></div>
+  </div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>

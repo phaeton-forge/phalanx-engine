@@ -41,6 +41,7 @@ npm-debug.log*
 client_secret*.json
 *.pem
 *.key
+.mcp.json
 
 # Test coverage
 coverage/
