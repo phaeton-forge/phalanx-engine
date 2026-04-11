@@ -43,6 +43,22 @@ async function main() {
     gameMode: '1v1', // 2 players per match
     countdownSeconds: 3,
     matchmakingIntervalMs: 1000,
+    gameTypes: [
+      {
+        gameType: 'direct-strike',
+        tickMode: 'continuous',
+        tickRate: 20,
+        gameMode: '1v1',
+        countdownSeconds: 3,
+      },
+      {
+        gameType: 'chapayev',
+        tickMode: 'event',
+        gameMode: '1v1',
+        countdownSeconds: 3,
+        turnTimeoutMs: 90000,
+      },
+    ],
     // Pause configuration
     pause: {
       maxPausesPerPlayer: 3,

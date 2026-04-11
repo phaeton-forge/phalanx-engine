@@ -9,6 +9,7 @@ import type {
   TickCommands,
   DesyncConfig,
   PauseConfig,
+  TickMode,
 } from '../types/index.js';
 
 /**
@@ -78,13 +79,20 @@ export class GameRoom {
   private pauseCount: Map<string, number> = new Map();
   // Track which player initiated the current pause (for requireSamePlayerToResume)
   private pausedByPlayerId: string | null = null;
+  // Game type for this room (used in per-gameType matchmaking)
+  private readonly gameType: string | undefined;
+  // Resolved tick mode for this room
+  private readonly tickMode: TickMode;
+  // Turn timeout handle for event mode
+  private turnTimeout: NodeJS.Timeout | null = null;
 
   constructor(
     id: string,
     io: SocketIOServer,
     config: PhalanxConfig,
     teams: QueuedPlayer[][],
-    eventEmitter: (event: string, ...args: unknown[]) => boolean | void
+    eventEmitter: (event: string, ...args: unknown[]) => boolean | void,
+    gameType?: string
   ) {
     this.id = id;
     this.roomId = id;
@@ -93,6 +101,8 @@ export class GameRoom {
     this.teams = teams;
     this.eventEmitter = eventEmitter;
     this.createdAt = new Date();
+    this.gameType = gameType;
+    this.tickMode = config.tickMode ?? 'continuous';
     // Generate deterministic random seed for this match (32-bit unsigned integer)
     this.randomSeed = randomBytes(4).readUInt32BE();
 
@@ -327,11 +337,16 @@ export class GameRoom {
     // Emit match-started event
     this.eventEmitter('match-started', this.getMatchInfo());
 
-    // Start tick loop
-    const tickIntervalMs = 1000 / this.config.tickRate;
-    this.tickInterval = setInterval(() => {
-      this.processTick();
-    }, tickIntervalMs);
+    if (this.tickMode === 'continuous') {
+      // Start tick loop for continuous mode
+      const tickIntervalMs = 1000 / this.config.tickRate;
+      this.tickInterval = setInterval(() => {
+        this.processTick();
+      }, tickIntervalMs);
+    } else {
+      // Event mode: no tick loop — start turn timeout
+      this.resetTurnTimeout();
+    }
   }
 
   /**
@@ -502,16 +517,43 @@ export class GameRoom {
     // Update player's last tick
     player.lastTick = tick;
 
-    // Also add to pending commands for broadcast
-    const targetTick = Math.max(tick, this.currentTick);
-    if (!this.pendingCommands.has(targetTick)) {
-      this.pendingCommands.set(targetTick, []);
-    }
-    this.pendingCommands.get(targetTick)!.push(...validCommands);
-
     // Let external handlers process each command
     for (const command of validCommands) {
       this.eventEmitter('player-command', playerId, command);
+    }
+
+    if (this.tickMode === 'event') {
+      // Event mode: immediately broadcast commands and advance tick
+      const commands = [...validCommands];
+      // Normalize per-command ticks to match the batch tick
+      for (const cmd of commands) {
+        cmd.tick = this.currentTick;
+      }
+      commands.sort((a, b) => {
+        const playerCompare = a.playerId.localeCompare(b.playerId);
+        if (playerCompare !== 0) return playerCompare;
+        return a.type.localeCompare(b.type);
+      });
+
+      this.storeCommandHistory(this.currentTick, commands);
+
+      this.io.to(this.roomId).emit('commands-batch', {
+        tick: this.currentTick,
+        commands,
+      });
+
+      this.currentTick++;
+      // Prune stale commandBuffer/tickSubmissions entries to prevent memory leak
+      // (processTick is never called in event mode, so clearOldTicks must run here)
+      this.clearOldTicks(this.currentTick);
+      this.resetTurnTimeout();
+    } else {
+      // Continuous mode: add to pending commands for next tick broadcast
+      const targetTick = Math.max(tick, this.currentTick);
+      if (!this.pendingCommands.has(targetTick)) {
+        this.pendingCommands.set(targetTick, []);
+      }
+      this.pendingCommands.get(targetTick)!.push(...validCommands);
     }
 
     return {
@@ -585,9 +627,12 @@ export class GameRoom {
 
   /**
    * Check for lagging/disconnected players (LOCKSTEP-5)
-   * Uses real time (ms) instead of ticks for more reliable detection
+   * Uses real time (ms) instead of ticks for more reliable detection.
+   * Skipped entirely in event mode (turn timeout handles inactivity).
    */
   private checkPlayerTimeouts(): void {
+    if (this.tickMode === 'event') return;
+
     const now = Date.now();
     // Convert tick-based config to milliseconds
     const lagThresholdMs =
@@ -625,6 +670,40 @@ export class GameRoom {
         }
       }
     }
+  }
+
+  // ============================================================
+  // EVENT MODE: Turn Timeout
+  // ============================================================
+
+  /**
+   * Reset (or start) the turn timeout for event mode.
+   * If no commands arrive within turnTimeoutMs the match ends.
+   */
+  private resetTurnTimeout(): void {
+    if (this.turnTimeout) {
+      clearTimeout(this.turnTimeout);
+      this.turnTimeout = null;
+    }
+
+    const turnTimeoutMs = this.config.turnTimeoutMs ?? 60000;
+    this.turnTimeout = setTimeout(() => {
+      this.endMatchDueToTurnTimeout();
+    }, turnTimeoutMs);
+  }
+
+  /**
+   * End the match because the turn timeout expired (event mode only).
+   */
+  private endMatchDueToTurnTimeout(): void {
+    this.turnTimeout = null;
+    this.stop(true);
+
+    this.io.to(this.roomId).emit('match-end', {
+      reason: 'turn-timeout',
+    });
+
+    this.eventEmitter('match-ended', this.id, 'turn-timeout');
   }
 
   // ============================================================
@@ -687,6 +766,10 @@ export class GameRoom {
       clearInterval(this.tickInterval);
       this.tickInterval = null;
     }
+    if (this.turnTimeout) {
+      clearTimeout(this.turnTimeout);
+      this.turnTimeout = null;
+    }
 
     this.state = 'paused';
 
@@ -739,11 +822,16 @@ export class GameRoom {
       requestedBy,
     });
 
-    // Restart tick loop
-    const tickIntervalMs = 1000 / this.config.tickRate;
-    this.tickInterval = setInterval(() => {
-      this.processTick();
-    }, tickIntervalMs);
+    if (this.tickMode === 'continuous') {
+      // Restart tick loop
+      const tickIntervalMs = 1000 / this.config.tickRate;
+      this.tickInterval = setInterval(() => {
+        this.processTick();
+      }, tickIntervalMs);
+    } else {
+      // Event mode: restart turn timeout
+      this.resetTurnTimeout();
+    }
 
     this.eventEmitter('match-resumed', this.id, requestedBy);
     return true;
@@ -776,6 +864,10 @@ export class GameRoom {
     if (this.readyTimeout) {
       clearTimeout(this.readyTimeout);
       this.readyTimeout = null;
+    }
+    if (this.turnTimeout) {
+      clearTimeout(this.turnTimeout);
+      this.turnTimeout = null;
     }
     this.state = 'finished';
 
@@ -899,6 +991,7 @@ export class GameRoom {
       currentTick: this.currentTick,
       state: this.state,
       createdAt: this.createdAt,
+      gameType: this.gameType,
     };
   }
 

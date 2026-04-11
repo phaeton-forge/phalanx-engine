@@ -10,10 +10,11 @@ import { GameRoom } from './GameRoom.js';
 
 /**
  * Matchmaking Service
- * Handles player queue and match creation
+ * Handles player queue and match creation with per-gameType queues
  */
 export class MatchmakingService {
-  private queue: Map<string, QueuedPlayer> = new Map();
+  /** Outer key = gameType (default: 'default'), inner key = playerId */
+  private queues: Map<string, Map<string, QueuedPlayer>> = new Map();
   private matches: Map<string, GameRoom> = new Map();
   private matchmakingInterval: NodeJS.Timeout | null = null;
   private readonly config: PhalanxConfig;
@@ -56,28 +57,77 @@ export class MatchmakingService {
       match.stop();
     }
     this.matches.clear();
-    this.queue.clear();
+    this.queues.clear();
+  }
+
+  /**
+   * Get or create a sub-queue for the given game type
+   */
+  private getQueue(gameType: string): Map<string, QueuedPlayer> {
+    let queue = this.queues.get(gameType);
+    if (!queue) {
+      queue = new Map();
+      this.queues.set(gameType, queue);
+    }
+    return queue;
+  }
+
+  /**
+   * Check if a player is already in any queue
+   */
+  private isInAnyQueue(playerId: string): boolean {
+    for (const queue of this.queues.values()) {
+      if (queue.has(playerId)) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Check whether a gameType string is valid:
+   * the implicit 'default' queue, or any entry in config.gameTypes[].gameType.
+   */
+  private isValidGameType(gameType: string): boolean {
+    if (gameType === 'default') return true;
+    return (
+      this.config.gameTypes?.some((gt) => gt.gameType === gameType) ?? false
+    );
+  }
+
+  /**
+   * Remove a sub-queue from the map when it becomes empty.
+   */
+  private pruneQueue(gameType: string): void {
+    const queue = this.queues.get(gameType);
+    if (queue && queue.size === 0) {
+      this.queues.delete(gameType);
+    }
   }
 
   /**
    * Add a player to the matchmaking queue
    */
-  joinQueue(playerId: string, username: string, socket: Socket): void {
-    // Check not already in queue
-    if (this.queue.has(playerId)) {
+  joinQueue(playerId: string, username: string, socket: Socket, gameType?: string): void {
+    // Check not already in any queue
+    if (this.isInAnyQueue(playerId)) {
       socket.emit('error', { message: 'Already in queue' });
       return;
     }
 
-    this.queue.set(playerId, {
+    // Validate gameType — fall back to 'default' for unknown values
+    const resolvedGameType =
+      gameType && this.isValidGameType(gameType) ? gameType : 'default';
+    const queue = this.getQueue(resolvedGameType);
+
+    queue.set(playerId, {
       playerId,
       username,
       socketId: socket.id,
       joinedAt: Date.now(),
+      gameType: resolvedGameType,
     });
 
-    const position = this.queue.size;
-    const waitTime = this.estimateWaitTime();
+    const position = queue.size;
+    const waitTime = this.estimateWaitTime(resolvedGameType);
 
     socket.emit('queue-status', {
       position,
@@ -86,12 +136,13 @@ export class MatchmakingService {
   }
 
   /**
-   * Estimate wait time in milliseconds
-   * Minimum 1 second, based on matchmaking interval and queue position
+   * Estimate wait time in milliseconds for a specific game type queue
    */
-  private estimateWaitTime(): number {
-    const { playersPerMatch } = resolveGameMode(this.config.gameMode);
-    const queueSize = this.queue.size;
+  private estimateWaitTime(gameType: string): number {
+    const resolvedConfig = this.resolveGameTypeConfig(gameType);
+    const { playersPerMatch } = resolveGameMode(resolvedConfig.gameMode);
+    const queue = this.queues.get(gameType);
+    const queueSize = queue?.size ?? 0;
 
     // Estimate how many matchmaking cycles needed
     const cyclesNeeded = Math.ceil(queueSize / playersPerMatch);
@@ -105,29 +156,62 @@ export class MatchmakingService {
    * Remove a player from the matchmaking queue
    */
   leaveQueue(playerId: string, socket: Socket): void {
-    const player = this.queue.get(playerId);
-    if (!player) {
-      // Player not in queue - do nothing (no error per Story-2)
-      return;
+    for (const [gameType, queue] of this.queues) {
+      if (queue.has(playerId)) {
+        queue.delete(playerId);
+        this.pruneQueue(gameType);
+        socket.emit('queue-left');
+        return;
+      }
     }
-
-    this.queue.delete(playerId);
-    socket.emit('queue-left');
+    // Player not in queue - do nothing (no error per Story-2)
   }
 
   /**
-   * Try to create a match from queued players
+   * Resolve configuration for a specific game type.
+   * Merges matching gameTypes[] entry over the base config.
+   */
+  resolveGameTypeConfig(gameType: string): PhalanxConfig {
+    // 'default' always uses the base config without overrides
+    if (gameType === 'default') {
+      return this.config;
+    }
+    const matchingEntry = this.config.gameTypes?.find(
+      (gt) => gt.gameType === gameType
+    );
+    if (!matchingEntry) {
+      return this.config;
+    }
+    const { gameType: _, ...configOverride } = matchingEntry;
+    return { ...this.config, ...configOverride };
+  }
+
+  /**
+   * Try to create matches from queued players (iterates all sub-queues)
    */
   private tryCreateMatch(): void {
-    const { playersPerMatch } = resolveGameMode(this.config.gameMode);
+    for (const [gameType, queue] of this.queues) {
+      this.tryCreateMatchForGameType(gameType, queue);
+    }
+  }
 
-    if (this.queue.size < playersPerMatch) {
+  /**
+   * Try to create a match for a specific game type queue
+   */
+  private tryCreateMatchForGameType(
+    gameType: string,
+    queue: Map<string, QueuedPlayer>
+  ): void {
+    const resolvedConfig = this.resolveGameTypeConfig(gameType);
+    const { playersPerMatch } = resolveGameMode(resolvedConfig.gameMode);
+
+    if (queue.size < playersPerMatch) {
       return;
     }
 
     // Get the required number of players from the queue
     const players: QueuedPlayer[] = [];
-    const queueIterator = this.queue.values();
+    const queueIterator = queue.values();
 
     for (let i = 0; i < playersPerMatch; i++) {
       const player = queueIterator.next().value;
@@ -151,11 +235,12 @@ export class MatchmakingService {
 
     // Remove players from queue
     for (const player of players) {
-      this.queue.delete(player.playerId);
+      queue.delete(player.playerId);
     }
+    this.pruneQueue(gameType);
 
-    // Distribute players into teams
-    const teams = this.distributeIntoTeams(players);
+    // Distribute players into teams using resolved config
+    const teams = this.distributeIntoTeams(players, resolvedConfig);
 
     // Generate match ID first for logging
     const matchId = this.generateMatchId();
@@ -163,13 +248,14 @@ export class MatchmakingService {
     // Log match creation with team composition
     this.logMatchCreation(teams, matchId);
 
-    // Create new game room
+    // Create new game room with resolved config and gameType
     const gameRoom = new GameRoom(
       matchId,
       this.io,
-      this.config,
+      resolvedConfig,
       teams,
-      this.eventEmitter
+      this.eventEmitter,
+      gameType
     );
 
     this.matches.set(matchId, gameRoom);
@@ -184,8 +270,12 @@ export class MatchmakingService {
   /**
    * Distribute players evenly into teams
    */
-  private distributeIntoTeams(players: QueuedPlayer[]): QueuedPlayer[][] {
-    const { teamsCount } = resolveGameMode(this.config.gameMode);
+  private distributeIntoTeams(
+    players: QueuedPlayer[],
+    config?: PhalanxConfig
+  ): QueuedPlayer[][] {
+    const effectiveConfig = config ?? this.config;
+    const { teamsCount } = resolveGameMode(effectiveConfig.gameMode);
     const playersPerTeam = players.length / teamsCount;
     const teams: QueuedPlayer[][] = [];
 
@@ -230,25 +320,36 @@ export class MatchmakingService {
   }
 
   /**
-   * Get current queue size
+   * Get current queue size (total across all sub-queues)
    */
   getQueueSize(): number {
-    return this.queue.size;
+    let total = 0;
+    for (const queue of this.queues.values()) {
+      total += queue.size;
+    }
+    return total;
   }
 
   /**
    * Handle player disconnection
    */
   handleDisconnect(socketId: string): void {
-    // Remove from queue
-    for (const [playerId, player] of this.queue.entries()) {
-      if (player.socketId === socketId) {
-        this.queue.delete(playerId);
-        break;
+    // Remove from queues (player can only be in one queue)
+    for (const [gameType, queue] of this.queues) {
+      for (const [playerId, player] of queue.entries()) {
+        if (player.socketId === socketId) {
+          queue.delete(playerId);
+          this.pruneQueue(gameType);
+          // Notify matches
+          for (const match of this.matches.values()) {
+            match.handleDisconnect(socketId);
+          }
+          return;
+        }
       }
     }
 
-    // Notify matches
+    // Notify matches (player wasn't in any queue but may be in a match)
     for (const match of this.matches.values()) {
       match.handleDisconnect(socketId);
     }

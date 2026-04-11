@@ -22,6 +22,24 @@ export interface CustomGameMode {
 export type GameMode = GameModePreset | CustomGameMode;
 
 /**
+ * Tick mode: 'continuous' runs a server tick loop; 'event' is tickless (relay-only).
+ */
+export type TickMode = 'continuous' | 'event';
+
+/**
+ * Per-game-type configuration overrides.
+ * Fields here override the base PhalanxConfig for matches of this game type.
+ */
+export interface GameTypeConfig {
+  gameType: string;
+  tickMode?: TickMode;
+  tickRate?: number;
+  gameMode?: GameMode;
+  countdownSeconds?: number;
+  turnTimeoutMs?: number;
+}
+
+/**
  * CORS configuration
  */
 export interface CorsConfig {
@@ -167,6 +185,11 @@ export interface PhalanxConfig {
   // === Tick System ===
   tickRate: number;
   tickDeadlineMs: number;
+  tickMode?: TickMode;
+
+  // === Game Types ===
+  gameTypes?: GameTypeConfig[];
+  turnTimeoutMs?: number;
 
   // === Matchmaking ===
   gameMode: GameMode;
@@ -235,6 +258,7 @@ export interface MatchInfo {
   currentTick: number;
   state: 'countdown' | 'waiting-for-ready' | 'playing' | 'paused' | 'finished';
   createdAt: Date;
+  gameType?: string;
 }
 
 /**
@@ -311,6 +335,7 @@ export interface QueuedPlayer {
   username: string;
   socketId: string;
   joinedAt: number;
+  gameType?: string;
 }
 
 /**
