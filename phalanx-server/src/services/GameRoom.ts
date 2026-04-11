@@ -539,6 +539,9 @@ export class GameRoom {
       });
 
       this.currentTick++;
+      // Prune stale commandBuffer/tickSubmissions entries to prevent memory leak
+      // (processTick is never called in event mode, so clearOldTicks must run here)
+      this.clearOldTicks(this.currentTick);
       this.resetTurnTimeout();
     } else {
       // Continuous mode: add to pending commands for next tick broadcast

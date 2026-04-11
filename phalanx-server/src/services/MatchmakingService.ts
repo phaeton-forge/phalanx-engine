@@ -83,6 +83,27 @@ export class MatchmakingService {
   }
 
   /**
+   * Check whether a gameType string is valid:
+   * the implicit 'default' queue, or any entry in config.gameTypes[].gameType.
+   */
+  private isValidGameType(gameType: string): boolean {
+    if (gameType === 'default') return true;
+    return (
+      this.config.gameTypes?.some((gt) => gt.gameType === gameType) ?? false
+    );
+  }
+
+  /**
+   * Remove a sub-queue from the map when it becomes empty.
+   */
+  private pruneQueue(gameType: string): void {
+    const queue = this.queues.get(gameType);
+    if (queue && queue.size === 0) {
+      this.queues.delete(gameType);
+    }
+  }
+
+  /**
    * Add a player to the matchmaking queue
    */
   joinQueue(playerId: string, username: string, socket: Socket, gameType?: string): void {
@@ -92,7 +113,9 @@ export class MatchmakingService {
       return;
     }
 
-    const resolvedGameType = gameType ?? 'default';
+    // Validate gameType — fall back to 'default' for unknown values
+    const resolvedGameType =
+      gameType && this.isValidGameType(gameType) ? gameType : 'default';
     const queue = this.getQueue(resolvedGameType);
 
     queue.set(playerId, {
@@ -133,9 +156,10 @@ export class MatchmakingService {
    * Remove a player from the matchmaking queue
    */
   leaveQueue(playerId: string, socket: Socket): void {
-    for (const queue of this.queues.values()) {
+    for (const [gameType, queue] of this.queues) {
       if (queue.has(playerId)) {
         queue.delete(playerId);
+        this.pruneQueue(gameType);
         socket.emit('queue-left');
         return;
       }
@@ -148,6 +172,10 @@ export class MatchmakingService {
    * Merges matching gameTypes[] entry over the base config.
    */
   resolveGameTypeConfig(gameType: string): PhalanxConfig {
+    // 'default' always uses the base config without overrides
+    if (gameType === 'default') {
+      return this.config;
+    }
     const override = this.config.gameTypes?.find(
       (gt) => gt.gameType === gameType
     );
@@ -208,6 +236,7 @@ export class MatchmakingService {
     for (const player of players) {
       queue.delete(player.playerId);
     }
+    this.pruneQueue(gameType);
 
     // Distribute players into teams using resolved config
     const teams = this.distributeIntoTeams(players, resolvedConfig);
@@ -305,10 +334,11 @@ export class MatchmakingService {
    */
   handleDisconnect(socketId: string): void {
     // Remove from all queues
-    for (const queue of this.queues.values()) {
+    for (const [gameType, queue] of this.queues) {
       for (const [playerId, player] of queue.entries()) {
         if (player.socketId === socketId) {
           queue.delete(playerId);
+          this.pruneQueue(gameType);
           break;
         }
       }

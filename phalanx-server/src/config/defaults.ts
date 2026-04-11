@@ -27,6 +27,7 @@ export const DEFAULT_CONFIG: PhalanxConfig = {
   tickRate: 20,
   tickDeadlineMs: 50,
   tickMode: 'continuous',
+  // Only applies to tickMode: 'event' — ignored in continuous mode
   turnTimeoutMs: 60000,
   gameTypes: [],
 
