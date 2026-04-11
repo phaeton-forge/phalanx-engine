@@ -376,10 +376,10 @@ export class Phalanx extends EventEmitter {
       // Handle join queue (MATCH-1)
       socket.on(
         'queue-join',
-        (data: { playerId: string; username?: string }) => {
+        (data: { playerId: string; username?: string; gameType?: string }) => {
           playerId = data.playerId;
           const username = data.username ?? data.playerId;
-          this.matchmaking!.joinQueue(playerId, username, socket);
+          this.matchmaking!.joinQueue(playerId, username, socket, data.gameType);
         }
       );
 

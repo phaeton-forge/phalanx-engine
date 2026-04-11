@@ -95,6 +95,26 @@ const config: Partial<PhalanxConfig> = {
     maxPausesPerPlayer: 3,
     requireSamePlayerToResume: true,
   },
+
+  // === Game Types (multi-game-type routing) ===
+  tickMode: 'continuous', // Default tick mode: 'continuous' | 'event'
+  turnTimeoutMs: 60000, // Turn timeout for event mode (default: 60000)
+  gameTypes: [
+    {
+      gameType: 'direct-strike',
+      tickMode: 'continuous',
+      tickRate: 20,
+      gameMode: '1v1',
+      countdownSeconds: 3,
+    },
+    {
+      gameType: 'chapayev',
+      tickMode: 'event',
+      gameMode: '1v1',
+      countdownSeconds: 3,
+      turnTimeoutMs: 90000,
+    },
+  ],
 };
 
 const app = new Phalanx(config);
@@ -186,6 +206,63 @@ class Phalanx {
 After the countdown completes, the server emits `game-start` and enters a `waiting-for-ready` state. The tick loop does **not** start until all connected clients send `client-ready`. This prevents desync caused by clients with different asset loading times missing early ticks.
 
 If a client does not send `client-ready` within 30 seconds, the match ends with reason `'ready-timeout'`.
+
+## Game Types
+
+Phalanx supports running multiple game types on a single server instance. Each game type can override base config values like `tickMode`, `tickRate`, `gameMode`, `countdownSeconds`, and `turnTimeoutMs`.
+
+### Configuration
+
+```typescript
+const app = new Phalanx({
+  tickRate: 20,
+  gameMode: '1v1',
+  gameTypes: [
+    {
+      gameType: 'direct-strike',
+      tickMode: 'continuous',
+      tickRate: 20,
+      gameMode: '1v1',
+    },
+    {
+      gameType: 'chapayev',
+      tickMode: 'event',
+      gameMode: '1v1',
+      turnTimeoutMs: 90000,
+    },
+  ],
+});
+```
+
+### Client: Joining a Game Type Queue
+
+Clients declare which game type they want to join via the `queue-join` event:
+
+```typescript
+socket.emit('queue-join', {
+  playerId: 'player-123',
+  username: 'Alice',
+  gameType: 'chapayev', // optional — omit for default queue
+});
+```
+
+Clients that omit `gameType` are placed in a `'default'` queue and use the base config.
+
+### `tickMode: 'event'` (Turn-Based / Tickless)
+
+When a game type uses `tickMode: 'event'`, no server tick loop runs. Instead:
+
+- On `receivePlayerCommands`, the server immediately broadcasts `commands-batch` to all players in the room.
+- `currentTick` increments by 1 per broadcast.
+- A turn timeout (`turnTimeoutMs`, default 60000ms) starts on game start and resets on each received batch. If the timeout fires, the match ends with reason `'turn-timeout'`.
+- `timeoutTicks` / `disconnectTicks` activity tracking is skipped in event mode.
+- Pause/resume works identically in both modes.
+
+This is ideal for turn-based physics games (e.g. Chapayev checkers) where game state transitions are driven by player commands only.
+
+### `turnTimeoutMs`
+
+Maximum time (in milliseconds) allowed between command batches in event mode. If no commands arrive within this window, the match ends automatically. Default: `60000` (1 minute).
 
 ## Game Modes
 

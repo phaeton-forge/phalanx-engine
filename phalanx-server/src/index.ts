@@ -50,6 +50,9 @@ export type {
   DesyncAction,
   // Pause config
   PauseConfig,
+  // Game type routing
+  TickMode,
+  GameTypeConfig,
 } from './types/index.js';
 
 // Constants
