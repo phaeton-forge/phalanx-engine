@@ -176,13 +176,14 @@ export class MatchmakingService {
     if (gameType === 'default') {
       return this.config;
     }
-    const override = this.config.gameTypes?.find(
+    const matchingEntry = this.config.gameTypes?.find(
       (gt) => gt.gameType === gameType
     );
-    if (!override) {
+    if (!matchingEntry) {
       return this.config;
     }
-    return { ...this.config, ...override };
+    const { gameType: _, ...configOverride } = matchingEntry;
+    return { ...this.config, ...configOverride };
   }
 
   /**
@@ -333,18 +334,22 @@ export class MatchmakingService {
    * Handle player disconnection
    */
   handleDisconnect(socketId: string): void {
-    // Remove from all queues
+    // Remove from queues (player can only be in one queue)
     for (const [gameType, queue] of this.queues) {
       for (const [playerId, player] of queue.entries()) {
         if (player.socketId === socketId) {
           queue.delete(playerId);
           this.pruneQueue(gameType);
-          break;
+          // Notify matches
+          for (const match of this.matches.values()) {
+            match.handleDisconnect(socketId);
+          }
+          return;
         }
       }
     }
 
-    // Notify matches
+    // Notify matches (player wasn't in any queue but may be in a match)
     for (const match of this.matches.values()) {
       match.handleDisconnect(socketId);
     }

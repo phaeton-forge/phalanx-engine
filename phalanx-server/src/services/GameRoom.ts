@@ -525,6 +525,10 @@ export class GameRoom {
     if (this.tickMode === 'event') {
       // Event mode: immediately broadcast commands and advance tick
       const commands = [...validCommands];
+      // Normalize per-command ticks to match the batch tick
+      for (const cmd of commands) {
+        cmd.tick = this.currentTick;
+      }
       commands.sort((a, b) => {
         const playerCompare = a.playerId.localeCompare(b.playerId);
         if (playerCompare !== 0) return playerCompare;
