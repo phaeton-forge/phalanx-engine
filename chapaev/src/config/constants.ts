@@ -30,7 +30,7 @@ export const CHECKER_BEVEL_SEGMENTS = 8;
 export const CHECKERS_PER_TEAM = 8;
 
 // ── Camera ────────────────────────────────────────────────────────
-export const CAMERA_FOV = 45;
+export const CAMERA_FOV = 70;
 export const CAMERA_NEAR = 0.1;
 export const CAMERA_FAR = 100;
 export const CAMERA_POSITION = { x: 0, y: 10, z: 8 } as const;
@@ -148,4 +148,50 @@ function generateStartingPositions(): InitialCheckerPosition[] {
 }
 
 export const INITIAL_POSITIONS: readonly InitialCheckerPosition[] = generateStartingPositions();
+
+// ── Physics ───────────────────────────────────────────────────────
+/** Simulation tick rate (ticks per second) */
+export const PHYSICS_TICK_RATE = 60;
+
+/** Fixed delta-time per physics tick (seconds) */
+export const PHYSICS_DT = 1 / PHYSICS_TICK_RATE;
+
+/** Friction coefficient – speed multiplier decay per second */
+export const FRICTION = 3.0;
+
+/** Coefficient of restitution for checker↔checker collisions */
+export const RESTITUTION = 0.85;
+
+/** Maximum flick impulse magnitude */
+export const MAX_FLICK_FORCE = 40.0;
+
+/** Speed threshold below which a checker is considered stopped */
+export const STOP_THRESHOLD = 0.05;
+
+/** Default checker mass (identical for all) */
+export const CHECKER_MASS = 1.0;
+
+/** Half-extent of the board (boundary for elimination check: −4 … +4) */
+export const BOARD_HALF_EXTENT = BOARD_EXTENT / 2;
+
+/**
+ * Elimination boundary — a checker is only eliminated when its centre
+ * clears the outer edge of the board rim/deck (board + rim overhang).
+ */
+export const BOARD_ELIM_HALF_EXTENT = BOARD_HALF_EXTENT + BOARD_RIM_WIDTH;
+
+/** Multiplier converting drag-pixel distance to flick force */
+export const FLICK_FORCE_MULTIPLIER = 8.0;
+
+// ── UI — Mode toggle ─────────────────────────────────────────────
+/** Background when Aim mode is active (dark board tint) */
+export const UI_BTN_AIM_BG = '#4a3728';
+/** Background when Camera mode is active (table green) */
+export const UI_BTN_CAM_BG = '#3a5a3a';
+/** Button text / icon colour (warm white from directional light) */
+export const UI_BTN_TEXT = '#fff4e0';
+/** Button border (table rail tint) */
+export const UI_BTN_BORDER = '#887766';
+/** Hover / focus ring (golden light-square colour) */
+export const UI_BTN_FOCUS = '#eacc20';
 

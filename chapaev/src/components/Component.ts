@@ -8,6 +8,8 @@ export const ComponentType = createComponentTypeRegistry({
   Transform: 'Transform',
   Checker: 'Checker',
   Board: 'Board',
+  PhysicsBody: 'PhysicsBody',
+  GameState: 'GameState',
 });
 
 export type ComponentTypeKey = keyof typeof ComponentType;
