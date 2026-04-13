@@ -181,6 +181,8 @@ export class PhysicsSystem extends GameSystem {
     const maxVelSq = FP.Mul(this.config.maxVelocity, this.config.maxVelocity);
     const bounds = this.config.worldBounds;
 
+    const pendingBoundsExits: BoundsExitEvent[] = [];
+
     for (const entityId of this.physicsStore.entityIds()) {
       const physIndex = this.physicsStore.indexOf(entityId);
 
@@ -225,7 +227,7 @@ export class PhysicsSystem extends GameSystem {
           // Clamp position to boundary to avoid spatial grid issues
           newPosX = FP.Clamp(newPosX, bounds.minX, bounds.maxX);
           newPosZ = FP.Clamp(newPosZ, bounds.minZ, bounds.maxZ);
-          this.eventBus.emit(PhysicsEvents.BOUNDS_EXIT, { entityId } satisfies BoundsExitEvent);
+          pendingBoundsExits.push({ entityId });
         } else {
           newPosX = FP.Clamp(newPosX, bounds.minX, bounds.maxX);
           newPosZ = FP.Clamp(newPosZ, bounds.minZ, bounds.maxZ);
@@ -238,6 +240,11 @@ export class PhysicsSystem extends GameSystem {
       // Sync optional visual position cache
       if (visPosXArr) visPosXArr[transformIndex] = FP.ToFloat(newPosX);
       if (visPosZArr) visPosZArr[transformIndex] = FP.ToFloat(newPosZ);
+    }
+
+    // Emit buffered BOUNDS_EXIT events after iteration completes
+    for (const evt of pendingBoundsExits) {
+      this.eventBus.emit(PhysicsEvents.BOUNDS_EXIT, evt);
     }
   }
 

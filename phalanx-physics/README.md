@@ -37,7 +37,7 @@ A deterministic, fixed-point physics engine for the Phalanx Engine. Designed for
 
 ### Tick Providers
 - **IPhysicsTickProvider**: Interface for custom tick scheduling strategies
-- **AutonomousPhysicsTickProvider**: Runs physics loop via `setImmediate`/`queueMicrotask` until settled or `maxSteps` reached — ideal for turn-based games
+- **AutonomousPhysicsTickProvider**: Runs physics loop via `setImmediate` (Node.js) or `setTimeout(0)` (browser) until settled or `maxSteps` reached — ideal for turn-based games
 - **ExternalPhysicsTickProvider**: Delegates tick control to the caller (e.g. BabylonJS `onBeforeRenderObservable` or unit tests)
 
 ### Events
