@@ -1,4 +1,5 @@
 import type { FixedPoint } from 'phalanx-math';
+import type { IPhysicsTickProvider } from './tick/IPhysicsTickProvider';
 
 /**
  * High-level configuration for PhysicsWorld facade.
@@ -25,4 +26,25 @@ export interface PhysicsWorldConfig {
   maxVelocity?: FixedPoint;
   /** Push strength for collision resolution */
   pushStrength?: FixedPoint;
+
+  /**
+   * Optional custom tick provider.
+   * When set, PhysicsSystem.processTick() becomes a no-op and the provider
+   * drives the simulation via PhysicsSystem.step().
+   * Omit to use default GameWorld-driven mode.
+   */
+  tickProvider?: IPhysicsTickProvider;
+
+  /**
+   * When true, bodies exiting worldBounds are ejected instead of clamped.
+   * Default: false
+   */
+  ejectOnBoundsExit?: boolean;
+
+  /**
+   * Velocity magnitude threshold below which a body is considered settled.
+   * Used by PhysicsSystem.isSettled().
+   * Default: FP.FromFloat(0.01)
+   */
+  settleThreshold?: FixedPoint;
 }

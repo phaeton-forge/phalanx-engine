@@ -5,7 +5,8 @@ import { SpatialHashGrid } from '../collision/SpatialHashGrid';
 import { NarrowPhase } from '../collision/NarrowPhase';
 import type { CollisionManifold } from '../collision/CollisionManifold';
 import { PhysicsEvents } from '../events';
-import type { PhysicsConfig, TransformFieldMapping, CollisionEvent } from '../types';
+import type { PhysicsConfig, TransformFieldMapping, CollisionEvent, BoundsExitEvent } from '../types';
+import type { IPhysicsTickProvider } from '../tick/IPhysicsTickProvider';
 import type { SoASchemaDefinition } from 'phalanx-ecs';
 
 const SEPARATION_HALF = FP.FromFloat(0.5);
@@ -33,6 +34,7 @@ export class PhysicsSystem extends GameSystem {
   private config: PhysicsConfig;
   private readonly spatialGrid: SpatialHashGrid;
   private collisionFilter: ((entityA: number, entityB: number) => boolean) | null = null;
+  private externalTickProvider: IPhysicsTickProvider | null = null;
 
   constructor(config: PhysicsConfig) {
     super();
@@ -65,9 +67,12 @@ export class PhysicsSystem extends GameSystem {
     this.collisionFilter = filter;
   }
 
-  public override processTick(_tick: number): void {
+  /**
+   * Advance the simulation by one tick (all sub-steps).
+   * Called by processTick() in default mode, or directly by a custom IPhysicsTickProvider.
+   */
+  public step(): void {
     if (!this.transformStore || !this.fieldMapping) return;
-
     const subDt = FP.Div(this.config.tickDt, FP.FromFloat(this.config.subSteps));
     for (let i = 0; i < this.config.subSteps; i++) {
       this.applyVelocities(subDt);
@@ -75,6 +80,61 @@ export class PhysicsSystem extends GameSystem {
       this.detectAndResolve();
       this.applyFriction();
     }
+  }
+
+  public override processTick(_tick: number): void {
+    if (this.externalTickProvider) return; // provider drives step() directly
+    this.step();
+  }
+
+  /** Hand off tick control to a custom provider. */
+  public setTickProvider(provider: IPhysicsTickProvider): void {
+    this.externalTickProvider?.stop();
+    this.externalTickProvider = provider;
+    provider.start(() => this.step());
+  }
+
+  /**
+   * Set the velocity of a physics body ("flick" impulse).
+   * Replaces any existing velocity.
+   *
+   * @param entityId  Target entity
+   * @param vx        New velocity along X axis (FixedPoint)
+   * @param vz        New velocity along Z axis (FixedPoint)
+   */
+  public applyImpulse(entityId: number, vx: FixedPoint, vz: FixedPoint): void {
+    const physIndex = this.physicsStore.indexOf(entityId);
+    if (physIndex === -1) return;
+    this.physicsStore.arrays.ignorePhysics[physIndex] = 0; // re-enable if previously ejected
+    this.physicsStore.arrays.velocityX[physIndex] = FP.ToRaw(vx);
+    this.physicsStore.arrays.velocityZ[physIndex] = FP.ToRaw(vz);
+  }
+
+  /**
+   * Returns true when all non-static, non-ignored bodies have velocity magnitude
+   * below the given threshold.
+   *
+   * This is a pure query with no side effects. Game code is responsible for
+   * interpreting what "settled" means in gameplay terms.
+   *
+   * @param threshold  Velocity magnitude threshold. Default: FP.FromFloat(0.01)
+   */
+  public isSettled(threshold?: FixedPoint): boolean {
+    const thresh = threshold ?? FP.FromFloat(0.01);
+    const threshSq = FP.Mul(thresh, thresh);
+    const velX = this.physicsStore.arrays.velocityX;
+    const velZ = this.physicsStore.arrays.velocityZ;
+    const isStatic = this.physicsStore.arrays.isStatic;
+    const ignore = this.physicsStore.arrays.ignorePhysics;
+
+    for (const entityId of this.physicsStore.entityIds()) {
+      const i = this.physicsStore.indexOf(entityId);
+      if (isStatic[i] === 1 || ignore[i] === 1) continue;
+      const vx = FP.FromRaw(velX[i]);
+      const vz = FP.FromRaw(velZ[i]);
+      if (FP.Gt(FP.Add(FP.Mul(vx, vx), FP.Mul(vz, vz)), threshSq)) return false;
+    }
+    return true;
   }
 
   /**
@@ -134,8 +194,19 @@ export class PhysicsSystem extends GameSystem {
 
       // Clamp to world bounds if configured
       if (bounds) {
-        newPosX = FP.Clamp(newPosX, bounds.minX, bounds.maxX);
-        newPosZ = FP.Clamp(newPosZ, bounds.minZ, bounds.maxZ);
+        const outOfBounds =
+          FP.Lt(newPosX, bounds.minX) || FP.Gt(newPosX, bounds.maxX) ||
+          FP.Lt(newPosZ, bounds.minZ) || FP.Gt(newPosZ, bounds.maxZ);
+
+        if (outOfBounds && this.config.ejectOnBoundsExit) {
+          this.physicsStore.arrays.ignorePhysics[physIndex] = 1;
+          this.physicsStore.arrays.velocityX[physIndex] = FP.ToRaw(FP._0);
+          this.physicsStore.arrays.velocityZ[physIndex] = FP.ToRaw(FP._0);
+          this.eventBus.emit(PhysicsEvents.BOUNDS_EXIT, { entityId } satisfies BoundsExitEvent);
+        } else {
+          newPosX = FP.Clamp(newPosX, bounds.minX, bounds.maxX);
+          newPosZ = FP.Clamp(newPosZ, bounds.minZ, bounds.maxZ);
+        }
       }
 
       fpPosXArr[transformIndex] = FP.ToRaw(newPosX);

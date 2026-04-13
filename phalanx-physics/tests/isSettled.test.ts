@@ -1,0 +1,146 @@
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { FP } from 'phalanx-math';
+import {
+  EntityManager,
+  EventBus,
+  SystemContext,
+  SoAComponent,
+  defineSoASchema,
+  type SoAComponentStore,
+} from 'phalanx-ecs';
+import { PhysicsSystem } from '../src/systems/PhysicsSystem';
+import { PhysicsSoASchema } from '../src/components/PhysicsBodyComponent';
+import type { PhysicsConfig } from '../src/types';
+
+const TestTransformSchema = defineSoASchema({
+  fpPositionX: 'i64',
+  fpPositionY: 'i64',
+  fpPositionZ: 'i64',
+}, 'TestTransform_isSettled');
+
+const FIELD_MAPPING = {
+  fpPositionX: 'fpPositionX',
+  fpPositionY: 'fpPositionY',
+  fpPositionZ: 'fpPositionZ',
+};
+
+function createPhysicsConfig(overrides?: Partial<PhysicsConfig>): PhysicsConfig {
+  return {
+    tickDt: FP.FromFloat(0.05),
+    subSteps: 1,
+    maxVelocity: FP.FromFloat(100),
+    defaultFriction: FP.FromFloat(1.0),
+    pushStrength: FP.FromFloat(15.0),
+    gridCellSize: FP.FromFloat(4),
+    ...overrides,
+  };
+}
+
+describe('isSettled', () => {
+  let entityManager: EntityManager;
+  let eventBus: EventBus;
+  let context: SystemContext;
+
+  beforeEach(() => {
+    entityManager = new EntityManager();
+    eventBus = new EventBus();
+    context = new SystemContext(eventBus, entityManager);
+    SoAComponent.useEntityManager(entityManager);
+  });
+
+  afterEach(() => {
+    SoAComponent.resetContext();
+  });
+
+  function setupSystem(overrides?: Partial<PhysicsConfig>) {
+    const config = createPhysicsConfig(overrides);
+    const system = new PhysicsSystem(config);
+    system.init(context);
+
+    const physicsStore = entityManager.getOrCreateSoAStore(PhysicsSoASchema);
+    const transformStore = entityManager.getOrCreateSoAStore(TestTransformSchema);
+    system.setTransformStore(
+      transformStore as unknown as SoAComponentStore<Record<string, 'f32' | 'f64' | 'i32' | 'u32' | 'u8' | 'i64'>>,
+      FIELD_MAPPING,
+    );
+
+    return { system, physicsStore, transformStore };
+  }
+
+  function addEntity(
+    physicsStore: SoAComponentStore<typeof PhysicsSoASchema.definition>,
+    transformStore: SoAComponentStore<typeof TestTransformSchema.definition>,
+    entityId: number,
+    velX: number = 0,
+    velZ: number = 0,
+    isStatic: boolean = false,
+    ignorePhysics: boolean = false,
+  ): void {
+    physicsStore.add(entityId, {
+      velocityX: FP.ToRaw(FP.FromFloat(velX)),
+      velocityY: FP.ToRaw(FP._0),
+      velocityZ: FP.ToRaw(FP.FromFloat(velZ)),
+      radius: FP.ToRaw(FP._1),
+      mass: FP.ToRaw(FP._1),
+      restitution: FP.ToRaw(FP.FromFloat(0.5)),
+      friction: FP.ToRaw(FP._1),
+      isStatic: isStatic ? 1 : 0,
+      ignorePhysics: ignorePhysics ? 1 : 0,
+      lastX: 0,
+      lastZ: 0,
+    });
+    transformStore.add(entityId, {
+      fpPositionX: FP.ToRaw(FP._0),
+      fpPositionY: FP.ToRaw(FP._0),
+      fpPositionZ: FP.ToRaw(FP._0),
+    });
+  }
+
+  it('returns true when all bodies are at rest', () => {
+    const { system, physicsStore, transformStore } = setupSystem();
+    addEntity(physicsStore, transformStore, 1, 0, 0);
+    addEntity(physicsStore, transformStore, 2, 0, 0);
+
+    expect(system.isSettled()).toBe(true);
+  });
+
+  it('returns false when a body has velocity above threshold', () => {
+    const { system, physicsStore, transformStore } = setupSystem();
+    addEntity(physicsStore, transformStore, 1, 5, 0);
+    addEntity(physicsStore, transformStore, 2, 0, 0);
+
+    expect(system.isSettled()).toBe(false);
+  });
+
+  it('respects custom threshold', () => {
+    const { system, physicsStore, transformStore } = setupSystem();
+    // velocity magnitude = 0.5, below threshold 1.0
+    addEntity(physicsStore, transformStore, 1, 0.5, 0);
+
+    expect(system.isSettled(FP.FromFloat(1.0))).toBe(true);
+    expect(system.isSettled(FP.FromFloat(0.1))).toBe(false);
+  });
+
+  it('excludes static bodies from check', () => {
+    const { system, physicsStore, transformStore } = setupSystem();
+    // Static body with high velocity should not affect settlement
+    addEntity(physicsStore, transformStore, 1, 100, 100, true);
+    addEntity(physicsStore, transformStore, 2, 0, 0);
+
+    expect(system.isSettled()).toBe(true);
+  });
+
+  it('excludes ignored bodies from check', () => {
+    const { system, physicsStore, transformStore } = setupSystem();
+    // Ignored body with high velocity should not affect settlement
+    addEntity(physicsStore, transformStore, 1, 100, 100, false, true);
+    addEntity(physicsStore, transformStore, 2, 0, 0);
+
+    expect(system.isSettled()).toBe(true);
+  });
+
+  it('returns true when world is empty', () => {
+    const { system } = setupSystem();
+    expect(system.isSettled()).toBe(true);
+  });
+});

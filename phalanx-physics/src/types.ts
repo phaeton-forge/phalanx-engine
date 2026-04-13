@@ -67,11 +67,21 @@ export interface PhysicsConfig {
     maxX: FixedPoint;
     maxZ: FixedPoint;
   };
+  /**
+   * When true, bodies that exit worldBounds are ejected:
+   * ignorePhysics is set to 1, velocity is zeroed, BOUNDS_EXIT is emitted.
+   * When false (default), bodies are clamped to the boundary.
+   */
+  ejectOnBoundsExit?: boolean;
 }
 
 /**
  * Configuration for the PhysicsBodyComponent constructor.
  */
+export interface BoundsExitEvent {
+  entityId: number;
+}
+
 export interface PhysicsBodyConfig {
   radius: FixedPoint;
   mass?: FixedPoint;
