@@ -19,6 +19,7 @@ export class PhysicsWorld {
   private readonly physicsSystem: PhysicsSystem;
   private eventBusRef: EventBus | null = null;
   private readonly unsubscribers: (() => void)[] = [];
+  private readonly settleThreshold: FixedPoint | undefined;
 
   constructor(config?: PhysicsWorldConfig) {
     const tickRate = config?.tickRate ?? 20;
@@ -41,6 +42,7 @@ export class PhysicsWorld {
     };
 
     this.physicsSystem = new PhysicsSystem(physicsConfig);
+    this.settleThreshold = config?.settleThreshold;
 
     if (config?.tickProvider) {
       this.physicsSystem.setTickProvider(config.tickProvider);
@@ -125,7 +127,7 @@ export class PhysicsWorld {
    * Pure query — game code decides what to do with the result.
    */
   public isSettled(threshold?: FixedPoint): boolean {
-    return this.physicsSystem.isSettled(threshold);
+    return this.physicsSystem.isSettled(threshold ?? this.settleThreshold);
   }
 
   /** Subscribe to BOUNDS_EXIT. Fires when a body exits worldBounds in eject mode. */

@@ -26,7 +26,11 @@ export class AutonomousPhysicsTickProvider implements IPhysicsTickProvider {
     this.schedule();
   }
 
-  stop(): void { this.running = false; }
+  stop(): void {
+    this.running = false;
+    this.onStepFn = null;
+    this.steps = 0;
+  }
 
   private schedule(): void {
     const next = typeof setImmediate !== 'undefined'

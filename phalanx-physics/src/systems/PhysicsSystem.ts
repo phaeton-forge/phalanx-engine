@@ -45,6 +45,11 @@ export class PhysicsSystem extends GameSystem {
   public override init(context: SystemContext): void {
     super.init(context);
     this.physicsStore = this.entityManager.getOrCreateSoAStore(PhysicsSoASchema);
+
+    // If a tick provider was set before init(), start it now that stores are ready
+    if (this.externalTickProvider) {
+      this.externalTickProvider.start(() => this.step());
+    }
   }
 
   /**
@@ -91,7 +96,10 @@ export class PhysicsSystem extends GameSystem {
   public setTickProvider(provider: IPhysicsTickProvider): void {
     this.externalTickProvider?.stop();
     this.externalTickProvider = provider;
-    provider.start(() => this.step());
+    // Only start immediately if already initialized; otherwise init() will start it
+    if (this.physicsStore) {
+      provider.start(() => this.step());
+    }
   }
 
   /**
@@ -473,6 +481,7 @@ export class PhysicsSystem extends GameSystem {
   }
 
   public override dispose(): void {
+    this.externalTickProvider?.stop();
     super.dispose();
     this.spatialGrid.clear();
   }

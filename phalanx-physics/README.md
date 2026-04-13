@@ -117,6 +117,8 @@ import {
 import { FP } from 'phalanx-math';
 
 // Game defines what "settled" means and what happens when it occurs
+let physicsWorld: PhysicsWorld;
+
 const provider = new AutonomousPhysicsTickProvider({
   isSettled: () => physicsWorld.isSettled(),
   onSettled: () => {
@@ -125,7 +127,7 @@ const provider = new AutonomousPhysicsTickProvider({
   },
 });
 
-const physicsWorld = new PhysicsWorld({
+physicsWorld = new PhysicsWorld({
   tickRate: 60,
   subSteps: 3,
   ejectOnBoundsExit: true,
