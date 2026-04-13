@@ -45,6 +45,13 @@ export interface CollisionEvent {
 }
 
 /**
+ * Event emitted when a body exits worldBounds and ejectOnBoundsExit is true.
+ */
+export interface BoundsExitEvent {
+  entityId: number;
+}
+
+/**
  * Configuration for PhysicsSystem velocity integration.
  */
 export interface PhysicsConfig {
@@ -67,6 +74,12 @@ export interface PhysicsConfig {
     maxX: FixedPoint;
     maxZ: FixedPoint;
   };
+  /**
+   * When true, bodies that exit worldBounds are ejected:
+   * ignorePhysics is set to 1, velocity is zeroed, BOUNDS_EXIT is emitted.
+   * When false (default), bodies are clamped to the boundary.
+   */
+  ejectOnBoundsExit?: boolean;
 }
 
 /**

@@ -5,7 +5,8 @@ import { PhysicsSystem } from './systems/PhysicsSystem';
 import { SpatialHashGrid } from './collision/SpatialHashGrid';
 import { PhysicsEvents } from './events';
 import type { PhysicsWorldConfig } from './PhysicsWorldConfig';
-import type { TransformFieldMapping, CollisionEvent, PhysicsConfig } from './types';
+import type { FixedPoint } from 'phalanx-math';
+import type { TransformFieldMapping, CollisionEvent, PhysicsConfig, BoundsExitEvent } from './types';
 
 /**
  * PhysicsWorld — high-level facade that wires PhysicsSystem.
@@ -18,6 +19,7 @@ export class PhysicsWorld {
   private readonly physicsSystem: PhysicsSystem;
   private eventBusRef: EventBus | null = null;
   private readonly unsubscribers: (() => void)[] = [];
+  private readonly settleThreshold: FixedPoint | undefined;
 
   constructor(config?: PhysicsWorldConfig) {
     const tickRate = config?.tickRate ?? 20;
@@ -36,9 +38,15 @@ export class PhysicsWorld {
       pushStrength,
       gridCellSize,
       worldBounds: config?.worldBounds,
+      ejectOnBoundsExit: config?.ejectOnBoundsExit,
     };
 
     this.physicsSystem = new PhysicsSystem(physicsConfig);
+    this.settleThreshold = config?.settleThreshold;
+
+    if (config?.tickProvider) {
+      this.physicsSystem.setTickProvider(config.tickProvider);
+    }
   }
 
   /**
@@ -105,6 +113,28 @@ export class PhysicsWorld {
       throw new Error('PhysicsWorld: Cannot subscribe before systems are initialized');
     }
     const unsub = eb.on<CollisionEvent>(PhysicsEvents.TRIGGER_EXIT, callback);
+    this.unsubscribers.push(unsub);
+    return unsub;
+  }
+
+  /** Apply a velocity impulse to a body ("flick" mechanic). Replaces existing velocity. */
+  public applyImpulse(entityId: number, vx: FixedPoint, vz: FixedPoint): void {
+    this.physicsSystem.applyImpulse(entityId, vx, vz);
+  }
+
+  /**
+   * Returns true when all non-static bodies are below the velocity threshold.
+   * Pure query — game code decides what to do with the result.
+   */
+  public isSettled(threshold?: FixedPoint): boolean {
+    return this.physicsSystem.isSettled(threshold ?? this.settleThreshold);
+  }
+
+  /** Subscribe to BOUNDS_EXIT. Fires when a body exits worldBounds in eject mode. */
+  public onBoundsExit(callback: (event: BoundsExitEvent) => void): () => void {
+    const eb = this.getEventBus();
+    if (!eb) throw new Error('PhysicsWorld: Cannot subscribe before systems are initialized');
+    const unsub = eb.on<BoundsExitEvent>(PhysicsEvents.BOUNDS_EXIT, callback);
     this.unsubscribers.push(unsub);
     return unsub;
   }

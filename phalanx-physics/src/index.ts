@@ -17,3 +17,10 @@ export { PhysicsWorld } from './PhysicsWorld';
 export type { PhysicsWorldConfig } from './PhysicsWorldConfig';
 export type { TransformFieldMapping, CollisionFilter, CollisionEvent, PhysicsConfig } from './types';
 export { PhysicsEvents } from './events';
+
+// Tick providers
+export type { IPhysicsTickProvider } from './tick/IPhysicsTickProvider';
+export { AutonomousPhysicsTickProvider } from './tick/AutonomousPhysicsTickProvider';
+export type { AutonomousProviderOptions } from './tick/AutonomousPhysicsTickProvider';
+export { ExternalPhysicsTickProvider } from './tick/ExternalPhysicsTickProvider';
+export type { BoundsExitEvent } from './types';
