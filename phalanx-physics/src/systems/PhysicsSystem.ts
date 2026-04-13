@@ -35,6 +35,7 @@ export class PhysicsSystem extends GameSystem {
   private readonly spatialGrid: SpatialHashGrid;
   private collisionFilter: ((entityA: number, entityB: number) => boolean) | null = null;
   private externalTickProvider: IPhysicsTickProvider | null = null;
+  private providerStarted = false;
 
   constructor(config: PhysicsConfig) {
     super();
@@ -45,11 +46,23 @@ export class PhysicsSystem extends GameSystem {
   public override init(context: SystemContext): void {
     super.init(context);
     this.physicsStore = this.entityManager.getOrCreateSoAStore(PhysicsSoASchema);
+    this.tryStartProvider();
+  }
 
-    // If a tick provider was set before init(), start it now that stores are ready
-    if (this.externalTickProvider) {
-      this.externalTickProvider.start(() => this.step());
-    }
+  /**
+   * Start the external tick provider only when ALL required state is ready.
+   * Called from init(), setTransformStore(), and setTickProvider().
+   */
+  private tryStartProvider(): void {
+    if (
+      this.providerStarted ||
+      !this.physicsStore ||
+      !this.transformStore ||
+      !this.fieldMapping ||
+      !this.externalTickProvider
+    ) return;
+    this.providerStarted = true;
+    this.externalTickProvider.start(() => this.step());
   }
 
   /**
@@ -62,6 +75,7 @@ export class PhysicsSystem extends GameSystem {
   ): void {
     this.transformStore = store;
     this.fieldMapping = fieldMapping;
+    this.tryStartProvider();
   }
 
   /**
@@ -95,11 +109,9 @@ export class PhysicsSystem extends GameSystem {
   /** Hand off tick control to a custom provider. */
   public setTickProvider(provider: IPhysicsTickProvider): void {
     this.externalTickProvider?.stop();
+    this.providerStarted = false;
     this.externalTickProvider = provider;
-    // Only start immediately if already initialized; otherwise init() will start it
-    if (this.physicsStore) {
-      provider.start(() => this.step());
-    }
+    this.tryStartProvider();
   }
 
   /**
@@ -210,6 +222,9 @@ export class PhysicsSystem extends GameSystem {
           this.physicsStore.arrays.ignorePhysics[physIndex] = 1;
           this.physicsStore.arrays.velocityX[physIndex] = FP.ToRaw(FP._0);
           this.physicsStore.arrays.velocityZ[physIndex] = FP.ToRaw(FP._0);
+          // Clamp position to boundary to avoid spatial grid issues
+          newPosX = FP.Clamp(newPosX, bounds.minX, bounds.maxX);
+          newPosZ = FP.Clamp(newPosZ, bounds.minZ, bounds.maxZ);
           this.eventBus.emit(PhysicsEvents.BOUNDS_EXIT, { entityId } satisfies BoundsExitEvent);
         } else {
           newPosX = FP.Clamp(newPosX, bounds.minX, bounds.maxX);
@@ -482,6 +497,7 @@ export class PhysicsSystem extends GameSystem {
 
   public override dispose(): void {
     this.externalTickProvider?.stop();
+    this.providerStarted = false;
     super.dispose();
     this.spatialGrid.clear();
   }

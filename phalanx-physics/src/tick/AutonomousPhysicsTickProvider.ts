@@ -20,6 +20,7 @@ export class AutonomousPhysicsTickProvider implements IPhysicsTickProvider {
   }
 
   start(onStep: () => void): void {
+    this.stop(); // Prevent duplicate loops
     this.running = true;
     this.steps = 0;
     this.onStepFn = onStep;
@@ -35,7 +36,7 @@ export class AutonomousPhysicsTickProvider implements IPhysicsTickProvider {
   private schedule(): void {
     const next = typeof setImmediate !== 'undefined'
       ? (fn: () => void) => setImmediate(fn)
-      : (fn: () => void) => queueMicrotask(fn);
+      : (fn: () => void) => setTimeout(fn, 0);
     next(() => this.tick());
   }
 
