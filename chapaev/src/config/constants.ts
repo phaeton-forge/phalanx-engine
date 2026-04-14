@@ -102,6 +102,36 @@ export const TABLE_BORDER_ROUGHNESS = 0.75;
 export const TABLE_BORDER_METALNESS = 0.02;
 export const TABLE_BORDER_COLOR_TINT = 0x887766;
 
+// ── Bloom post-processing ─────────────────────────────────────────
+/** Luminance threshold — only pixels brighter than this receive bloom */
+export const BLOOM_THRESHOLD = 0.85;
+/** Overall bloom strength (higher = more glow) */
+export const BLOOM_STRENGTH = 0.6;
+/** Bloom blur radius (spread of the glow) */
+export const BLOOM_RADIUS = 0.4;
+
+// ── Active-team halo glow ─────────────────────────────────────────
+/** Halo base colour for white team (darker warm amber) */
+export const HALO_COLOR_WHITE = 0x8a6048;
+/** Halo base colour for black team (darker muted gold) */
+export const HALO_COLOR_BLACK = 0x7a6428;
+/** HDR multiplier applied to halo colours so they exceed the bloom threshold */
+export const HALO_HDR_SCALE = 2.0;
+/** Radius of the glow disc (extends beyond checker edge for soft falloff) */
+export const HALO_GLOW_RADIUS = CHECKER_RADIUS + 0.3;
+/** Segment count for the circle geometry */
+export const HALO_SEGMENTS = 64;
+/** Base opacity of the halo glow (before pulse modulation) */
+export const HALO_BASE_OPACITY = 0.55;
+/** Amplitude of the breathing opacity pulse */
+export const HALO_PULSE_AMPLITUDE = 0.2;
+/** Speed of the breathing pulse (radians / second) */
+export const HALO_PULSE_SPEED = 2.5;
+/** Normalised inner radius where glow starts to fade (ratio of checker vs disc) */
+export const HALO_INNER_RATIO = CHECKER_RADIUS / (CHECKER_RADIUS + 0.25) * 0.5;
+/** Falloff exponent — higher = tighter glow around the checker edge */
+export const HALO_FALLOFF = 2.0;
+
 // ── Vignette post-processing ──────────────────────────────────────
 export const VIGNETTE_OFFSET = 1.6;
 export const VIGNETTE_DARKNESS = 0.8;

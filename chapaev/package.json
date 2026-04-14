@@ -11,6 +11,7 @@
   "dependencies": {
     "three": "^0.175.0",
     "@dimforge/rapier3d-compat": "^0.14.0",
+    "phalanx-client": "workspace:*",
     "phalanx-ecs": "workspace:*",
     "phalanx-math": "workspace:*"
   },

@@ -5,6 +5,7 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import {
   CAMERA_FOV,
   CAMERA_NEAR,
@@ -36,6 +37,9 @@ import {
   TABLE_BORDER_COLOR_TINT,
   VIGNETTE_OFFSET,
   VIGNETTE_DARKNESS,
+  BLOOM_THRESHOLD,
+  BLOOM_STRENGTH,
+  BLOOM_RADIUS,
 } from '../config/constants.ts';
 
 /**
@@ -275,6 +279,15 @@ export function setupScene(canvas: HTMLCanvasElement): SceneContext {
   );
   const composer = new EffectComposer(renderer, renderTarget);
   composer.addPass(new RenderPass(scene, camera));
+
+  // Bloom — makes emissive checker highlights glow
+  const bloomPass = new UnrealBloomPass(
+    new THREE.Vector2(window.innerWidth, window.innerHeight),
+    BLOOM_STRENGTH,
+    BLOOM_RADIUS,
+    BLOOM_THRESHOLD,
+  );
+  composer.addPass(bloomPass);
 
   const vignettePass = new ShaderPass(VignetteShader);
   vignettePass.uniforms['offset'].value = VIGNETTE_OFFSET;

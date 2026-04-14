@@ -7,6 +7,9 @@ export {
   TURN_CHANGED,
   ROUND_STARTED,
   CHECKER_COLLISION,
+  BORDER_HIT,
+  RAPIER_CONTACT,
+  RAPIER_SETTLED,
 } from './GameEvents.ts';
 
 export type {
@@ -18,5 +21,8 @@ export type {
   TurnChangedEvent,
   RoundStartedEvent,
   CheckerCollisionEvent,
+  BorderHitEvent,
+  RapierContactKind,
+  RapierContactEvent,
 } from './GameEvents.ts';
 

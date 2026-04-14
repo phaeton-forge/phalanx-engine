@@ -27,6 +27,15 @@ export const ROUND_STARTED = 'ROUND_STARTED';
 /** Fired when two checkers collide (visual-only, for effects) */
 export const CHECKER_COLLISION = 'CHECKER_COLLISION';
 
+/** Fired when an eliminated checker hits the table border rail (Rapier VFX) */
+export const BORDER_HIT = 'BORDER_HIT';
+
+/** Fired when any Rapier-simulated contact begins (eliminated checkers) */
+export const RAPIER_CONTACT = 'RAPIER_CONTACT';
+
+/** Fired when all Rapier-simulated bodies have come to rest */
+export const RAPIER_SETTLED = 'RAPIER_SETTLED';
+
 // ── Event payload interfaces ──────────────────────────────────────
 
 export interface FlickExecutedEvent {
@@ -79,5 +88,20 @@ export interface CheckerCollisionEvent {
   readonly z: number;
   readonly entityA: number;
   readonly entityB: number;
+}
+
+export interface BorderHitEvent {
+  /** Entity ID of the checker that hit the border */
+  readonly entityId: number;
+}
+
+/** Kind of Rapier contact */
+export type RapierContactKind = 'border' | 'checker' | 'surface';
+
+export interface RapierContactEvent {
+  /** Entity ID of the checker involved */
+  readonly entityId: number;
+  /** What it collided with */
+  readonly kind: RapierContactKind;
 }
 

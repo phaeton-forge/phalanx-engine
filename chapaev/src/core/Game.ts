@@ -6,13 +6,13 @@ import { PhysicsSystem } from '../systems/PhysicsSystem.ts';
 import { GameRulesSystem } from '../systems/GameRulesSystem.ts';
 import { FlickInputSystem } from '../systems/FlickInputSystem.ts';
 import { RapierVFXSystem } from '../systems/RapierVFXSystem.ts';
+import { SoundSystem } from '../systems/SoundSystem.ts';
 import { ComponentType } from '../components/Component.ts';
 import { GameStateComponent } from '../components/GameStateComponent.ts';
 import { createBoardEntity } from '../entities/BoardEntity.ts';
 import { createCheckerEntity } from '../entities/CheckerEntity.ts';
 import { INITIAL_POSITIONS } from '../config/constants.ts';
 import { TeamTag } from '../enums/TeamTag.ts';
-import { ModeToggle } from '../ui/ModeToggle.ts';
 
 /**
  * Game — thin orchestrator that wires together the ECS world,
@@ -23,7 +23,6 @@ import { ModeToggle } from '../ui/ModeToggle.ts';
 export class Game {
   private world: GameWorld;
   private sceneCtx: SceneContext;
-  private modeToggle: ModeToggle;
 
   constructor(canvas: HTMLCanvasElement) {
     // ── Three.js scene ─────────────────────────────────────────
@@ -45,15 +44,17 @@ export class Game {
       this.sceneCtx.camera,
       this.sceneCtx.renderer.domElement,
       this.sceneCtx.scene,
+      this.sceneCtx.controls,
     );
     const renderSystem = new ThreeRenderSystem(this.sceneCtx.scene);
     const rapierVFXSystem = new RapierVFXSystem();
+    const soundSystem = new SoundSystem();
 
     // Tick systems: physics first, then rules
     const tickSystems = [physicsSystem, gameRulesSystem];
 
-    // Frame systems: input → render → rapier VFX
-    const frameSystems = [flickInputSystem, renderSystem, rapierVFXSystem];
+    // Frame systems: input → render → rapier VFX → sound
+    const frameSystems = [flickInputSystem, renderSystem, rapierVFXSystem, soundSystem];
 
     this.world.registerSystems(tickSystems, frameSystems);
 
@@ -61,23 +62,6 @@ export class Game {
     const meshMap = renderSystem.getMeshMap();
     flickInputSystem.setMeshMap(meshMap);
     rapierVFXSystem.setMeshMap(meshMap);
-
-    // ── Mode toggle (Aim ↔ Camera) ─────────────────────────────
-    this.modeToggle = new ModeToggle('camera');
-
-    // Default: camera mode → orbit controls ON, flick input OFF
-    flickInputSystem.enabled = false;
-
-    this.modeToggle.onChange((mode) => {
-      if (mode === 'aim') {
-        this.sceneCtx.controls.enabled = false;
-        flickInputSystem.enabled = true;
-      } else {
-        flickInputSystem.cancelDrag();
-        flickInputSystem.enabled = false;
-        this.sceneCtx.controls.enabled = true;
-      }
-    });
   }
 
   /**
@@ -122,6 +106,5 @@ export class Game {
     this.world.stop();
     this.world.dispose();
     this.sceneCtx.renderer.dispose();
-    this.modeToggle.dispose();
   }
 }

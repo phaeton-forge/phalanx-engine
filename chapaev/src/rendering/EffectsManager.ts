@@ -1,4 +1,18 @@
 import * as THREE from 'three';
+import { TeamTag } from '../enums/TeamTag.ts';
+import {
+  BOARD_HEIGHT,
+  HALO_COLOR_WHITE,
+  HALO_COLOR_BLACK,
+  HALO_HDR_SCALE,
+  HALO_GLOW_RADIUS,
+  HALO_SEGMENTS,
+  HALO_BASE_OPACITY,
+  HALO_PULSE_AMPLITUDE,
+  HALO_PULSE_SPEED,
+  HALO_INNER_RATIO,
+  HALO_FALLOFF,
+} from '../config/constants.ts';
 
 /** Duration (seconds) for a collision particle burst */
 const PARTICLE_LIFETIME = 0.6;
@@ -44,9 +58,26 @@ export class EffectsManager {
   private readonly particleGeo: THREE.SphereGeometry;
   private readonly particleMat: THREE.MeshBasicMaterial;
 
-  /** Emissive colour used for hover / team highlight */
+  /** Emissive colour used for hover highlight */
   private static readonly HOVER_EMISSIVE = new THREE.Color(0xffffff);
-  private static readonly TEAM_EMISSIVE = new THREE.Color(0x444422);
+
+  // ── Halo glow resources ─────────────────────────────────────────
+
+  /** Shared circle geometry for all halos (flat disc on XZ plane) */
+  private readonly haloGeo: THREE.CircleGeometry;
+
+  /** Per-team radial-glow shader materials */
+  private readonly haloMatWhite: THREE.ShaderMaterial;
+  private readonly haloMatBlack: THREE.ShaderMaterial;
+
+  /** Checker Object3D → halo glow mesh */
+  private readonly halos: Map<THREE.Object3D, THREE.Mesh> = new Map();
+
+  /** Y position of halo discs (just above board surface) */
+  private readonly haloY = BOARD_HEIGHT / 2 + 0.005;
+
+  /** Accumulated time for the breathing pulse */
+  private glowTime = 0;
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
@@ -56,6 +87,58 @@ export class EffectsManager {
       transparent: true,
       opacity: 0.7,
     });
+
+    // Shared circle geometry (flat on XZ plane after rotation)
+    this.haloGeo = new THREE.CircleGeometry(HALO_GLOW_RADIUS, HALO_SEGMENTS);
+
+    // Radial-glow shader: bright at checker edge, smooth falloff to transparent
+    const haloVertexShader = /* glsl */ `
+      varying vec2 vUv;
+      void main() {
+        vUv = uv;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `;
+
+    const haloFragmentShader = /* glsl */ `
+      uniform vec3 uColor;
+      uniform float uOpacity;
+      uniform float uInnerRatio;
+      uniform float uFalloff;
+
+      varying vec2 vUv;
+
+      void main() {
+        // Distance from disc centre (0..1)
+        float d = length(vUv - 0.5) * 2.0;
+
+        // Smooth radial gradient: full brightness inside inner ratio,
+        // then power-curve falloff to the edge
+        float glow = 1.0 - smoothstep(uInnerRatio, 1.0, d);
+        glow = pow(glow, uFalloff);
+
+        gl_FragColor = vec4(uColor, glow * uOpacity);
+      }
+    `;
+
+    const makeHaloMaterial = (baseColor: number): THREE.ShaderMaterial =>
+      new THREE.ShaderMaterial({
+        uniforms: {
+          uColor: { value: new THREE.Color(baseColor).multiplyScalar(HALO_HDR_SCALE) },
+          uOpacity: { value: HALO_BASE_OPACITY },
+          uInnerRatio: { value: HALO_INNER_RATIO },
+          uFalloff: { value: HALO_FALLOFF },
+        },
+        vertexShader: haloVertexShader,
+        fragmentShader: haloFragmentShader,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        side: THREE.DoubleSide,
+      });
+
+    this.haloMatWhite = makeHaloMaterial(HALO_COLOR_WHITE);
+    this.haloMatBlack = makeHaloMaterial(HALO_COLOR_BLACK);
   }
 
   // ── Highlight helpers ──────────────────────────────────────────
@@ -79,20 +162,53 @@ export class EffectsManager {
   }
 
   /**
-   * Apply a subtle team glow to a mesh.
+   * Show or hide a soft radial glow under a checker to indicate the active team.
+   * Creates a shader-driven disc on the board surface when `active` is true;
+   * removes it when false. Idempotent — safe to call every frame.
    */
-  public setTeamHighlight(mesh: THREE.Mesh | THREE.Group, active: boolean): void {
-    const target = mesh instanceof THREE.Group ? mesh.children[0] : mesh;
-    if (!(target instanceof THREE.Mesh)) return;
-    const mat = target.material;
-    if (!(mat instanceof THREE.MeshStandardMaterial)) return;
-
+  public setTeamHighlight(mesh: THREE.Mesh | THREE.Group, active: boolean, team?: TeamTag): void {
     if (active) {
-      mat.emissive.copy(EffectsManager.TEAM_EMISSIVE);
-      mat.emissiveIntensity = 0.08;
+      if (this.halos.has(mesh)) return; // already showing
+
+      const mat = team === TeamTag.Black ? this.haloMatBlack : this.haloMatWhite;
+      const halo = new THREE.Mesh(this.haloGeo, mat);
+      halo.rotation.x = -Math.PI / 2;
+      halo.position.set(mesh.position.x, this.haloY, mesh.position.z);
+      halo.renderOrder = 999;
+
+      this.scene.add(halo);
+      this.halos.set(mesh, halo);
     } else {
-      mat.emissive.setHex(0x000000);
-      mat.emissiveIntensity = 0;
+      const halo = this.halos.get(mesh);
+      if (!halo) return; // nothing to remove
+
+      this.scene.remove(halo);
+      this.halos.delete(mesh);
+    }
+  }
+
+  /**
+   * Animate a breathing pulse on all halo glows and keep them
+   * positioned under their parent checkers.
+   * Call once per frame from the render system.
+   */
+  public updateGlowPulse(dt: number): void {
+    if (this.halos.size === 0) return;
+
+    this.glowTime += dt;
+    const t = Math.sin(this.glowTime * HALO_PULSE_SPEED);
+
+    // Shared material opacity pulse (both teams share the same rhythm)
+    const opacity = HALO_BASE_OPACITY + t * HALO_PULSE_AMPLITUDE;
+    this.haloMatWhite.uniforms['uOpacity'].value = opacity;
+    this.haloMatBlack.uniforms['uOpacity'].value = opacity;
+
+    // Subtle scale pulse and position sync
+    const scale = 1.0 + t * 0.05;
+    for (const [checkerObj, halo] of this.halos) {
+      halo.position.x = checkerObj.position.x;
+      halo.position.z = checkerObj.position.z;
+      halo.scale.set(scale, scale, 1);
     }
   }
 
@@ -235,6 +351,15 @@ export class EffectsManager {
       (trail.line.material as THREE.Material).dispose();
     }
     this.trails.clear();
+
+    // Halo cleanup
+    for (const [, halo] of this.halos) {
+      this.scene.remove(halo);
+    }
+    this.halos.clear();
+    this.haloGeo.dispose();
+    this.haloMatWhite.dispose();
+    this.haloMatBlack.dispose();
 
     this.particleGeo.dispose();
     this.particleMat.dispose();

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GameSystem } from 'phalanx-ecs';
 import type { SystemContext } from 'phalanx-ecs';
 import { FP } from 'phalanx-math';
@@ -19,12 +20,18 @@ import type { FlickExecutedEvent } from '../events/GameEvents.ts';
  * Slingshot mechanic: drag backwards from a checker → arrow shows flight direction.
  * On release the checker receives an impulse in the opposite direction of the drag.
  *
+ * Automatically detects whether the pointer lands on a checker belonging to the
+ * current team. If it does → orbit controls are disabled and aiming begins.
+ * If not (or if multiple fingers are detected, i.e. pinch-to-zoom) → orbit
+ * controls stay active for camera manipulation.
+ *
  * Works only during the `aiming` phase for the current team's checkers.
  */
 export class FlickInputSystem extends GameSystem {
   private readonly camera: THREE.PerspectiveCamera;
   private readonly canvas: HTMLElement;
   private readonly scene: THREE.Scene;
+  private readonly controls: OrbitControls;
   private readonly raycaster = new THREE.Raycaster();
   private readonly mouse = new THREE.Vector2();
 
@@ -61,13 +68,19 @@ export class FlickInputSystem extends GameSystem {
   private readonly onPointerUp = (_e: PointerEvent): void => this.handlePointerUp();
   private readonly onTouchStart = (e: TouchEvent): void => this.handleTouchStart(e);
   private readonly onTouchMove = (e: TouchEvent): void => this.handleTouchMove(e);
-  private readonly onTouchEnd = (_e: TouchEvent): void => this.handlePointerUp();
+  private readonly onTouchEnd = (e: TouchEvent): void => this.handleTouchEnd(e);
 
-  constructor(camera: THREE.PerspectiveCamera, domElement: HTMLElement, scene: THREE.Scene) {
+  constructor(
+    camera: THREE.PerspectiveCamera,
+    domElement: HTMLElement,
+    scene: THREE.Scene,
+    controls: OrbitControls,
+  ) {
     super();
     this.camera = camera;
     this.canvas = domElement;
     this.scene = scene;
+    this.controls = controls;
   }
 
   // ── Lifecycle ──────────────────────────────────────────────────
@@ -110,12 +123,19 @@ export class FlickInputSystem extends GameSystem {
     if (!this.enabled) return;
     if (this.gameState.phase !== 'aiming') return;
 
+    // Pointer events from touch are handled in handleTouchStart
+    if (e.pointerType === 'touch') return;
+
     this.setMouseFromEvent(e);
-    this.tryStartDrag();
+    if (this.tryStartDrag()) {
+      // Checker hit — disable orbit controls while aiming
+      this.controls.enabled = false;
+    }
   }
 
   private handlePointerMove(e: PointerEvent): void {
-    if (!this.enabled || !this.dragging) return;
+    if (!this.dragging) return;
+    if (e.pointerType === 'touch') return;
     this.setMouseFromEvent(e);
     this.updateDrag();
   }
@@ -123,23 +143,54 @@ export class FlickInputSystem extends GameSystem {
   private handlePointerUp(): void {
     if (!this.dragging) return;
     this.releaseDrag();
+    // Re-enable orbit controls after the drag ends
+    this.controls.enabled = true;
   }
 
   private handleTouchStart(e: TouchEvent): void {
     if (!this.enabled) return;
     if (this.gameState.phase !== 'aiming') return;
-    if (e.touches.length === 0) return;
+
+    // Multi-finger gesture (pinch-to-zoom) — let orbit controls handle it
+    if (e.touches.length > 1) {
+      if (this.dragging) {
+        this.cancelDrag();
+        this.controls.enabled = true;
+      }
+      return;
+    }
+
     e.preventDefault();
     this.setMouseFromTouch(e.touches[0]);
-    this.tryStartDrag();
+    if (this.tryStartDrag()) {
+      // Checker hit — disable orbit controls while aiming
+      this.controls.enabled = false;
+    }
   }
 
   private handleTouchMove(e: TouchEvent): void {
-    if (!this.enabled || !this.dragging) return;
-    if (e.touches.length === 0) return;
+    // Multi-finger: cancel any in-progress drag, let orbit controls take over
+    if (e.touches.length > 1) {
+      if (this.dragging) {
+        this.cancelDrag();
+        this.controls.enabled = true;
+      }
+      return;
+    }
+
+    if (!this.dragging) return;
     e.preventDefault();
     this.setMouseFromTouch(e.touches[0]);
     this.updateDrag();
+  }
+
+  private handleTouchEnd(e: TouchEvent): void {
+    // If there are still fingers left, don't release yet
+    if (e.touches.length > 0) return;
+
+    if (!this.dragging) return;
+    this.releaseDrag();
+    this.controls.enabled = true;
   }
 
   /**
@@ -154,7 +205,11 @@ export class FlickInputSystem extends GameSystem {
 
   // ── Drag logic ─────────────────────────────────────────────────
 
-  private tryStartDrag(): void {
+  /**
+   * Attempt to start a drag on a checker under the pointer.
+   * @returns `true` if a checker was hit and aiming started, `false` otherwise.
+   */
+  private tryStartDrag(): boolean {
     this.raycaster.setFromCamera(this.mouse, this.camera);
 
     // Gather meshes of current team's alive checkers
@@ -180,7 +235,7 @@ export class FlickInputSystem extends GameSystem {
     }
 
     const intersects = this.raycaster.intersectObjects(targets, true);
-    if (intersects.length === 0) return;
+    if (intersects.length === 0) return false;
 
     // Find the entity
     let hitObject: THREE.Object3D | null = intersects[0].object;
@@ -189,7 +244,7 @@ export class FlickInputSystem extends GameSystem {
       hitObject = hitObject.parent;
       eid = entityIdByObject.get(hitObject);
     }
-    if (eid === undefined) return;
+    if (eid === undefined) return false;
 
     this.dragEntityId = eid;
     this.dragging = true;
@@ -198,6 +253,7 @@ export class FlickInputSystem extends GameSystem {
     const mesh = this.meshMap.get(eid)!;
     this.dragStartWorld.copy(mesh.position);
     this.dragCurrentWorld.copy(this.dragStartWorld);
+    return true;
   }
 
   private updateDrag(): void {

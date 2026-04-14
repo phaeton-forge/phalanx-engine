@@ -4,10 +4,14 @@ import type { SystemContext } from 'phalanx-ecs';
 import {
   CHECKER_ELIMINATED,
   ROUND_STARTED,
-} from '../events/GameEvents.ts';
+  RAPIER_CONTACT,
+  RAPIER_SETTLED,
+} from '../events';
 import type {
   CheckerEliminatedEvent,
-} from '../events/GameEvents.ts';
+  RapierContactEvent,
+  RapierContactKind,
+} from '../events';
 import {
   BOARD_HEIGHT,
   BOARD_HALF_EXTENT,
@@ -61,6 +65,22 @@ export class RapierVFXSystem extends GameSystem {
   /** Queued eliminations received before Rapier was ready */
   private pendingEliminations: CheckerEliminatedEvent[] = [];
 
+  /** Rapier event queue for collision detection */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private eventQueue: any = null;
+
+  /** Map from static collider handle → contact kind ('border' | 'surface') */
+  private readonly staticColliderKinds = new Map<number, RapierContactKind>();
+
+  /** Map from Rapier collider handle → entity ID (for checker bodies) */
+  private readonly colliderToEntity = new Map<number, number>();
+
+  /** Whether any Rapier body was moving last frame (for settlement detection) */
+  private wasRapierMoving = false;
+
+  /** Speed² threshold below which a Rapier body is considered at rest */
+  private static readonly RAPIER_SLEEP_THRESHOLD_SQ = 0.01 * 0.01;
+
   constructor() {
     super();
   }
@@ -95,6 +115,7 @@ export class RapierVFXSystem extends GameSystem {
 
       this.RAPIER = RAPIER;
       this.rapierWorld = new RAPIER.World({ x: 0, y: -9.81, z: 0 });
+      this.eventQueue = new RAPIER.EventQueue(true);
 
       // ── Static colliders ────────────────────────────────────────
 
@@ -103,11 +124,14 @@ export class RapierVFXSystem extends GameSystem {
       const tableBody = this.rapierWorld.createRigidBody(
         RAPIER.RigidBodyDesc.fixed().setTranslation(0, tableY, 0),
       );
-      this.rapierWorld.createCollider(
+      const tableCollider = this.rapierWorld.createCollider(
         RAPIER.ColliderDesc.cuboid(TABLE_SIZE / 2, 0.05, TABLE_SIZE / 2)
-          .setRestitution(0.2).setFriction(0.6),
+          .setRestitution(0.2)
+          .setFriction(0.6)
+          .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS),
         tableBody,
       );
+      this.staticColliderKinds.set(tableCollider.handle, 'surface');
 
       // Board deck — single solid cuboid matching the visual mesh
       // (BoxGeometry with rimTotal = BOARD_EXTENT + BOARD_RIM_WIDTH * 2, centered at y=0).
@@ -117,11 +141,14 @@ export class RapierVFXSystem extends GameSystem {
       const deckBody = this.rapierWorld.createRigidBody(
         RAPIER.RigidBodyDesc.fixed().setTranslation(0, 0, 0),
       );
-      this.rapierWorld.createCollider(
+      const deckCollider = this.rapierWorld.createCollider(
         RAPIER.ColliderDesc.cuboid(deckHalf, BOARD_HEIGHT / 2, deckHalf)
-          .setRestitution(0.1).setFriction(0.5),
+          .setRestitution(0.1)
+          .setFriction(0.5)
+          .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS),
         deckBody,
       );
+      this.staticColliderKinds.set(deckCollider.handle, 'surface');
 
       // ── Table border / raised rails (the outer wooden rim) ──────
       // These match the visual geometry created in SceneSetup.ts.
@@ -152,10 +179,14 @@ export class RapierVFXSystem extends GameSystem {
         const body = this.rapierWorld.createRigidBody(
           RAPIER.RigidBodyDesc.fixed().setTranslation(px, py, pz),
         );
-        this.rapierWorld.createCollider(
-          RAPIER.ColliderDesc.cuboid(hw, hh, hd).setRestitution(0.4).setFriction(0.5),
+        const collider = this.rapierWorld.createCollider(
+          RAPIER.ColliderDesc.cuboid(hw, hh, hd)
+            .setRestitution(0.4)
+            .setFriction(0.5)
+            .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS),
           body,
         );
+        this.staticColliderKinds.set(collider.handle, 'border');
       }
 
       this.rapierReady = true;
@@ -200,9 +231,11 @@ export class RapierVFXSystem extends GameSystem {
     const colliderDesc = RAPIER.ColliderDesc.cylinder(CHECKER_HEIGHT / 2, CHECKER_RADIUS)
       .setRestitution(0.3)
       .setFriction(0.5)
-      .setDensity(1.0);
+      .setDensity(1.0)
+      .setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS);
 
-    this.rapierWorld.createCollider(colliderDesc, rigidBody);
+    const collider = this.rapierWorld.createCollider(colliderDesc, rigidBody);
+    this.colliderToEntity.set(collider.handle, event.entityId);
 
     // Ensure mesh is visible (ThreeRenderSystem may have skipped it)
     mesh.visible = true;
@@ -215,17 +248,58 @@ export class RapierVFXSystem extends GameSystem {
   public override update(deltaTime: number): void {
     if (!this.rapierReady || !this.rapierWorld) return;
 
-    // Step Rapier world
+    // Step Rapier world with event queue for collision detection
     this.rapierWorld.timestep = deltaTime;
-    this.rapierWorld.step();
+    this.rapierWorld.step(this.eventQueue);
 
-    // Sync mesh transforms from Rapier bodies
+    // Drain collision events — classify and emit RAPIER_CONTACT
+    this.eventQueue.drainCollisionEvents((handle1: number, handle2: number, started: boolean) => {
+      if (!started) return; // only care about collision start
+
+      const kind1 = this.staticColliderKinds.get(handle1);
+      const kind2 = this.staticColliderKinds.get(handle2);
+      const entity1 = this.colliderToEntity.get(handle1);
+      const entity2 = this.colliderToEntity.get(handle2);
+
+      // Checker ↔ static (border or surface)
+      if (entity1 !== undefined && kind2 !== undefined) {
+        this.eventBus.emit<RapierContactEvent>(RAPIER_CONTACT, { entityId: entity1, kind: kind2 });
+        return;
+      }
+      if (entity2 !== undefined && kind1 !== undefined) {
+        this.eventBus.emit<RapierContactEvent>(RAPIER_CONTACT, { entityId: entity2, kind: kind1 });
+        return;
+      }
+
+      // Checker ↔ checker (two eliminated checkers)
+      if (entity1 !== undefined && entity2 !== undefined) {
+        this.eventBus.emit<RapierContactEvent>(RAPIER_CONTACT, { entityId: entity1, kind: 'checker' });
+        this.eventBus.emit<RapierContactEvent>(RAPIER_CONTACT, { entityId: entity2, kind: 'checker' });
+      }
+    });
+
+    // Sync mesh transforms from Rapier bodies + check if any are still moving
+    let anyMoving = false;
     for (const entry of this.bodies) {
       const pos = entry.rigidBody.translation();
       const rot = entry.rigidBody.rotation();
       entry.mesh.position.set(pos.x, pos.y, pos.z);
       entry.mesh.quaternion.set(rot.x, rot.y, rot.z, rot.w);
+
+      if (!anyMoving) {
+        const vel = entry.rigidBody.linvel();
+        const speedSq = vel.x * vel.x + vel.y * vel.y + vel.z * vel.z;
+        if (speedSq > RapierVFXSystem.RAPIER_SLEEP_THRESHOLD_SQ) {
+          anyMoving = true;
+        }
+      }
     }
+
+    // Emit RAPIER_SETTLED when all bodies transition from moving → at rest
+    if (this.wasRapierMoving && !anyMoving && this.bodies.length > 0) {
+      this.eventBus.emit(RAPIER_SETTLED, {});
+    }
+    this.wasRapierMoving = anyMoving;
   }
 
   // ── Round reset ────────────────────────────────────────────────
@@ -239,6 +313,7 @@ export class RapierVFXSystem extends GameSystem {
       this.rapierWorld.removeRigidBody(entry.rigidBody);
     }
     this.bodies = [];
+    this.colliderToEntity.clear();
   }
 
   // ── Cleanup ────────────────────────────────────────────────────
@@ -250,6 +325,10 @@ export class RapierVFXSystem extends GameSystem {
       this.clearBodies();
       this.rapierWorld.free();
       this.rapierWorld = null;
+    }
+    if (this.eventQueue) {
+      this.eventQueue.free();
+      this.eventQueue = null;
     }
   }
 }

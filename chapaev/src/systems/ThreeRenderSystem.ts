@@ -195,7 +195,7 @@ export class ThreeRenderSystem extends GameSystem {
       if (this.gameState && checker) {
         const isCurrentTeam = checker.team === this.gameState.currentTeam;
         const isAiming = this.gameState.phase === 'aiming';
-        this.effects.setTeamHighlight(mesh, isCurrentTeam && isAiming);
+        this.effects.setTeamHighlight(mesh, isCurrentTeam && isAiming, checker.team);
       }
 
       // ── Speed trail ─────────────────────────────────────────────
@@ -221,6 +221,9 @@ export class ThreeRenderSystem extends GameSystem {
 
     // Update particle bursts
     this.effects.update(deltaTime);
+
+    // Animate glowing checker pulse
+    this.effects.updateGlowPulse(deltaTime);
   }
 
   // ── Cleanup ─────────────────────────────────────────────────
