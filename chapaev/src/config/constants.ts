@@ -213,6 +213,12 @@ export const BOARD_ELIM_HALF_EXTENT = BOARD_HALF_EXTENT + BOARD_RIM_WIDTH;
 /** Multiplier converting drag-pixel distance to flick force */
 export const FLICK_FORCE_MULTIPLIER = 8.0;
 
+// ── Background music ──────────────────────────────────────────────
+/** Volume for background music (0–1). Kept well below SFX (hit sounds play at 1.0). */
+export const BGM_VOLUME = 0.12;
+/** Cross-fade duration in seconds when transitioning between BGM tracks */
+export const BGM_CROSSFADE_DURATION = 2.0;
+
 // ── UI — Mode toggle ─────────────────────────────────────────────
 /** Background when Aim mode is active (dark board tint) */
 export const UI_BTN_AIM_BG = '#4a3728';

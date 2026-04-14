@@ -19,6 +19,8 @@ import {
   FRICTION,
   PHYSICS_DT,
   STOP_THRESHOLD,
+  BGM_VOLUME,
+  BGM_CROSSFADE_DURATION,
 } from '../config/constants.ts';
 import { SilentModeHint } from '../ui/SilentModeHint.ts';
 
@@ -40,6 +42,12 @@ const RIM_HIT_SOUND_PATH = 'sounds/hit_04.mp3';
 const FALL_OFF_SOUND_PATHS: readonly string[] = [
   'sounds/checker-fall-off.mp3',
   'sounds/checker-fall-off_02.mp3',
+] as const;
+
+/** Paths to background music tracks (served from public/) */
+const BGM_SOUND_PATHS: readonly string[] = [
+  'sounds/bg_01.mp3',
+  'sounds/bg_02.mp3',
 ] as const;
 
 /**
@@ -94,6 +102,7 @@ export class SoundSystem extends GameSystem {
   private rawMovementBuffer: ArrayBuffer | null = null;
   private rawRimHitBuffer: ArrayBuffer | null = null;
   private rawFallOffBuffers: ArrayBuffer[] = [];
+  private rawBgmBuffers: ArrayBuffer[] = [];
 
   /** Pre-decoded audio buffer for the checker movement sound */
   private movementBuffer: AudioBuffer | null = null;
@@ -127,6 +136,21 @@ export class SoundSystem extends GameSystem {
 
   /** Whether the sliding sound is currently fading out */
   private slidingFadingOut = false;
+
+  /** Pre-decoded audio buffers for background music tracks */
+  private readonly bgmBuffers: AudioBuffer[] = [];
+
+  /** Index of the currently playing BGM track in bgmBuffers */
+  private bgmCurrentIndex = 0;
+
+  /** Currently playing BGM source node */
+  private bgmSource: AudioBufferSourceNode | null = null;
+
+  /** Gain node for BGM volume control / cross-fade */
+  private bgmGain: GainNode | null = null;
+
+  /** Whether BGM playback has been started */
+  private bgmStarted = false;
 
   /** iOS silent-mode hint overlay (shown once on iOS Safari) */
   private readonly silentModeHint = new SilentModeHint();
@@ -225,17 +249,24 @@ export class SoundSystem extends GameSystem {
         return response.arrayBuffer();
       });
 
-      const [hitRaw, movementRaw, rimHitRaw, fallOffRaw] = await Promise.all([
+      const bgmFetches = BGM_SOUND_PATHS.map(async (path) => {
+        const response = await fetch(path);
+        return response.arrayBuffer();
+      });
+
+      const [hitRaw, movementRaw, rimHitRaw, fallOffRaw, bgmRaw] = await Promise.all([
         Promise.all(hitFetches),
         movementFetch,
         rimHitFetch,
         Promise.all(fallOffFetches),
+        Promise.all(bgmFetches),
       ]);
 
       this.rawHitBuffers = hitRaw;
       this.rawMovementBuffer = movementRaw;
       this.rawRimHitBuffer = rimHitRaw;
       this.rawFallOffBuffers = fallOffRaw;
+      this.rawBgmBuffers = bgmRaw;
       this.fetched = true;
 
       // Register unlock listeners BEFORE trying to decode — on iOS Safari
@@ -283,14 +314,22 @@ export class SoundSystem extends GameSystem {
         this.rawFallOffBuffers.map((buf) => this.audioCtx!.decodeAudioData(buf.slice(0))),
       );
 
+      const bgmDecoded = await Promise.all(
+        this.rawBgmBuffers.map((buf) => this.audioCtx!.decodeAudioData(buf.slice(0))),
+      );
+
       this.hitBuffers.push(...hitDecoded);
       this.movementBuffer = movementDecoded;
       this.rimHitBuffer = rimHitDecoded;
       this.fallOffBuffers.push(...fallOffDecoded);
+      this.bgmBuffers.push(...bgmDecoded);
       this.loaded = true;
 
       // On iOS Safari, remind the user about the hardware silent switch
       this.silentModeHint.show();
+
+      // Start background music once everything is decoded
+      this.startBgm();
     } catch (err) {
       console.warn('SoundSystem: Failed to decode audio buffers.', err);
     }
@@ -513,6 +552,78 @@ export class SoundSystem extends GameSystem {
     }, FADE_OUT_DURATION * 1000 + 50);
   }
 
+  // ── Background music ─────────────────────────────────────────────
+
+  /**
+   * Begin looping background music. Picks a random starting track and
+   * cross-fades into the next track when the current one ends.
+   */
+  private startBgm(): void {
+    if (this.bgmStarted || this.bgmBuffers.length === 0 || !this.audioCtx) return;
+    this.bgmStarted = true;
+
+    // Pick a random first track
+    this.bgmCurrentIndex = this.rng.intRange(0, this.bgmBuffers.length - 1);
+    this.playBgmTrack(this.bgmCurrentIndex);
+  }
+
+  /** Play a specific BGM track by index, fading in over BGM_CROSSFADE_DURATION. */
+  private playBgmTrack(index: number): void {
+    if (!this.audioCtx || this.bgmBuffers.length === 0) return;
+
+    if (this.audioCtx.state !== 'running') {
+      void this.audioCtx.resume();
+    }
+
+    const gain = this.audioCtx.createGain();
+    gain.gain.setValueAtTime(0, this.audioCtx.currentTime);
+    gain.gain.linearRampToValueAtTime(BGM_VOLUME, this.audioCtx.currentTime + BGM_CROSSFADE_DURATION);
+    gain.connect(this.audioCtx.destination);
+
+    const source = this.audioCtx.createBufferSource();
+    source.buffer = this.bgmBuffers[index];
+    source.connect(gain);
+    source.start(0);
+
+    source.onended = () => {
+      // Only advance if this is still the active source (not stopped manually)
+      if (this.bgmSource === source) {
+        this.bgmSource = null;
+        if (this.bgmGain) {
+          this.bgmGain.disconnect();
+          this.bgmGain = null;
+        }
+        this.playNextBgmTrack();
+      }
+    };
+
+    this.bgmSource = source;
+    this.bgmGain = gain;
+  }
+
+  /** Advance to the next BGM track (wraps around). */
+  private playNextBgmTrack(): void {
+    if (this.bgmBuffers.length === 0) return;
+    this.bgmCurrentIndex = (this.bgmCurrentIndex + 1) % this.bgmBuffers.length;
+    this.playBgmTrack(this.bgmCurrentIndex);
+  }
+
+  /** Stop background music, optionally fading out. */
+  private stopBgm(): void {
+    if (this.bgmSource) {
+      // Detach the onended handler to prevent chaining to the next track
+      this.bgmSource.onended = null;
+      this.bgmSource.stop();
+      this.bgmSource.disconnect();
+      this.bgmSource = null;
+    }
+    if (this.bgmGain) {
+      this.bgmGain.disconnect();
+      this.bgmGain = null;
+    }
+    this.bgmStarted = false;
+  }
+
   // ── Frame update — speed-based fade-out ─────────────────────────
 
   public override update(_deltaTime: number): void {
@@ -543,6 +654,7 @@ export class SoundSystem extends GameSystem {
 
     this.stopMovementSound();
     this.stopSlidingSound();
+    this.stopBgm();
     this.removeUnlockListeners();
     this.silentModeHint.dispose();
 
