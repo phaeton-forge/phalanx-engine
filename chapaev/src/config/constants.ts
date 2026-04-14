@@ -123,8 +123,8 @@ function cellToWorld(col: number, row: number): FPVector3Type {
 
 /**
  * Chapayev starting layout:
- * - White checkers occupy row 0 (all 8 columns)
- * - Black checkers occupy row 7 (all 8 columns)
+ * - White checkers occupy row 7 (bottom, closer to the player — white goes first)
+ * - Black checkers occupy row 0 (top)
  */
 export interface InitialCheckerPosition {
   readonly team: 'white' | 'black';
@@ -134,14 +134,14 @@ export interface InitialCheckerPosition {
 function generateStartingPositions(): InitialCheckerPosition[] {
   const positions: InitialCheckerPosition[] = [];
 
-  // White – row 0 (top from the camera's default viewpoint, z = -3.5)
+  // White – row 7 (bottom from the camera's default viewpoint, z = +3.5)
   for (let col = 0; col < BOARD_SIZE; col++) {
-    positions.push({ team: 'white', position: cellToWorld(col, 0) });
+    positions.push({ team: 'white', position: cellToWorld(col, 7) });
   }
 
-  // Black – row 7 (bottom, z = +3.5)
+  // Black – row 0 (top, z = -3.5)
   for (let col = 0; col < BOARD_SIZE; col++) {
-    positions.push({ team: 'black', position: cellToWorld(col, 7) });
+    positions.push({ team: 'black', position: cellToWorld(col, 0) });
   }
 
   return positions;

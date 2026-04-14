@@ -30,10 +30,10 @@ export class GameStateComponent implements IComponent {
   /** Current round number (1-based) */
   public roundNumber: number;
 
-  /** Starting row for white checkers (0 = bottom of board) */
+  /** Starting row for white checkers (7 = bottom of board) */
   public whiteRow: number;
 
-  /** Starting row for black checkers (7 = top of board) */
+  /** Starting row for black checkers (0 = top of board) */
   public blackRow: number;
 
   /** Entity ID of the checker that was last flicked */
@@ -55,8 +55,8 @@ export class GameStateComponent implements IComponent {
     this.currentTeam = initialTeam;
     this.phase = 'aiming';
     this.roundNumber = 1;
-    this.whiteRow = 0;
-    this.blackRow = 7;
+    this.whiteRow = 7;
+    this.blackRow = 0;
     this.lastFlickedEntityId = -1;
     this.whiteAliveCount = 8;
     this.blackAliveCount = 8;

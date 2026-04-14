@@ -26,6 +26,7 @@ export class ModeToggle {
   private readonly button: HTMLButtonElement;
   private mode: InteractionMode;
   private readonly listeners: ModeChangeListener[] = [];
+  private readonly onKeyDown: (e: KeyboardEvent) => void;
 
   constructor(initialMode: InteractionMode = 'aim') {
     this.mode = initialMode;
@@ -37,7 +38,7 @@ export class ModeToggle {
     // Inline styles — keeps us dependency-free and out of any CSS build
     Object.assign(this.button.style, {
       position: 'fixed',
-      top: '16px',
+      bottom: '16px',
       right: '16px',
       zIndex: '1000',
       display: 'flex',
@@ -70,6 +71,14 @@ export class ModeToggle {
 
     this.button.addEventListener('click', () => this.toggle());
 
+    // Desktop keyboard shortcut: "T" to toggle mode
+    this.onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 't' || e.key === 'T') {
+        this.toggle();
+      }
+    };
+    window.addEventListener('keydown', this.onKeyDown);
+
     this.applyVisuals();
     document.body.appendChild(this.button);
   }
@@ -101,6 +110,7 @@ export class ModeToggle {
 
   /** Remove the button from the DOM. */
   public dispose(): void {
+    window.removeEventListener('keydown', this.onKeyDown);
     this.button.remove();
     this.listeners.length = 0;
   }
@@ -112,7 +122,7 @@ export class ModeToggle {
       this.button.textContent = '🎯 Aim';
       this.button.style.background = UI_BTN_AIM_BG;
     } else {
-      this.button.textContent = '📷 Camera';
+      this.button.textContent = '🔄 Move';
       this.button.style.background = UI_BTN_CAM_BG;
     }
   }

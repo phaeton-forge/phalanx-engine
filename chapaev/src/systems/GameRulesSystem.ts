@@ -180,14 +180,14 @@ export class GameRulesSystem extends GameSystem {
     if (winner !== null) {
       // Winner advances 1 row toward the opponent's side
       if (winner === TeamTag.White) {
-        gs.whiteRow = Math.min(gs.whiteRow + 1, 7);
+        gs.whiteRow = Math.max(gs.whiteRow - 1, 0);
       } else {
-        gs.blackRow = Math.max(gs.blackRow - 1, 0);
+        gs.blackRow = Math.min(gs.blackRow + 1, 7);
       }
 
       // Check game-over: winner reached the last row
       const winnerRow = winner === TeamTag.White ? gs.whiteRow : gs.blackRow;
-      const lastRow = winner === TeamTag.White ? 7 : 0;
+      const lastRow = winner === TeamTag.White ? 0 : 7;
 
       if (winnerRow === lastRow) {
         gs.phase = 'game_over';
