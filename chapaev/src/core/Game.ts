@@ -38,8 +38,7 @@ export class Game {
 
   // Network (online mode only)
   private networkManager: NetworkManager | null = null;
-  private lockstepManager: LockstepManager | null = null;
-  private interpolationSystem: InterpolationSystem | null = null;
+  private commandFlushUnsubscribe: (() => void) | null = null;
   private localTeam: TeamTag = TeamTag.White;
 
   constructor(canvas: HTMLCanvasElement, mode: GameMode = 'hotseat') {
@@ -142,7 +141,6 @@ export class Game {
     const rapierVFXSystem = new RapierVFXSystem();
     const soundSystem = new SoundSystem();
     const interpolationSystem = new InterpolationSystem();
-    this.interpolationSystem = interpolationSystem;
 
     // Tick systems: physics first, then rules
     const tickSystems = [physicsSystem, gameRulesSystem];
@@ -158,7 +156,12 @@ export class Game {
       this.world.eventBus,
       this.world.entityManager,
     );
-    this.lockstepManager = lockstepManager;
+
+    // Keep a minimal frame subscription so PhalanxClient can flush
+    // buffered outgoing commands each frame.
+    this.commandFlushUnsubscribe = this.networkManager.client.onFrame(
+      (_alpha: number, _dt: number) => {},
+    );
 
     // Wire up mesh map
     const meshMap = renderSystem.getMeshMap();
@@ -293,6 +296,8 @@ export class Game {
   // ── Cleanup ─────────────────────────────────────────────────────
 
   public dispose(): void {
+    this.commandFlushUnsubscribe?.();
+    this.commandFlushUnsubscribe = null;
     this.world.stop();
     this.world.dispose();
     this.networkManager?.dispose();
