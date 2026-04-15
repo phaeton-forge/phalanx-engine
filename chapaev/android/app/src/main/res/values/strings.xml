@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Chapaev</string>
+    <string name="title_activity_main">Chapaev</string>
+    <string name="package_name">com.phalanx.chapaev</string>
+    <string name="custom_url_scheme">com.phalanx.chapaev</string>
+</resources>
