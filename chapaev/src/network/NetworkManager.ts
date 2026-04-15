@@ -1,5 +1,5 @@
 import { PhalanxClient } from 'phalanx-client';
-import type { MatchFoundEvent, CountdownEvent, GameStartEvent } from 'phalanx-client';
+import type { MatchFoundEvent, CountdownEvent, GameStartEvent, CommandsBatchEvent } from 'phalanx-client';
 
 const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3000';
 
@@ -139,6 +139,17 @@ export class NetworkManager {
 
   public onDesync(handler: (tick: number) => void): () => void {
     const unsub = this.client.on('desync', (event) => handler(event.tick));
+    this.networkUnsubscribers.push(unsub);
+    return unsub;
+  }
+
+  /**
+   * Subscribe to incoming commands-batch events from the server.
+   * In event tick mode, the server broadcasts each command immediately
+   * rather than batching on a tick loop.
+   */
+  public onCommandsBatch(handler: (event: CommandsBatchEvent) => void): () => void {
+    const unsub = this.client.on('commands', handler);
     this.networkUnsubscribers.push(unsub);
     return unsub;
   }
