@@ -39,6 +39,10 @@ async function main() {
     },
   });
 
+  // TODO (Stage 3): Add server-side command validation via phalanx.on('player-command')
+  // to reject invalid command types, malformed payloads, and commands targeting wrong team.
+  // See: PhalanxEventHandlers['player-command'] — return false to reject a command.
+
   phalanx.on('match-created', (match) => {
     console.log(`Match created: ${match.id}`);
   });

@@ -140,22 +140,24 @@ export class Game {
     const renderSystem = new ThreeRenderSystem(this.sceneCtx.scene);
     const rapierVFXSystem = new RapierVFXSystem();
     const soundSystem = new SoundSystem();
-    this.interpolationSystem = new InterpolationSystem();
+    const interpolationSystem = new InterpolationSystem();
+    this.interpolationSystem = interpolationSystem;
 
     // Tick systems: physics first, then rules
     const tickSystems = [physicsSystem, gameRulesSystem];
 
     // Frame systems: input → render → rapier VFX → sound → interpolation
-    const frameSystems = [flickInputSystem, renderSystem, rapierVFXSystem, soundSystem, this.interpolationSystem];
+    const frameSystems = [flickInputSystem, renderSystem, rapierVFXSystem, soundSystem, interpolationSystem];
 
     this.world.registerSystems(tickSystems, frameSystems);
 
     // Create lockstep manager
-    this.lockstepManager = new LockstepManager(
+    const lockstepManager = new LockstepManager(
       this.networkManager.client,
       this.world.eventBus,
       this.world.entityManager,
     );
+    this.lockstepManager = lockstepManager;
 
     // Wire up mesh map
     const meshMap = renderSystem.getMeshMap();
@@ -163,7 +165,7 @@ export class Game {
     rapierVFXSystem.setMeshMap(meshMap);
 
     // Enable network mode on FlickInputSystem
-    flickInputSystem.setNetworkMode(this.lockstepManager, this.localTeam);
+    flickInputSystem.setNetworkMode(lockstepManager, this.localTeam);
 
     // Setup network event handlers
     this.setupNetworkEvents();
@@ -175,8 +177,6 @@ export class Game {
     });
 
     const { composer, controls } = this.sceneCtx;
-    const interpolationSystem = this.interpolationSystem;
-    const lockstepManager = this.lockstepManager;
 
     // Start the world with lifecycle hooks (following direct-strike pattern)
     this.world.start({
@@ -194,12 +194,12 @@ export class Game {
         // Submit state hash for desync detection
         lockstepManager.submitHashIfNeeded(tick);
       },
-      beforeFrame: (_alpha: number, _dt: number) => {
+      beforeFrame: (alpha: number, _dt: number) => {
+        // Interpolate visual positions BEFORE frame systems sync transforms to meshes
+        interpolationSystem.interpolate(alpha);
         controls.update();
       },
-      afterFrame: (alpha: number, _dt: number) => {
-        // Interpolate visual positions between ticks for smooth rendering
-        interpolationSystem.interpolate(alpha);
+      afterFrame: (_alpha: number, _dt: number) => {
         composer.render();
       },
     });
