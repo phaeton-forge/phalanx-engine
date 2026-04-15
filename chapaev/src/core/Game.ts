@@ -1,5 +1,4 @@
 import { GameWorld, Entity } from 'phalanx-ecs';
-import type { CommandsBatch } from 'phalanx-ecs';
 import { setupScene } from '../rendering/SceneSetup.ts';
 import type { SceneContext } from '../rendering/SceneSetup.ts';
 import { ThreeRenderSystem } from '../systems/ThreeRenderSystem.ts';
@@ -19,7 +18,7 @@ import { INITIAL_POSITIONS } from '../config/constants.ts';
 import { TeamTag } from '../enums/TeamTag.ts';
 import { LockstepManager } from '../network/LockstepManager.ts';
 import { NetworkManager } from '../network/NetworkManager.ts';
-import { GAME_OVER } from '../events/GameEvents.ts';
+import { ALL_SETTLED, GAME_OVER } from '../events/GameEvents.ts';
 import type { GameOverEvent } from '../events/GameEvents.ts';
 
 export type GameMode = 'hotseat' | 'online';
@@ -30,7 +29,7 @@ export type GameMode = 'hotseat' | 'online';
  *
  * Supports two modes:
  * - hotseat: local two-player (Stage 1, internal tick loop)
- * - online:  network 1v1 via PhalanxClient (Stage 2, server-driven ticks)
+ * - online:  network 1v1 via PhalanxClient (Stage 2, event tick mode — local physics, server relays commands)
  */
 export class Game {
   private world!: GameWorld;
@@ -39,8 +38,7 @@ export class Game {
 
   // Network (online mode only)
   private networkManager: NetworkManager | null = null;
-  private lockstepManager: LockstepManager | null = null;
-  private interpolationSystem: InterpolationSystem | null = null;
+  private commandFlushUnsubscribe: (() => void) | null = null;
   private localTeam: TeamTag = TeamTag.White;
 
   constructor(canvas: HTMLCanvasElement, mode: GameMode = 'hotseat') {
@@ -118,10 +116,12 @@ export class Game {
     this.localTeam = localPlayerIndex === 0 ? TeamTag.White : TeamTag.Black;
     console.log(`[Game] Local player index: ${localPlayerIndex}, team: ${this.localTeam}`);
 
-    // Create ECS world with PhalanxClient as tick/frame provider
+    // Event tick mode: GameWorld uses its own internal TickFrameManager at 60Hz.
+    // The server does NOT drive a tick loop — it relays commands immediately.
+    // Physics runs locally on each client; commands arrive via PhalanxClient events.
     this.world = new GameWorld({
       componentTypes: Object.values(ComponentType),
-      tickFrameProvider: this.networkManager.client,
+      tickRate: 60,
     });
 
     // Create entities with player components for online mode
@@ -141,7 +141,6 @@ export class Game {
     const rapierVFXSystem = new RapierVFXSystem();
     const soundSystem = new SoundSystem();
     const interpolationSystem = new InterpolationSystem();
-    this.interpolationSystem = interpolationSystem;
 
     // Tick systems: physics first, then rules
     const tickSystems = [physicsSystem, gameRulesSystem];
@@ -157,7 +156,12 @@ export class Game {
       this.world.eventBus,
       this.world.entityManager,
     );
-    this.lockstepManager = lockstepManager;
+
+    // Keep a minimal frame subscription so PhalanxClient can flush
+    // buffered outgoing commands each frame.
+    this.commandFlushUnsubscribe = this.networkManager.client.onFrame(
+      (_alpha: number, _dt: number) => {},
+    );
 
     // Wire up mesh map
     const meshMap = renderSystem.getMeshMap();
@@ -166,6 +170,18 @@ export class Game {
 
     // Enable network mode on FlickInputSystem
     flickInputSystem.setNetworkMode(lockstepManager, this.localTeam);
+
+    // Subscribe to incoming commands from the server (event tick mode).
+    // When a flick command arrives, LockstepManager emits FLICK_EXECUTED,
+    // and PhysicsSystem picks it up on the next local 60Hz tick.
+    this.networkManager.onCommandsBatch((batch) => {
+      lockstepManager.handleIncomingCommands(batch);
+    });
+
+    // Submit state hash when physics settles (ALL_SETTLED) for desync detection
+    this.world.eventBus.on(ALL_SETTLED, () => {
+      lockstepManager.submitHashOnSettle();
+    });
 
     // Setup network event handlers
     this.setupNetworkEvents();
@@ -178,28 +194,22 @@ export class Game {
 
     const { composer, controls } = this.sceneCtx;
 
-    // Start the world with lifecycle hooks (following direct-strike pattern)
+    // Start the local 60Hz tick/frame loop.
+    // No beforeTick/afterTick hooks for command processing — commands arrive
+    // asynchronously from the network. Interpolation snapshots still happen
+    // around each local tick for smooth visual rendering.
     this.world.start({
-      beforeTick: (tick: number, commandsBatch: CommandsBatch) => {
-        // Snapshot positions BEFORE simulation tick
+      beforeTick: () => {
         interpolationSystem.snapshotPositions();
-
-        // Execute commands from server batch (before tick systems run)
-        lockstepManager.processTick(tick, commandsBatch);
       },
-      afterTick: (tick: number) => {
-        // Capture positions AFTER simulation tick
+      afterTick: () => {
         interpolationSystem.captureCurrentPositions();
-
-        // Submit state hash for desync detection
-        lockstepManager.submitHashIfNeeded(tick);
       },
       beforeFrame: (alpha: number, _dt: number) => {
-        // Interpolate visual positions BEFORE frame systems sync transforms to meshes
         interpolationSystem.interpolate(alpha);
         controls.update();
       },
-      afterFrame: (_alpha: number, _dt: number) => {
+      afterFrame: () => {
         composer.render();
       },
     });
@@ -286,6 +296,8 @@ export class Game {
   // ── Cleanup ─────────────────────────────────────────────────────
 
   public dispose(): void {
+    this.commandFlushUnsubscribe?.();
+    this.commandFlushUnsubscribe = null;
     this.world.stop();
     this.world.dispose();
     this.networkManager?.dispose();

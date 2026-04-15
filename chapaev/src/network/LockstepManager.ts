@@ -1,7 +1,7 @@
-import type { CommandsBatch, PlayerCommand, EventBus, EntityManager } from 'phalanx-ecs';
+import type { PlayerCommand, EventBus, EntityManager } from 'phalanx-ecs';
 import { FP } from 'phalanx-math';
 import { StateHasher } from 'phalanx-client';
-import type { PhalanxClient } from 'phalanx-client';
+import type { PhalanxClient, CommandsBatchEvent } from 'phalanx-client';
 import { FLICK_EXECUTED } from '../events/GameEvents.ts';
 import type { FlickExecutedEvent } from '../events/GameEvents.ts';
 import { ComponentType } from '../components/Component.ts';
@@ -22,21 +22,26 @@ export interface FlickCommandData {
   force: string;
 }
 
-/** Interval (in ticks) between state hash submissions */
-const HASH_INTERVAL = 60;
-
 /**
  * LockstepManager — processes commands from the server's commands-batch
  * and applies them deterministically on the local ECS.
  *
+ * In event tick mode, commands arrive asynchronously from PhalanxClient
+ * 'commands' events (not from GameWorld tick hooks). The local ECS runs
+ * its own 60Hz physics loop; this manager bridges network commands into
+ * the local event bus.
+ *
  * Only one command type exists in Chapayev: `flick`.
  *
- * Also handles state hashing for desync detection.
+ * Also handles state hashing for desync detection (at ALL_SETTLED).
  */
 export class LockstepManager {
   private readonly client: PhalanxClient;
   private readonly eventBus: EventBus;
   private readonly entityManager: EntityManager;
+
+  /** Last server tick from a commands-batch (used as hash identifier) */
+  private lastServerTick = 0;
 
   constructor(
     client: PhalanxClient,
@@ -57,19 +62,15 @@ export class LockstepManager {
   }
 
   /**
-   * Process a tick's command batch. Called from GameWorld.start({ beforeTick }).
-   * Extracts flick commands and emits them as FLICK_EXECUTED events so that
+   * Handle an incoming commands-batch event from PhalanxClient.
+   * Called from the Game's commands-batch event listener (event tick mode).
+   * Extracts flick commands and emits FLICK_EXECUTED events so that
    * PhysicsSystem processes them identically on all clients.
    */
-  public processTick(_tick: number, commandsBatch: CommandsBatch): void {
-    // Flatten commands from all players in deterministic order (sorted by playerId)
-    const allCommands: PlayerCommand[] = [];
-    const sortedPlayerIds = Object.keys(commandsBatch.commands).sort();
-    for (const playerId of sortedPlayerIds) {
-      allCommands.push(...commandsBatch.commands[playerId]);
-    }
+  public handleIncomingCommands(batch: CommandsBatchEvent): void {
+    this.lastServerTick = batch.tick;
 
-    for (const cmd of allCommands) {
+    for (const cmd of batch.commands) {
       if (cmd.type === 'flick') {
         this.handleFlickCommand(cmd);
       } else {
@@ -134,11 +135,15 @@ export class LockstepManager {
   }
 
   /**
-   * Submit a state hash every HASH_INTERVAL ticks for desync detection.
+   * Submit a state hash for desync detection.
+   * In event tick mode, call this when physics settles (ALL_SETTLED)
+   * using the last server tick as the hash identifier.
    */
-  public submitHashIfNeeded(tick: number): void {
-    if (tick % HASH_INTERVAL !== 0) return;
+  public submitHashOnSettle(): void {
+    this.submitHash(this.lastServerTick);
+  }
 
+  private submitHash(tick: number): void {
     const hasher = new StateHasher();
     hasher.addInt(tick);
 

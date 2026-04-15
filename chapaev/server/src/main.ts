@@ -22,6 +22,7 @@ async function main() {
       origin: CORS_ORIGINS,
       credentials: true,
     },
+    tickMode: 'event',
     tickRate: 20,
     gameMode: '1v1',
     countdownSeconds: 3,
