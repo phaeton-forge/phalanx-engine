@@ -13,6 +13,7 @@ import {
   FLICK_EXECUTED,
 } from '../events/GameEvents.ts';
 import type { FlickExecutedEvent } from '../events/GameEvents.ts';
+import type { LockstepManager, FlickCommandData } from '../network/LockstepManager.ts';
 
 /**
  * FlickInputSystem — frame system that handles mouse/touch aiming and flicking.
@@ -61,6 +62,17 @@ export class FlickInputSystem extends GameSystem {
   /** Reusable ground plane for raycasting pointer position to world XZ */
   private readonly groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -(BOARD_HEIGHT / 2 + CHECKER_HEIGHT / 2));
 
+  // ── Network mode ──────────────────────────────────────────────
+
+  /** Whether we are in online (network) mode */
+  private networkMode = false;
+
+  /** LockstepManager for sending commands in online mode */
+  private lockstepManager: LockstepManager | null = null;
+
+  /** Local player's team in online mode (null = hot-seat, both teams playable) */
+  private localTeam: TeamTag | null = null;
+
   // ── Bound event handlers (for removal) ─────────────────────────
 
   private readonly onPointerDown = (e: PointerEvent): void => this.handlePointerDown(e);
@@ -81,6 +93,17 @@ export class FlickInputSystem extends GameSystem {
     this.canvas = domElement;
     this.scene = scene;
     this.controls = controls;
+  }
+
+  /**
+   * Enable network mode. In this mode, flicks are sent as commands
+   * via the LockstepManager instead of directly emitting FLICK_EXECUTED.
+   * Input is also blocked when it's not the local player's turn.
+   */
+  public setNetworkMode(lockstepManager: LockstepManager, localTeam: TeamTag): void {
+    this.networkMode = true;
+    this.lockstepManager = lockstepManager;
+    this.localTeam = localTeam;
   }
 
   // ── Lifecycle ──────────────────────────────────────────────────
@@ -119,9 +142,16 @@ export class FlickInputSystem extends GameSystem {
 
   // ── Pointer / Touch handlers ───────────────────────────────────
 
+  /** Returns true if input should be blocked (online mode + not local player's turn) */
+  private isInputBlocked(): boolean {
+    if (!this.networkMode || !this.localTeam) return false;
+    return this.gameState.currentTeam !== this.localTeam;
+  }
+
   private handlePointerDown(e: PointerEvent): void {
     if (!this.enabled) return;
     if (this.gameState.phase !== 'aiming') return;
+    if (this.isInputBlocked()) return;
 
     // Pointer events from touch are handled in handleTouchStart
     if (e.pointerType === 'touch') return;
@@ -150,6 +180,7 @@ export class FlickInputSystem extends GameSystem {
   private handleTouchStart(e: TouchEvent): void {
     if (!this.enabled) return;
     if (this.gameState.phase !== 'aiming') return;
+    if (this.isInputBlocked()) return;
 
     // Multi-finger gesture (pinch-to-zoom) — let orbit controls handle it
     if (e.touches.length > 1) {
@@ -314,17 +345,36 @@ export class FlickInputSystem extends GameSystem {
     const dirX = dx / dragLen;
     const dirZ = dz / dragLen;
 
-    const entity = this.entityManager.getEntity(this.dragEntityId);
-    const checker = entity?.getComponent<CheckerComponent>(ComponentType.Checker);
-    const team = checker?.team ?? TeamTag.White;
+    if (this.networkMode && this.lockstepManager) {
+      // Online mode: send command via lockstep — do NOT modify physics directly.
+      // The command will arrive back in a commands-batch and be applied by
+      // LockstepManager on all clients simultaneously.
+      const fpDirX = FP.FromFloat(dirX);
+      const fpDirZ = FP.FromFloat(dirZ);
+      const fpForce = FP.FromFloat(force);
 
-    this.eventBus.emit<FlickExecutedEvent>(FLICK_EXECUTED, {
-      entityId: this.dragEntityId,
-      team,
-      directionX: FP.FromFloat(dirX),
-      directionZ: FP.FromFloat(dirZ),
-      force: FP.FromFloat(force),
-    });
+      const commandData: FlickCommandData = {
+        entityId: this.dragEntityId,
+        dirX: FP.ToRaw(fpDirX).toString(),
+        dirZ: FP.ToRaw(fpDirZ).toString(),
+        force: FP.ToRaw(fpForce).toString(),
+      };
+
+      this.lockstepManager.queueFlickCommand(commandData);
+    } else {
+      // Hot-seat mode: emit directly (original Stage 1 behaviour)
+      const entity = this.entityManager.getEntity(this.dragEntityId);
+      const checker = entity?.getComponent<CheckerComponent>(ComponentType.Checker);
+      const team = checker?.team ?? TeamTag.White;
+
+      this.eventBus.emit<FlickExecutedEvent>(FLICK_EXECUTED, {
+        entityId: this.dragEntityId,
+        team,
+        directionX: FP.FromFloat(dirX),
+        directionZ: FP.FromFloat(dirZ),
+        force: FP.FromFloat(force),
+      });
+    }
 
     this.dragEntityId = -1;
   }

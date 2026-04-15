@@ -7,4 +7,6 @@ export { PhysicsBodySoASchema, PhysicsBodyComponent } from './PhysicsBodyCompone
 export type { PhysicsBodyOptions } from './PhysicsBodyComponent.ts';
 export { GameStateComponent } from './GameStateComponent.ts';
 export type { GamePhase } from './GameStateComponent.ts';
+export { PlayerComponent } from './PlayerComponent.ts';
+export { InterpolationComponent } from './InterpolationComponent.ts';
 
