@@ -1,5 +1,5 @@
 import { GameSystem } from 'phalanx-ecs';
-import { FP, FPVector3 } from 'phalanx-math';
+import { FP } from 'phalanx-math';
 import { ComponentType } from '../components/Component.ts';
 import type { InterpolationComponent } from '../components/InterpolationComponent.ts';
 import type { TransformComponent } from '../components/TransformComponent.ts';
@@ -75,13 +75,17 @@ export class InterpolationSystem extends GameSystem {
       if (!transform) continue;
 
       // Convert FP to float then lerp (avoids FP math overhead for visuals)
-      const prevPos = FPVector3.ToFloat(interp.previousFpPosition);
-      const curPos = FPVector3.ToFloat(interp.currentFpPosition);
+      const prevX = FP.ToFloat(interp.previousFpPosition.x);
+      const prevY = FP.ToFloat(interp.previousFpPosition.y);
+      const prevZ = FP.ToFloat(interp.previousFpPosition.z);
+      const curX = FP.ToFloat(interp.currentFpPosition.x);
+      const curY = FP.ToFloat(interp.currentFpPosition.y);
+      const curZ = FP.ToFloat(interp.currentFpPosition.z);
 
       transform.setVisualPosition(
-        prevPos.x + (curPos.x - prevPos.x) * alpha,
-        prevPos.y + (curPos.y - prevPos.y) * alpha,
-        prevPos.z + (curPos.z - prevPos.z) * alpha,
+        prevX + (curX - prevX) * alpha,
+        prevY + (curY - prevY) * alpha,
+        prevZ + (curZ - prevZ) * alpha,
       );
     }
   }
@@ -100,8 +104,11 @@ export class InterpolationSystem extends GameSystem {
       const fpPos = transform.fpPosition;
       interp.snapToPosition(fpPos);
 
-      const floats = FPVector3.ToFloat(fpPos);
-      transform.setVisualPosition(floats.x, floats.y, floats.z);
+      transform.setVisualPosition(
+        FP.ToFloat(fpPos.x),
+        FP.ToFloat(fpPos.y),
+        FP.ToFloat(fpPos.z),
+      );
     }
   }
 }

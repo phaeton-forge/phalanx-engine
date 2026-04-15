@@ -78,14 +78,48 @@ export class LockstepManager {
     }
   }
 
+  private isFlickCommandData(value: unknown): value is FlickCommandData {
+    if (typeof value !== 'object' || value === null) return false;
+    const obj = value as Record<string, unknown>;
+    return (
+      typeof obj.entityId === 'number' &&
+      typeof obj.dirX === 'string' &&
+      typeof obj.dirZ === 'string' &&
+      typeof obj.force === 'string'
+    );
+  }
+
+  private parseFlickCommandRawValues(
+    data: FlickCommandData,
+  ): { dirX: bigint; dirZ: bigint; force: bigint } | null {
+    try {
+      return {
+        dirX: BigInt(data.dirX),
+        dirZ: BigInt(data.dirZ),
+        force: BigInt(data.force),
+      };
+    } catch {
+      console.warn('[Lockstep] Failed to parse BigInt values from flick command', data);
+      return null;
+    }
+  }
+
   /**
    * Deserialise a flick command and emit a FLICK_EXECUTED event.
    * PhysicsSystem already listens for these and applies the impulse.
    */
   private handleFlickCommand(cmd: PlayerCommand): void {
-    const data = cmd.data as FlickCommandData;
+    if (!this.isFlickCommandData(cmd.data)) {
+      console.warn('[Lockstep] Invalid flick command data', cmd.data);
+      return;
+    }
+
+    const data = cmd.data;
     const entity = this.entityManager.getEntity(data.entityId);
     if (!entity) return;
+
+    const rawValues = this.parseFlickCommandRawValues(data);
+    if (!rawValues) return;
 
     const checker = entity.getComponent<CheckerComponent>(ComponentType.Checker);
     const team = checker?.team ?? TeamTag.White;
@@ -93,9 +127,9 @@ export class LockstepManager {
     this.eventBus.emit<FlickExecutedEvent>(FLICK_EXECUTED, {
       entityId: data.entityId,
       team,
-      directionX: FP.FromRaw(BigInt(data.dirX)),
-      directionZ: FP.FromRaw(BigInt(data.dirZ)),
-      force: FP.FromRaw(BigInt(data.force)),
+      directionX: FP.FromRaw(rawValues.dirX),
+      directionZ: FP.FromRaw(rawValues.dirZ),
+      force: FP.FromRaw(rawValues.force),
     });
   }
 
@@ -123,10 +157,10 @@ export class LockstepManager {
 
       const fpPos = transform.fpPosition;
       hasher.addInt(entity.id);
-      hasher.addFloat(FP.ToFloat(fpPos.x));
-      hasher.addFloat(FP.ToFloat(fpPos.z));
-      hasher.addFloat(FP.ToFloat(physicsBody.velocityX));
-      hasher.addFloat(FP.ToFloat(physicsBody.velocityZ));
+      hasher.addString(FP.ToRaw(fpPos.x).toString());
+      hasher.addString(FP.ToRaw(fpPos.z).toString());
+      hasher.addString(FP.ToRaw(physicsBody.velocityX).toString());
+      hasher.addString(FP.ToRaw(physicsBody.velocityZ).toString());
       hasher.addBool(checker.isAlive);
     }
 

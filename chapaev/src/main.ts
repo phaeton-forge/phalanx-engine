@@ -10,12 +10,25 @@ if (!canvas) {
 // Switch between hot-seat and online via query param: ?mode=hotseat or ?mode=online
 // Default is 'online' for Stage 2.
 const params = new URLSearchParams(window.location.search);
-const mode: GameMode = (params.get('mode') as GameMode) || 'online';
+const rawMode = params.get('mode');
+const mode: GameMode = rawMode === 'hotseat' || rawMode === 'online' ? rawMode : 'online';
 
 console.log(`[Chapayev] Starting in ${mode} mode`);
 
+function reportStartupError(error: unknown): void {
+  console.error('[Chapayev] Failed to start game', error);
+  const message = error instanceof Error ? error.message : 'Unknown startup error';
+  const errorElement = document.createElement('div');
+  errorElement.setAttribute('role', 'alert');
+  errorElement.textContent = `Failed to start game: ${message}`;
+  const mountTarget = canvas.parentElement ?? document.body;
+  mountTarget.appendChild(errorElement);
+}
+
 const game = new Game(canvas, mode);
-void game.start();
+void game.start().catch((error: unknown) => {
+  reportStartupError(error);
+});
 
 // Expose for debugging in devtools
 if (import.meta.env.DEV) {
