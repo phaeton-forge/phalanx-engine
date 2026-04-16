@@ -17,7 +17,8 @@
     "dev:game-server": "pnpm --filter game-test-server dev",
     "build:game-server": "pnpm --filter game-test-server build",
     "deploy:babylon": "cd direct-strike-babylon-example && pnpm run deploy",
-    "heroku-postbuild": "corepack enable && corepack prepare pnpm@10.6.0 --activate && pnpm install && pnpm --filter phalanx-math build && pnpm --filter phalanx-server build && pnpm --filter game-test-server build",
+    "heroku-postbuild": "corepack enable && corepack prepare pnpm@10.33.0 --activate && pnpm install && pnpm --filter phalanx-math build && pnpm --filter phalanx-server build && pnpm --filter game-test-server build",
+    "render-build:chapaev": "corepack enable && corepack prepare pnpm@10.33.0 --activate && pnpm install && pnpm --filter phalanx-math build && pnpm --filter phalanx-ecs build && pnpm --filter phalanx-server build && pnpm --filter chapaev-server build",
     "start": "node game-test-server/dist/main.js",
     "lint": "eslint . --ext .ts,.tsx",
     "lint:fix": "eslint . --ext .ts,.tsx --fix",
@@ -37,7 +38,7 @@
   "license": "MIT",
   "packageManager": "pnpm@10.33.0+sha512.10568bb4a6afb58c9eb3630da90cc9516417abebd3fabbe6739f0ae795728da1491e9db5a544c76ad8eb7570f5c4bb3d6c637b2cb41bfdcdb47fa823c8649319",
   "engines": {
-    "node": "20.x"
+    "node": ">=25.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
