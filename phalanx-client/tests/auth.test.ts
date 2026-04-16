@@ -83,8 +83,9 @@ describe('GoogleOAuthAdapter', () => {
       expect(url).toContain('redirect_uri=');
     });
 
-    it('should include PKCE parameters', () => {
+    it('should include PKCE parameters', async () => {
       const adapter = new GoogleOAuthAdapter(mockGoogleConfig);
+      await adapter.preparePKCE();
       const url = adapter.getLoginUrl();
 
       expect(url).toContain('code_challenge=');

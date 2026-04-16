@@ -21,6 +21,8 @@ import type {
 } from './types/index.js';
 import { validateConfig } from './config/validation.js';
 import { MatchmakingService } from './services/MatchmakingService.js';
+import { PrivateRoomService } from './services/PrivateRoomService.js';
+import { GameRoom } from './services/GameRoom.js';
 import { TokenValidatorService } from './services/TokenValidator.js';
 import {
   OAuthExchangeService,
@@ -50,6 +52,7 @@ export class Phalanx extends EventEmitter {
   private httpServer: HttpServer | HttpsServer | null = null;
   private io: SocketIOServer | null = null;
   private matchmaking: MatchmakingService | null = null;
+  private privateRooms: PrivateRoomService | null = null;
   private tokenValidator: TokenValidatorService | null = null;
   private oauthExchange: OAuthExchangeService | null = null;
   private isRunning: boolean = false;
@@ -253,6 +256,21 @@ export class Phalanx extends EventEmitter {
       (event: string, ...args: unknown[]) => this.emit(event, ...args)
     );
 
+    // Create private room service
+    this.privateRooms = new PrivateRoomService(
+      this.io,
+      this.config,
+      (event: string, ...args: unknown[]) => this.emit(event, ...args),
+      (gameType: string) => this.matchmaking!.resolveGameTypeConfig(gameType),
+      (playerId: string) => this.matchmaking!.isInAnyQueue(playerId),
+    );
+
+    // Wire up match-ended event to prune finished matches from both services
+    this.on('match-ended' as PhalanxEventType, ((matchId: string) => {
+      this.matchmaking?.removeMatch(matchId);
+      this.privateRooms?.removeMatch(matchId);
+    }) as PhalanxEventHandlers[PhalanxEventType]);
+
     // Setup socket handlers
     this.setupSocketHandlers();
 
@@ -286,6 +304,12 @@ export class Phalanx extends EventEmitter {
     if (this.matchmaking) {
       this.matchmaking.stop();
       this.matchmaking = null;
+    }
+
+    // Stop private rooms
+    if (this.privateRooms) {
+      this.privateRooms.stop();
+      this.privateRooms = null;
     }
 
     // Disconnect all sockets first
@@ -364,7 +388,7 @@ export class Phalanx extends EventEmitter {
       // This replaces tick-ack - any message = player is alive
       socket.onAny(() => {
         if (playerId && (socket.data as SocketData).matchId) {
-          const gameRoom = this.matchmaking?.getMatch(
+          const gameRoom = this.findMatch(
             (socket.data as SocketData).matchId!
           );
           if (gameRoom) {
@@ -390,23 +414,47 @@ export class Phalanx extends EventEmitter {
         }
       });
 
+      // Handle room-create (private match)
+      socket.on(
+        'room-create',
+        (data: { playerId: string; username?: string; gameType?: string }) => {
+          playerId = data.playerId;
+          const username = data.username ?? data.playerId;
+          this.privateRooms!.createRoom(playerId, username, socket, data.gameType);
+        }
+      );
+
+      // Handle room-join (private match)
+      socket.on(
+        'room-join',
+        (data: { playerId: string; username?: string; code: string }) => {
+          playerId = data.playerId;
+          const username = data.username ?? data.playerId;
+          this.privateRooms!.joinRoom(playerId, username, socket, data.code);
+        }
+      );
+
+      // Handle room-cancel (private match)
+      socket.on('room-cancel', () => {
+        if (playerId) {
+          this.privateRooms!.cancelRoom(playerId, socket);
+        }
+      });
+
       // Handle player command
       socket.on('player-command', (command: PlayerCommand) => {
         if (!playerId) return;
 
-        // Find the match this player is in
-        for (const match of this.matchmaking!.getActiveMatches()) {
-          const gameRoom = this.matchmaking!.getMatch(match.id);
-          if (gameRoom) {
-            const accepted = gameRoom.handleCommand(playerId, command);
-            if (accepted) {
-              socket.emit('command-ack', {
-                tick: command.tick,
-                accepted: true,
-              });
-              return;
-            }
-          }
+        // Find the match this player is in (check both matchmaking and private rooms)
+        const matchId = (socket.data as SocketData).matchId;
+        const gameRoom = matchId ? this.findMatch(matchId) : undefined;
+        if (gameRoom) {
+          const accepted = gameRoom.handleCommand(playerId, command);
+          socket.emit('command-ack', {
+            tick: command.tick,
+            accepted,
+          });
+          return;
         }
 
         socket.emit('command-ack', { tick: command.tick, accepted: false });
@@ -440,7 +488,7 @@ export class Phalanx extends EventEmitter {
           return;
         }
 
-        const gameRoom = this.matchmaking!.getMatch(matchId);
+        const gameRoom = this.findMatch(matchId);
         if (!gameRoom) {
           socket.emit('submit-commands-ack', {
             tick,
@@ -503,7 +551,7 @@ export class Phalanx extends EventEmitter {
         const matchId = (socket.data as SocketData).matchId;
         if (!matchId) return;
 
-        const gameRoom = this.matchmaking!.getMatch(matchId);
+        const gameRoom = this.findMatch(matchId);
         if (gameRoom) {
           gameRoom.receiveStateHash(playerId, tick, hash);
         }
@@ -517,7 +565,7 @@ export class Phalanx extends EventEmitter {
         if (!playerId) return;
         const matchId = (socket.data as SocketData).matchId;
         if (!matchId) return;
-        const gameRoom = this.matchmaking!.getMatch(matchId);
+        const gameRoom = this.findMatch(matchId);
         if (gameRoom) {
           gameRoom.pause(playerId);
         }
@@ -528,7 +576,7 @@ export class Phalanx extends EventEmitter {
         if (!playerId) return;
         const matchId = (socket.data as SocketData).matchId;
         if (!matchId) return;
-        const gameRoom = this.matchmaking!.getMatch(matchId);
+        const gameRoom = this.findMatch(matchId);
         if (gameRoom) {
           gameRoom.resume(playerId);
         }
@@ -539,7 +587,7 @@ export class Phalanx extends EventEmitter {
         if (!playerId) return;
         const matchId = (socket.data as SocketData).matchId;
         if (!matchId) return;
-        const gameRoom = this.matchmaking!.getMatch(matchId);
+        const gameRoom = this.findMatch(matchId);
         if (gameRoom) {
           gameRoom.handlePlayerReady(playerId);
         }
@@ -550,7 +598,7 @@ export class Phalanx extends EventEmitter {
         'reconnect-match',
         (data: { playerId: string; matchId: string }) => {
           playerId = data.playerId;
-          const gameRoom = this.matchmaking!.getMatch(data.matchId);
+          const gameRoom = this.findMatch(data.matchId);
           if (gameRoom) {
             const success = gameRoom.handleReconnect(playerId, socket.id);
             socket.emit('reconnect-status', { success });
@@ -568,8 +616,18 @@ export class Phalanx extends EventEmitter {
         if (this.matchmaking) {
           this.matchmaking.handleDisconnect(socket.id);
         }
+        if (this.privateRooms) {
+          this.privateRooms.handleDisconnect(socket.id);
+        }
       });
     });
+  }
+
+  /**
+   * Find a GameRoom by matchId across both matchmaking and private room services.
+   */
+  private findMatch(matchId: string): GameRoom | undefined {
+    return this.matchmaking?.getMatch(matchId) ?? this.privateRooms?.getMatch(matchId);
   }
 
   /**
@@ -593,10 +651,12 @@ export class Phalanx extends EventEmitter {
   }
 
   /**
-   * Get all active matches
+   * Get all active matches (from both matchmaking and private rooms)
    */
   getActiveMatches(): MatchInfo[] {
-    return this.matchmaking?.getActiveMatches() ?? [];
+    const matchmakingMatches = this.matchmaking?.getActiveMatches() ?? [];
+    const privateMatches = this.privateRooms?.getActiveMatches().map((m) => m.getMatchInfo()) ?? [];
+    return [...matchmakingMatches, ...privateMatches];
   }
 
   /**

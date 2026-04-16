@@ -75,7 +75,7 @@ export class MatchmakingService {
   /**
    * Check if a player is already in any queue
    */
-  private isInAnyQueue(playerId: string): boolean {
+  isInAnyQueue(playerId: string): boolean {
     for (const queue of this.queues.values()) {
       if (queue.has(playerId)) return true;
     }
@@ -302,14 +302,11 @@ export class MatchmakingService {
   }
 
   /**
-   * Remove a finished match
+   * Remove a finished match from the matches map.
+   * Called from the match-ended listener — the match already stopped itself.
    */
   removeMatch(matchId: string): void {
-    const match = this.matches.get(matchId);
-    if (match) {
-      match.stop();
-      this.matches.delete(matchId);
-    }
+    this.matches.delete(matchId);
   }
 
   /**

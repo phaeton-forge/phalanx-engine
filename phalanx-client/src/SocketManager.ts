@@ -16,6 +16,10 @@ import type {
   TickSyncEvent,
   CommandsBatchEvent,
   QueueStatusEvent,
+  RoomCreatedEvent,
+  RoomErrorEvent,
+  RoomExpiredEvent,
+  RoomCancelledEvent,
   PlayerDisconnectedEvent,
   PlayerReconnectedEvent,
   PlayerReadyEvent,
@@ -91,6 +95,11 @@ export interface SocketManagerCallbacks {
   // Pause events
   onGamePaused: (data: GamePausedEvent) => void;
   onGameResumed: (data: GameResumedEvent) => void;
+
+  // Private room events
+  onRoomError: (data: RoomErrorEvent) => void;
+  onRoomExpired: (data: RoomExpiredEvent) => void;
+  onRoomCancelled: (data: RoomCancelledEvent) => void;
 
   // State queries (for reconnection logic)
   isPlaying: () => boolean;
@@ -237,6 +246,74 @@ export class SocketManager {
     this.socket!.emit('queue-leave', {
       playerId: this.config.playerId,
     });
+  }
+
+  // ============================================
+  // PRIVATE ROOM OPERATIONS
+  // ============================================
+
+  /**
+   * Create a private room. Resolves with the room code.
+   */
+  async createRoom(gameType?: string): Promise<RoomCreatedEvent> {
+    this.ensureConnected();
+
+    return new Promise((resolve, reject) => {
+      const errorHandler = (error: RoomErrorEvent) => {
+        this.socket?.off('room-created', createdHandler);
+        reject(new Error(error.message));
+      };
+
+      const createdHandler = (event: RoomCreatedEvent) => {
+        this.socket?.off('room-error', errorHandler);
+        resolve(event);
+      };
+
+      this.socket!.once('room-created', createdHandler);
+      this.socket!.once('room-error', errorHandler);
+
+      this.socket!.emit('room-create', {
+        playerId: this.config.playerId,
+        username: this.config.username,
+        gameType,
+      });
+    });
+  }
+
+  /**
+   * Join an existing private room by code.
+   * After joining, the server will emit match-found to both players.
+   */
+  joinRoom(code: string): void {
+    this.ensureConnected();
+
+    this.socket!.emit('room-join', {
+      playerId: this.config.playerId,
+      username: this.config.username,
+      code,
+    });
+  }
+
+  /**
+   * Cancel a previously created private room.
+   */
+  cancelRoom(): void {
+    this.ensureConnected();
+    this.socket!.emit('room-cancel');
+  }
+
+  /**
+   * Register a handler for room-expired events.
+   */
+  onRoomExpired(handler: (event: RoomExpiredEvent) => void): void {
+    this.socket?.on('room-expired', handler);
+  }
+
+  /**
+   * Register a handler for room-cancelled events.
+   */
+  onRoomCancelled(handler: (event: RoomCancelledEvent) => void): void {
+    this.socket?.on('room-cancelled', handler);
   }
 
   /**
@@ -487,6 +564,19 @@ export class SocketManager {
 
     this.socket.on('game-resumed', (data: GameResumedEvent) => {
       this.callbacks.onGameResumed(data);
+    });
+
+    // Private room events
+    this.socket.on('room-error', (data: RoomErrorEvent) => {
+      this.callbacks.onRoomError(data);
+    });
+
+    this.socket.on('room-expired', (data: RoomExpiredEvent) => {
+      this.callbacks.onRoomExpired(data);
+    });
+
+    this.socket.on('room-cancelled', (data: RoomCancelledEvent) => {
+      this.callbacks.onRoomCancelled(data);
     });
 
     // Disconnection handling

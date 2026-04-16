@@ -55,6 +55,7 @@ export class Game {
   private connectEventUnsubscribers: (() => void)[] = [];
   private localTeam: TeamTag = TeamTag.White;
   private isGuestMode = false;
+  private pendingRoomCode: string | null = null;
 
   // UI
   private uiManager: UIManager;
@@ -97,6 +98,31 @@ export class Game {
     this.networkManager = new NetworkManager();
     this.setupUI();
     this.startMenuAutoRotate();
+
+    // Check if joining via room link (e.g. ?room=ABC123)
+    const urlParams = new URLSearchParams(window.location.search);
+    const roomCode = urlParams.get('room');
+    if (roomCode) {
+      // Clear the room param from URL to avoid re-joining on refresh
+      const cleanUrl = window.location.pathname;
+      window.history.replaceState({}, '', cleanUrl);
+
+      const code = roomCode.toUpperCase();
+
+      // If auth is enabled and user is not signed in — show auth first, then join
+      if (this.networkManager.authEnabled && !this.networkManager.getAuthState().isAuthenticated && !this.isGuestMode) {
+        this.pendingRoomCode = code;
+        this.subscribeAuth();
+        this.uiManager.destroyScreen('auth');
+        this.uiManager.showScreen('auth');
+        return;
+      }
+
+      // Already authenticated or auth disabled — join directly
+      void this.handleJoinRoom(code);
+      return;
+    }
+
     this.uiManager.showScreen('main-menu');
 
     // Update auth state in UI
@@ -118,6 +144,15 @@ export class Game {
 
         if (state.isAuthenticated && this.uiManager.getCurrentScreen() === 'auth') {
           this.uiManager.hideScreen('auth');
+
+          // If there's a pending room code from a link, join it after auth
+          if (this.pendingRoomCode) {
+            const code = this.pendingRoomCode;
+            this.pendingRoomCode = null;
+            void this.handleJoinRoom(code);
+            return;
+          }
+
           this.uiManager.showScreen('main-menu');
           this.mainMenu.updateAuthState(state);
         }
@@ -164,6 +199,7 @@ export class Game {
       onGoogleSignIn: () => this.handleGoogleSignIn(),
       onGuestPlay: () => this.handleGuestPlay(),
       onClose: () => {
+        this.pendingRoomCode = null;
         this.uiManager.hideScreen('auth');
         this.uiManager.showScreen('main-menu');
       },
@@ -213,16 +249,13 @@ export class Game {
     // Private Match
     this.privateMatchScreen = new PrivateMatchScreen(this.uiManager, {
       onCreateRoom: () => {
-        // TODO: implement private room creation
-        console.log('[Game] Create room - not yet implemented');
+        void this.handleCreateRoom();
       },
       onJoinRoom: (code: string) => {
-        // TODO: implement private room joining
-        console.log(`[Game] Join room ${code} - not yet implemented`);
+        void this.handleJoinRoom(code);
       },
       onCancel: () => {
-        this.uiManager.hideScreen('private-match');
-        this.uiManager.showScreen('main-menu');
+        this.handleCancelPrivateMatch();
       },
       onBack: () => {
         this.uiManager.hideScreen('private-match');
@@ -246,9 +279,18 @@ export class Game {
   }
 
   private handleGuestPlay(): void {
-    // Guest mode: skip auth requirement and go directly to matchmaking
+    // Guest mode: skip auth requirement
     this.isGuestMode = true;
     this.uiManager.hideScreen('auth');
+
+    // If there's a pending room code from a link, join it directly
+    if (this.pendingRoomCode) {
+      const code = this.pendingRoomCode;
+      this.pendingRoomCode = null;
+      void this.handleJoinRoom(code);
+      return;
+    }
+
     this.uiManager.showScreen('main-menu');
     // Immediately start matchmaking as guest
     this.handleFindMatch();
@@ -306,6 +348,166 @@ export class Game {
     // Re-attach both auth listeners
     this.subscribeAuth();
 
+    this.uiManager.hideScreen('matchmaking');
+    this.uiManager.showScreen('main-menu');
+    this.startMenuAutoRotate();
+  }
+
+  // ── Private Match Flow ───────────────────────────────────────────
+
+  private async handleCreateRoom(): Promise<void> {
+    if (!this.networkManager) return;
+
+    try {
+      // Switch to matchmaking screen with waiting UI
+      this.stopMenuAutoRotate();
+      this.uiManager.hideScreen('private-match');
+      this.uiManager.destroyScreen('matchmaking');
+      this.uiManager.showScreen('matchmaking');
+      this.matchmakingScreen.setStatus('Подключение к серверу...');
+
+      // Setup error handlers
+      this.connectEventUnsubscribers.push(
+        this.networkManager.client.on('disconnected', () => {
+          this.matchmakingScreen.setStatus('Соединение потеряно');
+        }),
+      );
+
+      this.connectEventUnsubscribers.push(
+        this.networkManager.client.on('error', (error) => {
+          console.error('[Game] Network error:', error.message);
+        }),
+      );
+
+      await this.networkManager.client.connect();
+      this.matchmakingScreen.setStatus('Создание комнаты...');
+
+      const roomEvent = await this.networkManager.createRoom();
+      const roomCode = roomEvent.code;
+
+      // Show room code in the waiting screen
+      this.uiManager.hideScreen('matchmaking');
+      this.privateMatchScreen.showWaiting(roomCode);
+      this.uiManager.showScreen('private-match');
+
+      console.log(`[Game] Private room created: ${roomCode}`);
+
+      // Now wait for match-found (another player joins the room)
+      const matchData = await this.networkManager.client.waitForMatch();
+      this.privateMatchScreen.stopWaitingTimer();
+      this.matchmakingScreen.stopTimer();
+
+      // Show countdown screen
+      this.uiManager.hideScreen('private-match');
+      this.uiManager.destroyScreen('countdown');
+      this.uiManager.showScreen('countdown');
+
+      await this.networkManager.client.waitForCountdown((event: CountdownEvent) => {
+        this.matchmakingScreen.updateCountdown(event.seconds);
+      });
+
+      const gameStartEvent = await this.networkManager.client.waitForGameStart();
+      console.log('[Game] Private match game start, randomSeed:', gameStartEvent.randomSeed);
+
+      this.networkManager.setMatchData(matchData);
+      this.cleanupConnectEventListeners();
+
+      this.uiManager.hideScreen('countdown');
+      this.startOnlineGame(matchData);
+    } catch (error) {
+      console.error('[Game] Private room creation failed:', error);
+      this.matchmakingScreen.setStatus('Ошибка подключения');
+      this.matchmakingScreen.stopTimer();
+      this.returnToMainMenu();
+    }
+  }
+
+  private async handleJoinRoom(code: string): Promise<void> {
+    if (!this.networkManager) return;
+
+    try {
+      this.stopMenuAutoRotate();
+      this.uiManager.hideScreen('private-match');
+      this.uiManager.destroyScreen('matchmaking');
+      this.uiManager.showScreen('matchmaking');
+      this.matchmakingScreen.setStatus('Подключение к серверу...');
+
+      this.connectEventUnsubscribers.push(
+        this.networkManager.client.on('disconnected', () => {
+          this.matchmakingScreen.setStatus('Соединение потеряно');
+        }),
+      );
+
+      this.connectEventUnsubscribers.push(
+        this.networkManager.client.on('error', (error) => {
+          console.error('[Game] Network error:', error.message);
+        }),
+      );
+
+      await this.networkManager.client.connect();
+      this.matchmakingScreen.setStatus('Присоединение к комнате...');
+
+      // Listen for room errors — track the unsubscribe so we can
+      // remove the listener after the race to prevent unhandled rejections.
+      let unsubRoomError: (() => void) | undefined;
+      const roomErrorPromise = new Promise<never>((_resolve, reject) => {
+        unsubRoomError = this.networkManager!.client.on('roomError', (event) => {
+          reject(new Error(event.message));
+        });
+      });
+
+      // Join room and wait for match
+      this.networkManager.joinRoom(code);
+
+      let matchData: import('phalanx-client').MatchFoundEvent;
+      try {
+        matchData = await Promise.race([
+          this.networkManager.client.waitForMatch(),
+          roomErrorPromise,
+        ]);
+      } finally {
+        // Remove the roomError listener so the losing promise doesn't
+        // cause an unhandled rejection if an event arrives later.
+        unsubRoomError?.();
+      }
+      this.matchmakingScreen.stopTimer();
+
+      // Show countdown screen
+      this.uiManager.hideScreen('matchmaking');
+      this.uiManager.destroyScreen('countdown');
+      this.uiManager.showScreen('countdown');
+
+      await this.networkManager.client.waitForCountdown((event: CountdownEvent) => {
+        this.matchmakingScreen.updateCountdown(event.seconds);
+      });
+
+      const gameStartEvent = await this.networkManager.client.waitForGameStart();
+      console.log('[Game] Joined private match, randomSeed:', gameStartEvent.randomSeed);
+
+      this.networkManager.setMatchData(matchData);
+      this.cleanupConnectEventListeners();
+
+      this.uiManager.hideScreen('countdown');
+      this.startOnlineGame(matchData);
+    } catch (error) {
+      console.error('[Game] Join room failed:', error);
+      this.matchmakingScreen.setStatus('Ошибка: комната не найдена');
+      this.matchmakingScreen.stopTimer();
+      setTimeout(() => this.returnToMainMenu(), 2000);
+    }
+  }
+
+  private handleCancelPrivateMatch(): void {
+    this.networkManager?.cancelRoom();
+    this.privateMatchScreen.stopWaitingTimer();
+    this.matchmakingScreen.stopTimer();
+    this.cleanupConnectEventListeners();
+    this.unsubscribeAuth();
+    this.networkManager?.dispose();
+    this.networkManager = new NetworkManager();
+    this.subscribeAuth();
+
+    this.uiManager.hideScreen('private-match');
     this.uiManager.hideScreen('matchmaking');
     this.uiManager.showScreen('main-menu');
     this.startMenuAutoRotate();
@@ -372,7 +574,7 @@ export class Game {
     this.subscribeAuth();
 
     // Hide all screens and show main menu
-    for (const screen of ['game', 'match-result', 'pause', 'countdown', 'matchmaking'] as const) {
+    for (const screen of ['game', 'match-result', 'pause', 'countdown', 'matchmaking', 'private-match'] as const) {
       this.uiManager.destroyScreen(screen);
     }
 

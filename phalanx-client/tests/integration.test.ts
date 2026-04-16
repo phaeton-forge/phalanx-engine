@@ -283,6 +283,10 @@ describe('PhalanxClient Integration Tests', () => {
 
       await client1.waitForGameStart();
 
+      // Signal both clients as ready so the server starts sending ticks
+      client1.sendReady();
+      client2.sendReady();
+
       const tickEvents: TickSyncEvent[] = [];
       client1.on('tick', (event) => {
         tickEvents.push(event);
@@ -384,7 +388,9 @@ describe('PhalanxClient Integration Tests', () => {
 
       await client1.waitForGameStart();
 
-      // Wait for a tick
+      // Signal both clients as ready so the server starts sending ticks
+      client1.sendReady();
+      client2.sendReady();
       await new Promise<void>((resolve) => {
         client1.once('tick', () => resolve());
       });

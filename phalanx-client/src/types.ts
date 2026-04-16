@@ -428,4 +428,38 @@ export interface PhalanxClientEvents {
 
   // Desync detection events
   desync: (event: DesyncEvent) => void;
+
+  // Private room events
+  roomCreated: (event: RoomCreatedEvent) => void;
+  roomError: (event: RoomErrorEvent) => void;
+  roomExpired: (event: RoomExpiredEvent) => void;
+  roomCancelled: (event: RoomCancelledEvent) => void;
+}
+
+/**
+ * Event emitted when a private room is created.
+ */
+export interface RoomCreatedEvent {
+  code: string;
+}
+
+/**
+ * Event emitted when a room operation fails.
+ */
+export interface RoomErrorEvent {
+  message: string;
+}
+
+/**
+ * Event emitted when a room expires (TTL exceeded).
+ */
+export interface RoomExpiredEvent {
+  code: string;
+}
+
+/**
+ * Event emitted when a room is cancelled.
+ */
+export interface RoomCancelledEvent {
+  code: string;
 }
