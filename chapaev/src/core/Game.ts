@@ -394,6 +394,7 @@ export class Game {
 
       // Now wait for match-found (another player joins the room)
       const matchData = await this.networkManager.client.waitForMatch();
+      this.privateMatchScreen.stopWaitingTimer();
       this.matchmakingScreen.stopTimer();
 
       // Show countdown screen
@@ -446,22 +447,29 @@ export class Game {
       await this.networkManager.client.connect();
       this.matchmakingScreen.setStatus('Присоединение к комнате...');
 
-      // Listen for room errors
+      // Listen for room errors — track the unsubscribe so we can
+      // remove the listener after the race to prevent unhandled rejections.
+      let unsubRoomError: (() => void) | undefined;
       const roomErrorPromise = new Promise<never>((_resolve, reject) => {
-        this.connectEventUnsubscribers.push(
-          this.networkManager!.client.on('roomError', (event) => {
-            reject(new Error(event.message));
-          }),
-        );
+        unsubRoomError = this.networkManager!.client.on('roomError', (event) => {
+          reject(new Error(event.message));
+        });
       });
 
       // Join room and wait for match
       this.networkManager.joinRoom(code);
 
-      const matchData = await Promise.race([
-        this.networkManager.client.waitForMatch(),
-        roomErrorPromise,
-      ]);
+      let matchData: import('phalanx-client').MatchFoundEvent;
+      try {
+        matchData = await Promise.race([
+          this.networkManager.client.waitForMatch(),
+          roomErrorPromise,
+        ]);
+      } finally {
+        // Remove the roomError listener so the losing promise doesn't
+        // cause an unhandled rejection if an event arrives later.
+        unsubRoomError?.();
+      }
       this.matchmakingScreen.stopTimer();
 
       // Show countdown screen
@@ -491,6 +499,7 @@ export class Game {
 
   private handleCancelPrivateMatch(): void {
     this.networkManager?.cancelRoom();
+    this.privateMatchScreen.stopWaitingTimer();
     this.matchmakingScreen.stopTimer();
     this.cleanupConnectEventListeners();
     this.unsubscribeAuth();

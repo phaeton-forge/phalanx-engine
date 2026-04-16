@@ -219,7 +219,10 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
         // Private room events
         onRoomError: (data) => this.emit('roomError', data),
         onRoomExpired: (data) => this.emit('roomExpired', data),
-        onRoomCancelled: (data) => this.emit('roomCancelled', data),
+        onRoomCancelled: (data) => {
+          this.clientState = 'idle';
+          this.emit('roomCancelled', data);
+        },
       }
     );
 
@@ -523,8 +526,6 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
    */
   cancelRoom(): void {
     this.socketManager.cancelRoom();
-    this.clientState = 'idle';
-    this.emit('roomCancelled', { code: '' });
   }
 
   // ============================================

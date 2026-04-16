@@ -262,7 +262,14 @@ export class Phalanx extends EventEmitter {
       this.config,
       (event: string, ...args: unknown[]) => this.emit(event, ...args),
       (gameType: string) => this.matchmaking!.resolveGameTypeConfig(gameType),
+      (playerId: string) => this.matchmaking!.isInAnyQueue(playerId),
     );
+
+    // Wire up match-ended event to prune finished matches from both services
+    this.on('match-ended' as PhalanxEventType, ((matchId: string) => {
+      this.matchmaking?.removeMatch(matchId);
+      this.privateRooms?.removeMatch(matchId);
+    }) as PhalanxEventHandlers[PhalanxEventType]);
 
     // Setup socket handlers
     this.setupSocketHandlers();
@@ -644,10 +651,12 @@ export class Phalanx extends EventEmitter {
   }
 
   /**
-   * Get all active matches
+   * Get all active matches (from both matchmaking and private rooms)
    */
   getActiveMatches(): MatchInfo[] {
-    return this.matchmaking?.getActiveMatches() ?? [];
+    const matchmakingMatches = this.matchmaking?.getActiveMatches() ?? [];
+    const privateMatches = this.privateRooms?.getActiveMatches().map((m) => m.getMatchInfo()) ?? [];
+    return [...matchmakingMatches, ...privateMatches];
   }
 
   /**

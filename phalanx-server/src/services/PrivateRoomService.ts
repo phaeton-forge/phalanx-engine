@@ -11,6 +11,7 @@ interface PrivateRoom {
   readonly hostSocket: Socket;
   readonly gameType: string;
   readonly createdAt: number;
+  expirationTimer: ReturnType<typeof setTimeout>;
 }
 
 /** Event sent to the host when a room is created. */
@@ -36,6 +37,7 @@ export class PrivateRoomService {
   private readonly config: PhalanxConfig;
   private readonly eventEmitter: (event: string, ...args: unknown[]) => boolean | void;
   private readonly resolveGameTypeConfig: (gameType: string) => PhalanxConfig;
+  private readonly isPlayerQueued?: (playerId: string) => boolean;
 
   /** TTL for rooms in ms (5 minutes). */
   private static readonly ROOM_TTL_MS = 5 * 60 * 1000;
@@ -45,11 +47,13 @@ export class PrivateRoomService {
     config: PhalanxConfig,
     eventEmitter: (event: string, ...args: unknown[]) => boolean | void,
     resolveGameTypeConfig: (gameType: string) => PhalanxConfig,
+    isPlayerQueued?: (playerId: string) => boolean,
   ) {
     this.io = io;
     this.config = config;
     this.eventEmitter = eventEmitter;
     this.resolveGameTypeConfig = resolveGameTypeConfig;
+    this.isPlayerQueued = isPlayerQueued;
   }
 
   /**
@@ -61,6 +65,18 @@ export class PrivateRoomService {
     socket: Socket,
     gameType?: string,
   ): void {
+    // Reject if player is already in a match
+    if ((socket.data as { matchId?: string }).matchId) {
+      socket.emit('room-error', { message: 'Already in a match' } satisfies RoomErrorEvent);
+      return;
+    }
+
+    // Reject if player is currently queued in matchmaking
+    if (this.isPlayerQueued?.(playerId)) {
+      socket.emit('room-error', { message: 'Already in matchmaking queue' } satisfies RoomErrorEvent);
+      return;
+    }
+
     // Prevent duplicate rooms per player
     for (const room of this.rooms.values()) {
       if (room.host.playerId === playerId) {
@@ -71,6 +87,15 @@ export class PrivateRoomService {
 
     const code = this.generateCode();
     const resolvedGameType = gameType ?? 'default';
+
+    // Auto-expire room after TTL
+    const expirationTimer = setTimeout(() => {
+      if (this.rooms.has(code)) {
+        this.removeRoom(code);
+        socket.emit('room-expired', { code });
+        console.log(`[PrivateRoom] Room ${code} expired`);
+      }
+    }, PrivateRoomService.ROOM_TTL_MS);
 
     const room: PrivateRoom = {
       code,
@@ -84,21 +109,13 @@ export class PrivateRoomService {
       hostSocket: socket,
       gameType: resolvedGameType,
       createdAt: Date.now(),
+      expirationTimer,
     };
 
     this.rooms.set(code, room);
 
     socket.emit('room-created', { code } satisfies RoomCreatedEvent);
     console.log(`[PrivateRoom] Room ${code} created by ${playerId}`);
-
-    // Auto-expire room after TTL
-    setTimeout(() => {
-      if (this.rooms.has(code)) {
-        this.rooms.delete(code);
-        socket.emit('room-expired', { code });
-        console.log(`[PrivateRoom] Room ${code} expired`);
-      }
-    }, PrivateRoomService.ROOM_TTL_MS);
   }
 
   /**
@@ -110,6 +127,18 @@ export class PrivateRoomService {
     socket: Socket,
     code: string,
   ): void {
+    // Reject if player is already in a match
+    if ((socket.data as { matchId?: string }).matchId) {
+      socket.emit('room-error', { message: 'Already in a match' } satisfies RoomErrorEvent);
+      return;
+    }
+
+    // Reject if player is currently queued in matchmaking
+    if (this.isPlayerQueued?.(playerId)) {
+      socket.emit('room-error', { message: 'Already in matchmaking queue' } satisfies RoomErrorEvent);
+      return;
+    }
+
     const room = this.rooms.get(code.toUpperCase());
 
     if (!room) {
@@ -123,7 +152,7 @@ export class PrivateRoomService {
     }
 
     // Remove room — it's now consumed
-    this.rooms.delete(code.toUpperCase());
+    this.removeRoom(code.toUpperCase());
 
     const guest: QueuedPlayer = {
       playerId,
@@ -161,7 +190,7 @@ export class PrivateRoomService {
   cancelRoom(playerId: string, socket: Socket): void {
     for (const [code, room] of this.rooms) {
       if (room.host.playerId === playerId) {
-        this.rooms.delete(code);
+        this.removeRoom(code);
         socket.emit('room-cancelled', { code });
         console.log(`[PrivateRoom] Room ${code} cancelled by ${playerId}`);
         return;
@@ -175,7 +204,7 @@ export class PrivateRoomService {
   handleDisconnect(socketId: string): void {
     for (const [code, room] of this.rooms) {
       if (room.host.socketId === socketId) {
-        this.rooms.delete(code);
+        this.removeRoom(code);
         console.log(`[PrivateRoom] Room ${code} removed (host disconnected)`);
       }
     }
@@ -201,6 +230,25 @@ export class PrivateRoomService {
   }
 
   /**
+   * Remove a finished match from the private matches map.
+   * Called from the match-ended listener — the match already stopped itself.
+   */
+  removeMatch(matchId: string): void {
+    this.matches.delete(matchId);
+  }
+
+  /**
+   * Remove a room and clear its expiration timer.
+   */
+  private removeRoom(code: string): void {
+    const room = this.rooms.get(code);
+    if (room) {
+      clearTimeout(room.expirationTimer);
+      this.rooms.delete(code);
+    }
+  }
+
+  /**
    * Stop all active matches and clear rooms.
    */
   stop(): void {
@@ -208,6 +256,9 @@ export class PrivateRoomService {
       match.stop();
     }
     this.matches.clear();
+    for (const room of this.rooms.values()) {
+      clearTimeout(room.expirationTimer);
+    }
     this.rooms.clear();
   }
 

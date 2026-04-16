@@ -57,6 +57,7 @@ export class PrivateMatchScreen {
   }
 
   private renderMenu(container: HTMLDivElement): void {
+    this.stopWaitingTimer();
     container.innerHTML = `
       <div class="glass-panel">
         <div class="private-match-title">Приватный матч</div>
@@ -129,7 +130,7 @@ export class PrivateMatchScreen {
         <div class="room-link-display" style="margin-bottom: 16px;">
           <div style="color: var(--text-muted); font-size: 12px; margin-bottom: 4px;">Ссылка для приглашения:</div>
           <div style="display: flex; gap: 8px; align-items: center;">
-            <input class="private-match-input" data-ref="link-input" readonly value="${shareLink}" style="flex: 1; font-size: 12px;" />
+            <input class="private-match-input" data-ref="link-input" readonly style="flex: 1; font-size: 12px;" />
             <button class="room-code-copy" data-ref="copy-link-btn">📋</button>
           </div>
         </div>
@@ -147,6 +148,9 @@ export class PrivateMatchScreen {
 
     const roomCodeEl = container.querySelector('[data-ref="room-code"]') as HTMLDivElement;
     roomCodeEl.textContent = this.roomCode;
+
+    const linkInput = container.querySelector('[data-ref="link-input"]') as HTMLInputElement;
+    linkInput.value = shareLink;
 
     const copyBtn = container.querySelector('[data-ref="copy-btn"]') as HTMLButtonElement;
     const copyLinkBtn = container.querySelector('[data-ref="copy-link-btn"]') as HTMLButtonElement;
@@ -172,7 +176,10 @@ export class PrivateMatchScreen {
       });
     });
 
-    cancelBtn.addEventListener('click', () => this.callbacks.onCancel());
+    cancelBtn.addEventListener('click', () => {
+      this.stopWaitingTimer();
+      this.callbacks.onCancel();
+    });
 
     // Start waiting timer
     this.startWaitingTimer(container);
