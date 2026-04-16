@@ -13,6 +13,7 @@ import {
   BOARD_HEIGHT,
   CHECKER_HEIGHT,
   CHECKERS_PER_TEAM,
+  ROUND_TRANSITION_DELAY_TICKS,
 } from '../config/constants.ts';
 import {
   FLICK_EXECUTED,
@@ -38,7 +39,8 @@ import type {
  * Registered as a **tick** system, runs after PhysicsSystem.
  *
  * State-machine phases:
- *   aiming → simulating → evaluating → (aiming | round_over | game_over)
+ *   aiming → simulating → evaluating → (aiming | round_transition | game_over)
+ *   round_transition → aiming (after delay)
  */
 export class GameRulesSystem extends GameSystem {
   /** Reference to the singleton GameState component */
@@ -107,6 +109,15 @@ export class GameRulesSystem extends GameSystem {
   // ── Tick processing ────────────────────────────────────────────
 
   public override processTick(_tick: number): void {
+    // Handle round transition countdown
+    if (this.gameState.phase === 'round_transition') {
+      this.gameState.roundTransitionTicksLeft--;
+      if (this.gameState.roundTransitionTicksLeft <= 0) {
+        this.startNewRound(this.gameState.pendingRoundWinner);
+      }
+      return;
+    }
+
     if (!this.allSettled) return;
     if (this.gameState.phase !== 'simulating') {
       this.allSettled = false;
@@ -141,17 +152,22 @@ export class GameRulesSystem extends GameSystem {
 
     // Both teams wiped out → draw
     if (opponentAlive === 0 && ownAlive === 0) {
-      gs.phase = 'round_over';
       this.eventBus.emit<RoundOverEvent>(ROUND_OVER, { winner: null });
-      this.scheduleNewRound(null);
+      this.beginRoundTransition(null);
       return;
     }
 
     // All opponent checkers eliminated → current team wins the round
     if (opponentAlive === 0) {
-      gs.phase = 'round_over';
       this.eventBus.emit<RoundOverEvent>(ROUND_OVER, { winner: currentTeam });
-      this.scheduleNewRound(currentTeam);
+      this.beginRoundTransition(currentTeam);
+      return;
+    }
+
+    // All own checkers eliminated → opponent wins the round
+    if (ownAlive === 0) {
+      this.eventBus.emit<RoundOverEvent>(ROUND_OVER, { winner: opponentTeam });
+      this.beginRoundTransition(opponentTeam);
       return;
     }
 
@@ -174,7 +190,22 @@ export class GameRulesSystem extends GameSystem {
 
   // ── Round management ───────────────────────────────────────────
 
-  private scheduleNewRound(winner: TeamTag | null): void {
+  /**
+   * Enter the round_transition phase: emit ROUND_OVER, store the winner,
+   * and start the countdown before the actual round reset.
+   */
+  private beginRoundTransition(winner: TeamTag | null): void {
+    const gs = this.gameState;
+    gs.phase = 'round_transition';
+    gs.pendingRoundWinner = winner;
+    gs.roundTransitionTicksLeft = ROUND_TRANSITION_DELAY_TICKS;
+  }
+
+  /**
+   * Called when the round_transition countdown reaches zero.
+   * Advances rows, pushes opponent if collision, checks game-over, resets checkers.
+   */
+  private startNewRound(winner: TeamTag | null): void {
     const gs = this.gameState;
 
     if (winner !== null) {
@@ -185,19 +216,40 @@ export class GameRulesSystem extends GameSystem {
         gs.blackRow = Math.min(gs.blackRow + 1, 7);
       }
 
-      // Check game-over: winner reached the last row
-      const winnerRow = winner === TeamTag.White ? gs.whiteRow : gs.blackRow;
-      const lastRow = winner === TeamTag.White ? 0 : 7;
+      // If winner's new row collides with opponent's row, push opponent back
+      if (gs.whiteRow === gs.blackRow) {
+        if (winner === TeamTag.White) {
+          // White pushed into black's row → push black back (toward row 0)
+          gs.blackRow = Math.max(gs.blackRow - 1, 0);
+        } else {
+          // Black pushed into white's row → push white back (toward row 7)
+          gs.whiteRow = Math.min(gs.whiteRow + 1, 7);
+        }
+      }
 
-      if (winnerRow === lastRow) {
+      // Check game-over: opponent has nowhere to go (pushed to their own edge
+      // AND winner is on the adjacent row, meaning opponent is squeezed off)
+      const loser = winner === TeamTag.White ? TeamTag.Black : TeamTag.White;
+      const loserRow = loser === TeamTag.White ? gs.whiteRow : gs.blackRow;
+      const winnerRow = winner === TeamTag.White ? gs.whiteRow : gs.blackRow;
+      const loserEdge = loser === TeamTag.White ? 7 : 0;
+
+      // Game over if: rows are still overlapping after push (both at same edge)
+      // OR the loser is at the edge and winner is right next to them
+      if (loserRow === winnerRow) {
         gs.phase = 'game_over';
-        console.log(`🏆 Game Over! ${winner} wins!`);
+        console.log(`🏆 Game Over! ${winner} wins! Opponent pushed off the board.`);
         this.eventBus.emit<GameOverEvent>(GAME_OVER, { winner });
         return;
       }
+
+      if (loserRow === loserEdge && Math.abs(winnerRow - loserRow) <= 1) {
+        // Loser is at the edge — one more win will push them off
+        // Not game over yet, they still have their row
+      }
     }
 
-    // Start new round after a short delay (use next tick)
+    // Start new round
     gs.roundNumber++;
     this.resetCheckers();
 

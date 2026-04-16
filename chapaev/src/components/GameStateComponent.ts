@@ -10,6 +10,7 @@ export type GamePhase =
   | 'simulating'
   | 'evaluating'
   | 'round_over'
+  | 'round_transition'
   | 'game_over';
 
 /**
@@ -51,6 +52,12 @@ export class GameStateComponent implements IComponent {
   /** How many opponent (white) checkers black eliminated this turn */
   public blackElimThisTurn: number;
 
+  /** Ticks remaining in the round_transition delay (counts down to 0) */
+  public roundTransitionTicksLeft: number;
+
+  /** Winner of the round that just ended (null = draw); valid during round_transition */
+  public pendingRoundWinner: TeamTag | null;
+
   constructor(initialTeam: TeamTag) {
     this.currentTeam = initialTeam;
     this.phase = 'aiming';
@@ -62,6 +69,8 @@ export class GameStateComponent implements IComponent {
     this.blackAliveCount = 8;
     this.whiteElimThisTurn = 0;
     this.blackElimThisTurn = 0;
+    this.roundTransitionTicksLeft = 0;
+    this.pendingRoundWinner = null;
   }
 }
 
