@@ -1,6 +1,14 @@
 import { Game } from './core/Game.ts';
 import type { GameMode } from './core/Game.ts';
 
+// Initialize Telegram Mini App SDK if running inside Telegram
+const tgWebApp = window.Telegram?.WebApp;
+if (tgWebApp) {
+  tgWebApp.ready();
+  tgWebApp.expand();
+  console.log('[Chapayev] Running as Telegram Mini App');
+}
+
 const canvas = document.getElementById('app') as HTMLCanvasElement | null;
 
 if (!canvas) {
