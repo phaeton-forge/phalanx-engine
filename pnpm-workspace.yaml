@@ -9,3 +9,4 @@ packages:
   - 'direct-strike-babylon-example'
   - 'arena-shooter'
   - 'chapaev'
+  - 'chapaev/server'

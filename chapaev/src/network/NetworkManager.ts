@@ -1,12 +1,11 @@
 import { PhalanxClient } from 'phalanx-client';
-import type { MatchFoundEvent, CountdownEvent, GameStartEvent, CommandsBatchEvent } from 'phalanx-client';
-
-const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3000';
+import type { MatchFoundEvent, CountdownEvent, GameStartEvent, CommandsBatchEvent, PhalanxAuthState } from 'phalanx-client';
+import { SERVER_URL, AUTH_CONFIG } from '../config/constants.ts';
 
 /**
  * NetworkManager — wraps PhalanxClient for Chapayev online mode.
  *
- * Handles connection, matchmaking, and exposes the client as
+ * Handles connection, matchmaking, authentication, and exposes the client as
  * ITickFrameProvider for GameWorld integration.
  */
 export class NetworkManager {
@@ -21,7 +20,50 @@ export class NetworkManager {
       autoReconnect: true,
       maxReconnectAttempts: 5,
       reconnectDelayMs: 1000,
+      auth: AUTH_CONFIG.authEnabled ? {
+        provider: 'google',
+        google: {
+          clientId: AUTH_CONFIG.googleClientId,
+          tokenExchangeUrl: AUTH_CONFIG.tokenExchangeUrl,
+        },
+      } : undefined,
     });
+  }
+
+  // ── Authentication ───────────────────────────────────────────────
+
+  /** Start Google OAuth login flow */
+  public login(): void {
+    this.client.login();
+  }
+
+  /** Logout current user */
+  public async logout(): Promise<void> {
+    await this.client.logout();
+  }
+
+  /** Get current auth state */
+  public getAuthState(): PhalanxAuthState {
+    return this.client.getAuthState();
+  }
+
+  /** Check if auth is enabled */
+  public get authEnabled(): boolean {
+    return AUTH_CONFIG.authEnabled;
+  }
+
+  /** Subscribe to auth state changes */
+  public onAuthStateChanged(handler: (state: PhalanxAuthState) => void): () => void {
+    const unsub = this.client.on('authStateChanged', handler);
+    this.networkUnsubscribers.push(unsub);
+    return unsub;
+  }
+
+  /** Subscribe to auth errors */
+  public onAuthError(handler: (error: { message: string }) => void): () => void {
+    const unsub = this.client.on('authError', handler);
+    this.networkUnsubscribers.push(unsub);
+    return unsub;
   }
 
   /**
@@ -90,6 +132,12 @@ export class NetworkManager {
   /** The match data from matchmaking. */
   public get matchData(): MatchFoundEvent | null {
     return this._matchData;
+  }
+
+  /** Set match data externally (used when matchmaking is handled outside connectAndWaitForMatch). */
+  public setMatchData(data: MatchFoundEvent): void {
+    this._matchData = data;
+    this._localPlayerIndex = -1; // reset cached value
   }
 
   /** The local player ID assigned by the server. */

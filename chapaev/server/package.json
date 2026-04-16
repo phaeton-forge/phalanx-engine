@@ -12,6 +12,7 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
+    "dotenv": "^16.4.7",
     "phalanx-server": "workspace:*"
   },
   "devDependencies": {

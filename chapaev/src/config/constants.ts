@@ -213,6 +213,10 @@ export const BOARD_ELIM_HALF_EXTENT = BOARD_HALF_EXTENT + BOARD_RIM_WIDTH;
 /** Multiplier converting drag-pixel distance to flick force */
 export const FLICK_FORCE_MULTIPLIER = 8.0;
 
+// ── Round transition ──────────────────────────────────────────────
+/** Delay (in ticks) between round_over and the next round starting */
+export const ROUND_TRANSITION_DELAY_TICKS = 120; // 2 seconds at 60 Hz
+
 // ── Background music ──────────────────────────────────────────────
 /** Volume for background music (0–1). Kept well below SFX (hit sounds play at 1.0). */
 export const BGM_VOLUME = 0.12;
@@ -230,4 +234,24 @@ export const UI_BTN_TEXT = '#fff4e0';
 export const UI_BTN_BORDER = '#887766';
 /** Hover / focus ring (golden light-square colour) */
 export const UI_BTN_FOCUS = '#eacc20';
+
+// ── Server / Auth ─────────────────────────────────────────────────
+export const SERVER_URL =
+  import.meta.env.VITE_SERVER_URL || 'http://localhost:3000';
+
+/**
+ * Authentication configuration.
+ * Google OAuth Client ID — set via VITE_GOOGLE_CLIENT_ID env variable.
+ */
+export const AUTH_CONFIG = {
+  googleClientId: import.meta.env.VITE_GOOGLE_CLIENT_ID || '',
+  authEnabled: !!import.meta.env.VITE_GOOGLE_CLIENT_ID,
+  tokenExchangeUrl: `${import.meta.env.VITE_SERVER_URL || 'http://localhost:3000'}/auth/token`,
+} as const;
+
+/** Room / private match configuration */
+export const ROOM_CONFIG = {
+  codeTTLMs: 5 * 60 * 1000,
+  codeLength: 6,
+} as const;
 
