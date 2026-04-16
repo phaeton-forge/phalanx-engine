@@ -767,7 +767,11 @@ export class Game {
     if (!this.networkManager) return;
 
     this.networkManager.onPlayerDisconnected(() => {
-      console.log('[Game] Opponent disconnected. Victory!');
+      console.log('[Game] Opponent disconnected.');
+      this.gameHUD.showToast('Соперник покинул матч', 'info', 2000);
+      setTimeout(() => {
+        this.returnToMainMenu();
+      }, 2000);
     });
 
     this.networkManager.onPlayerReconnected(() => {
