@@ -1,29 +1,27 @@
 import * as THREE from 'three';
 import { GameWorld, Entity } from 'phalanx-ecs';
 import { FPVector3 } from 'phalanx-math';
-import { setupScene } from '../rendering/SceneSetup.ts';
-import type { SceneContext } from '../rendering/SceneSetup.ts';
-import { ThreeRenderSystem } from '../systems/ThreeRenderSystem.ts';
-import { PhysicsSystem } from '../systems/PhysicsSystem.ts';
-import { GameRulesSystem } from '../systems/GameRulesSystem.ts';
-import { FlickInputSystem } from '../systems/FlickInputSystem.ts';
-import { RapierVFXSystem } from '../systems/RapierVFXSystem.ts';
-import { SoundSystem } from '../systems/SoundSystem.ts';
-import { InterpolationSystem } from '../systems/InterpolationSystem.ts';
-import { ComponentType } from '../components/Component.ts';
-import { GameStateComponent } from '../components/GameStateComponent.ts';
-import { InterpolationComponent } from '../components/InterpolationComponent.ts';
-import { PlayerComponent } from '../components/PlayerComponent.ts';
-import { createBoardEntity } from '../entities/BoardEntity.ts';
-import { createCheckerEntity } from '../entities/CheckerEntity.ts';
-import { createBoardMesh } from '../rendering/BoardMesh.ts';
-import { createCheckerMesh } from '../rendering/CheckerMesh.ts';
+import { setupScene } from '../rendering';
+import type { SceneContext } from '../rendering';
+import { createBoardMesh, createCheckerMesh } from '../rendering';
+import {
+  ThreeRenderSystem, PhysicsSystem, GameRulesSystem,
+  FlickInputSystem, RapierVFXSystem, SoundSystem, InterpolationSystem,
+} from '../systems';
+import {
+  ComponentType, GameStateComponent, InterpolationComponent, PlayerComponent,
+} from '../components';
+import type { CheckerComponent } from '../components';
+import { createBoardEntity, createCheckerEntity } from '../entities';
 import { INITIAL_POSITIONS, CAMERA_POSITION, BOARD_HEIGHT, CHECKER_HEIGHT } from '../config/constants.ts';
 import { TeamTag } from '../enums/TeamTag.ts';
-import { LockstepManager } from '../network/LockstepManager.ts';
-import { NetworkManager } from '../network/NetworkManager.ts';
-import { ALL_SETTLED, GAME_OVER, TURN_CHANGED, CHECKER_ELIMINATED, ROUND_STARTED, ROUND_OVER } from '../events/GameEvents.ts';
-import type { GameOverEvent, TurnChangedEvent, CheckerEliminatedEvent, RoundStartedEvent, RoundOverEvent } from '../events/GameEvents.ts';
+import { LockstepManager, NetworkManager } from '../network';
+import {
+  ALL_SETTLED, GAME_OVER, TURN_CHANGED, CHECKER_ELIMINATED, ROUND_STARTED, ROUND_OVER,
+} from '../events';
+import type {
+  GameOverEvent, TurnChangedEvent, CheckerEliminatedEvent, RoundStartedEvent, RoundOverEvent,
+} from '../events';
 import { UIManager } from '../ui/UIManager.ts';
 import { MainMenuScreen } from '../ui/screens/MainMenu.ts';
 import { AuthModal } from '../ui/screens/AuthModal.ts';
@@ -754,7 +752,7 @@ export class Game {
 
     const checkerEntities = this.world.entityManager.queryEntities(ComponentType.Checker);
     for (const entity of checkerEntities) {
-      const checker = entity.getComponent<import('../components/CheckerComponent.ts').CheckerComponent>(ComponentType.Checker);
+      const checker = entity.getComponent<CheckerComponent>(ComponentType.Checker);
       if (!checker) continue;
 
       const playerIndex = checker.team === TeamTag.White ? 0 : 1;
