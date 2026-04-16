@@ -181,6 +181,12 @@ export type {
   // Desync detection
   HashComparisonEvent,
 
+  // Private rooms
+  RoomCreatedEvent,
+  RoomErrorEvent,
+  RoomExpiredEvent,
+  RoomCancelledEvent,
+
   // Event handlers (for legacy 'on' API)
   PhalanxClientEvents,
 } from './types.js';

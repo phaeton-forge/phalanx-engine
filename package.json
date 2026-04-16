@@ -31,7 +31,6 @@
     "lockstep",
     "deterministic",
     "netcode",
-    "socket.io",
     "matchmaking"
   ],
   "author": "",

@@ -1,5 +1,5 @@
 import { PhalanxClient } from 'phalanx-client';
-import type { MatchFoundEvent, CountdownEvent, GameStartEvent, CommandsBatchEvent, PhalanxAuthState } from 'phalanx-client';
+import type { MatchFoundEvent, CountdownEvent, GameStartEvent, CommandsBatchEvent, PhalanxAuthState, RoomCreatedEvent } from 'phalanx-client';
 import { SERVER_URL, AUTH_CONFIG } from '../config/constants.ts';
 
 /**
@@ -200,6 +200,23 @@ export class NetworkManager {
     const unsub = this.client.on('commands', handler);
     this.networkUnsubscribers.push(unsub);
     return unsub;
+  }
+
+  // ── Private Rooms ──────────────────────────────────────────────────
+
+  /** Create a private room. Returns the room code. */
+  public async createRoom(): Promise<RoomCreatedEvent> {
+    return this.client.createRoom();
+  }
+
+  /** Join a private room by code. Server will emit match-found. */
+  public joinRoom(code: string): void {
+    this.client.joinRoom(code);
+  }
+
+  /** Cancel a previously created private room. */
+  public cancelRoom(): void {
+    this.client.cancelRoom();
   }
 
   /**

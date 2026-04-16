@@ -27,6 +27,7 @@ import type {
   FrameHandler,
   Unsubscribe,
   PauseHandler,
+  RoomCreatedEvent,
 } from './types.js';
 
 /**
@@ -214,6 +215,11 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
         // State queries
         isPlaying: () => this.clientState === 'playing',
         getCurrentMatchId: () => this.currentMatchId,
+
+        // Private room events
+        onRoomError: (data) => this.emit('roomError', data),
+        onRoomExpired: (data) => this.emit('roomExpired', data),
+        onRoomCancelled: (data) => this.emit('roomCancelled', data),
       }
     );
 
@@ -485,6 +491,40 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
     this.socketManager.leaveQueue();
     this.clientState = 'idle';
     this.emit('queueLeft');
+  }
+
+  // ============================================
+  // PRIVATE ROOMS
+  // ============================================
+
+  /**
+   * Create a private room and wait for the room code.
+   * After creation, the host should wait for match-found (when another player joins).
+   */
+  async createRoom(gameType?: string): Promise<RoomCreatedEvent> {
+    this.ensureConnected();
+    const event = await this.socketManager.createRoom(gameType);
+    this.clientState = 'in-queue'; // waiting for opponent
+    this.emit('roomCreated', event);
+    return event;
+  }
+
+  /**
+   * Join a private room by code.
+   * The server will create a match and emit match-found to both players.
+   */
+  joinRoom(code: string): void {
+    this.ensureConnected();
+    this.socketManager.joinRoom(code);
+  }
+
+  /**
+   * Cancel a previously created private room.
+   */
+  cancelRoom(): void {
+    this.socketManager.cancelRoom();
+    this.clientState = 'idle';
+    this.emit('roomCancelled', { code: '' });
   }
 
   // ============================================
