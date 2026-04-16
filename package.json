@@ -18,7 +18,7 @@
     "build:game-server": "pnpm --filter game-test-server build",
     "deploy:babylon": "cd direct-strike-babylon-example && pnpm run deploy",
     "heroku-postbuild": "corepack enable && corepack prepare pnpm@10.33.0 --activate && pnpm install && pnpm --filter phalanx-math build && pnpm --filter phalanx-server build && pnpm --filter game-test-server build",
-    "render-build:chapaev": "corepack enable && corepack prepare pnpm@10.33.0 --activate && pnpm install && pnpm --filter phalanx-math build && pnpm --filter phalanx-ecs build && pnpm --filter phalanx-server build && pnpm --filter chapaev-server build",
+    "render-build:chapaev": "corepack enable && corepack prepare pnpm@10.33.0 --activate && pnpm install && pnpm -r build",
     "start": "node game-test-server/dist/main.js",
     "lint": "eslint . --ext .ts,.tsx",
     "lint:fix": "eslint . --ext .ts,.tsx --fix",
