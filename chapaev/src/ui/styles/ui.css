@@ -960,3 +960,115 @@
   color: var(--text-primary);
   box-shadow: var(--shadow-panel);
 }
+
+/* ── Settings Screen ──────────────────────────────────────────── */
+
+.settings-panel {
+  max-width: 400px;
+  width: 90vw;
+}
+
+.settings-title {
+  font-family: 'Russo One', sans-serif;
+  font-size: 22px;
+  color: var(--accent);
+  text-align: center;
+  margin-bottom: 20px;
+}
+
+.settings-group {
+  margin-bottom: 16px;
+}
+
+.settings-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: var(--text-primary);
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+
+.settings-value {
+  color: var(--accent);
+  font-weight: 600;
+  min-width: 40px;
+  text-align: right;
+}
+
+.settings-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--glass-bg-light);
+  outline: none;
+  cursor: pointer;
+}
+
+.settings-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--text-primary);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.settings-slider::-webkit-slider-thumb:hover {
+  background: var(--accent-hover);
+}
+
+.settings-slider::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid var(--text-primary);
+  cursor: pointer;
+}
+
+.settings-divider {
+  border: none;
+  border-top: 1px solid var(--glass-border);
+  margin: 20px 0;
+}
+
+/* ── Rules Screen ─────────────────────────────────────────────── */
+
+.rules-panel {
+  max-width: 440px;
+  width: 90vw;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.rules-title {
+  font-family: 'Russo One', sans-serif;
+  font-size: 22px;
+  color: var(--accent);
+  text-align: center;
+  margin-bottom: 16px;
+}
+
+.rules-content {
+  color: var(--text-primary);
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.rules-content p {
+  margin-bottom: 10px;
+}
+
+.rules-content strong {
+  color: var(--accent);
+}
+

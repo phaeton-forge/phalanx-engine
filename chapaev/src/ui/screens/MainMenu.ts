@@ -11,6 +11,7 @@ export interface MainMenuCallbacks {
   onFindMatch: () => void;
   onPrivateMatch: () => void;
   onLocalGame: () => void;
+  onSettings: () => void;
   onProfile: () => void;
   onSignIn: () => void;
   onSignOut: () => void;
@@ -53,6 +54,9 @@ export class MainMenuScreen {
           <button class="btn-secondary" data-ref="local-game-btn">
             🎮 Локальная игра
           </button>
+          <button class="btn-secondary" data-ref="settings-btn">
+            ⚙️ Настройки
+          </button>
           <button class="btn-ghost" data-ref="profile-btn" style="display: none;">
             👤 Профиль
           </button>
@@ -69,6 +73,7 @@ export class MainMenuScreen {
     const findMatchBtn = container.querySelector('[data-ref="find-match-btn"]') as HTMLButtonElement;
     const privateMatchBtn = container.querySelector('[data-ref="private-match-btn"]') as HTMLButtonElement;
     const localGameBtn = container.querySelector('[data-ref="local-game-btn"]') as HTMLButtonElement;
+    const settingsBtn = container.querySelector('[data-ref="settings-btn"]') as HTMLButtonElement;
     const profileBtn = container.querySelector('[data-ref="profile-btn"]') as HTMLButtonElement;
     const signInFooterBtn = container.querySelector('[data-ref="sign-in-footer-btn"]') as HTMLButtonElement;
     const signOutBtn = container.querySelector('[data-ref="sign-out-btn"]') as HTMLButtonElement;
@@ -76,6 +81,7 @@ export class MainMenuScreen {
     findMatchBtn.addEventListener('click', () => this.callbacks.onFindMatch());
     privateMatchBtn.addEventListener('click', () => this.callbacks.onPrivateMatch());
     localGameBtn.addEventListener('click', () => this.callbacks.onLocalGame());
+    settingsBtn.addEventListener('click', () => this.callbacks.onSettings());
     profileBtn.addEventListener('click', () => this.callbacks.onProfile());
     signInFooterBtn.addEventListener('click', () => this.callbacks.onSignIn());
     signOutBtn.addEventListener('click', () => this.callbacks.onSignOut());

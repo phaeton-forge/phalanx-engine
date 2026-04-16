@@ -15,7 +15,9 @@ export type Screen =
   | 'game'
   | 'match-result'
   | 'profile'
-  | 'pause';
+  | 'pause'
+  | 'settings'
+  | 'rules';
 
 type ScreenRenderFn = (container: HTMLDivElement) => void;
 

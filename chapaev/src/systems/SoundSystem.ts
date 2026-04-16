@@ -23,6 +23,7 @@ import {
   BGM_CROSSFADE_DURATION,
 } from '../config/constants.ts';
 import { SilentModeHint } from '../ui/SilentModeHint.ts';
+import { audioSettings } from '../config/AudioSettings.ts';
 
 /** Paths to hit sound variants (served from public/) */
 const HIT_SOUND_PATHS: readonly string[] = [
@@ -154,6 +155,15 @@ export class SoundSystem extends GameSystem {
 
   /** iOS silent-mode hint overlay (shown once on iOS Safari) */
   private readonly silentModeHint = new SilentModeHint();
+
+  /** Master gain node for sound effects (hit, movement, sliding, fall-off) */
+  private sfxMasterGain: GainNode | null = null;
+
+  /** Master gain node for background music */
+  private bgmMasterGain: GainNode | null = null;
+
+  /** Unsubscribe from audioSettings changes */
+  private settingsUnsub: (() => void) | null = null;
 
   // ── Lifecycle ──────────────────────────────────────────────────
 
@@ -325,6 +335,9 @@ export class SoundSystem extends GameSystem {
       this.bgmBuffers.push(...bgmDecoded);
       this.loaded = true;
 
+      // Create master gain nodes for volume control
+      this.setupMasterGains();
+
       // On iOS Safari, remind the user about the hardware silent switch
       this.silentModeHint.show();
 
@@ -333,6 +346,41 @@ export class SoundSystem extends GameSystem {
     } catch (err) {
       console.warn('SoundSystem: Failed to decode audio buffers.', err);
     }
+  }
+
+  // ── Master gain / volume ─────────────────────────────────────────
+
+  /** Create master gain nodes and subscribe to audioSettings changes. */
+  private setupMasterGains(): void {
+    if (!this.audioCtx) return;
+
+    this.sfxMasterGain = this.audioCtx.createGain();
+    this.sfxMasterGain.gain.value = audioSettings.sfxVolume;
+    this.sfxMasterGain.connect(this.audioCtx.destination);
+
+    this.bgmMasterGain = this.audioCtx.createGain();
+    this.bgmMasterGain.gain.value = audioSettings.musicVolume;
+    this.bgmMasterGain.connect(this.audioCtx.destination);
+
+    // Live-update volumes when the user changes settings
+    this.settingsUnsub = audioSettings.onChange(() => {
+      if (this.sfxMasterGain) {
+        this.sfxMasterGain.gain.value = audioSettings.sfxVolume;
+      }
+      if (this.bgmMasterGain) {
+        this.bgmMasterGain.gain.value = audioSettings.musicVolume;
+      }
+    });
+  }
+
+  /** Get the audio node SFX sources should connect to. */
+  private get sfxDestination(): AudioNode {
+    return this.sfxMasterGain ?? this.audioCtx!.destination;
+  }
+
+  /** Get the audio node BGM sources should connect to. */
+  private get bgmDestination(): AudioNode {
+    return this.bgmMasterGain ?? this.audioCtx!.destination;
   }
 
   // ── Playback ───────────────────────────────────────────────────
@@ -348,7 +396,7 @@ export class SoundSystem extends GameSystem {
     const buffer = this.rng.pick(this.hitBuffers);
     const source = this.audioCtx.createBufferSource();
     source.buffer = buffer;
-    source.connect(this.audioCtx.destination);
+    source.connect(this.sfxDestination);
     source.start(0);
   }
 
@@ -378,7 +426,7 @@ export class SoundSystem extends GameSystem {
 
     const source = this.audioCtx.createBufferSource();
     source.buffer = this.rimHitBuffer;
-    source.connect(this.audioCtx.destination);
+    source.connect(this.sfxDestination);
     source.start(0);
   }
 
@@ -394,7 +442,7 @@ export class SoundSystem extends GameSystem {
 
     const gain = this.audioCtx.createGain();
     gain.gain.value = 1;
-    gain.connect(this.audioCtx.destination);
+    gain.connect(this.sfxDestination);
 
     const buffer = this.rng.pick(this.fallOffBuffers);
     const source = this.audioCtx.createBufferSource();
@@ -489,7 +537,7 @@ export class SoundSystem extends GameSystem {
 
     const gain = this.audioCtx.createGain();
     gain.gain.value = 1;
-    gain.connect(this.audioCtx.destination);
+    gain.connect(this.sfxDestination);
 
     const source = this.audioCtx.createBufferSource();
     source.buffer = this.movementBuffer;
@@ -578,7 +626,7 @@ export class SoundSystem extends GameSystem {
     const gain = this.audioCtx.createGain();
     gain.gain.setValueAtTime(0, this.audioCtx.currentTime);
     gain.gain.linearRampToValueAtTime(BGM_VOLUME, this.audioCtx.currentTime + BGM_CROSSFADE_DURATION);
-    gain.connect(this.audioCtx.destination);
+    gain.connect(this.bgmDestination);
 
     const source = this.audioCtx.createBufferSource();
     source.buffer = this.bgmBuffers[index];
@@ -657,6 +705,17 @@ export class SoundSystem extends GameSystem {
     this.stopBgm();
     this.removeUnlockListeners();
     this.silentModeHint.dispose();
+    this.settingsUnsub?.();
+    this.settingsUnsub = null;
+
+    if (this.sfxMasterGain) {
+      this.sfxMasterGain.disconnect();
+      this.sfxMasterGain = null;
+    }
+    if (this.bgmMasterGain) {
+      this.bgmMasterGain.disconnect();
+      this.bgmMasterGain = null;
+    }
 
     if (this.audioCtx) {
       void this.audioCtx.close();

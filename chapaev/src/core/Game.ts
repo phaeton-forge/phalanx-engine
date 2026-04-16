@@ -31,6 +31,8 @@ import { MatchResultScreen } from '../ui/screens/MatchResult.ts';
 import { ProfileScreen } from '../ui/screens/Profile.ts';
 import { PauseOverlay } from '../ui/screens/PauseOverlay.ts';
 import { PrivateMatchScreen } from '../ui/screens/PrivateMatch.ts';
+import { SettingsScreen } from '../ui/screens/SettingsScreen.ts';
+import { RulesScreen } from '../ui/screens/RulesScreen.ts';
 import type { CountdownEvent, GamePausedEvent, GameResumedEvent } from 'phalanx-client';
 
 export type GameMode = 'hotseat' | 'online';
@@ -67,6 +69,10 @@ export class Game {
   private matchResult!: MatchResultScreen;
   private profileScreen!: ProfileScreen;
   private privateMatchScreen!: PrivateMatchScreen;
+  // @ts-ignore — held to keep screen instance alive
+  private settingsScreen!: SettingsScreen;
+  // @ts-ignore — held to keep screen instance alive
+  private rulesScreen!: RulesScreen;
   private pauseOverlay!: PauseOverlay;
 
   // Camera auto-rotate for menu
@@ -199,6 +205,7 @@ export class Game {
       onFindMatch: () => this.handleFindMatch(),
       onPrivateMatch: () => this.handlePrivateMatch(),
       onLocalGame: () => this.handleLocalGame(),
+      onSettings: () => this.handleShowSettings(),
       onProfile: () => this.handleShowProfile(),
       onSignIn: () => this.handleShowAuth(),
       onSignOut: () => void this.handleSignOut(),
@@ -223,7 +230,7 @@ export class Game {
     // Game HUD
     this.gameHUD = new GameHUDScreen(this.uiManager, {
       onPause: () => this.handlePause(),
-      onSettings: () => { /* TODO: settings */ },
+      onSettings: () => this.handleShowInGameSettings(),
     });
 
     // Match Result
@@ -272,9 +279,52 @@ export class Game {
         this.uiManager.showScreen('main-menu');
       },
     });
+
+    // Settings
+    this.settingsScreen = new SettingsScreen(this.uiManager, {
+      onRules: () => {
+        this.uiManager.hideScreen('settings');
+        this.uiManager.destroyScreen('rules');
+        if (this.isInGame) {
+          this.uiManager.showOverlay('rules');
+        } else {
+          this.uiManager.showScreen('rules');
+        }
+      },
+      onBack: () => {
+        this.uiManager.hideScreen('settings');
+        if (!this.isInGame) {
+          this.uiManager.showScreen('main-menu');
+        }
+      },
+    });
+
+    // Rules
+    this.rulesScreen = new RulesScreen(this.uiManager, {
+      onBack: () => {
+        this.uiManager.hideScreen('rules');
+        this.uiManager.destroyScreen('settings');
+        if (this.isInGame) {
+          this.uiManager.showOverlay('settings');
+        } else {
+          this.uiManager.showScreen('settings');
+        }
+      },
+    });
   }
 
   // ── UI Handlers ─────────────────────────────────────────────────
+
+  private handleShowSettings(): void {
+    this.uiManager.hideScreen('main-menu');
+    this.uiManager.destroyScreen('settings');
+    this.uiManager.showScreen('settings');
+  }
+
+  private handleShowInGameSettings(): void {
+    this.uiManager.destroyScreen('settings');
+    this.uiManager.showOverlay('settings');
+  }
 
   private handleShowAuth(): void {
     this.uiManager.hideScreen('main-menu');
@@ -584,7 +634,7 @@ export class Game {
     this.subscribeAuth();
 
     // Hide all screens and show main menu
-    for (const screen of ['game', 'match-result', 'pause', 'countdown', 'matchmaking', 'private-match'] as const) {
+    for (const screen of ['game', 'match-result', 'pause', 'countdown', 'matchmaking', 'private-match', 'settings', 'rules'] as const) {
       this.uiManager.destroyScreen(screen);
     }
 
@@ -663,7 +713,7 @@ export class Game {
         // In hotseat, pause button exits to main menu (online mode)
         window.location.search = '';
       },
-      onSettings: () => { /* TODO */ },
+      onSettings: () => this.handleShowInGameSettings(),
     });
     this.uiManager.showScreen('game');
     this.gameHUD.setPlayerNames('Белые', 'Чёрные');
