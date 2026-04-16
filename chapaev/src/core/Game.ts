@@ -99,19 +99,28 @@ export class Game {
     this.setupUI();
     this.startMenuAutoRotate();
 
-    // Check if joining via room link (e.g. ?room=ABC123)
+    // Check if joining via room link (e.g. ?room=ABC123) or returning after auth redirect
     const urlParams = new URLSearchParams(window.location.search);
-    const roomCode = urlParams.get('room');
-    if (roomCode) {
-      // Clear the room param from URL to avoid re-joining on refresh
+    const roomCodeFromUrl = urlParams.get('room');
+    const roomCodeFromStorage = sessionStorage.getItem('pendingRoomCode');
+    const roomCode = roomCodeFromUrl ?? roomCodeFromStorage;
+
+    // Clean up: remove param from URL and storage
+    if (roomCodeFromUrl) {
       const cleanUrl = window.location.pathname;
       window.history.replaceState({}, '', cleanUrl);
+    }
+    if (roomCodeFromStorage) {
+      sessionStorage.removeItem('pendingRoomCode');
+    }
 
+    if (roomCode) {
       const code = roomCode.toUpperCase();
 
-      // If auth is enabled and user is not signed in — show auth first, then join
+      // If auth is enabled and user is not signed in — persist room code and show auth
       if (this.networkManager.authEnabled && !this.networkManager.getAuthState().isAuthenticated && !this.isGuestMode) {
         this.pendingRoomCode = code;
+        sessionStorage.setItem('pendingRoomCode', code);
         this.subscribeAuth();
         this.uiManager.destroyScreen('auth');
         this.uiManager.showScreen('auth');
@@ -149,6 +158,7 @@ export class Game {
           if (this.pendingRoomCode) {
             const code = this.pendingRoomCode;
             this.pendingRoomCode = null;
+            sessionStorage.removeItem('pendingRoomCode');
             void this.handleJoinRoom(code);
             return;
           }
