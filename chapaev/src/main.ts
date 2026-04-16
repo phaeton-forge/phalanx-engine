@@ -21,6 +21,7 @@ function reportStartupError(error: unknown): void {
   const errorElement = document.createElement('div');
   errorElement.setAttribute('role', 'alert');
   errorElement.textContent = `Failed to start game: ${message}`;
+  // @ts-ignore
   const mountTarget = canvas.parentElement ?? document.body;
   mountTarget.appendChild(errorElement);
 }

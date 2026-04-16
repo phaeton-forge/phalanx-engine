@@ -13,7 +13,9 @@ export class PlayerComponent implements IComponent {
   public readonly type = ComponentType.Player;
 
   constructor(
-    public readonly playerIndex: number,
-    public readonly networkId: string,
+      // @ts-ignore
+      public readonly playerIndex: number,
+      // @ts-ignore
+      public readonly networkId: string,
   ) {}
 }

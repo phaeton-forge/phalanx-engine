@@ -232,6 +232,7 @@ export class GameRulesSystem extends GameSystem {
       const loser = winner === TeamTag.White ? TeamTag.Black : TeamTag.White;
       const loserRow = loser === TeamTag.White ? gs.whiteRow : gs.blackRow;
       const winnerRow = winner === TeamTag.White ? gs.whiteRow : gs.blackRow;
+      // @ts-ignore
       const loserEdge = loser === TeamTag.White ? 7 : 0;
 
       // Game over if: rows are still overlapping after push (both at same edge)

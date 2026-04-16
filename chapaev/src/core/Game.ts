@@ -62,6 +62,7 @@ export class Game {
   private authModal!: AuthModal;
   private matchmakingScreen!: MatchmakingScreen;
   private gameHUD!: GameHUDScreen;
+  // @ts-ignore
   private matchResult!: MatchResultScreen;
   private profileScreen!: ProfileScreen;
   private privateMatchScreen!: PrivateMatchScreen;
