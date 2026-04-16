@@ -145,6 +145,7 @@ export class SocketManager {
 
       this.socket = io(this.config.serverUrl, {
         forceNew: true,
+        transports: ['websocket'],
         reconnection: false, // We handle reconnection ourselves
         auth: this.config.authToken
           ? { token: this.config.authToken }

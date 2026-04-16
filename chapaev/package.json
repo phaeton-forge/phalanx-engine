@@ -16,12 +16,21 @@
     "android:open": "pnpm build && cap sync android && cap open android",
     "android:run": "pnpm build && cap sync android && cap run android",
     "android:dev": "CAPACITOR_DEV=true cap sync android && CAPACITOR_DEV=true cap run android",
-    "android:dev:live": "npx concurrently --kill-others \"pnpm dev\" \"pnpm android:dev\""
+    "android:dev:live": "npx concurrently --kill-others \"pnpm dev\" \"pnpm android:dev\"",
+    "cap:sync:ios": "cap sync ios",
+    "cap:open:ios": "cap open ios",
+    "cap:run:ios": "cap run ios",
+    "ios": "pnpm build && cap sync ios",
+    "ios:open": "pnpm build && cap sync ios && cap open ios",
+    "ios:run": "pnpm build && cap sync ios && cap run ios",
+    "ios:dev": "CAPACITOR_DEV=true cap sync ios && CAPACITOR_DEV=true cap run ios",
+    "ios:dev:live": "npx concurrently --kill-others \"pnpm dev\" \"pnpm ios:dev\""
   },
   "dependencies": {
     "@capacitor/android": "^8.3.0",
     "@capacitor/cli": "^8.3.0",
     "@capacitor/core": "^8.3.0",
+    "@capacitor/ios": "^8.3.1",
     "@dimforge/rapier3d-compat": "^0.14.0",
     "phalanx-client": "workspace:*",
     "phalanx-ecs": "workspace:*",

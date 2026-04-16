@@ -8,8 +8,9 @@ const config: CapacitorConfig = {
   webDir: 'dist',
   server: {
     androidScheme: isDev ? 'http' : 'https',
+    iosScheme: isDev ? 'http' : 'https',
     ...(isDev && {
-      url: `http://${process.env['CAPACITOR_SERVER_HOST'] ?? '10.0.2.2'}:5174`,
+      url: `http://${process.env['CAPACITOR_SERVER_HOST'] ?? 'localhost'}:5174`,
       cleartext: true,
     }),
   },
@@ -24,6 +25,9 @@ const config: CapacitorConfig = {
       keystorePath: undefined,
       keystoreAlias: undefined,
     },
+  },
+  ios: {
+    scheme: 'App',
   },
 };
 

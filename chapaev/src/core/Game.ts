@@ -475,7 +475,7 @@ export class Game {
       this.uiManager.hideScreen('countdown');
       this.startOnlineGame(matchData);
     } catch (error) {
-      console.error('[Game] Private room creation failed:', error);
+      console.error('[Game] Private room creation failed:', error instanceof Error ? error.message : JSON.stringify(error), error);
       this.matchmakingScreen.setStatus('Ошибка подключения');
       this.matchmakingScreen.stopTimer();
       this.returnToMainMenu();
@@ -695,7 +695,7 @@ export class Game {
       this.uiManager.hideScreen('countdown');
       this.startOnlineGame(matchData);
     } catch (error) {
-      console.error('[Game] Matchmaking failed:', error);
+      console.error('[Game] Matchmaking failed:', error instanceof Error ? error.message : JSON.stringify(error), error);
       this.matchmakingScreen.setStatus('Ошибка подключения');
       this.matchmakingScreen.stopTimer();
       this.returnToMainMenu();
