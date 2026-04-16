@@ -44,29 +44,53 @@ export class MatchResultScreen {
     const subtitleText = isWinner ? 'Отличная игра!' : 'В следующий раз повезёт!';
 
     container.className = 'ui-screen';
-    container.innerHTML = `
-      <div class="glass-panel">
-        <div class="match-result-title ${titleClass}">${titleText}</div>
-        <div class="match-result-score">${score}</div>
-        <div class="match-result-details">
-          ${subtitleText}<br/>
-          Время матча: ${matchDuration}
-        </div>
-        <div class="match-result-buttons">
-          <button class="btn-primary" data-ref="rematch-btn">🔄 Реванш</button>
-          <button class="btn-secondary" data-ref="new-game-btn">🔍 Найти нового</button>
-          <button class="btn-ghost" data-ref="menu-btn">🏠 В меню</button>
-        </div>
-      </div>
-    `;
 
-    const rematchBtn = container.querySelector('[data-ref="rematch-btn"]') as HTMLButtonElement;
-    const newGameBtn = container.querySelector('[data-ref="new-game-btn"]') as HTMLButtonElement;
-    const menuBtn = container.querySelector('[data-ref="menu-btn"]') as HTMLButtonElement;
+    const panel = document.createElement('div');
+    panel.className = 'glass-panel';
 
+    const titleDiv = document.createElement('div');
+    titleDiv.className = `match-result-title ${titleClass}`;
+    titleDiv.textContent = titleText;
+    panel.appendChild(titleDiv);
+
+    const scoreDiv = document.createElement('div');
+    scoreDiv.className = 'match-result-score';
+    scoreDiv.textContent = score;
+    panel.appendChild(scoreDiv);
+
+    const detailsDiv = document.createElement('div');
+    detailsDiv.className = 'match-result-details';
+    detailsDiv.appendChild(document.createTextNode(subtitleText));
+    detailsDiv.appendChild(document.createElement('br'));
+    const durationText = document.createTextNode('Время матча: ');
+    detailsDiv.appendChild(durationText);
+    const durationValue = document.createTextNode(matchDuration);
+    detailsDiv.appendChild(durationValue);
+    panel.appendChild(detailsDiv);
+
+    const buttonsDiv = document.createElement('div');
+    buttonsDiv.className = 'match-result-buttons';
+
+    const rematchBtn = document.createElement('button');
+    rematchBtn.className = 'btn-primary';
+    rematchBtn.textContent = '🔄 Реванш';
     rematchBtn.addEventListener('click', () => this.callbacks.onRematch());
+    buttonsDiv.appendChild(rematchBtn);
+
+    const newGameBtn = document.createElement('button');
+    newGameBtn.className = 'btn-secondary';
+    newGameBtn.textContent = '🔍 Найти нового';
     newGameBtn.addEventListener('click', () => this.callbacks.onNewGame());
+    buttonsDiv.appendChild(newGameBtn);
+
+    const menuBtn = document.createElement('button');
+    menuBtn.className = 'btn-ghost';
+    menuBtn.textContent = '🏠 В меню';
     menuBtn.addEventListener('click', () => this.callbacks.onMainMenu());
+    buttonsDiv.appendChild(menuBtn);
+
+    panel.appendChild(buttonsDiv);
+    container.appendChild(panel);
   }
 }
 

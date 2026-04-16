@@ -120,7 +120,7 @@ export class PrivateMatchScreen {
         <div class="private-match-title">Комната создана!</div>
 
         <div class="room-code-display">
-          <div class="room-code-value">${this.roomCode}</div>
+          <div class="room-code-value" data-ref="room-code"></div>
           <button class="room-code-copy" data-ref="copy-btn">📋 Копировать</button>
         </div>
 
@@ -133,12 +133,20 @@ export class PrivateMatchScreen {
       </div>
     `;
 
+    const roomCodeEl = container.querySelector('[data-ref="room-code"]') as HTMLDivElement;
+    roomCodeEl.textContent = this.roomCode;
+
     const copyBtn = container.querySelector('[data-ref="copy-btn"]') as HTMLButtonElement;
     const cancelBtn = container.querySelector('[data-ref="cancel-btn"]') as HTMLButtonElement;
 
     copyBtn.addEventListener('click', () => {
       void navigator.clipboard.writeText(this.roomCode).then(() => {
         copyBtn.textContent = '✅ Скопировано!';
+        setTimeout(() => {
+          copyBtn.textContent = '📋 Копировать';
+        }, 2000);
+      }).catch(() => {
+        copyBtn.textContent = '❌ Не удалось скопировать';
         setTimeout(() => {
           copyBtn.textContent = '📋 Копировать';
         }, 2000);

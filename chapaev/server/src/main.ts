@@ -5,29 +5,7 @@
  * No game logic — all simulation runs on clients (lockstep).
  */
 
-import { readFileSync } from 'fs';
-import { fileURLToPath } from 'url';
-import { dirname, resolve } from 'path';
-
-// Load .env manually (avoids dotenv dependency resolution issues in pnpm workspace)
-const __serverDir = dirname(fileURLToPath(import.meta.url));
-const envPath = resolve(__serverDir, '../.env');
-try {
-  const envContent = readFileSync(envPath, 'utf-8');
-  for (const line of envContent.split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith('#')) continue;
-    const eqIdx = trimmed.indexOf('=');
-    if (eqIdx === -1) continue;
-    const key = trimmed.slice(0, eqIdx).trim();
-    const value = trimmed.slice(eqIdx + 1).trim();
-    if (!process.env[key]) {
-      process.env[key] = value;
-    }
-  }
-} catch {
-  // .env file not found — rely on actual environment variables
-}
+import 'dotenv/config';
 
 import { Phalanx } from 'phalanx-server';
 
@@ -44,7 +22,14 @@ const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
 async function main() {
   console.log('Starting Chapayev server...');
 
-  const authEnabled = !!GOOGLE_CLIENT_ID;
+  if (GOOGLE_CLIENT_ID && !GOOGLE_CLIENT_SECRET) {
+    throw new Error('GOOGLE_CLIENT_ID is set but GOOGLE_CLIENT_SECRET is missing — both are required for OAuth');
+  }
+  if (!GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET) {
+    throw new Error('GOOGLE_CLIENT_SECRET is set but GOOGLE_CLIENT_ID is missing — both are required for OAuth');
+  }
+
+  const authEnabled = !!(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET);
   if (authEnabled) {
     console.log('[Auth] Google OAuth enabled');
   } else {

@@ -54,12 +54,16 @@ export class NetworkManager {
 
   /** Subscribe to auth state changes */
   public onAuthStateChanged(handler: (state: PhalanxAuthState) => void): () => void {
-    return this.client.on('authStateChanged', handler);
+    const unsub = this.client.on('authStateChanged', handler);
+    this.networkUnsubscribers.push(unsub);
+    return unsub;
   }
 
   /** Subscribe to auth errors */
   public onAuthError(handler: (error: { message: string }) => void): () => void {
-    return this.client.on('authError', handler);
+    const unsub = this.client.on('authError', handler);
+    this.networkUnsubscribers.push(unsub);
+    return unsub;
   }
 
   /**

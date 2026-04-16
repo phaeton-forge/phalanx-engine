@@ -34,34 +34,67 @@ export class ProfileScreen {
     const email = user?.email || '';
 
     container.className = 'ui-screen';
-    container.innerHTML = `
-      <div class="glass-panel">
-        ${avatarUrl
-          ? `<img class="profile-avatar" src="${avatarUrl}" alt="Avatar" />`
-          : `<div class="profile-avatar" style="display: flex; align-items: center; justify-content: center; font-size: 28px; color: var(--text-muted);">👤</div>`
-        }
-        <div class="profile-name">${displayName}</div>
-        <div class="profile-email">${email}</div>
 
-        <div class="profile-section-title">Статистика</div>
-        <div class="profile-stats" style="text-align: center; color: var(--text-muted); font-size: 14px; padding: 12px 0;">
-          Будет позже
-        </div>
+    const panel = document.createElement('div');
+    panel.className = 'glass-panel';
 
-        <div class="profile-actions">
-          <button class="btn-ghost profile-logout-btn" data-ref="logout-btn">
-            Выйти из аккаунта
-          </button>
-          <button class="btn-ghost" data-ref="back-btn">← Назад</button>
-        </div>
-      </div>
-    `;
+    // Avatar
+    if (avatarUrl) {
+      const img = document.createElement('img');
+      img.className = 'profile-avatar';
+      img.setAttribute('src', avatarUrl);
+      img.setAttribute('alt', 'Avatar');
+      panel.appendChild(img);
+    } else {
+      const avatarDiv = document.createElement('div');
+      avatarDiv.className = 'profile-avatar';
+      avatarDiv.style.cssText = 'display: flex; align-items: center; justify-content: center; font-size: 28px; color: var(--text-muted);';
+      avatarDiv.textContent = '👤';
+      panel.appendChild(avatarDiv);
+    }
 
-    const logoutBtn = container.querySelector('[data-ref="logout-btn"]') as HTMLButtonElement;
-    const backBtn = container.querySelector('[data-ref="back-btn"]') as HTMLButtonElement;
+    // Name
+    const nameDiv = document.createElement('div');
+    nameDiv.className = 'profile-name';
+    nameDiv.textContent = displayName;
+    panel.appendChild(nameDiv);
 
+    // Email
+    const emailDiv = document.createElement('div');
+    emailDiv.className = 'profile-email';
+    emailDiv.textContent = email;
+    panel.appendChild(emailDiv);
+
+    // Stats section
+    const sectionTitle = document.createElement('div');
+    sectionTitle.className = 'profile-section-title';
+    sectionTitle.textContent = 'Статистика';
+    panel.appendChild(sectionTitle);
+
+    const statsDiv = document.createElement('div');
+    statsDiv.className = 'profile-stats';
+    statsDiv.style.cssText = 'text-align: center; color: var(--text-muted); font-size: 14px; padding: 12px 0;';
+    statsDiv.textContent = 'Будет позже';
+    panel.appendChild(statsDiv);
+
+    // Actions
+    const actionsDiv = document.createElement('div');
+    actionsDiv.className = 'profile-actions';
+
+    const logoutBtn = document.createElement('button');
+    logoutBtn.className = 'btn-ghost profile-logout-btn';
+    logoutBtn.textContent = 'Выйти из аккаунта';
     logoutBtn.addEventListener('click', () => this.callbacks.onSignOut());
+    actionsDiv.appendChild(logoutBtn);
+
+    const backBtn = document.createElement('button');
+    backBtn.className = 'btn-ghost';
+    backBtn.textContent = '← Назад';
     backBtn.addEventListener('click', () => this.callbacks.onBack());
+    actionsDiv.appendChild(backBtn);
+
+    panel.appendChild(actionsDiv);
+    container.appendChild(panel);
   }
 }
 

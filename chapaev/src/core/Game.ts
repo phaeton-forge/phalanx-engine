@@ -53,6 +53,8 @@ export class Game {
   // Network (online mode only)
   private networkManager: NetworkManager | null = null;
   private commandFlushUnsubscribe: (() => void) | null = null;
+  private authUnsubscribers: (() => void)[] = [];
+  private connectEventUnsubscribers: (() => void)[] = [];
   private localTeam: TeamTag = TeamTag.White;
   private isGuestMode = false;
 
@@ -103,21 +105,46 @@ export class Game {
     this.mainMenu.updateAuthState(authState);
 
     // Listen for auth state changes
-    this.networkManager.onAuthStateChanged((state) => {
-      this.mainMenu.updateAuthState(state);
+    this.subscribeAuth();
+  }
 
-      // If user just signed in and auth modal is showing, close it and go to menu
-      if (state.isAuthenticated && this.uiManager.getCurrentScreen() === 'auth') {
-        this.uiManager.hideScreen('auth');
-        this.uiManager.showScreen('main-menu');
+  // ── Auth subscription helpers ────────────────────────────────────
+
+  private subscribeAuth(): void {
+    if (!this.networkManager) return;
+
+    this.authUnsubscribers.push(
+      this.networkManager.onAuthStateChanged((state) => {
         this.mainMenu.updateAuthState(state);
-      }
-    });
 
-    this.networkManager.onAuthError((error) => {
-      console.error('[Game] Auth error:', error);
-      this.authModal.setStatus(`Ошибка: ${error.message}`, true);
-    });
+        if (state.isAuthenticated && this.uiManager.getCurrentScreen() === 'auth') {
+          this.uiManager.hideScreen('auth');
+          this.uiManager.showScreen('main-menu');
+          this.mainMenu.updateAuthState(state);
+        }
+      }),
+    );
+
+    this.authUnsubscribers.push(
+      this.networkManager.onAuthError((error) => {
+        console.error('[Game] Auth error:', error);
+        this.authModal.setStatus(`Ошибка: ${error.message}`, true);
+      }),
+    );
+  }
+
+  private unsubscribeAuth(): void {
+    for (const unsub of this.authUnsubscribers) {
+      unsub();
+    }
+    this.authUnsubscribers = [];
+  }
+
+  private cleanupConnectEventListeners(): void {
+    for (const unsub of this.connectEventUnsubscribers) {
+      unsub();
+    }
+    this.connectEventUnsubscribers = [];
   }
 
   // ── UI Setup ────────────────────────────────────────────────────
@@ -272,13 +299,13 @@ export class Game {
 
   private handleCancelMatchmaking(): void {
     this.matchmakingScreen.stopTimer();
+    this.cleanupConnectEventListeners();
+    this.unsubscribeAuth();
     this.networkManager?.dispose();
     this.networkManager = new NetworkManager();
 
-    // Re-attach auth listeners
-    this.networkManager.onAuthStateChanged((state) => {
-      this.mainMenu.updateAuthState(state);
-    });
+    // Re-attach both auth listeners
+    this.subscribeAuth();
 
     this.uiManager.hideScreen('matchmaking');
     this.uiManager.showScreen('main-menu');
@@ -337,13 +364,13 @@ export class Game {
     // Disconnect network
     this.commandFlushUnsubscribe?.();
     this.commandFlushUnsubscribe = null;
+    this.cleanupConnectEventListeners();
+    this.unsubscribeAuth();
     this.networkManager?.dispose();
     this.networkManager = new NetworkManager();
 
-    // Re-setup auth listeners
-    this.networkManager.onAuthStateChanged((state) => {
-      this.mainMenu.updateAuthState(state);
-    });
+    // Re-setup both auth listeners
+    this.subscribeAuth();
 
     // Hide all screens and show main menu
     for (const screen of ['game', 'match-result', 'pause', 'countdown', 'matchmaking'] as const) {
@@ -363,14 +390,18 @@ export class Game {
     try {
       this.matchmakingScreen.setStatus('Подключение к серверу...');
 
-      // Setup error handlers
-      this.networkManager.client.on('disconnected', () => {
-        this.matchmakingScreen.setStatus('Соединение потеряно');
-      });
+      // Setup error handlers (track unsubs for cleanup)
+      this.connectEventUnsubscribers.push(
+        this.networkManager.client.on('disconnected', () => {
+          this.matchmakingScreen.setStatus('Соединение потеряно');
+        }),
+      );
 
-      this.networkManager.client.on('error', (error) => {
-        console.error('[Game] Network error:', error.message);
-      });
+      this.connectEventUnsubscribers.push(
+        this.networkManager.client.on('error', (error) => {
+          console.error('[Game] Network error:', error.message);
+        }),
+      );
 
       await this.networkManager.client.connect();
       this.matchmakingScreen.setStatus('Поиск соперника...');
@@ -396,12 +427,16 @@ export class Game {
       // Store match data on the network manager so localPlayerIndex works
       this.networkManager.setMatchData(matchData);
 
+      // Clean up matchmaking-phase listeners before transitioning to game
+      this.cleanupConnectEventListeners();
+
       // Transition to game
       this.uiManager.hideScreen('countdown');
       this.startOnlineGame(matchData);
     } catch (error) {
       console.error('[Game] Matchmaking failed:', error);
       this.matchmakingScreen.setStatus('Ошибка подключения');
+      this.matchmakingScreen.stopTimer();
       this.returnToMainMenu();
     }
   }
@@ -507,13 +542,13 @@ export class Game {
 
   // ── Online game start (after matchmaking) ───────────────────────
 
-  private startOnlineGame(_matchData: import('phalanx-client').MatchFoundEvent): void {
+  private startOnlineGame(matchData: import('phalanx-client').MatchFoundEvent): void {
     if (!this.networkManager) return;
 
     this.isInGame = true;
 
     // Determine local team from server-assigned teamId (0 = white, 1 = black)
-    const localPlayerIndex = _matchData.teamId;
+    const localPlayerIndex = matchData.teamId;
     this.localTeam = localPlayerIndex === 0 ? TeamTag.White : TeamTag.Black;
     console.log(`[Game] Local team id: ${localPlayerIndex}, team: ${this.localTeam}`);
 
@@ -526,7 +561,7 @@ export class Game {
     // Resolve display names: use auth username for local, opponent username from matchData
     const localUser = this.networkManager.client.getUser();
     const localName = localUser?.username ?? 'Вы';
-    const opponentInfo = _matchData.opponents[0];
+    const opponentInfo = matchData.opponents[0];
     const opponentName = opponentInfo?.username ?? 'Соперник';
     this.gameHUD.setPlayerNames(
       localPlayerIndex === 0 ? localName : opponentName,

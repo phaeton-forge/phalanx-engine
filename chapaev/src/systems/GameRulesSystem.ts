@@ -243,11 +243,11 @@ export class GameRulesSystem extends GameSystem {
         return;
       }
 
-      if (loserRow === loserEdge && Math.abs(winnerRow - loserRow) <= 1) {
-        // Loser is at the edge — one more win will push them off
-        // Not game over yet, they still have their row
-      }
     }
+
+    // Clear stale round transition state
+    gs.roundTransitionTicksLeft = 0;
+    gs.pendingRoundWinner = null;
 
     // Start new round
     gs.roundNumber++;
