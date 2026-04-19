@@ -363,6 +363,78 @@ describe('PrivateRoomService', () => {
     expect(hostMatch.matchId).toBe(guestMatch.matchId);
   });
 
+  it('should deliver match-found to a host who recovers after the guest joined during disconnect', async () => {
+    // The trickiest UX path: host creates a room, host's mobile browser
+    // kills the socket, guest follows the invite link while the host is
+    // still offline (so the match is created but the host socket is
+    // null), and then the host finally reconnects. Prior to this fix,
+    // the host never learned the matchId and had no way to reconnect.
+    // After: the service remembers the pending match keyed by host
+    // playerId and retroactively delivers match-found on room-recover.
+    const host = createClient();
+    await connectClient(host);
+
+    const createdPromise = new Promise<RoomCreatedEvent>((resolve) => {
+      host.on('room-created', (data: RoomCreatedEvent) => resolve(data));
+    });
+    host.emit('room-create', { playerId: 'host1', username: 'Host' });
+    const created = await createdPromise;
+
+    // Host drops.
+    host.disconnect();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    // Guest joins while host is still offline — match is created.
+    const guest = createClient();
+    await connectClient(guest);
+    const guestMatchPromise = new Promise<{ matchId: string }>((resolve) => {
+      guest.on('match-found', (data: { matchId: string }) => resolve(data));
+    });
+    guest.emit('room-join', {
+      playerId: 'guest1',
+      username: 'Guest',
+      code: created.code,
+    });
+    const guestMatch = await guestMatchPromise;
+    expect(guestMatch.matchId).toBeDefined();
+
+    // Host finally reconnects on a new socket and recovers — should get
+    // match-found with the same matchId the guest saw.
+    const host2 = createClient();
+    await connectClient(host2);
+    const hostRecoveredPromise = new Promise<RoomRecoveredEvent>((resolve) => {
+      host2.on('room-recovered', (data: RoomRecoveredEvent) => resolve(data));
+    });
+    const hostMatchPromise = new Promise<{
+      matchId: string;
+      teamId: number;
+      opponents: { playerId: string }[];
+    }>((resolve) => {
+      host2.on(
+        'match-found',
+        (data: {
+          matchId: string;
+          teamId: number;
+          opponents: { playerId: string }[];
+        }) => resolve(data),
+      );
+    });
+    host2.emit('room-recover', {
+      playerId: 'host1',
+      username: 'Host',
+      code: created.code,
+    });
+
+    const [hostRecovered, hostMatch] = await Promise.all([
+      hostRecoveredPromise,
+      hostMatchPromise,
+    ]);
+    expect(hostRecovered.code).toBe(created.code);
+    expect(hostMatch.matchId).toBe(guestMatch.matchId);
+    expect(hostMatch.teamId).toBe(0); // host is team 0
+    expect(hostMatch.opponents.map((o) => o.playerId)).toContain('guest1');
+  });
+
   it('should emit room-error with "Room expired" when room-recover omits the code', async () => {
     // Security guard: the Phalanx room-recover handler rejects a payload
     // that has no `code`, so a client can't use playerId-only recovery

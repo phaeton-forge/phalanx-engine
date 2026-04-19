@@ -45,6 +45,16 @@ interface PrivateRoom {
 export class PrivateRoomService {
   private readonly rooms: Map<string, PrivateRoom> = new Map();
   private readonly matches: Map<string, GameRoom> = new Map();
+  /**
+   * Matches whose host was still disconnected at the moment a guest
+   * joined their room. The host never received `match-found` because
+   * their socket was null at `joinRoom` time, so we remember the
+   * `matchId` keyed by the host's `playerId` and deliver it when the
+   * host finally reconnects via `room-recover`. Entries are purged
+   * when the match ends (see `removeMatch`), so a dead match can't
+   * leak through an indefinite pending-recover entry.
+   */
+  private readonly pendingHostReconnect: Map<string, string> = new Map();
   private readonly io: SocketIOServer;
   private readonly config: PhalanxConfig;
   private readonly eventEmitter: (
@@ -222,6 +232,19 @@ export class PrivateRoomService {
     this.eventEmitter('match-created', gameRoom.getMatchInfo());
     gameRoom.start();
 
+    // If the host was still in the disconnect grace window at the
+    // moment the guest joined, `match-found` was emitted by GameRoom
+    // but never reached them (their socket is null / dead). Record
+    // the pairing so a subsequent `room-recover` on the host's new
+    // socket can retroactively deliver match-found and wire the
+    // socket into the running match.
+    if (!room.hostSocket) {
+      this.pendingHostReconnect.set(room.host.playerId, matchId);
+      console.log(
+        `[PrivateRoom] Host ${room.host.playerId} was offline when match ${matchId} started — pending recover`
+      );
+    }
+
     console.log(
       `[PrivateRoom] Room ${code} → match ${matchId} (${room.host.playerId} vs ${playerId})`
     );
@@ -279,6 +302,42 @@ export class PrivateRoomService {
     const normalizedCode = code.toUpperCase();
     const room = this.rooms.get(normalizedCode);
     if (!room || room.host.playerId !== playerId) {
+      // Fallback: maybe the host's original room was consumed by a
+      // guest while the host was still in the disconnect grace window,
+      // which means a match exists but the host never learned its id.
+      // If so, promote the host into that match now. We still require
+      // the host to know their original room code — we looked it up
+      // above — but since the room is gone, we can only authenticate
+      // on playerId here. That's acceptable because the pending entry
+      // only exists if that playerId actually created the now-consumed
+      // room in the first place.
+      const pendingMatchId = this.pendingHostReconnect.get(playerId);
+      if (pendingMatchId) {
+        const match = this.matches.get(pendingMatchId);
+        if (match) {
+          this.pendingHostReconnect.delete(playerId);
+          // `handleReconnect` wires the socket into the running match
+          // and emits `reconnect-state` with the full match snapshot.
+          // We also emit `match-found` so the client sees the same
+          // event it would have seen had its socket been alive at
+          // `joinRoom` time — keeps the client state machine simple.
+          match.handleReconnect(playerId, socket.id);
+          const matchFound = match.buildMatchFoundPayload(playerId);
+          if (matchFound) {
+            socket.emit('match-found', matchFound);
+          }
+          socket.emit('room-recovered', {
+            code: normalizedCode,
+          } satisfies RoomRecoveredEvent);
+          console.log(
+            `[PrivateRoom] Host ${playerId} recovered into pending match ${pendingMatchId}`
+          );
+          return true;
+        }
+        // Match vanished before recover — drop the stale entry and
+        // fall through to the generic 'Room expired' response below.
+        this.pendingHostReconnect.delete(playerId);
+      }
       socket.emit('room-error', {
         message: 'Room expired',
       } satisfies RoomErrorEvent);
@@ -357,9 +416,18 @@ export class PrivateRoomService {
   /**
    * Remove a finished match from the private matches map.
    * Called from the match-ended listener — the match already stopped itself.
+   *
+   * Also purges any pending host-reconnect entry that still points at
+   * this match, so a host who never came back within the match's
+   * lifetime can't later collide with a fresh room they create.
    */
   removeMatch(matchId: string): void {
     this.matches.delete(matchId);
+    for (const [playerId, pendingMatchId] of this.pendingHostReconnect) {
+      if (pendingMatchId === matchId) {
+        this.pendingHostReconnect.delete(playerId);
+      }
+    }
   }
 
   /**
@@ -395,6 +463,7 @@ export class PrivateRoomService {
       }
     }
     this.rooms.clear();
+    this.pendingHostReconnect.clear();
   }
 
   /**
