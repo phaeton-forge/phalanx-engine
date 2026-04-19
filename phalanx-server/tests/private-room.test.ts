@@ -1067,15 +1067,27 @@ describe('PrivateRoomService — host countdown recovery (snapshot)', () => {
     // Guest joins while host is offline. Countdown starts immediately.
     const guest = createClient();
     await connectClient(guest);
+
+    // Wait for an actual guest-side countdown tick with seconds < 5
+    // before continuing. Using a real event instead of a wall-clock
+    // sleep avoids flakiness on slow CI schedulers where a fixed delay
+    // could overshoot the full countdown and cause the host snapshot
+    // to flip to gameStartEmitted=true / countdownSecondsRemaining=null.
+    const countdownTickPromise = new Promise<void>((resolve) => {
+      const onCountdown = (payload: { seconds: number }) => {
+        if (typeof payload?.seconds === 'number' && payload.seconds < 5) {
+          guest.off('countdown', onCountdown);
+          resolve();
+        }
+      };
+      guest.on('countdown', onCountdown);
+    });
     guest.emit('room-join', {
       playerId: 'guest1',
       username: 'Guest',
       code: created.code,
     });
-    // Wait ~1.2s so the countdown has ticked at least once on the guest
-    // side. This guarantees the remaining-seconds value on the host's
-    // snapshot is strictly less than the configured 5.
-    await new Promise((resolve) => setTimeout(resolve, 1200));
+    await countdownTickPromise;
 
     // Host reconnects.
     const host2 = createClient();

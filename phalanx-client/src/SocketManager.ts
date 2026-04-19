@@ -451,7 +451,11 @@ export class SocketManager {
 
       const stateHandler = (state: ReconnectStateEvent) => {
         this.socket?.off('reconnect-status', statusHandler);
-        this.callbacks.onReconnectState(state);
+        // Do NOT invoke `callbacks.onReconnectState` here — the global
+        // `reconnect-state` handler registered in `setupEventHandlers`
+        // already fires for this same message. Calling it twice would
+        // drive downstream state updates (and any synthetic countdown /
+        // game-start replays) through the client twice per server event.
         resolve(state);
       };
 
@@ -585,7 +589,18 @@ export class SocketManager {
           seconds: data.countdownSecondsRemaining,
         } satisfies CountdownEvent);
       }
-      if (data.gameStartEmitted === true) {
+      // Only synthesize `game-start` when the snapshot shows the client
+      // is still in a pre-play phase. For an in-progress match (state
+      // `playing` / `paused` / `finished`) the caller is doing a normal
+      // mid-match reconnect, and PhalanxClient's `onGameStart` callback
+      // would reset `currentTick` to 0 — clobbering the authoritative
+      // tick that `onReconnectState` just applied. In that case the
+      // client is already past the game-start transition, so there's
+      // nothing to replay.
+      if (
+        data.gameStartEmitted === true &&
+        (data.state === 'countdown' || data.state === 'waiting-for-ready')
+      ) {
         const gameStart: GameStartEvent = {
           matchId: data.matchId,
           ...(typeof data.randomSeed === 'number'
