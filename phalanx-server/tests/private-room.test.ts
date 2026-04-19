@@ -363,6 +363,29 @@ describe('PrivateRoomService', () => {
     expect(hostMatch.matchId).toBe(guestMatch.matchId);
   });
 
+  it('should emit room-error with "Room expired" when room-recover omits the code', async () => {
+    // Security guard: the Phalanx room-recover handler rejects a payload
+    // that has no `code`, so a client can't use playerId-only recovery
+    // to fish for valid room codes.
+    const host = createClient();
+    await connectClient(host);
+
+    const errorPromise = new Promise<RoomErrorEvent>((resolve) => {
+      host.on('room-error', (data: RoomErrorEvent) => resolve(data));
+    });
+    const unexpectedRecoverPromise = new Promise<RoomRecoveredEvent | null>(
+      (resolve) => {
+        host.on('room-recovered', (data: RoomRecoveredEvent) => resolve(data));
+        setTimeout(() => resolve(null), 300);
+      },
+    );
+    host.emit('room-recover', { playerId: 'host1', username: 'Host' });
+
+    const error = await errorPromise;
+    expect(error.message).toBe('Room expired');
+    expect(await unexpectedRecoverPromise).toBeNull();
+  });
+
   it('should emit room-error with "Room expired" when recovering a non-existent room', async () => {
     const host = createClient();
     await connectClient(host);
@@ -448,13 +471,19 @@ describe('PrivateRoomService', () => {
     });
     // The Phalanx room-cancel handler keys off the `playerId` captured
     // from a prior message on this socket, so we first associate the
-    // new socket with the host's playerId via room-recover, then cancel.
+    // new socket with the host's playerId via room-recover, wait for
+    // the server-side ack, and only then cancel. Relying on a fixed
+    // sleep here is racy under load — waiting for `room-recovered`
+    // is the deterministic signal that the handler has run.
+    const recoveredPromise = new Promise<RoomRecoveredEvent>((resolve) => {
+      host2.on('room-recovered', (data: RoomRecoveredEvent) => resolve(data));
+    });
     host2.emit('room-recover', {
       playerId: 'host1',
       username: 'Host',
       code: created.code,
     });
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await recoveredPromise;
     host2.emit('room-cancel');
 
     const cancelled = await cancelledPromise;

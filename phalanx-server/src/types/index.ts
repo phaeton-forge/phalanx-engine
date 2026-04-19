@@ -362,13 +362,15 @@ export interface QueueStatusEvent {
  *   • client → server: `room-create`    → `{ playerId, username?, gameType? }`
  *   • client → server: `room-join`      → `{ playerId, username?, code }`
  *   • client → server: `room-cancel`    → `{}`
- *   • client → server: `room-recover`   → `{ playerId, username?, code? }`
+ *   • client → server: `room-recover`   → `{ playerId, username?, code }`
  *
- * The `code` on `room-recover` is strongly recommended: it proves the
- * caller is actually the host who created the room. Without it any
- * client that knew a host's `playerId` could reclaim the room.
- * It is optional on the wire for backward compatibility; the server
- * logs a warning when a client omits it.
+ * The `code` on `room-recover` is required: it proves the caller is
+ * actually the host who created the room. In an unauthenticated
+ * socket environment `playerId` alone is not a credential, so the
+ * server refuses to recover without a matching code and emits
+ * `room-error: "Room expired"` instead (same message as "no such
+ * room" so we never leak whether a given playerId currently owns
+ * a room).
  */
 
 /** Event sent to the host when a room is created. */

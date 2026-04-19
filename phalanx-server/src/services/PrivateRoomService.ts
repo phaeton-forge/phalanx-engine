@@ -252,7 +252,7 @@ export class PrivateRoomService {
    * possession of the code is what authenticates the host in the
    * anonymous-socket case. Without that check, any client that knew
    * (or guessed) a host's `playerId` could reclaim their room and
-   * learn its invite code.
+   * learn its invite code, so `code` is required and must match.
    *
    * On success: clears the pending destruction timer, rebinds the
    * room to the host's new socket (updating both the service-level
@@ -266,22 +266,13 @@ export class PrivateRoomService {
    * the same message for both cases so we don't leak whether a
    * given playerId currently owns a room.
    */
-  recoverRoom(playerId: string, socket: Socket, code?: string): void {
-    const normalizedCode = code?.toUpperCase();
+  recoverRoom(playerId: string, socket: Socket, code: string): void {
+    const normalizedCode = code.toUpperCase();
     for (const [, room] of this.rooms) {
       if (
         room.host.playerId === playerId &&
-        (normalizedCode === undefined || room.code === normalizedCode)
+        room.code === normalizedCode
       ) {
-        if (normalizedCode === undefined) {
-          // Legacy callers that don't pass a code still work but are
-          // logged so we can spot them in downstream games.
-          console.warn(
-            `[PrivateRoom] recoverRoom called without a code for ${playerId} — ` +
-              `future versions will require it`,
-          );
-        }
-
         if (room.hostDisconnectTimer) {
           clearTimeout(room.hostDisconnectTimer);
           room.hostDisconnectTimer = null;

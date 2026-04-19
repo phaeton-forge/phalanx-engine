@@ -448,13 +448,17 @@ export class Phalanx extends EventEmitter {
       // their still-alive room. `code` is required to prove the caller
       // is actually the host who created the room — in an anonymous
       // socket environment, `playerId` alone is not an authentication
-      // token. `code` stays optional on the wire for backward
-      // compatibility with older clients; recoverRoom logs a warning
-      // when it's omitted.
+      // token. If it's missing we reject with the same `Room expired`
+      // error the service itself uses, so clients can't distinguish
+      // "wrong code" from "missing code" from "no such room".
       socket.on(
         'room-recover',
-        (data: { playerId: string; username?: string; code?: string }) => {
+        (data: { playerId: string; username?: string; code: string }) => {
           playerId = data.playerId;
+          if (typeof data.code !== 'string' || data.code.length === 0) {
+            socket.emit('room-error', { message: 'Room expired' });
+            return;
+          }
           this.privateRooms!.recoverRoom(playerId, socket, data.code);
         }
       );
