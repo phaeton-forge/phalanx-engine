@@ -254,9 +254,26 @@ describe('PhalanxClient Private Room Integration', () => {
 
       // Host returns. match-found must arrive via the recover fallback.
       await host.connect();
+
+      // Wire *all* listeners up before calling `recoverRoom`. The server
+      // emits in this order on the pending-recover path:
+      //   `match-found` → `reconnect-state` (synchronously fans out
+      //   synthetic `countdown`/`game-start`) → `room-recovered`.
+      // If we only subscribed to `gameStart`/`countdown` after awaiting
+      // `recoverRoom` (or even after `matchFound`), the synthetic replay
+      // would have already passed by empty listener lists and this test
+      // would hang until the timeout — flaky at best, deadlocking on a
+      // reliable server at worst.
       const matchPromiseHost = new Promise<MatchFoundEvent>((resolve) => {
         host.on('matchFound', (event) => resolve(event));
       });
+      const gameStartPromise = new Promise<GameStartEvent>((resolve) => {
+        host.on('gameStart', (event) => resolve(event));
+      });
+      const countdownPromise = new Promise<CountdownEvent>((resolve) => {
+        host.on('countdown', (event) => resolve(event));
+      });
+
       const recovered = await host.recoverRoom(roomCreated.code);
       expect(recovered.code).toBe(roomCreated.code);
 
@@ -266,13 +283,7 @@ describe('PhalanxClient Private Room Integration', () => {
       // And the countdown + game-start — which fired on the guest while
       // the host was offline — must still flow through to the host's
       // callbacks thanks to the reconnect-state snapshot replay.
-      const gameStartPromise = new Promise<GameStartEvent>((resolve) => {
-        host.on('gameStart', (event) => resolve(event));
-      });
-      const countdownPromise = new Promise<CountdownEvent>((resolve) => {
-        host.on('countdown', (event) => resolve(event));
-      });
-
+      //
       // If host recovered mid-countdown, the snapshot triggers a synthetic
       // countdown event. If the server had already emitted game-start by
       // recover time, gameStartEmitted is true and gameStart fires locally.

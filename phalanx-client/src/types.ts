@@ -501,10 +501,11 @@ export interface RoomCancelledEvent {
  * when the user switches to a messenger to share the invite link).
  *
  * The returned `code` is the canonical server-side value — callers should
- * prefer it over whatever they passed into `recoverRoom`, because the
- * server normalizes casing and may, in the "host was offline when the
- * guest joined" fallback path, echo back the code the host originally
- * created the room with even if the caller slightly drifted.
+ * prefer it over whatever they passed into `recoverRoom`. In practice
+ * this differs from the caller's input only in casing: the server
+ * uppercases the provided code and rejects anything else with
+ * `room-error: "Room expired"`. Echoing the stored code lets callers
+ * update any cached value that drifted in case only.
  */
 export interface RoomRecoveredEvent {
   code: string;

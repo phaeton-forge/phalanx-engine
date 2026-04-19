@@ -494,36 +494,48 @@ export class Game {
       // delivered them, so a listener registered here survives the
       // reconnect cycle. A `waitForMatch()` bound to the original
       // socket would not.
-      const matchData = await this.waitForClientEvent<MatchFoundEvent>('matchFound');
-      this.privateMatchScreen.stopWaitingTimer();
-      this.matchmakingScreen.stopTimer();
-
-      // Show countdown screen
-      this.uiManager.hideScreen('private-match');
-      this.uiManager.destroyScreen('countdown');
-      this.uiManager.showScreen('countdown');
-
-      // Subscribe to countdown events and wait for game-start. Both are
-      // delivered through the client emitter so synthetic replays from
-      // `reconnect-state` (see PR #19) are observed here too.
+      //
+      // IMPORTANT: all three listeners (`matchFound`, `countdown`,
+      // `gameStart`) must be registered *before* we `await` anything.
+      // The recover-into-pending-match server path emits in this
+      // order: `match-found` → `reconnect-state` (which synchronously
+      // fans out a synthetic `countdown`/`game-start` through
+      // SocketManager) → `room-recovered`. If we only subscribed to
+      // `countdown`/`gameStart` *after* awaiting `matchFound`, those
+      // synthetic events would pass by an empty listener list and the
+      // flow would hang on the countdown screen forever (especially
+      // when the host recovers after `game-start` has already fired).
+      const matchFoundPromise = this.waitForClientEvent<MatchFoundEvent>('matchFound');
+      const gameStartPromise = this.waitForClientEvent<GameStartEvent>('gameStart');
       const unsubCountdown = this.networkManager.client.on('countdown', (event: CountdownEvent) => {
         this.matchmakingScreen.updateCountdown(event.seconds);
       });
+
       try {
-        const gameStartEvent = await this.waitForClientEvent<GameStartEvent>('gameStart');
+        const matchData = await matchFoundPromise;
+        this.privateMatchScreen.stopWaitingTimer();
+        this.matchmakingScreen.stopTimer();
+
+        // Show countdown screen
+        this.uiManager.hideScreen('private-match');
+        this.uiManager.destroyScreen('countdown');
+        this.uiManager.showScreen('countdown');
+
+        const gameStartEvent = await gameStartPromise;
         console.log('[Game] Private match game start, randomSeed:', gameStartEvent.randomSeed);
+
+        this.networkManager.setMatchData(matchData);
+        this.cleanupConnectEventListeners();
+        // Match is starting — nothing left to recover.
+        this.disarmVisibilityRecover();
+        this.activePrivateRoomCode = null;
+
+        this.uiManager.hideScreen('countdown');
+        this.startOnlineGame(matchData);
       } finally {
         unsubCountdown();
       }
 
-      this.networkManager.setMatchData(matchData);
-      this.cleanupConnectEventListeners();
-      // Match is starting — nothing left to recover.
-      this.disarmVisibilityRecover();
-      this.activePrivateRoomCode = null;
-
-      this.uiManager.hideScreen('countdown');
-      this.startOnlineGame(matchData);
     } catch (error) {
       console.error('[Game] Private room creation failed:', error instanceof Error ? error.message : JSON.stringify(error), error);
       this.matchmakingScreen.setStatus('Ошибка подключения');
@@ -541,11 +553,22 @@ export class Game {
    * so it keeps working across a recover-driven socket swap. The handle
    * returned by `client.on` is used to unsubscribe exactly once the
    * expected event arrives.
+   *
+   * Rejects synchronously if `networkManager` is missing at call time.
+   * Without this guard the returned Promise would never settle and
+   * every caller that `await`s it would hang indefinitely — painful to
+   * debug because there is no stack trace attached to an unresolved
+   * Promise.
    */
   private waitForClientEvent<T>(eventName: 'matchFound' | 'gameStart'): Promise<T> {
+    const networkManager = this.networkManager;
+    if (!networkManager) {
+      return Promise.reject(
+        new Error(`waitForClientEvent(${eventName}): no active networkManager`),
+      );
+    }
     return new Promise((resolve) => {
-      if (!this.networkManager) return;
-      const unsubscribe = this.networkManager.client.on(
+      const unsubscribe = networkManager.client.on(
         eventName as 'matchFound',
         // The emitter is typed per-event via an overload map; cast the
         // payload back to the caller-requested generic. Both `matchFound`
