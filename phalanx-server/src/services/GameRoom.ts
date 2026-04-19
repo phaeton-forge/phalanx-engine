@@ -46,6 +46,23 @@ export class GameRoom {
   private tickInterval: NodeJS.Timeout | null = null;
   private countdownTimer: NodeJS.Timeout | null = null;
   private countdownInterval: NodeJS.Timeout | null = null;
+  /**
+   * Absolute epoch-ms deadline for the countdown, set when the countdown
+   * starts and cleared when `game-start` is emitted. Used to compute the
+   * remaining seconds for a late-joining socket (e.g. a private-room host
+   * whose mobile browser killed the WebSocket while they were sharing the
+   * invite link) so the client can render the correct number instead of
+   * staying stuck on the last value it saw before disconnecting.
+   */
+  private countdownDeadline: number | null = null;
+  /**
+   * Set to true once `game-start` has been broadcast. A host who recovers
+   * after this point needs to synthesize the event locally — we signal
+   * that via this flag in the `reconnect-state` payload so the client can
+   * transition out of the countdown UI without waiting for a second
+   * `game-start` it will never receive.
+   */
+  private gameStartEmitted: boolean = false;
   private pendingCommands: Map<number, PlayerCommand[]> = new Map();
 
   // Ready handshake: tracks which players have reported ready after asset loading
@@ -183,7 +200,10 @@ export class GameRoom {
    */
   private startGameCountdown(): void {
     if (this.config.countdownSeconds <= 0) {
-      // Skip countdown entirely — go straight to waiting-for-ready
+      // Skip countdown entirely — go straight to waiting-for-ready.
+      // No deadline to record: the countdown phase is effectively zero
+      // length, so a reconnecting client should observe `gameStartEmitted`.
+      this.gameStartEmitted = true;
       this.io.to(this.roomId).emit('game-start', {
         matchId: this.id,
         randomSeed: this.randomSeed,
@@ -193,6 +213,10 @@ export class GameRoom {
     }
 
     let countdown = this.config.countdownSeconds;
+    // Record the absolute wall-clock deadline so a reconnecting socket
+    // can compute its own remaining-seconds value without having to wait
+    // for the next tick of the 1Hz broadcast.
+    this.countdownDeadline = Date.now() + countdown * 1000;
 
     // Emit initial countdown
     this.io.to(this.roomId).emit('countdown', { seconds: countdown });
@@ -207,6 +231,12 @@ export class GameRoom {
           clearInterval(this.countdownInterval);
           this.countdownInterval = null;
         }
+        // The countdown phase is over — clear the deadline and mark the
+        // game-start as emitted so a late recover falls into the
+        // synthesize-locally path rather than waiting for an event that
+        // will never fire again.
+        this.countdownDeadline = null;
+        this.gameStartEmitted = true;
         // Emit game-start event with random seed for deterministic RNG
         this.io.to(this.roomId).emit('game-start', {
           matchId: this.id,
@@ -987,17 +1017,36 @@ export class GameRoom {
       socketData.matchId = this.id;
       socketData.playerId = playerId;
 
-      // Send reconnect-state with command history (NET-2)
+      // Send reconnect-state with command history (NET-2).
+      //
+      // Also carries a countdown / game-start snapshot so a client who
+      // reconnects mid-countdown can render the correct remaining seconds
+      // instead of freezing on the last value it saw, and a client who
+      // reconnects after `game-start` can synthesize the event locally
+      // (it will never be re-broadcast).
       const fromTick = Math.max(
         0,
         this.currentTick - this.config.commandHistoryTicks
       );
+      // Use Math.ceil so a deadline 2.1s away is reported as 3, matching
+      // the integer value the periodic `countdown` broadcast would have
+      // emitted at the most recent whole second.
+      const countdownSecondsRemaining =
+        this.countdownDeadline !== null
+          ? Math.max(
+              0,
+              Math.ceil((this.countdownDeadline - Date.now()) / 1000),
+            )
+          : null;
       socket.emit('reconnect-state', {
         matchId: this.id,
         currentTick: this.currentTick,
         state: this.state,
         players: Array.from(this.players.values()),
         recentCommands: this.getRecentCommandHistory(fromTick),
+        countdownSecondsRemaining,
+        gameStartEmitted: this.gameStartEmitted,
+        randomSeed: this.randomSeed,
       });
 
       // Notify other players

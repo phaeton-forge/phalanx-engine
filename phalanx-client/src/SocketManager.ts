@@ -451,7 +451,11 @@ export class SocketManager {
 
       const stateHandler = (state: ReconnectStateEvent) => {
         this.socket?.off('reconnect-status', statusHandler);
-        this.callbacks.onReconnectState(state);
+        // Do NOT invoke `callbacks.onReconnectState` here — the global
+        // `reconnect-state` handler registered in `setupEventHandlers`
+        // already fires for this same message. Calling it twice would
+        // drive downstream state updates (and any synthetic countdown /
+        // game-start replays) through the client twice per server event.
         resolve(state);
       };
 
@@ -553,6 +557,60 @@ export class SocketManager {
       this.callbacks.onMatchEnd(data);
     });
 
+    // Reconnect-state — unlike `reconnectToMatch` which attaches a
+    // one-shot listener for the explicit reconnect flow, this global
+    // handler catches snapshots delivered out-of-band, e.g. by the
+    // private-room host-recover path where the client initiates
+    // `room-recover` and the server proactively emits reconnect-state
+    // to wire the socket back into a match that started while the host
+    // was offline.
+    //
+    // When the snapshot reports an in-flight countdown or an already
+    // emitted `game-start`, we fan it out through the same `countdown`
+    // / `game-start` callbacks the normal lifecycle uses, so client
+    // code that blocks on `waitForCountdown` / `waitForGameStart`
+    // wakes up instead of hanging forever waiting for events that
+    // were broadcast while the socket was dead.
+    this.socket.on('reconnect-state', (data: ReconnectStateEvent) => {
+      this.callbacks.onReconnectState(data);
+      // Fan the snapshot out through the same socket event bus that
+      // `setupEventHandlers` and `waitForCountdown`/`waitForGameStart`
+      // listen on. Using `socket.emit` against the local socket would
+      // send to the server, not the local listeners — socket.io-client
+      // has no public "emit-to-self", so we replay through every
+      // registered listener instead. This wakes callers blocked in
+      // `waitForCountdown` / `waitForGameStart` on top of firing the
+      // normal callback hooks.
+      if (
+        typeof data.countdownSecondsRemaining === 'number' &&
+        data.countdownSecondsRemaining >= 0
+      ) {
+        this.emitSyntheticLocal('countdown', {
+          seconds: data.countdownSecondsRemaining,
+        } satisfies CountdownEvent);
+      }
+      // Only synthesize `game-start` when the snapshot shows the client
+      // is still in a pre-play phase. For an in-progress match (state
+      // `playing` / `paused` / `finished`) the caller is doing a normal
+      // mid-match reconnect, and PhalanxClient's `onGameStart` callback
+      // would reset `currentTick` to 0 — clobbering the authoritative
+      // tick that `onReconnectState` just applied. In that case the
+      // client is already past the game-start transition, so there's
+      // nothing to replay.
+      if (
+        data.gameStartEmitted === true &&
+        (data.state === 'countdown' || data.state === 'waiting-for-ready')
+      ) {
+        const gameStart: GameStartEvent = {
+          matchId: data.matchId,
+          ...(typeof data.randomSeed === 'number'
+            ? { randomSeed: data.randomSeed }
+            : {}),
+        };
+        this.emitSyntheticLocal('game-start', gameStart);
+      }
+    });
+
     // Hash comparison (for desync detection)
     this.socket.on('hash-comparison', (data: HashComparisonEvent) => {
       this.callbacks.onHashComparison(data);
@@ -602,6 +660,42 @@ export class SocketManager {
   private ensureConnected(): void {
     if (!this.socket || !this.isConnected()) {
       throw new Error('Not connected to server. Call connect() first.');
+    }
+  }
+
+  /**
+   * Replay `payload` through every listener currently registered for
+   * `event` on the local socket.
+   *
+   * socket.io-client's `socket.emit` sends to the server, so there is
+   * no public API to dispatch a server→client event against the
+   * client's own handlers. For the private-room recover path we need
+   * exactly that: the server already decided that, e.g., countdown
+   * should show "3", and we want every listener the application has
+   * wired up — including one-shot promises inside `waitForCountdown`
+   * / `waitForGameStart` — to observe the value as if the server had
+   * broadcast it on the wire.
+   *
+   * Iterating a snapshot of `socket.listeners(event)` (rather than
+   * the live list) is deliberate: a listener may call `socket.off`
+   * on itself during handling (e.g. `waitForCountdown`'s handler
+   * unsubscribes on `seconds === 0`), which would mutate the array
+   * under us and skip siblings.
+   */
+  private emitSyntheticLocal(event: string, payload: unknown): void {
+    if (!this.socket) return;
+    const listeners = this.socket.listeners(event).slice();
+    for (const listener of listeners) {
+      try {
+        (listener as (data: unknown) => void)(payload);
+      } catch (err) {
+        if (this.config.debug) {
+          console.error(
+            `[SocketManager] synthetic "${event}" listener threw:`,
+            err,
+          );
+        }
+      }
     }
   }
 
