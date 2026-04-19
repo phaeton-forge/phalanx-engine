@@ -441,6 +441,19 @@ export class Phalanx extends EventEmitter {
         }
       });
 
+      // Handle room-recover (private match)
+      // Called when a host reconnects after a transient socket disconnect
+      // (e.g. mobile browser killing the WebSocket when the user switches
+      // to a messenger to share the invite link) and wants to reclaim
+      // their still-alive room.
+      socket.on(
+        'room-recover',
+        (data: { playerId: string; username?: string }) => {
+          playerId = data.playerId;
+          this.privateRooms!.recoverRoom(playerId, socket);
+        }
+      );
+
       // Handle player command
       socket.on('player-command', (command: PlayerCommand) => {
         if (!playerId) return;

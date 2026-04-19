@@ -1,27 +1,39 @@
 import type { Server as SocketIOServer, Socket } from 'socket.io';
-import type { PhalanxConfig, QueuedPlayer } from '../types/index.js';
+import type {
+  PhalanxConfig,
+  QueuedPlayer,
+  RoomCreatedEvent,
+  RoomRecoveredEvent,
+  RoomErrorEvent,
+} from '../types/index.js';
 import { GameRoom } from './GameRoom.js';
+
+// Re-export private-room event types from this module for backward
+// compatibility — callers (and existing tests) historically import them
+// from `services/PrivateRoomService.js`.
+export type { RoomCreatedEvent, RoomRecoveredEvent, RoomErrorEvent };
 
 /**
  * Represents a private room waiting for a second player.
+ *
+ * The host socket may be temporarily `null` if the host disconnects —
+ * e.g. a mobile browser killing the WebSocket when the user switches
+ * to another app to share the invite link. In that case the room
+ * survives for `HOST_DISCONNECT_GRACE_MS` so the host can reconnect
+ * via `room-recover` and reclaim it.
  */
 interface PrivateRoom {
   readonly code: string;
   readonly host: QueuedPlayer;
-  readonly hostSocket: Socket;
+  /** Current host socket; null while the host is disconnected. */
+  hostSocket: Socket | null;
+  /** Tracked separately from the socket object because hostSocket may be null. */
+  hostSocketId: string;
   readonly gameType: string;
   readonly createdAt: number;
   expirationTimer: ReturnType<typeof setTimeout>;
-}
-
-/** Event sent to the host when a room is created. */
-export interface RoomCreatedEvent {
-  code: string;
-}
-
-/** Event sent when a room join fails. */
-export interface RoomErrorEvent {
-  message: string;
+  /** Pending grace-period timer set when the host disconnects. */
+  hostDisconnectTimer: ReturnType<typeof setTimeout> | null;
 }
 
 /**
@@ -35,19 +47,25 @@ export class PrivateRoomService {
   private readonly matches: Map<string, GameRoom> = new Map();
   private readonly io: SocketIOServer;
   private readonly config: PhalanxConfig;
-  private readonly eventEmitter: (event: string, ...args: unknown[]) => boolean | void;
+  private readonly eventEmitter: (
+    event: string,
+    ...args: unknown[]
+  ) => boolean | void;
   private readonly resolveGameTypeConfig: (gameType: string) => PhalanxConfig;
   private readonly isPlayerQueued?: (playerId: string) => boolean;
 
   /** TTL for rooms in ms (5 minutes). */
   private static readonly ROOM_TTL_MS = 5 * 60 * 1000;
 
+  /** How long a room survives after the host disconnects, in ms (2 minutes). */
+  private static readonly HOST_DISCONNECT_GRACE_MS = 2 * 60 * 1000;
+
   constructor(
     io: SocketIOServer,
     config: PhalanxConfig,
     eventEmitter: (event: string, ...args: unknown[]) => boolean | void,
     resolveGameTypeConfig: (gameType: string) => PhalanxConfig,
-    isPlayerQueued?: (playerId: string) => boolean,
+    isPlayerQueued?: (playerId: string) => boolean
   ) {
     this.io = io;
     this.config = config;
@@ -63,24 +81,30 @@ export class PrivateRoomService {
     playerId: string,
     username: string,
     socket: Socket,
-    gameType?: string,
+    gameType?: string
   ): void {
     // Reject if player is already in a match
     if ((socket.data as { matchId?: string }).matchId) {
-      socket.emit('room-error', { message: 'Already in a match' } satisfies RoomErrorEvent);
+      socket.emit('room-error', {
+        message: 'Already in a match',
+      } satisfies RoomErrorEvent);
       return;
     }
 
     // Reject if player is currently queued in matchmaking
     if (this.isPlayerQueued?.(playerId)) {
-      socket.emit('room-error', { message: 'Already in matchmaking queue' } satisfies RoomErrorEvent);
+      socket.emit('room-error', {
+        message: 'Already in matchmaking queue',
+      } satisfies RoomErrorEvent);
       return;
     }
 
     // Prevent duplicate rooms per player
     for (const room of this.rooms.values()) {
       if (room.host.playerId === playerId) {
-        socket.emit('room-error', { message: 'You already have an active room' } satisfies RoomErrorEvent);
+        socket.emit('room-error', {
+          message: 'You already have an active room',
+        } satisfies RoomErrorEvent);
         return;
       }
     }
@@ -107,9 +131,11 @@ export class PrivateRoomService {
         gameType: resolvedGameType,
       },
       hostSocket: socket,
+      hostSocketId: socket.id,
       gameType: resolvedGameType,
       createdAt: Date.now(),
       expirationTimer,
+      hostDisconnectTimer: null,
     };
 
     this.rooms.set(code, room);
@@ -125,29 +151,37 @@ export class PrivateRoomService {
     playerId: string,
     username: string,
     socket: Socket,
-    code: string,
+    code: string
   ): void {
     // Reject if player is already in a match
     if ((socket.data as { matchId?: string }).matchId) {
-      socket.emit('room-error', { message: 'Already in a match' } satisfies RoomErrorEvent);
+      socket.emit('room-error', {
+        message: 'Already in a match',
+      } satisfies RoomErrorEvent);
       return;
     }
 
     // Reject if player is currently queued in matchmaking
     if (this.isPlayerQueued?.(playerId)) {
-      socket.emit('room-error', { message: 'Already in matchmaking queue' } satisfies RoomErrorEvent);
+      socket.emit('room-error', {
+        message: 'Already in matchmaking queue',
+      } satisfies RoomErrorEvent);
       return;
     }
 
     const room = this.rooms.get(code.toUpperCase());
 
     if (!room) {
-      socket.emit('room-error', { message: 'Room not found' } satisfies RoomErrorEvent);
+      socket.emit('room-error', {
+        message: 'Room not found',
+      } satisfies RoomErrorEvent);
       return;
     }
 
     if (room.host.playerId === playerId) {
-      socket.emit('room-error', { message: 'Cannot join your own room' } satisfies RoomErrorEvent);
+      socket.emit('room-error', {
+        message: 'Cannot join your own room',
+      } satisfies RoomErrorEvent);
       return;
     }
 
@@ -174,18 +208,24 @@ export class PrivateRoomService {
       resolvedConfig,
       teams,
       this.eventEmitter,
-      room.gameType,
+      room.gameType
     );
 
     this.matches.set(matchId, gameRoom);
     this.eventEmitter('match-created', gameRoom.getMatchInfo());
     gameRoom.start();
 
-    console.log(`[PrivateRoom] Room ${code} → match ${matchId} (${room.host.playerId} vs ${playerId})`);
+    console.log(
+      `[PrivateRoom] Room ${code} → match ${matchId} (${room.host.playerId} vs ${playerId})`
+    );
   }
 
   /**
    * Cancel a room that the player previously created.
+   *
+   * Looks up by `playerId` (not `socketId`) so a host who reconnected with
+   * a new socket after a disconnect can still cancel their own room.
+   * `room-cancelled` is emitted on the socket that initiated the cancel.
    */
   cancelRoom(playerId: string, socket: Socket): void {
     for (const [code, room] of this.rooms) {
@@ -199,13 +239,62 @@ export class PrivateRoomService {
   }
 
   /**
-   * Handle socket disconnect — clean up rooms owned by this socket.
+   * Recover a room after the host's socket disconnected within the grace period.
+   *
+   * Rebinds the room to the host's new socket, clears the pending
+   * destruction timer, and emits `room-recovered` on the new socket.
+   * If no matching room exists (never created, or grace period already
+   * elapsed), emits `room-error` instead.
+   */
+  recoverRoom(playerId: string, socket: Socket): void {
+    for (const [, room] of this.rooms) {
+      if (room.host.playerId === playerId) {
+        if (room.hostDisconnectTimer) {
+          clearTimeout(room.hostDisconnectTimer);
+          room.hostDisconnectTimer = null;
+        }
+        room.hostSocket = socket;
+        room.hostSocketId = socket.id;
+        socket.emit('room-recovered', {
+          code: room.code,
+        } satisfies RoomRecoveredEvent);
+        console.log(`[PrivateRoom] Room ${room.code} recovered by ${playerId}`);
+        return;
+      }
+    }
+    socket.emit('room-error', {
+      message: 'Room expired',
+    } satisfies RoomErrorEvent);
+  }
+
+  /**
+   * Handle socket disconnect — start a grace period during which the host
+   * can reclaim their room via `room-recover`. This keeps the room alive
+   * while the host opens a messenger to share the invite link on mobile,
+   * since mobile browsers aggressively kill background WebSockets.
+   *
+   * The room is destroyed at whichever fires first: this grace timer
+   * or the original TTL timer (`ROOM_TTL_MS`).
    */
   handleDisconnect(socketId: string): void {
     for (const [code, room] of this.rooms) {
-      if (room.host.socketId === socketId) {
-        this.removeRoom(code);
-        console.log(`[PrivateRoom] Room ${code} removed (host disconnected)`);
+      if (room.hostSocketId === socketId) {
+        room.hostSocket = null;
+        // Only start a grace timer if one isn't already running.
+        // (Defensive; in practice a fresh disconnect won't have one.)
+        if (!room.hostDisconnectTimer) {
+          room.hostDisconnectTimer = setTimeout(() => {
+            if (this.rooms.has(code)) {
+              this.removeRoom(code);
+              console.log(
+                `[PrivateRoom] Room ${code} removed (host stayed disconnected)`
+              );
+            }
+          }, PrivateRoomService.HOST_DISCONNECT_GRACE_MS);
+        }
+        console.log(
+          `[PrivateRoom] Host of room ${code} disconnected — grace period started`
+        );
       }
     }
 
@@ -238,18 +327,24 @@ export class PrivateRoomService {
   }
 
   /**
-   * Remove a room and clear its expiration timer.
+   * Remove a room and clear all of its pending timers (TTL and any
+   * host-disconnect grace timer).
    */
   private removeRoom(code: string): void {
     const room = this.rooms.get(code);
     if (room) {
       clearTimeout(room.expirationTimer);
+      if (room.hostDisconnectTimer) {
+        clearTimeout(room.hostDisconnectTimer);
+        room.hostDisconnectTimer = null;
+      }
       this.rooms.delete(code);
     }
   }
 
   /**
-   * Stop all active matches and clear rooms.
+   * Stop all active matches and clear rooms, including any pending
+   * TTL and host-disconnect grace timers.
    */
   stop(): void {
     for (const match of this.matches.values()) {
@@ -258,6 +353,10 @@ export class PrivateRoomService {
     this.matches.clear();
     for (const room of this.rooms.values()) {
       clearTimeout(room.expirationTimer);
+      if (room.hostDisconnectTimer) {
+        clearTimeout(room.hostDisconnectTimer);
+        room.hostDisconnectTimer = null;
+      }
     }
     this.rooms.clear();
   }
@@ -277,4 +376,3 @@ export class PrivateRoomService {
     return code;
   }
 }
-

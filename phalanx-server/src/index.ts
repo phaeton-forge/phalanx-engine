@@ -53,6 +53,10 @@ export type {
   // Game type routing
   TickMode,
   GameTypeConfig,
+  // Private room events
+  RoomCreatedEvent,
+  RoomRecoveredEvent,
+  RoomErrorEvent,
 } from './types/index.js';
 
 // Constants
