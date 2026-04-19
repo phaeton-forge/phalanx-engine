@@ -441,6 +441,54 @@ export class Phalanx extends EventEmitter {
         }
       });
 
+      // Handle room-recover (private match)
+      // Called when a host reconnects after a transient socket disconnect
+      // (e.g. mobile browser killing the WebSocket when the user switches
+      // to a messenger to share the invite link) and wants to reclaim
+      // their still-alive room. `code` is required to prove the caller
+      // is actually the host who created the room — in an anonymous
+      // socket environment, `playerId` alone is not an authentication
+      // token. If it's missing we reject with the same `Room expired`
+      // error the service itself uses, so clients can't distinguish
+      // "wrong code" from "missing code" from "no such room".
+      socket.on('room-recover', (payload: unknown) => {
+        // The payload is untrusted — a client can emit literally
+        // anything (including `null`, a primitive, or a missing
+        // argument, which Socket.IO will surface as `undefined`).
+        // Guard the top-level shape before dereferencing any field
+        // so a malformed message can't crash the connection
+        // handler, and validate each field before touching state
+        // on this connection. A failed recover must not mutate the
+        // captured `playerId` — otherwise a later handler like
+        // `room-cancel` would act on a playerId the socket was
+        // never authenticated to own.
+        if (!payload || typeof payload !== 'object') {
+          socket.emit('room-error', { message: 'Room expired' });
+          return;
+        }
+        const data = payload as {
+          playerId?: unknown;
+          username?: unknown;
+          code?: unknown;
+        };
+        if (typeof data.code !== 'string' || data.code.length === 0) {
+          socket.emit('room-error', { message: 'Room expired' });
+          return;
+        }
+        if (typeof data.playerId !== 'string' || data.playerId.length === 0) {
+          socket.emit('room-error', { message: 'Room expired' });
+          return;
+        }
+        const recovered = this.privateRooms!.recoverRoom(
+          data.playerId,
+          socket,
+          data.code,
+        );
+        if (recovered) {
+          playerId = data.playerId;
+        }
+      });
+
       // Handle player command
       socket.on('player-command', (command: PlayerCommand) => {
         if (!playerId) return;

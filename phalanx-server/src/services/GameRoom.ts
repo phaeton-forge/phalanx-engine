@@ -235,37 +235,69 @@ export class GameRoom {
    */
   private notifyMatchFound(): void {
     this.teams.forEach((team, teamId) => {
-      // Build teammate info for this team
-      const teammateInfo = team.map((p) => ({
-        playerId: p.playerId,
-        username: p.username,
-      }));
-
-      // Build opponent info (all players from other teams)
-      const opponentInfo = this.teams
-        .filter((_, i) => i !== teamId)
-        .flat()
-        .map((p) => ({
-          playerId: p.playerId,
-          username: p.username,
-        }));
-
-      // Notify each player on this team
       team.forEach((player) => {
         const socket = this.io.sockets.sockets.get(player.socketId);
         if (socket) {
-          socket.emit('match-found', {
-            matchId: this.id,
-            playerId: player.playerId,
+          const payload = this.buildMatchFoundPayloadForTeam(
+            player.playerId,
             teamId,
-            teammates: teammateInfo.filter(
-              (t) => t.playerId !== player.playerId
-            ),
-            opponents: opponentInfo,
-          });
+            team,
+          );
+          if (payload) socket.emit('match-found', payload);
         }
       });
     });
+  }
+
+  /**
+   * Build the personalized `match-found` payload for `playerId`.
+   *
+   * Used by the initial broadcast in {@link notifyMatchFound} and by
+   * retroactive delivery when a host who was offline at `joinRoom`
+   * time finally reconnects via `room-recover`. Returns `null` if
+   * the player is not in this match.
+   */
+  buildMatchFoundPayload(playerId: string): {
+    matchId: string;
+    playerId: string;
+    teamId: number;
+    teammates: { playerId: string; username: string }[];
+    opponents: { playerId: string; username: string }[];
+  } | null {
+    for (let teamId = 0; teamId < this.teams.length; teamId++) {
+      const team = this.teams[teamId];
+      if (team && team.some((p) => p.playerId === playerId)) {
+        return this.buildMatchFoundPayloadForTeam(playerId, teamId, team);
+      }
+    }
+    return null;
+  }
+
+  private buildMatchFoundPayloadForTeam(
+    playerId: string,
+    teamId: number,
+    team: QueuedPlayer[],
+  ): {
+    matchId: string;
+    playerId: string;
+    teamId: number;
+    teammates: { playerId: string; username: string }[];
+    opponents: { playerId: string; username: string }[];
+  } {
+    const teammates = team
+      .filter((p) => p.playerId !== playerId)
+      .map((p) => ({ playerId: p.playerId, username: p.username }));
+    const opponents = this.teams
+      .filter((_, i) => i !== teamId)
+      .flat()
+      .map((p) => ({ playerId: p.playerId, username: p.username }));
+    return {
+      matchId: this.id,
+      playerId,
+      teamId,
+      teammates,
+      opponents,
+    };
   }
 
   /**

@@ -347,6 +347,51 @@ export interface QueueStatusEvent {
 }
 
 /**
+ * Private room events — client/server wire contracts.
+ *
+ * These mirror the interfaces exported from
+ * `services/PrivateRoomService.ts` and are documented here for
+ * consistency with the rest of the public event surface.
+ *
+ * Socket events:
+ *   • server → host:  `room-created`    → `RoomCreatedEvent`
+ *   • server → host:  `room-recovered`  → `RoomRecoveredEvent`
+ *   • server → host:  `room-cancelled`  → `{ code: string }`
+ *   • server → host:  `room-expired`    → `{ code: string }`
+ *   • server → peer:  `room-error`      → `RoomErrorEvent`
+ *   • client → server: `room-create`    → `{ playerId, username?, gameType? }`
+ *   • client → server: `room-join`      → `{ playerId, username?, code }`
+ *   • client → server: `room-cancel`    → `{}`
+ *   • client → server: `room-recover`   → `{ playerId, username?, code }`
+ *
+ * The `code` on `room-recover` is required: it proves the caller is
+ * actually the host who created the room. In an unauthenticated
+ * socket environment `playerId` alone is not a credential, so the
+ * server refuses to recover without a matching code and emits
+ * `room-error: "Room expired"` instead (same message as "no such
+ * room" so we never leak whether a given playerId currently owns
+ * a room).
+ */
+
+/** Event sent to the host when a room is created. */
+export interface RoomCreatedEvent {
+  code: string;
+}
+
+/**
+ * Event sent to the host when they successfully reclaim a room
+ * via `room-recover` after a transient socket disconnect.
+ */
+export interface RoomRecoveredEvent {
+  code: string;
+}
+
+/** Event sent when a private-room operation fails. */
+export interface RoomErrorEvent {
+  message: string;
+}
+
+/**
  * State hash event from client (2.1.3)
  */
 export interface StateHashEvent {
