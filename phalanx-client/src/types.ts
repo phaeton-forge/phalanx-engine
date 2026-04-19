@@ -464,6 +464,7 @@ export interface PhalanxClientEvents {
   roomError: (event: RoomErrorEvent) => void;
   roomExpired: (event: RoomExpiredEvent) => void;
   roomCancelled: (event: RoomCancelledEvent) => void;
+  roomRecovered: (event: RoomRecoveredEvent) => void;
 }
 
 /**
@@ -491,5 +492,20 @@ export interface RoomExpiredEvent {
  * Event emitted when a room is cancelled.
  */
 export interface RoomCancelledEvent {
+  code: string;
+}
+
+/**
+ * Event emitted when a host successfully reclaims a private room after a
+ * transient socket disconnect (e.g. mobile browser killing the WebSocket
+ * when the user switches to a messenger to share the invite link).
+ *
+ * The returned `code` is the canonical server-side value — callers should
+ * prefer it over whatever they passed into `recoverRoom`, because the
+ * server normalizes casing and may, in the "host was offline when the
+ * guest joined" fallback path, echo back the code the host originally
+ * created the room with even if the caller slightly drifted.
+ */
+export interface RoomRecoveredEvent {
   code: string;
 }

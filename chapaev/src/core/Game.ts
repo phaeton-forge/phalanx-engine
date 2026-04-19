@@ -33,7 +33,7 @@ import { PauseOverlay } from '../ui/screens/PauseOverlay.ts';
 import { PrivateMatchScreen } from '../ui/screens/PrivateMatch.ts';
 import { SettingsScreen } from '../ui/screens/SettingsScreen.ts';
 import { RulesScreen } from '../ui/screens/RulesScreen.ts';
-import type { CountdownEvent, GamePausedEvent, GameResumedEvent } from 'phalanx-client';
+import type { CountdownEvent, GamePausedEvent, GameResumedEvent, MatchFoundEvent, GameStartEvent } from 'phalanx-client';
 
 export type GameMode = 'hotseat' | 'online';
 
@@ -58,6 +58,31 @@ export class Game {
   private localTeam: TeamTag = TeamTag.White;
   private isGuestMode = false;
   private pendingRoomCode: string | null = null;
+
+  /**
+   * The private-room code for a room this client currently *hosts* and is
+   * still in the "waiting for opponent / countdown" phase for. Set in
+   * `handleCreateRoom` and cleared once the match either starts, is
+   * cancelled, or bails out to the main menu.
+   *
+   * Used by the `visibilitychange` recovery handler to reclaim the room
+   * from the server after the browser killed the WebSocket while the
+   * user was in another app (messenger etc.). If null, there's nothing
+   * to recover.
+   */
+  private activePrivateRoomCode: string | null = null;
+
+  /** Handle for the `visibilitychange` listener (or null when unarmed). */
+  private visibilityRecoverHandler: (() => void) | null = null;
+
+  /**
+   * Guard that prevents two recover attempts from racing. Mobile browsers
+   * can fire `visibilitychange` multiple times in quick succession when
+   * the tab comes back (each of pageshow, focus, visibilitychange may
+   * arrive), and we don't want every one of them to kick off a parallel
+   * `connect()` + `recoverRoom()`.
+   */
+  private isRecovering: boolean = false;
 
   // UI
   private uiManager: UIManager;
@@ -444,6 +469,13 @@ export class Game {
 
       const roomEvent = await this.networkManager.createRoom();
       const roomCode = roomEvent.code;
+      this.activePrivateRoomCode = roomCode;
+
+      // Arm the visibility-recover handler as soon as the room exists on
+      // the server — the earliest point at which a mobile user might
+      // swipe away to a messenger to share the invite link and have
+      // the OS kill our WebSocket.
+      this.armVisibilityRecover();
 
       // Show room code in the waiting screen
       this.uiManager.hideScreen('matchmaking');
@@ -452,8 +484,17 @@ export class Game {
 
       console.log(`[Game] Private room created: ${roomCode}`);
 
-      // Now wait for match-found (another player joins the room)
-      const matchData = await this.networkManager.client.waitForMatch();
+      // Listen via the client event emitter rather than per-socket
+      // `waitFor*` helpers. The host's socket may get torn down and
+      // re-created mid-flow (mobile browser suspending the WebSocket
+      // while the user is in a messenger), in which case the recover
+      // path on the server re-emits `match-found`, `countdown`, and
+      // `game-start` on the fresh socket. PhalanxClient forwards those
+      // through its emitter regardless of which underlying socket
+      // delivered them, so a listener registered here survives the
+      // reconnect cycle. A `waitForMatch()` bound to the original
+      // socket would not.
+      const matchData = await this.waitForClientEvent<MatchFoundEvent>('matchFound');
       this.privateMatchScreen.stopWaitingTimer();
       this.matchmakingScreen.stopTimer();
 
@@ -462,15 +503,24 @@ export class Game {
       this.uiManager.destroyScreen('countdown');
       this.uiManager.showScreen('countdown');
 
-      await this.networkManager.client.waitForCountdown((event: CountdownEvent) => {
+      // Subscribe to countdown events and wait for game-start. Both are
+      // delivered through the client emitter so synthetic replays from
+      // `reconnect-state` (see PR #19) are observed here too.
+      const unsubCountdown = this.networkManager.client.on('countdown', (event: CountdownEvent) => {
         this.matchmakingScreen.updateCountdown(event.seconds);
       });
-
-      const gameStartEvent = await this.networkManager.client.waitForGameStart();
-      console.log('[Game] Private match game start, randomSeed:', gameStartEvent.randomSeed);
+      try {
+        const gameStartEvent = await this.waitForClientEvent<GameStartEvent>('gameStart');
+        console.log('[Game] Private match game start, randomSeed:', gameStartEvent.randomSeed);
+      } finally {
+        unsubCountdown();
+      }
 
       this.networkManager.setMatchData(matchData);
       this.cleanupConnectEventListeners();
+      // Match is starting — nothing left to recover.
+      this.disarmVisibilityRecover();
+      this.activePrivateRoomCode = null;
 
       this.uiManager.hideScreen('countdown');
       this.startOnlineGame(matchData);
@@ -478,7 +528,107 @@ export class Game {
       console.error('[Game] Private room creation failed:', error instanceof Error ? error.message : JSON.stringify(error), error);
       this.matchmakingScreen.setStatus('Ошибка подключения');
       this.matchmakingScreen.stopTimer();
+      this.disarmVisibilityRecover();
+      this.activePrivateRoomCode = null;
       this.returnToMainMenu();
+    }
+  }
+
+  /**
+   * Resolve with the first payload emitted by the PhalanxClient under
+   * `eventName`. Unlike `client.waitForMatch()` / `waitForGameStart()`,
+   * this reads off the client's own emitter — which is socket-agnostic —
+   * so it keeps working across a recover-driven socket swap. The handle
+   * returned by `client.on` is used to unsubscribe exactly once the
+   * expected event arrives.
+   */
+  private waitForClientEvent<T>(eventName: 'matchFound' | 'gameStart'): Promise<T> {
+    return new Promise((resolve) => {
+      if (!this.networkManager) return;
+      const unsubscribe = this.networkManager.client.on(
+        eventName as 'matchFound',
+        // The emitter is typed per-event via an overload map; cast the
+        // payload back to the caller-requested generic. Both `matchFound`
+        // and `gameStart` are the only two event names this helper accepts.
+        (data: unknown) => {
+          unsubscribe();
+          resolve(data as T);
+        },
+      );
+    });
+  }
+
+  /**
+   * Start listening for visibility changes so we can reclaim a private
+   * room the browser may have silently disconnected from.
+   *
+   * Called from `handleCreateRoom` once the room exists server-side.
+   * Idempotent — a second call is a no-op; `disarmVisibilityRecover`
+   * clears state so it can be re-armed for a subsequent room.
+   *
+   * The listener does *nothing* if:
+   *   - `activePrivateRoomCode` is null (no room to recover)
+   *   - the document is still hidden
+   *   - the socket is still connected (nothing died, no recovery needed)
+   *   - a recovery is already in flight (race guard)
+   *
+   * On a genuine "tab is back and socket is dead" transition, it
+   * reconnects the socket and emits `room-recover`. The server's
+   * response (`match-found` + `reconnect-state` + `room-recovered`)
+   * is observed by `handleCreateRoom`'s pending `waitForClientEvent`
+   * promises so the flow picks up where it left off.
+   */
+  private armVisibilityRecover(): void {
+    if (this.visibilityRecoverHandler) return;
+    if (typeof document === 'undefined') return;
+
+    const handler = (): void => {
+      if (document.visibilityState !== 'visible') return;
+      void this.tryRecoverActiveRoom();
+    };
+
+    document.addEventListener('visibilitychange', handler);
+    // Some mobile browsers (notably iOS Safari) are more reliable
+    // about firing `pageshow` than `visibilitychange` when returning
+    // from bfcache, so listen to both.
+    window.addEventListener('pageshow', handler);
+    this.visibilityRecoverHandler = handler;
+  }
+
+  private disarmVisibilityRecover(): void {
+    if (!this.visibilityRecoverHandler) return;
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this.visibilityRecoverHandler);
+      window.removeEventListener('pageshow', this.visibilityRecoverHandler);
+    }
+    this.visibilityRecoverHandler = null;
+  }
+
+  private async tryRecoverActiveRoom(): Promise<void> {
+    if (!this.networkManager) return;
+    const code = this.activePrivateRoomCode;
+    if (!code) return;
+    if (this.isRecovering) return;
+    if (this.networkManager.client.isConnected()) return;
+
+    this.isRecovering = true;
+    try {
+      console.log(`[Game] Attempting to recover private room ${code} after tab return`);
+      await this.networkManager.client.connect();
+      await this.networkManager.client.recoverRoom(code);
+      console.log(`[Game] Room ${code} recovered successfully`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`[Game] Room recover failed: ${message}`);
+      // The server's grace period has likely elapsed — the room is gone.
+      // Surface a clear state rather than leaving the user staring at a
+      // frozen countdown screen.
+      this.disarmVisibilityRecover();
+      this.activePrivateRoomCode = null;
+      this.matchmakingScreen.setStatus('Соединение потеряно');
+      this.returnToMainMenu();
+    } finally {
+      this.isRecovering = false;
     }
   }
 
@@ -561,6 +711,11 @@ export class Game {
     this.networkManager?.cancelRoom();
     this.privateMatchScreen.stopWaitingTimer();
     this.matchmakingScreen.stopTimer();
+    // User explicitly cancelled — stop trying to silently recover the
+    // room in the background, and drop the stored code so a later tab
+    // return is a no-op.
+    this.disarmVisibilityRecover();
+    this.activePrivateRoomCode = null;
     this.cleanupConnectEventListeners();
     this.unsubscribeAuth();
     this.networkManager?.dispose();
