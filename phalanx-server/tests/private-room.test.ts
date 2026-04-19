@@ -981,3 +981,179 @@ describe('PrivateRoomService', () => {
     }
   });
 });
+
+/**
+ * Regression suite for the "host countdown freezes on 3" bug:
+ *
+ * 1. Player 1 creates a private room.
+ * 2. Their mobile browser suspends the WebSocket while they switch to a
+ *    messenger to share the invite link.
+ * 3. Player 2 joins — match is created, countdown starts on the guest.
+ * 4. Player 1 returns and issues room-recover.
+ *
+ * Prior to the snapshot fields on `reconnect-state`, the host had no
+ * way to catch up on countdown ticks they missed while offline: the
+ * 1Hz `countdown` broadcast was fire-and-forget, and `game-start`
+ * (once fired) was never re-broadcast, leaving the host's UI stuck
+ * on the last number they saw and never transitioning into the game.
+ *
+ * These tests exercise the server side of that fix. The client side
+ * is covered separately by `phalanx-client/tests/private-room.test.ts`.
+ *
+ * A fresh `describe` block is used (rather than parameterising the
+ * main suite) because the main suite runs with `countdownSeconds: 0`
+ * — which skips the countdown phase entirely — and these tests must
+ * observe the countdown while it is still in flight.
+ */
+describe('PrivateRoomService — host countdown recovery (snapshot)', () => {
+  let server: Phalanx;
+  let clients: Socket[] = [];
+  const TEST_PORT = 3400;
+
+  beforeEach(async () => {
+    server = new Phalanx({
+      port: TEST_PORT,
+      matchmakingIntervalMs: 100,
+      gameMode: '1v1',
+      // Intentionally long: we want to observe the countdown mid-flight
+      // without racing the 1Hz broadcast's own completion.
+      countdownSeconds: 5,
+      tickRate: 20,
+      cors: { origin: '*' },
+    });
+    await server.start();
+    clients = [];
+  });
+
+  afterEach(async () => {
+    for (const client of clients) {
+      if (client.connected) client.disconnect();
+    }
+    clients = [];
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    await server.stop();
+  });
+
+  function createClient(): Socket {
+    const client = io(`http://localhost:${TEST_PORT}`, {
+      autoConnect: false,
+      forceNew: true,
+    });
+    clients.push(client);
+    return client;
+  }
+
+  async function connectClient(client: Socket): Promise<void> {
+    return new Promise((resolve) => {
+      client.on('connect', () => resolve());
+      client.connect();
+    });
+  }
+
+  it('delivers a countdown snapshot via reconnect-state when the host recovers mid-countdown', async () => {
+    const host = createClient();
+    await connectClient(host);
+    const createdPromise = new Promise<RoomCreatedEvent>((resolve) => {
+      host.on('room-created', (data: RoomCreatedEvent) => resolve(data));
+    });
+    host.emit('room-create', { playerId: 'host1', username: 'Host' });
+    const created = await createdPromise;
+
+    // Host's socket dies before the guest joins — the room survives
+    // because of the grace-period timer.
+    host.disconnect();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    // Guest joins while host is offline. Countdown starts immediately.
+    const guest = createClient();
+    await connectClient(guest);
+    guest.emit('room-join', {
+      playerId: 'guest1',
+      username: 'Guest',
+      code: created.code,
+    });
+    // Wait ~1.2s so the countdown has ticked at least once on the guest
+    // side. This guarantees the remaining-seconds value on the host's
+    // snapshot is strictly less than the configured 5.
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+
+    // Host reconnects.
+    const host2 = createClient();
+    await connectClient(host2);
+    const reconnectStatePromise = new Promise<{
+      matchId: string;
+      state: string;
+      countdownSecondsRemaining: number | null;
+      gameStartEmitted: boolean;
+      randomSeed: number;
+    }>((resolve) => {
+      host2.on('reconnect-state', resolve);
+    });
+    host2.emit('room-recover', {
+      playerId: 'host1',
+      username: 'Host',
+      code: created.code,
+    });
+
+    const snapshot = await reconnectStatePromise;
+    expect(snapshot.matchId).toBeDefined();
+    // Countdown is still in flight: positive remaining-seconds and
+    // game-start has not been emitted yet.
+    expect(snapshot.gameStartEmitted).toBe(false);
+    expect(snapshot.countdownSecondsRemaining).not.toBeNull();
+    expect(snapshot.countdownSecondsRemaining).toBeGreaterThan(0);
+    expect(snapshot.countdownSecondsRemaining).toBeLessThan(5);
+    expect(typeof snapshot.randomSeed).toBe('number');
+  });
+
+  it('marks the snapshot as gameStartEmitted when the host recovers after game-start', async () => {
+    const host = createClient();
+    await connectClient(host);
+    const createdPromise = new Promise<RoomCreatedEvent>((resolve) => {
+      host.on('room-created', (data: RoomCreatedEvent) => resolve(data));
+    });
+    host.emit('room-create', { playerId: 'host1', username: 'Host' });
+    const created = await createdPromise;
+
+    host.disconnect();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    const guest = createClient();
+    await connectClient(guest);
+    // Capture game-start on the guest so we know when the countdown
+    // phase is actually over, instead of relying on wall-clock sleep.
+    const guestGameStartPromise = new Promise<{ randomSeed?: number }>(
+      (resolve) => {
+        guest.on('game-start', resolve);
+      },
+    );
+    guest.emit('room-join', {
+      playerId: 'guest1',
+      username: 'Guest',
+      code: created.code,
+    });
+    const guestStart = await guestGameStartPromise;
+
+    // Now recover — snapshot should say the game has already started.
+    const host2 = createClient();
+    await connectClient(host2);
+    const reconnectStatePromise = new Promise<{
+      gameStartEmitted: boolean;
+      countdownSecondsRemaining: number | null;
+      randomSeed: number;
+    }>((resolve) => {
+      host2.on('reconnect-state', resolve);
+    });
+    host2.emit('room-recover', {
+      playerId: 'host1',
+      username: 'Host',
+      code: created.code,
+    });
+    const snapshot = await reconnectStatePromise;
+    expect(snapshot.gameStartEmitted).toBe(true);
+    expect(snapshot.countdownSecondsRemaining).toBeNull();
+    // Seed forwarded here must match the one the guest saw so a
+    // deterministic client can still initialise its RNG on recover.
+    expect(snapshot.randomSeed).toBe(guestStart.randomSeed);
+  });
+});

@@ -329,16 +329,22 @@ export class PrivateRoomService {
         const match = this.matches.get(pending.matchId);
         if (match) {
           this.pendingHostReconnect.delete(playerId);
-          // `handleReconnect` wires the socket into the running match
-          // and emits `reconnect-state` with the full match snapshot.
-          // We also emit `match-found` so the client sees the same
-          // event it would have seen had its socket been alive at
-          // `joinRoom` time — keeps the client state machine simple.
-          match.handleReconnect(playerId, socket.id);
+          // Emit `match-found` first so the client's state machine
+          // transitions "lobby → match-found" before it receives the
+          // reconnect snapshot — mirrors the order it would have seen
+          // if its socket had been alive at `joinRoom` time. Also
+          // keeps any client-side assertion that `match-found`
+          // precedes `reconnect-state` satisfied.
           const matchFound = match.buildMatchFoundPayload(playerId);
           if (matchFound) {
             socket.emit('match-found', matchFound);
           }
+          // `handleReconnect` then wires the socket into the running
+          // match and emits `reconnect-state` carrying the countdown
+          // snapshot, so a client that reconnected mid-countdown
+          // renders the correct remaining number and a client that
+          // reconnected after `game-start` synthesizes the event.
+          match.handleReconnect(playerId, socket.id);
           // Emit the *stored* room code, not the caller-provided one,
           // so a client that somehow drifted on casing still sees the
           // canonical value.

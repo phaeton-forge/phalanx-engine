@@ -235,13 +235,43 @@ export interface PlayerReadyEvent {
 }
 
 /**
- * State received when reconnecting to a match
+ * State received when reconnecting to a match.
+ *
+ * Includes a snapshot of the countdown / game-start phase so a client
+ * that reconnected mid-countdown (e.g. a private-room host whose mobile
+ * browser killed the WebSocket while they were sharing the invite link)
+ * can render the correct remaining number without waiting for the next
+ * 1Hz broadcast tick, and so a client that reconnected after `game-start`
+ * already fired can synthesize the event locally and enter the playing
+ * phase without waiting for an event it will never receive again.
+ *
+ * The countdown/gameStart fields are optional for wire-compatibility
+ * with older servers that don't populate them.
  */
 export interface ReconnectStateEvent {
   matchId: string;
   currentTick: number;
   state: 'countdown' | 'waiting-for-ready' | 'playing' | 'paused' | 'finished';
   recentCommands: TickCommandsHistory[];
+  /**
+   * Integer number of seconds left on the countdown at the moment this
+   * snapshot was taken, or `null` if the countdown is no longer running
+   * (either it never started with a positive duration, or `game-start`
+   * has already been emitted).
+   */
+  countdownSecondsRemaining?: number | null;
+  /**
+   * True if `game-start` has already been broadcast for this match.
+   * Clients should treat this as a signal to synthesize a local
+   * `game-start` event rather than waiting for the server to emit one.
+   */
+  gameStartEmitted?: boolean;
+  /**
+   * The match's deterministic RNG seed. Forwarded here so clients that
+   * missed the original `game-start` broadcast can still feed the seed
+   * into their deterministic simulation on the synthesized start.
+   */
+  randomSeed?: number;
 }
 
 /**
