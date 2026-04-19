@@ -435,6 +435,110 @@ describe('PrivateRoomService', () => {
     expect(hostMatch.opponents.map((o) => o.playerId)).toContain('guest1');
   });
 
+  it('should reject pending-match recover when the attacker presents a wrong code', async () => {
+    // Security guard for the pending-host-reconnect fallback path:
+    // after a guest has consumed the room (joinRoom) while the host
+    // was offline, recovery has to go through pendingHostReconnect
+    // instead of this.rooms. That fallback must *also* require a
+    // matching code — otherwise an attacker who knew only the host's
+    // playerId could claim the pending match and get match-found /
+    // reconnect-state for a game they were never part of.
+    const host = createClient();
+    await connectClient(host);
+
+    const createdPromise = new Promise<RoomCreatedEvent>((resolve) => {
+      host.on('room-created', (data: RoomCreatedEvent) => resolve(data));
+    });
+    host.emit('room-create', { playerId: 'victim', username: 'Victim' });
+    const created = await createdPromise;
+
+    // Victim drops; guest joins while offline — match is created and
+    // goes into pendingHostReconnect keyed by 'victim' + the real code.
+    host.disconnect();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    const guest = createClient();
+    await connectClient(guest);
+    const guestMatchPromise = new Promise<{ matchId: string }>((resolve) => {
+      guest.on('match-found', (data: { matchId: string }) => resolve(data));
+    });
+    guest.emit('room-join', {
+      playerId: 'guest1',
+      username: 'Guest',
+      code: created.code,
+    });
+    await guestMatchPromise;
+
+    // Attacker knows the victim's playerId but not the real room code.
+    const attacker = createClient();
+    await connectClient(attacker);
+    const errorPromise = new Promise<RoomErrorEvent>((resolve) => {
+      attacker.on('room-error', (data: RoomErrorEvent) => resolve(data));
+    });
+    const unexpectedMatchPromise = new Promise<unknown>((resolve) => {
+      attacker.on('match-found', (data) => resolve(data));
+      attacker.on('reconnect-state', (data) => resolve(data));
+      attacker.on('room-recovered', (data) => resolve(data));
+      setTimeout(() => resolve(null), 400);
+    });
+    attacker.emit('room-recover', {
+      playerId: 'victim',
+      username: 'Attacker',
+      code: 'WRONGCD',
+    });
+
+    const error = await errorPromise;
+    expect(error.message).toBe('Room expired');
+    expect(await unexpectedMatchPromise).toBeNull();
+
+    // And the legitimate victim can still come back with the real code
+    // — i.e. the bad attempt didn't consume or poison the pending entry.
+    const victim2 = createClient();
+    await connectClient(victim2);
+    const victimMatchPromise = new Promise<{ matchId: string }>((resolve) => {
+      victim2.on('match-found', (data: { matchId: string }) => resolve(data));
+    });
+    victim2.emit('room-recover', {
+      playerId: 'victim',
+      username: 'Victim',
+      code: created.code,
+    });
+    const victimMatch = await victimMatchPromise;
+    expect(victimMatch.matchId).toBeDefined();
+  });
+
+  it('should not crash when room-recover payload is null or not an object', async () => {
+    // Regression guard for the handler's top-level shape check. Without
+    // it, `typeof data.code` on `null` / a primitive would throw
+    // synchronously inside the socket handler and could tear the
+    // connection down.
+    const client = createClient();
+    await connectClient(client);
+
+    const collected: RoomErrorEvent[] = [];
+    client.on('room-error', (data: RoomErrorEvent) => collected.push(data));
+
+    // null, undefined, a string, and a number all count as "not a
+    // well-formed payload" and must be rejected with 'Room expired'.
+    // Using `emit(event, arg)` for each — Socket.IO serialises the
+    // arg and the server hook receives it verbatim.
+    client.emit('room-recover', null);
+    client.emit('room-recover', undefined);
+    client.emit('room-recover', 'not-an-object');
+    client.emit('room-recover', 42);
+    client.emit('room-recover'); // no payload at all
+
+    // Give the server a moment to process all five messages.
+    await new Promise((resolve) => setTimeout(resolve, 200));
+
+    // We expect at least one 'Room expired' error, and, crucially,
+    // the socket must still be connected — if the handler had thrown,
+    // the connection would have dropped.
+    expect(collected.length).toBeGreaterThan(0);
+    expect(collected.every((e) => e.message === 'Room expired')).toBe(true);
+    expect(client.connected).toBe(true);
+  });
+
   it('should emit room-error with "Room expired" when room-recover omits the code', async () => {
     // Security guard: the Phalanx room-recover handler rejects a payload
     // that has no `code`, so a client can't use playerId-only recovery

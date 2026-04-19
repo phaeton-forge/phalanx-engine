@@ -49,12 +49,23 @@ export class PrivateRoomService {
    * Matches whose host was still disconnected at the moment a guest
    * joined their room. The host never received `match-found` because
    * their socket was null at `joinRoom` time, so we remember the
-   * `matchId` keyed by the host's `playerId` and deliver it when the
-   * host finally reconnects via `room-recover`. Entries are purged
-   * when the match ends (see `removeMatch`), so a dead match can't
-   * leak through an indefinite pending-recover entry.
+   * `matchId` — and the *original* room code the host must present
+   * to claim it — keyed by the host's `playerId`, and deliver it
+   * when the host finally reconnects via `room-recover`.
+   *
+   * Storing the code alongside the matchId lets the recovery fallback
+   * keep the same security posture as the live-room path: an attacker
+   * who only knows a host's `playerId` cannot harvest the code by
+   * guessing, because the fallback also refuses to promote a socket
+   * into the match unless the caller presents the matching code.
+   *
+   * Entries are purged when the match ends (see `removeMatch`), so a
+   * dead match can't leak through an indefinite pending-recover entry.
    */
-  private readonly pendingHostReconnect: Map<string, string> = new Map();
+  private readonly pendingHostReconnect: Map<
+    string,
+    { matchId: string; code: string }
+  > = new Map();
   private readonly io: SocketIOServer;
   private readonly config: PhalanxConfig;
   private readonly eventEmitter: (
@@ -239,7 +250,10 @@ export class PrivateRoomService {
     // socket can retroactively deliver match-found and wire the
     // socket into the running match.
     if (!room.hostSocket) {
-      this.pendingHostReconnect.set(room.host.playerId, matchId);
+      this.pendingHostReconnect.set(room.host.playerId, {
+        matchId,
+        code: room.code,
+      });
       console.log(
         `[PrivateRoom] Host ${room.host.playerId} was offline when match ${matchId} started — pending recover`
       );
@@ -302,18 +316,17 @@ export class PrivateRoomService {
     const normalizedCode = code.toUpperCase();
     const room = this.rooms.get(normalizedCode);
     if (!room || room.host.playerId !== playerId) {
-      // Fallback: maybe the host's original room was consumed by a
-      // guest while the host was still in the disconnect grace window,
-      // which means a match exists but the host never learned its id.
-      // If so, promote the host into that match now. We still require
-      // the host to know their original room code — we looked it up
-      // above — but since the room is gone, we can only authenticate
-      // on playerId here. That's acceptable because the pending entry
-      // only exists if that playerId actually created the now-consumed
-      // room in the first place.
-      const pendingMatchId = this.pendingHostReconnect.get(playerId);
-      if (pendingMatchId) {
-        const match = this.matches.get(pendingMatchId);
+      // Fallback: the host's original room may already have been
+      // consumed by a guest while the host was in the disconnect
+      // grace window. In that case a match exists but the host never
+      // learned its id. Promote the host into that match, but only
+      // if they present the matching original room code — we must
+      // not weaken authentication in the fallback path relative to
+      // the live-room path, or an attacker who only knows a playerId
+      // could harvest the match by guessing any code.
+      const pending = this.pendingHostReconnect.get(playerId);
+      if (pending && pending.code === normalizedCode) {
+        const match = this.matches.get(pending.matchId);
         if (match) {
           this.pendingHostReconnect.delete(playerId);
           // `handleReconnect` wires the socket into the running match
@@ -326,11 +339,14 @@ export class PrivateRoomService {
           if (matchFound) {
             socket.emit('match-found', matchFound);
           }
+          // Emit the *stored* room code, not the caller-provided one,
+          // so a client that somehow drifted on casing still sees the
+          // canonical value.
           socket.emit('room-recovered', {
-            code: normalizedCode,
+            code: pending.code,
           } satisfies RoomRecoveredEvent);
           console.log(
-            `[PrivateRoom] Host ${playerId} recovered into pending match ${pendingMatchId}`
+            `[PrivateRoom] Host ${playerId} recovered into pending match ${pending.matchId}`
           );
           return true;
         }
@@ -423,8 +439,8 @@ export class PrivateRoomService {
    */
   removeMatch(matchId: string): void {
     this.matches.delete(matchId);
-    for (const [playerId, pendingMatchId] of this.pendingHostReconnect) {
-      if (pendingMatchId === matchId) {
+    for (const [playerId, pending] of this.pendingHostReconnect) {
+      if (pending.matchId === matchId) {
         this.pendingHostReconnect.delete(playerId);
       }
     }
