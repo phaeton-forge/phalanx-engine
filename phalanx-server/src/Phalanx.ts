@@ -445,12 +445,17 @@ export class Phalanx extends EventEmitter {
       // Called when a host reconnects after a transient socket disconnect
       // (e.g. mobile browser killing the WebSocket when the user switches
       // to a messenger to share the invite link) and wants to reclaim
-      // their still-alive room.
+      // their still-alive room. `code` is required to prove the caller
+      // is actually the host who created the room — in an anonymous
+      // socket environment, `playerId` alone is not an authentication
+      // token. `code` stays optional on the wire for backward
+      // compatibility with older clients; recoverRoom logs a warning
+      // when it's omitted.
       socket.on(
         'room-recover',
-        (data: { playerId: string; username?: string }) => {
+        (data: { playerId: string; username?: string; code?: string }) => {
           playerId = data.playerId;
-          this.privateRooms!.recoverRoom(playerId, socket);
+          this.privateRooms!.recoverRoom(playerId, socket, data.code);
         }
       );
 

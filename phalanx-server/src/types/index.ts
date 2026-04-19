@@ -362,7 +362,13 @@ export interface QueueStatusEvent {
  *   • client → server: `room-create`    → `{ playerId, username?, gameType? }`
  *   • client → server: `room-join`      → `{ playerId, username?, code }`
  *   • client → server: `room-cancel`    → `{}`
- *   • client → server: `room-recover`   → `{ playerId, username? }`
+ *   • client → server: `room-recover`   → `{ playerId, username?, code? }`
+ *
+ * The `code` on `room-recover` is strongly recommended: it proves the
+ * caller is actually the host who created the room. Without it any
+ * client that knew a host's `playerId` could reclaim the room.
+ * It is optional on the wire for backward compatibility; the server
+ * logs a warning when a client omits it.
  */
 
 /** Event sent to the host when a room is created. */

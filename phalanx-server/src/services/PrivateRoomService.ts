@@ -112,11 +112,18 @@ export class PrivateRoomService {
     const code = this.generateCode();
     const resolvedGameType = gameType ?? 'default';
 
-    // Auto-expire room after TTL
+    // Auto-expire room after TTL.
+    //
+    // Look the room back up inside the timer and emit on its *current*
+    // host socket rather than the one captured at creation time, because
+    // the host may have reconnected on a new socket via `room-recover`
+    // before the TTL elapsed. If the host is disconnected at the moment
+    // of expiry, there's simply no one to notify — that's fine.
     const expirationTimer = setTimeout(() => {
-      if (this.rooms.has(code)) {
+      const expired = this.rooms.get(code);
+      if (expired) {
         this.removeRoom(code);
-        socket.emit('room-expired', { code });
+        expired.hostSocket?.emit('room-expired', { code });
         console.log(`[PrivateRoom] Room ${code} expired`);
       }
     }, PrivateRoomService.ROOM_TTL_MS);
@@ -241,20 +248,51 @@ export class PrivateRoomService {
   /**
    * Recover a room after the host's socket disconnected within the grace period.
    *
-   * Rebinds the room to the host's new socket, clears the pending
-   * destruction timer, and emits `room-recovered` on the new socket.
-   * If no matching room exists (never created, or grace period already
-   * elapsed), emits `room-error` instead.
+   * The caller must present the room `code` along with the `playerId` —
+   * possession of the code is what authenticates the host in the
+   * anonymous-socket case. Without that check, any client that knew
+   * (or guessed) a host's `playerId` could reclaim their room and
+   * learn its invite code.
+   *
+   * On success: clears the pending destruction timer, rebinds the
+   * room to the host's new socket (updating both the service-level
+   * `hostSocket`/`hostSocketId` and the matchmaking-level
+   * `host.socketId` used by GameRoom to look up the host's socket),
+   * and emits `room-recovered` on the new socket.
+   *
+   * If no matching room exists for this player (never created, or
+   * grace period / TTL already elapsed) OR the code doesn't match
+   * the stored room, emits `room-error: "Room expired"`. We use
+   * the same message for both cases so we don't leak whether a
+   * given playerId currently owns a room.
    */
-  recoverRoom(playerId: string, socket: Socket): void {
+  recoverRoom(playerId: string, socket: Socket, code?: string): void {
+    const normalizedCode = code?.toUpperCase();
     for (const [, room] of this.rooms) {
-      if (room.host.playerId === playerId) {
+      if (
+        room.host.playerId === playerId &&
+        (normalizedCode === undefined || room.code === normalizedCode)
+      ) {
+        if (normalizedCode === undefined) {
+          // Legacy callers that don't pass a code still work but are
+          // logged so we can spot them in downstream games.
+          console.warn(
+            `[PrivateRoom] recoverRoom called without a code for ${playerId} — ` +
+              `future versions will require it`,
+          );
+        }
+
         if (room.hostDisconnectTimer) {
           clearTimeout(room.hostDisconnectTimer);
           room.hostDisconnectTimer = null;
         }
         room.hostSocket = socket;
         room.hostSocketId = socket.id;
+        // Keep the QueuedPlayer.socketId in sync so that when a guest
+        // later joins, GameRoom's socketId→playerId map and its
+        // `io.sockets.sockets.get(player.socketId)` lookups resolve
+        // to the host's *current* socket rather than the dead one.
+        room.host.socketId = socket.id;
         socket.emit('room-recovered', {
           code: room.code,
         } satisfies RoomRecoveredEvent);

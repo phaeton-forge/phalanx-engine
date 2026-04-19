@@ -1,7 +1,11 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { io, Socket } from 'socket.io-client';
 import { Phalanx } from '../src/Phalanx.js';
-import type { RoomCreatedEvent, RoomErrorEvent } from '../src/services/PrivateRoomService.js';
+import type {
+  RoomCreatedEvent,
+  RoomRecoveredEvent,
+  RoomErrorEvent,
+} from '../src/services/PrivateRoomService.js';
 
 /**
  * Tests for PrivateRoomService — room creation, joining, cancellation,
@@ -303,7 +307,7 @@ describe('PrivateRoomService', () => {
     expect(guestMatch.matchId).toBeDefined();
   });
 
-  it('should recover a room when the host reconnects via room-recover', async () => {
+  it('should recover a room when the host reconnects via room-recover, and rebind to the new socket', async () => {
     const host = createClient();
     await connectClient(host);
 
@@ -324,24 +328,39 @@ describe('PrivateRoomService', () => {
     const recoveredPromise = new Promise<RoomRecoveredEvent>((resolve) => {
       host2.on('room-recovered', (data: RoomRecoveredEvent) => resolve(data));
     });
-    host2.emit('room-recover', { playerId: 'host1', username: 'Host' });
+    host2.emit('room-recover', {
+      playerId: 'host1',
+      username: 'Host',
+      code: created.code,
+    });
 
     const recovered = await recoveredPromise;
     expect(recovered.code).toBe(created.code);
 
-    // Room is intact — a guest can still join by code
+    // A guest can still join by code AND both the recovered host and
+    // the guest must receive match-found. The host assertion is the
+    // important regression guard: if recoverRoom didn't also update
+    // `room.host.socketId`, GameRoom would try to emit to the dead
+    // original socket and host2 would get nothing.
     const guest = createClient();
     await connectClient(guest);
-    const matchPromise = new Promise<{ matchId: string }>((resolve) => {
+    const guestMatchPromise = new Promise<{ matchId: string }>((resolve) => {
       guest.on('match-found', (data: { matchId: string }) => resolve(data));
+    });
+    const hostMatchPromise = new Promise<{ matchId: string }>((resolve) => {
+      host2.on('match-found', (data: { matchId: string }) => resolve(data));
     });
     guest.emit('room-join', {
       playerId: 'guest1',
       username: 'Guest',
       code: created.code,
     });
-    const match = await matchPromise;
-    expect(match.matchId).toBeDefined();
+    const [guestMatch, hostMatch] = await Promise.all([
+      guestMatchPromise,
+      hostMatchPromise,
+    ]);
+    expect(guestMatch.matchId).toBeDefined();
+    expect(hostMatch.matchId).toBe(guestMatch.matchId);
   });
 
   it('should emit room-error with "Room expired" when recovering a non-existent room', async () => {
@@ -351,10 +370,58 @@ describe('PrivateRoomService', () => {
     const errorPromise = new Promise<RoomErrorEvent>((resolve) => {
       host.on('room-error', (data: RoomErrorEvent) => resolve(data));
     });
-    host.emit('room-recover', { playerId: 'ghost', username: 'Ghost' });
+    host.emit('room-recover', {
+      playerId: 'ghost',
+      username: 'Ghost',
+      code: 'ZZZZZZ',
+    });
 
     const error = await errorPromise;
     expect(error.message).toBe('Room expired');
+  });
+
+  it('should reject room-recover when the code does not match the host\u2019s room', async () => {
+    // Security guard: a client that only knows another host's playerId
+    // (but not the room code) must not be able to reclaim the room and
+    // learn its invite code.
+    const host = createClient();
+    await connectClient(host);
+
+    const createdPromise = new Promise<RoomCreatedEvent>((resolve) => {
+      host.on('room-created', (data: RoomCreatedEvent) => resolve(data));
+    });
+    host.emit('room-create', { playerId: 'host1', username: 'Host' });
+    await createdPromise;
+
+    host.disconnect();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    // An attacker connects and tries to steal the room with the correct
+    // playerId but a wrong code.
+    const attacker = createClient();
+    await connectClient(attacker);
+    const errorPromise = new Promise<RoomErrorEvent>((resolve) => {
+      attacker.on('room-error', (data: RoomErrorEvent) => resolve(data));
+    });
+    const unexpectedRecoverPromise = new Promise<RoomRecoveredEvent | null>(
+      (resolve) => {
+        attacker.on('room-recovered', (data: RoomRecoveredEvent) =>
+          resolve(data),
+        );
+        // Give the server plenty of room to misbehave before we conclude
+        // no recover event came back.
+        setTimeout(() => resolve(null), 300);
+      },
+    );
+    attacker.emit('room-recover', {
+      playerId: 'host1',
+      username: 'Attacker',
+      code: 'WRONGCD',
+    });
+
+    const error = await errorPromise;
+    expect(error.message).toBe('Room expired');
+    expect(await unexpectedRecoverPromise).toBeNull();
   });
 
   it('should allow the host to cancel a room after reconnecting with a new socket', async () => {
@@ -382,7 +449,11 @@ describe('PrivateRoomService', () => {
     // The Phalanx room-cancel handler keys off the `playerId` captured
     // from a prior message on this socket, so we first associate the
     // new socket with the host's playerId via room-recover, then cancel.
-    host2.emit('room-recover', { playerId: 'host1', username: 'Host' });
+    host2.emit('room-recover', {
+      playerId: 'host1',
+      username: 'Host',
+      code: created.code,
+    });
     await new Promise((resolve) => setTimeout(resolve, 50));
     host2.emit('room-cancel');
 
@@ -526,7 +597,7 @@ describe('PrivateRoomService', () => {
 
       // Host reconnects on a new socket halfway through the grace window.
       vi.advanceTimersByTime(60 * 1000);
-      service.recoverRoom('host1', hostSocket2);
+      service.recoverRoom('host1', hostSocket2, code);
 
       const recovered = emitted.find((e) => e.event === 'room-recovered');
       expect(recovered).toBeDefined();
@@ -541,7 +612,7 @@ describe('PrivateRoomService', () => {
       // original grace timer hadn't been cleared on the first recover,
       // the room would now be gone and this would emit 'Room expired'.
       emitted.length = 0;
-      service.recoverRoom('host1', hostSocket2);
+      service.recoverRoom('host1', hostSocket2, code);
       const secondRecover = emitted.find((e) => e.event === 'room-recovered');
       const expired = emitted.find(
         (e) =>
@@ -554,6 +625,87 @@ describe('PrivateRoomService', () => {
       // guestSocket is referenced but not used after mock-io simplification;
       // keep it allocated so the test structure stays self-documenting.
       void guestSocket;
+
+      service.stop();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('should emit room-expired on the recovered host socket, not the original (unit)', async () => {
+    // Regression guard: the TTL callback used to fire `socket.emit(...)`
+    // on the socket captured at createRoom() time. After the host rebound
+    // via room-recover that socket is dead, so the real host would never
+    // see the expiry. The fix looks the room back up at expiry time and
+    // emits on its *current* hostSocket.
+    const { PrivateRoomService } = await import(
+      '../src/services/PrivateRoomService.js'
+    );
+    const { validateConfig } = await import('../src/config/validation.js');
+
+    const config = validateConfig({
+      port: TEST_PORT,
+      matchmakingIntervalMs: 100,
+      gameMode: '1v1',
+      countdownSeconds: 0,
+      tickRate: 20,
+      cors: { origin: '*' },
+    });
+
+    const fakeIo = {} as unknown as import('socket.io').Server;
+    const emitted: Array<{
+      socket: string;
+      event: string;
+      payload: unknown;
+    }> = [];
+    const makeSocket = (id: string) =>
+      ({
+        id,
+        data: {},
+        emit: (event: string, payload: unknown) => {
+          emitted.push({ socket: id, event, payload });
+          return true;
+        },
+      }) as unknown as import('socket.io').Socket;
+
+    const hostSocket1 = makeSocket('sock-host-1');
+    const hostSocket2 = makeSocket('sock-host-2');
+
+    vi.useFakeTimers();
+    try {
+      const service = new PrivateRoomService(
+        fakeIo,
+        config,
+        () => undefined,
+        () => config,
+      );
+
+      service.createRoom('host1', 'Host', hostSocket1);
+      const code = (
+        emitted.find((e) => e.event === 'room-created')!.payload as {
+          code: string;
+        }
+      ).code;
+
+      // Host drops and immediately reconnects on a fresh socket.
+      service.handleDisconnect(hostSocket1.id);
+      service.recoverRoom('host1', hostSocket2, code);
+
+      // Clear out the setup events so the next assertion is unambiguous.
+      emitted.length = 0;
+
+      // Fast-forward past the 5-minute TTL. The room-expired event must
+      // arrive on sock-host-2 (current), never on sock-host-1 (original).
+      vi.advanceTimersByTime(5 * 60 * 1000 + 1);
+
+      const expired = emitted.filter((e) => e.event === 'room-expired');
+      expect(expired).toHaveLength(1);
+      expect(expired[0].socket).toBe('sock-host-2');
+
+      const expiredOnOriginal = emitted.find(
+        (e) => e.event === 'room-expired' && e.socket === 'sock-host-1',
+      );
+      expect(expiredOnOriginal).toBeUndefined();
 
       service.stop();
     } finally {
