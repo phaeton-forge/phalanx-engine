@@ -447,6 +447,69 @@ describe('PrivateRoomService', () => {
     expect(await unexpectedRecoverPromise).toBeNull();
   });
 
+  it('should not mutate per-socket identity state on a failed room-recover', async () => {
+    // Regression guard for the case where an attacker (or a confused
+    // client) sends a bogus room-recover: the handler must NOT capture
+    // the payload's playerId on the connection, because a follow-up
+    // room-cancel on the same socket would then act on a playerId the
+    // socket was never authenticated to own.
+    const host = createClient();
+    await connectClient(host);
+
+    // A victim host creates a real room.
+    const createdPromise = new Promise<RoomCreatedEvent>((resolve) => {
+      host.on('room-created', (data: RoomCreatedEvent) => resolve(data));
+    });
+    host.emit('room-create', { playerId: 'victim', username: 'Victim' });
+    const created = await createdPromise;
+
+    // Attacker connects on a fresh socket and fires a bad recover.
+    const attacker = createClient();
+    await connectClient(attacker);
+
+    const attackerErrorPromise = new Promise<RoomErrorEvent>((resolve) => {
+      attacker.on('room-error', (data: RoomErrorEvent) => resolve(data));
+    });
+    attacker.emit('room-recover', {
+      playerId: 'victim',
+      username: 'Attacker',
+      code: 'WRONGCD',
+    });
+    const attackerError = await attackerErrorPromise;
+    expect(attackerError.message).toBe('Room expired');
+
+    // Now the attacker tries to cancel the victim's room. Because the
+    // failed recover must not have captured `victim` as this socket's
+    // playerId, cancel is a no-op and the room stays alive.
+    attacker.emit('room-cancel');
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    // The room is still there: the host can join it from a guest.
+    const guest = createClient();
+    await connectClient(guest);
+    const guestMatchPromise = new Promise<{ matchId: string }>((resolve) => {
+      guest.on('match-found', (data: { matchId: string }) => resolve(data));
+    });
+    const guestErrorPromise = new Promise<RoomErrorEvent | null>((resolve) => {
+      guest.on('room-error', (data: RoomErrorEvent) => resolve(data));
+      setTimeout(() => resolve(null), 500);
+    });
+    guest.emit('room-join', {
+      playerId: 'guest1',
+      username: 'Guest',
+      code: created.code,
+    });
+    const guestMatch = await Promise.race([
+      guestMatchPromise,
+      guestErrorPromise.then((e) => {
+        if (e) throw new Error(`unexpected room-error: ${e.message}`);
+        return null;
+      }),
+    ]);
+    expect(guestMatch).not.toBeNull();
+    expect((guestMatch as { matchId: string }).matchId).toBeDefined();
+  });
+
   it('should allow the host to cancel a room after reconnecting with a new socket', async () => {
     const host = createClient();
     await connectClient(host);

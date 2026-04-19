@@ -265,35 +265,42 @@ export class PrivateRoomService {
    * the stored room, emits `room-error: "Room expired"`. We use
    * the same message for both cases so we don't leak whether a
    * given playerId currently owns a room.
+   *
+   * Returns `true` on success and `false` on any failure, so the
+   * Phalanx handler can gate updating the socket's captured
+   * `playerId` on an authenticated recover.
    */
-  recoverRoom(playerId: string, socket: Socket, code: string): void {
+  recoverRoom(playerId: string, socket: Socket, code: string): boolean {
+    // O(1) lookup by code (the map's key) rather than scanning every
+    // room. The same 'Room expired' error is emitted whether the code
+    // is unknown or the code is known but owned by a different player,
+    // so an attacker who guesses a playerId can't tell a valid code
+    // from an invalid one.
     const normalizedCode = code.toUpperCase();
-    for (const [, room] of this.rooms) {
-      if (
-        room.host.playerId === playerId &&
-        room.code === normalizedCode
-      ) {
-        if (room.hostDisconnectTimer) {
-          clearTimeout(room.hostDisconnectTimer);
-          room.hostDisconnectTimer = null;
-        }
-        room.hostSocket = socket;
-        room.hostSocketId = socket.id;
-        // Keep the QueuedPlayer.socketId in sync so that when a guest
-        // later joins, GameRoom's socketId→playerId map and its
-        // `io.sockets.sockets.get(player.socketId)` lookups resolve
-        // to the host's *current* socket rather than the dead one.
-        room.host.socketId = socket.id;
-        socket.emit('room-recovered', {
-          code: room.code,
-        } satisfies RoomRecoveredEvent);
-        console.log(`[PrivateRoom] Room ${room.code} recovered by ${playerId}`);
-        return;
-      }
+    const room = this.rooms.get(normalizedCode);
+    if (!room || room.host.playerId !== playerId) {
+      socket.emit('room-error', {
+        message: 'Room expired',
+      } satisfies RoomErrorEvent);
+      return false;
     }
-    socket.emit('room-error', {
-      message: 'Room expired',
-    } satisfies RoomErrorEvent);
+
+    if (room.hostDisconnectTimer) {
+      clearTimeout(room.hostDisconnectTimer);
+      room.hostDisconnectTimer = null;
+    }
+    room.hostSocket = socket;
+    room.hostSocketId = socket.id;
+    // Keep the QueuedPlayer.socketId in sync so that when a guest
+    // later joins, GameRoom's socketId→playerId map and its
+    // `io.sockets.sockets.get(player.socketId)` lookups resolve
+    // to the host's *current* socket rather than the dead one.
+    room.host.socketId = socket.id;
+    socket.emit('room-recovered', {
+      code: room.code,
+    } satisfies RoomRecoveredEvent);
+    console.log(`[PrivateRoom] Room ${room.code} recovered by ${playerId}`);
+    return true;
   }
 
   /**

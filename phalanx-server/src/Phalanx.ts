@@ -454,12 +454,27 @@ export class Phalanx extends EventEmitter {
       socket.on(
         'room-recover',
         (data: { playerId: string; username?: string; code: string }) => {
-          playerId = data.playerId;
+          // Validate the untrusted payload before touching any state
+          // on this connection. A failed recover must not mutate the
+          // captured `playerId` — otherwise a later handler like
+          // `room-cancel` would act on a playerId the socket was
+          // never authenticated to own.
           if (typeof data.code !== 'string' || data.code.length === 0) {
             socket.emit('room-error', { message: 'Room expired' });
             return;
           }
-          this.privateRooms!.recoverRoom(playerId, socket, data.code);
+          if (typeof data.playerId !== 'string' || data.playerId.length === 0) {
+            socket.emit('room-error', { message: 'Room expired' });
+            return;
+          }
+          const recovered = this.privateRooms!.recoverRoom(
+            data.playerId,
+            socket,
+            data.code,
+          );
+          if (recovered) {
+            playerId = data.playerId;
+          }
         }
       );
 
