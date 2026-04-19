@@ -186,6 +186,7 @@ export type {
   RoomErrorEvent,
   RoomExpiredEvent,
   RoomCancelledEvent,
+  RoomRecoveredEvent,
 
   // Event handlers (for legacy 'on' API)
   PhalanxClientEvents,

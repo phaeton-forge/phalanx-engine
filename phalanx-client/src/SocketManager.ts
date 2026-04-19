@@ -20,6 +20,7 @@ import type {
   RoomErrorEvent,
   RoomExpiredEvent,
   RoomCancelledEvent,
+  RoomRecoveredEvent,
   PlayerDisconnectedEvent,
   PlayerReconnectedEvent,
   PlayerReadyEvent,
@@ -100,6 +101,7 @@ export interface SocketManagerCallbacks {
   onRoomError: (data: RoomErrorEvent) => void;
   onRoomExpired: (data: RoomExpiredEvent) => void;
   onRoomCancelled: (data: RoomCancelledEvent) => void;
+  onRoomRecovered: (data: RoomRecoveredEvent) => void;
 
   // State queries (for reconnection logic)
   isPlaying: () => boolean;
@@ -301,6 +303,86 @@ export class SocketManager {
   cancelRoom(): void {
     this.ensureConnected();
     this.socket!.emit('room-cancel');
+  }
+
+  /**
+   * Reclaim a private room after the underlying socket was briefly torn
+   * down and reconnected.
+   *
+   * This is the client half of the host-disconnect grace-period contract
+   * introduced server-side in PR #18 and extended with countdown/game-start
+   * snapshotting in PR #19: the server holds the room (and, if the guest
+   * already joined, the running match) open for `HOST_DISCONNECT_GRACE_MS`
+   * so the host's new socket can reclaim it via `room-recover`.
+   *
+   * Typical trigger: a mobile browser kills the WebSocket when the user
+   * switches to a messenger to share the invite link, then re-opens the
+   * tab. The caller (Game / UI layer) should listen for `visibilitychange`
+   * and, when the tab becomes visible again and the socket is dead, call
+   * `connect()` followed by `recoverRoom(code)`.
+   *
+   * Resolves with the `RoomRecoveredEvent` on success. Rejects with the
+   * server's error message on `room-error`, or with `'Recover timeout'`
+   * if the server never answers within `timeoutMs` (default 10 s). The
+   * timeout is important because a stubbornly flaky connection can cause
+   * `socket.emit` to succeed locally but never round-trip — we must not
+   * leave the host hanging on a dead promise while their countdown UI
+   * stays frozen.
+   */
+  async recoverRoom(
+    code: string,
+    timeoutMs: number = 10_000,
+  ): Promise<RoomRecoveredEvent> {
+    this.ensureConnected();
+
+    return new Promise((resolve, reject) => {
+      let settled = false;
+
+      const cleanup = (): void => {
+        this.socket?.off('room-recovered', recoveredHandler);
+        this.socket?.off('room-error', errorHandler);
+        clearTimeout(timer);
+      };
+
+      const recoveredHandler = (event: RoomRecoveredEvent): void => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve(event);
+      };
+
+      const errorHandler = (error: RoomErrorEvent): void => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(new Error(error.message));
+      };
+
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(new Error('Recover timeout'));
+      }, timeoutMs);
+
+      this.socket!.once('room-recovered', recoveredHandler);
+      this.socket!.once('room-error', errorHandler);
+
+      this.socket!.emit('room-recover', {
+        playerId: this.config.playerId,
+        username: this.config.username,
+        code,
+      });
+    });
+  }
+
+  /**
+   * Register a handler for room-recovered events. Exposed alongside the
+   * one-shot `recoverRoom` promise so callers that want to observe
+   * recoveries initiated elsewhere (e.g. for analytics) can do so.
+   */
+  onRoomRecovered(handler: (event: RoomRecoveredEvent) => void): void {
+    this.socket?.on('room-recovered', handler);
   }
 
   /**
@@ -636,6 +718,10 @@ export class SocketManager {
 
     this.socket.on('room-cancelled', (data: RoomCancelledEvent) => {
       this.callbacks.onRoomCancelled(data);
+    });
+
+    this.socket.on('room-recovered', (data: RoomRecoveredEvent) => {
+      this.callbacks.onRoomRecovered(data);
     });
 
     // Disconnection handling

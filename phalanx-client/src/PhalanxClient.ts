@@ -28,6 +28,7 @@ import type {
   Unsubscribe,
   PauseHandler,
   RoomCreatedEvent,
+  RoomRecoveredEvent,
 } from './types.js';
 
 /**
@@ -223,6 +224,7 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
           this.clientState = 'idle';
           this.emit('roomCancelled', data);
         },
+        onRoomRecovered: (data) => this.emit('roomRecovered', data),
       }
     );
 
@@ -526,6 +528,39 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
    */
   cancelRoom(): void {
     this.socketManager.cancelRoom();
+  }
+
+  /**
+   * Reclaim a private room after a transient socket disconnect.
+   *
+   * Call this after `connect()` has re-established the underlying socket
+   * (typically inside a `visibilitychange` listener, or the first thing
+   * on `pageshow` from bfcache) to tell the server to re-bind the still-
+   * living room / in-flight match to this new socket.
+   *
+   * On success the server emits `match-found` (if a guest had already
+   * joined) followed by `reconnect-state` carrying a countdown snapshot,
+   * which `SocketManager`'s global `reconnect-state` handler fans out
+   * through the local `countdown` and `game-start` listeners so any
+   * `waitForCountdown` / `waitForGameStart` promises pending since the
+   * original flow resume naturally.
+   *
+   * Rejects with the server's `room-error` message (e.g. `'Room expired'`)
+   * or `'Recover timeout'` if the server doesn't answer within 10 s.
+   */
+  async recoverRoom(code: string): Promise<RoomRecoveredEvent> {
+    this.ensureConnected();
+    const event = await this.socketManager.recoverRoom(code);
+    // Host is back in the "waiting for opponent / countdown" flow —
+    // mirror the state createRoom would have left us in so downstream
+    // isPlaying() checks stay consistent. The server may also have just
+    // emitted match-found / reconnect-state (pending-recover path), which
+    // will have already advanced `clientState` past 'in-queue' on its
+    // own — so only bump it if we're still in a pre-match phase.
+    if (this.clientState === 'idle') {
+      this.clientState = 'in-queue';
+    }
+    return event;
   }
 
   // ============================================
