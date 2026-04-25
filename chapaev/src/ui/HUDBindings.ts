@@ -46,10 +46,8 @@ export function bindHUDToWorld(
   hud: GameHUDScreen,
   opts: HUDBindingOptions
 ): void {
-  const isHotseat = opts.mode === 'hotseat';
-
   world.eventBus.on<TurnChangedEvent>(TURN_CHANGED, (event) => {
-    if (isHotseat) {
+    if (opts.mode === 'hotseat') {
       const team = event.team === TeamTag.White ? 'white' : 'black';
       hud.updateTurnIndicator(true, team);
     } else {
@@ -81,7 +79,7 @@ export function bindHUDToWorld(
   world.eventBus.on<RoundOverEvent>(ROUND_OVER, (event) => {
     if (event.winner === null) {
       hud.showToast('Ничья в раунде', 'info');
-    } else if (isHotseat) {
+    } else if (opts.mode === 'hotseat') {
       hud.showToast(
         event.winner === TeamTag.White
           ? 'Белые выиграли раунд!'
@@ -96,7 +94,7 @@ export function bindHUDToWorld(
   });
 
   world.eventBus.on<GameOverEvent>(GAME_OVER, (event) => {
-    if (isHotseat) {
+    if (opts.mode === 'hotseat') {
       hud.showToast(
         event.winner === TeamTag.White
           ? '🏆 Белые победили!'

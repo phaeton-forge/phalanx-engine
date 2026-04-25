@@ -323,9 +323,9 @@ export class GameRoom {
   /**
    * Broadcast `match-waiting-for-players` to every currently-connected
    * socket in the room, listing which playerIds we're still waiting on.
-   * Intentionally skips `io.to(roomId).emit` so we can include the
-   * canonical `matchId` once and trust socket.io's own routing not to
-   * deliver to dead sockets — which is also what `notifyMatchFound` does.
+   * Uses `this.io.to(this.roomId).emit(...)` so socket.io handles room
+   * routing to currently connected sockets while we include the canonical
+   * `matchId` in the payload, consistent with `notifyMatchFound`.
    */
   private notifyWaitingForPlayers(): void {
     const missing = this.getDisconnectedPlayerIds();

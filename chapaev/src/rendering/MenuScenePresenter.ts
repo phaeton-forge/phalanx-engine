@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { FPVector3 } from 'phalanx-math';
-import type { SceneContext } from './index';
-import { createBoardMesh, createCheckerMesh } from './index';
+import type { SceneContext } from './SceneSetup.ts';
+import { createBoardMesh } from './BoardMesh.ts';
+import { createCheckerMesh } from './CheckerMesh.ts';
 import {
   INITIAL_POSITIONS,
   CAMERA_POSITION,

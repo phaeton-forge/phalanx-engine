@@ -1,4 +1,4 @@
-﻿import type { Server as SocketIOServer, Socket } from 'socket.io';
+import type { Server as SocketIOServer, Socket } from 'socket.io';
 import type {
   PhalanxConfig,
   QueuedPlayer,
@@ -9,14 +9,14 @@ import type {
 import { GameRoom } from './GameRoom.js';
 
 // Re-export private-room event types from this module for backward
-// compatibility вЂ” callers (and existing tests) historically import them
+// compatibility — callers (and existing tests) historically import them
 // from `services/PrivateRoomService.js`.
 export type { RoomCreatedEvent, RoomRecoveredEvent, RoomErrorEvent };
 
 /**
  * Represents a private room waiting for a second player.
  *
- * The host socket may be temporarily `null` if the host disconnects вЂ”
+ * The host socket may be temporarily `null` if the host disconnects —
  * e.g. a mobile browser killing the WebSocket when the user switches
  * to another app to share the invite link. In that case the room stays
  * alive until normal room TTL expiry (or explicit cancel / consumption
@@ -35,25 +35,25 @@ interface PrivateRoom {
 }
 
 /**
- * PrivateRoomService вЂ” manages private room creation and joining.
+ * PrivateRoomService — manages private room creation and joining.
  *
  * When a second player joins a room, the service creates a GameRoom
  * (bypassing the matchmaking queue) and starts the match. The GameRoom
  * itself is responsible for deferring the countdown if any of the
- * players is currently disconnected вЂ” the service merely hands it the
+ * players is currently disconnected — the service merely hands it the
  * teams and lets it decide.
  */
 export class PrivateRoomService {
   private readonly rooms: Map<string, PrivateRoom> = new Map();
   private readonly matches: Map<string, GameRoom> = new Map();
   /**
-   * Reverse index: original room code в†’ matchId. Lets a disconnected
+   * Reverse index: original room code → matchId. Lets a disconnected
    * participant (host or guest) recover into the running/deferred
    * match by presenting the room code they joined with, since neither
    * side may yet know the `matchId` (the host never received
    * `match-found` if the match is still deferred; the guest may also
    * have disconnected before reading it). The code is also our
-   * authentication token for the recover вЂ” possession of the code is
+   * authentication token for the recover — possession of the code is
    * what proves the caller is a legitimate participant in this match.
    *
    * Cleared in `removeMatch` so a finished match can't leak into a
@@ -133,7 +133,7 @@ export class PrivateRoomService {
     // host socket rather than the one captured at creation time, because
     // the host may have reconnected on a new socket via `room-recover`
     // before the TTL elapsed. If the host is disconnected at the moment
-    // of expiry, there's simply no one to notify вЂ” that's fine.
+    // of expiry, there's simply no one to notify — that's fine.
     const expirationTimer = setTimeout(() => {
       const expired = this.rooms.get(code);
       if (expired) {
@@ -170,7 +170,7 @@ export class PrivateRoomService {
    *
    * The match is always created and started immediately, but
    * `GameRoom.start()` itself defers the countdown if any player
-   * (host OR guest) is currently disconnected вЂ” it'll emit
+   * (host OR guest) is currently disconnected — it'll emit
    * `match-waiting-for-players` to whoever is online and only kick
    * off the countdown once everyone reconnects. So the call sites
    * here don't need to special-case an offline host any more.
@@ -214,7 +214,7 @@ export class PrivateRoomService {
       return;
     }
 
-    // Remove room вЂ” it's now consumed
+    // Remove room — it's now consumed
     this.removeRoom(normalizedCode);
 
     const guest: QueuedPlayer = {
@@ -249,7 +249,7 @@ export class PrivateRoomService {
     gameRoom.start();
 
     console.log(
-      `[PrivateRoom] Room ${code} в†’ match ${matchId} (${room.host.playerId} vs ${playerId})`
+      `[PrivateRoom] Room ${code} → match ${matchId} (${room.host.playerId} vs ${playerId})`
     );
   }
 
@@ -274,7 +274,7 @@ export class PrivateRoomService {
   /**
    * Recover a room or match after a participant's socket disconnected.
    *
-   * The caller must present the room `code` along with the `playerId` вЂ”
+   * The caller must present the room `code` along with the `playerId` —
    * possession of the code is what authenticates them in the
    * anonymous-socket case. Without that check, any client that knew
    * (or guessed) a participant's `playerId` could reclaim their room
@@ -283,11 +283,11 @@ export class PrivateRoomService {
    * Three cases, tried in order:
    *
    *   1. The code maps to a still-waiting room and `playerId` is the
-   *      host вЂ” re-bind the host's socket to the room (existing
+   *      host — re-bind the host's socket to the room (existing
    *      "waiting for guest" flow).
    *
    *   2. The code maps to a match (deferred or running) and `playerId`
-   *      is one of its participants вЂ” rebind via
+   *      is one of its participants — rebind via
    *      `GameRoom.handleReconnect`. If the match was deferred and
    *      everyone is now connected, the GameRoom will start its
    *      countdown; otherwise it'll deliver a `reconnect-state`
@@ -295,7 +295,7 @@ export class PrivateRoomService {
    *      `room-recovered` so their UI can transition out of the
    *      "trying to recover" state.
    *
-   *   3. None of the above вЂ” `room-error: "Room expired"`.
+   *   3. None of the above — `room-error: "Room expired"`.
    *
    * Returns `true` on success, `false` on failure.
    */
@@ -319,7 +319,7 @@ export class PrivateRoomService {
 
     // Case 2: code belongs to a match in progress / deferred and
     // caller is a participant. We use the original room code as the
-    // authentication token вЂ” same posture as Case 1 and the previous
+    // authentication token — same posture as Case 1 and the previous
     // `pendingHostReconnect` path: an attacker who guesses only a
     // playerId cannot harvest the match without also guessing the code.
     const matchId = this.matchByOriginalCode.get(normalizedCode);
@@ -335,7 +335,7 @@ export class PrivateRoomService {
         );
         return true;
       }
-      // Stale index entry вЂ” clean it up rather than letting it
+      // Stale index entry — clean it up rather than letting it
       // accumulate forever for a long-dead match.
       if (!match) {
         this.matchByOriginalCode.delete(normalizedCode);
@@ -362,7 +362,7 @@ export class PrivateRoomService {
       if (room.hostSocketId === socketId) {
         room.hostSocket = null;
         console.log(
-          `[PrivateRoom] Host of room ${code} disconnected вЂ” room kept alive until TTL/cancel/join`
+          `[PrivateRoom] Host of room ${code} disconnected — room kept alive until TTL/cancel/join`
         );
       }
     }
@@ -392,7 +392,7 @@ export class PrivateRoomService {
 
   /**
    * Remove a finished match from the private matches map.
-   * Called from the match-ended listener вЂ” the match already stopped itself.
+   * Called from the match-ended listener — the match already stopped itself.
    */
   removeMatch(matchId: string): void {
     this.matches.delete(matchId);

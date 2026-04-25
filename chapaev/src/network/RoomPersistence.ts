@@ -2,13 +2,18 @@
  * RoomPersistence — survives an active private-room session across:
  *   - mobile browser backgrounding (where the WebSocket dies but JS
  *     state is usually preserved by bfcache)
- *   - hard reloads (only useful for authenticated users whose
- *     `playerId` is stable across reloads — guests get a fresh
- *     `playerId` from PhalanxClient and cannot recover after reload)
+ *   - hard reloads, as long as the same `playerId` is still available
+ *     after reload (for example authenticated users, and guests when
+ *     `NetworkManager` has persisted their guest `playerId`)
  *
  * Stored in `localStorage` (NOT `sessionStorage`) so that iOS Safari,
  * which discards `sessionStorage` when the tab is killed, still has
  * the entry available the next time the app is opened.
+ *
+ * Recovery is still best-effort and bounded by the room TTL below: if
+ * the stored room entry has expired, or a true cold start no longer
+ * has access to the previous `playerId`, recovery is not expected to
+ * succeed.
  *
  * The local TTL mirrors the server-side `PrivateRoomService.ROOM_TTL_MS`
  * (5 minutes) — there's no point trying to recover a room the server
