@@ -3,6 +3,35 @@ import type { MatchFoundEvent, CountdownEvent, GameStartEvent, CommandsBatchEven
 import { SERVER_URL, AUTH_CONFIG } from '../config/constants.ts';
 
 /**
+ * localStorage key for the anonymous (guest-mode) playerId.
+ *
+ * PhalanxClient generates a fresh `player-${Date.now()}-...` id in its
+ * constructor when none is supplied. That id changes on every page
+ * reload, which silently breaks any server-side state keyed by
+ * playerId — most importantly, the host record inside a private room.
+ *
+ * For authenticated users, PhalanxClient overrides this id with the
+ * stable auth user.id once auth resolves, so the value persisted here
+ * is only used until that override (and as a fallback for guests).
+ */
+const GUEST_PLAYER_ID_STORAGE_KEY = 'chapaev:guestPlayerId:v1';
+
+function loadOrCreateGuestPlayerId(): string {
+  try {
+    if (typeof localStorage === 'undefined') {
+      return `player-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    }
+    const existing = localStorage.getItem(GUEST_PLAYER_ID_STORAGE_KEY);
+    if (existing && existing.length > 0) return existing;
+    const fresh = `player-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+    localStorage.setItem(GUEST_PLAYER_ID_STORAGE_KEY, fresh);
+    return fresh;
+  } catch {
+    return `player-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+  }
+}
+
+/**
  * NetworkManager — wraps PhalanxClient for Chapayev online mode.
  *
  * Handles connection, matchmaking, authentication, and exposes the client as
@@ -17,6 +46,13 @@ export class NetworkManager {
   constructor() {
     this.client = new PhalanxClient({
       serverUrl: SERVER_URL,
+      // Stable across page reloads — required for private-room recovery
+      // after the mobile browser killed the tab while the user was in
+      // a messenger sharing the invite link. Auth, when enabled, will
+      // overwrite this with the real user id once the auth flow
+      // resolves; until then (and for guests forever) we keep the
+      // same anonymous id across reloads.
+      playerId: loadOrCreateGuestPlayerId(),
       autoReconnect: true,
       maxReconnectAttempts: 5,
       reconnectDelayMs: 1000,

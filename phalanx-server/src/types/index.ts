@@ -222,6 +222,18 @@ export interface PhalanxConfig {
   /** Timeout in milliseconds for all clients to report ready after game-start (default: 30000) */
   readyTimeoutMs?: number;
 
+  // === Pre-countdown Player Wait ===
+  /**
+   * How long `GameRoom.start()` will wait for all participants' sockets
+   * to be present before kicking off the countdown. If at least one
+   * player is offline at start time, the match enters
+   * `'waiting-for-players'` and emits `match-waiting-for-players` to
+   * whoever is online; the countdown only begins once everyone
+   * reconnects, or after this timeout the match is ended with
+   * `match-end: 'players-not-connected'`. Default: 60000.
+   */
+  playersConnectTimeoutMs?: number;
+
   // === Pause/Resume Settings ===
   /** Pause/resume behavior configuration */
   pause?: Partial<PauseConfig>;
@@ -256,7 +268,7 @@ export interface MatchInfo {
   id: string;
   players: PlayerInfo[];
   currentTick: number;
-  state: 'countdown' | 'waiting-for-ready' | 'playing' | 'paused' | 'finished';
+  state: 'waiting-for-players' | 'countdown' | 'waiting-for-ready' | 'playing' | 'paused' | 'finished';
   createdAt: Date;
   gameType?: string;
 }

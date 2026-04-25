@@ -41,11 +41,31 @@ export class GameRoom {
   ) => boolean | void;
 
   private currentTick: number = 0;
-  private state: 'countdown' | 'waiting-for-ready' | 'playing' | 'paused' | 'finished' = 'countdown';
+  private state: 'waiting-for-players' | 'countdown' | 'waiting-for-ready' | 'playing' | 'paused' | 'finished' = 'waiting-for-players';
   private createdAt: Date;
   private tickInterval: NodeJS.Timeout | null = null;
   private countdownTimer: NodeJS.Timeout | null = null;
   private countdownInterval: NodeJS.Timeout | null = null;
+  /**
+   * Set when the match enters `'waiting-for-players'` (i.e. start()
+   * was called but at least one participant's socket was offline).
+   * Fires after `playersConnectTimeoutMs` and ends the match with
+   * `match-end: 'players-not-connected'` so the connected players
+   * aren't stranded indefinitely waiting for someone who's never
+   * coming back.
+   *
+   * Cleared in `transitionFromWaitingForPlayers` when everyone's
+   * online and we proceed to the countdown, or in `stop()` on shutdown.
+   */
+  private playersConnectTimeout: NodeJS.Timeout | null = null;
+  /**
+   * How long we'll hold the deferred-start state before giving up on
+   * absent participants. Long enough to cover a typical mobile
+   * "switched to messenger" round-trip, short enough that the
+   * connected player isn't staring at a frozen lobby. Pulled from
+   * config when available so games can tune it.
+   */
+  private readonly playersConnectTimeoutMs: number;
   /**
    * Absolute epoch-ms deadline for the countdown, set when the countdown
    * starts and cleared when `game-start` is emitted. Used to compute the
@@ -125,6 +145,7 @@ export class GameRoom {
 
     // Resolve ready timeout from config
     this.readyTimeoutMs = config.readyTimeoutMs ?? 30000;
+    this.playersConnectTimeoutMs = config.playersConnectTimeoutMs ?? 60000;
 
     // Resolve desync config with defaults
     this.desyncConfig = {
@@ -157,10 +178,35 @@ export class GameRoom {
   }
 
   /**
-   * Start the game room (begins countdown)
+   * Start the game room.
+   *
+   * If every participant's socket is currently live we proceed straight
+   * to the countdown. Otherwise the room enters
+   * `'waiting-for-players'` — `match-found` and
+   * `match-waiting-for-players` are emitted to whoever is online, and
+   * the countdown is held back until either:
+   *
+   *   - every player has reconnected (via `GameRoom.handleReconnect`,
+   *     typically driven by the engine's room/match-recover handlers
+   *     for the private-room case), at which point we transition to
+   *     the countdown; OR
+   *
+   *   - `playersConnectTimeoutMs` elapses and we end the match with
+   *     `match-end: 'players-not-connected'`, freeing the participants
+   *     who DID show up.
+   *
+   * Putting this gate inside `GameRoom` (rather than at the
+   * matchmaking / private-room layer) means every flow that builds a
+   * match — public matchmaking, private invites, future custom
+   * lobbies — gets the same "don't drop a single player into a
+   * countdown alone" guarantee for free.
    */
   start(): void {
-    // Join all players to the room and assign socket.data
+    // Wire each player's socket: assign socket.data, join the room,
+    // and reflect their actual connection state in `players`. The
+    // constructor optimistically initialises everyone as connected,
+    // but the socket they were tracked under may have died between
+    // the matchmaking decision and now (mobile suspension etc.).
     this.teams.forEach((team, teamId) => {
       const teammateIds = team.map((p) => p.playerId);
       const opponentIds = this.teams
@@ -170,6 +216,7 @@ export class GameRoom {
 
       team.forEach((player) => {
         const socket = this.io.sockets.sockets.get(player.socketId);
+        const playerInfo = this.players.get(player.playerId);
         if (socket) {
           // Assign match data to socket
           const socketData = socket.data as SocketData;
@@ -183,15 +230,109 @@ export class GameRoom {
 
           // Join the room
           void socket.join(this.roomId);
+          if (playerInfo) playerInfo.connected = true;
+        } else if (playerInfo) {
+          // Socket is gone — this player will need to recover before
+          // we can begin. They'll show up in `match-waiting-for-players`.
+          playerInfo.connected = false;
         }
       });
     });
 
-    // Emit personalized match-found to each player
+    // Always emit personalized match-found to currently-connected
+    // players. Reconnecting absent players will receive theirs from
+    // `handleReconnect` once they come back.
     this.notifyMatchFound();
 
-    // Start countdown with 1-second interval events
-    this.startGameCountdown();
+    if (this.areAllPlayersConnected()) {
+      // Happy path — everyone is here, run the original immediate-
+      // countdown flow.
+      this.state = 'countdown';
+      this.startGameCountdown();
+      return;
+    }
+
+    // Defer: at least one socket is missing. Sit in
+    // `'waiting-for-players'` and announce who we're waiting on.
+    this.state = 'waiting-for-players';
+    this.notifyWaitingForPlayers();
+
+    this.playersConnectTimeout = setTimeout(() => {
+      this.playersConnectTimeout = null;
+      // Recheck inside the timer in case everyone reconnected during
+      // a pending microtask between schedule and fire.
+      if (this.state !== 'waiting-for-players') return;
+
+      const missing = this.getDisconnectedPlayerIds();
+      console.log(
+        `[GameRoom ${this.id}] players-connect timeout — ${missing.length} player(s) never returned: ${missing.join(', ')}`,
+      );
+      this.io.to(this.roomId).emit('match-end', {
+        reason: 'players-not-connected',
+      });
+      this.state = 'finished';
+      this.eventEmitter('match-ended', this.id, 'players-not-connected');
+    }, this.playersConnectTimeoutMs);
+  }
+
+  /**
+   * Drive the deferred-start state machine forward: invoked from
+   * `handleReconnect` once a previously-missing player has rebound
+   * their socket. If everyone is now present, cancels the players-
+   * connect timeout and transitions into the countdown; otherwise
+   * just re-broadcasts the updated waiting-for-players list.
+   */
+  private maybeBeginCountdownAfterReconnect(): void {
+    if (this.state !== 'waiting-for-players') return;
+
+    if (this.areAllPlayersConnected()) {
+      if (this.playersConnectTimeout) {
+        clearTimeout(this.playersConnectTimeout);
+        this.playersConnectTimeout = null;
+      }
+      console.log(
+        `[GameRoom ${this.id}] all players connected — starting countdown`,
+      );
+      this.state = 'countdown';
+      this.startGameCountdown();
+    } else {
+      // Still missing someone — refresh the announcement so any
+      // already-connected client UI (e.g. "waiting for X, Y…") can
+      // update its label.
+      this.notifyWaitingForPlayers();
+    }
+  }
+
+  /** True iff every participant's `connected` flag is set. */
+  private areAllPlayersConnected(): boolean {
+    for (const p of this.players.values()) {
+      if (!p.connected) return false;
+    }
+    return true;
+  }
+
+  /** PlayerIds whose `connected` flag is currently false. */
+  private getDisconnectedPlayerIds(): string[] {
+    const out: string[] = [];
+    for (const [id, p] of this.players) {
+      if (!p.connected) out.push(id);
+    }
+    return out;
+  }
+
+  /**
+   * Broadcast `match-waiting-for-players` to every currently-connected
+   * socket in the room, listing which playerIds we're still waiting on.
+   * Uses `this.io.to(this.roomId).emit(...)` so socket.io handles room
+   * routing to currently connected sockets while we include the canonical
+   * `matchId` in the payload, consistent with `notifyMatchFound`.
+   */
+  private notifyWaitingForPlayers(): void {
+    const missing = this.getDisconnectedPlayerIds();
+    this.io.to(this.roomId).emit('match-waiting-for-players', {
+      matchId: this.id,
+      missingPlayerIds: missing,
+    });
   }
 
   /**
@@ -927,6 +1068,10 @@ export class GameRoom {
       clearTimeout(this.readyTimeout);
       this.readyTimeout = null;
     }
+    if (this.playersConnectTimeout) {
+      clearTimeout(this.playersConnectTimeout);
+      this.playersConnectTimeout = null;
+    }
     if (this.turnTimeout) {
       clearTimeout(this.turnTimeout);
       this.turnTimeout = null;
@@ -1017,6 +1162,40 @@ export class GameRoom {
       socketData.matchId = this.id;
       socketData.playerId = playerId;
 
+      // If we're still in the deferred-start phase, this player has
+      // never received their `match-found` (the original broadcast in
+      // `start()` only reached live sockets). Send it now, then drive
+      // the wait-for-players → countdown transition. We deliberately
+      // skip the `reconnect-state` snapshot here — there's no tick
+      // history to replay yet, and a `reconnect-state` carrying
+      // `state: 'waiting-for-players'` would just confuse a client
+      // expecting it to mean "the game is in progress".
+      if (this.state === 'waiting-for-players') {
+        const matchFoundPayload = this.buildMatchFoundPayload(playerId);
+        if (matchFoundPayload) {
+          socket.emit('match-found', matchFoundPayload);
+        }
+        socket.to(this.roomId).emit('player-reconnected', { playerId });
+        // Look up the team info for the right teammates/opponents
+        // assignment on socket.data — same fields `start()` would
+        // have set for them on the happy path.
+        for (let teamId = 0; teamId < this.teams.length; teamId++) {
+          const team = this.teams[teamId];
+          if (!team || !team.some((p) => p.playerId === playerId)) continue;
+          socketData.teamId = teamId;
+          socketData.teammates = team
+            .map((p) => p.playerId)
+            .filter((id) => id !== playerId);
+          socketData.opponents = this.teams
+            .filter((_, i) => i !== teamId)
+            .flat()
+            .map((p) => p.playerId);
+          break;
+        }
+        this.maybeBeginCountdownAfterReconnect();
+        return true;
+      }
+
       // Send reconnect-state with command history (NET-2).
       //
       // Also carries a countdown / game-start snapshot so a client who
@@ -1060,6 +1239,16 @@ export class GameRoom {
     }
 
     return true;
+  }
+
+  /**
+   * Whether the given playerId is a participant of this match.
+   * Used by `PrivateRoomService.recoverRoom` to authenticate a
+   * `room-recover` against a deferred / running match without
+   * exposing the players map.
+   */
+  hasPlayer(playerId: string): boolean {
+    return this.players.has(playerId);
   }
 
   /**

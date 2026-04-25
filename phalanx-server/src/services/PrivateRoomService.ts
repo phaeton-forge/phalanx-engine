@@ -18,9 +18,9 @@ export type { RoomCreatedEvent, RoomRecoveredEvent, RoomErrorEvent };
  *
  * The host socket may be temporarily `null` if the host disconnects —
  * e.g. a mobile browser killing the WebSocket when the user switches
- * to another app to share the invite link. In that case the room
- * survives for `HOST_DISCONNECT_GRACE_MS` so the host can reconnect
- * via `room-recover` and reclaim it.
+ * to another app to share the invite link. In that case the room stays
+ * alive until normal room TTL expiry (or explicit cancel / consumption
+ * by `room-join`), and the host can reconnect via `room-recover`.
  */
 interface PrivateRoom {
   readonly code: string;
@@ -32,40 +32,37 @@ interface PrivateRoom {
   readonly gameType: string;
   readonly createdAt: number;
   expirationTimer: ReturnType<typeof setTimeout>;
-  /** Pending grace-period timer set when the host disconnects. */
-  hostDisconnectTimer: ReturnType<typeof setTimeout> | null;
 }
 
 /**
  * PrivateRoomService — manages private room creation and joining.
  *
  * When a second player joins a room, the service creates a GameRoom
- * (bypassing the matchmaking queue) and starts the match.
+ * (bypassing the matchmaking queue) and starts the match. The GameRoom
+ * itself is responsible for deferring the countdown if any of the
+ * players is currently disconnected — the service merely hands it the
+ * teams and lets it decide.
  */
 export class PrivateRoomService {
   private readonly rooms: Map<string, PrivateRoom> = new Map();
   private readonly matches: Map<string, GameRoom> = new Map();
   /**
-   * Matches whose host was still disconnected at the moment a guest
-   * joined their room. The host never received `match-found` because
-   * their socket was null at `joinRoom` time, so we remember the
-   * `matchId` — and the *original* room code the host must present
-   * to claim it — keyed by the host's `playerId`, and deliver it
-   * when the host finally reconnects via `room-recover`.
+   * Reverse index: original room code → matchId. Lets a disconnected
+   * participant (host or guest) recover into the running/deferred
+   * match by presenting the room code they joined with, since neither
+   * side may yet know the `matchId` (the host never received
+   * `match-found` if the match is still deferred; the guest may also
+   * have disconnected before reading it). The code is also our
+   * authentication token for the recover — possession of the code is
+   * what proves the caller is a legitimate participant in this match.
    *
-   * Storing the code alongside the matchId lets the recovery fallback
-   * keep the same security posture as the live-room path: an attacker
-   * who only knows a host's `playerId` cannot harvest the code by
-   * guessing, because the fallback also refuses to promote a socket
-   * into the match unless the caller presents the matching code.
-   *
-   * Entries are purged when the match ends (see `removeMatch`), so a
-   * dead match can't leak through an indefinite pending-recover entry.
+   * Cleared in `removeMatch` so a finished match can't leak into a
+   * future room reusing the same code (the code generator avoids
+   * collisions for active rooms but a freshly generated code that
+   * happens to match a long-finished one wouldn't).
    */
-  private readonly pendingHostReconnect: Map<
-    string,
-    { matchId: string; code: string }
-  > = new Map();
+  private readonly matchByOriginalCode: Map<string, string> = new Map();
+  private readonly originalCodeByMatch: Map<string, string> = new Map();
   private readonly io: SocketIOServer;
   private readonly config: PhalanxConfig;
   private readonly eventEmitter: (
@@ -77,9 +74,6 @@ export class PrivateRoomService {
 
   /** TTL for rooms in ms (5 minutes). */
   private static readonly ROOM_TTL_MS = 5 * 60 * 1000;
-
-  /** How long a room survives after the host disconnects, in ms (2 minutes). */
-  private static readonly HOST_DISCONNECT_GRACE_MS = 2 * 60 * 1000;
 
   constructor(
     io: SocketIOServer,
@@ -163,7 +157,6 @@ export class PrivateRoomService {
       gameType: resolvedGameType,
       createdAt: Date.now(),
       expirationTimer,
-      hostDisconnectTimer: null,
     };
 
     this.rooms.set(code, room);
@@ -173,7 +166,14 @@ export class PrivateRoomService {
   }
 
   /**
-   * Join an existing private room, creating a match immediately.
+   * Join an existing private room, creating a match.
+   *
+   * The match is always created and started immediately, but
+   * `GameRoom.start()` itself defers the countdown if any player
+   * (host OR guest) is currently disconnected — it'll emit
+   * `match-waiting-for-players` to whoever is online and only kick
+   * off the countdown once everyone reconnects. So the call sites
+   * here don't need to special-case an offline host any more.
    */
   joinRoom(
     playerId: string,
@@ -197,7 +197,8 @@ export class PrivateRoomService {
       return;
     }
 
-    const room = this.rooms.get(code.toUpperCase());
+    const normalizedCode = code.toUpperCase();
+    const room = this.rooms.get(normalizedCode);
 
     if (!room) {
       socket.emit('room-error', {
@@ -214,7 +215,7 @@ export class PrivateRoomService {
     }
 
     // Remove room — it's now consumed
-    this.removeRoom(code.toUpperCase());
+    this.removeRoom(normalizedCode);
 
     const guest: QueuedPlayer = {
       playerId,
@@ -240,24 +241,12 @@ export class PrivateRoomService {
     );
 
     this.matches.set(matchId, gameRoom);
+    this.matchByOriginalCode.set(normalizedCode, matchId);
+    this.originalCodeByMatch.set(matchId, normalizedCode);
     this.eventEmitter('match-created', gameRoom.getMatchInfo());
+    // GameRoom decides whether to start the countdown right away or
+    // emit `match-waiting-for-players` and wait for reconnects.
     gameRoom.start();
-
-    // If the host was still in the disconnect grace window at the
-    // moment the guest joined, `match-found` was emitted by GameRoom
-    // but never reached them (their socket is null / dead). Record
-    // the pairing so a subsequent `room-recover` on the host's new
-    // socket can retroactively deliver match-found and wire the
-    // socket into the running match.
-    if (!room.hostSocket) {
-      this.pendingHostReconnect.set(room.host.playerId, {
-        matchId,
-        code: room.code,
-      });
-      console.log(
-        `[PrivateRoom] Host ${room.host.playerId} was offline when match ${matchId} started — pending recover`
-      );
-    }
 
     console.log(
       `[PrivateRoom] Room ${code} → match ${matchId} (${room.host.playerId} vs ${playerId})`
@@ -283,139 +272,105 @@ export class PrivateRoomService {
   }
 
   /**
-   * Recover a room after the host's socket disconnected within the grace period.
+   * Recover a room or match after a participant's socket disconnected.
    *
    * The caller must present the room `code` along with the `playerId` —
-   * possession of the code is what authenticates the host in the
+   * possession of the code is what authenticates them in the
    * anonymous-socket case. Without that check, any client that knew
-   * (or guessed) a host's `playerId` could reclaim their room and
-   * learn its invite code, so `code` is required and must match.
+   * (or guessed) a participant's `playerId` could reclaim their room
+   * and learn its invite code (or worse, a match in progress).
    *
-   * On success: clears the pending destruction timer, rebinds the
-   * room to the host's new socket (updating both the service-level
-   * `hostSocket`/`hostSocketId` and the matchmaking-level
-   * `host.socketId` used by GameRoom to look up the host's socket),
-   * and emits `room-recovered` on the new socket.
+   * Three cases, tried in order:
    *
-   * If no matching room exists for this player (never created, or
-   * grace period / TTL already elapsed) OR the code doesn't match
-   * the stored room, emits `room-error: "Room expired"`. We use
-   * the same message for both cases so we don't leak whether a
-   * given playerId currently owns a room.
+   *   1. The code maps to a still-waiting room and `playerId` is the
+   *      host — re-bind the host's socket to the room (existing
+   *      "waiting for guest" flow).
    *
-   * Returns `true` on success and `false` on any failure, so the
-   * Phalanx handler can gate updating the socket's captured
-   * `playerId` on an authenticated recover.
+   *   2. The code maps to a match (deferred or running) and `playerId`
+   *      is one of its participants — rebind via
+   *      `GameRoom.handleReconnect`. If the match was deferred and
+   *      everyone is now connected, the GameRoom will start its
+   *      countdown; otherwise it'll deliver a `reconnect-state`
+   *      snapshot for an in-flight match. Either way the caller gets
+   *      `room-recovered` so their UI can transition out of the
+   *      "trying to recover" state.
+   *
+   *   3. None of the above — `room-error: "Room expired"`.
+   *
+   * Returns `true` on success, `false` on failure.
    */
   recoverRoom(playerId: string, socket: Socket, code: string): boolean {
-    // O(1) lookup by code (the map's key) rather than scanning every
-    // room. The same 'Room expired' error is emitted whether the code
-    // is unknown or the code is known but owned by a different player,
-    // so an attacker who guesses a playerId can't tell a valid code
-    // from an invalid one.
     const normalizedCode = code.toUpperCase();
+
+    // Case 1: live room, caller is the host.
     const room = this.rooms.get(normalizedCode);
-    if (!room || room.host.playerId !== playerId) {
-      // Fallback: the host's original room may already have been
-      // consumed by a guest while the host was in the disconnect
-      // grace window. In that case a match exists but the host never
-      // learned its id. Promote the host into that match, but only
-      // if they present the matching original room code — we must
-      // not weaken authentication in the fallback path relative to
-      // the live-room path, or an attacker who only knows a playerId
-      // could harvest the match by guessing any code.
-      const pending = this.pendingHostReconnect.get(playerId);
-      if (pending && pending.code === normalizedCode) {
-        const match = this.matches.get(pending.matchId);
-        if (match) {
-          this.pendingHostReconnect.delete(playerId);
-          // Emit `match-found` first so the client's state machine
-          // transitions "lobby → match-found" before it receives the
-          // reconnect snapshot — mirrors the order it would have seen
-          // if its socket had been alive at `joinRoom` time. Also
-          // keeps any client-side assertion that `match-found`
-          // precedes `reconnect-state` satisfied.
-          const matchFound = match.buildMatchFoundPayload(playerId);
-          if (matchFound) {
-            socket.emit('match-found', matchFound);
-          }
-          // `handleReconnect` then wires the socket into the running
-          // match and emits `reconnect-state` carrying the countdown
-          // snapshot, so a client that reconnected mid-countdown
-          // renders the correct remaining number and a client that
-          // reconnected after `game-start` synthesizes the event.
-          match.handleReconnect(playerId, socket.id);
-          // Emit the *stored* room code, not the caller-provided one,
-          // so a client that somehow drifted on casing still sees the
-          // canonical value.
-          socket.emit('room-recovered', {
-            code: pending.code,
-          } satisfies RoomRecoveredEvent);
-          console.log(
-            `[PrivateRoom] Host ${playerId} recovered into pending match ${pending.matchId}`
-          );
-          return true;
-        }
-        // Match vanished before recover — drop the stale entry and
-        // fall through to the generic 'Room expired' response below.
-        this.pendingHostReconnect.delete(playerId);
-      }
-      socket.emit('room-error', {
-        message: 'Room expired',
-      } satisfies RoomErrorEvent);
-      return false;
+    if (room && room.host.playerId === playerId) {
+      room.hostSocket = socket;
+      room.hostSocketId = socket.id;
+      // Keep QueuedPlayer.socketId in sync so a guest joining now
+      // wires GameRoom up to the host's *current* socket.
+      room.host.socketId = socket.id;
+      socket.emit('room-recovered', {
+        code: room.code,
+      } satisfies RoomRecoveredEvent);
+      console.log(`[PrivateRoom] Room ${room.code} recovered by ${playerId}`);
+      return true;
     }
 
-    if (room.hostDisconnectTimer) {
-      clearTimeout(room.hostDisconnectTimer);
-      room.hostDisconnectTimer = null;
+    // Case 2: code belongs to a match in progress / deferred and
+    // caller is a participant. We use the original room code as the
+    // authentication token — same posture as Case 1 and the previous
+    // `pendingHostReconnect` path: an attacker who guesses only a
+    // playerId cannot harvest the match without also guessing the code.
+    const matchId = this.matchByOriginalCode.get(normalizedCode);
+    if (matchId) {
+      const match = this.matches.get(matchId);
+      if (match && match.hasPlayer(playerId)) {
+        match.handleReconnect(playerId, socket.id);
+        socket.emit('room-recovered', {
+          code: normalizedCode,
+        } satisfies RoomRecoveredEvent);
+        console.log(
+          `[PrivateRoom] Player ${playerId} recovered into match ${matchId} via code ${normalizedCode}`,
+        );
+        return true;
+      }
+      // Stale index entry — clean it up rather than letting it
+      // accumulate forever for a long-dead match.
+      if (!match) {
+        this.matchByOriginalCode.delete(normalizedCode);
+        this.originalCodeByMatch.delete(matchId);
+      }
     }
-    room.hostSocket = socket;
-    room.hostSocketId = socket.id;
-    // Keep the QueuedPlayer.socketId in sync so that when a guest
-    // later joins, GameRoom's socketId→playerId map and its
-    // `io.sockets.sockets.get(player.socketId)` lookups resolve
-    // to the host's *current* socket rather than the dead one.
-    room.host.socketId = socket.id;
-    socket.emit('room-recovered', {
-      code: room.code,
-    } satisfies RoomRecoveredEvent);
-    console.log(`[PrivateRoom] Room ${room.code} recovered by ${playerId}`);
-    return true;
+
+    // Case 3: nothing matched. Use the same generic error message
+    // for "no such code", "wrong playerId", and "match already gone"
+    // so an attacker can't distinguish them.
+    socket.emit('room-error', {
+      message: 'Room expired',
+    } satisfies RoomErrorEvent);
+    return false;
   }
 
   /**
-   * Handle socket disconnect — start a grace period during which the host
-   * can reclaim their room via `room-recover`. This keeps the room alive
-   * while the host opens a messenger to share the invite link on mobile,
-   * since mobile browsers aggressively kill background WebSockets.
-   *
-   * The room is destroyed at whichever fires first: this grace timer
-   * or the original TTL timer (`ROOM_TTL_MS`).
+   * Handle socket disconnect. For waiting private rooms we keep the room
+   * alive and only mark the host socket as temporarily unavailable, so
+   * mobile backgrounding does not destroy share-link rooms.
    */
   handleDisconnect(socketId: string): void {
     for (const [code, room] of this.rooms) {
       if (room.hostSocketId === socketId) {
         room.hostSocket = null;
-        // Only start a grace timer if one isn't already running.
-        // (Defensive; in practice a fresh disconnect won't have one.)
-        if (!room.hostDisconnectTimer) {
-          room.hostDisconnectTimer = setTimeout(() => {
-            if (this.rooms.has(code)) {
-              this.removeRoom(code);
-              console.log(
-                `[PrivateRoom] Room ${code} removed (host stayed disconnected)`
-              );
-            }
-          }, PrivateRoomService.HOST_DISCONNECT_GRACE_MS);
-        }
         console.log(
-          `[PrivateRoom] Host of room ${code} disconnected — grace period started`
+          `[PrivateRoom] Host of room ${code} disconnected — room kept alive until TTL/cancel/join`
         );
       }
     }
 
-    // Forward disconnect to private-room matches
+    // Forward disconnect to private-room matches (this also drives
+    // the deferral path: a guest disconnecting from a deferred match
+    // marks them as not-connected so a host reconnect doesn't spuriously
+    // start the countdown without the guest).
     for (const match of this.matches.values()) {
       match.handleDisconnect(socketId);
     }
@@ -438,54 +393,41 @@ export class PrivateRoomService {
   /**
    * Remove a finished match from the private matches map.
    * Called from the match-ended listener — the match already stopped itself.
-   *
-   * Also purges any pending host-reconnect entry that still points at
-   * this match, so a host who never came back within the match's
-   * lifetime can't later collide with a fresh room they create.
    */
   removeMatch(matchId: string): void {
     this.matches.delete(matchId);
-    for (const [playerId, pending] of this.pendingHostReconnect) {
-      if (pending.matchId === matchId) {
-        this.pendingHostReconnect.delete(playerId);
-      }
+    const code = this.originalCodeByMatch.get(matchId);
+    if (code) {
+      this.matchByOriginalCode.delete(code);
+      this.originalCodeByMatch.delete(matchId);
     }
   }
 
   /**
-   * Remove a room and clear all of its pending timers (TTL and any
-   * host-disconnect grace timer).
+   * Remove a room and clear its pending TTL timer.
    */
   private removeRoom(code: string): void {
     const room = this.rooms.get(code);
     if (room) {
       clearTimeout(room.expirationTimer);
-      if (room.hostDisconnectTimer) {
-        clearTimeout(room.hostDisconnectTimer);
-        room.hostDisconnectTimer = null;
-      }
       this.rooms.delete(code);
     }
   }
 
   /**
-   * Stop all active matches and clear rooms, including any pending
-   * TTL and host-disconnect grace timers.
+   * Stop all active matches and clear rooms, including pending TTL timers.
    */
   stop(): void {
     for (const match of this.matches.values()) {
       match.stop();
     }
     this.matches.clear();
+    this.matchByOriginalCode.clear();
+    this.originalCodeByMatch.clear();
     for (const room of this.rooms.values()) {
       clearTimeout(room.expirationTimer);
-      if (room.hostDisconnectTimer) {
-        clearTimeout(room.hostDisconnectTimer);
-        room.hostDisconnectTimer = null;
-      }
     }
     this.rooms.clear();
-    this.pendingHostReconnect.clear();
   }
 
   /**
