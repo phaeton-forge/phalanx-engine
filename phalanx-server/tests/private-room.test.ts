@@ -729,14 +729,12 @@ describe('PrivateRoomService', () => {
     expect(cancelled.code).toBe(created.code);
   });
 
-  // ── Grace-period expiry (unit, fake timers) ─────────────────────
+  // ── Disconnect persistence (unit, fake timers) ────────────────────
   //
-  // This one is a pure-unit test against PrivateRoomService directly so
-  // we can use vi.useFakeTimers() without interfering with socket.io's
-  // own heartbeat timers. Covers the row "Host never returns (2 min pass)"
-  // from the expected-behaviour table.
+  // Pure-unit checks against PrivateRoomService with fake timers so we
+  // can assert that a host disconnect does not destroy a waiting room.
 
-  it('should destroy the room after the grace period if the host never returns (unit)', async () => {
+  it('should keep the room alive after host disconnect until TTL expires (unit)', async () => {
     const { PrivateRoomService } = await import(
       '../src/services/PrivateRoomService.js'
     );
@@ -762,14 +760,6 @@ describe('PrivateRoomService', () => {
         return true;
       },
     } as unknown as import('socket.io').Socket;
-    const guestSocket = {
-      id: 'sock-guest-1',
-      data: {},
-      emit: (event: string, payload: unknown) => {
-        emitted.push({ event, payload });
-        return true;
-      },
-    } as unknown as import('socket.io').Socket;
 
     vi.useFakeTimers();
     try {
@@ -788,18 +778,16 @@ describe('PrivateRoomService', () => {
       // Host socket dies.
       service.handleDisconnect(hostSocket.id);
 
-      // Fast-forward past the 2-minute grace window.
+      // Fast-forward past the old grace-window duration.
       vi.advanceTimersByTime(2 * 60 * 1000 + 1);
 
-      // Room is gone — a guest joining by code now gets 'Room not found'.
+      // Room must still be alive: host can recover by room code.
       emitted.length = 0;
-      service.joinRoom('guest1', 'Guest', guestSocket, code);
-
-      const error = emitted.find((e) => e.event === 'room-error');
-      expect(error).toBeDefined();
-      expect((error!.payload as { message: string }).message).toBe(
-        'Room not found',
-      );
+      service.recoverRoom('host1', hostSocket, code);
+      const recovered = emitted.find((e) => e.event === 'room-recovered');
+      const roomError = emitted.find((e) => e.event === 'room-error');
+      expect(recovered).toBeDefined();
+      expect(roomError).toBeUndefined();
 
       service.stop();
     } finally {
@@ -807,10 +795,9 @@ describe('PrivateRoomService', () => {
     }
   });
 
-  it('should clear the grace-period timer on room-recover (unit)', async () => {
-    // Covers the row "Host reconnects within 2 min" — verifies the
-    // pending destruction timer really is cancelled so the room isn't
-    // destroyed out from under the recovered host.
+  it('should allow room-recover after long disconnect while room TTL has not expired (unit)', async () => {
+    // With disconnect no longer starting a destroy timer, host should be
+    // able to recover even after the old grace window elapsed.
     const { PrivateRoomService } = await import(
       '../src/services/PrivateRoomService.js'
     );
@@ -863,8 +850,8 @@ describe('PrivateRoomService', () => {
 
       service.handleDisconnect(hostSocket1.id);
 
-      // Host reconnects on a new socket halfway through the grace window.
-      vi.advanceTimersByTime(60 * 1000);
+      // Host reconnects on a new socket after the old grace window elapsed.
+      vi.advanceTimersByTime(2 * 60 * 1000 + 1);
       service.recoverRoom('host1', hostSocket2, code);
 
       const recovered = emitted.find((e) => e.event === 'room-recovered');
@@ -872,13 +859,11 @@ describe('PrivateRoomService', () => {
       expect(recovered!.socket).toBe('sock-host-2');
       expect((recovered!.payload as { code: string }).code).toBe(code);
 
-      // Advance past the original grace deadline — the room must still
-      // be there because the grace timer was cleared on recover.
+      // Advance close to TTL but still below it — room should still exist.
       vi.advanceTimersByTime(2 * 60 * 1000);
 
       // Recovering again should succeed (room still alive). If the
-      // original grace timer hadn't been cleared on the first recover,
-      // the room would now be gone and this would emit 'Room expired'.
+      // room should still be present until TTL expiry.
       emitted.length = 0;
       service.recoverRoom('host1', hostSocket2, code);
       const secondRecover = emitted.find((e) => e.event === 'room-recovered');
@@ -968,7 +953,7 @@ describe('PrivateRoomService', () => {
 
       const expired = emitted.filter((e) => e.event === 'room-expired');
       expect(expired).toHaveLength(1);
-      expect(expired[0].socket).toBe('sock-host-2');
+      expect(expired[0]!.socket).toBe('sock-host-2');
 
       const expiredOnOriginal = emitted.find(
         (e) => e.event === 'room-expired' && e.socket === 'sock-host-1',
@@ -1050,7 +1035,7 @@ describe('PrivateRoomService — host countdown recovery (snapshot)', () => {
     });
   }
 
-  it('delivers a countdown snapshot via reconnect-state when the host recovers mid-countdown', async () => {
+  it('defers match-found and countdown for the guest when the host is offline at join time', async () => {
     const host = createClient();
     await connectClient(host);
     const createdPromise = new Promise<RoomCreatedEvent>((resolve) => {
@@ -1064,42 +1049,50 @@ describe('PrivateRoomService — host countdown recovery (snapshot)', () => {
     host.disconnect();
     await new Promise((resolve) => setTimeout(resolve, 100));
 
-    // Guest joins while host is offline. Countdown starts immediately.
+    // Guest joins while host is offline. Under the new
+    // wait-for-all-players design the match must NOT race ahead with
+    // a countdown — guest should instead see
+    // `match-waiting-for-players` and no `countdown` events until the
+    // host comes back.
     const guest = createClient();
     await connectClient(guest);
 
-    // Wait for an actual guest-side countdown tick with seconds < 5
-    // before continuing. Using a real event instead of a wall-clock
-    // sleep avoids flakiness on slow CI schedulers where a fixed delay
-    // could overshoot the full countdown and cause the host snapshot
-    // to flip to gameStartEmitted=true / countdownSecondsRemaining=null.
-    const countdownTickPromise = new Promise<void>((resolve) => {
-      const onCountdown = (payload: { seconds: number }) => {
-        if (typeof payload?.seconds === 'number' && payload.seconds < 5) {
-          guest.off('countdown', onCountdown);
-          resolve();
-        }
-      };
-      guest.on('countdown', onCountdown);
+    const waitingForPromise = new Promise<{
+      matchId: string;
+      missingPlayerIds: string[];
+    }>((resolve) => {
+      guest.on('match-waiting-for-players', resolve);
     });
+    let countdownReceived = false;
+    guest.on('countdown', () => {
+      countdownReceived = true;
+    });
+
     guest.emit('room-join', {
       playerId: 'guest1',
       username: 'Guest',
       code: created.code,
     });
-    await countdownTickPromise;
 
-    // Host reconnects.
+    const waiting = await waitingForPromise;
+    expect(waiting.matchId).toBeDefined();
+    expect(waiting.missingPlayerIds).toContain('host1');
+    // Give the server enough wall-clock time for a hypothetical
+    // countdown tick to slip through, then assert silence.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(countdownReceived).toBe(false);
+
+    // Host recovers — now we expect countdown to begin and match-found
+    // to land on the host as if they'd been present from the start.
     const host2 = createClient();
     await connectClient(host2);
-    const reconnectStatePromise = new Promise<{
-      matchId: string;
-      state: string;
-      countdownSecondsRemaining: number | null;
-      gameStartEmitted: boolean;
-      randomSeed: number;
-    }>((resolve) => {
-      host2.on('reconnect-state', resolve);
+    const hostMatchFoundPromise = new Promise<{ matchId: string }>(
+      (resolve) => {
+        host2.on('match-found', resolve);
+      },
+    );
+    const hostCountdownPromise = new Promise<{ seconds: number }>((resolve) => {
+      host2.on('countdown', resolve);
     });
     host2.emit('room-recover', {
       playerId: 'host1',
@@ -1107,18 +1100,14 @@ describe('PrivateRoomService — host countdown recovery (snapshot)', () => {
       code: created.code,
     });
 
-    const snapshot = await reconnectStatePromise;
-    expect(snapshot.matchId).toBeDefined();
-    // Countdown is still in flight: positive remaining-seconds and
-    // game-start has not been emitted yet.
-    expect(snapshot.gameStartEmitted).toBe(false);
-    expect(snapshot.countdownSecondsRemaining).not.toBeNull();
-    expect(snapshot.countdownSecondsRemaining).toBeGreaterThan(0);
-    expect(snapshot.countdownSecondsRemaining).toBeLessThan(5);
-    expect(typeof snapshot.randomSeed).toBe('number');
+    const hostMatchFound = await hostMatchFoundPromise;
+    expect(hostMatchFound.matchId).toBe(waiting.matchId);
+    const hostCountdown = await hostCountdownPromise;
+    expect(hostCountdown.seconds).toBeGreaterThan(0);
+    expect(hostCountdown.seconds).toBeLessThanOrEqual(5);
   });
 
-  it('marks the snapshot as gameStartEmitted when the host recovers after game-start', async () => {
+  it('completes the deferred match end-to-end once both players are present', async () => {
     const host = createClient();
     await connectClient(host);
     const createdPromise = new Promise<RoomCreatedEvent>((resolve) => {
@@ -1132,9 +1121,7 @@ describe('PrivateRoomService — host countdown recovery (snapshot)', () => {
 
     const guest = createClient();
     await connectClient(guest);
-    // Capture game-start on the guest so we know when the countdown
-    // phase is actually over, instead of relying on wall-clock sleep.
-    const guestGameStartPromise = new Promise<{ randomSeed?: number }>(
+    const guestGameStartPromise = new Promise<{ randomSeed: number }>(
       (resolve) => {
         guest.on('game-start', resolve);
       },
@@ -1144,28 +1131,25 @@ describe('PrivateRoomService — host countdown recovery (snapshot)', () => {
       username: 'Guest',
       code: created.code,
     });
-    const guestStart = await guestGameStartPromise;
 
-    // Now recover — snapshot should say the game has already started.
+    // Host returns; the deferred match must now actually run through
+    // its countdown to game-start, and the guest's seed must agree
+    // with the host's so determinism survives the recovery handoff.
     const host2 = createClient();
     await connectClient(host2);
-    const reconnectStatePromise = new Promise<{
-      gameStartEmitted: boolean;
-      countdownSecondsRemaining: number | null;
-      randomSeed: number;
-    }>((resolve) => {
-      host2.on('reconnect-state', resolve);
-    });
+    const hostGameStartPromise = new Promise<{ randomSeed: number }>(
+      (resolve) => {
+        host2.on('game-start', resolve);
+      },
+    );
     host2.emit('room-recover', {
       playerId: 'host1',
       username: 'Host',
       code: created.code,
     });
-    const snapshot = await reconnectStatePromise;
-    expect(snapshot.gameStartEmitted).toBe(true);
-    expect(snapshot.countdownSecondsRemaining).toBeNull();
-    // Seed forwarded here must match the one the guest saw so a
-    // deterministic client can still initialise its RNG on recover.
-    expect(snapshot.randomSeed).toBe(guestStart.randomSeed);
+
+    const guestStart = await guestGameStartPromise;
+    const hostStart = await hostGameStartPromise;
+    expect(hostStart.randomSeed).toBe(guestStart.randomSeed);
   });
 });

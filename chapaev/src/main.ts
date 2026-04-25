@@ -1,5 +1,6 @@
 import { Game } from './core/Game.ts';
 import type { GameMode } from './core/Game.ts';
+import { installDebugConsole } from './debug/installDebugConsole.ts';
 
 // Initialize Telegram Mini App SDK if running inside Telegram
 const tgWebApp = window.Telegram?.WebApp;
@@ -14,6 +15,8 @@ const canvas = document.getElementById('app') as HTMLCanvasElement | null;
 if (!canvas) {
   throw new Error("Canvas element with id 'app' not found");
 }
+
+const canvasElement = canvas;
 
 // Switch between hot-seat and online via query param: ?mode=hotseat or ?mode=online
 // Default is 'online' for Stage 2.
@@ -30,16 +33,24 @@ function reportStartupError(error: unknown): void {
   errorElement.setAttribute('role', 'alert');
   errorElement.textContent = `Failed to start game: ${message}`;
   // @ts-ignore
-  const mountTarget = canvas.parentElement ?? document.body;
+  const mountTarget = canvasElement.parentElement ?? document.body;
   mountTarget.appendChild(errorElement);
 }
 
-const game = new Game(canvas, mode);
-void game.start().catch((error: unknown) => {
+async function bootstrap(): Promise<void> {
+  await installDebugConsole();
+
+  const game = new Game(canvasElement, mode);
+
+  // Expose for debugging in devtools
+  if (import.meta.env.DEV) {
+    (window as unknown as Record<string, unknown>)['__game'] = game;
+  }
+
+  await game.start();
+}
+
+void bootstrap().catch((error: unknown) => {
   reportStartupError(error);
 });
 
-// Expose for debugging in devtools
-if (import.meta.env.DEV) {
-  (window as unknown as Record<string, unknown>)['__game'] = game;
-}

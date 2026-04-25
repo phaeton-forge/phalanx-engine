@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite --host --mode development",
     "dev:prod": "vite --host --mode production",
-    "server": "tsx server/src/main.ts",
+    "server": "pnpm --filter phalanx-server build && tsx server/src/main.ts",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "cap:sync": "cap sync android",
@@ -32,6 +32,7 @@
     "@capacitor/core": "^8.3.0",
     "@capacitor/ios": "^8.3.1",
     "@dimforge/rapier3d-compat": "^0.14.0",
+    "eruda": "^3.4.3",
     "phalanx-client": "workspace:*",
     "phalanx-ecs": "workspace:*",
     "phalanx-math": "workspace:*",

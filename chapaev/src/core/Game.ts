@@ -16,6 +16,7 @@ import { createBoardEntity, createCheckerEntity } from '../entities';
 import { INITIAL_POSITIONS, CAMERA_POSITION, BOARD_HEIGHT, CHECKER_HEIGHT } from '../config/constants.ts';
 import { TeamTag } from '../enums/TeamTag.ts';
 import { LockstepManager, NetworkManager } from '../network';
+import { saveActiveRoom, loadActiveRoom, clearActiveRoom } from '../network';
 import {
   ALL_SETTLED, GAME_OVER, TURN_CHANGED, CHECKER_ELIMINATED, ROUND_STARTED, ROUND_OVER,
 } from '../events';
@@ -84,6 +85,21 @@ export class Game {
    */
   private isRecovering: boolean = false;
 
+  /**
+   * Number of consecutive transient recover failures (timeout / network
+   * error). Used to back off so a flaky 3G connection doesn't hammer
+   * the server, and to give up after a sane upper bound rather than
+   * silently retrying forever. Reset on a successful recover or on
+   * any terminal outcome (room expired, user cancelled, match started).
+   */
+  private recoverAttempt: number = 0;
+
+  /** Pending retry timer for `tryRecoverActiveRoom` backoff. */
+  private recoverRetryTimer: ReturnType<typeof setTimeout> | null = null;
+
+  /** Max transient retries before surfacing the failure to the user. */
+  private static readonly MAX_RECOVER_ATTEMPTS = 5;
+
   // UI
   private uiManager: UIManager;
   private mainMenu!: MainMenuScreen;
@@ -132,7 +148,7 @@ export class Game {
 
     // Check if joining via room link (e.g. ?room=ABC123) or returning after auth redirect
     const urlParams = new URLSearchParams(window.location.search);
-    const roomCodeFromUrl = urlParams.get('room');
+    const roomCodeFromUrl = urlParams.get('ROOM');
     const roomCodeFromStorage = sessionStorage.getItem('pendingRoomCode');
     const roomCode = roomCodeFromUrl ?? roomCodeFromStorage;
 
@@ -161,6 +177,29 @@ export class Game {
       // Already authenticated or auth disabled — join directly
       void this.handleJoinRoom(code);
       return;
+    }
+
+    // Cold-start recovery: if a previous session left an active private
+    // room in localStorage (mobile killed the tab while the user was in
+    // a messenger), don't dump them on the main menu — try to reclaim
+    // the room first. Persistence module already drops entries past
+    // their TTL, so anything we get here is potentially still alive
+    // server-side.
+    const persisted = loadActiveRoom();
+    if (persisted && persisted.role === 'host') {
+      // Verify the persisted playerId matches the one our newly
+      // constructed PhalanxClient will use — otherwise recover would
+      // certainly fail with 'Room expired' (the host record is keyed
+      // by playerId server-side). This can drift when an authenticated
+      // user signs out and another signs in on the same browser.
+      const currentPlayerId = this.networkManager.localPlayerId;
+      if (currentPlayerId && currentPlayerId === persisted.playerId) {
+        void this.coldStartRecoverRoom(persisted.code);
+        return;
+      }
+      // playerId mismatch — abandon the stale entry rather than
+      // letting the user stare at a permanently-failing waiting screen.
+      clearActiveRoom();
     }
 
     this.uiManager.showScreen('main-menu');
@@ -372,6 +411,11 @@ export class Game {
     if (this.pendingRoomCode) {
       const code = this.pendingRoomCode;
       this.pendingRoomCode = null;
+      // Symmetric with the auth-success branch in `subscribeAuth` —
+      // forgetting this here used to leave a stale code in
+      // sessionStorage that would silently re-trigger the auth modal
+      // on the next visit even though the user already chose guest.
+      sessionStorage.removeItem('pendingRoomCode');
       void this.handleJoinRoom(code);
       return;
     }
@@ -471,6 +515,27 @@ export class Game {
       const roomCode = roomEvent.code;
       this.activePrivateRoomCode = roomCode;
 
+      // Persist to localStorage so we can reclaim the room after a
+      // hard reload (mobile Safari often discards the tab when the
+      // user spends too long in another app). Auth-enabled callers
+      // get a stable user.id; guests use NetworkManager's persistent
+      // anonymous id — both survive the reload, so the `playerId`
+      // captured here will still match what the server has on file.
+      saveActiveRoom({
+        code: roomCode,
+        role: 'host',
+        playerId: this.networkManager.localPlayerId,
+      });
+
+      // Wire up event-driven recovery. `armVisibilityRecover` covers
+      // the "tab is visible again" trigger; this covers two more:
+      //   1. The socket announces it died before the user has even
+      //      had a chance to switch back (slow heartbeat detection).
+      //   2. socket.io auto-reconnect produced a fresh connection
+      //      that the server doesn't yet know is the room's host —
+      //      we MUST send `room-recover` on it to re-bind, otherwise
+      //      the server will keep treating us as anonymous.
+      this.armPrivateRoomEventHooks();
       // Arm the visibility-recover handler as soon as the room exists on
       // the server — the earliest point at which a mobile user might
       // swipe away to a messenger to share the invite link and have
@@ -529,6 +594,7 @@ export class Game {
         // Match is starting — nothing left to recover.
         this.disarmVisibilityRecover();
         this.activePrivateRoomCode = null;
+        clearActiveRoom();
 
         this.uiManager.hideScreen('countdown');
         this.startOnlineGame(matchData);
@@ -542,6 +608,7 @@ export class Game {
       this.matchmakingScreen.stopTimer();
       this.disarmVisibilityRecover();
       this.activePrivateRoomCode = null;
+      clearActiveRoom();
       this.returnToMainMenu();
     }
   }
@@ -632,26 +699,216 @@ export class Game {
     const code = this.activePrivateRoomCode;
     if (!code) return;
     if (this.isRecovering) return;
-    if (this.networkManager.client.isConnected()) return;
+
+    // NOTE: we deliberately do NOT short-circuit on
+    // `client.isConnected()` here. socket.io auto-reconnect can
+    // produce a fresh connection while we were backgrounded — that
+    // socket has no record of being this room's host, so the server
+    // is treating us as anonymous. We must send `room-recover` on
+    // the new socket either way; the server's recover path is
+    // idempotent and will simply rebind on the live socket.
 
     this.isRecovering = true;
+    if (this.recoverRetryTimer) {
+      clearTimeout(this.recoverRetryTimer);
+      this.recoverRetryTimer = null;
+    }
+
     try {
-      console.log(`[Game] Attempting to recover private room ${code} after tab return`);
-      await this.networkManager.client.connect();
+      console.log(`[Game] Attempting to recover private room ${code} (attempt ${this.recoverAttempt + 1})`);
+      this.privateMatchScreen.setRecoveryStatus?.('Восстановление подключения…');
+
+      if (!this.networkManager.client.isConnected()) {
+        await this.networkManager.client.connect();
+      }
       await this.networkManager.client.recoverRoom(code);
+
       console.log(`[Game] Room ${code} recovered successfully`);
+      this.recoverAttempt = 0;
+      this.privateMatchScreen.setRecoveryStatus?.(null);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.warn(`[Game] Room recover failed: ${message}`);
-      // The server's grace period has likely elapsed — the room is gone.
-      // Surface a clear state rather than leaving the user staring at a
-      // frozen countdown screen.
-      this.disarmVisibilityRecover();
-      this.activePrivateRoomCode = null;
-      this.matchmakingScreen.setStatus('Соединение потеряно');
-      this.returnToMainMenu();
+
+      // The only TERMINAL failure is the server explicitly telling us
+      // the room is gone. Anything else (timeouts, network errors,
+      // dropped sockets mid-recover) is transient and worth retrying —
+      // dumping the user back to the main menu in that case is exactly
+      // the bug we're fixing.
+      if (message === 'Room expired' || message === 'Room not found') {
+        this.recoverAttempt = 0;
+        this.disarmVisibilityRecover();
+        this.disarmPrivateRoomEventHooks();
+        this.activePrivateRoomCode = null;
+        clearActiveRoom();
+        this.privateMatchScreen.setRecoveryStatus?.(null);
+        this.matchmakingScreen.setStatus('Комната истекла');
+        this.returnToMainMenu();
+        return;
+      }
+
+      // Transient — schedule a backoff retry, leave the persistence
+      // entry intact so a subsequent visibilitychange / connected
+      // event can also retry from the same record.
+      this.recoverAttempt += 1;
+      if (this.recoverAttempt >= Game.MAX_RECOVER_ATTEMPTS) {
+        console.warn('[Game] Recover gave up after max attempts');
+        this.recoverAttempt = 0;
+        this.privateMatchScreen.setRecoveryStatus?.(
+          'Не удалось восстановить соединение',
+        );
+        // Even after giving up we don't redirect — the user still has
+        // an explicit "Cancel" button on the waiting screen if they
+        // want to bail out. A surprise jump to the main menu was the
+        // exact UX problem reported.
+        return;
+      }
+      // 2s, 4s, 8s, 16s, 30s — capped.
+      const delay = Math.min(2_000 * 2 ** (this.recoverAttempt - 1), 30_000);
+      this.privateMatchScreen.setRecoveryStatus?.(
+        `Соединение потеряно. Повтор через ${Math.ceil(delay / 1000)}с…`,
+      );
+      this.recoverRetryTimer = setTimeout(() => {
+        this.recoverRetryTimer = null;
+        void this.tryRecoverActiveRoom();
+      }, delay);
     } finally {
       this.isRecovering = false;
+    }
+  }
+
+  /**
+   * Subscribe to `disconnected` and `connected` PhalanxClient events
+   * for the lifetime of the active private room. Without this, a
+   * mid-waiting socket death goes silently unnoticed by the recovery
+   * machinery (which only looks at visibilitychange / pageshow).
+   *
+   * Idempotent: a second call is a no-op until disarm.
+   */
+  private privateRoomEventUnsubs: (() => void)[] = [];
+  private armPrivateRoomEventHooks(): void {
+    if (!this.networkManager) return;
+    if (this.privateRoomEventUnsubs.length > 0) return;
+
+    // Auto-reconnect (or our own reconnect) produced a fresh socket —
+    // claim back the room on it.
+    this.privateRoomEventUnsubs.push(
+      this.networkManager.client.on('connected', () => {
+        if (!this.activePrivateRoomCode) return;
+        // Defer slightly so SocketManager finishes wiring the new
+        // socket's `id` etc. before we emit `room-recover` on it.
+        setTimeout(() => {
+          void this.tryRecoverActiveRoom();
+        }, 50);
+      }),
+    );
+
+    // Server-initiated room destruction → terminal cleanup.
+    this.privateRoomEventUnsubs.push(
+      this.networkManager.client.on('roomExpired', () => {
+        this.disarmVisibilityRecover();
+        this.disarmPrivateRoomEventHooks();
+        this.activePrivateRoomCode = null;
+        clearActiveRoom();
+        this.matchmakingScreen.setStatus('Комната истекла');
+        this.returnToMainMenu();
+      }),
+    );
+
+    this.privateRoomEventUnsubs.push(
+      this.networkManager.client.on('roomCancelled', () => {
+        this.disarmVisibilityRecover();
+        this.disarmPrivateRoomEventHooks();
+        this.activePrivateRoomCode = null;
+        clearActiveRoom();
+      }),
+    );
+  }
+
+  private disarmPrivateRoomEventHooks(): void {
+    for (const unsub of this.privateRoomEventUnsubs) {
+      unsub();
+    }
+    this.privateRoomEventUnsubs = [];
+    if (this.recoverRetryTimer) {
+      clearTimeout(this.recoverRetryTimer);
+      this.recoverRetryTimer = null;
+    }
+  }
+
+  /**
+   * Reclaim a private room after a hard reload using the localStorage
+   * record. Sets up the same listener stack `handleCreateRoom` uses
+   * (matchFound/countdown/gameStart) BEFORE issuing `room-recover`,
+   * so the synchronous match-found → reconnect-state → game-start
+   * cascade from the server's pending-recover path is fully observed.
+   */
+  private async coldStartRecoverRoom(code: string): Promise<void> {
+    if (!this.networkManager) return;
+
+    try {
+      this.stopMenuAutoRotate();
+      this.activePrivateRoomCode = code;
+      this.privateMatchScreen.showWaiting(code);
+      this.uiManager.showScreen('private-match');
+      this.privateMatchScreen.setRecoveryStatus?.('Восстановление подключения…');
+
+      // Pre-arm listeners and event hooks BEFORE recover, mirroring
+      // the order in `handleCreateRoom` — see the comment block there
+      // explaining why all three of matchFound/countdown/gameStart
+      // must be subscribed before we await anything.
+      const matchFoundPromise = this.waitForClientEvent<MatchFoundEvent>('matchFound');
+      const gameStartPromise = this.waitForClientEvent<GameStartEvent>('gameStart');
+      const unsubCountdown = this.networkManager.client.on('countdown', (event: CountdownEvent) => {
+        this.matchmakingScreen.updateCountdown(event.seconds);
+      });
+      this.armPrivateRoomEventHooks();
+      this.armVisibilityRecover();
+
+      try {
+        await this.tryRecoverActiveRoom();
+
+        // If the server's pending-recover path fired, matchFound is
+        // already resolved or about to be — the same finalisation
+        // dance as in handleCreateRoom applies. If it was the simple
+        // "host alone" path, we just sit on the waiting screen until
+        // a guest joins (or TTL hits).
+        const matchData = await matchFoundPromise;
+        this.privateMatchScreen.stopWaitingTimer();
+        this.matchmakingScreen.stopTimer();
+
+        this.uiManager.hideScreen('private-match');
+        this.uiManager.destroyScreen('countdown');
+        this.uiManager.showScreen('countdown');
+
+        const gameStartEvent = await gameStartPromise;
+        console.log('[Game] Cold-start private match game start, randomSeed:', gameStartEvent.randomSeed);
+
+        this.networkManager.setMatchData(matchData);
+        this.cleanupConnectEventListeners();
+        this.disarmVisibilityRecover();
+        this.disarmPrivateRoomEventHooks();
+        this.activePrivateRoomCode = null;
+        clearActiveRoom();
+
+        this.uiManager.hideScreen('countdown');
+        this.startOnlineGame(matchData);
+      } finally {
+        unsubCountdown();
+      }
+    } catch (error) {
+      console.error('[Game] Cold-start recover failed:', error);
+      // Don't auto-redirect on transient errors here either — the
+      // retry timer in `tryRecoverActiveRoom` is doing its job; only
+      // give up on terminal outcomes, which `tryRecoverActiveRoom`
+      // already handles by calling `returnToMainMenu` itself. If we
+      // get here it's because some unexpected error escaped — fall
+      // back to the menu so the user isn't stranded.
+      this.disarmVisibilityRecover();
+      this.disarmPrivateRoomEventHooks();
+      this.activePrivateRoomCode = null;
+      clearActiveRoom();
+      this.returnToMainMenu();
     }
   }
 
@@ -679,6 +936,18 @@ export class Game {
 
       await this.networkManager.client.connect();
       this.matchmakingScreen.setStatus('Присоединение к комнате...');
+
+      // Persist as guest so that if the second player backgrounds the
+      // browser between `room-join` and `match-found` (the same mobile
+      // suspend pattern that motivates host recovery), a cold start
+      // will at least surface the same waiting state instead of
+      // silently dropping them onto the main menu. Cleared on any
+      // exit path below — success, server `roomError`, network error.
+      saveActiveRoom({
+        code,
+        role: 'guest',
+        playerId: this.networkManager.localPlayerId,
+      });
 
       // Listen for room errors — track the unsubscribe so we can
       // remove the listener after the race to prevent unhandled rejections.
@@ -719,14 +988,27 @@ export class Game {
 
       this.networkManager.setMatchData(matchData);
       this.cleanupConnectEventListeners();
+      // Match starting — drop guest persistence; nothing left to recover
+      // on the room-join side of the flow.
+      clearActiveRoom();
 
       this.uiManager.hideScreen('countdown');
       this.startOnlineGame(matchData);
     } catch (error) {
-      console.error('[Game] Join room failed:', error);
-      this.matchmakingScreen.setStatus('Ошибка: комната не найдена');
+      // Surface the actual server message rather than a hardcoded
+      // "room not found" — without this it's impossible to tell from
+      // the UI whether the server replied "Room not found" vs
+      // "Already in a match" vs "Cannot join your own room" vs a
+      // socket error, all of which look identical to the user.
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('[Game] Join room failed:', message, error);
+      this.matchmakingScreen.setStatus(`Ошибка: ${message}`);
       this.matchmakingScreen.stopTimer();
-      setTimeout(() => this.returnToMainMenu(), 2000);
+      // Drop the guest persistence we wrote on entry — whatever just
+      // happened, retrying the same join from cold-start is unlikely
+      // to succeed (room expired, code wrong, queue conflict, etc.).
+      clearActiveRoom();
+      setTimeout(() => this.returnToMainMenu(), 2500);
     }
   }
 
@@ -738,7 +1020,10 @@ export class Game {
     // room in the background, and drop the stored code so a later tab
     // return is a no-op.
     this.disarmVisibilityRecover();
+    this.disarmPrivateRoomEventHooks();
     this.activePrivateRoomCode = null;
+    this.recoverAttempt = 0;
+    clearActiveRoom();
     this.cleanupConnectEventListeners();
     this.unsubscribeAuth();
     this.networkManager?.dispose();
@@ -793,6 +1078,14 @@ export class Game {
     this.isInGame = false;
     this.isPaused = false;
     this.flickInputSystem = null;
+
+    // Tear down any active private-room recovery machinery so a later
+    // visibilitychange / connected event can't try to recover into a
+    // disposed networkManager.
+    this.disarmVisibilityRecover();
+    this.disarmPrivateRoomEventHooks();
+    this.activePrivateRoomCode = null;
+    this.recoverAttempt = 0;
 
     // Stop ECS world
     if (this.world) {

@@ -18,6 +18,14 @@ export class PrivateMatchScreen {
   private readonly callbacks: PrivateMatchCallbacks;
   private state: PrivateMatchState = 'menu';
   private roomCode = '';
+  /**
+   * Inline status message shown on the waiting screen during a recover
+   * cycle ("connection lost / restoring / failed"). `null` hides the
+   * banner. Lives outside `state` because it can flip arbitrarily often
+   * during a single waiting session and we don't want to redraw the
+   * whole screen for it.
+   */
+  private recoveryStatus: string | null = null;
 
   constructor(uiManager: UIManager, callbacks: PrivateMatchCallbacks) {
     this.uiManager = uiManager;
@@ -39,6 +47,34 @@ export class PrivateMatchScreen {
     this.state = 'waiting';
     this.roomCode = code;
     this.uiManager.refreshScreen('private-match');
+  }
+
+  /**
+   * Surface a recover-in-progress / recover-failed message on the
+   * waiting screen without redrawing it. Pass `null` to clear.
+   *
+   * Idempotent: only mutates the DOM if the banner element is present
+   * (i.e., the waiting screen is the active state) — otherwise we
+   * just remember the value so the next render picks it up.
+   */
+  public setRecoveryStatus(status: string | null): void {
+    this.recoveryStatus = status;
+    if (this.state !== 'waiting') return;
+    const container = document.querySelector(
+      '[data-screen="private-match"]',
+    ) as HTMLElement | null;
+    if (!container) return;
+    const banner = container.querySelector(
+      '[data-ref="recovery-status"]',
+    ) as HTMLDivElement | null;
+    if (!banner) return;
+    if (status) {
+      banner.textContent = status;
+      banner.style.display = '';
+    } else {
+      banner.textContent = '';
+      banner.style.display = 'none';
+    }
   }
 
   private render(container: HTMLDivElement): void {
@@ -142,6 +178,8 @@ export class PrivateMatchScreen {
 
         <div class="matchmaking-timer" data-ref="timer" style="margin-bottom: 16px;">Время ожидания: 0:00</div>
 
+        <div data-ref="recovery-status" style="display: none; color: var(--text-muted); font-size: 13px; margin-bottom: 12px; text-align: center;"></div>
+
         <button class="btn-secondary" data-ref="cancel-btn">Отменить</button>
       </div>
     `;
@@ -183,6 +221,18 @@ export class PrivateMatchScreen {
 
     // Start waiting timer
     this.startWaitingTimer(container);
+
+    // Re-apply any recovery status that was set before this render
+    // (e.g. cold-start path: status set, then UI mounts).
+    if (this.recoveryStatus) {
+      const banner = container.querySelector(
+        '[data-ref="recovery-status"]',
+      ) as HTMLDivElement | null;
+      if (banner) {
+        banner.textContent = this.recoveryStatus;
+        banner.style.display = '';
+      }
+    }
   }
 
   private waitingTimerInterval: ReturnType<typeof setInterval> | null = null;
