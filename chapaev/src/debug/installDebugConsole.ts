@@ -1,8 +1,8 @@
 import { Capacitor } from '@capacitor/core';
 import type { InitOptions } from 'eruda';
 
-const ENABLED_FLAG_VALUES = ['1', 'true', 'on', 'yes'] as const;
-const DISABLED_FLAG_VALUES = ['0', 'false', 'off', 'no'] as const;
+const ENABLED_FLAG_VALUES: readonly string[] = ['1', 'true', 'on', 'yes'];
+const DISABLED_FLAG_VALUES: readonly string[] = ['0', 'false', 'off', 'no'];
 
 const ERUDA_OPTIONS: InitOptions = {
   autoScale: true,
