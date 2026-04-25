@@ -1,0 +1,260 @@
+import {
+  saveRoom as saveActiveRoom,
+  loadRoom as loadActiveRoom,
+  clearRoom as clearActiveRoom,
+} from './RoomPersistence.ts';
+import type { NetworkContext } from './NetworkContext.ts';
+
+export interface RecoveryUI {
+  /** Show transient recovery status text on the waiting screen. Pass null to clear. */
+  setRecoveryStatus(text: string | null): void;
+  /** Show a status string on the matchmaking screen (used for terminal failures). */
+  setMatchmakingStatus(text: string): void;
+}
+
+export interface RecoveryCallbacks {
+  /** Called on terminal recovery outcomes (room expired / cancelled by server). */
+  onRoomTerminated(): void;
+}
+
+/**
+ * Manages every aspect of recovering a private room after a transport
+ * interruption: visibilitychange / pageshow listeners, socket
+ * connect/disconnect hooks, retry backoff, and the localStorage
+ * persistence record. Owns its own state — `Game` no longer needs
+ * to track any of this.
+ */
+export class RoomRecoveryManager {
+  private static readonly MAX_RECOVER_ATTEMPTS = 5;
+
+  private activeRoomCode: string | null = null;
+  private isRecovering = false;
+  private recoverAttempt = 0;
+  private recoverRetryTimer: ReturnType<typeof setTimeout> | null = null;
+  private visibilityRecoverHandler: (() => void) | null = null;
+  private privateRoomEventUnsubs: (() => void)[] = [];
+
+  constructor(
+    private readonly ctx: NetworkContext,
+    private readonly ui: RecoveryUI,
+    private readonly callbacks: RecoveryCallbacks
+  ) {}
+
+  /** True if a private room is being tracked for potential recovery. */
+  hasActiveRoom(): boolean {
+    return this.activeRoomCode !== null;
+  }
+
+  getActiveRoomCode(): string | null {
+    return this.activeRoomCode;
+  }
+
+  /**
+   * Cold-start recovery: read the persisted record (mobile killed the
+   * tab while the user was in a messenger) and validate it against the
+   * current playerId. Returns the code to recover, or null when there's
+   * nothing to do (no record, expired, or playerId drift).
+   */
+  loadColdStartCode(): string | null {
+    const persisted = loadActiveRoom();
+    if (!persisted || persisted.role !== 'host') return null;
+
+    const currentPlayerId = this.ctx.manager.localPlayerId;
+    if (currentPlayerId && currentPlayerId === persisted.playerId) {
+      return persisted.code;
+    }
+    // playerId mismatch — abandon the stale entry rather than letting
+    // the user stare at a permanently-failing waiting screen.
+    clearActiveRoom();
+    return null;
+  }
+
+  /**
+   * Begin tracking `code` as the active host-side room and arm both
+   * recovery channels (visibility + socket events). Persists to
+   * localStorage so a subsequent cold start can reclaim it.
+   */
+  startTrackingHostRoom(code: string): void {
+    this.activeRoomCode = code;
+    saveActiveRoom({
+      code,
+      role: 'host',
+      playerId: this.ctx.manager.localPlayerId,
+    });
+    this.armPrivateRoomEventHooks();
+    this.armVisibilityRecover();
+  }
+
+  /**
+   * Variant used by cold-start recover: assumes `saveActiveRoom` was
+   * already written by a previous tab and just rearms the hooks.
+   */
+  resumeTrackingHostRoom(code: string): void {
+    this.activeRoomCode = code;
+    this.armPrivateRoomEventHooks();
+    this.armVisibilityRecover();
+  }
+
+  /** Persist a guest-side join attempt for cold-start surface. */
+  trackGuestJoin(code: string): void {
+    saveActiveRoom({
+      code,
+      role: 'guest',
+      playerId: this.ctx.manager.localPlayerId,
+    });
+  }
+
+  /**
+   * Stop all recovery machinery and forget the active room. Idempotent.
+   */
+  stop(): void {
+    this.disarmVisibilityRecover();
+    this.disarmPrivateRoomEventHooks();
+    this.activeRoomCode = null;
+    this.recoverAttempt = 0;
+    clearActiveRoom();
+  }
+
+  /**
+   * Attempt one recovery cycle. Idempotent against concurrent calls
+   * (the visibility and `connected` hooks may fire near-simultaneously
+   * on mobile). Schedules its own backoff retry on transient failure.
+   */
+  async tryRecover(): Promise<void> {
+    const code = this.activeRoomCode;
+    if (!code) return;
+    if (this.isRecovering) return;
+
+    this.isRecovering = true;
+    if (this.recoverRetryTimer) {
+      clearTimeout(this.recoverRetryTimer);
+      this.recoverRetryTimer = null;
+    }
+
+    try {
+      console.log(
+        `[RoomRecovery] Attempting to recover room ${code} (attempt ${this.recoverAttempt + 1})`
+      );
+      this.ui.setRecoveryStatus('Восстановление подключения…');
+
+      // NOTE: we deliberately do NOT short-circuit on
+      // `client.isConnected()`. socket.io auto-reconnect can produce
+      // a fresh connection while we were backgrounded — that socket
+      // has no record of being this room's host, so we must send
+      // `room-recover` on it either way; the server's recover path
+      // is idempotent and rebinds on the live socket.
+      const client = this.ctx.manager.client;
+      if (!client.isConnected()) {
+        await client.connect();
+      }
+      await client.recoverRoom(code);
+
+      console.log(`[RoomRecovery] Room ${code} recovered`);
+      this.recoverAttempt = 0;
+      this.ui.setRecoveryStatus(null);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`[RoomRecovery] Recover failed: ${message}`);
+
+      // Only TERMINAL failure: server explicitly says the room is gone.
+      // Anything else (timeouts, dropped sockets) is transient.
+      if (message === 'Room expired' || message === 'Room not found') {
+        this.stop();
+        this.ui.setRecoveryStatus(null);
+        this.ui.setMatchmakingStatus('Комната истекла');
+        this.callbacks.onRoomTerminated();
+        return;
+      }
+
+      this.recoverAttempt += 1;
+      if (this.recoverAttempt >= RoomRecoveryManager.MAX_RECOVER_ATTEMPTS) {
+        console.warn('[RoomRecovery] Gave up after max attempts');
+        this.recoverAttempt = 0;
+        this.ui.setRecoveryStatus('Не удалось восстановить соединение');
+        // Even after giving up we don't redirect — user has explicit
+        // "Cancel" on the waiting screen if they want to bail.
+        return;
+      }
+      const delay = Math.min(2_000 * 2 ** (this.recoverAttempt - 1), 30_000);
+      this.ui.setRecoveryStatus(
+        `Соединение потеряно. Повтор через ${Math.ceil(delay / 1000)}с…`
+      );
+      this.recoverRetryTimer = setTimeout(() => {
+        this.recoverRetryTimer = null;
+        void this.tryRecover();
+      }, delay);
+    } finally {
+      this.isRecovering = false;
+    }
+  }
+
+  // ── Internal arming/disarming ───────────────────────────────────
+
+  private armVisibilityRecover(): void {
+    if (this.visibilityRecoverHandler) return;
+    if (typeof document === 'undefined') return;
+
+    const handler = (): void => {
+      if (document.visibilityState !== 'visible') return;
+      void this.tryRecover();
+    };
+
+    document.addEventListener('visibilitychange', handler);
+    // iOS Safari fires `pageshow` more reliably than `visibilitychange`
+    // when returning from bfcache.
+    window.addEventListener('pageshow', handler);
+    this.visibilityRecoverHandler = handler;
+  }
+
+  private disarmVisibilityRecover(): void {
+    if (!this.visibilityRecoverHandler) return;
+    if (typeof document !== 'undefined') {
+      document.removeEventListener(
+        'visibilitychange',
+        this.visibilityRecoverHandler
+      );
+      window.removeEventListener('pageshow', this.visibilityRecoverHandler);
+    }
+    this.visibilityRecoverHandler = null;
+  }
+
+  private armPrivateRoomEventHooks(): void {
+    if (this.privateRoomEventUnsubs.length > 0) return;
+    const client = this.ctx.manager.client;
+
+    // Auto-reconnect produced a fresh socket — claim back the room.
+    this.privateRoomEventUnsubs.push(
+      client.on('connected', () => {
+        if (!this.activeRoomCode) return;
+        // Defer slightly so SocketManager finishes wiring the new
+        // socket's id etc. before we emit `room-recover`.
+        setTimeout(() => {
+          void this.tryRecover();
+        }, 50);
+      })
+    );
+
+    this.privateRoomEventUnsubs.push(
+      client.on('roomExpired', () => {
+        this.stop();
+        this.ui.setMatchmakingStatus('Комната истекла');
+        this.callbacks.onRoomTerminated();
+      })
+    );
+
+    this.privateRoomEventUnsubs.push(
+      client.on('roomCancelled', () => {
+        this.stop();
+      })
+    );
+  }
+
+  private disarmPrivateRoomEventHooks(): void {
+    for (const unsub of this.privateRoomEventUnsubs) unsub();
+    this.privateRoomEventUnsubs = [];
+    if (this.recoverRetryTimer) {
+      clearTimeout(this.recoverRetryTimer);
+      this.recoverRetryTimer = null;
+    }
+  }
+}

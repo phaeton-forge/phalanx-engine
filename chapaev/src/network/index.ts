@@ -7,3 +7,8 @@ export {
   clearRoom as clearActiveRoom,
 } from './RoomPersistence.ts';
 export type { PersistedRoom, RoomRole } from './RoomPersistence.ts';
+export { NetworkContext } from './NetworkContext.ts';
+export { RoomRecoveryManager } from './RoomRecoveryManager.ts';
+export { PrivateRoomCoordinator } from './PrivateRoomCoordinator.ts';
+export { MatchmakingCoordinator } from './MatchmakingCoordinator.ts';
+export { AuthCoordinator } from './AuthCoordinator.ts';

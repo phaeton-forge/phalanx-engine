@@ -4,4 +4,4 @@ export { createBoardMesh } from './BoardMesh.ts';
 export { createCheckerMesh } from './CheckerMesh.ts';
 export { AimingVisuals } from './AimingVisuals.ts';
 export { EffectsManager } from './EffectsManager.ts';
-
+export { MenuScenePresenter } from './MenuScenePresenter.ts';
