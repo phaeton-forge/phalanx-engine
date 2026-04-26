@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { io, Socket } from 'socket.io-client';
 import { Phalanx } from '../src/Phalanx.js';
-import type { MatchFoundEvent } from '../src/types/index.js';
+import type { MatchFoundEvent, TickMode } from '../src/types/index.js';
 
 /**
  * Tests for the client-ready handshake protocol.
@@ -29,6 +29,32 @@ describe('Ready Handshake Protocol', () => {
     });
   }
 
+  /**
+   * Wait `timeoutMs` for a single `tick-sync` event on `client` and
+   * resolve to `true` if one arrives before the timeout, otherwise
+   * `false`.
+   *
+   * Uses `.once(...)` and explicitly removes the handler on timeout
+   * so we don't accumulate persistent `'tick-sync'` listeners across
+   * the suite (which would leak across tests and make them flaky).
+   */
+  function expectNoTickWithin(
+    client: Socket,
+    timeoutMs: number
+  ): Promise<boolean> {
+    return new Promise<boolean>((resolve) => {
+      const onTick = () => {
+        clearTimeout(timeout);
+        resolve(true);
+      };
+      const timeout = setTimeout(() => {
+        client.off('tick-sync', onTick);
+        resolve(false);
+      }, timeoutMs);
+      client.once('tick-sync', onTick);
+    });
+  }
+
   async function cleanupServer(): Promise<void> {
     for (const client of clients) {
       if (client.connected) {
@@ -52,14 +78,14 @@ describe('Ready Handshake Protocol', () => {
     matchId: string;
   }>;
   async function setupTwoPlayerMatch(options: {
-    tickMode?: 'continuous' | 'event';
+    tickMode?: TickMode;
   }): Promise<{
     client1: Socket;
     client2: Socket;
     matchId: string;
   }>;
   async function setupTwoPlayerMatch(
-    options: { tickMode?: 'continuous' | 'event' } = {}
+    options: { tickMode?: TickMode } = {}
   ): Promise<{
     client1: Socket;
     client2: Socket;
@@ -114,16 +140,8 @@ describe('Ready Handshake Protocol', () => {
       const { client1 } = await setupTwoPlayerMatch();
 
       // Listen for tick-sync events (indicates tick loop has started)
-      const tickReceived = new Promise<boolean>((resolve) => {
-        const timeout = setTimeout(() => resolve(false), 500);
-        client1.on('tick-sync', () => {
-          clearTimeout(timeout);
-          resolve(true);
-        });
-      });
-
       // Do NOT send client-ready — tick loop should not start
-      const didReceiveTick = await tickReceived;
+      const didReceiveTick = await expectNoTickWithin(client1, 500);
       expect(didReceiveTick).toBe(false);
     });
 
@@ -149,16 +167,8 @@ describe('Ready Handshake Protocol', () => {
       // Only client1 reports ready
       client1.emit('client-ready');
 
-      // Listen for tick-sync
-      const tickReceived = new Promise<boolean>((resolve) => {
-        const timeout = setTimeout(() => resolve(false), 500);
-        client1.on('tick-sync', () => {
-          clearTimeout(timeout);
-          resolve(true);
-        });
-      });
-
-      const didReceiveTick = await tickReceived;
+      // Listen for tick-sync — tick loop should not start
+      const didReceiveTick = await expectNoTickWithin(client1, 500);
       expect(didReceiveTick).toBe(false);
     });
 
@@ -248,13 +258,7 @@ describe('Ready Handshake Protocol', () => {
       // Client1 reports ready
       client1.emit('client-ready');
 
-      const tickReceived = new Promise<boolean>((resolve) => {
-        const timeout = setTimeout(() => resolve(false), 300);
-        client1.on('tick-sync', () => {
-          clearTimeout(timeout);
-          resolve(true);
-        });
-      });
+      const tickReceived = expectNoTickWithin(client1, 300);
 
       // Client2 disconnects instead of reporting ready
       client2.disconnect();
@@ -286,13 +290,7 @@ describe('Ready Handshake Protocol', () => {
       const reconnectState = await reconnectStatePromise;
       expect(reconnectState.state).toBe('waiting-for-ready');
 
-      const prematureTickReceived = new Promise<boolean>((resolve) => {
-        const timeout = setTimeout(() => resolve(false), 300);
-        client1.on('tick-sync', () => {
-          clearTimeout(timeout);
-          resolve(true);
-        });
-      });
+      const prematureTickReceived = expectNoTickWithin(client1, 300);
       expect(await prematureTickReceived).toBe(false);
 
       const tickPromise = new Promise<{ tick: number }>((resolve) => {

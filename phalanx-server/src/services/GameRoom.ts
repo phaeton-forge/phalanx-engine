@@ -473,7 +473,19 @@ export class GameRoom {
 
   /**
    * Handle a player reporting ready after asset loading.
-   * When all connected players are ready, the tick loop starts.
+   *
+   * The match only starts once *every* player in the room is both
+   * connected and has explicitly reported `client-ready`
+   * (see `areAllPlayersConnectedAndReady`). If any player is
+   * disconnected (e.g. mid-reconnect during `waiting-for-ready`),
+   * the gate stays closed even if all currently-connected players
+   * are ready.
+   *
+   * Once the gate opens:
+   *  - In `continuous` tick mode the tick loop is started.
+   *  - In `event` tick mode no tick loop is created; the turn
+   *    timeout is armed via `resetTurnTimeout()` instead.
+   *
    * @param playerId - The player reporting ready
    */
   handlePlayerReady(playerId: string): void {
@@ -1220,6 +1232,16 @@ export class GameRoom {
     return true;
   }
 
+  /**
+   * Returns true only when every player in the room is currently
+   * connected *and* has reported `client-ready`. This is the
+   * authoritative gate for leaving the `waiting-for-ready` state
+   * and starting the match (continuous or event tick mode).
+   *
+   * A disconnected player keeps the gate closed even if all other
+   * players are ready, which is required for correct reconnect
+   * behavior during `waiting-for-ready`.
+   */
   private areAllPlayersConnectedAndReady(): boolean {
     for (const [playerId, info] of this.players.entries()) {
       if (!info.connected || !this.readyPlayers.has(playerId)) {
