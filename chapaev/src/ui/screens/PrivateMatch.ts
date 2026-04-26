@@ -45,7 +45,7 @@ export class PrivateMatchScreen {
   /** Show waiting for opponent with room code */
   public showWaiting(code: string): void {
     this.state = 'waiting';
-    this.roomCode = code;
+    this.roomCode = code.trim().toUpperCase();
     this.uiManager.refreshScreen('private-match');
   }
 
@@ -152,7 +152,8 @@ export class PrivateMatchScreen {
   }
 
   private renderWaiting(container: HTMLDivElement): void {
-    const shareLink = `${window.location.origin}${window.location.pathname}?room=${this.roomCode}`;
+    const roomCode = this.roomCode;
+    const shareLink = `${window.location.origin}${window.location.pathname}?ROOM=${encodeURIComponent(roomCode)}`;
 
     container.innerHTML = `
       <div class="glass-panel">
@@ -166,7 +167,7 @@ export class PrivateMatchScreen {
         <div class="room-link-display" style="margin-bottom: 16px;">
           <div style="color: var(--text-muted); font-size: 12px; margin-bottom: 4px;">Ссылка для приглашения:</div>
           <div style="display: flex; gap: 8px; align-items: center;">
-            <input class="private-match-input" data-ref="link-input" readonly style="flex: 1; font-size: 12px;" />
+            <input class="private-match-input" data-ref="link-input" readonly style="flex: 1; font-size: 12px; letter-spacing: normal; text-transform: none;" />
             <button class="room-code-copy" data-ref="copy-link-btn">📋</button>
           </div>
         </div>
@@ -185,7 +186,7 @@ export class PrivateMatchScreen {
     `;
 
     const roomCodeEl = container.querySelector('[data-ref="room-code"]') as HTMLDivElement;
-    roomCodeEl.textContent = this.roomCode;
+    roomCodeEl.textContent = roomCode;
 
     const linkInput = container.querySelector('[data-ref="link-input"]') as HTMLInputElement;
     linkInput.value = shareLink;
@@ -195,7 +196,7 @@ export class PrivateMatchScreen {
     const cancelBtn = container.querySelector('[data-ref="cancel-btn"]') as HTMLButtonElement;
 
     copyBtn.addEventListener('click', () => {
-      void navigator.clipboard.writeText(this.roomCode).then(() => {
+      void navigator.clipboard.writeText(roomCode).then(() => {
         copyBtn.textContent = '✅ Скопировано!';
         setTimeout(() => { copyBtn.textContent = '📋 Копировать код'; }, 2000);
       }).catch(() => {

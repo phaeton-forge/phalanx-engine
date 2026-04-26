@@ -45,7 +45,7 @@ export class AuthCoordinator {
    */
   consumeDeepLinkRoomCode(): string | null {
     const urlParams = new URLSearchParams(window.location.search);
-    const roomCodeFromUrl = urlParams.get('ROOM');
+    const roomCodeFromUrl = urlParams.get('ROOM') ?? urlParams.get('room');
     const roomCodeFromStorage = sessionStorage.getItem(
       PENDING_ROOM_STORAGE_KEY
     );
