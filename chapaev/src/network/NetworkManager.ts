@@ -1,5 +1,13 @@
 import { PhalanxClient } from 'phalanx-client';
-import type { MatchFoundEvent, CountdownEvent, GameStartEvent, CommandsBatchEvent, PhalanxAuthState, RoomCreatedEvent } from 'phalanx-client';
+import type {
+  MatchFoundEvent,
+  CountdownEvent,
+  GameStartEvent,
+  CommandsBatchEvent,
+  PhalanxAuthState,
+  RoomCreatedEvent,
+  SocketTransport,
+} from 'phalanx-client';
 import { SERVER_URL, AUTH_CONFIG } from '../config/constants.ts';
 
 /**
@@ -15,6 +23,24 @@ import { SERVER_URL, AUTH_CONFIG } from '../config/constants.ts';
  * is only used until that override (and as a fallback for guests).
  */
 const GUEST_PLAYER_ID_STORAGE_KEY = 'chapaev:guestPlayerId:v1';
+const DESKTOP_SOCKET_TRANSPORTS = ['websocket'] as const satisfies readonly SocketTransport[];
+const MOBILE_SOCKET_TRANSPORTS = ['polling', 'websocket'] as const satisfies readonly SocketTransport[];
+
+function getSocketTransports(): readonly SocketTransport[] {
+  return isMobileBrowser() ? MOBILE_SOCKET_TRANSPORTS : DESKTOP_SOCKET_TRANSPORTS;
+}
+
+function isMobileBrowser(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  const userAgent = navigator.userAgent;
+  const platform = navigator.platform;
+  const hasTouchScreen = navigator.maxTouchPoints > 1;
+  const isIpadOS = platform === 'MacIntel' && hasTouchScreen;
+  return (
+    isIpadOS ||
+    /Android|iPhone|iPad|iPod|IEMobile|Opera Mini|Mobile/i.test(userAgent)
+  );
+}
 
 function loadOrCreateGuestPlayerId(): string {
   try {
@@ -53,6 +79,7 @@ export class NetworkManager {
       // resolves; until then (and for guests forever) we keep the
       // same anonymous id across reloads.
       playerId: loadOrCreateGuestPlayerId(),
+      socketTransports: getSocketTransports(),
       autoReconnect: true,
       maxReconnectAttempts: 5,
       reconnectDelayMs: 1000,

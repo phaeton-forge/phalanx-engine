@@ -27,6 +27,9 @@ export interface PauseConfig {
   requireSamePlayerToResume: boolean;
 }
 
+/** Socket.IO transport names supported by PhalanxClient. */
+export type SocketTransport = 'polling' | 'websocket';
+
 /**
  * Configuration for the Phalanx client
  */
@@ -84,6 +87,20 @@ export interface PhalanxClientConfig {
    * @default 10000
    */
   connectionTimeoutMs?: number;
+
+  /**
+   * Timeout for private-room recovery acknowledgements in milliseconds.
+   * @default 10000
+   */
+  recoverRoomTimeoutMs?: number;
+
+  /**
+   * Socket.IO transports to use when connecting.
+   * Defaults to WebSocket-only for existing desktop behavior. Mobile
+   * clients can pass ['polling', 'websocket'] for a more resilient fallback.
+   * @default ['websocket']
+   */
+  socketTransports?: readonly SocketTransport[];
 
   /**
    * Tick rate (ticks per second) - should match server configuration

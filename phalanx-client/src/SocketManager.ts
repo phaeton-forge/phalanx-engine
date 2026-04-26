@@ -34,6 +34,7 @@ import type {
   PhalanxError,
   ConnectionState,
   PlayerCommand,
+  SocketTransport,
 } from './types.js';
 
 /**
@@ -50,6 +51,10 @@ export interface SocketManagerConfig {
   authToken?: string;
   /** Connection timeout in milliseconds */
   connectionTimeoutMs: number;
+  /** Timeout for private-room recovery acknowledgement in milliseconds */
+  recoverRoomTimeoutMs: number;
+  /** Socket.IO transports to use when connecting */
+  socketTransports: readonly SocketTransport[];
   /** Whether to auto-reconnect */
   autoReconnect: boolean;
   /** Maximum reconnection attempts */
@@ -147,7 +152,7 @@ export class SocketManager {
 
       this.socket = io(this.config.serverUrl, {
         forceNew: true,
-        transports: ['websocket'],
+        transports: [...this.config.socketTransports],
         reconnection: false, // We handle reconnection ourselves
         auth: this.config.authToken
           ? { token: this.config.authToken }
@@ -331,7 +336,7 @@ export class SocketManager {
    */
   async recoverRoom(
     code: string,
-    timeoutMs: number = 10_000,
+    timeoutMs: number = this.config.recoverRoomTimeoutMs,
   ): Promise<RoomRecoveredEvent> {
     this.ensureConnected();
 

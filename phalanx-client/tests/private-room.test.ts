@@ -3,12 +3,12 @@ import { Phalanx } from 'phalanx-server';
 import { PhalanxClient } from '../src/index.js';
 import type {
   MatchFoundEvent,
-  RoomCreatedEvent,
   RoomErrorEvent,
   RoomCancelledEvent,
   RoomRecoveredEvent,
   GameStartEvent,
   CountdownEvent,
+  SocketTransport,
 } from '../src/types.js';
 
 /**
@@ -37,6 +37,27 @@ describe('PhalanxClient Private Room Integration', () => {
   });
 
   // ── Create + Join → match-found ───────────────────────────────
+
+  it('should connect and create a room with polling fallback transports', async () => {
+    const mobileTransports = [
+      'polling',
+      'websocket',
+    ] as const satisfies readonly SocketTransport[];
+    const client = new PhalanxClient({
+      serverUrl: SERVER_URL,
+      playerId: 'mobile-player',
+      username: 'MobilePlayer',
+      socketTransports: mobileTransports,
+    });
+
+    await client.connect();
+    expect(client.isConnected()).toBe(true);
+
+    const roomCreated = await client.createRoom();
+    expect(roomCreated.code).toHaveLength(6);
+
+    client.disconnect();
+  });
 
   it('should create room with client A, join with client B, and receive match-found', async () => {
     const clientA = new PhalanxClient({
