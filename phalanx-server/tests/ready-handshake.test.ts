@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { io, Socket } from 'socket.io-client';
 import { Phalanx } from '../src/Phalanx.js';
-import type { MatchFoundEvent } from '../src/types/index.js';
+import type { MatchFoundEvent, TickMode } from '../src/types/index.js';
 
 /**
  * Tests for the client-ready handshake protocol.
@@ -29,6 +29,32 @@ describe('Ready Handshake Protocol', () => {
     });
   }
 
+  /**
+   * Wait `timeoutMs` for a single `tick-sync` event on `client` and
+   * resolve to `true` if one arrives before the timeout, otherwise
+   * `false`.
+   *
+   * Uses `.once(...)` and explicitly removes the handler on timeout
+   * so we don't accumulate persistent `'tick-sync'` listeners across
+   * the suite (which would leak across tests and make them flaky).
+   */
+  function expectNoTickWithin(
+    client: Socket,
+    timeoutMs: number
+  ): Promise<boolean> {
+    return new Promise<boolean>((resolve) => {
+      const onTick = () => {
+        clearTimeout(timeout);
+        resolve(true);
+      };
+      const timeout = setTimeout(() => {
+        client.off('tick-sync', onTick);
+        resolve(false);
+      }, timeoutMs);
+      client.once('tick-sync', onTick);
+    });
+  }
+
   async function cleanupServer(): Promise<void> {
     for (const client of clients) {
       if (client.connected) {
@@ -50,10 +76,25 @@ describe('Ready Handshake Protocol', () => {
     client1: Socket;
     client2: Socket;
     matchId: string;
+  }>;
+  async function setupTwoPlayerMatch(options: {
+    tickMode?: TickMode;
+  }): Promise<{
+    client1: Socket;
+    client2: Socket;
+    matchId: string;
+  }>;
+  async function setupTwoPlayerMatch(
+    options: { tickMode?: TickMode } = {}
+  ): Promise<{
+    client1: Socket;
+    client2: Socket;
+    matchId: string;
   }> {
     server = new Phalanx({
       port: TEST_PORT,
       countdownSeconds: 0,
+      ...(options.tickMode ? { tickMode: options.tickMode } : {}),
     });
     await server.start();
 
@@ -99,16 +140,8 @@ describe('Ready Handshake Protocol', () => {
       const { client1 } = await setupTwoPlayerMatch();
 
       // Listen for tick-sync events (indicates tick loop has started)
-      const tickReceived = new Promise<boolean>((resolve) => {
-        const timeout = setTimeout(() => resolve(false), 500);
-        client1.on('tick-sync', () => {
-          clearTimeout(timeout);
-          resolve(true);
-        });
-      });
-
       // Do NOT send client-ready — tick loop should not start
-      const didReceiveTick = await tickReceived;
+      const didReceiveTick = await expectNoTickWithin(client1, 500);
       expect(didReceiveTick).toBe(false);
     });
 
@@ -134,16 +167,8 @@ describe('Ready Handshake Protocol', () => {
       // Only client1 reports ready
       client1.emit('client-ready');
 
-      // Listen for tick-sync
-      const tickReceived = new Promise<boolean>((resolve) => {
-        const timeout = setTimeout(() => resolve(false), 500);
-        client1.on('tick-sync', () => {
-          clearTimeout(timeout);
-          resolve(true);
-        });
-      });
-
-      const didReceiveTick = await tickReceived;
+      // Listen for tick-sync — tick loop should not start
+      const didReceiveTick = await expectNoTickWithin(client1, 500);
       expect(didReceiveTick).toBe(false);
     });
 
@@ -227,26 +252,111 @@ describe('Ready Handshake Protocol', () => {
       await cleanupServer();
     });
 
-    it('should start game if disconnected player is no longer blocking ready check', async () => {
+    it('should NOT start game if a waiting-for-ready player disconnects', async () => {
       const { client1, client2 } = await setupTwoPlayerMatch();
 
       // Client1 reports ready
       client1.emit('client-ready');
 
-      // Listen for tick-sync on client1
+      const tickReceived = expectNoTickWithin(client1, 300);
+
+      // Client2 disconnects instead of reporting ready
+      client2.disconnect();
+
+      const didReceiveTick = await tickReceived;
+      expect(didReceiveTick).toBe(false);
+    });
+
+    it('should wait for a reconnecting waiting-for-ready player to re-send ready', async () => {
+      const { client1, client2, matchId } = await setupTwoPlayerMatch();
+
+      client1.emit('client-ready');
+      client2.disconnect();
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      const recoveredClient2 = createClient();
+      await connectClient(recoveredClient2);
+
+      const reconnectStatePromise = new Promise<{ state: string }>((resolve) => {
+        recoveredClient2.on('reconnect-state', (data: { state: string }) =>
+          resolve(data)
+        );
+      });
+      recoveredClient2.emit('reconnect-match', {
+        playerId: 'player2',
+        matchId,
+      });
+
+      const reconnectState = await reconnectStatePromise;
+      expect(reconnectState.state).toBe('waiting-for-ready');
+
+      const prematureTickReceived = expectNoTickWithin(client1, 300);
+      expect(await prematureTickReceived).toBe(false);
+
       const tickPromise = new Promise<{ tick: number }>((resolve) => {
         client1.on('tick-sync', (data: { tick: number }) => resolve(data));
       });
 
-      // Client2 disconnects instead of reporting ready
-      // Since client2 is disconnected, the only connected+not-ready players are gone
-      client2.disconnect();
-
-      // Wait a bit for disconnect to process
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      recoveredClient2.emit('client-ready');
 
       const tickData = await tickPromise;
       expect(tickData.tick).toBe(0);
+    });
+  });
+
+  describe('Event Mode Ready Gate', () => {
+    beforeEach(() => {
+      clients = [];
+    });
+
+    afterEach(async () => {
+      await cleanupServer();
+    });
+
+    it('should reject event-mode commands until every player is connected and ready', async () => {
+      const { client1, client2 } = await setupTwoPlayerMatch({
+        tickMode: 'event',
+      });
+
+      client1.emit('client-ready');
+
+      const rejectedAckPromise = new Promise<{ accepted: boolean }>((resolve) => {
+        client1.once('submit-commands-ack', (data: { accepted: boolean }) =>
+          resolve(data)
+        );
+      });
+      client1.emit('submit-commands', {
+        tick: 0,
+        commands: [{ type: 'select', data: { entityId: 1 } }],
+      });
+      expect((await rejectedAckPromise).accepted).toBe(false);
+
+      const commandsBatchPromise = new Promise<{
+        tick: number;
+        commands: { type: string }[];
+      }>((resolve) => {
+        client2.once(
+          'commands-batch',
+          (data: { tick: number; commands: { type: string }[] }) =>
+            resolve(data)
+        );
+      });
+      const acceptedAckPromise = new Promise<{ accepted: boolean }>((resolve) => {
+        client1.once('submit-commands-ack', (data: { accepted: boolean }) =>
+          resolve(data)
+        );
+      });
+
+      client2.emit('client-ready');
+      client1.emit('submit-commands', {
+        tick: 0,
+        commands: [{ type: 'select', data: { entityId: 1 } }],
+      });
+
+      expect((await acceptedAckPromise).accepted).toBe(true);
+      const commandsBatch = await commandsBatchPromise;
+      expect(commandsBatch.tick).toBe(0);
+      expect(commandsBatch.commands[0]?.type).toBe('select');
     });
   });
 
