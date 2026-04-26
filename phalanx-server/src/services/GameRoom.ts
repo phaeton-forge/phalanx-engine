@@ -336,6 +336,29 @@ export class GameRoom {
   }
 
   /**
+   * Emit a lifecycle event directly to every currently-connected player.
+   *
+   * `match-found` is already sent as a direct socket event, while the
+   * countdown used to depend on Socket.IO room membership established a
+   * few lines earlier in `start()`. Mobile transports can race around
+   * polling/websocket upgrade or a brief reconnect: the host still sees
+   * `match-found` and switches to the countdown screen, but misses the
+   * room broadcast that should advance it. Direct delivery keeps the
+   * pre-game lifecycle level with the personalized match-found path.
+   */
+  private emitLifecycleToConnectedPlayers(
+    eventName: 'countdown' | 'game-start',
+    payload: unknown,
+  ): void {
+    for (const [socketId, playerId] of this.socketToPlayer) {
+      const player = this.players.get(playerId);
+      if (!player?.connected) continue;
+      const socket = this.io.sockets.sockets.get(socketId);
+      socket?.emit(eventName, payload);
+    }
+  }
+
+  /**
    * Start the game countdown
    * Emits countdown events (5, 4, 3, 2, 1, 0) every second, then game-start
    */
@@ -345,7 +368,7 @@ export class GameRoom {
       // No deadline to record: the countdown phase is effectively zero
       // length, so a reconnecting client should observe `gameStartEmitted`.
       this.gameStartEmitted = true;
-      this.io.to(this.roomId).emit('game-start', {
+      this.emitLifecycleToConnectedPlayers('game-start', {
         matchId: this.id,
         randomSeed: this.randomSeed,
       });
@@ -360,11 +383,11 @@ export class GameRoom {
     this.countdownDeadline = Date.now() + countdown * 1000;
 
     // Emit initial countdown
-    this.io.to(this.roomId).emit('countdown', { seconds: countdown });
+    this.emitLifecycleToConnectedPlayers('countdown', { seconds: countdown });
     countdown--;
 
     this.countdownInterval = setInterval(() => {
-      this.io.to(this.roomId).emit('countdown', { seconds: countdown });
+      this.emitLifecycleToConnectedPlayers('countdown', { seconds: countdown });
       countdown--;
 
       if (countdown < 0) {
@@ -379,7 +402,7 @@ export class GameRoom {
         this.countdownDeadline = null;
         this.gameStartEmitted = true;
         // Emit game-start event with random seed for deterministic RNG
-        this.io.to(this.roomId).emit('game-start', {
+        this.emitLifecycleToConnectedPlayers('game-start', {
           matchId: this.id,
           randomSeed: this.randomSeed,
         });

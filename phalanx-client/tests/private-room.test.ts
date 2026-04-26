@@ -130,6 +130,57 @@ describe('PhalanxClient Private Room Integration', () => {
     clientB.disconnect();
   });
 
+  it('should deliver countdown and game-start to a mobile host via event subscriptions', async () => {
+    const mobileTransports = [
+      'polling',
+      'websocket',
+    ] as const satisfies readonly SocketTransport[];
+    const host = new PhalanxClient({
+      serverUrl: SERVER_URL,
+      playerId: 'mobileHost',
+      username: 'MobileHost',
+      socketTransports: mobileTransports,
+    });
+    const guest = new PhalanxClient({
+      serverUrl: SERVER_URL,
+      playerId: 'desktopGuest',
+      username: 'DesktopGuest',
+    });
+
+    await host.connect();
+    await guest.connect();
+
+    const roomCreated = await host.createRoom();
+    const hostCountdowns: number[] = [];
+    const unsubscribeCountdown = host.on('countdown', (event) => {
+      hostCountdowns.push(event.seconds);
+    });
+    const hostMatchPromise = new Promise<MatchFoundEvent>((resolve) => {
+      host.on('matchFound', (event) => resolve(event));
+    });
+    const hostGameStartPromise = new Promise<GameStartEvent>((resolve) => {
+      host.on('gameStart', (event) => resolve(event));
+    });
+
+    const guestMatchPromise = guest.waitForMatch();
+    guest.joinRoom(roomCreated.code);
+
+    const [hostMatch, guestMatch] = await Promise.all([
+      hostMatchPromise,
+      guestMatchPromise,
+    ]);
+    expect(hostMatch.matchId).toBe(guestMatch.matchId);
+
+    const hostGameStart = await hostGameStartPromise;
+    expect(hostGameStart.matchId).toBe(hostMatch.matchId);
+    expect(hostCountdowns.length).toBeGreaterThan(0);
+    expect(hostCountdowns).toContain(0);
+
+    unsubscribeCountdown();
+    host.disconnect();
+    guest.disconnect();
+  });
+
   // ── Room error flows ──────────────────────────────────────────
 
   it('should emit roomError when joining a non-existent room code', async () => {

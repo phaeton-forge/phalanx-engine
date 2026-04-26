@@ -39,6 +39,7 @@ export class RoomRecoveryManager {
   private static readonly MAX_RECOVER_ATTEMPTS = 5;
   private static readonly NETWORK_STABILIZE_DELAY_MS = 300;
   private static readonly CONNECTED_RECOVER_DELAY_MS = 300;
+  private static readonly DISCONNECTED_RECOVER_DELAY_MS = 300;
   private static readonly OFFLINE_WAIT_TIMEOUT_MS = 30_000;
   private static readonly DEFAULT_RECOVER_TIMEOUT_MS = 10_000;
   private static readonly DEGRADED_RECOVER_TIMEOUT_MS = 15_000;
@@ -262,6 +263,18 @@ export class RoomRecoveryManager {
         // Defer through the shared scheduler so a socket reconnect racing
         // with visibility/pageshow does not start duplicate recoveries.
         this.scheduleRecover(RoomRecoveryManager.CONNECTED_RECOVER_DELAY_MS);
+      })
+    );
+
+    // Mobile networks can drop the transport during the private-room
+    // countdown before PhalanxClient reaches `playing`. The generic
+    // SocketManager reconnect path intentionally only handles in-game
+    // reconnects, so host-side private rooms must proactively recover
+    // themselves as soon as this pre-game disconnect is observed.
+    this.privateRoomEventUnsubs.push(
+      client.on('disconnected', () => {
+        if (!this.activeRoomCode) return;
+        this.scheduleRecover(RoomRecoveryManager.DISCONNECTED_RECOVER_DELAY_MS);
       })
     );
 
