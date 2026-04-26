@@ -77,14 +77,30 @@ export class RoomRecoveryManager {
    */
   loadColdStartCode(): string | null {
     const persisted = loadActiveRoom();
-    if (!persisted || persisted.role !== 'host') return null;
+    if (!persisted) {
+      this.log('loadColdStartCode:empty');
+      return null;
+    }
+    if (persisted.role !== 'host') {
+      this.log('loadColdStartCode:non-host-record', {
+        role: persisted.role,
+        code: persisted.code,
+      });
+      return null;
+    }
 
     const currentPlayerId = this.ctx.manager.localPlayerId;
     if (currentPlayerId && currentPlayerId === persisted.playerId) {
+      this.log('loadColdStartCode:found', { code: persisted.code });
       return persisted.code;
     }
     // playerId mismatch — abandon the stale entry rather than letting
     // the user stare at a permanently-failing waiting screen.
+    this.log('loadColdStartCode:playerId-mismatch', {
+      code: persisted.code,
+      persistedPlayerId: persisted.playerId,
+      currentPlayerId,
+    });
     clearActiveRoom();
     return null;
   }
@@ -96,6 +112,7 @@ export class RoomRecoveryManager {
    */
   startTrackingHostRoom(code: string): void {
     this.activeRoomCode = code;
+    this.log('startTrackingHostRoom', { code });
     saveActiveRoom({
       code,
       role: 'host',
@@ -111,12 +128,14 @@ export class RoomRecoveryManager {
    */
   resumeTrackingHostRoom(code: string): void {
     this.activeRoomCode = code;
+    this.log('resumeTrackingHostRoom', { code });
     this.armPrivateRoomEventHooks();
     this.armVisibilityRecover();
   }
 
   /** Persist a guest-side join attempt for cold-start surface. */
   trackGuestJoin(code: string): void {
+    this.log('trackGuestJoin', { code });
     saveActiveRoom({
       code,
       role: 'guest',
@@ -128,6 +147,7 @@ export class RoomRecoveryManager {
    * Stop all recovery machinery and forget the active room. Idempotent.
    */
   stop(): void {
+    this.log('stop', { activeRoomCode: this.activeRoomCode });
     this.disarmVisibilityRecover();
     this.disarmPrivateRoomEventHooks();
     this.activeRoomCode = null;
@@ -143,8 +163,12 @@ export class RoomRecoveryManager {
    */
   async tryRecover(): Promise<void> {
     const code = this.activeRoomCode;
-    if (!code) return;
+    if (!code) {
+      this.log('tryRecover:skip-no-active-room');
+      return;
+    }
     if (this.isRecovering) {
+      this.log('tryRecover:already-running', { code });
       this.pendingRecoverRequested = true;
       return;
     }
@@ -160,9 +184,20 @@ export class RoomRecoveryManager {
       console.log(
         `[RoomRecovery] Attempting to recover room ${code} (attempt ${this.recoverAttempt + 1})`
       );
+      this.log('tryRecover:start', {
+        code,
+        attempt: this.recoverAttempt + 1,
+        navigatorOnline: RoomRecoveryManager.isOnline(),
+      });
       this.ui.setRecoveryStatus('Восстановление подключения…');
       await this.waitForOnlineAndStabilize();
-      if (this.activeRoomCode !== code) return;
+      if (this.activeRoomCode !== code) {
+        this.log('tryRecover:active-room-changed', {
+          expectedCode: code,
+          activeRoomCode: this.activeRoomCode,
+        });
+        return;
+      }
 
       // NOTE: we deliberately do NOT short-circuit on
       // `client.isConnected()`. socket.io auto-reconnect can produce
@@ -172,20 +207,29 @@ export class RoomRecoveryManager {
       // is idempotent and rebinds on the live socket.
       const client = this.ctx.manager.client;
       if (!client.isConnected()) {
+        this.log('tryRecover:client-connect-before', { code });
         await client.connect();
+        this.log('tryRecover:client-connect-after', { code });
       }
+      this.log('tryRecover:recoverRoom-before', {
+        code,
+        timeoutMs: RoomRecoveryManager.getRecoverTimeoutMs(),
+      });
       await client.recoverRoom(code, RoomRecoveryManager.getRecoverTimeoutMs());
 
       console.log(`[RoomRecovery] Room ${code} recovered`);
+      this.log('tryRecover:success', { code });
       this.recoverAttempt = 0;
       this.ui.setRecoveryStatus(null);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.warn(`[RoomRecovery] Recover failed: ${message}`);
+      this.log('tryRecover:error', { code, message });
 
       // Only TERMINAL failure: server explicitly says the room is gone.
       // Anything else (timeouts, dropped sockets) is transient.
       if (message === 'Room expired' || message === 'Room not found') {
+        this.log('tryRecover:terminal', { code, message });
         this.stop();
         this.ui.setRecoveryStatus(null);
         this.ui.setMatchmakingStatus('Комната истекла');
@@ -203,6 +247,11 @@ export class RoomRecoveryManager {
         return;
       }
       const delay = Math.min(2_000 * 2 ** (this.recoverAttempt - 1), 30_000);
+      this.log('tryRecover:retry-scheduled', {
+        code,
+        attempt: this.recoverAttempt,
+        delayMs: delay,
+      });
       this.ui.setRecoveryStatus(
         `Соединение потеряно. Повтор через ${Math.ceil(delay / 1000)}с…`
       );
@@ -217,6 +266,9 @@ export class RoomRecoveryManager {
         this.activeRoomCode &&
         !this.recoverRetryTimer
       ) {
+        this.log('tryRecover:pending-request-reschedule', {
+          activeRoomCode: this.activeRoomCode,
+        });
         this.scheduleRecover(RoomRecoveryManager.NETWORK_STABILIZE_DELAY_MS);
       }
     }
@@ -229,6 +281,10 @@ export class RoomRecoveryManager {
     if (typeof document === 'undefined') return;
 
     const handler = (): void => {
+      this.log('visibility/pageshow:event', {
+        visibilityState: document.visibilityState,
+        activeRoomCode: this.activeRoomCode,
+      });
       if (document.visibilityState !== 'visible') return;
       this.scheduleRecover();
     };
@@ -238,6 +294,7 @@ export class RoomRecoveryManager {
     // when returning from bfcache.
     window.addEventListener('pageshow', handler);
     this.visibilityRecoverHandler = handler;
+    this.log('armVisibilityRecover');
   }
 
   private disarmVisibilityRecover(): void {
@@ -250,16 +307,21 @@ export class RoomRecoveryManager {
       window.removeEventListener('pageshow', this.visibilityRecoverHandler);
     }
     this.visibilityRecoverHandler = null;
+    this.log('disarmVisibilityRecover');
   }
 
   private armPrivateRoomEventHooks(): void {
     if (this.privateRoomEventUnsubs.length > 0) return;
     const client = this.ctx.manager.client;
+    this.log('armPrivateRoomEventHooks');
 
     // Auto-reconnect produced a fresh socket — claim back the room.
     this.privateRoomEventUnsubs.push(
       client.on('connected', () => {
         if (!this.activeRoomCode) return;
+        this.log('client.connected:event', {
+          activeRoomCode: this.activeRoomCode,
+        });
         // Defer through the shared scheduler so a socket reconnect racing
         // with visibility/pageshow does not start duplicate recoveries.
         this.scheduleRecover(RoomRecoveryManager.CONNECTED_RECOVER_DELAY_MS);
@@ -274,12 +336,16 @@ export class RoomRecoveryManager {
     this.privateRoomEventUnsubs.push(
       client.on('disconnected', () => {
         if (!this.activeRoomCode) return;
+        this.log('client.disconnected:event', {
+          activeRoomCode: this.activeRoomCode,
+        });
         this.scheduleRecover(RoomRecoveryManager.DISCONNECTED_RECOVER_DELAY_MS);
       })
     );
 
     this.privateRoomEventUnsubs.push(
       client.on('roomExpired', () => {
+        this.log('roomExpired:event', { activeRoomCode: this.activeRoomCode });
         this.stop();
         this.ui.setMatchmakingStatus('Комната истекла');
         this.callbacks.onRoomTerminated();
@@ -288,6 +354,7 @@ export class RoomRecoveryManager {
 
     this.privateRoomEventUnsubs.push(
       client.on('roomCancelled', () => {
+        this.log('roomCancelled:event', { activeRoomCode: this.activeRoomCode });
         this.stop();
       })
     );
@@ -296,6 +363,9 @@ export class RoomRecoveryManager {
   // TODO: consider moving room recovery logic to the engine
 
   private disarmPrivateRoomEventHooks(): void {
+    this.log('disarmPrivateRoomEventHooks', {
+      unsubscribeCount: this.privateRoomEventUnsubs.length,
+    });
     for (const unsub of this.privateRoomEventUnsubs) unsub();
     this.privateRoomEventUnsubs = [];
     if (this.recoverRetryTimer) {
@@ -309,28 +379,62 @@ export class RoomRecoveryManager {
   }
 
   private scheduleRecover(delayMs = 0): void {
-    if (!this.activeRoomCode) return;
+    if (!this.activeRoomCode) {
+      this.log('scheduleRecover:skip-no-active-room', { delayMs });
+      return;
+    }
+    this.log('scheduleRecover:request', {
+      delayMs,
+      activeRoomCode: this.activeRoomCode,
+      isRecovering: this.isRecovering,
+      hasScheduleTimer: this.recoverScheduleTimer !== null,
+    });
     this.pendingRecoverRequested = true;
     if (this.isRecovering || this.recoverScheduleTimer) return;
 
     this.recoverScheduleTimer = setTimeout(() => {
       this.recoverScheduleTimer = null;
-      if (!this.pendingRecoverRequested) return;
+      if (!this.pendingRecoverRequested) {
+        this.log('scheduleRecover:timer-fired-skip-no-pending');
+        return;
+      }
+      this.log('scheduleRecover:timer-fired', {
+        activeRoomCode: this.activeRoomCode,
+      });
       void this.tryRecover();
     }, delayMs);
   }
 
   private async waitForOnlineAndStabilize(): Promise<void> {
     if (!RoomRecoveryManager.isOnline()) {
+      this.log('waitForOnlineAndStabilize:offline');
       this.ui.setRecoveryStatus('Ожидание сети…');
       await RoomRecoveryManager.waitForOnlineEvent();
       if (!RoomRecoveryManager.isOnline()) {
+        this.log('waitForOnlineAndStabilize:still-offline');
         throw new Error('Network offline');
       }
     }
+    this.log('waitForOnlineAndStabilize:delay', {
+      delayMs: RoomRecoveryManager.NETWORK_STABILIZE_DELAY_MS,
+    });
     await RoomRecoveryManager.delay(
       RoomRecoveryManager.NETWORK_STABILIZE_DELAY_MS,
     );
+  }
+
+  private log(message: string, details: Record<string, unknown> = {}): void {
+    console.log(`[RoomRecovery][trace] ${message}`, {
+      at: new Date().toISOString(),
+      activeRoomCode: this.activeRoomCode,
+      isRecovering: this.isRecovering,
+      pendingRecoverRequested: this.pendingRecoverRequested,
+      recoverAttempt: this.recoverAttempt,
+      playerId: this.ctx.manager.localPlayerId,
+      clientConnected: this.ctx.manager.client.isConnected(),
+      clientState: this.ctx.manager.client.getClientState(),
+      ...details,
+    });
   }
 
   private static async waitForOnlineEvent(): Promise<void> {

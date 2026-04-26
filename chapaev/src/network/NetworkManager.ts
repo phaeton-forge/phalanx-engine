@@ -70,6 +70,15 @@ export class NetworkManager {
   private networkUnsubscribers: (() => void)[] = [];
 
   constructor() {
+    const playerId = loadOrCreateGuestPlayerId();
+    const socketTransports = getSocketTransports();
+    console.log('[ChapaevNetwork] constructor', {
+      at: new Date().toISOString(),
+      serverUrl: SERVER_URL,
+      playerId,
+      socketTransports,
+      authEnabled: AUTH_CONFIG.authEnabled,
+    });
     this.client = new PhalanxClient({
       serverUrl: SERVER_URL,
       // Stable across page reloads — required for private-room recovery
@@ -78,8 +87,8 @@ export class NetworkManager {
       // overwrite this with the real user id once the auth flow
       // resolves; until then (and for guests forever) we keep the
       // same anonymous id across reloads.
-      playerId: loadOrCreateGuestPlayerId(),
-      socketTransports: getSocketTransports(),
+      playerId,
+      socketTransports,
       autoReconnect: true,
       maxReconnectAttempts: 5,
       reconnectDelayMs: 1000,
@@ -269,16 +278,43 @@ export class NetworkManager {
 
   /** Create a private room. Returns the room code. */
   public async createRoom(): Promise<RoomCreatedEvent> {
-    return this.client.createRoom();
+    console.log('[ChapaevNetwork] createRoom:before', {
+      at: new Date().toISOString(),
+      playerId: this.localPlayerId,
+      clientState: this.client.getClientState(),
+      isConnected: this.client.isConnected(),
+    });
+    const event = await this.client.createRoom();
+    console.log('[ChapaevNetwork] createRoom:after', {
+      at: new Date().toISOString(),
+      playerId: this.localPlayerId,
+      code: event.code,
+      clientState: this.client.getClientState(),
+      isConnected: this.client.isConnected(),
+    });
+    return event;
   }
 
   /** Join a private room by code. Server will emit match-found. */
   public joinRoom(code: string): void {
+    console.log('[ChapaevNetwork] joinRoom:emit', {
+      at: new Date().toISOString(),
+      playerId: this.localPlayerId,
+      code,
+      clientState: this.client.getClientState(),
+      isConnected: this.client.isConnected(),
+    });
     this.client.joinRoom(code);
   }
 
   /** Cancel a previously created private room. */
   public cancelRoom(): void {
+    console.log('[ChapaevNetwork] cancelRoom:emit', {
+      at: new Date().toISOString(),
+      playerId: this.localPlayerId,
+      clientState: this.client.getClientState(),
+      isConnected: this.client.isConnected(),
+    });
     this.client.cancelRoom();
   }
 
@@ -286,6 +322,13 @@ export class NetworkManager {
    * Clean up all event subscriptions and disconnect.
    */
   public dispose(): void {
+    console.log('[ChapaevNetwork] dispose', {
+      at: new Date().toISOString(),
+      playerId: this.localPlayerId,
+      clientState: this.client.getClientState(),
+      isConnected: this.client.isConnected(),
+      subscriptions: this.networkUnsubscribers.length,
+    });
     for (const unsub of this.networkUnsubscribers) {
       unsub();
     }

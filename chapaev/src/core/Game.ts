@@ -292,6 +292,17 @@ export class Game {
   private startOnlineGame(matchData: MatchFoundEvent): void {
     if (!this.ctx) return;
 
+    console.log('[ChapaevGame] startOnlineGame:start', {
+      at: new Date().toISOString(),
+      matchId: matchData.matchId,
+      playerId: matchData.playerId,
+      teamId: matchData.teamId,
+      teammates: matchData.teammates,
+      opponents: matchData.opponents,
+      clientState: this.ctx.manager.client.getClientState(),
+      isConnected: this.ctx.manager.client.isConnected(),
+    });
+
     this.inGame = true;
     this.hasSentClientReady = false;
 
@@ -321,6 +332,11 @@ export class Game {
       this.sceneCtx,
       this.ctx.manager
     );
+    console.log('[ChapaevGame] startOnlineGame:world-bootstrapped', {
+      at: new Date().toISOString(),
+      matchId: matchData.matchId,
+      localTeam: this.localTeam,
+    });
     this.world = world;
     this.flickInputSystem = flickInputSystem;
 
@@ -336,6 +352,10 @@ export class Game {
     });
 
     this.setupNetworkEvents();
+    console.log('[ChapaevGame] startOnlineGame:network-events-setup', {
+      at: new Date().toISOString(),
+      matchId: matchData.matchId,
+    });
 
     const { composer, controls } = this.sceneCtx;
     world.start({
@@ -349,6 +369,11 @@ export class Game {
     });
 
     this.sendClientReady('initial game start');
+    console.log('[ChapaevGame] startOnlineGame:complete', {
+      at: new Date().toISOString(),
+      matchId: matchData.matchId,
+      hasSentClientReady: this.hasSentClientReady,
+    });
   }
 
   // ── Network events ──────────────────────────────────────────────
@@ -366,6 +391,11 @@ export class Game {
 
     manager.onPlayerDisconnected(() => {
       console.log('[Game] Opponent disconnected.');
+      console.log('[ChapaevGame] network:playerDisconnected', {
+        at: new Date().toISOString(),
+        clientState: manager.client.getClientState(),
+        isConnected: manager.client.isConnected(),
+      });
       this.ui.gameHUD.showToast('Соперник покинул матч', 'info', 2000);
       setTimeout(() => this.returnToMainMenu(), 2000);
     });
@@ -384,6 +414,17 @@ export class Game {
     this.reconnectStateUnsubscribe = manager.client.on(
       'reconnectState',
       (snapshot: ReconnectStateEvent) => {
+        console.log('[ChapaevGame] reconnectState:event', {
+          at: new Date().toISOString(),
+          matchId: snapshot.matchId,
+          state: snapshot.state,
+          currentTick: snapshot.currentTick,
+          countdownSecondsRemaining: snapshot.countdownSecondsRemaining,
+          gameStartEmitted: snapshot.gameStartEmitted,
+          inGame: this.inGame,
+          hasWorld: this.world !== null,
+          hasSentClientReady: this.hasSentClientReady,
+        });
         if (snapshot.state !== 'waiting-for-ready') return;
         if (!this.inGame || !this.world || !this.hasSentClientReady) return;
         this.sendClientReady('waiting-for-ready reconnect');
@@ -400,9 +441,21 @@ export class Game {
 
   private sendClientReady(reason: string): void {
     if (!this.ctx) return;
+    console.log('[ChapaevGame] sendClientReady:before', {
+      at: new Date().toISOString(),
+      reason,
+      clientState: this.ctx.manager.client.getClientState(),
+      isConnected: this.ctx.manager.client.isConnected(),
+      hasSentClientReady: this.hasSentClientReady,
+    });
     this.ctx.manager.sendReady();
     this.hasSentClientReady = true;
     console.log(`[Game] Sent client-ready signal (${reason})`);
+    console.log('[ChapaevGame] sendClientReady:after', {
+      at: new Date().toISOString(),
+      reason,
+      hasSentClientReady: this.hasSentClientReady,
+    });
   }
 
   // ── Cleanup ─────────────────────────────────────────────────────
