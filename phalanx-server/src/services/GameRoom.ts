@@ -496,12 +496,7 @@ export class GameRoom {
     // Broadcast player-ready to the room so clients can update loading screens
     this.io.to(this.roomId).emit('player-ready', { playerId });
 
-    // Check if all connected players are ready
-    const allReady = Array.from(this.players.entries()).every(
-      ([id, info]) => !info.connected || this.readyPlayers.has(id)
-    );
-
-    if (allReady) {
+    if (this.areAllPlayersConnectedAndReady()) {
       if (this.readyTimeout) {
         clearTimeout(this.readyTimeout);
         this.readyTimeout = null;
@@ -1109,22 +1104,6 @@ export class GameRoom {
         matchId: this.id,
         gracePeriodMs: this.config.reconnectGracePeriodMs,
       });
-
-      // If we're waiting for ready, re-check whether all remaining connected
-      // players are now ready (the disconnected player no longer blocks).
-      if (this.state === 'waiting-for-ready') {
-        const allReady = Array.from(this.players.entries()).every(
-          ([id, info]) => !info.connected || this.readyPlayers.has(id)
-        );
-
-        if (allReady) {
-          if (this.readyTimeout) {
-            clearTimeout(this.readyTimeout);
-            this.readyTimeout = null;
-          }
-          this.startGame();
-        }
-      }
     }
   }
 
@@ -1148,6 +1127,12 @@ export class GameRoom {
 
     player.connected = true;
     this.laggingPlayers.delete(playerId);
+    // Reconnecting during the startup ready gate invalidates any previous
+    // ready signal from the old socket. The client must confirm readiness
+    // again after its recovered socket is wired and local game state is ready.
+    if (this.state === 'waiting-for-ready') {
+      this.readyPlayers.delete(playerId);
+    }
 
     // Update activity timestamp
     this.lastMessageTime.set(playerId, Date.now());
@@ -1232,12 +1217,15 @@ export class GameRoom {
       socket.to(this.roomId).emit('player-reconnected', { playerId });
     }
 
-    // If reconnecting during waiting-for-ready, clear their previous ready
-    // status so they must send client-ready again after re-loading.
-    if (this.state === 'waiting-for-ready') {
-      this.readyPlayers.delete(playerId);
-    }
+    return true;
+  }
 
+  private areAllPlayersConnectedAndReady(): boolean {
+    for (const [playerId, info] of this.players.entries()) {
+      if (!info.connected || !this.readyPlayers.has(playerId)) {
+        return false;
+      }
+    }
     return true;
   }
 

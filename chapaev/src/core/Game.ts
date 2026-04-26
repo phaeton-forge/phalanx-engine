@@ -15,7 +15,7 @@ import { GameHUDScreen } from '../ui/screens/GameHUD.ts';
 import { bindHUDToWorld } from '../ui/HUDBindings.ts';
 import { bootstrapWorld } from './WorldBootstrapper.ts';
 import { PauseController } from './PauseController.ts';
-import type { MatchFoundEvent } from 'phalanx-client';
+import type { MatchFoundEvent, ReconnectStateEvent } from 'phalanx-client';
 
 export type GameMode = 'hotseat' | 'online';
 
@@ -45,7 +45,9 @@ export class Game {
   private world: GameWorld | null = null;
   private flickInputSystem: FlickInputSystem | null = null;
   private commandFlushUnsubscribe: (() => void) | null = null;
+  private reconnectStateUnsubscribe: (() => void) | null = null;
   private localTeam: TeamTag = TeamTag.White;
+  private hasSentClientReady = false;
   private inGame = false;
 
   constructor(canvas: HTMLCanvasElement, mode: GameMode = 'hotseat') {
@@ -228,6 +230,7 @@ export class Game {
 
   private returnToMainMenu(): void {
     this.inGame = false;
+    this.hasSentClientReady = false;
     this.flickInputSystem = null;
     this.pauseController?.reset();
     this.recovery?.stop();
@@ -240,6 +243,8 @@ export class Game {
 
     this.commandFlushUnsubscribe?.();
     this.commandFlushUnsubscribe = null;
+    this.reconnectStateUnsubscribe?.();
+    this.reconnectStateUnsubscribe = null;
 
     this.auth!.unsubscribe();
     this.ctx!.replace();
@@ -288,6 +293,7 @@ export class Game {
     if (!this.ctx) return;
 
     this.inGame = true;
+    this.hasSentClientReady = false;
 
     // teamId: 0 = white, 1 = black.
     const localPlayerIndex = matchData.teamId;
@@ -342,8 +348,7 @@ export class Game {
       afterFrame: () => composer.render(),
     });
 
-    this.ctx.manager.sendReady();
-    console.log('[Game] Sent client-ready signal');
+    this.sendClientReady('initial game start');
   }
 
   // ── Network events ──────────────────────────────────────────────
@@ -375,6 +380,16 @@ export class Game {
       console.warn(`[Game] Desync detected at tick ${tick}`)
     );
 
+    this.reconnectStateUnsubscribe?.();
+    this.reconnectStateUnsubscribe = manager.client.on(
+      'reconnectState',
+      (snapshot: ReconnectStateEvent) => {
+        if (snapshot.state !== 'waiting-for-ready') return;
+        if (!this.inGame || !this.world || !this.hasSentClientReady) return;
+        this.sendClientReady('waiting-for-ready reconnect');
+      }
+    );
+
     manager.client.on('gamePaused', (event) =>
       this.pauseController!.handleNetworkPause(event)
     );
@@ -383,12 +398,21 @@ export class Game {
     );
   }
 
+  private sendClientReady(reason: string): void {
+    if (!this.ctx) return;
+    this.ctx.manager.sendReady();
+    this.hasSentClientReady = true;
+    console.log(`[Game] Sent client-ready signal (${reason})`);
+  }
+
   // ── Cleanup ─────────────────────────────────────────────────────
 
   dispose(): void {
     this.menuPresenter.stopAutoRotate();
     this.commandFlushUnsubscribe?.();
     this.commandFlushUnsubscribe = null;
+    this.reconnectStateUnsubscribe?.();
+    this.reconnectStateUnsubscribe = null;
     if (this.world) {
       this.world.stop();
       this.world.dispose();
