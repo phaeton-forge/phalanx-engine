@@ -48,6 +48,7 @@ export class RoomRecoveryManager {
   private activeRoomCode: string | null = null;
   private isRecovering = false;
   private pendingRecoverRequested = false;
+  private pendingForceReconnectRequested = false;
   private recoverAttempt = 0;
   private recoverRetryTimer: ReturnType<typeof setTimeout> | null = null;
   private recoverScheduleTimer: ReturnType<typeof setTimeout> | null = null;
@@ -152,8 +153,25 @@ export class RoomRecoveryManager {
     this.disarmPrivateRoomEventHooks();
     this.activeRoomCode = null;
     this.pendingRecoverRequested = false;
+    this.pendingForceReconnectRequested = false;
     this.recoverAttempt = 0;
     clearActiveRoom();
+  }
+
+  /**
+   * Recover through a fresh socket even if Socket.IO still reports the
+   * current one as connected. This handles mobile carrier/WebView stalls
+   * where server→client packets stop arriving but heartbeat timeout has not
+   * fired yet, so the normal `disconnected` hook would be too late.
+   */
+  forceRecover(reason: string): void {
+    if (!this.activeRoomCode) {
+      this.log('forceRecover:skip-no-active-room', { reason });
+      return;
+    }
+    this.log('forceRecover:request', { reason });
+    this.pendingForceReconnectRequested = true;
+    this.scheduleRecover(RoomRecoveryManager.NETWORK_STABILIZE_DELAY_MS);
   }
 
   /**
@@ -174,7 +192,9 @@ export class RoomRecoveryManager {
     }
 
     this.isRecovering = true;
+    const forceReconnect = this.pendingForceReconnectRequested;
     this.pendingRecoverRequested = false;
+    this.pendingForceReconnectRequested = false;
     if (this.recoverRetryTimer) {
       clearTimeout(this.recoverRetryTimer);
       this.recoverRetryTimer = null;
@@ -187,6 +207,7 @@ export class RoomRecoveryManager {
       this.log('tryRecover:start', {
         code,
         attempt: this.recoverAttempt + 1,
+        forceReconnect,
         navigatorOnline: RoomRecoveryManager.isOnline(),
       });
       this.ui.setRecoveryStatus('Восстановление подключения…');
@@ -206,6 +227,14 @@ export class RoomRecoveryManager {
       // `room-recover` on it either way; the server's recover path
       // is idempotent and rebinds on the live socket.
       const client = this.ctx.manager.client;
+      if (forceReconnect && client.isConnected()) {
+        this.log('tryRecover:force-reconnect-before', { code });
+        client.disconnect();
+        await RoomRecoveryManager.delay(
+          RoomRecoveryManager.NETWORK_STABILIZE_DELAY_MS,
+        );
+        this.log('tryRecover:force-reconnect-after-disconnect', { code });
+      }
       if (!client.isConnected()) {
         this.log('tryRecover:client-connect-before', { code });
         await client.connect();
@@ -268,6 +297,7 @@ export class RoomRecoveryManager {
       ) {
         this.log('tryRecover:pending-request-reschedule', {
           activeRoomCode: this.activeRoomCode,
+          pendingForceReconnectRequested: this.pendingForceReconnectRequested,
         });
         this.scheduleRecover(RoomRecoveryManager.NETWORK_STABILIZE_DELAY_MS);
       }
@@ -430,6 +460,7 @@ export class RoomRecoveryManager {
       isRecovering: this.isRecovering,
       pendingRecoverRequested: this.pendingRecoverRequested,
       recoverAttempt: this.recoverAttempt,
+      pendingForceReconnectRequested: this.pendingForceReconnectRequested,
       playerId: this.ctx.manager.localPlayerId,
       clientConnected: this.ctx.manager.client.isConnected(),
       clientState: this.ctx.manager.client.getClientState(),

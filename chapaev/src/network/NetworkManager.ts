@@ -24,7 +24,11 @@ import { SERVER_URL, AUTH_CONFIG } from '../config/constants.ts';
  */
 const GUEST_PLAYER_ID_STORAGE_KEY = 'chapaev:guestPlayerId:v1';
 const DESKTOP_SOCKET_TRANSPORTS = ['websocket'] as const satisfies readonly SocketTransport[];
-const MOBILE_SOCKET_TRANSPORTS = ['websocket', 'polling'] as const satisfies readonly SocketTransport[];
+// iOS/Telegram WebView on carrier networks can establish a WebSocket and
+// then silently stop delivering packets until Socket.IO's heartbeat closes it
+// tens of seconds later. Chapayev uses event-mode lockstep, so polling is a
+// safer mobile transport and avoids losing countdown/game-start broadcasts.
+const MOBILE_SOCKET_TRANSPORTS = ['polling'] as const satisfies readonly SocketTransport[];
 
 function getSocketTransports(): readonly SocketTransport[] {
   return isMobileBrowser() ? MOBILE_SOCKET_TRANSPORTS : DESKTOP_SOCKET_TRANSPORTS;
