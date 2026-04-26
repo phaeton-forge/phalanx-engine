@@ -24,7 +24,7 @@ import { SERVER_URL, AUTH_CONFIG } from '../config/constants.ts';
  */
 const GUEST_PLAYER_ID_STORAGE_KEY = 'chapaev:guestPlayerId:v1';
 const DESKTOP_SOCKET_TRANSPORTS = ['websocket'] as const satisfies readonly SocketTransport[];
-const MOBILE_SOCKET_TRANSPORTS = ['polling', 'websocket'] as const satisfies readonly SocketTransport[];
+const MOBILE_SOCKET_TRANSPORTS = ['websocket', 'polling'] as const satisfies readonly SocketTransport[];
 
 function getSocketTransports(): readonly SocketTransport[] {
   return isMobileBrowser() ? MOBILE_SOCKET_TRANSPORTS : DESKTOP_SOCKET_TRANSPORTS;

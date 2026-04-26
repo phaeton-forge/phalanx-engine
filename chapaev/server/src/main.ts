@@ -79,7 +79,12 @@ async function main() {
     timeoutTicks: 60,
     disconnectTicks: 200,
     reconnectGracePeriodMs: 30000,
-    readyTimeoutMs: 15000,
+    // Mobile hosts on carrier networks can stop receiving packets during
+    // countdown, while Socket.IO only reports `ping timeout` ~25-30s later.
+    // Keep the pre-ready match alive long enough for that disconnect to be
+    // detected and for `room-recover` to reclaim the match by room code.
+    readyTimeoutMs: 90000,
+    playersConnectTimeoutMs: 90000,
     enableStateHashing: true,
     stateHashInterval: 60,
     desync: {

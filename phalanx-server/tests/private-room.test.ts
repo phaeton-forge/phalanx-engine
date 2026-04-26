@@ -1152,4 +1152,67 @@ describe('PrivateRoomService — host countdown recovery (snapshot)', () => {
     const hostStart = await hostGameStartPromise;
     expect(hostStart.randomSeed).toBe(guestStart.randomSeed);
   });
+
+  it('keeps a private match recoverable when host disconnects during waiting-for-ready', async () => {
+    await server.stop();
+    server = new Phalanx({
+      port: TEST_PORT,
+      matchmakingIntervalMs: 100,
+      gameMode: '1v1',
+      countdownSeconds: 0,
+      tickRate: 20,
+      readyTimeoutMs: 100,
+      playersConnectTimeoutMs: 2000,
+      cors: { origin: '*' },
+    });
+    await server.start();
+
+    const host = createClient();
+    const guest = createClient();
+    await connectClient(host);
+    await connectClient(guest);
+
+    const createdPromise = new Promise<RoomCreatedEvent>((resolve) => {
+      host.on('room-created', (data: RoomCreatedEvent) => resolve(data));
+    });
+    host.emit('room-create', { playerId: 'host1', username: 'Host' });
+    const created = await createdPromise;
+
+    const hostGameStartPromise = new Promise<{ matchId: string }>((resolve) => {
+      host.on('game-start', resolve);
+    });
+    guest.emit('room-join', {
+      playerId: 'guest1',
+      username: 'Guest',
+      code: created.code,
+    });
+    const hostGameStart = await hostGameStartPromise;
+    expect(hostGameStart.matchId).toBeDefined();
+
+    host.disconnect();
+    await new Promise((resolve) => setTimeout(resolve, 250));
+
+    const host2 = createClient();
+    await connectClient(host2);
+    const recoveredPromise = new Promise<RoomRecoveredEvent>((resolve) => {
+      host2.on('room-recovered', resolve);
+    });
+    const reconnectStatePromise = new Promise<{ matchId: string; state: string; gameStartEmitted?: boolean }>(
+      (resolve) => {
+        host2.on('reconnect-state', resolve);
+      },
+    );
+    host2.emit('room-recover', {
+      playerId: 'host1',
+      username: 'Host',
+      code: created.code,
+    });
+
+    const recovered = await recoveredPromise;
+    const reconnectState = await reconnectStatePromise;
+    expect(recovered.code).toBe(created.code);
+    expect(reconnectState.matchId).toBe(hostGameStart.matchId);
+    expect(reconnectState.state).toBe('waiting-for-ready');
+    expect(reconnectState.gameStartEmitted).toBe(true);
+  });
 });

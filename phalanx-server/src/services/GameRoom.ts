@@ -315,10 +315,7 @@ export class GameRoom {
     if (this.state !== 'waiting-for-players') return;
 
     if (this.areAllPlayersConnected()) {
-      if (this.playersConnectTimeout) {
-        clearTimeout(this.playersConnectTimeout);
-        this.playersConnectTimeout = null;
-      }
+      this.clearPlayersReconnectTimeout('all players connected before countdown');
       console.log(
         `[GameRoom ${this.id}] all players connected — starting countdown`,
       );
@@ -490,9 +487,64 @@ export class GameRoom {
       readyTimeoutMs: this.readyTimeoutMs,
       players: this.getPlayerDebugSnapshot(),
     });
+    this.armReadyTimeout();
+  }
+
+  private armReadyTimeout(): void {
+    if (this.readyTimeout) {
+      clearTimeout(this.readyTimeout);
+    }
     this.readyTimeout = setTimeout(() => {
       this.endMatchDueToReadyTimeout();
     }, this.readyTimeoutMs);
+    this.log('armReadyTimeout', { readyTimeoutMs: this.readyTimeoutMs });
+  }
+
+  private clearReadyTimeout(reason: string): void {
+    if (!this.readyTimeout) return;
+    clearTimeout(this.readyTimeout);
+    this.readyTimeout = null;
+    this.log('clearReadyTimeout', { reason });
+  }
+
+  private armPlayersReconnectTimeout(reason: string): void {
+    if (this.playersConnectTimeout) return;
+    this.playersConnectTimeout = setTimeout(() => {
+      this.playersConnectTimeout = null;
+      if (this.state !== 'waiting-for-players' && this.state !== 'waiting-for-ready') {
+        return;
+      }
+
+      const missing = this.getDisconnectedPlayerIds();
+      if (missing.length === 0) {
+        if (this.state === 'waiting-for-ready' && !this.readyTimeout) {
+          this.armReadyTimeout();
+        }
+        return;
+      }
+
+      console.log(
+        `[GameRoom ${this.id}] players reconnect timeout — ${missing.length} player(s) never returned: ${missing.join(', ')}`,
+      );
+      this.log('players-reconnect-timeout', { missing, reason });
+      this.io.to(this.roomId).emit('match-end', {
+        reason: 'players-not-connected',
+      });
+      this.state = 'finished';
+      this.eventEmitter('match-ended', this.id, 'players-not-connected');
+    }, this.playersConnectTimeoutMs);
+    this.log('armPlayersReconnectTimeout', {
+      reason,
+      playersConnectTimeoutMs: this.playersConnectTimeoutMs,
+      missingPlayerIds: this.getDisconnectedPlayerIds(),
+    });
+  }
+
+  private clearPlayersReconnectTimeout(reason: string): void {
+    if (!this.playersConnectTimeout) return;
+    clearTimeout(this.playersConnectTimeout);
+    this.playersConnectTimeout = null;
+    this.log('clearPlayersReconnectTimeout', { reason });
   }
 
   /**
@@ -634,10 +686,7 @@ export class GameRoom {
     this.io.to(this.roomId).emit('player-ready', { playerId });
 
     if (this.areAllPlayersConnectedAndReady()) {
-      if (this.readyTimeout) {
-        clearTimeout(this.readyTimeout);
-        this.readyTimeout = null;
-      }
+      this.clearReadyTimeout('all players ready');
       this.log('handlePlayerReady:all-ready-start-game', {
         readyPlayers: Array.from(this.readyPlayers),
       });
@@ -650,6 +699,17 @@ export class GameRoom {
    */
   private endMatchDueToReadyTimeout(): void {
     this.readyTimeout = null;
+    const disconnectedPlayerIds = this.getDisconnectedPlayerIds();
+    if (disconnectedPlayerIds.length > 0) {
+      this.log('ready-timeout:defer-for-disconnected-players', {
+        disconnectedPlayerIds,
+        readyPlayers: Array.from(this.readyPlayers),
+        players: this.getPlayerDebugSnapshot(),
+      });
+      this.armPlayersReconnectTimeout('ready timeout while players disconnected');
+      return;
+    }
+
     this.log('ready-timeout', {
       readyPlayers: Array.from(this.readyPlayers),
       players: this.getPlayerDebugSnapshot(),
@@ -1251,6 +1311,11 @@ export class GameRoom {
         state: this.state,
       });
       player.connected = false;
+      this.readyPlayers.delete(playerId);
+      if (this.state === 'waiting-for-ready') {
+        this.clearReadyTimeout('player disconnected during waiting-for-ready');
+        this.armPlayersReconnectTimeout('player disconnected during waiting-for-ready');
+      }
       this.eventEmitter('player-disconnected', playerId, this.id);
 
       // Notify other players with grace period info
@@ -1296,6 +1361,11 @@ export class GameRoom {
     // again after its recovered socket is wired and local game state is ready.
     if (this.state === 'waiting-for-ready') {
       this.readyPlayers.delete(playerId);
+    }
+
+    if (this.state === 'waiting-for-ready' && this.areAllPlayersConnected()) {
+      this.clearPlayersReconnectTimeout('all players reconnected during waiting-for-ready');
+      this.armReadyTimeout();
     }
 
     // Update activity timestamp
