@@ -125,6 +125,7 @@ export type {
   PhalanxClientConfig,
   PhalanxAuthConfig,
   PauseConfig,
+  SocketTransport,
 
   // Auth
   PhalanxAuthState,

@@ -94,6 +94,8 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
       maxReconnectAttempts: 5,
       reconnectDelayMs: 1000,
       connectionTimeoutMs: 10000,
+      recoverRoomTimeoutMs: 10000,
+      socketTransports: ['websocket'],
       tickRate: 20,
       debug: false,
       ...config,
@@ -116,6 +118,8 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
         username: this.config.username!,
         authToken: this.config.authToken,
         connectionTimeoutMs: this.config.connectionTimeoutMs,
+        recoverRoomTimeoutMs: this.config.recoverRoomTimeoutMs,
+        socketTransports: this.config.socketTransports,
         autoReconnect: this.config.autoReconnect,
         maxReconnectAttempts: this.config.maxReconnectAttempts,
         reconnectDelayMs: this.config.reconnectDelayMs,
@@ -546,11 +550,15 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
    * original flow resume naturally.
    *
    * Rejects with the server's `room-error` message (e.g. `'Room expired'`)
-   * or `'Recover timeout'` if the server doesn't answer within 10 s.
+   * or `'Recover timeout'` if the server doesn't answer before the configured
+   * recovery timeout.
    */
-  async recoverRoom(code: string): Promise<RoomRecoveredEvent> {
+  async recoverRoom(
+    code: string,
+    timeoutMs?: number,
+  ): Promise<RoomRecoveredEvent> {
     this.ensureConnected();
-    const event = await this.socketManager.recoverRoom(code);
+    const event = await this.socketManager.recoverRoom(code, timeoutMs);
     // Host is back in the "waiting for opponent / countdown" flow —
     // mirror the state createRoom would have left us in so downstream
     // isPlaying() checks stay consistent. The server may also have just
