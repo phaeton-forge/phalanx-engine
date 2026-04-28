@@ -103,11 +103,36 @@ import {
 ## Quick Start
 
 ```typescript
-import { GameWorld } from 'phalanx-ecs';
+import { GameWorld, GameSystem, defineSoASchema } from 'phalanx-ecs';
 import { PhysicsWorld, PhysicsBodyComponent } from 'phalanx-physics';
 import { FP } from 'phalanx-math';
 
-// 1. Create the physics facade
+// 0. Define the transform schema your game uses (consumer-owned).
+//    Physics will read fpPositionX/Y/Z and optionally write visualPositionX/Z.
+const TransformSoASchema = defineSoASchema({
+  fpPositionX: 'i64',
+  fpPositionY: 'i64',
+  fpPositionZ: 'i64',
+  visualPositionX: 'f64',
+  visualPositionY: 'f64',
+  visualPositionZ: 'f64',
+}, 'Transform');
+
+// Minimal placeholder systems — replace with your real ones.
+// MovementSystem runs BEFORE physics and writes velocities onto PhysicsBody SoA.
+class MovementSystem extends GameSystem {
+  public override processTick(_tick: number): void { /* set velocities here */ }
+}
+// RenderSystem runs in the frame pipeline (interpolation, scene updates, etc.).
+class RenderSystem extends GameSystem {
+  public override update(_alpha: number, _dt: number): void { /* render here */ }
+}
+const movementSystem = new MovementSystem();
+const renderSystem = new RenderSystem();
+
+// 1. Create GameWorld and the physics facade
+const world = new GameWorld({ componentTypes: { /* your ComponentType registry */ } as any });
+
 const physicsWorld = new PhysicsWorld({
   gridCellSize: FP.FromFloat(8),
   subSteps: 3,
@@ -120,19 +145,20 @@ const physicsWorld = new PhysicsWorld({
 //    PhysicsWorld owns one PhysicsSystem that runs the full broad → narrow → resolve pipeline.
 const { physicsSystem } = physicsWorld.getSystems();
 world.registerSystems(
-  [movementSystem, physicsSystem],
-  [renderSystem],
+  [movementSystem, physicsSystem],   // tick systems
+  [renderSystem],                    // frame systems
 );
 
-// 3. Link transform store on first tick
+// 3. Link transform store on first tick (after stores have been created)
 world.start({
   beforeTick: (tick) => {
     if (tick === 0) {
       const txStore = world.entityManager.getOrCreateSoAStore(TransformSoASchema);
-      physicsWorld.setTransformStore(txStore, {
+      physicsWorld.setTransformStore(txStore as any, {
         fpPositionX: 'fpPositionX',
         fpPositionY: 'fpPositionY',
         fpPositionZ: 'fpPositionZ',
+        // Optional: only X and Z are written by PhysicsSystem
         visualPositionX: 'visualPositionX',
         visualPositionZ: 'visualPositionZ',
       });
@@ -141,12 +167,14 @@ world.start({
 });
 
 // 4. Add physics bodies to entities
+//    (entity here is whatever your game uses — typically obtained via world.entityManager)
+declare const entity: { id: number; addComponent(c: unknown): void };
 const body = new PhysicsBodyComponent(entity.id, {
   radius: FP.FromFloat(1.0),
 });
 entity.addComponent(body);
 
-// 5. Subscribe to collision events
+// 5. Subscribe to collision events (must be called after world.start())
 physicsWorld.onCollision((event) => {
   console.log(`Collision: ${event.entityA} ↔ ${event.entityB}`);
 });
@@ -227,9 +255,13 @@ class PhysicsWorld {
 
   // Event subscriptions (must be called after GameWorld.start())
   onCollision(callback: (event: CollisionEvent) => void): () => void;
+  onBoundsExit(callback: (event: BoundsExitEvent) => void): () => void;
+
+  // Planned — not yet emitted by PhysicsSystem.
+  // The handlers exist and subscribe to PhysicsEvents.TRIGGER_ENTER / TRIGGER_EXIT,
+  // but PhysicsSystem currently only emits COLLISION and BOUNDS_EXIT.
   onTriggerEnter(callback: (event: CollisionEvent) => void): () => void;
   onTriggerExit(callback: (event: CollisionEvent) => void): () => void;
-  onBoundsExit(callback: (event: BoundsExitEvent) => void): () => void;
 
   // Impulse / settle queries
   applyImpulse(entityId: number, vx: FixedPoint, vz: FixedPoint): void;

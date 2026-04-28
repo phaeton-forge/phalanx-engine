@@ -276,7 +276,7 @@ All commands are run from the repository root.
 ## Requirements
 
 - Node.js 24.x (`>=24.0.0 <25.0.0`)
-- pnpm 10.x (install with `corepack enable && corepack prepare pnpm@10.33.0 --activate`)
+- pnpm 10.x (install with `corepack enable && corepack prepare pnpm@10.33.2 --activate`)
 - Socket.IO compatible transport (HTTP or HTTPS / WSS)
 
 ## License

@@ -34,7 +34,9 @@ Use this skill when the user asks to:
 PhysicsWorld (Facade)
 └── PhysicsSystem        ← Velocity integration + collision pipeline (sub-stepped)
     ├── SpatialHashGrid  ← O(n) broad-phase via spatial hashing
-    └── NarrowPhase      ← Circle vs Circle / AABB collision tests
+    └── NarrowPhase      ← Circle vs Circle collision tests
+                           (circleVsAABB / aabbVsAABB exist on NarrowPhase but are not
+                            wired into the PhysicsSystem pipeline today — planned.)
 ```
 
 Pipeline per tick (all deterministic, fixed-point), all driven by a single `PhysicsSystem.processTick()`:
@@ -46,10 +48,17 @@ PhysicsSystem.processTick()
       → integrate velocities into positions
       → rebuild spatial grid
       → query candidate pairs
-      → narrow-phase circle-circle / AABB tests
+      → narrow-phase circle-vs-circle tests
       → resolve: impulse push + positional separation
-      → emit PhysicsEvents.COLLISION / TRIGGER_* / BOUNDS_EXIT via EventBus
+      → emit PhysicsEvents.COLLISION via EventBus
+    after iteration: emit PhysicsEvents.BOUNDS_EXIT for any bodies ejected this tick
 ```
+
+> **Events actually emitted by `PhysicsSystem`:** `PhysicsEvents.COLLISION` and
+> `PhysicsEvents.BOUNDS_EXIT` only. `TRIGGER_ENTER` / `TRIGGER_EXIT` are reserved on
+> the event constants and have subscriber methods on `PhysicsWorld`, but are **not yet
+> emitted** — planned, not implemented. Likewise, AABB-based contact tests are not
+> wired into `PhysicsSystem.processTick()`.
 
 ### Key Design Decisions
 
@@ -139,7 +148,7 @@ world.start({
 });
 ```
 
-**Important:** The `visualPositionX/Y/Z` fields are optional. When provided, `PhysicsSystem` writes `FP.ToFloat()` values to these f64 arrays whenever it updates fp positions. This is critical when game systems (like CombatSystem) read visual positions during ticks.
+**Important:** The `visualPositionX` and `visualPositionZ` fields are optional. When provided, `PhysicsSystem` writes `FP.ToFloat()` values to those f64 arrays whenever it updates fp positions. This is critical when game systems (like CombatSystem) read visual positions during ticks. (`visualPositionY` is accepted on the field mapping type for forward-compatibility, but `PhysicsSystem` does not currently write it — only X and Z are synced.)
 
 ### 4. Create PhysicsBodyComponent for Entities
 
@@ -312,13 +321,13 @@ interface TransformFieldMapping {
   fpPositionX: string;       // Required: i64 field name for X position
   fpPositionY: string;       // Required: i64 field name for Y position
   fpPositionZ: string;       // Required: i64 field name for Z position
-  visualPositionX?: string;  // Optional: f64 field to sync with FP.ToFloat(fpX)
-  visualPositionY?: string;  // Optional: f64 field to sync with FP.ToFloat(fpY)
-  visualPositionZ?: string;  // Optional: f64 field to sync with FP.ToFloat(fpZ)
+  visualPositionX?: string;  // Optional: f64 field synced with FP.ToFloat(fpX) by PhysicsSystem
+  visualPositionY?: string;  // Reserved on the type, but NOT written by PhysicsSystem today
+  visualPositionZ?: string;  // Optional: f64 field synced with FP.ToFloat(fpZ) by PhysicsSystem
 }
 ```
 
-When `visualPositionX/Z` are provided, PhysicsSystem writes the float equivalent alongside every fp position update. This avoids stale visual caches between ticks.
+When `visualPositionX` and `visualPositionZ` are provided, PhysicsSystem writes the float equivalent alongside every fp position update. This avoids stale visual caches between ticks. `visualPositionY` is part of the type for forward-compatibility but is not synced by the current implementation.
 
 ## PhysicsWorldConfig
 
