@@ -98,21 +98,8 @@ export class PrivateRoomService {
     socket: Socket,
     gameType?: string
   ): void {
-    this.log('createRoom:request', {
-      playerId,
-      username,
-      socketId: socket.id,
-      gameType,
-      existingRooms: this.rooms.size,
-      activeMatches: this.matches.size,
-      socketMatchId: (socket.data as { matchId?: string }).matchId,
-    });
     // Reject if player is already in a match
     if ((socket.data as { matchId?: string }).matchId) {
-      this.log('createRoom:reject-already-in-match', {
-        playerId,
-        socketId: socket.id,
-      });
       socket.emit('room-error', {
         message: 'Already in a match',
       } satisfies RoomErrorEvent);
@@ -121,7 +108,6 @@ export class PrivateRoomService {
 
     // Reject if player is currently queued in matchmaking
     if (this.isPlayerQueued?.(playerId)) {
-      this.log('createRoom:reject-already-queued', { playerId, socketId: socket.id });
       socket.emit('room-error', {
         message: 'Already in matchmaking queue',
       } satisfies RoomErrorEvent);
@@ -131,11 +117,6 @@ export class PrivateRoomService {
     // Prevent duplicate rooms per player
     for (const room of this.rooms.values()) {
       if (room.host.playerId === playerId) {
-        this.log('createRoom:reject-duplicate-room', {
-          playerId,
-          socketId: socket.id,
-          existingCode: room.code,
-        });
         socket.emit('room-error', {
           message: 'You already have an active room',
         } satisfies RoomErrorEvent);
@@ -159,12 +140,6 @@ export class PrivateRoomService {
         this.removeRoom(code);
         expired.hostSocket?.emit('room-expired', { code });
         console.log(`[PrivateRoom] Room ${code} expired`);
-        this.log('room:expired', {
-          code,
-          hostPlayerId: expired.host.playerId,
-          hostSocketId: expired.hostSocketId,
-          hostOnline: expired.hostSocket !== null,
-        });
       }
     }, PrivateRoomService.ROOM_TTL_MS);
 
@@ -188,14 +163,6 @@ export class PrivateRoomService {
 
     socket.emit('room-created', { code } satisfies RoomCreatedEvent);
     console.log(`[PrivateRoom] Room ${code} created by ${playerId}`);
-    this.log('createRoom:success', {
-      code,
-      playerId,
-      username,
-      socketId: socket.id,
-      resolvedGameType,
-      ttlMs: PrivateRoomService.ROOM_TTL_MS,
-    });
   }
 
   /**
@@ -214,18 +181,8 @@ export class PrivateRoomService {
     socket: Socket,
     code: string
   ): void {
-    this.log('joinRoom:request', {
-      playerId,
-      username,
-      socketId: socket.id,
-      code,
-      socketMatchId: (socket.data as { matchId?: string }).matchId,
-      activeRooms: this.rooms.size,
-      activeMatches: this.matches.size,
-    });
     // Reject if player is already in a match
     if ((socket.data as { matchId?: string }).matchId) {
-      this.log('joinRoom:reject-already-in-match', { playerId, socketId: socket.id, code });
       socket.emit('room-error', {
         message: 'Already in a match',
       } satisfies RoomErrorEvent);
@@ -234,7 +191,6 @@ export class PrivateRoomService {
 
     // Reject if player is currently queued in matchmaking
     if (this.isPlayerQueued?.(playerId)) {
-      this.log('joinRoom:reject-already-queued', { playerId, socketId: socket.id, code });
       socket.emit('room-error', {
         message: 'Already in matchmaking queue',
       } satisfies RoomErrorEvent);
@@ -245,11 +201,6 @@ export class PrivateRoomService {
     const room = this.rooms.get(normalizedCode);
 
     if (!room) {
-      this.log('joinRoom:reject-room-not-found', {
-        playerId,
-        socketId: socket.id,
-        normalizedCode,
-      });
       socket.emit('room-error', {
         message: 'Room not found',
       } satisfies RoomErrorEvent);
@@ -257,11 +208,6 @@ export class PrivateRoomService {
     }
 
     if (room.host.playerId === playerId) {
-      this.log('joinRoom:reject-own-room', {
-        playerId,
-        socketId: socket.id,
-        normalizedCode,
-      });
       socket.emit('room-error', {
         message: 'Cannot join your own room',
       } satisfies RoomErrorEvent);
@@ -284,16 +230,6 @@ export class PrivateRoomService {
 
     const resolvedConfig = this.resolveGameTypeConfig(room.gameType);
     const matchId = `match-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
-    this.log('joinRoom:create-match', {
-      normalizedCode,
-      matchId,
-      hostPlayerId: room.host.playerId,
-      hostSocketId: room.host.socketId,
-      hostSocketOnline: this.io.sockets.sockets.has(room.host.socketId),
-      guestPlayerId: playerId,
-      guestSocketId: socket.id,
-      gameType: room.gameType,
-    });
 
     const gameRoom = new GameRoom(
       matchId,
@@ -315,12 +251,6 @@ export class PrivateRoomService {
     console.log(
       `[PrivateRoom] Room ${code} → match ${matchId} (${room.host.playerId} vs ${playerId})`
     );
-    this.log('joinRoom:success', {
-      normalizedCode,
-      matchId,
-      hostPlayerId: room.host.playerId,
-      guestPlayerId: playerId,
-    });
   }
 
   /**
@@ -331,17 +261,14 @@ export class PrivateRoomService {
    * `room-cancelled` is emitted on the socket that initiated the cancel.
    */
   cancelRoom(playerId: string, socket: Socket): void {
-    this.log('cancelRoom:request', { playerId, socketId: socket.id });
     for (const [code, room] of this.rooms) {
       if (room.host.playerId === playerId) {
         this.removeRoom(code);
         socket.emit('room-cancelled', { code });
         console.log(`[PrivateRoom] Room ${code} cancelled by ${playerId}`);
-        this.log('cancelRoom:success', { playerId, socketId: socket.id, code });
         return;
       }
     }
-    this.log('cancelRoom:no-room', { playerId, socketId: socket.id });
   }
 
   /**
@@ -374,24 +301,10 @@ export class PrivateRoomService {
    */
   recoverRoom(playerId: string, socket: Socket, code: string): boolean {
     const normalizedCode = code.toUpperCase();
-    this.log('recoverRoom:request', {
-      playerId,
-      socketId: socket.id,
-      code,
-      normalizedCode,
-      hasWaitingRoom: this.rooms.has(normalizedCode),
-      mappedMatchId: this.matchByOriginalCode.get(normalizedCode),
-    });
 
     // Case 1: live room, caller is the host.
     const room = this.rooms.get(normalizedCode);
     if (room && room.host.playerId === playerId) {
-      this.log('recoverRoom:case-live-room', {
-        playerId,
-        code: room.code,
-        oldHostSocketId: room.hostSocketId,
-        newSocketId: socket.id,
-      });
       room.hostSocket = socket;
       room.hostSocketId = socket.id;
       // Keep QueuedPlayer.socketId in sync so a guest joining now
@@ -401,11 +314,6 @@ export class PrivateRoomService {
         code: room.code,
       } satisfies RoomRecoveredEvent);
       console.log(`[PrivateRoom] Room ${room.code} recovered by ${playerId}`);
-      this.log('recoverRoom:success-live-room', {
-        playerId,
-        code: room.code,
-        socketId: socket.id,
-      });
       return true;
     }
 
@@ -418,12 +326,6 @@ export class PrivateRoomService {
     if (matchId) {
       const match = this.matches.get(matchId);
       if (match && match.hasPlayer(playerId)) {
-        this.log('recoverRoom:case-existing-match', {
-          playerId,
-          socketId: socket.id,
-          normalizedCode,
-          matchId,
-        });
         match.handleReconnect(playerId, socket.id);
         socket.emit('room-recovered', {
           code: normalizedCode,
@@ -431,22 +333,11 @@ export class PrivateRoomService {
         console.log(
           `[PrivateRoom] Player ${playerId} recovered into match ${matchId} via code ${normalizedCode}`,
         );
-        this.log('recoverRoom:success-existing-match', {
-          playerId,
-          socketId: socket.id,
-          normalizedCode,
-          matchId,
-        });
         return true;
       }
       // Stale index entry — clean it up rather than letting it
       // accumulate forever for a long-dead match.
       if (!match) {
-        this.log('recoverRoom:stale-match-index', {
-          playerId,
-          normalizedCode,
-          matchId,
-        });
         this.matchByOriginalCode.delete(normalizedCode);
         this.originalCodeByMatch.delete(matchId);
       }
@@ -458,11 +349,6 @@ export class PrivateRoomService {
     socket.emit('room-error', {
       message: 'Room expired',
     } satisfies RoomErrorEvent);
-    this.log('recoverRoom:failed', {
-      playerId,
-      socketId: socket.id,
-      normalizedCode,
-    });
     return false;
   }
 
@@ -472,18 +358,12 @@ export class PrivateRoomService {
    * mobile backgrounding does not destroy share-link rooms.
    */
   handleDisconnect(socketId: string): void {
-    this.log('handleDisconnect:request', { socketId });
     for (const [code, room] of this.rooms) {
       if (room.hostSocketId === socketId) {
         room.hostSocket = null;
         console.log(
           `[PrivateRoom] Host of room ${code} disconnected — room kept alive until TTL/cancel/join`
         );
-        this.log('handleDisconnect:waiting-room-host-offline', {
-          code,
-          hostPlayerId: room.host.playerId,
-          socketId,
-        });
       }
     }
 
@@ -496,14 +376,6 @@ export class PrivateRoomService {
     }
   }
 
-  private log(message: string, details: Record<string, unknown> = {}): void {
-    console.log(`[PrivateRoomService][trace] ${message}`, {
-      at: new Date().toISOString(),
-      activeRooms: this.rooms.size,
-      activeMatches: this.matches.size,
-      ...details,
-    });
-  }
 
   /**
    * Get a match created by this service (for command routing etc.)

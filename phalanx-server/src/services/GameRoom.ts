@@ -202,17 +202,6 @@ export class GameRoom {
    * countdown alone" guarantee for free.
    */
   start(): void {
-    this.log('start:begin', {
-      teams: this.teams.map((team, teamId) => ({
-        teamId,
-        players: team.map((player) => ({
-          playerId: player.playerId,
-          socketId: player.socketId,
-          socketOnline: this.io.sockets.sockets.has(player.socketId),
-        })),
-      })),
-      countdownSeconds: this.config.countdownSeconds,
-    });
     // Wire each player's socket: assign socket.data, join the room,
     // and reflect their actual connection state in `players`. The
     // constructor optimistically initialises everyone as connected,
@@ -229,11 +218,6 @@ export class GameRoom {
         const socket = this.io.sockets.sockets.get(player.socketId);
         const playerInfo = this.players.get(player.playerId);
         if (socket) {
-          this.log('start:wire-player-online', {
-            playerId: player.playerId,
-            socketId: player.socketId,
-            teamId,
-          });
           // Assign match data to socket
           const socketData = socket.data as SocketData;
           socketData.matchId = this.id;
@@ -248,11 +232,6 @@ export class GameRoom {
           void socket.join(this.roomId);
           if (playerInfo) playerInfo.connected = true;
         } else if (playerInfo) {
-          this.log('start:player-socket-missing', {
-            playerId: player.playerId,
-            socketId: player.socketId,
-            teamId,
-          });
           // Socket is gone — this player will need to recover before
           // we can begin. They'll show up in `match-waiting-for-players`.
           playerInfo.connected = false;
@@ -269,9 +248,6 @@ export class GameRoom {
       // Happy path — everyone is here, run the original immediate-
       // countdown flow.
       this.state = 'countdown';
-      this.log('start:all-connected-start-countdown', {
-        players: this.getPlayerDebugSnapshot(),
-      });
       this.startGameCountdown();
       return;
     }
@@ -279,10 +255,6 @@ export class GameRoom {
     // Defer: at least one socket is missing. Sit in
     // `'waiting-for-players'` and announce who we're waiting on.
     this.state = 'waiting-for-players';
-    this.log('start:waiting-for-players', {
-      missingPlayerIds: this.getDisconnectedPlayerIds(),
-      players: this.getPlayerDebugSnapshot(),
-    });
     this.notifyWaitingForPlayers();
 
     this.playersConnectTimeout = setTimeout(() => {
@@ -295,7 +267,6 @@ export class GameRoom {
       console.log(
         `[GameRoom ${this.id}] players-connect timeout — ${missing.length} player(s) never returned: ${missing.join(', ')}`,
       );
-      this.log('players-connect-timeout', { missing });
       this.io.to(this.roomId).emit('match-end', {
         reason: 'players-not-connected',
       });
@@ -320,18 +291,11 @@ export class GameRoom {
         `[GameRoom ${this.id}] all players connected — starting countdown`,
       );
       this.state = 'countdown';
-      this.log('maybeBeginCountdownAfterReconnect:all-connected', {
-        players: this.getPlayerDebugSnapshot(),
-      });
       this.startGameCountdown();
     } else {
       // Still missing someone — refresh the announcement so any
       // already-connected client UI (e.g. "waiting for X, Y…") can
       // update its label.
-      this.log('maybeBeginCountdownAfterReconnect:still-missing', {
-        missingPlayerIds: this.getDisconnectedPlayerIds(),
-        players: this.getPlayerDebugSnapshot(),
-      });
       this.notifyWaitingForPlayers();
     }
   }
@@ -362,7 +326,6 @@ export class GameRoom {
    */
   private notifyWaitingForPlayers(): void {
     const missing = this.getDisconnectedPlayerIds();
-    this.log('notifyWaitingForPlayers', { missing });
     this.io.to(this.roomId).emit('match-waiting-for-players', {
       matchId: this.id,
       missingPlayerIds: missing,
@@ -386,22 +349,8 @@ export class GameRoom {
   ): void {
     for (const [socketId, playerId] of this.socketToPlayer) {
       const player = this.players.get(playerId);
-      if (!player?.connected) {
-        this.log('emitLifecycleToConnectedPlayers:skip-disconnected', {
-          eventName,
-          playerId,
-          socketId,
-        });
-        continue;
-      }
+      if (!player?.connected) continue;
       const socket = this.io.sockets.sockets.get(socketId);
-      this.log('emitLifecycleToConnectedPlayers:emit', {
-        eventName,
-        playerId,
-        socketId,
-        socketOnline: socket !== undefined,
-        payload,
-      });
       socket?.emit(eventName, payload);
     }
   }
@@ -411,18 +360,11 @@ export class GameRoom {
    * Emits countdown events (5, 4, 3, 2, 1, 0) every second, then game-start
    */
   private startGameCountdown(): void {
-    this.log('startGameCountdown:begin', {
-      countdownSeconds: this.config.countdownSeconds,
-      players: this.getPlayerDebugSnapshot(),
-    });
     if (this.config.countdownSeconds <= 0) {
       // Skip countdown entirely — go straight to waiting-for-ready.
       // No deadline to record: the countdown phase is effectively zero
       // length, so a reconnecting client should observe `gameStartEmitted`.
       this.gameStartEmitted = true;
-      this.log('startGameCountdown:skip-countdown-game-start', {
-        randomSeed: this.randomSeed,
-      });
       this.emitLifecycleToConnectedPlayers('game-start', {
         matchId: this.id,
         randomSeed: this.randomSeed,
@@ -436,18 +378,12 @@ export class GameRoom {
     // can compute its own remaining-seconds value without having to wait
     // for the next tick of the 1Hz broadcast.
     this.countdownDeadline = Date.now() + countdown * 1000;
-    this.log('startGameCountdown:deadline-set', {
-      countdown,
-      countdownDeadline: this.countdownDeadline,
-    });
 
     // Emit initial countdown
-    this.log('countdown:emit', { seconds: countdown });
     this.emitLifecycleToConnectedPlayers('countdown', { seconds: countdown });
     countdown--;
 
     this.countdownInterval = setInterval(() => {
-      this.log('countdown:emit', { seconds: countdown });
       this.emitLifecycleToConnectedPlayers('countdown', { seconds: countdown });
       countdown--;
 
@@ -463,10 +399,6 @@ export class GameRoom {
         this.countdownDeadline = null;
         this.gameStartEmitted = true;
         // Emit game-start event with random seed for deterministic RNG
-        this.log('game-start:emit', {
-          randomSeed: this.randomSeed,
-          players: this.getPlayerDebugSnapshot(),
-        });
         this.emitLifecycleToConnectedPlayers('game-start', {
           matchId: this.id,
           randomSeed: this.randomSeed,
@@ -483,10 +415,6 @@ export class GameRoom {
   private enterWaitingForReady(): void {
     this.state = 'waiting-for-ready';
     this.readyPlayers.clear();
-    this.log('enterWaitingForReady', {
-      readyTimeoutMs: this.readyTimeoutMs,
-      players: this.getPlayerDebugSnapshot(),
-    });
     this.armReadyTimeout();
   }
 
@@ -497,14 +425,12 @@ export class GameRoom {
     this.readyTimeout = setTimeout(() => {
       this.endMatchDueToReadyTimeout();
     }, this.readyTimeoutMs);
-    this.log('armReadyTimeout', { readyTimeoutMs: this.readyTimeoutMs });
   }
 
   private clearReadyTimeout(reason: string): void {
     if (!this.readyTimeout) return;
     clearTimeout(this.readyTimeout);
     this.readyTimeout = null;
-    this.log('clearReadyTimeout', { reason });
   }
 
   private armPlayersReconnectTimeout(reason: string): void {
@@ -526,25 +452,18 @@ export class GameRoom {
       console.log(
         `[GameRoom ${this.id}] players reconnect timeout — ${missing.length} player(s) never returned: ${missing.join(', ')}`,
       );
-      this.log('players-reconnect-timeout', { missing, reason });
       this.io.to(this.roomId).emit('match-end', {
         reason: 'players-not-connected',
       });
       this.state = 'finished';
       this.eventEmitter('match-ended', this.id, 'players-not-connected');
     }, this.playersConnectTimeoutMs);
-    this.log('armPlayersReconnectTimeout', {
-      reason,
-      playersConnectTimeoutMs: this.playersConnectTimeoutMs,
-      missingPlayerIds: this.getDisconnectedPlayerIds(),
-    });
   }
 
   private clearPlayersReconnectTimeout(reason: string): void {
     if (!this.playersConnectTimeout) return;
     clearTimeout(this.playersConnectTimeout);
     this.playersConnectTimeout = null;
-    this.log('clearPlayersReconnectTimeout', { reason });
   }
 
   /**
@@ -561,22 +480,7 @@ export class GameRoom {
             teamId,
             team,
           );
-          if (payload) {
-            this.log('notifyMatchFound:emit', {
-              playerId: player.playerId,
-              socketId: player.socketId,
-              teamId,
-              teammates: payload.teammates.length,
-              opponents: payload.opponents.length,
-            });
-            socket.emit('match-found', payload);
-          }
-        } else {
-          this.log('notifyMatchFound:skip-missing-socket', {
-            playerId: player.playerId,
-            socketId: player.socketId,
-            teamId,
-          });
+          if (payload) socket.emit('match-found', payload);
         }
       });
     });
@@ -653,43 +557,25 @@ export class GameRoom {
   handlePlayerReady(playerId: string): void {
     const player = this.players.get(playerId);
     if (!player || !player.connected) {
-      this.log('handlePlayerReady:ignored-missing-or-disconnected', {
-        playerId,
-        hasPlayer: player !== undefined,
-        connected: player?.connected,
-      });
       return;
     }
 
     if (this.state !== 'waiting-for-ready') {
-      this.log('handlePlayerReady:ignored-wrong-state', {
-        playerId,
-        state: this.state,
-      });
       return;
     }
 
     // Ignore duplicate ready signals
     if (this.readyPlayers.has(playerId)) {
-      this.log('handlePlayerReady:duplicate', { playerId });
       return;
     }
 
     this.readyPlayers.add(playerId);
-    this.log('handlePlayerReady:accepted', {
-      playerId,
-      readyPlayers: Array.from(this.readyPlayers),
-      players: this.getPlayerDebugSnapshot(),
-    });
 
     // Broadcast player-ready to the room so clients can update loading screens
     this.io.to(this.roomId).emit('player-ready', { playerId });
 
     if (this.areAllPlayersConnectedAndReady()) {
       this.clearReadyTimeout('all players ready');
-      this.log('handlePlayerReady:all-ready-start-game', {
-        readyPlayers: Array.from(this.readyPlayers),
-      });
       this.startGame();
     }
   }
@@ -701,19 +587,10 @@ export class GameRoom {
     this.readyTimeout = null;
     const disconnectedPlayerIds = this.getDisconnectedPlayerIds();
     if (disconnectedPlayerIds.length > 0) {
-      this.log('ready-timeout:defer-for-disconnected-players', {
-        disconnectedPlayerIds,
-        readyPlayers: Array.from(this.readyPlayers),
-        players: this.getPlayerDebugSnapshot(),
-      });
       this.armPlayersReconnectTimeout('ready timeout while players disconnected');
       return;
     }
 
-    this.log('ready-timeout', {
-      readyPlayers: Array.from(this.readyPlayers),
-      players: this.getPlayerDebugSnapshot(),
-    });
     this.stop(true);
 
     this.io.to(this.roomId).emit('match-end', {
@@ -729,11 +606,6 @@ export class GameRoom {
   private startGame(): void {
     this.state = 'playing';
     this.currentTick = 0;
-    this.log('startGame', {
-      tickMode: this.tickMode,
-      tickRate: this.config.tickRate,
-      players: this.getPlayerDebugSnapshot(),
-    });
 
     // Reset activity timestamps for all players at game start
     const now = Date.now();
@@ -1299,17 +1171,11 @@ export class GameRoom {
   handleDisconnect(socketId: string): void {
     const playerId = this.socketToPlayer.get(socketId);
     if (!playerId) {
-      this.log('handleDisconnect:unknown-socket', { socketId });
       return;
     }
 
     const player = this.players.get(playerId);
     if (player) {
-      this.log('handleDisconnect:player-offline', {
-        playerId,
-        socketId,
-        state: this.state,
-      });
       player.connected = false;
       this.readyPlayers.delete(playerId);
       if (this.state === 'waiting-for-ready') {
@@ -1333,26 +1199,17 @@ export class GameRoom {
   handleReconnect(playerId: string, socketId: string): boolean {
     const player = this.players.get(playerId);
     if (!player) {
-      this.log('handleReconnect:unknown-player', { playerId, socketId });
       return false;
     }
 
-    let previousSocketId: string | null = null;
     // Update socket mapping
     for (const [oldSocketId, pid] of this.socketToPlayer.entries()) {
       if (pid === playerId) {
-        previousSocketId = oldSocketId;
         this.socketToPlayer.delete(oldSocketId);
         break;
       }
     }
     this.socketToPlayer.set(socketId, playerId);
-    this.log('handleReconnect:mapping-updated', {
-      playerId,
-      previousSocketId,
-      newSocketId: socketId,
-      state: this.state,
-    });
 
     player.connected = true;
     this.laggingPlayers.delete(playerId);
@@ -1376,11 +1233,6 @@ export class GameRoom {
     // Join the room
     const socket = this.io.sockets.sockets.get(socketId);
     if (socket) {
-      this.log('handleReconnect:socket-found', {
-        playerId,
-        socketId,
-        state: this.state,
-      });
       void socket.join(this.roomId);
       const socketData = socket.data as SocketData;
       socketData.matchId = this.id;
@@ -1397,12 +1249,6 @@ export class GameRoom {
       if (this.state === 'waiting-for-players') {
         const matchFoundPayload = this.buildMatchFoundPayload(playerId);
         if (matchFoundPayload) {
-          this.log('handleReconnect:emit-match-found', {
-            playerId,
-            socketId,
-            matchId: matchFoundPayload.matchId,
-            teamId: matchFoundPayload.teamId,
-          });
           socket.emit('match-found', matchFoundPayload);
         }
         socket.to(this.roomId).emit('player-reconnected', { playerId });
@@ -1447,16 +1293,6 @@ export class GameRoom {
               Math.ceil((this.countdownDeadline - Date.now()) / 1000),
             )
           : null;
-      this.log('handleReconnect:emit-reconnect-state', {
-        playerId,
-        socketId,
-        state: this.state,
-        currentTick: this.currentTick,
-        fromTick,
-        countdownSecondsRemaining,
-        gameStartEmitted: this.gameStartEmitted,
-        randomSeed: this.randomSeed,
-      });
       socket.emit('reconnect-state', {
         matchId: this.id,
         currentTick: this.currentTick,
@@ -1470,55 +1306,11 @@ export class GameRoom {
 
       // Notify other players
       socket.to(this.roomId).emit('player-reconnected', { playerId });
-    } else {
-      this.log('handleReconnect:socket-missing-after-mapping', {
-        playerId,
-        socketId,
-      });
     }
 
     return true;
   }
 
-  private getPlayerDebugSnapshot(): Array<{
-    readonly playerId: string;
-    readonly teamId: number;
-    readonly connected: boolean;
-    readonly socketIds: string[];
-  }> {
-    const snapshots: Array<{
-      readonly playerId: string;
-      readonly teamId: number;
-      readonly connected: boolean;
-      readonly socketIds: string[];
-    }> = [];
-    for (const [playerId, player] of this.players) {
-      const socketIds: string[] = [];
-      for (const [socketId, mappedPlayerId] of this.socketToPlayer) {
-        if (mappedPlayerId === playerId) socketIds.push(socketId);
-      }
-      snapshots.push({
-        playerId,
-        teamId: player.teamId,
-        connected: player.connected,
-        socketIds,
-      });
-    }
-    return snapshots;
-  }
-
-  private log(message: string, details: Record<string, unknown> = {}): void {
-    console.log(`[GameRoom][trace] ${message}`, {
-      at: new Date().toISOString(),
-      matchId: this.id,
-      roomId: this.roomId,
-      state: this.state,
-      currentTick: this.currentTick,
-      gameStartEmitted: this.gameStartEmitted,
-      countdownDeadline: this.countdownDeadline,
-      ...details,
-    });
-  }
 
   /**
    * Returns true only when every player in the room is currently

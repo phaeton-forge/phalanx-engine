@@ -383,23 +383,6 @@ export class Phalanx extends EventEmitter {
 
     this.io.on('connection', (socket: Socket) => {
       let playerId: string | null = null;
-      const logSocket = (
-        message: string,
-        details: Record<string, unknown> = {},
-      ): void => {
-        const socketData = socket.data as SocketData;
-        console.log(`[PhalanxServer][socket] ${message}`, {
-          at: new Date().toISOString(),
-          socketId: socket.id,
-          transport: socket.conn.transport.name,
-          capturedPlayerId: playerId,
-          matchId: socketData.matchId,
-          dataPlayerId: socketData.playerId,
-          ...details,
-        });
-      };
-
-      logSocket('connection');
 
       // Track activity on ANY message from client (LOCKSTEP-5)
       // This replaces tick-ack - any message = player is alive
@@ -435,11 +418,6 @@ export class Phalanx extends EventEmitter {
       socket.on(
         'room-create',
         (data: { playerId: string; username?: string; gameType?: string }) => {
-          logSocket('room-create:received', {
-            playerId: data.playerId,
-            username: data.username,
-            gameType: data.gameType,
-          });
           playerId = data.playerId;
           const username = data.username ?? data.playerId;
           this.privateRooms!.createRoom(playerId, username, socket, data.gameType);
@@ -450,11 +428,6 @@ export class Phalanx extends EventEmitter {
       socket.on(
         'room-join',
         (data: { playerId: string; username?: string; code: string }) => {
-          logSocket('room-join:received', {
-            playerId: data.playerId,
-            username: data.username,
-            code: data.code,
-          });
           playerId = data.playerId;
           const username = data.username ?? data.playerId;
           this.privateRooms!.joinRoom(playerId, username, socket, data.code);
@@ -463,7 +436,6 @@ export class Phalanx extends EventEmitter {
 
       // Handle room-cancel (private match)
       socket.on('room-cancel', () => {
-        logSocket('room-cancel:received');
         if (playerId) {
           this.privateRooms!.cancelRoom(playerId, socket);
         }
@@ -480,10 +452,6 @@ export class Phalanx extends EventEmitter {
       // error the service itself uses, so clients can't distinguish
       // "wrong code" from "missing code" from "no such room".
       socket.on('room-recover', (payload: unknown) => {
-        logSocket('room-recover:received', {
-          payloadType: typeof payload,
-          hasPayload: payload !== null && payload !== undefined,
-        });
         // The payload is untrusted — a client can emit literally
         // anything (including `null`, a primitive, or a missing
         // argument, which Socket.IO will surface as `undefined`).
@@ -495,7 +463,6 @@ export class Phalanx extends EventEmitter {
         // `room-cancel` would act on a playerId the socket was
         // never authenticated to own.
         if (!payload || typeof payload !== 'object') {
-          logSocket('room-recover:invalid-payload');
           socket.emit('room-error', { message: 'Room expired' });
           return;
         }
@@ -505,23 +472,13 @@ export class Phalanx extends EventEmitter {
           code?: unknown;
         };
         if (typeof data.code !== 'string' || data.code.length === 0) {
-          logSocket('room-recover:invalid-code', { codeType: typeof data.code });
           socket.emit('room-error', { message: 'Room expired' });
           return;
         }
         if (typeof data.playerId !== 'string' || data.playerId.length === 0) {
-          logSocket('room-recover:invalid-playerId', {
-            playerIdType: typeof data.playerId,
-            code: data.code,
-          });
           socket.emit('room-error', { message: 'Room expired' });
           return;
         }
-        logSocket('room-recover:validated', {
-          playerId: data.playerId,
-          username: typeof data.username === 'string' ? data.username : undefined,
-          code: data.code,
-        });
         const recovered = this.privateRooms!.recoverRoom(
           data.playerId,
           socket,
@@ -530,11 +487,6 @@ export class Phalanx extends EventEmitter {
         if (recovered) {
           playerId = data.playerId;
         }
-        logSocket('room-recover:result', {
-          playerId: data.playerId,
-          code: data.code,
-          recovered,
-        });
       });
 
       // Handle player command
@@ -680,7 +632,6 @@ export class Phalanx extends EventEmitter {
 
       // Handle client-ready (ready handshake after asset loading)
       socket.on('client-ready', () => {
-        logSocket('client-ready:received');
         if (!playerId) return;
         const matchId = (socket.data as SocketData).matchId;
         if (!matchId) return;
@@ -694,25 +645,12 @@ export class Phalanx extends EventEmitter {
       socket.on(
         'reconnect-match',
         (data: { playerId: string; matchId: string }) => {
-          logSocket('reconnect-match:received', {
-            playerId: data.playerId,
-            matchId: data.matchId,
-          });
           playerId = data.playerId;
           const gameRoom = this.findMatch(data.matchId);
           if (gameRoom) {
             const success = gameRoom.handleReconnect(playerId, socket.id);
-            logSocket('reconnect-match:result', {
-              playerId,
-              matchId: data.matchId,
-              success,
-            });
             socket.emit('reconnect-status', { success });
           } else {
-            logSocket('reconnect-match:not-found', {
-              playerId,
-              matchId: data.matchId,
-            });
             socket.emit('reconnect-status', {
               success: false,
               reason: 'Match not found',
@@ -722,8 +660,7 @@ export class Phalanx extends EventEmitter {
       );
 
       // Handle disconnect
-      socket.on('disconnect', (reason: string) => {
-        logSocket('disconnect', { reason });
+      socket.on('disconnect', () => {
         if (this.matchmaking) {
           this.matchmaking.handleDisconnect(socket.id);
         }

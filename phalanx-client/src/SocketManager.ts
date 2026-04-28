@@ -138,22 +138,13 @@ export class SocketManager {
    */
   async connect(): Promise<void> {
     if (this.connectionState === 'connected') {
-      this.log('connect:skip-already-connected');
       return;
     }
 
-    this.log('connect:start', {
-      serverUrl: this.config.serverUrl,
-      playerId: this.config.playerId,
-      transports: this.config.socketTransports,
-    });
     this.connectionState = 'connecting';
 
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
-        this.log('connect:timeout', {
-          timeoutMs: this.config.connectionTimeoutMs,
-        });
         this.socket?.disconnect();
         this.connectionState = 'disconnected';
         reject(new Error('Connection timeout'));
@@ -172,10 +163,6 @@ export class SocketManager {
         clearTimeout(timeout);
         this.connectionState = 'connected';
         this.reconnectAttempts = 0;
-        this.log('connect:success', {
-          socketId: this.socket?.id,
-          transport: this.socket?.io.engine.transport.name,
-        });
         this.setupEventHandlers();
         this.callbacks.onConnected();
         resolve();
@@ -184,10 +171,6 @@ export class SocketManager {
       this.socket.on('connect_error', (error) => {
         clearTimeout(timeout);
         this.connectionState = 'disconnected';
-        this.log('connect:error', {
-          message: error.message,
-          socketId: this.socket?.id,
-        });
         reject(new Error(`Connection failed: ${error.message}`));
       });
     });
@@ -197,10 +180,6 @@ export class SocketManager {
    * Disconnect from the server
    */
   disconnect(): void {
-    this.log('disconnect:manual', {
-      socketId: this.socket?.id,
-      connected: this.socket?.connected,
-    });
     if (this.socket) {
       this.socket.removeAllListeners();
       this.socket.disconnect();
@@ -286,29 +265,15 @@ export class SocketManager {
    */
   async createRoom(gameType?: string): Promise<RoomCreatedEvent> {
     this.ensureConnected();
-    this.log('room-create:emit', {
-      playerId: this.config.playerId,
-      username: this.config.username,
-      gameType,
-      socketId: this.socket?.id,
-    });
 
     return new Promise((resolve, reject) => {
       const errorHandler = (error: RoomErrorEvent) => {
         this.socket?.off('room-created', createdHandler);
-        this.log('room-create:error', {
-          message: error.message,
-          socketId: this.socket?.id,
-        });
         reject(new Error(error.message));
       };
 
       const createdHandler = (event: RoomCreatedEvent) => {
         this.socket?.off('room-error', errorHandler);
-        this.log('room-created:received', {
-          code: event.code,
-          socketId: this.socket?.id,
-        });
         resolve(event);
       };
 
@@ -329,12 +294,6 @@ export class SocketManager {
    */
   joinRoom(code: string): void {
     this.ensureConnected();
-    this.log('room-join:emit', {
-      playerId: this.config.playerId,
-      username: this.config.username,
-      code,
-      socketId: this.socket?.id,
-    });
 
     this.socket!.emit('room-join', {
       playerId: this.config.playerId,
@@ -348,10 +307,6 @@ export class SocketManager {
    */
   cancelRoom(): void {
     this.ensureConnected();
-    this.log('room-cancel:emit', {
-      playerId: this.config.playerId,
-      socketId: this.socket?.id,
-    });
     this.socket!.emit('room-cancel');
   }
 
@@ -384,13 +339,6 @@ export class SocketManager {
     timeoutMs: number = this.config.recoverRoomTimeoutMs,
   ): Promise<RoomRecoveredEvent> {
     this.ensureConnected();
-    this.log('room-recover:emit', {
-      playerId: this.config.playerId,
-      username: this.config.username,
-      code,
-      timeoutMs,
-      socketId: this.socket?.id,
-    });
 
     return new Promise((resolve, reject) => {
       let settled = false;
@@ -405,10 +353,6 @@ export class SocketManager {
         if (settled) return;
         settled = true;
         cleanup();
-        this.log('room-recovered:received', {
-          code: event.code,
-          socketId: this.socket?.id,
-        });
         resolve(event);
       };
 
@@ -416,11 +360,6 @@ export class SocketManager {
         if (settled) return;
         settled = true;
         cleanup();
-        this.log('room-recover:error', {
-          code,
-          message: error.message,
-          socketId: this.socket?.id,
-        });
         reject(new Error(error.message));
       };
 
@@ -428,11 +367,6 @@ export class SocketManager {
         if (settled) return;
         settled = true;
         cleanup();
-        this.log('room-recover:timeout', {
-          code,
-          timeoutMs,
-          socketId: this.socket?.id,
-        });
         reject(new Error('Recover timeout'));
       }, timeoutMs);
 
@@ -475,16 +409,9 @@ export class SocketManager {
    */
   async waitForMatch(): Promise<MatchFoundEvent> {
     this.ensureConnected();
-    this.log('waitForMatch:arm', { socketId: this.socket?.id });
 
     return new Promise((resolve) => {
       this.socket!.once('match-found', (data: MatchFoundEvent) => {
-        this.log('waitForMatch:received', {
-          matchId: data.matchId,
-          playerId: data.playerId,
-          teamId: data.teamId,
-          socketId: this.socket?.id,
-        });
         resolve(data);
       });
     });
@@ -497,20 +424,14 @@ export class SocketManager {
     onCountdown?: (event: CountdownEvent) => void
   ): Promise<void> {
     this.ensureConnected();
-    this.log('waitForCountdown:arm', { socketId: this.socket?.id });
 
     return new Promise((resolve) => {
       const countdownHandler = (data: CountdownEvent) => {
-        this.log('waitForCountdown:received', {
-          seconds: data.seconds,
-          socketId: this.socket?.id,
-        });
         this.callbacks.onCountdown(data);
         onCountdown?.(data);
 
         if (data.seconds === 0) {
           this.socket?.off('countdown', countdownHandler);
-          this.log('waitForCountdown:complete', { socketId: this.socket?.id });
           resolve();
         }
       };
@@ -524,15 +445,9 @@ export class SocketManager {
    */
   async waitForGameStart(): Promise<GameStartEvent> {
     this.ensureConnected();
-    this.log('waitForGameStart:arm', { socketId: this.socket?.id });
 
     return new Promise((resolve) => {
       this.socket!.once('game-start', (data: GameStartEvent) => {
-        this.log('waitForGameStart:received', {
-          matchId: data.matchId,
-          randomSeed: data.randomSeed,
-          socketId: this.socket?.id,
-        });
         resolve(data);
       });
     });
@@ -651,17 +566,9 @@ export class SocketManager {
 
     const savedMatchId = this.callbacks.getCurrentMatchId();
     this.connectionState = 'reconnecting';
-    this.log('attemptReconnection:start', {
-      savedMatchId,
-      maxReconnectAttempts: this.config.maxReconnectAttempts,
-    });
 
     while (this.reconnectAttempts < this.config.maxReconnectAttempts) {
       this.reconnectAttempts++;
-      this.log('attemptReconnection:attempt', {
-        attempt: this.reconnectAttempts,
-        savedMatchId,
-      });
       this.callbacks.onReconnecting(this.reconnectAttempts);
 
       try {
@@ -669,25 +576,16 @@ export class SocketManager {
         await this.connect();
 
         if (savedMatchId) {
-          this.log('attemptReconnection:reconnectToMatch-before', {
-            savedMatchId,
-          });
           await this.reconnectToMatch(savedMatchId);
         }
 
-        this.log('attemptReconnection:success', { savedMatchId });
         return;
       } catch {
-        this.log('attemptReconnection:attempt-failed', {
-          attempt: this.reconnectAttempts,
-          savedMatchId,
-        });
         // Continue to next attempt
       }
     }
 
     this.callbacks.onReconnectFailed();
-    this.log('attemptReconnection:failed', { savedMatchId });
     throw new Error('Max reconnection attempts reached');
   }
 
@@ -703,33 +601,18 @@ export class SocketManager {
     // Match found
     this.socket.on('match-found', (data: MatchFoundEvent) => {
       if (this.config.debug) {      }
-      this.log('event:match-found', {
-        matchId: data.matchId,
-        playerId: data.playerId,
-        teamId: data.teamId,
-        socketId: this.socket?.id,
-      });
       this.callbacks.onMatchFound(data);
     });
 
     // Game start
     this.socket.on('game-start', (data: GameStartEvent) => {
       if (this.config.debug) {      }
-      this.log('event:game-start', {
-        matchId: data.matchId,
-        randomSeed: data.randomSeed,
-        socketId: this.socket?.id,
-      });
       this.callbacks.onGameStart(data);
     });
 
     // Countdown
     this.socket.on('countdown', (data: CountdownEvent) => {
       if (this.config.debug) {      }
-      this.log('event:countdown', {
-        seconds: data.seconds,
-        socketId: this.socket?.id,
-      });
       this.callbacks.onCountdown(data);
     });
 
@@ -776,15 +659,6 @@ export class SocketManager {
     // wakes up instead of hanging forever waiting for events that
     // were broadcast while the socket was dead.
     this.socket.on('reconnect-state', (data: ReconnectStateEvent) => {
-      this.log('event:reconnect-state', {
-        matchId: data.matchId,
-        state: data.state,
-        currentTick: data.currentTick,
-        countdownSecondsRemaining: data.countdownSecondsRemaining,
-        gameStartEmitted: data.gameStartEmitted,
-        randomSeed: data.randomSeed,
-        socketId: this.socket?.id,
-      });
       this.callbacks.onReconnectState(data);
       // Fan the snapshot out through the same socket event bus that
       // `setupEventHandlers` and `waitForCountdown`/`waitForGameStart`
@@ -798,11 +672,6 @@ export class SocketManager {
         typeof data.countdownSecondsRemaining === 'number' &&
         data.countdownSecondsRemaining >= 0
       ) {
-        this.log('synthetic:countdown', {
-          seconds: data.countdownSecondsRemaining,
-          matchId: data.matchId,
-          socketId: this.socket?.id,
-        });
         this.emitSyntheticLocal('countdown', {
           seconds: data.countdownSecondsRemaining,
         } satisfies CountdownEvent);
@@ -825,11 +694,6 @@ export class SocketManager {
             ? { randomSeed: data.randomSeed }
             : {}),
         };
-        this.log('synthetic:game-start', {
-          matchId: gameStart.matchId,
-          randomSeed: gameStart.randomSeed,
-          socketId: this.socket?.id,
-        });
         this.emitSyntheticLocal('game-start', gameStart);
       }
     });
@@ -850,47 +714,25 @@ export class SocketManager {
 
     // Private room events
     this.socket.on('room-error', (data: RoomErrorEvent) => {
-      this.log('event:room-error', {
-        message: data.message,
-        socketId: this.socket?.id,
-      });
       this.callbacks.onRoomError(data);
     });
 
     this.socket.on('room-expired', (data: RoomExpiredEvent) => {
-      this.log('event:room-expired', {
-        code: data.code,
-        socketId: this.socket?.id,
-      });
       this.callbacks.onRoomExpired(data);
     });
 
     this.socket.on('room-cancelled', (data: RoomCancelledEvent) => {
-      this.log('event:room-cancelled', {
-        code: data.code,
-        socketId: this.socket?.id,
-      });
       this.callbacks.onRoomCancelled(data);
     });
 
     this.socket.on('room-recovered', (data: RoomRecoveredEvent) => {
-      this.log('event:room-recovered', {
-        code: data.code,
-        socketId: this.socket?.id,
-      });
       this.callbacks.onRoomRecovered(data);
     });
 
     // Disconnection handling
-    this.socket.on('disconnect', (reason: string) => {
+    this.socket.on('disconnect', () => {
       const wasPlaying = this.callbacks.isPlaying();
       this.connectionState = 'disconnected';
-      this.log('event:disconnect', {
-        reason,
-        wasPlaying,
-        autoReconnect: this.config.autoReconnect,
-        socketId: this.socket?.id,
-      });
       this.callbacks.onDisconnected();
 
       if (wasPlaying && this.config.autoReconnect) {
@@ -908,23 +750,10 @@ export class SocketManager {
 
   private ensureConnected(): void {
     if (!this.socket || !this.isConnected()) {
-      this.log('ensureConnected:failed', {
-        hasSocket: this.socket !== null,
-        socketConnected: this.socket?.connected,
-        connectionState: this.connectionState,
-      });
       throw new Error('Not connected to server. Call connect() first.');
     }
   }
 
-  private log(message: string, details: Record<string, unknown> = {}): void {
-    console.log(`[PhalanxSocket] ${message}`, {
-      at: new Date().toISOString(),
-      connectionState: this.connectionState,
-      playerId: this.config.playerId,
-      ...details,
-    });
-  }
 
   /**
    * Replay `payload` through every listener currently registered for

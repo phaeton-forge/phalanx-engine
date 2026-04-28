@@ -127,17 +127,9 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
       },
       {
         // Connection events
-        onConnected: () => {
-          this.logLifecycle('connected', { clientState: this.clientState });
-          this.emit('connected');
-        },
+        onConnected: () => this.emit('connected'),
         onDisconnected: () => {
-          const previousState = this.clientState;
           this.clientState = 'idle';
-          this.logLifecycle('disconnected', {
-            previousState,
-            nextState: this.clientState,
-          });
           this.emit('disconnected');
         },
         onReconnecting: (attempt) => this.emit('reconnecting', attempt),
@@ -146,35 +138,14 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
 
         // Match lifecycle events
         onMatchFound: (data) => {
-          const previousState = this.clientState;
           this.currentMatchId = data.matchId;
           this.clientState = 'match-found';
-          this.logLifecycle('matchFound', {
-            previousState,
-            nextState: this.clientState,
-            matchId: data.matchId,
-            teamId: data.teamId,
-          });
           this.emit('matchFound', data);
         },
-        onCountdown: (data) => {
-          this.logLifecycle('countdown', {
-            clientState: this.clientState,
-            seconds: data.seconds,
-            matchId: this.currentMatchId,
-          });
-          this.emit('countdown', data);
-        },
+        onCountdown: (data) => this.emit('countdown', data),
         onGameStart: (data) => {
-          const previousState = this.clientState;
           this.clientState = 'playing';
           this.currentTick = 0;
-          this.logLifecycle('gameStart', {
-            previousState,
-            nextState: this.clientState,
-            matchId: data.matchId,
-            randomSeed: data.randomSeed,
-          });
           this.emit('gameStart', data);
         },
         onMatchEnd: (data) => {
@@ -201,7 +172,6 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
 
         // Reconnection events
         onReconnectState: (data) => {
-          const previousState = this.clientState;
           this.currentMatchId = data.matchId;
           this.currentTick = data.currentTick;
           if (data.state === 'paused') {
@@ -211,15 +181,6 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
           } else {
             this.clientState = 'idle';
           }
-          this.logLifecycle('reconnectState', {
-            previousState,
-            nextState: this.clientState,
-            matchId: data.matchId,
-            state: data.state,
-            currentTick: data.currentTick,
-            countdownSecondsRemaining: data.countdownSecondsRemaining,
-            gameStartEmitted: data.gameStartEmitted,
-          });
           this.emit('reconnectState', data);
         },
         onReconnectStatus: (data) => this.emit('reconnectStatus', data),
@@ -261,28 +222,13 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
         getCurrentMatchId: () => this.currentMatchId,
 
         // Private room events
-        onRoomError: (data) => {
-          this.logLifecycle('roomError', { message: data.message });
-          this.emit('roomError', data);
-        },
-        onRoomExpired: (data) => {
-          this.logLifecycle('roomExpired', { code: data.code });
-          this.emit('roomExpired', data);
-        },
+        onRoomError: (data) => this.emit('roomError', data),
+        onRoomExpired: (data) => this.emit('roomExpired', data),
         onRoomCancelled: (data) => {
-          const previousState = this.clientState;
           this.clientState = 'idle';
-          this.logLifecycle('roomCancelled', {
-            previousState,
-            nextState: this.clientState,
-            code: data.code,
-          });
           this.emit('roomCancelled', data);
         },
-        onRoomRecovered: (data) => {
-          this.logLifecycle('roomRecovered', { code: data.code });
-          this.emit('roomRecovered', data);
-        },
+        onRoomRecovered: (data) => this.emit('roomRecovered', data),
       }
     );
 
@@ -485,39 +431,20 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
    * @throws Error if connection fails or times out
    */
   async connect(): Promise<void> {
-    this.logLifecycle('connect:before', {
-      clientState: this.clientState,
-      connectionState: this.getConnectionState(),
-    });
-    await this.socketManager.connect();
-    this.logLifecycle('connect:after', {
-      clientState: this.clientState,
-      connectionState: this.getConnectionState(),
-    });
+    return this.socketManager.connect();
   }
 
   /**
    * Disconnect from the server
    */
   disconnect(): void {
-    this.logLifecycle('disconnect:before', {
-      clientState: this.clientState,
-      connectionState: this.getConnectionState(),
-      matchId: this.currentMatchId,
-    });
     this.renderLoop.stop();
     this.socketManager.disconnect();
 
-    const previousState = this.clientState;
     this.clientState = 'idle';
     this.currentMatchId = null;
     this.currentTick = 0;
     this.pendingCommands = [];
-    this.logLifecycle('disconnect:after', {
-      previousState,
-      nextState: this.clientState,
-      connectionState: this.getConnectionState(),
-    });
   }
 
   /**
@@ -585,18 +512,8 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
    */
   async createRoom(gameType?: string): Promise<RoomCreatedEvent> {
     this.ensureConnected();
-    this.logLifecycle('createRoom:before', {
-      clientState: this.clientState,
-      gameType,
-    });
     const event = await this.socketManager.createRoom(gameType);
-    const previousState = this.clientState;
     this.clientState = 'in-queue'; // waiting for opponent
-    this.logLifecycle('createRoom:after', {
-      previousState,
-      nextState: this.clientState,
-      code: event.code,
-    });
     this.emit('roomCreated', event);
     return event;
   }
@@ -607,10 +524,6 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
    */
   joinRoom(code: string): void {
     this.ensureConnected();
-    this.logLifecycle('joinRoom:emit', {
-      code,
-      clientState: this.clientState,
-    });
     this.socketManager.joinRoom(code);
   }
 
@@ -618,10 +531,6 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
    * Cancel a previously created private room.
    */
   cancelRoom(): void {
-    this.logLifecycle('cancelRoom:emit', {
-      clientState: this.clientState,
-      matchId: this.currentMatchId,
-    });
     this.socketManager.cancelRoom();
   }
 
@@ -649,11 +558,6 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
     timeoutMs?: number,
   ): Promise<RoomRecoveredEvent> {
     this.ensureConnected();
-    this.logLifecycle('recoverRoom:before', {
-      code,
-      timeoutMs,
-      clientState: this.clientState,
-    });
     const event = await this.socketManager.recoverRoom(code, timeoutMs);
     // Host is back in the "waiting for opponent / countdown" flow —
     // mirror the state createRoom would have left us in so downstream
@@ -664,10 +568,6 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
     if (this.clientState === 'idle') {
       this.clientState = 'in-queue';
     }
-    this.logLifecycle('recoverRoom:after', {
-      code: event.code,
-      clientState: this.clientState,
-    });
     return event;
   }
 
@@ -711,19 +611,9 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
    * @returns Promise that resolves with match found event
    */
   async waitForMatch(): Promise<MatchFoundEvent> {
-    this.logLifecycle('waitForMatch:before', {
-      clientState: this.clientState,
-    });
     const data = await this.socketManager.waitForMatch();
-    const previousState = this.clientState;
     this.currentMatchId = data.matchId;
     this.clientState = 'match-found';
-    this.logLifecycle('waitForMatch:after', {
-      previousState,
-      nextState: this.clientState,
-      matchId: data.matchId,
-      teamId: data.teamId,
-    });
     this.emit('matchFound', data);
     return data;
   }
@@ -749,13 +639,7 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
   async waitForCountdown(
     onCountdown?: (event: CountdownEvent) => void
   ): Promise<void> {
-    const previousState = this.clientState;
     this.clientState = 'countdown';
-    this.logLifecycle('waitForCountdown:before', {
-      previousState,
-      nextState: this.clientState,
-      matchId: this.currentMatchId,
-    });
     return this.socketManager.waitForCountdown(onCountdown);
   }
 
@@ -764,20 +648,9 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
    * @returns Promise that resolves with game start event
    */
   async waitForGameStart(): Promise<GameStartEvent> {
-    this.logLifecycle('waitForGameStart:before', {
-      clientState: this.clientState,
-      matchId: this.currentMatchId,
-    });
     const data = await this.socketManager.waitForGameStart();
-    const previousState = this.clientState;
     this.clientState = 'playing';
     this.currentTick = 0;
-    this.logLifecycle('waitForGameStart:after', {
-      previousState,
-      nextState: this.clientState,
-      matchId: data.matchId,
-      randomSeed: data.randomSeed,
-    });
     this.emit('gameStart', data);
     return data;
   }
@@ -1035,20 +908,5 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
     if (this.config.debug) {
       console.log('[PhalanxClient]', ...args);
     }
-  }
-
-  private logLifecycle(
-    message: string,
-    details: Record<string, unknown> = {},
-  ): void {
-    console.log(`[PhalanxClient][lifecycle] ${message}`, {
-      at: new Date().toISOString(),
-      playerId: this.config.playerId,
-      username: this.config.username,
-      clientState: this.clientState,
-      connectionState: this.getConnectionState(),
-      matchId: this.currentMatchId,
-      ...details,
-    });
   }
 }
