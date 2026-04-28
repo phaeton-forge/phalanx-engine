@@ -9,6 +9,7 @@ A game-agnostic deterministic lockstep multiplayer engine with authentication, m
 - 📖 [Server Documentation](./phalanx-server/README.md)
 - 📖 [Client Documentation](./phalanx-client/README.md)
 - 📖 [ECS Documentation](./phalanx-ecs/README.md)
+- 📖 [Physics Documentation](./phalanx-physics/README.md)
 - 📖 [Math Documentation](./phalanx-math/README.md)
 - 🎮 [Babylon RTS Demo](./direct-strike-babylon-example/README.md)
 
@@ -24,14 +25,48 @@ pnpm install
 
 # Packages
 
-This repository contains the following packages:
+This repository is a pnpm workspace containing the following publishable packages:
 
-| Package                            | Description                                                |
-| ---------------------------------- | ---------------------------------------------------------- |
-| [phalanx-server](./phalanx-server) | Server library for hosting multiplayer games               |
-| [phalanx-client](./phalanx-client) | Client library for connecting to Phalanx servers           |
-| [phalanx-ecs](./phalanx-ecs)       | Renderer-agnostic ECS library with GameWorld facade        |
-| [phalanx-math](./phalanx-math)     | Deterministic fixed-point math library for lockstep games  |
+| Package                              | Description                                                                  |
+| ------------------------------------ | ---------------------------------------------------------------------------- |
+| [phalanx-server](./phalanx-server)   | Server library for hosting multiplayer games (matchmaking, lockstep, rooms)  |
+| [phalanx-client](./phalanx-client)   | Browser/Node client for connecting to Phalanx servers                        |
+| [phalanx-ecs](./phalanx-ecs)         | Renderer-agnostic ECS library with `GameWorld` facade and SoA storage        |
+| [phalanx-physics](./phalanx-physics) | Deterministic fixed-point physics (spatial hash, narrow phase, impulses)     |
+| [phalanx-math](./phalanx-math)       | Deterministic fixed-point math library for lockstep games                    |
+
+In addition to the libraries, the workspace contains reference applications under `direct-strike-babylon-example/`, `chapaev/`, `arena-shooter/`, `game-test/`, and `game-test-server/`.
+
+## Architecture
+
+```
+                        ┌─────────────────────────────┐
+                        │       phalanx-server        │
+                        │ matchmaking · rooms · ticks │
+                        └──────────────┬──────────────┘
+                                       │ Socket.IO (commands & events)
+                                       ▼
+   ┌────────────────────────────┐  ┌──────────────────────────────┐
+   │      phalanx-client        │  │      phalanx-ecs (optional)  │
+   │ connection · matchmaking · │──▶│  EntityManager · GameWorld · │
+   │ command batching · auth ·  │  │  SoA storage · pooling       │
+   │ room recovery · render     │  └────────────────┬─────────────┘
+   │ loop (ITickFrameProvider)  │                   │
+   └────────────────────────────┘                   ▼
+                                       ┌────────────────────────────┐
+                                       │     phalanx-physics        │
+                                       │ deterministic FP physics · │
+                                       │ spatial hash · collisions  │
+                                       └────────────────┬───────────┘
+                                                        │
+                                                        ▼
+                                       ┌────────────────────────────┐
+                                       │       phalanx-math         │
+                                       │ FP fixed-point arithmetic  │
+                                       └────────────────────────────┘
+```
+
+`phalanx-client` and `phalanx-ecs` both implement the `ITickFrameProvider` interface, so a `GameWorld` can be driven by either an internal `TickFrameManager` (single-player) or by the multiplayer client (`PhalanxClient` is fed the server's authoritative ticks).
 
 ## Features
 
@@ -134,16 +169,9 @@ See the [Client Documentation](./phalanx-client/README.md#mobile-friendly-room-r
 
 ## Quick Start
 
-> **Note**: Since the packages are not yet published to npm, use the local packages from the cloned repository.
+> **Note**: Packages are not yet published to npm. Work from the cloned monorepo and consume packages via `workspace:*`.
 
 ### Server
-
-From the cloned repository, navigate to the server package:
-
-```bash
-cd phalanx-server
-npm install
-```
 
 ```typescript
 import { Phalanx } from 'phalanx-server';
@@ -154,35 +182,64 @@ const server = new Phalanx({
   gameMode: '3v3',
 });
 
-server.start().then(() => {
-  console.log('Phalanx server running on port 3000');
-});
+await server.start();
+console.log('Phalanx server running on port 3000');
 ```
 
 ### Client
 
-From the cloned repository, navigate to the client package:
-
-```bash
-cd phalanx-client
-pnpm install
-```
-
 ```typescript
 import { PhalanxClient } from 'phalanx-client';
 
-const client = new PhalanxClient({
+const client = await PhalanxClient.create({
   serverUrl: 'http://localhost:3000',
   playerId: 'player-123',
   username: 'MyPlayer',
 });
 
-await client.connect();
 const match = await client.joinQueueAndWaitForMatch();
 await client.waitForGameStart();
 
-client.on('tick', (data) => {
-  console.log(`Tick ${data.tick}`);
+// After loading assets, tell the server we're ready for ticks.
+client.sendReady();
+
+client.onTick((tick, commands) => {
+  // Run deterministic simulation using `commands`
+});
+
+client.onFrame((alpha, dt) => {
+  // Render with interpolation between ticks
+});
+```
+
+### Single-player ECS + Physics
+
+```typescript
+import { GameWorld } from 'phalanx-ecs';
+import { PhysicsWorld, PhysicsBodyComponent } from 'phalanx-physics';
+import { FP } from 'phalanx-math';
+
+const world = new GameWorld({ tickRate: 20 });
+
+const physics = new PhysicsWorld({
+  gridCellSize: FP.FromFloat(8),
+  subSteps: 3,
+  tickRate: 20,
+});
+
+const { physicsSystem } = physics.getSystems();
+world.registerSystems([physicsSystem], []);
+
+world.start({
+  beforeTick(tick) {
+    if (tick === 0) {
+      physics.setTransformStore(world.entityManager.getOrCreateSoAStore(MyTransformSchema), {
+        fpPositionX: 'fpPositionX',
+        fpPositionY: 'fpPositionY',
+        fpPositionZ: 'fpPositionZ',
+      });
+    }
+  },
 });
 ```
 
@@ -191,14 +248,36 @@ client.on('tick', (data) => {
 - [Server Documentation](./phalanx-server/README.md)
 - [Client Documentation](./phalanx-client/README.md)
 - [ECS Documentation](./phalanx-ecs/README.md)
+- [Physics Documentation](./phalanx-physics/README.md)
 - [Math Documentation](./phalanx-math/README.md)
 - [Babylon RTS Demo & Dev Guide](./direct-strike-babylon-example/README.md)
 
+## Workspace Commands
+
+All commands are run from the repository root.
+
+| Command                   | What it does                                                       |
+| ------------------------- | ------------------------------------------------------------------ |
+| `pnpm install`            | Install workspace dependencies                                     |
+| `pnpm build`              | Build every workspace package (`pnpm -r build`)                    |
+| `pnpm clean`              | Run each package's `clean` script                                  |
+| `pnpm test`               | Run all package test suites (Vitest)                               |
+| `pnpm test:server`        | Run only `phalanx-server` tests                                    |
+| `pnpm test:client`        | Run only `phalanx-client` tests                                    |
+| `pnpm test:watch`         | Run package test suites in watch mode                              |
+| `pnpm dev:server`         | `tsc --watch` for `phalanx-server`                                 |
+| `pnpm dev:client`         | `tsc --watch` for `phalanx-client`                                 |
+| `pnpm dev:game`           | Dev-mode reference game (`game-test`)                              |
+| `pnpm dev:game-server`    | Dev-mode reference game server (`game-test-server`)                |
+| `pnpm build:game-server`  | Build the reference game server                                    |
+| `pnpm lint` / `lint:fix`  | ESLint over the workspace                                          |
+| `pnpm format` / `format:check` | Prettier over the workspace                                   |
+
 ## Requirements
 
-- Node.js 18+
-- pnpm (install with `npm install -g pnpm`)
-- Socket.IO compatible transport
+- Node.js 24.x (`>=24.0.0 <25.0.0`)
+- pnpm 10.x (install with `corepack enable && corepack prepare pnpm@10.33.0 --activate`)
+- Socket.IO compatible transport (HTTP or HTTPS / WSS)
 
 ## License
 

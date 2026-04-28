@@ -1,6 +1,6 @@
 ---
 name: phalanx-physics
-description: Add deterministic fixed-point physics to a game using the phalanx-physics library from the phalanx-engine repository. Use when the user wants to set up collision detection, velocity integration, spatial hashing, or physics bodies. Covers PhysicsWorld facade, PhysicsBodyComponent, SpatialHashGrid, NarrowPhase, CollisionSystem, PhysicsSystem, TransformFieldMapping, and collision filtering patterns.
+description: Add deterministic fixed-point physics to a game using the phalanx-physics library from the phalanx-engine repository. Use when the user wants to set up collision detection, velocity integration, spatial hashing, or physics bodies. Covers PhysicsWorld facade, PhysicsBodyComponent, SpatialHashGrid, NarrowPhase, PhysicsSystem (which runs the full broad → narrow → resolve pipeline), TransformFieldMapping, and collision filtering patterns.
 metadata:
   author: phaeton2040-AI
   version: '1.0'
@@ -32,25 +32,23 @@ Use this skill when the user asks to:
 
 ```
 PhysicsWorld (Facade)
-├── PhysicsSystem        ← Velocity integration with sub-stepping
-└── CollisionSystem      ← Broad → Narrow → Resolve → Emit
+└── PhysicsSystem        ← Velocity integration + collision pipeline (sub-stepped)
     ├── SpatialHashGrid  ← O(n) broad-phase via spatial hashing
     └── NarrowPhase      ← Circle vs Circle / AABB collision tests
 ```
 
-Pipeline per tick (all deterministic, fixed-point):
+Pipeline per tick (all deterministic, fixed-point), all driven by a single `PhysicsSystem.processTick()`:
 ```
 MovementSystem (game-specific, sets velocities)
     ↓
 PhysicsSystem.processTick()
-    → for each sub-step: integrate velocities into positions
-    ↓
-CollisionSystem.processTick()
-    → rebuild spatial grid
-    → query candidate pairs
-    → narrow-phase circle-circle test
-    → resolve: impulse push + positional separation
-    → emit PhysicsEvents.COLLISION via EventBus
+    for each sub-step:
+      → integrate velocities into positions
+      → rebuild spatial grid
+      → query candidate pairs
+      → narrow-phase circle-circle / AABB tests
+      → resolve: impulse push + positional separation
+      → emit PhysicsEvents.COLLISION / TRIGGER_* / BOUNDS_EXIT via EventBus
 ```
 
 ### Key Design Decisions
@@ -94,17 +92,18 @@ import { GameWorld } from 'phalanx-ecs';
 
 const world = new GameWorld({ /* ... */ });
 
-// Extract the two systems from the facade
-const { physicsSystem, collisionSystem } = physicsWorld.getSystems();
+// Extract the system from the facade. PhysicsWorld owns a single
+// PhysicsSystem that runs the full broad → narrow → resolve pipeline
+// each tick (with sub-stepping internally).
+const { physicsSystem } = physicsWorld.getSystems();
 
 // Register in tick system order — ORDER MATTERS:
 // 1. Game-specific system sets velocities (e.g., MovementSystem)
-// 2. PhysicsSystem integrates velocities into positions
-// 3. CollisionSystem detects and resolves collisions
+// 2. PhysicsSystem integrates velocities, detects, and resolves collisions
+// 3. Game-specific systems react to the updated positions
 const tickSystems = [
   movementSystem,    // Game-specific: sets velocities on PhysicsBodyComponent
-  physicsSystem,     // phalanx-physics: velocity integration
-  collisionSystem,   // phalanx-physics: collision detection & resolution
+  physicsSystem,     // phalanx-physics: integrate + collide + resolve
   combatSystem,      // Game-specific: reacts to updated positions
 ];
 
@@ -140,7 +139,7 @@ world.start({
 });
 ```
 
-**Important:** The `visualPositionX/Y/Z` fields are optional. When provided, `PhysicsSystem` and `CollisionSystem` will write `FP.ToFloat()` values to these f64 arrays whenever they update fp positions. This is critical when game systems (like CombatSystem) read visual positions during ticks.
+**Important:** The `visualPositionX/Y/Z` fields are optional. When provided, `PhysicsSystem` writes `FP.ToFloat()` values to these f64 arrays whenever it updates fp positions. This is critical when game systems (like CombatSystem) read visual positions during ticks.
 
 ### 4. Create PhysicsBodyComponent for Entities
 
@@ -233,12 +232,10 @@ class MovementSystem extends GameSystem {
 
 ### 7. Add Collision Filtering (Optional)
 
-For game-specific collision rules (e.g., skip same-team collisions), use the collision filter callback:
+For game-specific collision rules (e.g., skip same-team collisions), use the collision filter callback on the `PhysicsWorld` facade (it forwards to the underlying `PhysicsSystem`):
 
 ```typescript
-const { collisionSystem } = physicsWorld.getSystems();
-
-collisionSystem.setCollisionFilter((entityIdA: number, entityIdB: number) => {
+physicsWorld.setCollisionFilter((entityIdA: number, entityIdB: number) => {
   const eA = entityManager.getEntity(entityIdA);
   const eB = entityManager.getEntity(entityIdB);
   if (!eA || !eB) return false;
@@ -321,7 +318,7 @@ interface TransformFieldMapping {
 }
 ```
 
-When `visualPositionX/Z` are provided, PhysicsSystem and CollisionSystem write the float equivalent alongside every fp position update. This avoids stale visual caches between ticks.
+When `visualPositionX/Z` are provided, PhysicsSystem writes the float equivalent alongside every fp position update. This avoids stale visual caches between ticks.
 
 ## PhysicsWorldConfig
 
@@ -402,7 +399,7 @@ interface CollisionManifold {
 
 ### Resolution
 
-CollisionSystem applies:
+PhysicsSystem applies, per sub-step, after broad/narrow detection:
 1. **Impulse-based push**: Velocity change proportional to mass ratio × overlap × pushStrength
 2. **Positional separation**: Direct position correction to prevent overlap (half each side, weighted by mass)
 
@@ -412,29 +409,46 @@ Static entities are never moved. When one entity is static, the dynamic entity a
 
 ```typescript
 // Components
-import { PhysicsBodyComponent, PhysicsSoASchema, PHYSICS_BODY_COMPONENT_TYPE } from 'phalanx-physics';
+import {
+  PhysicsBodyComponent,
+  PhysicsSoASchema,
+  PHYSICS_BODY_COMPONENT_TYPE,
+} from 'phalanx-physics';
 import type { PhysicsBodyConfig } from 'phalanx-physics';
 
-// Collision
+// Collision primitives
 import { SpatialHashGrid, NarrowPhase } from 'phalanx-physics';
 import type { CollisionManifold } from 'phalanx-physics';
 
-// Systems
-import { PhysicsSystem, CollisionSystem } from 'phalanx-physics';
+// System (single system runs the full pipeline)
+import { PhysicsSystem } from 'phalanx-physics';
 
 // Facade
 import { PhysicsWorld } from 'phalanx-physics';
 
-// Config & Types
+// Tick providers
+import {
+  AutonomousPhysicsTickProvider,
+  ExternalPhysicsTickProvider,
+} from 'phalanx-physics';
+import type {
+  IPhysicsTickProvider,
+  AutonomousProviderOptions,
+} from 'phalanx-physics';
+
+// Events & types
+import { PhysicsEvents } from 'phalanx-physics';
 import type {
   PhysicsWorldConfig,
   TransformFieldMapping,
   CollisionFilter,
   CollisionEvent,
+  BoundsExitEvent,
   PhysicsConfig,
 } from 'phalanx-physics';
-import { PhysicsEvents } from 'phalanx-physics';
 ```
+
+> Note: `CollisionSystem` is **not** exported. The collision pipeline is implemented inside `PhysicsSystem` and only exposed via `PhysicsWorld.getSystems().physicsSystem`.
 
 ## Best Practices
 
@@ -455,7 +469,7 @@ import { PhysicsEvents } from 'phalanx-physics';
 
 ### Integration
 
-- PhysicsSystem runs BEFORE CollisionSystem — velocities integrated first, then collisions resolved
+- A single `PhysicsSystem` runs the full pipeline: it integrates velocities, then detects and resolves collisions, per sub-step
 - Game-specific velocity logic (movement, friction) runs BEFORE PhysicsSystem in the tick order
 - Link the transform store on the first tick (in `beforeTick`), not at construction time
 - Always provide `visualPositionX/Z` in the field mapping when game systems read visual positions during ticks

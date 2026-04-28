@@ -25,7 +25,7 @@ Use this skill when the user asks to:
 ## Prerequisites
 
 - A running Phalanx server (see `phalanx-server` skill)
-- Node.js 18+ (or a browser environment)
+- Node.js 24.x (`>=24.0.0 <25.0.0`) — or a browser environment for the client
 - Socket.IO compatible transport
 
 ## Step-by-Step Instructions

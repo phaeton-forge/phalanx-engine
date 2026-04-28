@@ -1,6 +1,8 @@
 # Phalanx Physics
 
-A deterministic, fixed-point physics engine for the Phalanx Engine. Designed for lockstep multiplayer games where every client must produce identical simulation results.
+A deterministic, fixed-point physics engine for the [Phalanx Engine](../README.md). Designed for lockstep multiplayer games where every client must produce identical simulation results.
+
+> Sibling packages: [phalanx-ecs](../phalanx-ecs/README.md) (ECS core), [phalanx-math](../phalanx-math/README.md) (fixed-point math), [phalanx-server](../phalanx-server/README.md), [phalanx-client](../phalanx-client/README.md).
 
 ## Features
 
@@ -32,8 +34,7 @@ A deterministic, fixed-point physics engine for the Phalanx Engine. Designed for
 - **NarrowPhase**: Static methods for precise collision geometry tests
 
 ### Systems
-- **PhysicsSystem**: Velocity integration with sub-stepping, world bounds handling, `step()` / `applyImpulse()` / `isSettled()` API
-- **CollisionSystem**: Broad → narrow → resolve → emit pipeline per tick
+- **PhysicsSystem**: Velocity integration with sub-stepping, world bounds handling, broad/narrow/resolve collision pipeline, `step()` / `applyImpulse()` / `isSettled()` / `setCollisionFilter()` API. Created and owned by `PhysicsWorld`; retrieve it via `physicsWorld.getSystems().physicsSystem` to register with `GameWorld`.
 
 ### Tick Providers
 - **IPhysicsTickProvider**: Interface for custom tick scheduling strategies
@@ -48,11 +49,56 @@ A deterministic, fixed-point physics engine for the Phalanx Engine. Designed for
 
 ## Installation
 
+> ⚠️ **Not on npm yet** — clone the monorepo and install via pnpm.
+
 ```bash
-npm install phalanx-physics
+git clone https://github.com/phaeton2040-AI/phalanx-engine.git
+cd phalanx-engine
+pnpm install
+pnpm --filter phalanx-physics build
 ```
 
 Peer dependencies: `phalanx-ecs` ^0.1.0, `phalanx-math` ^0.1.0
+
+## Imports
+
+```typescript
+import {
+  // Facade & config
+  PhysicsWorld,
+  type PhysicsWorldConfig,
+
+  // Components
+  PhysicsBodyComponent,
+  PhysicsSoASchema,
+  PHYSICS_BODY_COMPONENT_TYPE,
+  type PhysicsBodyConfig,
+
+  // Collision primitives
+  SpatialHashGrid,
+  NarrowPhase,
+  type CollisionManifold,
+
+  // System
+  PhysicsSystem,
+
+  // Events & event types
+  PhysicsEvents,
+  type CollisionEvent,
+  type BoundsExitEvent,
+
+  // Tick providers
+  type IPhysicsTickProvider,
+  AutonomousPhysicsTickProvider,
+  type AutonomousProviderOptions,
+  ExternalPhysicsTickProvider,
+
+  // Misc types
+  type TransformFieldMapping,
+  type CollisionFilter,
+  type PhysicsConfig,
+} from 'phalanx-physics';
+```
 
 ## Quick Start
 
@@ -71,9 +117,10 @@ const physicsWorld = new PhysicsWorld({
 });
 
 // 2. Register systems with GameWorld (order matters)
-const { physicsSystem, collisionSystem } = physicsWorld.getSystems();
+//    PhysicsWorld owns one PhysicsSystem that runs the full broad → narrow → resolve pipeline.
+const { physicsSystem } = physicsWorld.getSystems();
 world.registerSystems(
-  [movementSystem, physicsSystem, collisionSystem],
+  [movementSystem, physicsSystem],
   [renderSystem],
 );
 
@@ -162,8 +209,156 @@ physicsWorld.onBoundsExit(({ entityId }) => {
 | `AutonomousPhysicsTickProvider` | Runs until settled or `maxSteps` — turn-based physics |
 | `ExternalPhysicsTickProvider` | Caller invokes `tick()` manually — BabylonJS rAF, unit tests |
 
-### API Reference
+## API Reference
+
+### `PhysicsWorld`
+
+```typescript
+class PhysicsWorld {
+  constructor(config?: PhysicsWorldConfig);
+
+  // System wiring
+  getSystems(): { physicsSystem: PhysicsSystem };
+  setTransformStore(
+    store: SoAComponentStore<SoASchemaDefinition>,
+    fieldMapping: TransformFieldMapping
+  ): void;
+  setCollisionFilter(filter: (entityA: number, entityB: number) => boolean): void;
+
+  // Event subscriptions (must be called after GameWorld.start())
+  onCollision(callback: (event: CollisionEvent) => void): () => void;
+  onTriggerEnter(callback: (event: CollisionEvent) => void): () => void;
+  onTriggerExit(callback: (event: CollisionEvent) => void): () => void;
+  onBoundsExit(callback: (event: BoundsExitEvent) => void): () => void;
+
+  // Impulse / settle queries
+  applyImpulse(entityId: number, vx: FixedPoint, vz: FixedPoint): void;
+  isSettled(threshold?: FixedPoint): boolean;
+
+  // Spatial query escape hatch
+  readonly spatialGrid: SpatialHashGrid;
+
+  // Cleanup
+  dispose(): void;
+}
+```
 
 - **`applyImpulse(entityId, vx, vz)`** — Set body velocity (replaces, does not accumulate). Re-enables previously ejected bodies.
-- **`isSettled(threshold?)`** — Pure query: `true` when all non-static, non-ignored bodies are below velocity threshold (default `0.01`).
+- **`isSettled(threshold?)`** — Pure query: `true` when all non-static, non-ignored bodies are below velocity threshold (default from config, falling back to `FP.FromFloat(0.01)`).
 - **`onBoundsExit(callback)`** — Subscribe to `BOUNDS_EXIT` events (requires `ejectOnBoundsExit: true`).
+- **`setCollisionFilter(filter)`** — Inject a per-pair predicate. Return `false` to skip collision resolution for that pair.
+
+### `PhysicsWorldConfig`
+
+```typescript
+interface PhysicsWorldConfig {
+  gridCellSize?: FixedPoint;     // default FP.FromFloat(4)
+  subSteps?: number;             // default 3
+  tickRate?: number;             // default 20 — used to compute tickDt
+  worldBounds?: { minX: FixedPoint; minZ: FixedPoint; maxX: FixedPoint; maxZ: FixedPoint };
+  defaultRestitution?: FixedPoint;
+  defaultFriction?: FixedPoint;  // default FP.FromFloat(0.92)
+  maxVelocity?: FixedPoint;      // default FP.FromFloat(15)
+  pushStrength?: FixedPoint;     // default FP.FromFloat(15)
+  tickProvider?: IPhysicsTickProvider;
+  ejectOnBoundsExit?: boolean;   // default false
+  settleThreshold?: FixedPoint;  // default FP.FromFloat(0.01)
+}
+```
+
+### `PhysicsBodyComponent`
+
+```typescript
+class PhysicsBodyComponent extends SoAComponent<typeof PhysicsSoASchema.definition> {
+  static readonly soaSchema: typeof PhysicsSoASchema;
+  readonly type: symbol; // PHYSICS_BODY_COMPONENT_TYPE
+
+  constructor(entityId: number, config: PhysicsBodyConfig);
+
+  // Velocity
+  velocity: FPVector3;                                       // get/set (returns cached object)
+  setVelocity(x: FixedPoint, y: FixedPoint, z: FixedPoint): void;
+  addVelocity(velocity: FPVector3): void;
+  stopVelocity(): void;
+
+  // Read-only attributes
+  readonly radius: FixedPoint;
+  readonly radiusFloat: number;
+  readonly mass: FixedPoint;
+  readonly restitution: FixedPoint;
+  readonly friction: FixedPoint;
+  readonly isStatic: boolean;
+  ignorePhysics: boolean;        // get/set
+
+  // Spatial-grid bookkeeping
+  lastX: number;
+  lastZ: number;
+}
+
+interface PhysicsBodyConfig {
+  radius: FixedPoint;
+  mass?: FixedPoint;             // default FP._1
+  isStatic?: boolean;            // default false
+  restitution?: FixedPoint;      // default FP.FromFloat(0.5)
+  friction?: FixedPoint;         // default FP._0
+}
+```
+
+For hot-path access, prefer the SoA store directly:
+
+```typescript
+const store = entityManager.getOrCreateSoAStore(PhysicsSoASchema);
+const idx = store.indexOf(entityId);
+store.arrays.velocityX[idx] = FP.ToRaw(newVx);
+```
+
+### Collision primitives
+
+- **`SpatialHashGrid`** — broad-phase O(n) neighbor pairing. Methods: `clear()`, `insert(...)`, `queryPairs()`, `queryRadius(...)`. Access via `physicsWorld.spatialGrid` for ad-hoc range queries.
+- **`NarrowPhase`** — static methods for circle/AABB intersection tests. Returns `CollisionManifold | null`.
+- **`CollisionManifold`** — `{ entityA, entityB, normalX, normalZ, penetration }`.
+
+### Tick providers
+
+```typescript
+interface IPhysicsTickProvider {
+  /** Start the provider; it calls `onStep` whenever physics should advance one step. */
+  start(onStep: () => void): void;
+  /** Stop the provider and release any timers/handles. */
+  stop(): void;
+}
+
+interface AutonomousProviderOptions {
+  /** Called every step to decide whether to stop (defined by the game). */
+  isSettled: () => boolean;
+  /** Called once when simulation settles or `maxSteps` is reached. */
+  onSettled: () => void;
+  /** Max simulation steps before forcing a stop. Default: 10000. */
+  maxSteps?: number;
+}
+
+class AutonomousPhysicsTickProvider implements IPhysicsTickProvider {
+  constructor(options: AutonomousProviderOptions);
+  // Schedules `onStep` via setImmediate (Node) or setTimeout(0) (browser)
+  // until isSettled() returns true or maxSteps is reached.
+}
+
+class ExternalPhysicsTickProvider implements IPhysicsTickProvider {
+  /** Manually advance one physics step from your render loop / test harness. */
+  tick(): void;
+}
+```
+
+### Events
+
+```typescript
+const PhysicsEvents = {
+  COLLISION:     'physics:collision',
+  TRIGGER_ENTER: 'physics:trigger:enter',
+  TRIGGER_EXIT:  'physics:trigger:exit',
+  BOUNDS_EXIT:   'physics:bounds:exit',
+} as const;
+
+interface CollisionEvent { entityA: number; entityB: number; manifold: CollisionManifold; }
+interface BoundsExitEvent { entityId: number; }
+```
