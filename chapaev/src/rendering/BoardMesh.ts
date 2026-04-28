@@ -68,19 +68,15 @@ export function createBoardMesh(): THREE.Group {
       const isDark = (row + col) % 2 === 1;
 
       const squareMat = new THREE.MeshStandardMaterial({
-        map: boardTex.clone(),
-        normalMap: boardNormal.clone(),
-        roughnessMap: boardRough.clone(),
+        map: boardTex,
+        normalMap: boardNormal,
+        roughnessMap: boardRough,
         roughness: BOARD_SQUARE_ROUGHNESS,
         metalness: BOARD_SQUARE_METALNESS,
         envMapIntensity: BOARD_ENV_MAP_INTENSITY,
         color: new THREE.Color(isDark ? DARK_SQUARE_COLOR : LIGHT_SQUARE_COLOR),
       });
 
-      // Ensure cloned textures need update
-      if (squareMat.map) squareMat.map.needsUpdate = true;
-      if (squareMat.normalMap) squareMat.normalMap.needsUpdate = true;
-      if (squareMat.roughnessMap) squareMat.roughnessMap.needsUpdate = true;
 
       const mesh = new THREE.Mesh(squareGeo, squareMat);
       mesh.rotation.x = -Math.PI / 2;
