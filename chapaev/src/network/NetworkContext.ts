@@ -13,6 +13,7 @@ import { NetworkManager } from './NetworkManager.ts';
 export class NetworkContext {
   public manager: NetworkManager;
   private connectListenerUnsubs: (() => void)[] = [];
+  private replaceHandlers: (() => void)[] = [];
 
   constructor() {
     this.manager = new NetworkManager();
@@ -23,7 +24,17 @@ export class NetworkContext {
     this.cleanupConnectListeners();
     this.manager.dispose();
     this.manager = new NetworkManager();
+    for (const handler of this.replaceHandlers) handler();
     return this.manager;
+  }
+
+  /** Subscribe to manager replacements (e.g. RoomRecoveryManager re-binds here). */
+  onReplace(handler: () => void): () => void {
+    this.replaceHandlers.push(handler);
+    return () => {
+      const idx = this.replaceHandlers.indexOf(handler);
+      if (idx !== -1) this.replaceHandlers.splice(idx, 1);
+    };
   }
 
   /** Track a `client.on(...)` unsub registered during a connect phase. */

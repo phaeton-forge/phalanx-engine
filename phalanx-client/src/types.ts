@@ -4,9 +4,16 @@
  */
 
 import type { DesyncEvent } from './DesyncDetector.js';
+import type {
+  RoomRecoveryStatusEvent,
+  RoomTerminatedEvent,
+} from './recovery/RoomRecoveryController.js';
+import type { KeyValueStorage } from './recovery/KeyValueStorage.js';
+import type { RecoverTimeoutBudget } from './recovery/NetworkQuality.js';
 
 // Re-export DesyncEvent for convenience
 export type { DesyncEvent };
+export type { RoomRecoveryStatusEvent, RoomTerminatedEvent } from './recovery/RoomRecoveryController.js';
 
 /**
  * Configuration for pause/resume behavior
@@ -103,6 +110,33 @@ export interface PhalanxClientConfig {
   socketTransports?: readonly SocketTransport[];
 
   /**
+   * If true, automatically pick `['polling']` on mobile UAs and
+   * `['websocket']` on desktop. Ignored when `socketTransports` is
+   * also set explicitly. Opt-in to avoid silently regressing games
+   * that intentionally pin a specific transport.
+   * @default false
+   */
+  mobileFriendlyTransports?: boolean;
+
+  /**
+   * Persist a stable guest playerId across page reloads so private-room
+   * recovery can survive a hard reload. When `true`, uses the default
+   * key `phalanx:guestPlayerId:v1`. When a string, uses that as the key.
+   * Authenticated users override this with the auth user id, so this is
+   * primarily a guest-mode quality-of-life flag.
+   * @default false
+   */
+  persistGuestPlayerId?: boolean | string;
+
+  /**
+   * Configure mobile-friendly room recovery (visibilitychange/pageshow
+   * listeners, exponential backoff, room persistence, pre-game stall
+   * watchdog). When omitted recovery is disabled and the controller is
+   * not constructed.
+   */
+  roomRecovery?: PhalanxRoomRecoveryConfig;
+
+  /**
    * Tick rate (ticks per second) - should match server configuration
    * @default 20
    */
@@ -119,6 +153,39 @@ export interface PhalanxClientConfig {
    * @default false
    */
   debug?: boolean;
+}
+
+/**
+ * Configuration for the optional mobile-friendly room recovery layer.
+ * See `RoomRecoveryController` for behavior. Leave unset to disable.
+ */
+export interface PhalanxRoomRecoveryConfig {
+  /** Master enable flag. When false the controller is not created. */
+  enabled: boolean;
+  /**
+   * localStorage key for the persisted active-room record.
+   * @default 'phalanx:activeRoom:v1'
+   */
+  storageKey?: string;
+  /**
+   * Local TTL mirroring the server's RoomService.ROOM_TTL_MS.
+   * @default 5 * 60 * 1000
+   */
+  roomTtlMs?: number;
+  /**
+   * Storage adapter. Defaults to `localStorage` (with a memory fallback
+   * when the DOM is unavailable). React Native / Capacitor host apps can
+   * supply a custom synchronous wrapper around their native storage.
+   */
+  storage?: KeyValueStorage;
+  /** Per-quality recover-room ack timeout budget. */
+  recoverTimeoutBudget?: RecoverTimeoutBudget;
+  /** Max backoff retries before emitting `gave-up`. @default 5 */
+  maxRecoverAttempts?: number;
+  /** Auto-arm the pre-game stall watchdog. @default true */
+  preGameStallWatchdog?: boolean;
+  /** Pre-game stall budget in ms. @default 4500 */
+  preGameStallMs?: number;
 }
 
 /**
@@ -482,6 +549,10 @@ export interface PhalanxClientEvents {
   roomExpired: (event: RoomExpiredEvent) => void;
   roomCancelled: (event: RoomCancelledEvent) => void;
   roomRecovered: (event: RoomRecoveredEvent) => void;
+
+  // Room recovery (optional mobile-friendly layer)
+  recoveryStatus: (event: RoomRecoveryStatusEvent) => void;
+  roomTerminated: (event: RoomTerminatedEvent) => void;
 }
 
 /**

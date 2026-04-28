@@ -1,11 +1,9 @@
 import type {
   CountdownEvent,
   MatchFoundEvent,
-  GameStartEvent,
 } from 'phalanx-client';
 import type { NetworkContext } from './NetworkContext.ts';
 import type { RoomRecoveryManager } from './RoomRecoveryManager.ts';
-import { clearRoom as clearActiveRoom } from './RoomPersistence.ts';
 import type { UIManager } from '../ui/UIManager.ts';
 import type { MatchmakingScreen } from '../ui/screens/Matchmaking.ts';
 import type { PrivateMatchScreen } from '../ui/screens/PrivateMatch.ts';
@@ -27,9 +25,13 @@ interface UIRefs {
  * `RoomRecoveryManager` for the recovery state machine and reads the
  * current `NetworkManager` through `NetworkContext` so it survives the
  * "cancel → fresh manager" cycle without needing to be re-instantiated.
+ *
+ * The pre-game stall watchdog (if `matchFound`/`countdown` arrive but
+ * `gameStart` doesn't) is auto-armed by the engine's
+ * `RoomRecoveryController` whenever a room is being tracked, so this
+ * coordinator does not need its own copy of that timer.
  */
 export class PrivateRoomCoordinator {
-  private static readonly PRE_GAME_EVENT_STALL_MS = 4_500;
 
   constructor(
     private readonly ctx: NetworkContext,
@@ -140,7 +142,7 @@ export class PrivateRoomCoordinator {
 
       this.ctx.manager.setMatchData(matchData);
       this.ctx.cleanupConnectListeners();
-      clearActiveRoom();
+      this.recovery.stop();
 
       uiManager.hideScreen('countdown');
       this.callbacks.onMatchReady(matchData);
@@ -152,7 +154,7 @@ export class PrivateRoomCoordinator {
       console.error('[PrivateRoom] Join failed:', message, error);
       matchmaking.setStatus(`Ошибка: ${message}`);
       matchmaking.stopTimer();
-      clearActiveRoom();
+      this.recovery.stop();
       setTimeout(() => this.callbacks.onCancelled(), 2500);
     }
   }
@@ -221,42 +223,27 @@ export class PrivateRoomCoordinator {
    * and `gameStart` listeners MUST be registered *before* awaiting
    * anything — the server's pending-recover path emits all of
    * match-found → countdown → game-start synchronously.
+   *
+   * The pre-game stall watchdog (force-recover when the
+   * matchFound→countdown→gameStart cascade goes silent) is owned by
+   * the engine's `RoomRecoveryController` while a room is being
+   * tracked, so this method only orchestrates UI transitions.
    */
   private async awaitMatchStart(matchmaking: MatchmakingScreen): Promise<void> {
     const { uiManager, privateMatch } = this.ui;
 
-    let hasGameStarted = false;
-    let preGameStallTimer: ReturnType<typeof setTimeout> | null = null;
-    const clearPreGameStallWatchdog = (): void => {
-      if (!preGameStallTimer) return;
-      clearTimeout(preGameStallTimer);
-      preGameStallTimer = null;
-    };
-    const armPreGameStallWatchdog = (reason: string): void => {
-      clearPreGameStallWatchdog();
-      preGameStallTimer = setTimeout(() => {
-        preGameStallTimer = null;
-        if (hasGameStarted || !this.recovery.hasActiveRoom()) return;
-        this.recovery.forceRecover(reason);
-      }, PrivateRoomCoordinator.PRE_GAME_EVENT_STALL_MS);
-    };
     const matchFoundPromise =
       this.waitForClientEvent<MatchFoundEvent>('matchFound');
-    const gameStartPromise =
-      this.waitForClientEvent<GameStartEvent>('gameStart');
+    const gameStartPromise = this.waitForClientEvent<unknown>('gameStart');
     const unsubCountdown = this.ctx.manager.client.on(
       'countdown',
       (event: CountdownEvent) => {
         matchmaking.updateCountdown(event.seconds);
-        if (event.seconds > 0) {
-          armPreGameStallWatchdog(`countdown stalled after ${event.seconds}`);
-        }
       }
     );
 
     try {
       const matchData = await matchFoundPromise;
-      armPreGameStallWatchdog('game-start missing after match-found');
       privateMatch.stopWaitingTimer();
       matchmaking.stopTimer();
 
@@ -264,13 +251,7 @@ export class PrivateRoomCoordinator {
       uiManager.destroyScreen('countdown');
       uiManager.showScreen('countdown');
 
-      const gameStartEvent = await gameStartPromise;
-      hasGameStarted = true;
-      clearPreGameStallWatchdog();
-      console.log(
-        '[PrivateRoom] Game start, randomSeed:',
-        gameStartEvent.randomSeed
-      );
+      await gameStartPromise;
 
       this.ctx.manager.setMatchData(matchData);
       this.ctx.cleanupConnectListeners();
@@ -279,7 +260,6 @@ export class PrivateRoomCoordinator {
       uiManager.hideScreen('countdown');
       this.callbacks.onMatchReady(matchData);
     } finally {
-      clearPreGameStallWatchdog();
       unsubCountdown();
     }
   }

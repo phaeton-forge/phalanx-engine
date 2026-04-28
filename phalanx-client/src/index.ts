@@ -87,6 +87,38 @@ export { DesyncDetector } from './DesyncDetector.js';
 export type { DesyncConfig, DesyncEvent } from './DesyncDetector.js';
 
 // ============================================
+// Room Recovery (mobile-friendly reconnection)
+// ============================================
+
+export {
+  RoomRecoveryController,
+  RoomPersistence,
+  isMobileBrowser,
+  pickMobileFriendlyTransports,
+  loadOrCreateGuestPlayerId,
+  MemoryKeyValueStorage,
+  defaultKeyValueStorage,
+  getRecoverTimeoutMs,
+  DEFAULT_RECOVER_TIMEOUT_BUDGET,
+  armBrowserLifecycle,
+} from './recovery/index.js';
+export type {
+  RoomRecoveryConfig,
+  RoomRecoveryStatusEvent,
+  RoomRecoveryPhase,
+  RoomTerminatedEvent,
+  RoomRecoveryControllerEvents,
+  RecoveryClientPort,
+  RoomPersistenceConfig,
+  PersistedRoom,
+  RoomRole,
+  KeyValueStorage,
+  RecoverTimeoutBudget,
+  BrowserLifecycleHandle,
+  BrowserLifecycleHandlers,
+} from './recovery/index.js';
+
+// ============================================
 // Authentication
 // ============================================
 
@@ -124,6 +156,7 @@ export type {
   // Configuration
   PhalanxClientConfig,
   PhalanxAuthConfig,
+  PhalanxRoomRecoveryConfig,
   PauseConfig,
   SocketTransport,
 

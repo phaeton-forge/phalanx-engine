@@ -9,6 +9,11 @@ import { SocketManager } from './SocketManager.js';
 import { DesyncDetector, type DesyncConfig } from './DesyncDetector.js';
 import { AuthManager } from './auth/AuthManager.js';
 import type { AuthState, CallbackParams } from './auth/types.js';
+import {
+  RoomRecoveryController,
+  type RecoveryClientPort,
+} from './recovery/index.js';
+import { pickMobileFriendlyTransports, loadOrCreateGuestPlayerId } from './recovery/index.js';
 import type {
   PhalanxClientConfig,
   PhalanxClientEvents,
@@ -57,12 +62,13 @@ import type {
  * ```
  */
 export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
-  private config: Required<Omit<PhalanxClientConfig, 'authToken' | 'auth' | 'playerId' | 'username' | 'pause'>> &
-    Pick<PhalanxClientConfig, 'authToken' | 'auth' | 'playerId' | 'username' | 'pause'>;
+  private config: Required<Omit<PhalanxClientConfig, 'authToken' | 'auth' | 'playerId' | 'username' | 'pause' | 'roomRecovery'>> &
+    Pick<PhalanxClientConfig, 'authToken' | 'auth' | 'playerId' | 'username' | 'pause' | 'roomRecovery'>;
   private socketManager: SocketManager;
   private renderLoop: RenderLoop;
   private desyncDetector: DesyncDetector;
   private authManager: AuthManager | null = null;
+  private _roomRecovery: RoomRecoveryController | null = null;
 
   // State
   private clientState: ClientState = 'idle';
@@ -89,18 +95,42 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
     // Generate default player ID if not provided
     const defaultPlayerId = `player-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
+    // Persist guest player id (across reloads) if requested. Auth, when
+    // enabled, will overwrite this with the real user id once the auth
+    // flow resolves; until then (and for guests forever) this stays
+    // stable across reloads — required for cold-start room recovery.
+    let resolvedPlayerId = config.playerId;
+    if (!resolvedPlayerId && config.persistGuestPlayerId) {
+      const key =
+        typeof config.persistGuestPlayerId === 'string'
+          ? config.persistGuestPlayerId
+          : 'phalanx:guestPlayerId:v1';
+      resolvedPlayerId = loadOrCreateGuestPlayerId(key);
+    }
+
+    // Resolve socket transports: explicit `socketTransports` wins; else
+    // the opt-in `mobileFriendlyTransports` flag picks polling-on-mobile;
+    // else fall back to the historic websocket-only default.
+    const resolvedSocketTransports =
+      config.socketTransports ??
+      (config.mobileFriendlyTransports
+        ? pickMobileFriendlyTransports()
+        : (['websocket'] as const));
+
     this.config = {
       autoReconnect: true,
       maxReconnectAttempts: 5,
       reconnectDelayMs: 1000,
       connectionTimeoutMs: 10000,
       recoverRoomTimeoutMs: 10000,
-      socketTransports: ['websocket'],
+      mobileFriendlyTransports: false,
+      persistGuestPlayerId: false,
       tickRate: 20,
       debug: false,
       ...config,
-      playerId: config.playerId || defaultPlayerId,
-      username: config.username || `Player-${defaultPlayerId.slice(-6)}`,
+      socketTransports: resolvedSocketTransports,
+      playerId: resolvedPlayerId || defaultPlayerId,
+      username: config.username || `Player-${(resolvedPlayerId || defaultPlayerId).slice(-6)}`,
     };
 
     // Initialize auth if configured
@@ -248,6 +278,56 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
     if (config.auth && typeof window !== 'undefined') {
       void this.handleAuthCallback();
     }
+
+    // Optionally construct the room recovery controller. Built lazily
+    // (after socketManager exists) because it routes through this very
+    // client's `connect`/`disconnect`/`recoverRoom`/`on(...)` surface.
+    if (config.roomRecovery?.enabled) {
+      this._roomRecovery = this.createRoomRecoveryController(config.roomRecovery);
+    }
+  }
+
+  private createRoomRecoveryController(
+    cfg: NonNullable<PhalanxClientConfig['roomRecovery']>
+  ): RoomRecoveryController {
+    const port: RecoveryClientPort = {
+      connect: () => this.connect(),
+      disconnect: () => this.socketManager.disconnect(),
+      isConnected: () => this.isConnected(),
+      recoverRoom: (code, timeoutMs) => this.recoverRoom(code, timeoutMs),
+      getPlayerId: () => this.getPlayerId(),
+      on: (event, handler) => this.on(event, handler),
+    };
+    return new RoomRecoveryController(
+      port,
+      {
+        storageKey: cfg.storageKey ?? 'phalanx:activeRoom:v1',
+        roomTtlMs: cfg.roomTtlMs ?? 5 * 60 * 1000,
+        storage: cfg.storage,
+        recoverTimeoutBudget: cfg.recoverTimeoutBudget,
+        maxRecoverAttempts: cfg.maxRecoverAttempts,
+        preGameStallWatchdog: cfg.preGameStallWatchdog,
+        preGameStallMs: cfg.preGameStallMs,
+      },
+      // Forward controller events through the client emitter so games
+      // discover them alongside the existing roomExpired/roomCancelled.
+      (event, ...args) => {
+        // The controller's event map is a strict subset of
+        // PhalanxClientEvents; cast through `unknown` for ts to accept.
+        (this.emit as (e: string, ...a: unknown[]) => void)(event, ...args);
+      }
+    );
+  }
+
+  /**
+   * Mobile-friendly room recovery controller. `null` unless
+   * `roomRecovery.enabled` was set in the config. See
+   * `RoomRecoveryController` for the surface — typically you only
+   * need `startTrackingHost(code)` after creating a private room and
+   * `loadColdStartCode()` on app startup.
+   */
+  get roomRecovery(): RoomRecoveryController | null {
+    return this._roomRecovery;
   }
 
   // ============================================
@@ -451,6 +531,7 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
    * Destroy the client and clean up all resources
    */
   destroy(): void {
+    this._roomRecovery?.stop();
     this.renderLoop.dispose();
     this.disconnect();
     this.removeAllListeners();
