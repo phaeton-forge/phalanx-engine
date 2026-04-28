@@ -85,6 +85,34 @@ interface PhalanxClientConfig {
   tickRate?: number;                    // Ticks per second, must match server (default: 20)
   pause?: Partial<PauseConfig>;         // Pause behavior configuration
   debug?: boolean;                      // Enable debug logging (default: false)
+
+  // ── Mobile-friendly transport & recovery ──────────────────────────────────
+  mobileFriendlyTransports?: boolean;
+  // When true, automatically uses polling on mobile UAs and WebSocket on
+  // desktop. Opt-in so games that pin a specific transport are not affected.
+  // Ignored when socketTransports is set explicitly.
+
+  persistGuestPlayerId?: boolean | string;
+  // Persist a stable anonymous player id in localStorage across hard reloads.
+  // Required for cold-start room recovery of unauthenticated users.
+  // Pass true to use the default key 'phalanx:guestPlayerId:v1', or a string
+  // to use a custom key. Auth users are unaffected (their id is overwritten
+  // by the auth flow as usual).
+
+  roomRecovery?: PhalanxRoomRecoveryConfig;
+  // Configure the mobile-friendly room recovery controller. When omitted, no
+  // recovery controller is created. See the Room Recovery section for details.
+}
+
+interface PhalanxRoomRecoveryConfig {
+  enabled: boolean;               // Master switch — must be true to arm the controller
+  storageKey?: string;            // localStorage key for the room record (default: 'phalanx:activeRoom:v1')
+  roomTtlMs?: number;             // Local TTL mirroring server RoomService.ROOM_TTL_MS (default: 5 * 60 * 1000)
+  storage?: KeyValueStorage;      // Custom storage adapter (default: localStorage with memory fallback)
+  recoverTimeoutBudget?: RecoverTimeoutBudget; // Per-quality ack timeouts (default: 10s/15s/25s)
+  maxRecoverAttempts?: number;    // Max backoff retries before emitting 'gave-up' (default: 5)
+  preGameStallWatchdog?: boolean; // Auto-arm stall watchdog on matchFound/countdown (default: true)
+  preGameStallMs?: number;        // Budget before forceRecover fires (default: 4500)
 }
 ```
 
@@ -260,6 +288,206 @@ const state = await client.reconnectToMatch(matchId);
 
 // Automatic reconnection with retries
 await client.attemptReconnection();
+```
+
+### Private Rooms
+
+```typescript
+// Host: create a room and get an invite code
+const { code } = await client.createRoom();
+console.log(`Share this code: ${code}`);
+
+// Guest: join by code
+client.joinRoom(code);
+
+// Host: cancel the room before anyone joins
+client.cancelRoom();
+
+// Host: reclaim a room after a transient socket disconnect
+// (e.g. mobile OS killed the WebSocket while the host was sharing the link)
+await client.recoverRoom(code);
+```
+
+### Mobile-Friendly Room Recovery
+
+Private rooms on mobile browsers face a known failure mode: when the host copies the invite link into a messenger app, the OS may suspend the WebSocket. Without recovery the room is silently lost. The engine's `RoomRecoveryController` handles the full lifecycle — browser-lifecycle wiring, exponential-backoff retry, localStorage persistence, and a pre-game stall watchdog.
+
+#### Enabling recovery
+
+```typescript
+const client = new PhalanxClient({
+  serverUrl: 'https://game.example.com',
+
+  // Auto-select polling on mobile UAs, WebSocket on desktop.
+  // Opt-in so games that pin a transport are not affected.
+  mobileFriendlyTransports: true,
+
+  // Persist a stable anonymous id across page reloads so cold-start
+  // recovery can validate the persisted room against the current player.
+  persistGuestPlayerId: true, // or a custom string key
+
+  // Arm the recovery controller.
+  roomRecovery: {
+    enabled: true,
+    // Optional overrides (defaults mirror server PrivateRoomService values):
+    // storageKey: 'myapp:activeRoom:v1',
+    // roomTtlMs: 5 * 60 * 1000,
+    // maxRecoverAttempts: 5,
+    // preGameStallMs: 4500,
+  },
+});
+```
+
+#### App startup — cold-start recovery
+
+Call `loadColdStartCode()` on app load. If localStorage holds a non-expired host record matching the current player id, it returns the room code so the app can immediately reclaim the room instead of showing the main menu.
+
+```typescript
+const code = client.roomRecovery!.loadColdStartCode();
+if (code) {
+  showWaitingScreen(code);
+  client.roomRecovery!.resumeTrackingHost(code);
+  await client.roomRecovery!.tryRecover();
+  // Either the server replays match-found → game-start synchronously
+  // (pending-recover path) or we sit on the waiting screen until the
+  // guest re-joins or the room TTL expires.
+}
+```
+
+#### Host flow
+
+```typescript
+// After createRoom() — arm browser-lifecycle and socket hooks,
+// persist the room to localStorage.
+const { code } = await client.createRoom();
+client.roomRecovery!.startTrackingHost(code);
+
+// When the match is fully underway — stop recovery, clear persistence.
+client.on('gameStart', () => {
+  client.roomRecovery!.stop();
+  startGame();
+});
+```
+
+#### Guest flow
+
+```typescript
+// After deciding to join — persist in case the browser backgrounds
+// the tab between room-join and match-found.
+client.roomRecovery!.trackGuestJoin(code);
+client.joinRoom(code);
+
+// Clear when the match starts.
+client.on('gameStart', () => {
+  client.roomRecovery!.stop();
+  startGame();
+});
+```
+
+#### Cancelling
+
+```typescript
+// Cancel button / user leaves — stops the state machine and clears localStorage.
+client.cancelRoom();
+client.roomRecovery!.stop();
+```
+
+#### Listening to recovery events
+
+The controller emits status on the same `client.on(...)` bus as all other events — no separate emitter to wire up.
+
+```typescript
+client.on('recoveryStatus', (event) => {
+  switch (event.phase) {
+    case 'idle':
+      clearStatusBanner();
+      break;
+    case 'recovering':
+      showStatus(`Reconnecting… (attempt ${event.attempt})`);
+      break;
+    case 'waiting-network':
+      showStatus('Waiting for network…');
+      break;
+    case 'retrying':
+      showStatus(`Lost connection. Retrying in ${Math.ceil(event.nextRetryMs! / 1000)}s…`);
+      break;
+    case 'gave-up':
+      showStatus('Could not reconnect. Use Cancel to go back.');
+      break;
+  }
+});
+
+client.on('roomTerminated', (event) => {
+  clearStatusBanner();
+  if (event.reason === 'expired')   showError('Room expired');
+  if (event.reason === 'not-found') showError('Room no longer exists');
+  // 'cancelled' is usually silent (own Cancel button triggered it)
+  returnToMainMenu();
+});
+```
+
+#### `RoomRecoveryController` API
+
+Accessed via `client.roomRecovery` (null when not configured):
+
+| Method | Description |
+|---|---|
+| `loadColdStartCode()` | Read persisted host record; returns code or null |
+| `startTrackingHost(code)` | Arm hooks + persist room (host created room) |
+| `resumeTrackingHost(code)` | Arm hooks only (cold-start, record already persisted) |
+| `trackGuestJoin(code)` | Persist guest-side join for cold-start surfacing |
+| `tryRecover()` | Attempt one recovery cycle (idempotent, self-retries) |
+| `forceRecover(reason)` | Force-disconnect then recover (bypasses stale socket) |
+| `stop()` | Disarm all hooks, clear persistence |
+| `hasActiveRoom()` | True while a room is being tracked |
+| `getActiveRoomCode()` | Current tracked room code or null |
+| `armPreGameStallWatchdog(reason)` | Manually arm the stall timer (auto-armed by default) |
+| `clearPreGameStallWatchdog()` | Cancel a pending stall timer |
+
+#### Built-in helpers (also exported from `phalanx-client`)
+
+| Export | Description |
+|---|---|
+| `isMobileBrowser()` | UA-based mobile detection |
+| `pickMobileFriendlyTransports()` | Returns `['polling']` on mobile, `['websocket']` on desktop |
+| `loadOrCreateGuestPlayerId(key, storage?)` | Stable guest id across reloads |
+| `RoomPersistence` | localStorage room record (configurable key, TTL, storage adapter) |
+| `getRecoverTimeoutMs(budget?)` | Adapt recover ack timeout to `navigator.connection` |
+| `armBrowserLifecycle(handlers)` | Wire visibility/pageshow/online listeners |
+| `LocalStorageAdapter` / `MemoryKeyValueStorage` | Storage adapters for the persistence layer |
+
+#### Custom storage adapter
+
+React Native / Capacitor / Electron apps that cannot use `localStorage` synchronously:
+
+```typescript
+import type { KeyValueStorage } from 'phalanx-client';
+
+// Synchronous wrapper around any native key-value store:
+class CapacitorStorageAdapter implements KeyValueStorage {
+  private cache = new Map<string, string>();
+  // Populate cache eagerly on startup with Preferences.get(…)
+
+  getItem(key: string): string | null {
+    return this.cache.get(key) ?? null;
+  }
+  setItem(key: string, value: string): void {
+    this.cache.set(key, value);
+    void Preferences.set({ key, value }); // fire-and-forget
+  }
+  removeItem(key: string): void {
+    this.cache.delete(key);
+    void Preferences.remove({ key });
+  }
+}
+
+const client = new PhalanxClient({
+  serverUrl,
+  roomRecovery: {
+    enabled: true,
+    storage: new CapacitorStorageAdapter(),
+  },
+});
 ```
 
 ### Desync Detection
@@ -529,6 +757,24 @@ client.on('authError', (error) => {});
 
 // Desync detection events
 client.on('desync', (event) => {});  // Local hash mismatch detected
+
+// Private room events
+client.on('roomCreated', (event) => {});   // { code: string }
+client.on('roomError',   (event) => {});   // { message: string }
+client.on('roomExpired', (event) => {});   // { code: string }    — server evicted the room (TTL)
+client.on('roomCancelled',(event) => {}); // { code: string }    — host explicitly cancelled
+client.on('roomRecovered',(event) => {}); // { code: string }    — room reclaimed after disconnect
+
+// Room recovery events (emitted by RoomRecoveryController when roomRecovery.enabled: true)
+client.on('recoveryStatus', (event) => {
+  // event.phase: 'idle' | 'recovering' | 'waiting-network' | 'retrying' | 'gave-up'
+  // event.attempt?: number        — 1-based attempt count (when recovering / retrying)
+  // event.nextRetryMs?: number    — ms until next auto-retry (when retrying)
+});
+client.on('roomTerminated', (event) => {
+  // event.reason: 'expired' | 'not-found' | 'cancelled'
+  // Terminal: recovery has stopped and the room can no longer be claimed.
+});
 
 // Unsubscribe
 const unsubscribe = client.on('tick', handler);

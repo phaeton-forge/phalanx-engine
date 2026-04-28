@@ -1,5 +1,5 @@
 import type { IComponent } from './Component';
-import type { IPoolable } from './pool/IPoolable';
+import type { IPoolable } from './pool';
 
 let entityIdCounter = 0;
 

@@ -12,7 +12,6 @@ import type { AssetManager } from './AssetManager';
 import type { PhalanxClient, MatchFoundEvent } from 'phalanx-client';
 import { TeamTag } from '../enums/TeamTag';
 import { arenaParams } from '../config/constants';
-import { resetEntityIdCounter } from 'phalanx-ecs';
 
 /**
  * GameInitializer - Handles game world initialization
@@ -73,9 +72,6 @@ export class GameInitializer {
    * Initialize the game world
    */
   public async initialize(): Promise<void> {
-    // Reset entity ID counter to ensure deterministic IDs across all clients
-    resetEntityIdCounter();
-
     // Preload all 3D models before setting up the scene
     await this.assetManager.preloadAll();
   }

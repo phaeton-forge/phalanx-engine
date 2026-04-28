@@ -11,6 +11,7 @@ import type { EventBus } from './EventBus';
 import type { EntityManager } from './EntityManager';
 import type { SystemContext } from './SystemContext';
 import type { GameSystem } from './GameSystem';
+import {resetEntityIdCounter} from "./Entity";
 
 /**
  * Well-known event names emitted on the GameWorld's EventBus when the
@@ -121,6 +122,9 @@ export class GameWorld {
   private _paused: boolean = false;
 
   constructor(config: GameWorldConfig) {
+
+    resetEntityIdCounter();
+
     // Create SystemRegistry with eagerly-initialized core deps
     this.systemRegistry = new SystemRegistry(
       config.componentTypes

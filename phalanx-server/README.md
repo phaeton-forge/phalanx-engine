@@ -200,12 +200,38 @@ class Phalanx {
 | `reconnect-state`     |      | ✅      | Game state for reconnection       |
 | `player-disconnected` |      | ✅      | Another player disconnected       |
 | `player-reconnected`  |      | ✅      | Another player reconnected        |
+| `room-create`         | ✅   |         | Create a private room             |
+| `room-join`           | ✅   |         | Join a private room by invite code |
+| `room-cancel`         | ✅   |         | Cancel a previously created room  |
+| `room-recover`        | ✅   |         | Reclaim a room after socket drop (see Private Room Recovery) |
+| `room-created`        |      | ✅      | Room created; contains invite `code` |
+| `room-error`          |      | ✅      | Room operation failed; contains `message` |
+| `room-expired`        |      | ✅      | Room TTL exceeded; server evicted the room |
+| `room-cancelled`      |      | ✅      | Host cancelled the room           |
+| `room-recovered`      |      | ✅      | Room successfully reclaimed after socket drop |
 
 ### Game Start Synchronization
 
 After the countdown completes, the server emits `game-start` and enters a `waiting-for-ready` state. The tick loop does **not** start until all connected clients send `client-ready`. This prevents desync caused by clients with different asset loading times missing early ticks.
 
 If a client does not send `client-ready` within 30 seconds, the match ends with reason `'ready-timeout'`.
+
+### Private Room Recovery
+
+Private rooms support a `room-recover` handshake so a host whose socket was dropped (e.g. mobile OS suspended the WebSocket while the user was sharing the invite link) can seamlessly reclaim the room without losing the guest's pending join or an in-flight countdown.
+
+#### Recovery protocol
+
+1. Client calls `room-recover` with the room's invite code after reconnecting.
+2. Server validates the code, verifies the caller was the original host, and rebinds the room to the new socket.
+3. If a guest had already joined while the host was disconnected the server immediately re-emits `match-found` + `reconnect-state` (carrying the countdown snapshot) to the recovered socket so the client-side `waitForMatch`/`waitForCountdown`/`waitForGameStart` chain resumes naturally.
+4. Server responds with `room-recovered` on success or `room-error` (e.g. `'Room expired'`, `'Room not found'`) on terminal failure.
+
+#### Server-side room TTL
+
+Rooms are kept alive for `ROOM_TTL_MS` (default 5 minutes) after the host disconnects. Clients should mirror this TTL in their local persistence layer so they do not attempt `room-recover` for a room the server has certainly already evicted.
+
+The client-side [`RoomRecoveryController`](../phalanx-client/README.md#mobile-friendly-room-recovery) handles the full recovery lifecycle automatically when `roomRecovery.enabled: true` is passed to `PhalanxClient`.
 
 ## Game Types
 

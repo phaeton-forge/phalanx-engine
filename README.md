@@ -38,9 +38,11 @@ This repository contains the following packages:
 - **Deterministic Lockstep**: Synchronizes only player commands, game logic runs deterministically on each client
 - **Fixed-Point Math**: Platform-independent fixed-point arithmetic via `phalanx-math` ensures identical calculations across all clients
 - **Matchmaking**: Built-in support for various game modes (1v1, 2v2, 3v3, 4v4, FFA)
+- **Private Rooms**: Invite-code rooms with host recovery so mobile players can share links without losing their room
 - **Tick System**: Configurable tick rate with command batching
 - **Game Start Synchronization**: Ready handshake ensures all clients finish loading before the tick loop begins
 - **Reconnection Support**: Players can rejoin matches after disconnection
+- **Mobile-Friendly Room Recovery**: `visibilitychange`/`pageshow`/`online` lifecycle listeners, exponential-backoff retry, localStorage persistence across hard reloads, and a pre-game stall watchdog — all opt-in via a single config flag
 - **TypeScript**: Full TypeScript support with exported types
 
 ## Game Start Synchronization
@@ -67,6 +69,68 @@ client.on('gameStart', async () => {
   client.sendReady();      // Tell the server we're ready
 });
 ```
+
+## Mobile-Friendly Room Recovery
+
+Private rooms on mobile browsers face a specific challenge: when a host shares the invite link (e.g. copies it into Telegram), the OS may kill the WebSocket while the tab is backgrounded. Without recovery the room is silently lost and the host sees an empty waiting screen.
+
+Phalanx-client ships a built-in `RoomRecoveryController` (opt-in via `roomRecovery: { enabled: true }`) that handles the full recovery lifecycle so every game gets it for free.
+
+### What it does automatically
+
+| Concern | Mechanism |
+|---|---|
+| Tab returns to foreground | `visibilitychange` + `pageshow` (bfcache) listeners trigger `room-recover` |
+| Socket reconnects | `connected` event triggers `room-recover` |
+| Network comes back | `online` event gates the attempt behind stabilization |
+| Network quality | `navigator.connection` adapts the recover ack timeout (10s normal / 15s 3G / 25s slow-2G) |
+| Transport on mobile | `mobileFriendlyTransports: true` picks `polling` on mobile UAs, `websocket` on desktop |
+| Stable guest identity | `persistGuestPlayerId: true` keeps the same anonymous id across hard reloads |
+| Cold-start recovery | `localStorage` persists the active room code so a full-page reload can reclaim the room |
+| Pre-game stall | Watchdog fires `forceRecover` if `matchFound→countdown→gameStart` goes silent |
+
+### Quick setup
+
+```typescript
+const client = new PhalanxClient({
+  serverUrl: 'https://game.example.com',
+  mobileFriendlyTransports: true,      // auto polling-on-mobile
+  persistGuestPlayerId: true,          // stable id for cold-start recovery
+  roomRecovery: { enabled: true },     // arm the recovery controller
+});
+
+// Startup: attempt cold-start recovery if the previous tab persisted a room
+const coldStartCode = client.roomRecovery!.loadColdStartCode();
+if (coldStartCode) {
+  client.roomRecovery!.resumeTrackingHost(coldStartCode);
+  await client.roomRecovery!.tryRecover();
+}
+
+// After creating a private room:
+const { code } = await client.createRoom();
+client.roomRecovery!.startTrackingHost(code);
+
+// After joining a private room (guest side):
+client.roomRecovery!.trackGuestJoin(code);
+
+// When the match starts (host side):
+client.roomRecovery!.stop(); // clears persistence and disarms hooks
+
+// Listen to recovery events for UI updates:
+client.on('recoveryStatus', (e) => {
+  if (e.phase === 'recovering')      showStatus('Reconnecting…');
+  else if (e.phase === 'retrying')   showStatus(`Retry in ${e.nextRetryMs! / 1000}s`);
+  else if (e.phase === 'gave-up')    showStatus('Could not reconnect');
+  else                               clearStatus();
+});
+
+client.on('roomTerminated', (e) => {
+  if (e.reason === 'expired') showError('Room expired — start a new one');
+  returnToMenu();
+});
+```
+
+See the [Client Documentation](./phalanx-client/README.md#mobile-friendly-room-recovery) for the full API reference.
 
 ## Quick Start
 

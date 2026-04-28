@@ -1,4 +1,4 @@
-import { GameWorld, Entity, resetEntityIdCounter } from 'phalanx-ecs';
+import { GameWorld, Entity } from 'phalanx-ecs';
 import type { SceneContext } from '../rendering';
 import {
   ThreeRenderSystem,
@@ -44,23 +44,6 @@ export function bootstrapWorld(
   sceneCtx: SceneContext,
   networkManager: NetworkManager | null
 ): BootstrappedWorld {
-  // Reset the global entity-ID counter before any entity is created.
-  //
-  // `nextEntityId()` lives at module scope in phalanx-ecs, so without an
-  // explicit reset every previously bootstrapped world (a hotseat
-  // game, an aborted matchmaking attempt, even a hot-reload during
-  // dev) shifts the counter forward. In online mode that is fatal:
-  // the host and guest each independently bootstrap their own world,
-  // and a flick command serialises the local entity id (e.g. checker
-  // entity 95 on the host). If the guest's counter started from a
-  // different baseline the same logical checker gets a different id
-  // and `LockstepManager.handleFlickCommand` looks up
-  // `entityManager.getEntity(95)`, gets `undefined`, and silently
-  // drops the flick — the guest sees `commands-batch` arrive on the
-  // wire but nothing on screen ever moves, and eventually the match
-  // ends with `turn-timeout`.
-  resetEntityIdCounter();
-
   const world = new GameWorld({
     componentTypes: Object.values(ComponentType),
     tickRate: 60,
