@@ -117,7 +117,23 @@ export class LockstepManager {
 
     const data = cmd.data;
     const entity = this.entityManager.getEntity(data.entityId);
-    if (!entity) return;
+    if (!entity) {
+      // Don't drop the command silently — a mismatched entity id is
+      // the symptom of a determinism break (most often a global
+      // entity-id counter that wasn't reset before bootstrap on one
+      // side). Logging it here makes the bug visible the next time it
+      // surfaces instead of leaving the user staring at a frozen
+      // board until `turn-timeout` ends the match.
+      console.warn(
+        '[Lockstep] Flick command targets unknown entity — likely a determinism break',
+        {
+          entityId: data.entityId,
+          playerId: cmd.playerId,
+          serverTick: this.lastServerTick,
+        },
+      );
+      return;
+    }
 
     const rawValues = this.parseFlickCommandRawValues(data);
     if (!rawValues) return;
