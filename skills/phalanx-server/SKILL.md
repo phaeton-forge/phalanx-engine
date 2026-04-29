@@ -21,7 +21,7 @@ Use this skill when the user asks to:
 
 ## Prerequisites
 
-- Node.js 18+
+- Node.js 24.x (`>=24.0.0 <25.0.0`, as declared in the workspace `engines` field)
 - pnpm (install with `npm install -g pnpm`)
 - The `phalanx-engine` repository cloned locally (packages are not yet on npm)
 
@@ -29,9 +29,10 @@ Use this skill when the user asks to:
 
 ```
 phalanx-engine/
-├── phalanx-server/    ← Server library
+├── phalanx-server/    ← Server library (this skill)
 ├── phalanx-client/    ← Client library
-├── phalanx-ecs/       ← ECS library
+├── phalanx-ecs/       ← ECS library (renderer-agnostic, GameWorld facade)
+├── phalanx-physics/   ← Deterministic FP physics (spatial hash, collisions)
 ├── phalanx-math/      ← Fixed-point math
 └── game-test-server/  ← Reference server implementation
 ```
