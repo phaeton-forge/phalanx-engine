@@ -38,10 +38,6 @@ const PORT = parseInt(process.env.PORT || '3000', 10);
 
 const CORS_ORIGINS = parseCorsOrigins(process.env.CORS_ORIGINS);
 
-// Auth configuration — enable if GOOGLE_CLIENT_ID is set
-const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
-const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
-
 async function main() {
   console.log('Starting Chapayev server...');
   if (dotenvResult.error) {
@@ -50,20 +46,6 @@ async function main() {
     console.log(`[Config] Loaded env file: ${ENV_FILE_PATH}`);
   }
   console.log(`[Config] Allowed CORS origins: ${CORS_ORIGINS.join(', ')}`);
-
-  if (GOOGLE_CLIENT_ID && !GOOGLE_CLIENT_SECRET) {
-    throw new Error('GOOGLE_CLIENT_ID is set but GOOGLE_CLIENT_SECRET is missing — both are required for OAuth');
-  }
-  if (!GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET) {
-    throw new Error('GOOGLE_CLIENT_SECRET is set but GOOGLE_CLIENT_ID is missing — both are required for OAuth');
-  }
-
-  const authEnabled = !!(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET);
-  if (authEnabled) {
-    console.log('[Auth] Google OAuth enabled');
-  } else {
-    console.log('[Auth] Running without authentication (dev mode)');
-  }
 
   const phalanx = new Phalanx({
     port: PORT,
@@ -92,15 +74,6 @@ async function main() {
       action: 'log-only',
       gracePeriodTicks: 3,
     },
-    // Auth — only enabled if Google credentials are configured
-    auth: authEnabled ? {
-      enabled: true,
-      google: {
-        clientId: GOOGLE_CLIENT_ID,
-        clientSecret: GOOGLE_CLIENT_SECRET,
-      },
-      allowAnonymous: true, // Allow unauthenticated connections in dev
-    } : undefined,
   });
 
   // TODO (Stage 3): Add server-side command validation via phalanx.on('player-command')

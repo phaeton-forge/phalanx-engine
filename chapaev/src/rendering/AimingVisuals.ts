@@ -13,7 +13,7 @@ const SECTOR_MIN_RADIUS = 0.9;
 const SECTOR_MAX_RADIUS = 4.2;
 
 const OSC_MIN_HZ = 0.3;
-const OSC_MAX_HZ = 2;
+const OSC_MAX_HZ = 1.9;
 
 /**
  * AimingVisuals — draws a directional arrow from the flicked checker

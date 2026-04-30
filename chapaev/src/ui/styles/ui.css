@@ -163,43 +163,6 @@
   color: var(--text-primary);
 }
 
-.btn-google {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  background: white;
-  color: #333;
-  padding: 12px 24px;
-  font-size: 16px;
-  font-family: var(--font-body);
-  border: none;
-  border-radius: var(--radius-btn);
-  cursor: pointer;
-  font-weight: 500;
-  transition: background 0.3s, transform 0.1s, box-shadow 0.3s;
-  min-height: 48px;
-  width: 100%;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-}
-
-.btn-google:hover {
-  background: #f5f5f5;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-}
-
-.btn-google:disabled {
-  background: #ccc;
-  cursor: not-allowed;
-  box-shadow: none;
-}
-
-.btn-google .google-icon {
-  flex-shrink: 0;
-  width: 18px;
-  height: 18px;
-}
-
 /* ── Animations ────────────────────────────────────────────────── */
 
 @keyframes panel-in {
@@ -347,79 +310,6 @@
   font-size: 12px;
   color: var(--text-muted);
   min-height: auto;
-}
-
-/* ── Auth Modal ────────────────────────────────────────────────── */
-
-.auth-overlay {
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-  pointer-events: auto;
-}
-
-.auth-modal-title {
-  font-family: var(--font-display);
-  font-size: 1.5rem;
-  margin-bottom: 20px;
-  color: var(--text-primary);
-}
-
-.auth-buttons {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.auth-divider {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 8px 0;
-  color: var(--text-faint);
-  font-size: 13px;
-}
-
-.auth-divider::before,
-.auth-divider::after {
-  content: '';
-  flex: 1;
-  border-top: 1px solid rgba(200, 148, 62, 0.15);
-}
-
-.auth-close-btn {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  font-size: 20px;
-  cursor: pointer;
-  padding: 4px 8px;
-  line-height: 1;
-  pointer-events: auto;
-  transition: color var(--transition-fast);
-}
-
-.auth-close-btn:hover {
-  color: var(--text-primary);
-}
-
-.auth-status {
-  font-size: 13px;
-  color: var(--text-muted);
-  margin-top: 8px;
-  min-height: 20px;
-}
-
-.auth-status.error {
-  color: var(--color-error);
 }
 
 /* ── Matchmaking Screen ────────────────────────────────────────── */

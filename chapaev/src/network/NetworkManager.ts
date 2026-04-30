@@ -4,10 +4,9 @@ import type {
   CountdownEvent,
   GameStartEvent,
   CommandsBatchEvent,
-  PhalanxAuthState,
   RoomCreatedEvent,
 } from 'phalanx-client';
-import { SERVER_URL, AUTH_CONFIG } from '../config/constants.ts';
+import { SERVER_URL } from '../config/constants.ts';
 
 /**
  * NetworkManager — wraps PhalanxClient for Chapayev online mode.
@@ -37,50 +36,7 @@ export class NetworkManager {
         enabled: true,
         storageKey: 'chapaev:activeRoom:v1',
       },
-      auth: AUTH_CONFIG.authEnabled ? {
-        provider: 'google',
-        google: {
-          clientId: AUTH_CONFIG.googleClientId,
-          tokenExchangeUrl: AUTH_CONFIG.tokenExchangeUrl,
-        },
-      } : undefined,
     });
-  }
-
-  // ── Authentication ───────────────────────────────────────────────
-
-  /** Start Google OAuth login flow */
-  public login(): void {
-    this.client.login();
-  }
-
-  /** Logout current user */
-  public async logout(): Promise<void> {
-    await this.client.logout();
-  }
-
-  /** Get current auth state */
-  public getAuthState(): PhalanxAuthState {
-    return this.client.getAuthState();
-  }
-
-  /** Check if auth is enabled */
-  public get authEnabled(): boolean {
-    return AUTH_CONFIG.authEnabled;
-  }
-
-  /** Subscribe to auth state changes */
-  public onAuthStateChanged(handler: (state: PhalanxAuthState) => void): () => void {
-    const unsub = this.client.on('authStateChanged', handler);
-    this.networkUnsubscribers.push(unsub);
-    return unsub;
-  }
-
-  /** Subscribe to auth errors */
-  public onAuthError(handler: (error: { message: string }) => void): () => void {
-    const unsub = this.client.on('authError', handler);
-    this.networkUnsubscribers.push(unsub);
-    return unsub;
   }
 
   /**

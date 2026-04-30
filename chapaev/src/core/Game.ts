@@ -8,7 +8,6 @@ import {
   RoomRecoveryManager,
   PrivateRoomCoordinator,
   MatchmakingCoordinator,
-  AuthCoordinator,
 } from '../network';
 import { GameUIController } from '../ui/GameUIController.ts';
 import { GameHUDScreen } from '../ui/screens/GameHUD.ts';
@@ -35,7 +34,6 @@ export class Game {
 
   // Online-mode-only collaborators (constructed in `start`).
   private ctx: NetworkContext | null = null;
-  private auth: AuthCoordinator | null = null;
   private matchmaking: MatchmakingCoordinator | null = null;
   private privateRoom: PrivateRoomCoordinator | null = null;
   private recovery: RoomRecoveryManager | null = null;
@@ -65,17 +63,9 @@ export class Game {
     this.bootstrapOnlineCollaborators();
     this.menuPresenter.startAutoRotate();
 
-    const auth = this.auth!;
-    const roomCode = auth.consumeDeepLinkRoomCode();
+    const roomCode = this.consumeDeepLinkRoomCode();
 
     if (roomCode) {
-      if (auth.requiresAuth()) {
-        auth.setPendingRoomCode(roomCode);
-        auth.subscribe();
-        this.ui.uiManager.destroyScreen('auth');
-        this.ui.uiManager.showScreen('auth');
-        return;
-      }
       void this.privateRoom!.joinRoom(roomCode);
       return;
     }
@@ -88,8 +78,6 @@ export class Game {
     }
 
     this.ui.uiManager.showScreen('main-menu');
-    this.ui.mainMenu.updateAuthState(auth.getCurrentAuthState());
-    auth.subscribe();
   }
 
   // ── Online-mode bootstrap ───────────────────────────────────────
@@ -103,15 +91,7 @@ export class Game {
       onLocalGame: () => {
         window.location.search = '?mode=hotseat';
       },
-      onShowProfile: () => this.handleShowProfile(),
-      onShowAuth: () => this.ui.showAuth(),
-      onSignOut: () => {
-        void this.auth!.signOut();
-      },
-
-      onGoogleSignIn: () => this.auth!.startGoogleSignIn(),
-      onGuestPlay: () => this.auth!.enterGuestMode(),
-      onCancelAuth: () => this.auth!.cancelAuth(),
+      onSignOut: () => {},
 
       onCancelMatchmaking: () => this.handleCancelMatchmaking(),
 
@@ -171,47 +151,19 @@ export class Game {
         onError: () => this.returnToMainMenu(),
       }
     );
-
-    this.auth = new AuthCoordinator(
-      this.ctx,
-      {
-        uiManager: this.ui.uiManager,
-        mainMenu: this.ui.mainMenu,
-        authModal: this.ui.authModal,
-      },
-      {
-        onPendingRoomJoin: (code) => {
-          void this.privateRoom!.joinRoom(code);
-        },
-        onGuestQuickMatch: () => this.handleFindMatch(),
-      }
-    );
   }
 
   // ── UI handlers ─────────────────────────────────────────────────
 
   private handleFindMatch(): void {
-    if (this.auth!.requiresAuth()) {
-      this.ui.showAuth();
-      return;
-    }
     this.menuPresenter.stopAutoRotate();
     this.ui.showMatchmaking();
     void this.matchmaking!.connectAndStart();
   }
 
-  private handleShowProfile(): void {
-    this.ui.profileScreen.setAuthState(this.auth!.getCurrentAuthState());
-    this.ui.uiManager.destroyScreen('profile');
-    this.ui.uiManager.hideScreen('main-menu');
-    this.ui.uiManager.showScreen('profile');
-  }
-
   private handleCancelMatchmaking(): void {
     this.ui.matchmaking.stopTimer();
-    this.auth!.unsubscribe();
     this.ctx!.replace();
-    this.auth!.subscribe();
     this.ui.uiManager.hideScreen('matchmaking');
     this.ui.uiManager.showScreen('main-menu');
     this.menuPresenter.startAutoRotate();
@@ -219,9 +171,7 @@ export class Game {
 
   private handleCancelPrivateMatch(): void {
     this.privateRoom!.cancel();
-    this.auth!.unsubscribe();
     this.ctx!.replace();
-    this.auth!.subscribe();
     this.ui.uiManager.hideScreen('private-match');
     this.ui.uiManager.hideScreen('matchmaking');
     this.ui.uiManager.showScreen('main-menu');
@@ -246,12 +196,9 @@ export class Game {
     this.reconnectStateUnsubscribe?.();
     this.reconnectStateUnsubscribe = null;
 
-    this.auth!.unsubscribe();
     this.ctx!.replace();
-    this.auth!.subscribe();
 
     this.ui.destroyTransientScreens();
-    this.ui.mainMenu.updateAuthState(this.auth!.getCurrentAuthState());
     this.ui.uiManager.showScreen('main-menu');
     this.menuPresenter.startAutoRotate();
   }
@@ -421,5 +368,16 @@ export class Game {
     this.ctx?.dispose();
     this.sceneCtx.renderer.dispose();
     this.ui.dispose();
+  }
+
+  private consumeDeepLinkRoomCode(): string | null {
+    const urlParams = new URLSearchParams(window.location.search);
+    const roomCodeFromUrl = urlParams.get('ROOM') ?? urlParams.get('room');
+
+    if (roomCodeFromUrl) {
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+
+    return roomCodeFromUrl ? roomCodeFromUrl.toUpperCase() : null;
   }
 }

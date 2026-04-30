@@ -239,16 +239,6 @@ export const UI_BTN_FOCUS = '#eacc20';
 export const SERVER_URL =
   import.meta.env.VITE_SERVER_URL || 'http://localhost:3000';
 
-/**
- * Authentication configuration.
- * Google OAuth Client ID — set via VITE_GOOGLE_CLIENT_ID env variable.
- */
-export const AUTH_CONFIG = {
-  googleClientId: import.meta.env.VITE_GOOGLE_CLIENT_ID || '',
-  authEnabled: !!import.meta.env.VITE_GOOGLE_CLIENT_ID,
-  tokenExchangeUrl: `${import.meta.env.VITE_SERVER_URL || 'http://localhost:3000'}/auth/token`,
-} as const;
-
 /** Room / private match configuration */
 export const ROOM_CONFIG = {
   codeTTLMs: 5 * 60 * 1000,

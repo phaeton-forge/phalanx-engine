@@ -1,6 +1,5 @@
 import { UIManager } from './UIManager.ts';
 import { MainMenuScreen } from './screens/MainMenu.ts';
-import { AuthModal } from './screens/AuthModal.ts';
 import { MatchmakingScreen } from './screens/Matchmaking.ts';
 import { GameHUDScreen } from './screens/GameHUD.ts';
 import { MatchResultScreen } from './screens/MatchResult.ts';
@@ -15,14 +14,7 @@ export interface GameUICallbacks {
   onFindMatch: (this: void) => void;
   onPrivateMatch: (this: void) => void;
   onLocalGame: (this: void) => void;
-  onShowProfile: (this: void) => void;
-  onShowAuth: (this: void) => void;
   onSignOut: (this: void) => void;
-
-  // Auth modal
-  onGoogleSignIn: (this: void) => void;
-  onGuestPlay: (this: void) => void;
-  onCancelAuth: (this: void) => void;
 
   // Matchmaking
   onCancelMatchmaking: (this: void) => void;
@@ -54,7 +46,6 @@ export interface GameUICallbacks {
 export class GameUIController {
   readonly uiManager = new UIManager();
   mainMenu!: MainMenuScreen;
-  authModal!: AuthModal;
   matchmaking!: MatchmakingScreen;
   gameHUD!: GameHUDScreen;
   matchResult!: MatchResultScreen;
@@ -72,15 +63,7 @@ export class GameUIController {
       onPrivateMatch: cb.onPrivateMatch,
       onLocalGame: cb.onLocalGame,
       onSettings: () => this.showMenuSettings(),
-      onProfile: cb.onShowProfile,
-      onSignIn: cb.onShowAuth,
       onSignOut: cb.onSignOut,
-    });
-
-    this.authModal = new AuthModal(this.uiManager, {
-      onGoogleSignIn: cb.onGoogleSignIn,
-      onGuestPlay: cb.onGuestPlay,
-      onClose: cb.onCancelAuth,
     });
 
     this.matchmaking = new MatchmakingScreen(this.uiManager, {
@@ -102,11 +85,6 @@ export class GameUIController {
 
     this.profileScreen = new ProfileScreen(this.uiManager, {
       onBack: () => {
-        this.uiManager.hideScreen('profile');
-        this.uiManager.showScreen('main-menu');
-      },
-      onSignOut: () => {
-        cb.onSignOut();
         this.uiManager.hideScreen('profile');
         this.uiManager.showScreen('main-menu');
       },
@@ -169,12 +147,6 @@ export class GameUIController {
   showInGameSettings(): void {
     this.uiManager.destroyScreen('settings');
     this.uiManager.showOverlay('settings');
-  }
-
-  showAuth(): void {
-    this.uiManager.hideScreen('main-menu');
-    this.uiManager.destroyScreen('auth');
-    this.uiManager.showScreen('auth');
   }
 
   showPrivateMatch(): void {
