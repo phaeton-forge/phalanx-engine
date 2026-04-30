@@ -135,9 +135,9 @@ export class FlickInputSystem extends GameSystem {
 
   // ── Frame update (visual only) ─────────────────────────────────
 
-  public override update(_deltaTime: number): void {
-    // Nothing to tick — input is entirely event-driven.
-    // Aim visuals are updated in pointer move handlers.
+  public override update(deltaTime: number): void {
+    // Input is event-driven, but the aiming arrow oscillates per-frame.
+    this.aimVisuals.update(deltaTime);
   }
 
   // ── Pointer / Touch handlers ───────────────────────────────────
@@ -321,9 +321,8 @@ export class FlickInputSystem extends GameSystem {
   }
 
   private releaseDrag(): void {
-    this.aimVisuals.hide();
-
     if (this.dragEntityId === -1) {
+      this.aimVisuals.hide();
       this.dragging = false;
       return;
     }
@@ -337,13 +336,24 @@ export class FlickInputSystem extends GameSystem {
 
     if (dragLen < 0.05) {
       // Too small — cancel
+      this.aimVisuals.hide();
       this.dragEntityId = -1;
       return;
     }
 
     const force = Math.min(dragLen * FLICK_FORCE_MULTIPLIER, MAX_FLICK_FORCE);
-    const dirX = dx / dragLen;
-    const dirZ = dz / dragLen;
+
+    // Direction comes from the oscillating arrow (adds skill/difficulty).
+    // Fall back to base direction if visuals aren't visible for any reason.
+    let dirX = dx / dragLen;
+    let dirZ = dz / dragLen;
+    if (this.aimVisuals.isVisible) {
+      const d = this.aimVisuals.getCurrentDirectionXZ();
+      dirX = d.dirX;
+      dirZ = d.dirZ;
+    }
+
+    this.aimVisuals.hide();
 
     if (this.networkMode && this.lockstepManager) {
       // Online mode: send command via lockstep — do NOT modify physics directly.
