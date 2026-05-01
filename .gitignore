@@ -14,6 +14,9 @@ dist/
 !*.config.js
 !vite.config.js
 !eslint.config.js
+#
+# Some packages keep hand-written ambient type declarations in `src/`.
+!chapaev/src/globals.d.ts
 
 # WASM files copied to public folders (generated)
 public/wasm/
