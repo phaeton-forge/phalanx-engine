@@ -4,6 +4,7 @@
  */
 
 import type { UIManager } from '../UIManager.ts';
+import { t } from '../../i18n/i18n.ts';
 
 export interface MatchmakingCallbacks {
   onCancel: () => void;
@@ -33,10 +34,10 @@ export class MatchmakingScreen {
     container.innerHTML = `
       <div class="glass-panel">
         <div class="matchmaking-spinner"></div>
-        <div class="matchmaking-title">Поиск соперника...</div>
-        <div class="matchmaking-timer" data-ref="timer">Время ожидания: 0:00</div>
+        <div class="matchmaking-title">${t('matchmaking.searching')}</div>
+        <div class="matchmaking-timer" data-ref="timer">${t('matchmaking.waitingTime', { time: '0:00' })}</div>
         <button class="btn-secondary matchmaking-cancel" data-ref="cancel-btn">
-          Отменить
+          ${t('matchmaking.cancel')}
         </button>
       </div>
     `;
@@ -54,11 +55,11 @@ export class MatchmakingScreen {
     container.className = 'ui-screen';
     container.innerHTML = `
       <div class="glass-panel">
-        <div class="countdown-title">Соперник найден!</div>
+        <div class="countdown-title">${t('matchmaking.found')}</div>
         <div class="countdown-players">
-          <span>Игрок 1</span>
+          <span>${t('matchmaking.player1')}</span>
           <span class="countdown-vs">⚔️</span>
-          <span>Игрок 2</span>
+          <span>${t('matchmaking.player2')}</span>
         </div>
         <div class="countdown-number" data-ref="countdown-number">3</div>
       </div>
@@ -97,7 +98,8 @@ export class MatchmakingScreen {
       const mins = Math.floor(elapsed / 60);
       const secs = elapsed % 60;
       if (timerEl) {
-        timerEl.textContent = `Время ожидания: ${mins}:${secs.toString().padStart(2, '0')}`;
+        const time = `${mins}:${secs.toString().padStart(2, '0')}`;
+        timerEl.textContent = t('matchmaking.waitingTime', { time });
       }
     }, 1000);
   }

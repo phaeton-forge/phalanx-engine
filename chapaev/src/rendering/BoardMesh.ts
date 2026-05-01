@@ -14,6 +14,7 @@ import {
   LIGHT_SQUARE_COLOR,
   DARK_SQUARE_COLOR,
 } from '../config/constants.ts';
+import { publicAssetUrl } from '../publicAssetUrl.ts';
 
 /**
  * Creates the board mesh group: a base box + 64 square tiles on top.
@@ -25,10 +26,10 @@ export function createBoardMesh(): THREE.Group {
   const textureLoader = new THREE.TextureLoader();
 
   // ── Deck (frame / base) ──────────────────────────────────────
-  const deckColorTex = textureLoader.load('/textures/deck/Wood028_1K-JPG_Color.jpg');
+  const deckColorTex = textureLoader.load(publicAssetUrl('textures/deck/Wood028_1K-JPG_Color.jpg'));
   deckColorTex.colorSpace = THREE.SRGBColorSpace;
-  const deckNormalTex = textureLoader.load('/textures/deck/Wood028_1K-JPG_NormalGL.jpg');
-  const deckRoughTex = textureLoader.load('/textures/deck/Wood028_1K-JPG_Roughness.jpg');
+  const deckNormalTex = textureLoader.load(publicAssetUrl('textures/deck/Wood028_1K-JPG_NormalGL.jpg'));
+  const deckRoughTex = textureLoader.load(publicAssetUrl('textures/deck/Wood028_1K-JPG_Roughness.jpg'));
 
   setRepeat(deckColorTex, 2, 2);
   setRepeat(deckNormalTex, 2, 2);
@@ -53,10 +54,10 @@ export function createBoardMesh(): THREE.Group {
   group.add(deckMesh);
 
   // ── Board squares ────────────────────────────────────────────
-  const boardTex = textureLoader.load('/textures/boards/Wood076_1K-JPG_Color.jpg');
+  const boardTex = textureLoader.load(publicAssetUrl('textures/boards/Wood076_1K-JPG_Color.jpg'));
   boardTex.colorSpace = THREE.SRGBColorSpace;
-  const boardNormal = textureLoader.load('/textures/boards/Wood076_1K-JPG_NormalGL.jpg');
-  const boardRough = textureLoader.load('/textures/boards/Wood076_1K-JPG_Roughness.jpg');
+  const boardNormal = textureLoader.load(publicAssetUrl('textures/boards/Wood076_1K-JPG_NormalGL.jpg'));
+  const boardRough = textureLoader.load(publicAssetUrl('textures/boards/Wood076_1K-JPG_Roughness.jpg'));
 
   const squareGeo = new THREE.PlaneGeometry(CELL_SIZE * 0.98, CELL_SIZE * 0.98);
 

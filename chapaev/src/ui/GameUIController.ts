@@ -22,11 +22,11 @@ export interface GameUICallbacks {
   // In-match
   onPause: (this: void) => void;
   onResume: (this: void) => void;
-  onLeaveMatch: (this: void) => void;
+  onLeaveMatch: (this: void) => void | Promise<void>;
 
   // Match result
   onNewGame: (this: void) => void;
-  onMainMenu: (this: void) => void;
+  onMainMenu: (this: void) => void | Promise<void>;
 
   // Private match
   onCreateRoom: (this: void) => void;

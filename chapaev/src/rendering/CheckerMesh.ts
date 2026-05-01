@@ -15,6 +15,7 @@ import {
   BLACK_CHECKER_ENV_MAP_INTENSITY,
 } from '../config/constants.ts';
 import { TeamTag } from '../enums/TeamTag.ts';
+import { publicAssetUrl } from '../publicAssetUrl.ts';
 
 /** Shared geometry – created once and reused for every checker */
 let sharedGeometry: THREE.LatheGeometry | null = null;
@@ -76,10 +77,10 @@ function getCheckerMaterial(team: TeamTag): THREE.MeshStandardMaterial {
   const textureLoader = new THREE.TextureLoader();
 
   if (team === TeamTag.White) {
-    const colorTex = textureLoader.load('/textures/bright-checker/Wood095_1K-JPG_Color.jpg');
+    const colorTex = textureLoader.load(publicAssetUrl('textures/bright-checker/Wood095_1K-JPG_Color.jpg'));
     colorTex.colorSpace = THREE.SRGBColorSpace;
-    const normalTex = textureLoader.load('/textures/bright-checker/Wood095_1K-JPG_NormalGL.jpg');
-    const roughTex = textureLoader.load('/textures/bright-checker/Wood095_1K-JPG_Roughness.jpg');
+    const normalTex = textureLoader.load(publicAssetUrl('textures/bright-checker/Wood095_1K-JPG_NormalGL.jpg'));
+    const roughTex = textureLoader.load(publicAssetUrl('textures/bright-checker/Wood095_1K-JPG_Roughness.jpg'));
 
     const mat = new THREE.MeshStandardMaterial({
       map: colorTex,
@@ -95,10 +96,10 @@ function getCheckerMaterial(team: TeamTag): THREE.MeshStandardMaterial {
   }
 
   // Black
-  const colorTex = textureLoader.load('/textures/dark-checker/Wood026_1K-JPG_Color.jpg');
+  const colorTex = textureLoader.load(publicAssetUrl('textures/dark-checker/Wood026_1K-JPG_Color.jpg'));
   colorTex.colorSpace = THREE.SRGBColorSpace;
-  const normalTex = textureLoader.load('/textures/dark-checker/Wood026_1K-JPG_NormalGL.jpg');
-  const roughTex = textureLoader.load('/textures/dark-checker/Wood026_1K-JPG_Roughness.jpg');
+  const normalTex = textureLoader.load(publicAssetUrl('textures/dark-checker/Wood026_1K-JPG_NormalGL.jpg'));
+  const roughTex = textureLoader.load(publicAssetUrl('textures/dark-checker/Wood026_1K-JPG_Roughness.jpg'));
 
   const mat = new THREE.MeshStandardMaterial({
     map: colorTex,

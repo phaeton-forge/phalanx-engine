@@ -4,6 +4,8 @@ import type { InitOptions } from 'eruda';
 const ENABLED_FLAG_VALUES: readonly string[] = ['1', 'true', 'on', 'yes'];
 const DISABLED_FLAG_VALUES: readonly string[] = ['0', 'false', 'off', 'no'];
 
+const DEBUG_CONSOLE_BUILD_ENABLED: boolean = __DEBUG_CONSOLE_BUILD_ENABLED__;
+
 const ERUDA_OPTIONS: InitOptions = {
   autoScale: true,
   useShadowDom: true,
@@ -48,15 +50,14 @@ function isIosDevice(): boolean {
 }
 
 function shouldInstallDebugConsole(): boolean {
+  if (!DEBUG_CONSOLE_BUILD_ENABLED) {
+    return false;
+  }
+
   const params = new URLSearchParams(window.location.search);
   const queryToggle = params.get('debugConsole') ?? params.get('eruda');
 
   if (isDisabledFlag(queryToggle)) {
-    return false;
-  }
-
-  const isDebugBuild = import.meta.env.DEV || import.meta.env.VITE_ENABLE_DEBUG_CONSOLE === 'true';
-  if (!isDebugBuild) {
     return false;
   }
 
@@ -68,6 +69,10 @@ function shouldInstallDebugConsole(): boolean {
 }
 
 export async function installDebugConsole(): Promise<void> {
+  if (!DEBUG_CONSOLE_BUILD_ENABLED) {
+    return;
+  }
+
   if (isInstalled || !shouldInstallDebugConsole()) {
     return;
   }

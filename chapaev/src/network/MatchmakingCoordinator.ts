@@ -2,6 +2,7 @@ import type { CountdownEvent, MatchFoundEvent } from 'phalanx-client';
 import type { NetworkContext } from './NetworkContext.ts';
 import type { UIManager } from '../ui/UIManager.ts';
 import type { MatchmakingScreen } from '../ui/screens/Matchmaking.ts';
+import { t } from '../i18n/i18n.ts';
 
 export interface MatchmakingCallbacks {
   onMatchReady(matchData: MatchFoundEvent): void;
@@ -25,11 +26,11 @@ export class MatchmakingCoordinator {
     const { uiManager, matchmaking } = this.ui;
 
     try {
-      matchmaking.setStatus('Подключение к серверу...');
+      matchmaking.setStatus(t('net.connecting'));
 
       this.ctx.trackConnectListener(
         this.ctx.manager.client.on('disconnected', () => {
-          matchmaking.setStatus('Соединение потеряно');
+          matchmaking.setStatus(t('net.connectionLost'));
         })
       );
       this.ctx.trackConnectListener(
@@ -39,7 +40,7 @@ export class MatchmakingCoordinator {
       );
 
       await this.ctx.manager.client.connect();
-      matchmaking.setStatus('Поиск соперника...');
+      matchmaking.setStatus(t('net.searchingOpponent'));
 
       await this.ctx.manager.client.joinQueue();
 
@@ -73,7 +74,7 @@ export class MatchmakingCoordinator {
         error instanceof Error ? error.message : JSON.stringify(error),
         error
       );
-      matchmaking.setStatus('Ошибка подключения');
+      matchmaking.setStatus(t('net.connectionError'));
       matchmaking.stopTimer();
       this.callbacks.onError();
     }

@@ -3,6 +3,7 @@
  */
 
 import type { UIManager } from '../UIManager.ts';
+import { t } from '../../i18n/i18n.ts';
 
 export interface PrivateMatchCallbacks {
   onCreateRoom: () => void;
@@ -96,31 +97,31 @@ export class PrivateMatchScreen {
     this.stopWaitingTimer();
     container.innerHTML = `
       <div class="glass-panel">
-        <div class="private-match-title">Приватный матч</div>
+        <div class="private-match-title">${t('privateMatch.title')}</div>
 
         <button class="btn-primary" data-ref="create-btn">
-          Создать комнату
+          ${t('privateMatch.createRoom')}
         </button>
 
         <div class="private-match-or">
-          <span>или</span>
+          <span>${t('privateMatch.or')}</span>
         </div>
 
         <div class="private-match-join-row">
           <input
             class="private-match-input"
             data-ref="code-input"
-            placeholder="Код комнаты..."
+            placeholder="${t('privateMatch.roomCodePlaceholder')}"
             maxlength="6"
             autocomplete="off"
           />
           <button class="btn-primary private-match-join-btn" data-ref="join-btn">
-            Войти
+            ${t('privateMatch.join')}
           </button>
         </div>
 
         <div style="margin-top: 16px;">
-          <button class="btn-ghost" data-ref="back-btn">← Назад</button>
+          <button class="btn-ghost" data-ref="back-btn">${t('common.back')}</button>
         </div>
       </div>
     `;
@@ -157,15 +158,15 @@ export class PrivateMatchScreen {
 
     container.innerHTML = `
       <div class="glass-panel">
-        <div class="private-match-title">Комната создана!</div>
+        <div class="private-match-title">${t('privateMatch.roomCreated')}</div>
 
         <div class="room-code-display">
           <div class="room-code-value" data-ref="room-code"></div>
-          <button class="room-code-copy" data-ref="copy-btn">📋 Копировать код</button>
+          <button class="room-code-copy" data-ref="copy-btn">${t('privateMatch.copyCode')}</button>
         </div>
 
         <div class="room-link-display" style="margin-bottom: 16px;">
-          <div style="color: var(--text-muted); font-size: 12px; margin-bottom: 4px;">Ссылка для приглашения:</div>
+          <div style="color: var(--text-muted); font-size: 12px; margin-bottom: 4px;">${t('privateMatch.copyLinkLabel')}</div>
           <div style="display: flex; gap: 8px; align-items: center;">
             <input class="private-match-input" data-ref="link-input" readonly style="flex: 1; font-size: 12px; letter-spacing: normal; text-transform: none;" />
             <button class="room-code-copy" data-ref="copy-link-btn">📋</button>
@@ -174,14 +175,14 @@ export class PrivateMatchScreen {
 
         <div style="display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 16px;">
           <div class="matchmaking-spinner" style="width: 20px; height: 20px; margin: 0;"></div>
-          <span style="color: var(--text-muted); font-size: 14px;">Ожидание соперника...</span>
+          <span style="color: var(--text-muted); font-size: 14px;">${t('privateMatch.waitingOpponent')}</span>
         </div>
 
-        <div class="matchmaking-timer" data-ref="timer" style="margin-bottom: 16px;">Время ожидания: 0:00</div>
+        <div class="matchmaking-timer" data-ref="timer" style="margin-bottom: 16px;">${t('matchmaking.waitingTime', { time: '0:00' })}</div>
 
         <div data-ref="recovery-status" style="display: none; color: var(--text-muted); font-size: 13px; margin-bottom: 12px; text-align: center;"></div>
 
-        <button class="btn-secondary" data-ref="cancel-btn">Отменить</button>
+        <button class="btn-secondary" data-ref="cancel-btn">${t('matchmaking.cancel')}</button>
       </div>
     `;
 
@@ -197,11 +198,11 @@ export class PrivateMatchScreen {
 
     copyBtn.addEventListener('click', () => {
       void navigator.clipboard.writeText(roomCode).then(() => {
-        copyBtn.textContent = '✅ Скопировано!';
-        setTimeout(() => { copyBtn.textContent = '📋 Копировать код'; }, 2000);
+        copyBtn.textContent = t('privateMatch.copied');
+        setTimeout(() => { copyBtn.textContent = t('privateMatch.copyCode'); }, 2000);
       }).catch(() => {
-        copyBtn.textContent = '❌ Ошибка';
-        setTimeout(() => { copyBtn.textContent = '📋 Копировать код'; }, 2000);
+        copyBtn.textContent = t('privateMatch.error');
+        setTimeout(() => { copyBtn.textContent = t('privateMatch.copyCode'); }, 2000);
       });
     });
 
@@ -247,7 +248,8 @@ export class PrivateMatchScreen {
       const mins = Math.floor(elapsed / 60);
       const secs = elapsed % 60;
       if (timerEl) {
-        timerEl.textContent = `Время ожидания: ${mins}:${secs.toString().padStart(2, '0')}`;
+        const time = `${mins}:${secs.toString().padStart(2, '0')}`;
+        timerEl.textContent = t('matchmaking.waitingTime', { time });
       }
     }, 1000);
   }

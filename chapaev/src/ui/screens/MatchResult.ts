@@ -3,6 +3,7 @@
  */
 
 import type { UIManager } from '../UIManager.ts';
+import { t } from '../../i18n/i18n.ts';
 
 export interface MatchResultData {
   isWinner: boolean;
@@ -13,7 +14,7 @@ export interface MatchResultData {
 export interface MatchResultCallbacks {
   onRematch: () => void;
   onNewGame: () => void;
-  onMainMenu: () => void;
+  onMainMenu: () => void | Promise<void>;
 }
 
 export class MatchResultScreen {
@@ -40,8 +41,8 @@ export class MatchResultScreen {
   private render(container: HTMLDivElement): void {
     const { isWinner, score, matchDuration } = this.resultData;
     const titleClass = isWinner ? 'victory' : 'defeat';
-    const titleText = isWinner ? '🏆 ПОБЕДА! 🏆' : 'ПОРАЖЕНИЕ';
-    const subtitleText = isWinner ? 'Отличная игра!' : 'В следующий раз повезёт!';
+    const titleText = isWinner ? t('matchResult.victoryTitle') : t('matchResult.defeatTitle');
+    const subtitleText = isWinner ? t('matchResult.victorySubtitle') : t('matchResult.defeatSubtitle');
 
     container.className = 'ui-screen';
 
@@ -62,7 +63,7 @@ export class MatchResultScreen {
     detailsDiv.className = 'match-result-details';
     detailsDiv.appendChild(document.createTextNode(subtitleText));
     detailsDiv.appendChild(document.createElement('br'));
-    const durationText = document.createTextNode('Время матча: ');
+    const durationText = document.createTextNode(t('matchResult.durationLabel'));
     detailsDiv.appendChild(durationText);
     const durationValue = document.createTextNode(matchDuration);
     detailsDiv.appendChild(durationValue);
@@ -73,20 +74,20 @@ export class MatchResultScreen {
 
     const rematchBtn = document.createElement('button');
     rematchBtn.className = 'btn-primary';
-    rematchBtn.textContent = '🔄 Реванш';
+    rematchBtn.textContent = t('matchResult.rematch');
     rematchBtn.addEventListener('click', () => this.callbacks.onRematch());
     buttonsDiv.appendChild(rematchBtn);
 
     const newGameBtn = document.createElement('button');
     newGameBtn.className = 'btn-secondary';
-    newGameBtn.textContent = '🔍 Найти нового';
+    newGameBtn.textContent = t('matchResult.findNew');
     newGameBtn.addEventListener('click', () => this.callbacks.onNewGame());
     buttonsDiv.appendChild(newGameBtn);
 
     const menuBtn = document.createElement('button');
     menuBtn.className = 'btn-ghost';
-    menuBtn.textContent = '🏠 В меню';
-    menuBtn.addEventListener('click', () => this.callbacks.onMainMenu());
+    menuBtn.textContent = t('matchResult.toMenu');
+    menuBtn.addEventListener('click', () => void this.callbacks.onMainMenu());
     buttonsDiv.appendChild(menuBtn);
 
     panel.appendChild(buttonsDiv);

@@ -1,6 +1,9 @@
 import { Game } from './core/Game.ts';
 import type { GameMode } from './core/Game.ts';
 import { installDebugConsole } from './debug/installDebugConsole.ts';
+import { NoopPlatformAds, YandexSDK } from './platform/YandexSDK.ts';
+import type { IPlatformAds } from './platform/YandexSDK.ts';
+import { setLanguage } from './i18n/i18n.ts';
 
 const canvas = document.getElementById('app') as HTMLCanvasElement | null;
 
@@ -32,14 +35,25 @@ function reportStartupError(error: unknown): void {
 async function bootstrap(): Promise<void> {
   await installDebugConsole();
 
-  const game = new Game(canvasElement, mode);
+  let platformAds: IPlatformAds = new NoopPlatformAds();
+  try {
+    const yandexSDK = new YandexSDK();
+    await yandexSDK.init();
+    const lang = yandexSDK.getLanguage();
+    if (lang) setLanguage(lang);
+    platformAds = yandexSDK;
+  } catch (e: unknown) {
+    console.warn('[Chapayev] Yandex SDK init failed; continuing without ads', e);
+  }
+
+  const game = new Game(canvasElement, platformAds, mode);
 
   // Expose for debugging in devtools
   if (import.meta.env.DEV) {
     (window as unknown as Record<string, unknown>)['__game'] = game;
   }
 
-  await game.start();
+  game.start();
 }
 
 void bootstrap().catch((error: unknown) => {

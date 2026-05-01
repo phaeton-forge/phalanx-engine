@@ -16,6 +16,7 @@ import type {
   RoundOverEvent,
 } from '../events';
 import type { GameHUDScreen } from './screens/GameHUD.ts';
+import { t } from '../i18n/i18n.ts';
 
 interface HotseatOptions {
   mode: 'hotseat';
@@ -78,18 +79,18 @@ export function bindHUDToWorld(
 
   world.eventBus.on<RoundOverEvent>(ROUND_OVER, (event) => {
     if (event.winner === null) {
-      hud.showToast('Ничья в раунде', 'info');
+      hud.showToast(t('toast.roundDraw'), 'info');
     } else if (opts.mode === 'hotseat') {
       hud.showToast(
         event.winner === TeamTag.White
-          ? 'Белые выиграли раунд!'
-          : 'Чёрные выиграли раунд!',
+          ? t('toast.roundWon.hotseat.white')
+          : t('toast.roundWon.hotseat.black'),
         'success'
       );
     } else if (event.winner === opts.localTeam) {
-      hud.showToast('Раунд выигран!', 'success');
+      hud.showToast(t('toast.roundWon'), 'success');
     } else {
-      hud.showToast('Раунд проигран', 'defeat');
+      hud.showToast(t('toast.roundLost'), 'defeat');
     }
   });
 
@@ -97,8 +98,8 @@ export function bindHUDToWorld(
     if (opts.mode === 'hotseat') {
       hud.showToast(
         event.winner === TeamTag.White
-          ? '🏆 Белые победили!'
-          : '🏆 Чёрные победили!',
+          ? t('toast.matchWon.hotseat.white')
+          : t('toast.matchWon.hotseat.black'),
         'success',
         4000
       );
@@ -109,7 +110,7 @@ export function bindHUDToWorld(
       `[Game] GAME OVER! Winner: ${event.winner}. ${isLocalWin ? 'You win!' : 'You lose.'}`
     );
     hud.showToast(
-      isLocalWin ? '🏆 Победа в партии!' : 'Поражение',
+      isLocalWin ? t('toast.matchWon') : t('toast.matchLost'),
       isLocalWin ? 'success' : 'defeat',
       3000
     );

@@ -5,6 +5,7 @@ import type {
   Unsubscribe,
 } from 'phalanx-client';
 import type { NetworkContext } from './NetworkContext.ts';
+import { t } from '../i18n/i18n.ts';
 
 export interface RecoveryUI {
   /** Show transient recovery status text on the waiting screen. Pass null to clear. */
@@ -110,7 +111,7 @@ export class RoomRecoveryManager {
       client.on('roomTerminated', (event: RoomTerminatedEvent) => {
         if (event.reason === 'cancelled') return; // silent — game cancels itself
         this.ui.setRecoveryStatus(null);
-        this.ui.setMatchmakingStatus('Комната истекла');
+        this.ui.setMatchmakingStatus(t('recovery.roomExpired'));
         this.callbacks.onRoomTerminated();
       })
     );
@@ -122,15 +123,15 @@ export class RoomRecoveryManager {
       case 'idle':
         return null;
       case 'waiting-network':
-        return 'Ожидание сети…';
+        return t('recovery.waitingNetwork');
       case 'recovering':
-        return 'Восстановление подключения…';
+        return t('recovery.restoring');
       case 'retrying': {
         const seconds = Math.ceil((event.nextRetryMs ?? 0) / 1000);
-        return `Соединение потеряно. Повтор через ${seconds}с…`;
+        return t('recovery.retrying', { seconds });
       }
       case 'gave-up':
-        return 'Не удалось восстановить соединение';
+        return t('recovery.gaveUp');
     }
   }
 }

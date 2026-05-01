@@ -41,6 +41,7 @@ import {
   BLOOM_STRENGTH,
   BLOOM_RADIUS,
 } from '../config/constants.ts';
+import { publicAssetUrl } from '../publicAssetUrl.ts';
 
 /**
  * Screen-space vignette: darkens the edges of the frame for a
@@ -108,7 +109,7 @@ export function setupScene(canvas: HTMLCanvasElement): SceneContext {
   const pmremGenerator = new THREE.PMREMGenerator(renderer);
   pmremGenerator.compileEquirectangularShader();
 
-  new EXRLoader().load('/textures/env/IndoorEnvironmentHDRI013_2K_HDR.exr', (exrTexture) => {
+  new EXRLoader().load(publicAssetUrl('textures/env/IndoorEnvironmentHDRI013_2K_HDR.exr'), (exrTexture) => {
     exrTexture.mapping = THREE.EquirectangularReflectionMapping;
 
     const envMap = pmremGenerator.fromEquirectangular(exrTexture).texture;
@@ -188,11 +189,11 @@ export function setupScene(canvas: HTMLCanvasElement): SceneContext {
   const textureLoader = new THREE.TextureLoader();
   const tableRepeat = 6;
 
-  const tableColorTex = textureLoader.load('/textures/boards/Wood076_1K-JPG_Color.jpg');
+  const tableColorTex = textureLoader.load(publicAssetUrl('textures/boards/Wood076_1K-JPG_Color.jpg'));
   tableColorTex.colorSpace = THREE.SRGBColorSpace;
-  const tableNormalTex = textureLoader.load('/textures/boards/Wood076_1K-JPG_NormalGL.jpg');
-  const tableRoughTex = textureLoader.load('/textures/boards/Wood076_1K-JPG_Roughness.jpg');
-  const tableAoTex = textureLoader.load('/textures/boards/Wood076_1K-JPG_AmbientOcclusion.jpg');
+  const tableNormalTex = textureLoader.load(publicAssetUrl('textures/boards/Wood076_1K-JPG_NormalGL.jpg'));
+  const tableRoughTex = textureLoader.load(publicAssetUrl('textures/boards/Wood076_1K-JPG_Roughness.jpg'));
+  const tableAoTex = textureLoader.load(publicAssetUrl('textures/boards/Wood076_1K-JPG_AmbientOcclusion.jpg'));
 
   for (const tex of [tableColorTex, tableNormalTex, tableRoughTex, tableAoTex]) {
     tex.wrapS = THREE.RepeatWrapping;
@@ -224,10 +225,10 @@ export function setupScene(canvas: HTMLCanvasElement): SceneContext {
   scene.add(tableMesh);
 
   // ── Table border (raised rails) ──────────────────────────────
-  const borderColorTex = textureLoader.load('/textures/boards/Wood076_1K-JPG_Color.jpg');
+  const borderColorTex = textureLoader.load(publicAssetUrl('textures/boards/Wood076_1K-JPG_Color.jpg'));
   borderColorTex.colorSpace = THREE.SRGBColorSpace;
-  const borderNormalTex = textureLoader.load('/textures/boards/Wood076_1K-JPG_NormalGL.jpg');
-  const borderRoughTex = textureLoader.load('/textures/boards/Wood076_1K-JPG_Roughness.jpg');
+  const borderNormalTex = textureLoader.load(publicAssetUrl('textures/boards/Wood076_1K-JPG_NormalGL.jpg'));
+  const borderRoughTex = textureLoader.load(publicAssetUrl('textures/boards/Wood076_1K-JPG_Roughness.jpg'));
 
   for (const tex of [borderColorTex, borderNormalTex, borderRoughTex]) {
     tex.wrapS = THREE.RepeatWrapping;

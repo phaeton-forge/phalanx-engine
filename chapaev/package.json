@@ -32,7 +32,6 @@
     "@capacitor/core": "^8.3.0",
     "@capacitor/ios": "^8.3.1",
     "@dimforge/rapier3d-compat": "^0.14.0",
-    "eruda": "^3.4.3",
     "phalanx-client": "workspace:*",
     "phalanx-ecs": "workspace:*",
     "phalanx-math": "workspace:*",
@@ -42,6 +41,7 @@
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/three": "^0.175.0",
+    "eruda": "^3.4.3",
     "tsx": "^4.0.0",
     "typescript": "~5.9.3",
     "vite": "8.0.5"

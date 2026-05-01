@@ -4,6 +4,7 @@
 
 import type { UIManager } from '../UIManager.ts';
 import { audioSettings } from '../../config/AudioSettings.ts';
+import { t } from '../../i18n/i18n.ts';
 
 export interface SettingsCallbacks {
   onRules: () => void;
@@ -25,11 +26,11 @@ export class SettingsScreen {
     container.className = 'ui-screen';
     container.innerHTML = `
       <div class="glass-panel settings-panel">
-        <div class="settings-title">⚙️ Настройки</div>
+        <div class="settings-title">${t('settings.title')}</div>
 
         <div class="settings-group">
           <label class="settings-label">
-            🎵 Музыка
+            ${t('settings.music')}
             <span class="settings-value" data-ref="music-value">${Math.round(audioSettings.musicVolume * 100)}%</span>
           </label>
           <input
@@ -43,7 +44,7 @@ export class SettingsScreen {
 
         <div class="settings-group">
           <label class="settings-label">
-            🔊 Звуки
+            ${t('settings.sounds')}
             <span class="settings-value" data-ref="sfx-value">${Math.round(audioSettings.sfxVolume * 100)}%</span>
           </label>
           <input
@@ -58,11 +59,11 @@ export class SettingsScreen {
         <hr class="settings-divider" />
 
         <button class="btn-secondary" data-ref="rules-btn" style="width: 100%;">
-          📜 Правила игры
+          ${t('settings.rules')}
         </button>
 
         <div style="margin-top: 16px;">
-          <button class="btn-ghost" data-ref="back-btn">← Назад</button>
+          <button class="btn-ghost" data-ref="back-btn">${t('common.back')}</button>
         </div>
       </div>
     `;

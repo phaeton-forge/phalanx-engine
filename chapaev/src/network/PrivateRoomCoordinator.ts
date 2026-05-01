@@ -7,6 +7,7 @@ import type { RoomRecoveryManager } from './RoomRecoveryManager.ts';
 import type { UIManager } from '../ui/UIManager.ts';
 import type { MatchmakingScreen } from '../ui/screens/Matchmaking.ts';
 import type { PrivateMatchScreen } from '../ui/screens/PrivateMatch.ts';
+import { t } from '../i18n/i18n.ts';
 
 export interface PrivateRoomCallbacks {
   onMatchReady(matchData: MatchFoundEvent): void;
@@ -48,12 +49,12 @@ export class PrivateRoomCoordinator {
       uiManager.hideScreen('private-match');
       uiManager.destroyScreen('matchmaking');
       uiManager.showScreen('matchmaking');
-      matchmaking.setStatus('Подключение к серверу...');
+      matchmaking.setStatus(t('net.connecting'));
 
       this.attachConnectErrorListeners();
 
       await this.ctx.manager.client.connect();
-      matchmaking.setStatus('Создание комнаты...');
+      matchmaking.setStatus(t('net.creatingRoom'));
 
       const roomEvent = await this.ctx.manager.createRoom();
       const roomCode = roomEvent.code;
@@ -75,7 +76,7 @@ export class PrivateRoomCoordinator {
         error instanceof Error ? error.message : JSON.stringify(error),
         error
       );
-      matchmaking.setStatus('Ошибка подключения');
+      matchmaking.setStatus(t('net.connectionError'));
       matchmaking.stopTimer();
       this.recovery.stop();
       this.callbacks.onCancelled();
@@ -91,12 +92,12 @@ export class PrivateRoomCoordinator {
       uiManager.hideScreen('private-match');
       uiManager.destroyScreen('matchmaking');
       uiManager.showScreen('matchmaking');
-      matchmaking.setStatus('Подключение к серверу...');
+      matchmaking.setStatus(t('net.connecting'));
 
       this.attachConnectErrorListeners();
 
       await this.ctx.manager.client.connect();
-      matchmaking.setStatus('Присоединение к комнате...');
+      matchmaking.setStatus(t('net.joiningRoom'));
 
       // Persist as guest in case the second player backgrounds the
       // browser between `room-join` and `match-found`.
@@ -152,7 +153,7 @@ export class PrivateRoomCoordinator {
       // match" / "Cannot join your own room" / socket error.
       const message = error instanceof Error ? error.message : String(error);
       console.error('[PrivateRoom] Join failed:', message, error);
-      matchmaking.setStatus(`Ошибка: ${message}`);
+      matchmaking.setStatus(t('net.errorPrefix', { message }));
       matchmaking.stopTimer();
       this.recovery.stop();
       setTimeout(() => this.callbacks.onCancelled(), 2500);
@@ -172,7 +173,7 @@ export class PrivateRoomCoordinator {
       this.ui.stopMenuAutoRotate();
       privateMatch.showWaiting(code);
       uiManager.showScreen('private-match');
-      privateMatch.setRecoveryStatus?.('Восстановление подключения…');
+      privateMatch.setRecoveryStatus?.(t('recovery.restoring'));
 
       // Pre-arm everything BEFORE recover (see comment in awaitMatchStart).
       this.recovery.resumeTrackingHostRoom(code);
@@ -206,7 +207,7 @@ export class PrivateRoomCoordinator {
     const { matchmaking } = this.ui;
     this.ctx.trackConnectListener(
       this.ctx.manager.client.on('disconnected', () => {
-        matchmaking.setStatus('Соединение потеряно');
+        matchmaking.setStatus(t('net.connectionLost'));
       })
     );
     this.ctx.trackConnectListener(

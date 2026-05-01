@@ -24,6 +24,7 @@ import {
 } from '../config/constants.ts';
 import { SilentModeHint } from '../ui/SilentModeHint.ts';
 import { audioSettings } from '../config/AudioSettings.ts';
+import { publicAssetUrl } from '../publicAssetUrl.ts';
 
 /** Paths to hit sound variants (served from public/) */
 const HIT_SOUND_PATHS: readonly string[] = [
@@ -243,24 +244,25 @@ export class SoundSystem extends GameSystem {
   /**
    * Phase 1 — fetch all sound files as raw ArrayBuffers.
    * This does NOT require an AudioContext and works on every platform.
+   * Request URLs use `publicAssetUrl` (same rules as textures / other `public/` files).
    */
   private async loadSounds(): Promise<void> {
     try {
       const hitFetches = HIT_SOUND_PATHS.map(async (path) => {
-        const response = await fetch(path);
+        const response = await fetch(publicAssetUrl(path));
         return response.arrayBuffer();
       });
 
-      const movementFetch = fetch(MOVEMENT_SOUND_PATH).then((r) => r.arrayBuffer());
-      const rimHitFetch = fetch(RIM_HIT_SOUND_PATH).then((r) => r.arrayBuffer());
+      const movementFetch = fetch(publicAssetUrl(MOVEMENT_SOUND_PATH)).then((r) => r.arrayBuffer());
+      const rimHitFetch = fetch(publicAssetUrl(RIM_HIT_SOUND_PATH)).then((r) => r.arrayBuffer());
 
       const fallOffFetches = FALL_OFF_SOUND_PATHS.map(async (path) => {
-        const response = await fetch(path);
+        const response = await fetch(publicAssetUrl(path));
         return response.arrayBuffer();
       });
 
       const bgmFetches = BGM_SOUND_PATHS.map(async (path) => {
-        const response = await fetch(path);
+        const response = await fetch(publicAssetUrl(path));
         return response.arrayBuffer();
       });
 

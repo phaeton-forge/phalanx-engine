@@ -15,6 +15,8 @@ import { bindHUDToWorld } from '../ui/HUDBindings.ts';
 import { bootstrapWorld } from './WorldBootstrapper.ts';
 import { PauseController } from './PauseController.ts';
 import type { MatchFoundEvent, ReconnectStateEvent } from 'phalanx-client';
+import type { IPlatformAds } from '../platform/YandexSDK.ts';
+import { t } from '../i18n/i18n.ts';
 
 export type GameMode = 'hotseat' | 'online';
 
@@ -31,6 +33,7 @@ export class Game {
   private readonly sceneCtx: SceneContext;
   private readonly ui = new GameUIController();
   private readonly menuPresenter: MenuScenePresenter;
+  private readonly platform: IPlatformAds;
 
   // Online-mode-only collaborators (constructed in `start`).
   private ctx: NetworkContext | null = null;
@@ -48,8 +51,13 @@ export class Game {
   private hasSentClientReady = false;
   private inGame = false;
 
-  constructor(canvas: HTMLCanvasElement, mode: GameMode = 'hotseat') {
+  constructor(
+    canvas: HTMLCanvasElement,
+    platform: IPlatformAds,
+    mode: GameMode = 'hotseat'
+  ) {
     this.mode = mode;
+    this.platform = platform;
     this.sceneCtx = setupScene(canvas);
     this.menuPresenter = new MenuScenePresenter(this.sceneCtx);
   }
@@ -97,10 +105,16 @@ export class Game {
 
       onPause: () => this.pauseController?.requestPause(),
       onResume: () => this.pauseController?.requestResume(),
-      onLeaveMatch: () => this.returnToMainMenu(),
+      onLeaveMatch: async () => {
+        await this.platform.showFullscreenAd();
+        this.returnToMainMenu();
+      },
 
       onNewGame: () => this.handleFindMatch(),
-      onMainMenu: () => this.returnToMainMenu(),
+      onMainMenu: async () => {
+        await this.platform.showFullscreenAd();
+        this.returnToMainMenu();
+      },
 
       onCreateRoom: () => {
         void this.privateRoom!.createRoom();
@@ -216,7 +230,7 @@ export class Game {
       onSettings: () => this.ui.showInGameSettings(),
     });
     this.ui.uiManager.showScreen('game');
-    hud.setPlayerNames('Белые', 'Чёрные');
+    hud.setPlayerNames(t('name.whiteTeam'), t('name.blackTeam'));
     hud.setHotseatMode(true);
     hud.updateTurnIndicator(true, 'white');
 
@@ -256,8 +270,8 @@ export class Game {
     this.ui.uiManager.showScreen('game');
 
     const localUser = this.ctx.manager.client.getUser();
-    const localName = localUser?.username ?? 'Вы';
-    const opponentName = matchData.opponents[0]?.username ?? 'Соперник';
+    const localName = localUser?.username ?? t('name.you');
+    const opponentName = matchData.opponents[0]?.username ?? t('name.opponent');
     this.ui.gameHUD.setPlayerNames(
       localPlayerIndex === 0 ? localName : opponentName,
       localPlayerIndex === 1 ? localName : opponentName
@@ -314,7 +328,7 @@ export class Game {
 
     manager.onPlayerDisconnected(() => {
       console.log('[Game] Opponent disconnected.');
-      this.ui.gameHUD.showToast('Соперник покинул матч', 'info', 2000);
+      this.ui.gameHUD.showToast(t('toast.opponentLeft'), 'info', 2000);
       setTimeout(() => this.returnToMainMenu(), 2000);
     });
 

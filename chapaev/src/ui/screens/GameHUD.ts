@@ -3,6 +3,7 @@
  */
 
 import type { UIManager } from '../UIManager.ts';
+import { t } from '../../i18n/i18n.ts';
 
 export interface GameHUDCallbacks {
   onPause: () => void;
@@ -30,20 +31,20 @@ export class GameHUDScreen {
       <div class="hud-top-bar">
         <div class="hud-player-info" data-ref="player1-info">
           <div class="avatar" data-ref="player1-avatar" style="display: flex; align-items: center; justify-content: center; font-size: 14px;">⬜</div>
-          <span class="player-name" data-ref="player1-name">Игрок 1</span>
+          <span class="player-name" data-ref="player1-name">${t('hud.player1')}</span>
           <div class="hud-checker-indicators" data-ref="player1-checkers"></div>
         </div>
-        <div class="hud-round-info" data-ref="round-info">Раунд 1</div>
+        <div class="hud-round-info" data-ref="round-info">${t('hud.round', { round: 1 })}</div>
         <div class="hud-player-info" data-ref="player2-info">
           <div class="hud-checker-indicators" data-ref="player2-checkers"></div>
-          <span class="player-name" data-ref="player2-name">Игрок 2</span>
+          <span class="player-name" data-ref="player2-name">${t('hud.player2')}</span>
           <div class="avatar" data-ref="player2-avatar" style="display: flex; align-items: center; justify-content: center; font-size: 14px;">⬛</div>
         </div>
       </div>
 
       <!-- Turn Indicator -->
       <div class="hud-turn-indicator your-turn" data-ref="turn-indicator">
-        Ваш ход
+        ${t('hud.yourTurn')}
       </div>
 
       <!-- Toast container for round/match notifications -->
@@ -51,8 +52,8 @@ export class GameHUDScreen {
 
       <!-- Bottom Bar -->
       <div class="hud-bottom-bar">
-        <button data-ref="settings-btn" title="Настройки">⚙️</button>
-        <button data-ref="pause-btn" title="Пауза">⏸️</button>
+        <button data-ref="settings-btn" title="${t('hud.settingsTitle')}">⚙️</button>
+        <button data-ref="pause-btn" title="${t('hud.pauseTitle')}">⏸️</button>
       </div>
     `;
 
@@ -111,7 +112,7 @@ export class GameHUDScreen {
       if (!screenEl) return;
       const pauseBtn = screenEl.querySelector('[data-ref="pause-btn"]') as HTMLButtonElement | null;
       if (pauseBtn) {
-        pauseBtn.title = 'Выход';
+        pauseBtn.title = t('hud.exitTitle');
         pauseBtn.textContent = '🚪';
       }
     }
@@ -126,14 +127,14 @@ export class GameHUDScreen {
     if (!indicator) return;
 
     if (this.isHotseat) {
-      const teamName = team === 'black' ? 'чёрных' : 'белых';
-      indicator.textContent = `Ход ${teamName}`;
+      const teamKey = team === 'black' ? 'hud.team.black' : 'hud.team.white';
+      indicator.textContent = t('hud.turnTeam', { team: t(teamKey) });
       indicator.className = 'hud-turn-indicator your-turn';
     } else if (isLocalTurn) {
-      indicator.textContent = 'Ваш ход';
+      indicator.textContent = t('hud.yourTurn');
       indicator.className = 'hud-turn-indicator your-turn';
     } else {
-      indicator.textContent = 'Ход соперника';
+      indicator.textContent = t('hud.opponentTurn');
       indicator.className = 'hud-turn-indicator opponent-turn';
     }
   }
@@ -145,7 +146,7 @@ export class GameHUDScreen {
 
     const roundEl = screenEl.querySelector('[data-ref="round-info"]');
     if (roundEl) {
-      roundEl.textContent = `Раунд ${round}`;
+      roundEl.textContent = t('hud.round', { round });
     }
   }
 

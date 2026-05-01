@@ -4,10 +4,11 @@
  */
 
 import type { UIManager } from '../UIManager.ts';
+import { t } from '../../i18n/i18n.ts';
 
 export interface PauseCallbacks {
   onResume: () => void;
-  onLeave: () => void;
+  onLeave: () => void | Promise<void>;
 }
 
 export class PauseOverlay {
@@ -38,7 +39,7 @@ export class PauseOverlay {
     }
     const info = screenEl.querySelector('[data-ref="pause-info"]') as HTMLDivElement | null;
     if (info) {
-      info.textContent = canResume ? 'Вы поставили игру на паузу' : 'Соперник поставил игру на паузу';
+      info.textContent = canResume ? t('pause.youPaused') : t('pause.opponentPaused');
     }
   }
 
@@ -46,12 +47,12 @@ export class PauseOverlay {
     container.className = 'pause-overlay';
     container.innerHTML = `
       <div class="glass-panel" style="max-width: 360px; width: 90vw; text-align: center;">
-        <div class="pause-title">⏸️ ПАУЗА</div>
-        <div class="pause-info" data-ref="pause-info">Игра приостановлена</div>
+        <div class="pause-title">${t('pause.title')}</div>
+        <div class="pause-info" data-ref="pause-info">${t('pause.paused')}</div>
         <div class="pause-buttons">
-          <button class="btn-primary" data-ref="resume-btn">▶️ Продолжить</button>
+          <button class="btn-primary" data-ref="resume-btn">${t('pause.resume')}</button>
           <button class="btn-ghost" data-ref="leave-btn" style="color: var(--color-error);">
-            🏠 Покинуть матч
+            ${t('pause.leaveMatch')}
           </button>
         </div>
       </div>
@@ -63,7 +64,7 @@ export class PauseOverlay {
     resumeBtn.addEventListener('click', () => {
       if (this.canResume) this.callbacks.onResume();
     });
-    leaveBtn.addEventListener('click', () => this.callbacks.onLeave());
+    leaveBtn.addEventListener('click', () => void this.callbacks.onLeave());
 
     // Apply initial state
     if (!this.canResume) {
