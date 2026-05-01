@@ -8,6 +8,7 @@ import {
   RapierVFXSystem,
   SoundSystem,
   InterpolationSystem,
+  AIPlayerSystem,
 } from '../systems';
 import {
   ComponentType,
@@ -73,7 +74,14 @@ export function bootstrapWorld(
     | RapierVFXSystem
     | SoundSystem
     | InterpolationSystem
+    | AIPlayerSystem
   > = [flickInputSystem, renderSystem, rapierVFXSystem, soundSystem];
+
+  if (mode === 'ai' || mode === 'online_ai') {
+    // AI plays the black team; the human controls white.
+    frameSystems.push(new AIPlayerSystem(TeamTag.Black));
+    flickInputSystem.setLocalTeam(TeamTag.White);
+  }
 
   let interpolationSystem: InterpolationSystem | null = null;
   let lockstepManager: LockstepManager | null = null;

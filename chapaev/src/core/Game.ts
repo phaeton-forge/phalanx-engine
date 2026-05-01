@@ -17,19 +17,28 @@ import { PauseController } from './PauseController.ts';
 import type { MatchFoundEvent, ReconnectStateEvent } from 'phalanx-client';
 import type { IPlatformAds } from '../platform/YandexSDK.ts';
 import { t } from '../i18n/i18n.ts';
+import { generateBotOpponentDisplayName } from '../util/botOpponentName.ts';
 
-export type GameMode = 'hotseat' | 'online';
+export type GameMode = 'hotseat' | 'online' | 'ai' | 'online_ai';
+
+/** Local play sub-modes shown on the LocalGameMode screen. */
+export type LocalMode = 'hotseat' | 'ai';
 
 /**
  * Game — thin orchestrator that wires together the ECS world,
  * Three.js scene, UI, and the render loop.
  *
- * Supports two modes:
- * - hotseat: local two-player (Stage 1, internal tick loop)
+ * Supports three modes:
+ * - hotseat: local two-player on one screen (Stage 1, internal tick loop)
+ * - ai:      single-player vs. computer (Stage 1, internal tick loop)
  * - online:  network 1v1 via PhalanxClient (Stage 2, event tick mode)
+ *
+ * In `online` mode the user can also transition into `hotseat` or `ai` mode
+ * in-memory from the main menu — no page reload needed.
  */
 export class Game {
-  private readonly mode: GameMode;
+  /** The mode the app booted in (from URL); does not change after construction. */
+  private readonly initialMode: GameMode;
   private readonly sceneCtx: SceneContext;
   private readonly ui = new GameUIController();
   private readonly menuPresenter: MenuScenePresenter;
@@ -51,20 +60,27 @@ export class Game {
   private hasSentClientReady = false;
   private inGame = false;
 
+  /**
+   * Distinguishes real online play from a local AI substitute after matchmaking
+   * times out (affects pause behaviour — no server pause in substitute mode).
+   */
+  private onlineSessionKind: 'none' | 'network' | 'substitute_ai' = 'none';
+
   constructor(
     canvas: HTMLCanvasElement,
     platform: IPlatformAds,
     mode: GameMode = 'hotseat'
   ) {
-    this.mode = mode;
+    this.initialMode = mode;
     this.platform = platform;
     this.sceneCtx = setupScene(canvas);
     this.menuPresenter = new MenuScenePresenter(this.sceneCtx);
   }
 
   start(): void {
-    if (this.mode === 'hotseat') {
-      this.startHotseat();
+    if (this.initialMode === 'hotseat' || this.initialMode === 'ai') {
+      // Legacy URL-driven path: skip the menu and start a local match directly.
+      this.startLocal(this.initialMode);
       return;
     }
 
@@ -96,14 +112,21 @@ export class Game {
     this.ui.build({
       onFindMatch: () => this.handleFindMatch(),
       onPrivateMatch: () => this.ui.showPrivateMatch(),
-      onLocalGame: () => {
-        window.location.search = '?mode=hotseat';
-      },
+      onLocalGame: () => this.ui.showLocalGameMode(),
+      onLocalGameVsAI: () => this.handleStartLocal('ai'),
+      onLocalGameHotseat: () => this.handleStartLocal('hotseat'),
       onSignOut: () => {},
 
       onCancelMatchmaking: () => this.handleCancelMatchmaking(),
 
-      onPause: () => this.pauseController?.requestPause(),
+      onPause: () => {
+        if (this.onlineSessionKind === 'substitute_ai') {
+          void this.platform.showFullscreenAd();
+          this.returnToMainMenu();
+          return;
+        }
+        this.pauseController?.requestPause();
+      },
       onResume: () => this.pauseController?.requestResume(),
       onLeaveMatch: async () => {
         await this.platform.showFullscreenAd();
@@ -163,6 +186,7 @@ export class Game {
       {
         onMatchReady: (matchData) => this.startOnlineGame(matchData),
         onError: () => this.returnToMainMenu(),
+        onQueueTimeoutFallbackAI: () => this.startMatchmakingSubstituteAI(),
       }
     );
   }
@@ -194,6 +218,7 @@ export class Game {
 
   private returnToMainMenu(): void {
     this.inGame = false;
+    this.onlineSessionKind = 'none';
     this.hasSentClientReady = false;
     this.flickInputSystem = null;
     this.pauseController?.reset();
@@ -210,34 +235,81 @@ export class Game {
     this.reconnectStateUnsubscribe?.();
     this.reconnectStateUnsubscribe = null;
 
-    this.ctx!.replace();
+    // URL-launched local mode never bootstraps the menu, so there is no
+    // main-menu screen to fall back to — just reload the page.
+    if (!this.ctx) {
+      window.location.search = '';
+      return;
+    }
 
+    this.ctx.replace();
+
+    this.ui.matchmaking.stopTimer();
     this.ui.destroyTransientScreens();
     this.ui.uiManager.showScreen('main-menu');
     this.menuPresenter.startAutoRotate();
   }
 
-  // ── Hot-seat mode (Stage 1) ─────────────────────────────────────
+  // ── Local mode (hot-seat / vs AI) ───────────────────────────────
 
-  private startHotseat(): void {
+  /**
+   * Transition from the main menu into a local match without reloading the page.
+   * Tears down menu visuals, hides menu screens, then delegates to `startLocal`.
+   */
+  private handleStartLocal(localMode: LocalMode): void {
+    this.menuPresenter.stopAutoRotate();
+    this.ui.uiManager.hideScreen('local-game-mode');
+    this.ui.uiManager.hideScreen('main-menu');
+    this.startLocal(localMode);
+  }
+
+  private startLocal(localMode: LocalMode): void {
     this.inGame = true;
+    this.menuPresenter.stopAutoRotate();
+
+    // Replace any previous game screen so HUD callbacks bind to local mode.
+    this.ui.uiManager.destroyScreen('game');
 
     const hud = new GameHUDScreen(this.ui.uiManager, {
-      // In hotseat the pause button just exits to main menu (online mode).
-      onPause: () => {
-        window.location.search = '';
-      },
+      onPause: () => this.returnToMainMenu(),
       onSettings: () => this.ui.showInGameSettings(),
     });
     this.ui.uiManager.showScreen('game');
-    hud.setPlayerNames(t('name.whiteTeam'), t('name.blackTeam'));
-    hud.setHotseatMode(true);
-    hud.updateTurnIndicator(true, 'white');
 
-    const { world } = bootstrapWorld('hotseat', this.sceneCtx, null);
+    if (localMode === 'ai') {
+      hud.setPlayerNames(t('name.you'), t('name.ai'));
+      hud.updateTurnIndicator(true);
+    } else {
+      hud.setPlayerNames(t('name.whiteTeam'), t('name.blackTeam'));
+      hud.setHotseatMode(true);
+      hud.updateTurnIndicator(true, 'white');
+    }
+
+    const { world, flickInputSystem } = bootstrapWorld(
+      localMode,
+      this.sceneCtx,
+      null
+    );
     this.world = world;
+    this.flickInputSystem = flickInputSystem;
 
-    bindHUDToWorld(world, hud, { mode: 'hotseat' });
+    // Schedule the post-victory return to the main menu. Delay matches the
+    // matching toast duration so the user can read the result.
+    const scheduleReturn = (delayMs: number): void => {
+      setTimeout(() => this.returnToMainMenu(), delayMs);
+    };
+
+    bindHUDToWorld(
+      world,
+      hud,
+      localMode === 'ai'
+        ? {
+            mode: 'online',
+            localTeam: TeamTag.White,
+            onGameOver: () => scheduleReturn(3500),
+          }
+        : { mode: 'hotseat', onGameOver: () => scheduleReturn(4500) }
+    );
 
     const { composer, controls } = this.sceneCtx;
     world.start({
@@ -253,8 +325,8 @@ export class Game {
   private startOnlineGame(matchData: MatchFoundEvent): void {
     if (!this.ctx) return;
 
-
     this.inGame = true;
+    this.onlineSessionKind = 'network';
     this.hasSentClientReady = false;
 
     // teamId: 0 = white, 1 = black.
@@ -269,8 +341,13 @@ export class Game {
     this.ui.uiManager.destroyScreen('game');
     this.ui.uiManager.showScreen('game');
 
+    this.ui.gameHUD.setPauseAsMenuExit(false);
+
     const localUser = this.ctx.manager.client.getUser();
-    const localName = localUser?.username ?? t('name.you');
+    const localName =
+      localUser?.username ??
+      this.ctx.manager.client.getUsername() ??
+      t('name.you');
     const opponentName = matchData.opponents[0]?.username ?? t('name.opponent');
     this.ui.gameHUD.setPlayerNames(
       localPlayerIndex === 0 ? localName : opponentName,
@@ -311,6 +388,66 @@ export class Game {
     });
 
     this.sendClientReady('initial game start');
+  }
+
+  /**
+   * After public matchmaking waits too long for a human opponent, drop the
+   * queue silently and run a local AI opponent that mimics online HUD
+   * (your turn / opponent's turn, guest-style opponent name).
+   */
+  private async startMatchmakingSubstituteAI(): Promise<void> {
+    if (!this.ctx) return;
+
+    this.inGame = true;
+    this.onlineSessionKind = 'substitute_ai';
+    this.hasSentClientReady = false;
+
+    this.localTeam = TeamTag.White;
+
+    const localUser = this.ctx.manager.client.getUser();
+    const localName =
+      localUser?.username ??
+      this.ctx.manager.client.getUsername() ??
+      t('name.you');
+    const opponentName = generateBotOpponentDisplayName();
+
+    await this.ui.matchmaking.runLocalCountdown(localName, opponentName);
+    this.ui.uiManager.hideScreen('countdown-local');
+
+    this.menuPresenter.adjustCameraForTeam(this.localTeam);
+
+    this.ui.uiManager.destroyScreen('game');
+    this.ui.uiManager.showScreen('game');
+
+    this.ui.gameHUD.setPlayerNames(localName, opponentName);
+    this.ui.gameHUD.setPauseAsMenuExit(true);
+    this.ui.gameHUD.updateTurnIndicator(true);
+
+    const { world, flickInputSystem } = bootstrapWorld(
+      'online_ai',
+      this.sceneCtx,
+      null
+    );
+    this.world = world;
+    this.flickInputSystem = flickInputSystem;
+
+    const scheduleReturn = (delayMs: number): void => {
+      setTimeout(() => this.returnToMainMenu(), delayMs);
+    };
+
+    bindHUDToWorld(world, this.ui.gameHUD, {
+      mode: 'online',
+      localTeam: this.localTeam,
+      onGameOver: () => scheduleReturn(3500),
+    });
+
+    const { composer, controls } = this.sceneCtx;
+    world.start({
+      afterFrame: () => {
+        controls.update();
+        composer.render();
+      },
+    });
   }
 
   // ── Network events ──────────────────────────────────────────────

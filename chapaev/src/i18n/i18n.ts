@@ -12,6 +12,12 @@ const dictionaries: Record<Language, Dict> = {
     'mainMenu.localGame': '🎮 Local game',
     'mainMenu.settings': '⚙️ Settings',
 
+    // Local game mode selection
+    'localMode.title': 'Local game',
+    'localMode.subtitle': 'Choose game mode',
+    'localMode.vsAi': '🤖 Game vs AI',
+    'localMode.hotseat': '👥 Hot-seat',
+
     // Game HUD
     'hud.player1': 'Player 1',
     'hud.player2': 'Player 2',
@@ -118,6 +124,7 @@ const dictionaries: Record<Language, Dict> = {
     'name.opponent': 'Opponent',
     'name.whiteTeam': 'White',
     'name.blackTeam': 'Black',
+    'name.ai': 'AI',
   },
   ru: {
     // Main menu
@@ -127,6 +134,12 @@ const dictionaries: Record<Language, Dict> = {
     'mainMenu.privateMatch': '🔑 Приватный матч',
     'mainMenu.localGame': '🎮 Локальная игра',
     'mainMenu.settings': '⚙️ Настройки',
+
+    // Local game mode selection
+    'localMode.title': 'Локальная игра',
+    'localMode.subtitle': 'Выберите режим игры',
+    'localMode.vsAi': '🤖 Игра с ИИ',
+    'localMode.hotseat': '👥 Игра на одном экране',
 
     // Game HUD
     'hud.player1': 'Игрок 1',
@@ -245,6 +258,7 @@ const dictionaries: Record<Language, Dict> = {
     'name.opponent': 'Соперник',
     'name.whiteTeam': 'Белые',
     'name.blackTeam': 'Чёрные',
+    'name.ai': 'ИИ',
   },
 };
 

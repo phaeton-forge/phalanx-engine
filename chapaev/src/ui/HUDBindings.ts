@@ -20,6 +20,8 @@ import { t } from '../i18n/i18n.ts';
 
 interface HotseatOptions {
   mode: 'hotseat';
+  /** Optional hook fired after GAME_OVER; the caller usually schedules a menu redirect. */
+  onGameOver?: () => void;
 }
 
 interface OnlineOptions {
@@ -103,6 +105,7 @@ export function bindHUDToWorld(
         'success',
         4000
       );
+      opts.onGameOver?.();
       return;
     }
     const isLocalWin = event.winner === opts.localTeam;

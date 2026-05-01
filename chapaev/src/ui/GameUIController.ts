@@ -6,6 +6,7 @@ import { MatchResultScreen } from './screens/MatchResult.ts';
 import { ProfileScreen } from './screens/Profile.ts';
 import { PauseOverlay } from './screens/PauseOverlay.ts';
 import { PrivateMatchScreen } from './screens/PrivateMatch.ts';
+import { LocalGameModeScreen } from './screens/LocalGameMode.ts';
 import { SettingsScreen } from './screens/SettingsScreen.ts';
 import { RulesScreen } from './screens/RulesScreen.ts';
 
@@ -14,6 +15,8 @@ export interface GameUICallbacks {
   onFindMatch: (this: void) => void;
   onPrivateMatch: (this: void) => void;
   onLocalGame: (this: void) => void;
+  onLocalGameVsAI: (this: void) => void;
+  onLocalGameHotseat: (this: void) => void;
   onSignOut: (this: void) => void;
 
   // Matchmaking
@@ -51,6 +54,7 @@ export class GameUIController {
   matchResult!: MatchResultScreen;
   profileScreen!: ProfileScreen;
   privateMatch!: PrivateMatchScreen;
+  localGameMode!: LocalGameModeScreen;
   pauseOverlay!: PauseOverlay;
   // @ts-expect-error — kept alive
   private settingsScreen!: SettingsScreen;
@@ -105,6 +109,15 @@ export class GameUIController {
       },
     });
 
+    this.localGameMode = new LocalGameModeScreen(this.uiManager, {
+      onSelectAI: cb.onLocalGameVsAI,
+      onSelectHotseat: cb.onLocalGameHotseat,
+      onBack: () => {
+        this.uiManager.hideScreen('local-game-mode');
+        this.uiManager.showScreen('main-menu');
+      },
+    });
+
     this.settingsScreen = new SettingsScreen(this.uiManager, {
       onRules: () => {
         this.uiManager.hideScreen('settings');
@@ -155,9 +168,16 @@ export class GameUIController {
     this.uiManager.showScreen('private-match');
   }
 
+  showLocalGameMode(): void {
+    this.uiManager.hideScreen('main-menu');
+    this.uiManager.destroyScreen('local-game-mode');
+    this.uiManager.showScreen('local-game-mode');
+  }
+
   showMatchmaking(): void {
     this.uiManager.hideScreen('main-menu');
     this.uiManager.destroyScreen('matchmaking');
+    this.uiManager.destroyScreen('countdown-local');
     this.uiManager.showScreen('matchmaking');
   }
 
@@ -172,8 +192,10 @@ export class GameUIController {
       'match-result',
       'pause',
       'countdown',
+      'countdown-local',
       'matchmaking',
       'private-match',
+      'local-game-mode',
       'settings',
       'rules',
     ] as const) {

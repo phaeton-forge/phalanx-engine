@@ -11,7 +11,9 @@ export type Screen =
   | 'auth'
   | 'matchmaking'
   | 'countdown'
+  | 'countdown-local'
   | 'private-match'
+  | 'local-game-mode'
   | 'game'
   | 'match-result'
   | 'profile'
@@ -65,9 +67,7 @@ export class UIManager {
       this.screenElements.set(screen, el);
     }
 
-    el.style.display = '';
-    el.classList.remove('panel-exit');
-    el.classList.add('panel-enter');
+    this.revealElement(el);
   }
 
   /** Show a screen as an overlay without hiding the current screen */
@@ -85,25 +85,41 @@ export class UIManager {
       this.screenElements.set(screen, el);
     }
 
-    el.style.display = '';
-    el.classList.remove('panel-exit');
-    el.classList.add('panel-enter');
+    this.revealElement(el);
   }
 
   /** Hide a specific screen with exit animation */
   public hideScreen(screen: Screen): void {
     const el = this.screenElements.get(screen);
     if (!el) return;
+    // Idempotent: skip if already hidden or already in the process of hiding.
+    // Also avoids stacking up `animationend` listeners (which would fire on
+    // the next `panel-in` and re-hide a freshly shown panel).
+    if (el.style.display === 'none' || el.dataset['hiding'] === '1') return;
 
     el.classList.remove('panel-enter');
     el.classList.add('panel-exit');
+    el.dataset['hiding'] = '1';
 
     const onEnd = (): void => {
       el.removeEventListener('animationend', onEnd);
+      // `showScreen()` may have revealed the panel before this listener fired.
+      // The reveal clears `dataset.hiding`, which signals us to bail out so we
+      // don't re-hide the just-shown element.
+      if (el.dataset['hiding'] !== '1') return;
+      delete el.dataset['hiding'];
       el.style.display = 'none';
       el.classList.remove('panel-exit');
     };
     el.addEventListener('animationend', onEnd);
+  }
+
+  /** Apply the show/enter animation and cancel any pending hide. */
+  private revealElement(el: HTMLDivElement): void {
+    delete el.dataset['hiding'];
+    el.style.display = '';
+    el.classList.remove('panel-exit');
+    el.classList.add('panel-enter');
   }
 
   /** Hide current screen */
@@ -156,5 +172,3 @@ export class UIManager {
     this.screenRenderers.clear();
   }
 }
-
-

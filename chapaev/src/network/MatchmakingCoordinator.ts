@@ -7,7 +7,12 @@ import { t } from '../i18n/i18n.ts';
 export interface MatchmakingCallbacks {
   onMatchReady(matchData: MatchFoundEvent): void;
   onError(): void;
+  /** Queue waited too long with no opponent — leave queue and start local AI substitute. */
+  onQueueTimeoutFallbackAI(): void | Promise<void>;
 }
+
+/** How long to wait for a second player before falling back to AI (ms). */
+const PUBLIC_QUEUE_MATCH_TIMEOUT_MS = 15_000;
 
 interface UIRefs {
   uiManager: UIManager;
@@ -44,7 +49,53 @@ export class MatchmakingCoordinator {
 
       await this.ctx.manager.client.joinQueue();
 
-      const matchData = await this.ctx.manager.client.waitForMatch();
+      let queueWaitTimer: ReturnType<typeof setTimeout> | null = null;
+      const clearQueueTimer = (): void => {
+        if (queueWaitTimer !== null) {
+          clearTimeout(queueWaitTimer);
+          queueWaitTimer = null;
+        }
+      };
+
+      const queueTimeoutPromise = new Promise<'timeout'>((resolve) => {
+        queueWaitTimer = setTimeout(
+          () => resolve('timeout'),
+          PUBLIC_QUEUE_MATCH_TIMEOUT_MS
+        );
+      });
+
+      const matchPromise = this.ctx.manager.client.waitForMatch();
+
+      const matchOrTimeout = await Promise.race([
+        matchPromise.then(
+          (data) => {
+            clearQueueTimer();
+            return data;
+          },
+          (err) => {
+            clearQueueTimer();
+            throw err;
+          }
+        ),
+        queueTimeoutPromise,
+      ]);
+
+      if (matchOrTimeout === 'timeout') {
+        clearQueueTimer();
+        try {
+          this.ctx.manager.client.leaveQueue();
+        } catch {
+          // Socket may already be gone; still replace below.
+        }
+        this.ctx.cleanupConnectListeners();
+        this.ctx.replace();
+        matchmaking.stopTimer();
+        uiManager.hideScreen('matchmaking');
+        await Promise.resolve(this.callbacks.onQueueTimeoutFallbackAI());
+        return;
+      }
+
+      const matchData = matchOrTimeout;
       matchmaking.stopTimer();
 
       uiManager.hideScreen('matchmaking');

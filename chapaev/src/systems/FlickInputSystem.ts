@@ -106,6 +106,14 @@ export class FlickInputSystem extends GameSystem {
     this.localTeam = localTeam;
   }
 
+  /**
+   * Restrict input to a single team without enabling network mode.
+   * Used in AI mode to block the human from controlling the AI's checkers.
+   */
+  public setLocalTeam(team: TeamTag): void {
+    this.localTeam = team;
+  }
+
   // ── Lifecycle ──────────────────────────────────────────────────
 
   public override init(context: SystemContext): void {
@@ -142,9 +150,9 @@ export class FlickInputSystem extends GameSystem {
 
   // ── Pointer / Touch handlers ───────────────────────────────────
 
-  /** Returns true if input should be blocked (online mode + not local player's turn) */
+  /** Returns true if input should be blocked (locked to a team and it's not their turn) */
   private isInputBlocked(): boolean {
-    if (!this.networkMode || !this.localTeam) return false;
+    if (!this.localTeam) return false;
     return this.gameState.currentTeam !== this.localTeam;
   }
 

@@ -14,6 +14,8 @@ export class GameHUDScreen {
   private readonly uiManager: UIManager;
   private readonly callbacks: GameHUDCallbacks;
   private isHotseat = false;
+  /** When true, pause button looks like “exit” but turn wording stays online-style. */
+  private pauseShowsExit = false;
 
   constructor(uiManager: UIManager, callbacks: GameHUDCallbacks) {
     this.uiManager = uiManager;
@@ -62,14 +64,22 @@ export class GameHUDScreen {
     this.initCheckerIndicators(container, 'player2-checkers', 8);
 
     // Events
-    const settingsBtn = container.querySelector('[data-ref="settings-btn"]') as HTMLButtonElement;
-    const pauseBtn = container.querySelector('[data-ref="pause-btn"]') as HTMLButtonElement;
+    const settingsBtn = container.querySelector(
+      '[data-ref="settings-btn"]'
+    ) as HTMLButtonElement;
+    const pauseBtn = container.querySelector(
+      '[data-ref="pause-btn"]'
+    ) as HTMLButtonElement;
 
     settingsBtn.addEventListener('click', () => this.callbacks.onSettings());
     pauseBtn.addEventListener('click', () => this.callbacks.onPause());
   }
 
-  private initCheckerIndicators(container: HTMLDivElement, ref: string, total: number): void {
+  private initCheckerIndicators(
+    container: HTMLDivElement,
+    ref: string,
+    total: number
+  ): void {
     const el = container.querySelector(`[data-ref="${ref}"]`);
     if (!el) return;
     el.innerHTML = '';
@@ -81,7 +91,11 @@ export class GameHUDScreen {
   }
 
   /** Update checker count for a player */
-  public updateCheckerCount(playerIndex: number, alive: number, total: number): void {
+  public updateCheckerCount(
+    playerIndex: number,
+    alive: number,
+    total: number
+  ): void {
     const screenEl = this.uiManager.getScreenElement('game');
     if (!screenEl) return;
 
@@ -91,13 +105,17 @@ export class GameHUDScreen {
 
     const dots = el.querySelectorAll('.hud-checker-dot');
     dots.forEach((dot, i) => {
-      dot.className = i < alive ? 'hud-checker-dot alive' : 'hud-checker-dot dead';
+      dot.className =
+        i < alive ? 'hud-checker-dot alive' : 'hud-checker-dot dead';
     });
 
     // Ensure correct total number of dots
     while (el.children.length < total) {
       const dot = document.createElement('div');
-      dot.className = el.children.length < alive ? 'hud-checker-dot alive' : 'hud-checker-dot dead';
+      dot.className =
+        el.children.length < alive
+          ? 'hud-checker-dot alive'
+          : 'hud-checker-dot dead';
       el.appendChild(dot);
     }
   }
@@ -105,25 +123,49 @@ export class GameHUDScreen {
   /** Enable hotseat mode (changes turn indicator text) */
   public setHotseatMode(enabled: boolean): void {
     this.isHotseat = enabled;
-
-    // In hotseat, change pause button to exit button
     if (enabled) {
-      const screenEl = this.uiManager.getScreenElement('game');
-      if (!screenEl) return;
-      const pauseBtn = screenEl.querySelector('[data-ref="pause-btn"]') as HTMLButtonElement | null;
-      if (pauseBtn) {
-        pauseBtn.title = t('hud.exitTitle');
-        pauseBtn.textContent = '🚪';
-      }
+      this.pauseShowsExit = true;
+      this.applyPauseButtonStyle();
+    } else {
+      this.pauseShowsExit = false;
+      this.applyPauseButtonStyle();
+    }
+  }
+
+  /**
+   * Use online turn strings (your turn / opponent) but show the door control
+   * instead of network pause — for local AI that mimics online matchmaking.
+   */
+  public setPauseAsMenuExit(exit: boolean): void {
+    this.pauseShowsExit = exit;
+    this.applyPauseButtonStyle();
+  }
+
+  private applyPauseButtonStyle(): void {
+    const screenEl = this.uiManager.getScreenElement('game');
+    if (!screenEl) return;
+    const pauseBtn = screenEl.querySelector(
+      '[data-ref="pause-btn"]'
+    ) as HTMLButtonElement | null;
+    if (!pauseBtn) return;
+    if (this.pauseShowsExit) {
+      pauseBtn.title = t('hud.exitTitle');
+      pauseBtn.textContent = '🚪';
+    } else {
+      pauseBtn.title = t('hud.pauseTitle');
+      pauseBtn.textContent = '⏸️';
     }
   }
 
   /** Update turn indicator */
-  public updateTurnIndicator(isLocalTurn: boolean, team?: 'white' | 'black'): void {
+  public updateTurnIndicator(
+    isLocalTurn: boolean,
+    team?: 'white' | 'black'
+  ): void {
     const screenEl = this.uiManager.getScreenElement('game');
     if (!screenEl) return;
 
-    const indicator = screenEl.querySelector('[data-ref="turn-indicator"]') as HTMLDivElement | null;
+    const indicator = screenEl.querySelector('[data-ref="turn-indicator"]');
     if (!indicator) return;
 
     if (this.isHotseat) {
@@ -162,7 +204,11 @@ export class GameHUDScreen {
   }
 
   /** Show a temporary toast message (round win/loss, match result, etc.) */
-  public showToast(message: string, type: 'success' | 'defeat' | 'info' = 'info', durationMs = 2500): void {
+  public showToast(
+    message: string,
+    type: 'success' | 'defeat' | 'info' = 'info',
+    durationMs = 2500
+  ): void {
     const screenEl = this.uiManager.getScreenElement('game');
     if (!screenEl) return;
 
@@ -182,10 +228,11 @@ export class GameHUDScreen {
     setTimeout(() => {
       toast.classList.remove('hud-toast-visible');
       toast.classList.add('hud-toast-exit');
-      toast.addEventListener('animationend', () => toast.remove(), { once: true });
+      toast.addEventListener('animationend', () => toast.remove(), {
+        once: true,
+      });
       // Fallback removal
       setTimeout(() => toast.remove(), 500);
     }, durationMs);
   }
 }
-

@@ -13,11 +13,14 @@ if (!canvas) {
 
 const canvasElement = canvas;
 
-// Switch between hot-seat and online via query param: ?mode=hotseat or ?mode=online
+// Switch between hot-seat, AI, and online via query param: ?mode=hotseat | ai | online.
 // Default is 'online' for Stage 2.
 const params = new URLSearchParams(window.location.search);
 const rawMode = params.get('mode');
-const mode: GameMode = rawMode === 'hotseat' || rawMode === 'online' ? rawMode : 'online';
+const mode: GameMode =
+  rawMode === 'hotseat' || rawMode === 'online' || rawMode === 'ai'
+    ? rawMode
+    : 'online';
 
 console.log(`[Chapayev] Starting in ${mode} mode`);
 
