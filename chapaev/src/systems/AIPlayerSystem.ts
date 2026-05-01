@@ -25,7 +25,7 @@ const AI_ANGLE_NOISE_DEG = 8;
 const AI_FORCE_SAFETY = 3.7;
 
 /** Minimum impulse magnitude — prevents underpowered flicks at very short distances. */
-const AI_MIN_FORCE = 14;
+const AI_MIN_FORCE = 16;
 
 interface CheckerSnapshot {
   readonly entityId: number;

@@ -35,6 +35,7 @@ export interface GameUICallbacks {
   onCreateRoom: (this: void) => void;
   onJoinRoom: (this: void, code: string) => void;
   onCancelPrivateMatch: (this: void) => void;
+  getPrivateRoomShareUrl: (this: void, roomCode: string) => string;
 
   /** Whether we're currently in a live game (affects settings/rules nav). */
   isInGame: (this: void) => boolean;
@@ -103,6 +104,7 @@ export class GameUIController {
       onCreateRoom: cb.onCreateRoom,
       onJoinRoom: cb.onJoinRoom,
       onCancel: cb.onCancelPrivateMatch,
+      getPrivateRoomShareUrl: cb.getPrivateRoomShareUrl,
       onBack: () => {
         this.uiManager.hideScreen('private-match');
         this.uiManager.showScreen('main-menu');

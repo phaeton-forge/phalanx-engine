@@ -146,6 +146,8 @@ export class Game {
         void this.privateRoom!.joinRoom(code);
       },
       onCancelPrivateMatch: () => this.handleCancelPrivateMatch(),
+      getPrivateRoomShareUrl: (code: string) =>
+        this.platform.getPrivateRoomShareUrl(code),
 
       isInGame: () => this.inGame,
     });
@@ -522,6 +524,11 @@ export class Game {
   }
 
   private consumeDeepLinkRoomCode(): string | null {
+    const yandexRoom = this.platform.getYandexLaunchRoomCode();
+    if (yandexRoom) {
+      return yandexRoom;
+    }
+
     const urlParams = new URLSearchParams(window.location.search);
     const roomCodeFromUrl = urlParams.get('ROOM') ?? urlParams.get('room');
 

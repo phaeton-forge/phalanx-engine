@@ -10,6 +10,7 @@ export interface PrivateMatchCallbacks {
   onJoinRoom: (code: string) => void;
   onCancel: () => void;
   onBack: () => void;
+  getPrivateRoomShareUrl: (roomCode: string) => string;
 }
 
 type PrivateMatchState = 'menu' | 'waiting' | 'joining';
@@ -154,7 +155,7 @@ export class PrivateMatchScreen {
 
   private renderWaiting(container: HTMLDivElement): void {
     const roomCode = this.roomCode;
-    const shareLink = `${window.location.origin}${window.location.pathname}?ROOM=${encodeURIComponent(roomCode)}`;
+    const shareLink = this.callbacks.getPrivateRoomShareUrl(roomCode);
 
     container.innerHTML = `
       <div class="glass-panel">
