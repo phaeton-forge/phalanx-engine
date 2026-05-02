@@ -3,6 +3,8 @@
  * All exported types for TypeScript users
  */
 
+import type { IncomingMessage, ServerResponse } from 'node:http';
+
 /**
  * Game mode preset string
  */
@@ -237,6 +239,20 @@ export interface PhalanxConfig {
   // === Pause/Resume Settings ===
   /** Pause/resume behavior configuration */
   pause?: Partial<PauseConfig>;
+
+  // === Extension Hook ===
+  /**
+   * Optional hook for mounting additional request handlers on the same HTTP
+   * server. Called after CORS preflight, before built-in routes.
+   *
+   * Return `true` to signal the request was fully handled (no further
+   * routing). Return `false` (or `undefined`) to let Phalanx continue with
+   * its own routing.
+   */
+  extraRequestHandler?: (
+    req: IncomingMessage,
+    res: ServerResponse,
+  ) => boolean | Promise<boolean>;
 }
 
 /**

@@ -10,10 +10,16 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { Phalanx } from 'phalanx-server';
+import { parseConfig } from './config.js';
+import { log } from './log.js';
+import { openDb, closeDb } from './db/connection.js';
+import { runMigrations } from './db/migrate.js';
+import { mountBot } from './bot/index.js';
+import type { Bot } from 'grammy';
 
 const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
 const ENV_FILE_PATH = resolve(SERVER_DIR, '../.env');
-const dotenvResult = loadDotenv({ path: ENV_FILE_PATH });
+loadDotenv({ path: ENV_FILE_PATH });
 
 const DEFAULT_CORS_ORIGINS = [
   'http://localhost:5174',
@@ -22,37 +28,41 @@ const DEFAULT_CORS_ORIGINS = [
 ] as const;
 
 function parseCorsOrigins(value: string | undefined): string[] {
-  if (!value) {
-    return [...DEFAULT_CORS_ORIGINS];
-  }
-
+  if (!value) return [...DEFAULT_CORS_ORIGINS];
   const origins = value
     .split(',')
-    .map((origin) => origin.trim())
-    .filter((origin) => origin.length > 0);
-
+    .map((o) => o.trim())
+    .filter((o) => o.length > 0);
   return origins.length > 0 ? origins : [...DEFAULT_CORS_ORIGINS];
 }
 
-const PORT = parseInt(process.env.PORT || '3000', 10);
-
-const CORS_ORIGINS = parseCorsOrigins(process.env.CORS_ORIGINS);
-
 async function main() {
-  console.log('Starting Chapayev server...');
-  if (dotenvResult.error) {
-    console.warn(`[Config] Failed to load env file at ${ENV_FILE_PATH}. Using process environment defaults.`);
-  } else {
-    console.log(`[Config] Loaded env file: ${ENV_FILE_PATH}`);
+  const config = parseConfig();
+  const corsOrigins = parseCorsOrigins(config.CORS_ORIGINS);
+
+  log.info('Starting Chapayev server...');
+  log.info({ origins: corsOrigins }, 'CORS origins');
+
+  // Open DB and run migrations
+  const MIGRATIONS_DIR = resolve(SERVER_DIR, '../migrations');
+  const db = openDb(config.DATABASE_PATH);
+  runMigrations(db, MIGRATIONS_DIR);
+  log.info({ path: config.DATABASE_PATH }, 'DB ready');
+
+  // Build bot (optional)
+  let bot: Bot | null = null;
+  let extraRequestHandler: ((req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse) => Promise<boolean>) | undefined;
+
+  if (config.BOT_ENABLED) {
+    const mounted = await mountBot(config, { db, log });
+    bot = mounted.bot;
+    extraRequestHandler = mounted.requestHandler;
+    log.info('Telegram bot mounted');
   }
-  console.log(`[Config] Allowed CORS origins: ${CORS_ORIGINS.join(', ')}`);
 
   const phalanx = new Phalanx({
-    port: PORT,
-    cors: {
-      origin: CORS_ORIGINS,
-      credentials: true,
-    },
+    port: config.PORT,
+    cors: { origin: corsOrigins, credentials: true },
     tickMode: 'event',
     tickRate: 20,
     gameMode: '1v1',
@@ -61,66 +71,70 @@ async function main() {
     timeoutTicks: 60,
     disconnectTicks: 200,
     reconnectGracePeriodMs: 30000,
-    // Mobile hosts on carrier networks can stop receiving packets during
-    // countdown, while Socket.IO only reports `ping timeout` ~25-30s later.
-    // Keep the pre-ready match alive long enough for that disconnect to be
-    // detected and for `room-recover` to reclaim the match by room code.
     readyTimeoutMs: 90000,
     playersConnectTimeoutMs: 90000,
     enableStateHashing: true,
     stateHashInterval: 60,
-    desync: {
-      enabled: true,
-      action: 'log-only',
-      gracePeriodTicks: 3,
-    },
+    desync: { enabled: true, action: 'log-only', gracePeriodTicks: 3 },
+    extraRequestHandler,
   });
 
-  // TODO (Stage 3): Add server-side command validation via phalanx.on('player-command')
-  // to reject invalid command types, malformed payloads, and commands targeting wrong team.
-  // See: PhalanxEventHandlers['player-command'] — return false to reject a command.
-
-  phalanx.on('match-created', (match) => {
-    console.log(`Match created: ${match.id}`);
-  });
-
-  phalanx.on('match-started', (match) => {
-    console.log(`Match started: ${match.id}`);
-  });
-
-  phalanx.on('match-ended', (matchId: string, reason: string) => {
-    console.log(`Match ended: ${matchId}, reason: ${reason}`);
-  });
-
-  phalanx.on('player-disconnected', (playerId: string, matchId: string) => {
-    console.log(`Player ${playerId} disconnected from ${matchId}`);
-  });
-
-  phalanx.on('player-reconnected', (playerId: string, matchId: string) => {
-    console.log(`Player ${playerId} reconnected to ${matchId}`);
-  });
-
-  phalanx.on('desync-detected', (matchId: string, tick: number, hashes: Record<string, string>) => {
-    console.warn(`Desync detected in ${matchId} at tick ${tick}:`, hashes);
-  });
+  phalanx.on('match-created', (match) => log.info({ matchId: match.id }, 'match created'));
+  phalanx.on('match-started', (match) => log.info({ matchId: match.id }, 'match started'));
+  phalanx.on('match-ended', (matchId, reason) => log.info({ matchId, reason }, 'match ended'));
+  phalanx.on('player-disconnected', (playerId, matchId) =>
+    log.info({ playerId, matchId }, 'player disconnected'),
+  );
+  phalanx.on('player-reconnected', (playerId, matchId) =>
+    log.info({ playerId, matchId }, 'player reconnected'),
+  );
+  phalanx.on('desync-detected', (matchId, tick, hashes) =>
+    log.warn({ matchId, tick, hashes }, 'desync detected'),
+  );
 
   try {
     await phalanx.start();
-    console.log(`Chapayev server running on port ${PORT}`);
+    log.info({ port: config.PORT }, 'Chapayev server running');
   } catch (error) {
-    console.error('Failed to start server:', error);
+    log.error({ err: error }, 'Failed to start server');
     process.exit(1);
   }
 
-  process.on('SIGINT', () => {
-    console.log('\nShutting down...');
-    void phalanx.stop().then(() => process.exit(0));
-  });
+  // Register webhook after server is up
+  if (bot && config.BOT_ENABLED) {
+    const webhookUrl = `${config.PUBLIC_URL}${config.TELEGRAM_WEBHOOK_PATH}/${config.TELEGRAM_WEBHOOK_SECRET}`;
+    try {
+      await bot.api.setWebhook(webhookUrl, {
+        secret_token: config.TELEGRAM_WEBHOOK_SECRET,
+      });
+      // Log only the path portion — never the secret embedded in the URL
+      log.info(
+        { webhookPath: `${config.PUBLIC_URL}${config.TELEGRAM_WEBHOOK_PATH}/<secret>` },
+        'Telegram webhook registered',
+      );
+    } catch (err) {
+      log.error({ err }, 'Failed to register Telegram webhook — shutting down');
+      await shutdown();
+      return;
+    }
+  }
 
-  process.on('SIGTERM', () => {
-    console.log('\nShutting down...');
-    void phalanx.stop().then(() => process.exit(0));
-  });
+  async function shutdown() {
+    log.info('Shutting down...');
+    if (bot) {
+      try {
+        await bot.api.deleteWebhook();
+      } catch {
+        // best-effort
+      }
+    }
+    await phalanx.stop();
+    closeDb();
+    process.exit(0);
+  }
+
+  process.on('SIGINT', () => void shutdown());
+  process.on('SIGTERM', () => void shutdown());
 }
 
 void main();

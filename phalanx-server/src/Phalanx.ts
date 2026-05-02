@@ -75,6 +75,21 @@ export class Phalanx extends EventEmitter {
         return;
       }
 
+      // Delegate to consumer-provided handler first (e.g. bot webhook)
+      if (this.config.extraRequestHandler) {
+        try {
+          const consumed = await this.config.extraRequestHandler(req, res);
+          if (consumed) return;
+        } catch (err) {
+          console.error('[Phalanx] extraRequestHandler threw an error:', err);
+          if (!res.headersSent) {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Internal server error' }));
+          }
+          return;
+        }
+      }
+
       // Health check endpoint
       if (req.url === '/' || req.url === '/health') {
         this.setCorsHeaders(res, req);
