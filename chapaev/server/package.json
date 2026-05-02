@@ -8,6 +8,7 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/main.js",
+    "rebuild:native": "pnpm rebuild better-sqlite3",
     "dev": "tsx src/main.ts",
     "clean": "rimraf dist",
     "test": "vitest run",
