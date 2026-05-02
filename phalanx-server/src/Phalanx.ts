@@ -75,6 +75,12 @@ export class Phalanx extends EventEmitter {
         return;
       }
 
+      // Delegate to consumer-provided handler first (e.g. bot webhook)
+      if (this.config.extraRequestHandler) {
+        const consumed = await this.config.extraRequestHandler(req, res);
+        if (consumed) return;
+      }
+
       // Health check endpoint
       if (req.url === '/' || req.url === '/health') {
         this.setCorsHeaders(res, req);
