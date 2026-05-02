@@ -15,7 +15,7 @@ import { bindHUDToWorld } from '../ui/HUDBindings.ts';
 import { bootstrapWorld } from './WorldBootstrapper.ts';
 import { PauseController } from './PauseController.ts';
 import type { MatchFoundEvent, ReconnectStateEvent } from 'phalanx-client';
-import type { IPlatformAds } from '../platform/YandexSDK.ts';
+import type { PlatformAdapter } from '../platform/PlatformAdapter.ts';
 import { t } from '../i18n/i18n.ts';
 import { generateBotOpponentDisplayName } from '../util/botOpponentName.ts';
 
@@ -42,7 +42,15 @@ export class Game {
   private readonly sceneCtx: SceneContext;
   private readonly ui = new GameUIController();
   private readonly menuPresenter: MenuScenePresenter;
-  private readonly platform: IPlatformAds;
+  private readonly platform: PlatformAdapter;
+
+  /**
+   * Resolves after the first game frame is rendered.
+   * `main.ts` awaits this to call `adapter.ready()` at the right moment,
+   * so the platform loading splash hides only after a real frame is visible.
+   */
+  readonly firstFrameRendered: Promise<void>;
+  private resolveFirstFrame!: () => void;
 
   // Online-mode-only collaborators (constructed in `start`).
   private ctx: NetworkContext | null = null;
@@ -68,13 +76,16 @@ export class Game {
 
   constructor(
     canvas: HTMLCanvasElement,
-    platform: IPlatformAds,
+    platform: PlatformAdapter,
     mode: GameMode = 'hotseat'
   ) {
     this.initialMode = mode;
     this.platform = platform;
     this.sceneCtx = setupScene(canvas);
     this.menuPresenter = new MenuScenePresenter(this.sceneCtx);
+    this.firstFrameRendered = new Promise<void>((resolve) => {
+      this.resolveFirstFrame = resolve;
+    });
   }
 
   start(): void {
@@ -147,7 +158,7 @@ export class Game {
       },
       onCancelPrivateMatch: () => this.handleCancelPrivateMatch(),
       getPrivateRoomShareUrl: (code: string) =>
-        this.platform.getPrivateRoomShareUrl(code),
+        this.platform.getInviteShareUrl(code),
 
       isInGame: () => this.inGame,
     });
@@ -225,6 +236,7 @@ export class Game {
     this.flickInputSystem = null;
     this.pauseController?.reset();
     this.recovery?.stop();
+    this.platform.setClosingConfirmation(false);
 
     if (this.world) {
       this.world.stop();
@@ -318,6 +330,7 @@ export class Game {
       afterFrame: () => {
         controls.update();
         composer.render();
+        this.resolveFirstFrame();
       },
     });
   }
@@ -386,9 +399,13 @@ export class Game {
         interpolationSystem!.interpolate(alpha);
         controls.update();
       },
-      afterFrame: () => composer.render(),
+      afterFrame: () => {
+        composer.render();
+        this.resolveFirstFrame();
+      },
     });
 
+    this.platform.setClosingConfirmation(true);
     this.sendClientReady('initial game start');
   }
 
@@ -448,6 +465,7 @@ export class Game {
       afterFrame: () => {
         controls.update();
         composer.render();
+        this.resolveFirstFrame();
       },
     });
   }
@@ -524,11 +542,11 @@ export class Game {
   }
 
   private consumeDeepLinkRoomCode(): string | null {
-    const yandexRoom = this.platform.getYandexLaunchRoomCode();
-    if (yandexRoom) {
-      return yandexRoom;
-    }
+    // Platform deep-link code (Yandex payload or Telegram start_param).
+    const platformRoom = this.platform.getLaunchRoomCode();
+    if (platformRoom) return platformRoom;
 
+    // URL-based fallback (?ROOM= or ?room=).
     const urlParams = new URLSearchParams(window.location.search);
     const roomCodeFromUrl = urlParams.get('ROOM') ?? urlParams.get('room');
 

@@ -1,8 +1,8 @@
 import { Game } from './core/Game.ts';
 import type { GameMode } from './core/Game.ts';
 import { installDebugConsole } from './debug/installDebugConsole.ts';
-import { NoopPlatformAds, YandexSDK } from './platform/YandexSDK.ts';
-import type { IPlatformAds } from './platform/YandexSDK.ts';
+import { detectPlatform } from './platform/detectPlatform.ts';
+import type { PlatformAdapter } from './platform/PlatformAdapter.ts';
 import { setLanguage } from './i18n/i18n.ts';
 
 const canvas = document.getElementById('app') as HTMLCanvasElement | null;
@@ -29,34 +29,75 @@ function reportStartupError(error: unknown): void {
   const message = error instanceof Error ? error.message : 'Unknown startup error';
   const errorElement = document.createElement('div');
   errorElement.setAttribute('role', 'alert');
+  errorElement.style.cssText =
+    'position:fixed;top:0;left:0;right:0;z-index:9999;background:#b00;color:#fff;padding:16px;font-family:sans-serif;font-size:14px;';
   errorElement.textContent = `Failed to start game: ${message}`;
-  // @ts-ignore
-  const mountTarget = canvasElement.parentElement ?? document.body;
-  mountTarget.appendChild(errorElement);
+  document.body.appendChild(errorElement);
 }
 
 async function bootstrap(): Promise<void> {
   await installDebugConsole();
 
-  let platformAds: IPlatformAds = new NoopPlatformAds();
-  try {
-    const yandexSDK = new YandexSDK();
-    await yandexSDK.init();
-    const lang = yandexSDK.getLanguage();
-    if (lang) setLanguage(lang);
-    platformAds = yandexSDK;
-  } catch (e: unknown) {
-    console.warn('[Chapayev] Yandex SDK init failed; continuing without ads', e);
+  // ── Platform detection & adapter instantiation ────────────────────
+  // Use dynamic imports so only the active platform's SDK is downloaded.
+  const platform = detectPlatform();
+  let adapter: PlatformAdapter;
+
+  switch (platform) {
+    case 'telegram': {
+      const { TelegramAdapter } = await import('./platform/TelegramAdapter.ts');
+      adapter = new TelegramAdapter();
+      break;
+    }
+    case 'yandex': {
+      const { YandexAdapter } = await import('./platform/YandexAdapter.ts');
+      adapter = new YandexAdapter();
+      break;
+    }
+    case 'capacitor': {
+      const { CapacitorAdapter } = await import('./platform/CapacitorAdapter.ts');
+      adapter = new CapacitorAdapter();
+      break;
+    }
+    default: {
+      const { StandaloneAdapter } = await import('./platform/StandaloneAdapter.ts');
+      adapter = new StandaloneAdapter();
+    }
   }
 
-  const game = new Game(canvasElement, platformAds, mode);
+  await adapter.init();
 
-  // Expose for debugging in devtools
+  // ── i18n ──────────────────────────────────────────────────────────
+  const lang = adapter.getLanguage();
+  if (lang) setLanguage(lang);
+
+  // ── Safe-area → CSS vars ──────────────────────────────────────────
+  function applySafeAreaToCss(): void {
+    const insets = adapter.getSafeAreaInsets();
+    const style = document.documentElement.style;
+    style.setProperty('--sai-top', `${insets.top}px`);
+    style.setProperty('--sai-right', `${insets.right}px`);
+    style.setProperty('--sai-bottom', `${insets.bottom}px`);
+    style.setProperty('--sai-left', `${insets.left}px`);
+  }
+  applySafeAreaToCss();
+  adapter.onSafeAreaChange(applySafeAreaToCss);
+
+  // ── Game construction ─────────────────────────────────────────────
+  const game = new Game(canvasElement, adapter, mode);
+
+  // Expose for debugging in devtools.
   if (import.meta.env.DEV) {
     (window as unknown as Record<string, unknown>)['__game'] = game;
   }
 
   game.start();
+
+  // `adapter.ready()` is called by Game after the first frame is rendered
+  // (via game.firstFrameRendered promise). See Game.ts for the hook.
+  void game.firstFrameRendered.then(() => {
+    adapter.ready();
+  });
 }
 
 void bootstrap().catch((error: unknown) => {

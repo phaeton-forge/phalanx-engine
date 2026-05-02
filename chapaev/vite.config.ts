@@ -14,6 +14,17 @@ export default defineConfig(({ mode, command }) => {
       host: true,
       port: 5174,
     },
+    build: {
+      rollupOptions: {
+        external: ['@capacitor/app'],
+        output: {
+          manualChunks(id: string) {
+            if (id.includes('@telegram-apps')) return 'platform-telegram';
+            if (id.includes('platform/YandexAdapter')) return 'platform-yandex';
+          },
+        },
+      },
+    },
   };
 });
 

@@ -32,6 +32,7 @@
     "@capacitor/core": "^8.3.0",
     "@capacitor/ios": "^8.3.1",
     "@dimforge/rapier3d-compat": "^0.14.0",
+    "@telegram-apps/sdk": "^2.11.3",
     "phalanx-client": "workspace:*",
     "phalanx-ecs": "workspace:*",
     "phalanx-math": "workspace:*",

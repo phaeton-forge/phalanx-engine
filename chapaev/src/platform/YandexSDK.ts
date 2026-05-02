@@ -1,30 +1,45 @@
-declare const YaGames: any;
-import type { Language } from '../i18n/i18n.ts';
+/**
+ * @deprecated Use PlatformAdapter / YandexAdapter instead.
+ * This file is kept only for backwards-compatibility and will be removed.
+ */
 
-/** Room code in Yandex Games launch `payload` (matches server private-room format). */
-const YANDEX_ROOM_PAYLOAD = /^[a-z0-9]{4,12}$/i;
+import type { Language } from '../i18n/i18n.ts';
+import {
+  ROOM_CODE_PATTERN,
+  mapLanguageCode,
+  defaultInviteShareUrl,
+} from './platformUtils.ts';
 
 export function defaultPrivateRoomShareUrl(roomCode: string): string {
-  const normalized = roomCode.trim().toUpperCase();
-  return `${window.location.origin}${window.location.pathname}?ROOM=${encodeURIComponent(normalized)}`;
+  return defaultInviteShareUrl(roomCode);
 }
 
 export interface IPlatformAds {
   showFullscreenAd(): Promise<void>;
-  /** Invite link for private rooms — Yandex portal URL when running inside Games SDK. */
+  /** @deprecated Use getInviteShareUrl */
   getPrivateRoomShareUrl(roomCode: string): string;
-  /** Deep link from Yandex Games `environment.payload` when opening a shared invite. */
+  getInviteShareUrl(roomCode: string): string;
+  /** @deprecated Use getLaunchRoomCode */
   getYandexLaunchRoomCode(): string | null;
+  getLaunchRoomCode(): string | null;
 }
 
 export class NoopPlatformAds implements IPlatformAds {
   async showFullscreenAd(): Promise<void> {}
 
   getPrivateRoomShareUrl(roomCode: string): string {
-    return defaultPrivateRoomShareUrl(roomCode);
+    return defaultInviteShareUrl(roomCode);
+  }
+
+  getInviteShareUrl(roomCode: string): string {
+    return defaultInviteShareUrl(roomCode);
   }
 
   getYandexLaunchRoomCode(): string | null {
+    return null;
+  }
+
+  getLaunchRoomCode(): string | null {
     return null;
   }
 }
@@ -55,15 +70,17 @@ type YandexSDKInstance = {
   };
 };
 
+declare const YaGames: { init(): Promise<YandexSDKInstance> };
+
 export class YandexSDK implements IPlatformAds {
   private ysdk: YandexSDKInstance | null = null;
   private detectedLanguage: Language | null = null;
 
   async init(): Promise<void> {
-    const sdk = (await YaGames.init()) as YandexSDKInstance;
+    const sdk = await YaGames.init();
     this.ysdk = sdk;
     this.ysdk.features?.LoadingAPI?.ready?.();
-    this.detectedLanguage = this.mapLanguageCode(this.ysdk.environment?.i18n?.lang);
+    this.detectedLanguage = mapLanguageCode(this.ysdk.environment?.i18n?.lang);
   }
 
   isAvailable(): boolean {
@@ -75,23 +92,29 @@ export class YandexSDK implements IPlatformAds {
   }
 
   getPrivateRoomShareUrl(roomCode: string): string {
+    return this.getInviteShareUrl(roomCode);
+  }
+
+  getInviteShareUrl(roomCode: string): string {
     const normalized = roomCode.trim().toUpperCase();
-    if (!this.ysdk) {
-      return defaultPrivateRoomShareUrl(normalized);
-    }
+    if (!this.ysdk) return defaultInviteShareUrl(normalized);
     const appId = this.ysdk.environment?.app?.id;
     if (typeof appId !== 'string' || appId.length === 0) {
-      return defaultPrivateRoomShareUrl(normalized);
+      return defaultInviteShareUrl(normalized);
     }
     const tld = this.ysdk.environment?.i18n?.tld ?? 'ru';
     return `https://yandex.${tld}/games/app/${appId}?payload=${encodeURIComponent(normalized)}`;
   }
 
   getYandexLaunchRoomCode(): string | null {
+    return this.getLaunchRoomCode();
+  }
+
+  getLaunchRoomCode(): string | null {
     if (!this.ysdk) return null;
     const payload = this.ysdk.environment?.payload;
     if (typeof payload !== 'string' || payload.length === 0) return null;
-    if (!YANDEX_ROOM_PAYLOAD.test(payload)) return null;
+    if (!ROOM_CODE_PATTERN.test(payload)) return null;
     return payload.toUpperCase();
   }
 
@@ -116,14 +139,6 @@ export class YandexSDK implements IPlatformAds {
         resolve();
       }
     });
-  }
-
-  private mapLanguageCode(code: string | undefined): Language | null {
-    if (!code) return null;
-    const normalized = code.toLowerCase();
-    if (normalized.startsWith('ru')) return 'ru';
-    if (normalized.startsWith('en')) return 'en';
-    return 'en';
   }
 }
 
