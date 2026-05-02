@@ -8,7 +8,7 @@ export function startNewKeyboard(
   inviteUrl: string,
 ): InlineKeyboard {
   return new InlineKeyboard()
-    .webApp(t(lang, 'btnPlay'), webAppUrl)
+    .url(t(lang, 'btnPlay'), webAppUrl)
     .row()
     .url(t(lang, 'btnInvite'), inviteUrl)
     .row()
@@ -19,11 +19,11 @@ export function startReturnKeyboard(
   lang: Lang,
   webAppUrl: string,
 ): InlineKeyboard {
-  return new InlineKeyboard().webApp(t(lang, 'btnPlay'), webAppUrl);
+  return new InlineKeyboard().url(t(lang, 'btnPlay'), webAppUrl);
 }
 
 export function playKeyboard(lang: Lang, webAppUrl: string): InlineKeyboard {
-  return new InlineKeyboard().webApp(t(lang, 'btnPlay'), webAppUrl);
+  return new InlineKeyboard().url(t(lang, 'btnPlay'), webAppUrl);
 }
 
 export function friendsKeyboard(
