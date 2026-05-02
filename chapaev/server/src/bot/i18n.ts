@@ -33,7 +33,7 @@ export const strings = {
     help:
       '📖 *Chapaev Rules*\n\n' +
       "• Goal: knock all your opponent's checkers off the board.\n" +
-      '• Players take turns: tap your checker and flick it in a direction.\n" +\n' +
+      '• Players take turns: tap your checker and flick it in a direction.\n' +
       "• You can't move the opponent's checkers directly.\n" +
       "• You win when none of the opponent's checkers remain on the board.",
     btnPlay: '🎮 Play',

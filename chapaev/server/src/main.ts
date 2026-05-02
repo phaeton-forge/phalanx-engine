@@ -107,9 +107,15 @@ async function main() {
       await bot.api.setWebhook(webhookUrl, {
         secret_token: config.TELEGRAM_WEBHOOK_SECRET,
       });
-      log.info({ webhookUrl }, 'Telegram webhook registered');
+      // Log only the path portion — never the secret embedded in the URL
+      log.info(
+        { webhookPath: `${config.PUBLIC_URL}${config.TELEGRAM_WEBHOOK_PATH}/<secret>` },
+        'Telegram webhook registered',
+      );
     } catch (err) {
-      log.error({ err }, 'Failed to register Telegram webhook');
+      log.error({ err }, 'Failed to register Telegram webhook — shutting down');
+      await shutdown();
+      return;
     }
   }
 

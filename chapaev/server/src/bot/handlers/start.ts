@@ -1,6 +1,6 @@
 import type { Context } from 'grammy';
 import type Database from 'better-sqlite3';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getOrCreateTelegramUser } from '../../db/telegramUsers.js';
 import { pickLang, t } from '../i18n.js';
@@ -14,7 +14,9 @@ import {
 } from '../media/animationCache.js';
 import type { Logger } from '../../log.js';
 
-const SERVER_DIR = resolve(fileURLToPath(import.meta.url), '../../../../../');
+// Resolve relative to the *directory* of this file (handlers/) then go up
+// handlers → bot → src → server (package root where gameplay.mp4 lives)
+const SERVER_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '../../../');
 const GAMEPLAY_PATH = resolve(SERVER_DIR, 'gameplay.mp4');
 
 export function makeStartHandler(

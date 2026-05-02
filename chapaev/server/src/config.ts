@@ -7,7 +7,7 @@ const Schema = z
     DATABASE_PATH: z.string().default('./data/chapaev.db'),
     BOT_ENABLED: z
       .enum(['true', 'false'])
-      .default('true')
+      .default('false')
       .transform((v) => v === 'true'),
     TELEGRAM_BOT_TOKEN: z.string().optional(),
     TELEGRAM_WEBHOOK_SECRET: z.string().min(16).optional(),

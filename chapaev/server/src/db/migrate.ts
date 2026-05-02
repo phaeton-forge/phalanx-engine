@@ -26,8 +26,13 @@ export function runMigrations(db: Database.Database, migrationsDir: string): voi
     if (applied.has(file)) continue;
 
     const sql = readFileSync(join(migrationsDir, file), 'utf8');
-    db.exec(sql);
-    db.prepare('INSERT INTO _migrations (filename) VALUES (?)').run(file);
+    // Run each migration inside a transaction so a partial failure leaves
+    // the database in the state it was in before the file was attempted,
+    // and the _migrations record is only written on full success.
+    db.transaction(() => {
+      db.exec(sql);
+      db.prepare('INSERT INTO _migrations (filename) VALUES (?)').run(file);
+    })();
     log.info({ migration: file }, 'migration applied');
   }
 }
