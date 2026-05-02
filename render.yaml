@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: chapaev-backend
+    runtime: node
+    # Build and start from the monorepo root so workspace links resolve correctly
+    buildCommand: >-
+      corepack enable &&
+      pnpm install --frozen-lockfile &&
+      pnpm --filter chapaev-server run build &&
+      pnpm rebuild better-sqlite3
+    startCommand: node chapaev/server/dist/main.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "3000"
+
