@@ -54,6 +54,9 @@ export async function mountBot(
 
   const bot = createBot(token);
 
+  // grammy requires bot info to be loaded before handling webhook updates
+  await bot.init();
+
   // update_id LRU dedup
   bot.use(async (ctx, next) => {
     if (ctx.update.update_id != null && isDuplicate(ctx.update.update_id)) {
