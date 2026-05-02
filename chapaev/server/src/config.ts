@@ -15,6 +15,7 @@ const Schema = z
     PUBLIC_URL: z.string().url().optional(),
     WEB_APP_URL: z.string().url().optional(),
     BOT_USERNAME: z.string().optional(),
+    TELEGRAM_APP_NAME: z.string().optional(),
   })
   .superRefine((v, ctx) => {
     if (v.BOT_ENABLED) {

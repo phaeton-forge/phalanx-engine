@@ -13,7 +13,9 @@ export const strings = {
     startReturn: '👋 С возвращением! Готов сыграть?',
     play: '🎮 Нажми кнопку ниже, чтобы начать игру.',
     friends:
-      '👥 Пригласи друзей по своей реферальной ссылке:',
+      '👥 Я создал приватную комнату. Отправь ссылку другу — он сразу подключится к игре:',
+    friendsShareText: 'Сыграем в Чапаева? Заходи в комнату:',
+    friendsError: 'Не получилось создать комнату. Попробуй ещё раз через пару секунд.',
     help:
       '📖 *Правила Чапаева*\n\n' +
       '• Цель — выбить все шашки соперника за пределы доски.\n' +
@@ -22,6 +24,8 @@ export const strings = {
       '• Выигрывает тот, у кого на доске не останется шашек соперника.',
     btnPlay: '🎮 Играть',
     btnInvite: '👥 Пригласить друга',
+    btnShare: '📤 Поделиться в Telegram',
+    btnCopyLink: '📋 Скопировать ссылку',
     btnRules: '📖 Правила',
   },
   en: {
@@ -29,7 +33,10 @@ export const strings = {
       "👋 Welcome to Chapaev!\n\nKnock your opponent's checkers off the board — last one standing wins.\n\nTap Play to start.",
     startReturn: '👋 Welcome back! Ready to play?',
     play: '🎮 Tap the button below to start a game.',
-    friends: '👥 Invite friends with your referral link:',
+    friends:
+      '👥 I created a private room. Send this link to a friend so they can join the game:',
+    friendsShareText: 'Play Chapaev with me? Join my room:',
+    friendsError: 'Could not create a room. Please try again in a few seconds.',
     help:
       '📖 *Chapaev Rules*\n\n' +
       "• Goal: knock all your opponent's checkers off the board.\n" +
@@ -38,6 +45,8 @@ export const strings = {
       "• You win when none of the opponent's checkers remain on the board.",
     btnPlay: '🎮 Play',
     btnInvite: '👥 Invite a friend',
+    btnShare: '📤 Share in Telegram',
+    btnCopyLink: '📋 Copy link',
     btnRules: '📖 Rules',
   },
 } as const satisfies Record<Lang, Record<string, string>>;

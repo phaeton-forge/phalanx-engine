@@ -14,6 +14,7 @@ import { readFileSync } from 'fs';
 import type {
   PhalanxConfig,
   MatchInfo,
+  RoomCreatedEvent,
   PlayerCommand,
   PhalanxEventType,
   PhalanxEventHandlers,
@@ -303,6 +304,27 @@ export class Phalanx extends EventEmitter {
         reject(err);
       });
     });
+  }
+
+  /**
+   * Create or reuse a private room for a host that will connect later.
+   * Intended for trusted server-side integrations such as Telegram bot
+   * commands; browser clients should continue using the Socket.IO flow.
+   */
+  createPrivateRoomForHost(params: {
+    playerId: string;
+    username?: string;
+    gameType?: string;
+  }): RoomCreatedEvent {
+    if (!this.privateRooms) {
+      throw new Error('Private room service is not running');
+    }
+
+    return this.privateRooms.createRoomForDisconnectedHost(
+      params.playerId,
+      params.username ?? params.playerId,
+      params.gameType,
+    );
   }
 
   /**

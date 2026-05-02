@@ -1,4 +1,5 @@
 export { NetworkManager } from './NetworkManager.ts';
+export type { NetworkManagerOptions } from './NetworkManager.ts';
 export { LockstepManager } from './LockstepManager.ts';
 export type { FlickCommandData } from './LockstepManager.ts';
 export { NetworkContext } from './NetworkContext.ts';

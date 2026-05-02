@@ -8,6 +8,11 @@ import type {
 } from 'phalanx-client';
 import { SERVER_URL } from '../config/constants.ts';
 
+export interface NetworkManagerOptions {
+  playerId?: string;
+  username?: string;
+}
+
 /**
  * NetworkManager — wraps PhalanxClient for Chapayev online mode.
  *
@@ -24,9 +29,11 @@ export class NetworkManager {
   private _localPlayerIndex = -1;
   private networkUnsubscribers: (() => void)[] = [];
 
-  constructor() {
+  constructor(options: NetworkManagerOptions = {}) {
     this.client = new PhalanxClient({
       serverUrl: SERVER_URL,
+      playerId: options.playerId,
+      username: options.username,
       mobileFriendlyTransports: true,
       persistGuestPlayerId: 'chapaev:guestPlayerId:v1',
       autoReconnect: true,

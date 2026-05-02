@@ -160,6 +160,46 @@ export class PrivateRoomCoordinator {
     }
   }
 
+  async openDeepLinkRoom(code: string): Promise<void> {
+    const { uiManager, privateMatch, matchmaking } = this.ui;
+    const normalizedCode = code.trim().toUpperCase();
+
+    try {
+      this.ui.stopMenuAutoRotate();
+      privateMatch.showWaiting(normalizedCode);
+      uiManager.showScreen('private-match');
+      privateMatch.setRecoveryStatus?.(t('recovery.restoring'));
+
+      this.attachConnectErrorListeners();
+      await this.ctx.manager.client.connect();
+
+      const recoverAbort = new AbortController();
+      const matchPromise = this.awaitMatchStart(matchmaking, recoverAbort.signal);
+
+      try {
+        await this.ctx.manager.client.recoverRoom(normalizedCode, 2_000);
+      } catch {
+        recoverAbort.abort();
+        await matchPromise.catch(() => undefined);
+        this.ctx.cleanupConnectListeners();
+        this.recovery.stop();
+        privateMatch.stopWaitingTimer();
+        uiManager.hideScreen('private-match');
+        await this.joinRoom(normalizedCode);
+        return;
+      }
+
+      this.recovery.resumeTrackingHostRoom(normalizedCode);
+      await matchPromise;
+    } catch (error) {
+      console.error('[PrivateRoom] Deep-link room open failed:', error);
+      matchmaking.setStatus(t('net.connectionError'));
+      matchmaking.stopTimer();
+      this.recovery.stop();
+      this.callbacks.onCancelled();
+    }
+  }
+
   /**
    * Reclaim a private room after a hard reload. Sets up the same
    * listener stack `createRoom` uses BEFORE issuing `room-recover`,
@@ -230,12 +270,18 @@ export class PrivateRoomCoordinator {
    * the engine's `RoomRecoveryController` while a room is being
    * tracked, so this method only orchestrates UI transitions.
    */
-  private async awaitMatchStart(matchmaking: MatchmakingScreen): Promise<void> {
+  private async awaitMatchStart(
+    matchmaking: MatchmakingScreen,
+    abortSignal?: AbortSignal,
+  ): Promise<void> {
     const { uiManager, privateMatch } = this.ui;
 
     const matchFoundPromise =
-      this.waitForClientEvent<MatchFoundEvent>('matchFound');
-    const gameStartPromise = this.waitForClientEvent<unknown>('gameStart');
+      this.waitForClientEvent<MatchFoundEvent>('matchFound', abortSignal);
+    const gameStartPromise = this.waitForClientEvent<unknown>(
+      'gameStart',
+      abortSignal,
+    );
     const unsubCountdown = this.ctx.manager.client.on(
       'countdown',
       (event: CountdownEvent) => {
@@ -266,16 +312,31 @@ export class PrivateRoomCoordinator {
   }
 
   private waitForClientEvent<T>(
-    eventName: 'matchFound' | 'gameStart'
+    eventName: 'matchFound' | 'gameStart',
+    abortSignal?: AbortSignal,
   ): Promise<T> {
-    return new Promise((resolve) => {
-      const unsubscribe = this.ctx.manager.client.on(
+    return new Promise((resolve, reject) => {
+      if (abortSignal?.aborted) {
+        reject(new Error('Wait cancelled'));
+        return;
+      }
+
+      let unsubscribe = (): void => {};
+      const abortHandler = (): void => {
+        unsubscribe();
+        reject(new Error('Wait cancelled'));
+      };
+
+      unsubscribe = this.ctx.manager.client.on(
         eventName as 'matchFound',
         (data: unknown) => {
+          abortSignal?.removeEventListener('abort', abortHandler);
           unsubscribe();
           resolve(data as T);
         }
       );
+
+      abortSignal?.addEventListener('abort', abortHandler, { once: true });
     });
   }
 }

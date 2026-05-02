@@ -34,6 +34,10 @@ interface PrivateRoom {
   expirationTimer: ReturnType<typeof setTimeout>;
 }
 
+export interface CreateDisconnectedHostRoomResult extends RoomCreatedEvent {
+  reused: boolean;
+}
+
 /**
  * PrivateRoomService — manages private room creation and joining.
  *
@@ -163,6 +167,67 @@ export class PrivateRoomService {
 
     socket.emit('room-created', { code } satisfies RoomCreatedEvent);
     console.log(`[PrivateRoom] Room ${code} created by ${playerId}`);
+  }
+
+  /**
+   * Create a private room for a host that is not connected over Socket.IO yet.
+   * Used by out-of-band integrations such as Telegram bot commands: the bot
+   * creates a room, shares the code, and the host later reclaims it via
+   * `room-recover` from the Mini App using the same deterministic playerId.
+   */
+  createRoomForDisconnectedHost(
+    playerId: string,
+    username: string,
+    gameType?: string
+  ): CreateDisconnectedHostRoomResult {
+    if (this.isPlayerQueued?.(playerId)) {
+      throw new Error('Already in matchmaking queue');
+    }
+
+    for (const match of this.matches.values()) {
+      if (match.hasPlayer(playerId)) {
+        throw new Error('Already in a match');
+      }
+    }
+
+    for (const room of this.rooms.values()) {
+      if (room.host.playerId === playerId) {
+        return { code: room.code, reused: true };
+      }
+    }
+
+    const code = this.generateCode();
+    const resolvedGameType = gameType ?? 'default';
+
+    const expirationTimer = setTimeout(() => {
+      const expired = this.rooms.get(code);
+      if (expired) {
+        this.removeRoom(code);
+        expired.hostSocket?.emit('room-expired', { code });
+        console.log(`[PrivateRoom] Room ${code} expired`);
+      }
+    }, PrivateRoomService.ROOM_TTL_MS);
+
+    const room: PrivateRoom = {
+      code,
+      host: {
+        playerId,
+        username,
+        socketId: '',
+        joinedAt: Date.now(),
+        gameType: resolvedGameType,
+      },
+      hostSocket: null,
+      hostSocketId: '',
+      gameType: resolvedGameType,
+      createdAt: Date.now(),
+      expirationTimer,
+    };
+
+    this.rooms.set(code, room);
+
+    console.log(`[PrivateRoom] Room ${code} created by disconnected host ${playerId}`);
+    return { code, reused: false };
   }
 
   /**
@@ -326,10 +391,10 @@ export class PrivateRoomService {
     if (matchId) {
       const match = this.matches.get(matchId);
       if (match && match.hasPlayer(playerId)) {
-        match.handleReconnect(playerId, socket.id);
         socket.emit('room-recovered', {
           code: normalizedCode,
         } satisfies RoomRecoveredEvent);
+        match.handleReconnect(playerId, socket.id);
         console.log(
           `[PrivateRoom] Player ${playerId} recovered into match ${matchId} via code ${normalizedCode}`,
         );

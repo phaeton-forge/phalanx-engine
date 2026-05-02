@@ -1,4 +1,4 @@
-import { NetworkManager } from './NetworkManager.ts';
+import { NetworkManager, type NetworkManagerOptions } from './NetworkManager.ts';
 
 /**
  * Holds the (replaceable) `NetworkManager` plus the shared book-keeping
@@ -15,15 +15,15 @@ export class NetworkContext {
   private connectListenerUnsubs: (() => void)[] = [];
   private replaceHandlers: (() => void)[] = [];
 
-  constructor() {
-    this.manager = new NetworkManager();
+  constructor(private readonly options: NetworkManagerOptions = {}) {
+    this.manager = new NetworkManager(options);
   }
 
   /** Replace the underlying manager (e.g. on returnToMainMenu). */
   replace(): NetworkManager {
     this.cleanupConnectListeners();
     this.manager.dispose();
-    this.manager = new NetworkManager();
+    this.manager = new NetworkManager(this.options);
     for (const handler of this.replaceHandlers) handler();
     return this.manager;
   }

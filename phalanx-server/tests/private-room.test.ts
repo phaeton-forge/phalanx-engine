@@ -71,6 +71,53 @@ describe('PrivateRoomService', () => {
     expect(created.code.length).toBe(6);
   });
 
+  it('should create a room for a disconnected host and allow recovery after guest joins', async () => {
+    const created = server.createPrivateRoomForHost({
+      playerId: 'telegram:100',
+      username: 'Telegram Host',
+    });
+
+    expect(created.code).toBeDefined();
+    expect(created.code.length).toBe(6);
+
+    const guest = createClient();
+    await connectClient(guest);
+
+    const guestMatchPromise = new Promise<{ matchId: string }>((resolve) => {
+      guest.once('match-found', (data: { matchId: string }) => resolve(data));
+    });
+
+    guest.emit('room-join', {
+      playerId: 'guest1',
+      username: 'Guest',
+      code: created.code,
+    });
+
+    const guestMatch = await guestMatchPromise;
+
+    const host = createClient();
+    await connectClient(host);
+
+    const recoveredPromise = new Promise<RoomRecoveredEvent>((resolve) => {
+      host.once('room-recovered', (data: RoomRecoveredEvent) => resolve(data));
+    });
+    const hostMatchPromise = new Promise<{ matchId: string }>((resolve) => {
+      host.once('match-found', (data: { matchId: string }) => resolve(data));
+    });
+
+    host.emit('room-recover', {
+      playerId: 'telegram:100',
+      username: 'Telegram Host',
+      code: created.code,
+    });
+
+    const recovered = await recoveredPromise;
+    const hostMatch = await hostMatchPromise;
+
+    expect(recovered.code).toBe(created.code);
+    expect(hostMatch.matchId).toBe(guestMatch.matchId);
+  });
+
   it('should reject creating a second room for the same player', async () => {
     const host = createClient();
     await connectClient(host);

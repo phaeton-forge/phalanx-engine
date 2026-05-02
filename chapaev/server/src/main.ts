@@ -52,15 +52,25 @@ async function main() {
   // Build bot (optional)
   let bot: Bot | null = null;
   let extraRequestHandler: ((req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse) => Promise<boolean>) | undefined;
+  let phalanx: Phalanx | null = null;
 
   if (config.BOT_ENABLED) {
-    const mounted = await mountBot(config, { db, log });
+    const mounted = await mountBot(config, {
+      db,
+      log,
+      createPrivateRoom: (request) => {
+        if (!phalanx) {
+          throw new Error('Game server is not ready');
+        }
+        return phalanx.createPrivateRoomForHost(request);
+      },
+    });
     bot = mounted.bot;
     extraRequestHandler = mounted.requestHandler;
     log.info('Telegram bot mounted');
   }
 
-  const phalanx = new Phalanx({
+  phalanx = new Phalanx({
     port: config.PORT,
     cors: { origin: corsOrigins, credentials: true },
     tickMode: 'event',
@@ -128,7 +138,9 @@ async function main() {
         // best-effort
       }
     }
-    await phalanx.stop();
+    if (phalanx) {
+      await phalanx.stop();
+    }
     closeDb();
     process.exit(0);
   }

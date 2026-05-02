@@ -9,6 +9,16 @@ import { makePlayHandler } from './handlers/play.js';
 import { makeFriendsHandler } from './handlers/friends.js';
 import { makeHelpHandler } from './handlers/help.js';
 
+export interface BotPrivateRoomRequest {
+  playerId: string;
+  username?: string;
+  gameType?: string;
+}
+
+export interface BotPrivateRoomResult {
+  code: string;
+}
+
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     let body = '';
@@ -40,7 +50,11 @@ export function createBot(token: string): Bot {
 
 export async function mountBot(
   config: Config,
-  deps: { db: Database.Database; log: Logger },
+  deps: {
+    db: Database.Database;
+    log: Logger;
+    createPrivateRoom: (request: BotPrivateRoomRequest) => BotPrivateRoomResult;
+  },
 ): Promise<{
   bot: Bot;
   requestHandler: (req: IncomingMessage, res: ServerResponse) => Promise<boolean>;
@@ -49,6 +63,7 @@ export async function mountBot(
   const token = config.TELEGRAM_BOT_TOKEN!;
   const webAppUrl = config.WEB_APP_URL!;
   const botUsername = config.BOT_USERNAME!;
+  const telegramAppName = config.TELEGRAM_APP_NAME;
   const webhookSecret = config.TELEGRAM_WEBHOOK_SECRET!;
   const webhookPath = `${config.TELEGRAM_WEBHOOK_PATH}/${webhookSecret}`;
 
@@ -74,7 +89,12 @@ export async function mountBot(
 
   const startHandler = makeStartHandler(db, { webAppUrl, botUsername }, log);
   const playHandler = makePlayHandler({ webAppUrl });
-  const friendsHandler = makeFriendsHandler({ botUsername });
+  const friendsHandler = makeFriendsHandler({
+    botUsername,
+    telegramAppName,
+    webAppUrl,
+    createPrivateRoom: deps.createPrivateRoom,
+  });
   const helpHandler = makeHelpHandler();
 
   bot.command('start', startHandler);

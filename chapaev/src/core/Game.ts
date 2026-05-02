@@ -8,6 +8,7 @@ import {
   RoomRecoveryManager,
   PrivateRoomCoordinator,
   MatchmakingCoordinator,
+  type NetworkManagerOptions,
 } from '../network';
 import { GameUIController } from '../ui/GameUIController.ts';
 import { GameHUDScreen } from '../ui/screens/GameHUD.ts';
@@ -101,7 +102,7 @@ export class Game {
     const roomCode = this.consumeDeepLinkRoomCode();
 
     if (roomCode) {
-      void this.privateRoom!.joinRoom(roomCode);
+      void this.privateRoom!.openDeepLinkRoom(roomCode);
       return;
     }
 
@@ -118,7 +119,7 @@ export class Game {
   // ── Online-mode bootstrap ───────────────────────────────────────
 
   private bootstrapOnlineCollaborators(): void {
-    this.ctx = new NetworkContext();
+    this.ctx = new NetworkContext(this.getNetworkOptions());
 
     this.ui.build({
       onFindMatch: () => this.handleFindMatch(),
@@ -202,6 +203,18 @@ export class Game {
         onQueueTimeoutFallbackAI: () => this.startMatchmakingSubstituteAI(),
       }
     );
+  }
+
+  private getNetworkOptions(): NetworkManagerOptions {
+    const userId = this.platform.getUserId();
+    if (this.platform.getAuthScheme() === 'telegram' && userId) {
+      return {
+        playerId: `telegram:${userId}`,
+        username: `Telegram-${userId}`,
+      };
+    }
+
+    return {};
   }
 
   // ── UI handlers ─────────────────────────────────────────────────
