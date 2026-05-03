@@ -8,6 +8,7 @@ import { makeStartHandler } from './handlers/start.js';
 import { makePlayHandler } from './handlers/play.js';
 import { makeFriendsHandler } from './handlers/friends.js';
 import { makeHelpHandler } from './handlers/help.js';
+import { applyBotSettings } from './setup.js';
 
 export interface BotPrivateRoomRequest {
   playerId: string;
@@ -71,6 +72,7 @@ export async function mountBot(
 
   // grammy requires bot info to be loaded before handling webhook updates
   await bot.init();
+  await applyBotSettings(bot);
 
   // update_id LRU dedup
   bot.use(async (ctx, next) => {
@@ -99,7 +101,9 @@ export async function mountBot(
 
   bot.command('start', startHandler);
   bot.command('play', playHandler);
+  bot.command('invite', friendsHandler);
   bot.command('friends', friendsHandler);
+  bot.command('rules', helpHandler);
   bot.command('help', helpHandler);
   bot.callbackQuery('show_rules', helpHandler);
 

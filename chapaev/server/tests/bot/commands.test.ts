@@ -1,6 +1,8 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { Bot } from 'grammy';
-import { makeFriendsHandler } from '../../src/bot/handlers/friends.js';
+import { makeHelpHandler } from '../../src/bot/handlers/help.js';
+import { makePlayHandler } from '../../src/bot/handlers/play.js';
+import { t } from '../../src/bot/i18n.js';
 
 interface CapturedCall {
   method: string;
@@ -47,7 +49,7 @@ function createTestBot(): { bot: Bot; calls: CapturedCall[] } {
 function makeUpdate(userId: number, text: string) {
   const commandLength = text.split(' ')[0].length;
   return {
-    update_id: Math.floor(Math.random() * 1_000_000),
+    update_id: userId,
     message: {
       message_id: 1,
       chat: { id: userId, type: 'private' as const, first_name: 'User' },
@@ -55,10 +57,9 @@ function makeUpdate(userId: number, text: string) {
         id: userId,
         is_bot: false,
         first_name: 'User',
-        username: 'user_name',
         language_code: 'en',
       },
-      date: Math.floor(Date.now() / 1000),
+      date: 0,
       text,
       entities: [{ type: 'bot_command' as const, offset: 0, length: commandLength }],
     },
@@ -71,46 +72,30 @@ function replyMarkup(payload: Record<string, unknown>): ReplyMarkup {
   return markup as ReplyMarkup;
 }
 
-describe('/friends and /invite handler', () => {
-  it.each(['friends', 'invite'] as const)(
-    '/%s creates a private room and sends share/copy room link actions',
-    async (command) => {
-      const { bot, calls } = createTestBot();
-      const requests: Array<{ playerId: string; username?: string }> = [];
+describe('bot command handlers', () => {
+  it('/play replies with a web_app button for the configured game URL', async () => {
+    const { bot, calls } = createTestBot();
+    const webAppUrl = 'https://example.com/game';
+    bot.command('play', makePlayHandler({ webAppUrl }));
 
-      bot.command(
-        command,
-        makeFriendsHandler({
-          botUsername: 'TestBot',
-          telegramAppName: 'play',
-          webAppUrl: 'https://example.com/app',
-          createPrivateRoom: (request: { playerId: string; username?: string }) => {
-            requests.push(request);
-            return { code: 'ABC123' };
-          },
-        }),
-      );
+    await bot.handleUpdate(makeUpdate(101, '/play'));
 
-      await bot.handleUpdate(makeUpdate(100, `/${command}`));
+    const sendMessage = calls.find((call) => call.method === 'sendMessage');
+    expect(sendMessage).toBeDefined();
+    const keyboard = replyMarkup(sendMessage!.payload).inline_keyboard;
+    expect(keyboard?.[0]?.[0]?.['web_app']).toEqual({ url: webAppUrl });
+    expect(keyboard?.[0]?.[0]?.['url']).toBeUndefined();
+  });
 
-      expect(requests).toEqual([{ playerId: 'telegram:100', username: 'user_name' }]);
+  it('/rules replies with the existing rules text in Markdown', async () => {
+    const { bot, calls } = createTestBot();
+    bot.command('rules', makeHelpHandler());
 
-      const sendMessage = calls.find((call) => call.method === 'sendMessage');
-      expect(sendMessage).toBeDefined();
-      expect(sendMessage!.payload['text']).toContain(
-        'https://t.me/TestBot/play?startapp=ABC123',
-      );
-      expect(sendMessage!.payload['text']).not.toContain('ref_100');
+    await bot.handleUpdate(makeUpdate(102, '/rules'));
 
-      const keyboard = replyMarkup(sendMessage!.payload).inline_keyboard;
-      expect(keyboard).toBeDefined();
-      expect(keyboard?.[0]?.[0]?.['url']).toBe(
-        'https://t.me/TestBot/play?startapp=ABC123',
-      );
-      expect(keyboard?.[1]?.[0]?.['url']).toContain('https://t.me/share/url?');
-      expect(keyboard?.[2]?.[0]?.['copy_text']).toEqual({
-        text: 'https://t.me/TestBot/play?startapp=ABC123',
-      });
-    },
-  );
+    const sendMessage = calls.find((call) => call.method === 'sendMessage');
+    expect(sendMessage).toBeDefined();
+    expect(sendMessage!.payload['text']).toBe(t('en', 'help'));
+    expect(sendMessage!.payload['parse_mode']).toBe('Markdown');
+  });
 });

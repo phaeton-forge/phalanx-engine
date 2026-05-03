@@ -16,7 +16,7 @@ async function main() {
   }
 
   const bot = createBot(config.TELEGRAM_BOT_TOKEN!);
-  await applyBotSettings(bot, config.WEB_APP_URL!);
+  await applyBotSettings(bot);
   console.log('Bot settings applied successfully.');
 }
 

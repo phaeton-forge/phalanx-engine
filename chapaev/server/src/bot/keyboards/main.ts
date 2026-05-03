@@ -30,7 +30,7 @@ export function startReturnKeyboard(
 }
 
 export function playKeyboard(lang: Lang, webAppUrl: string): InlineKeyboard {
-  return new InlineKeyboard().url(t(lang, 'btnPlay'), webAppUrl);
+  return new InlineKeyboard().webApp(t(lang, 'btnPlay'), webAppUrl);
 }
 
 export function friendsKeyboard(
