@@ -5,6 +5,7 @@ import {
   mapLanguageCode,
   defaultInviteShareUrl,
   consumeUrlRoomCode,
+  resolveYandexGamesAppId,
 } from './platformUtils.ts';
 
 const ZERO_INSETS: SafeAreaInsets = { top: 0, right: 0, bottom: 0, left: 0 };
@@ -26,7 +27,7 @@ type YandexSDKInstance = {
     };
   };
   environment?: {
-    app?: { id?: string };
+    app?: { id?: string | number };
     payload?: string;
     i18n?: {
       lang?: string;
@@ -97,13 +98,11 @@ export class YandexAdapter implements PlatformAdapter {
 
   getInviteShareUrl(roomCode: string): string {
     const normalized = roomCode.trim().toUpperCase();
-    if (!this.ysdk) return defaultInviteShareUrl(normalized);
-
-    const appId = this.ysdk.environment?.app?.id;
-    if (typeof appId !== 'string' || appId.length === 0) {
+    const appId = resolveYandexGamesAppId(this.ysdk?.environment);
+    if (!appId) {
       return defaultInviteShareUrl(normalized);
     }
-    const tld = this.ysdk.environment?.i18n?.tld ?? 'ru';
+    const tld = this.ysdk?.environment?.i18n?.tld ?? 'ru';
     return `https://yandex.${tld}/games/app/${appId}?payload=${encodeURIComponent(normalized)}`;
   }
 

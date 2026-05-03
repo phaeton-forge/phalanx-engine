@@ -28,6 +28,38 @@ export function defaultInviteShareUrl(roomCode: string): string {
 }
 
 /**
+ * When the game runs on Yandex Games CDN, `window.location` points at S3
+ * (`app-{id}.games.s3.yandex.net`). If `ysdk.environment.app.id` is missing,
+ * we can still recover the catalog id from the host (or path) for share links.
+ */
+export function inferYandexGamesAppIdFromLocation(): string | null {
+  try {
+    const { hostname, pathname } = window.location;
+    const fromHost = hostname.match(/^app-(\d+)\.games\.s3\.yandex\./);
+    if (fromHost?.[1]) return fromHost[1];
+    if (/\.games\.s3\.yandex\./.test(hostname)) {
+      const fromPath = pathname.match(/^\/(\d+)(?:\/|$)/);
+      if (fromPath?.[1]) return fromPath[1];
+    }
+  } catch {
+    // ignore (SSR / opaque origins)
+  }
+  return null;
+}
+
+/** Prefer SDK `environment.app.id`, then infer from Yandex Games CDN URL. */
+export function resolveYandexGamesAppId(
+  environment: { app?: { id?: string | number } } | undefined
+): string | null {
+  const raw = environment?.app?.id;
+  if (typeof raw === 'string' && raw.length > 0) return raw;
+  if (typeof raw === 'number' && Number.isFinite(raw) && raw > 0) {
+    return String(Math.trunc(raw));
+  }
+  return inferYandexGamesAppIdFromLocation();
+}
+
+/**
  * Read the `?ROOM=` query parameter from the current URL and optionally
  * strip it from browser history so it doesn't persist across page reloads.
  */
