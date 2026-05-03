@@ -73,7 +73,7 @@ function replyMarkup(payload: Record<string, unknown>): ReplyMarkup {
 }
 
 describe('bot command handlers', () => {
-  it('/play replies with a web_app button for the configured game URL', async () => {
+  it('/play replies with a URL button for the configured game URL', async () => {
     const { bot, calls } = createTestBot();
     const webAppUrl = 'https://example.com/game';
     bot.command('play', makePlayHandler({ webAppUrl }));
@@ -83,8 +83,8 @@ describe('bot command handlers', () => {
     const sendMessage = calls.find((call) => call.method === 'sendMessage');
     expect(sendMessage).toBeDefined();
     const keyboard = replyMarkup(sendMessage!.payload).inline_keyboard;
-    expect(keyboard?.[0]?.[0]?.['web_app']).toEqual({ url: webAppUrl });
-    expect(keyboard?.[0]?.[0]?.['url']).toBeUndefined();
+    expect(keyboard?.[0]?.[0]?.['url']).toBe(webAppUrl);
+    expect(keyboard?.[0]?.[0]?.['web_app']).toBeUndefined();
   });
 
   it('/rules replies with the existing rules text in Markdown', async () => {

@@ -41,6 +41,16 @@ const config: Partial<PhalanxConfig> = {
   // === Server ===
   port: 3000, // Server port (default: 3000)
   cors: { origin: '*' }, // CORS configuration
+  extraRequestHandler: async (req, res) => {
+    // Optional: mount trusted webhooks or custom HTTP endpoints on the
+    // same HTTP server. Return true when the request was fully handled.
+    if (req.method === 'POST' && req.url === '/telegram/webhook') {
+      res.writeHead(204);
+      res.end();
+      return true;
+    }
+    return false;
+  },
 
   // === TLS/SSL (optional) ===
   // See "TLS/WSS Configuration" section below for details
@@ -149,6 +159,51 @@ app.on('player-reconnected', (playerId, matchId) => {
 });
 ```
 
+## HTTP Extension Hooks
+
+Use `extraRequestHandler` when an embedding server needs a small HTTP surface on the same port as Phalanx, such as a Telegram webhook, an internal health probe, or a signed partner callback.
+
+```typescript
+import { Phalanx } from 'phalanx-server';
+
+const app = new Phalanx({
+  port: 3000,
+  extraRequestHandler: async (req, res) => {
+    if (req.method !== 'POST' || req.url !== '/telegram/webhook') {
+      return false; // fall through to Phalanx built-in routes
+    }
+
+    if (req.headers['x-telegram-bot-api-secret-token'] !== process.env.WEBHOOK_SECRET) {
+      res.writeHead(401);
+      res.end();
+      return true;
+    }
+
+    // Parse and handle the request body here.
+    res.writeHead(200);
+    res.end();
+    return true;
+  },
+});
+```
+
+Request routing order is:
+
+1. CORS preflight (`OPTIONS`) is answered by Phalanx.
+2. `extraRequestHandler` is called.
+3. Built-in routes run (`/`, `/health`, `/auth/token`).
+4. Unknown routes receive `404`.
+
+Handler contract:
+
+- Return `true` only after fully handling the request, including writing headers/body and ending the response.
+- Return `false` to let Phalanx continue with its built-in routing.
+- Set any route-specific CORS or content headers yourself for handled custom routes.
+- Parse and size-limit request bodies yourself; Phalanx only parses bodies for its own built-in routes.
+- If the handler throws, Phalanx logs the error and sends a generic `500` response when headers have not already been sent.
+
+Treat custom HTTP routes as public internet-facing endpoints. Validate webhook secrets or signatures, avoid exposing trusted administrative operations to browsers, and apply rate limiting where appropriate.
+
 ## API
 
 ### Phalanx Class
@@ -160,6 +215,13 @@ class Phalanx {
   // Lifecycle
   start(): Promise<void>;
   stop(): Promise<void>;
+
+  // Trusted server-side integrations
+  createPrivateRoomForHost(params: {
+    playerId: string;
+    username?: string;
+    gameType?: string;
+  }): RoomCreatedEvent;
 
   // Events
   on(event: PhalanxEvent, handler: Function): this;
@@ -180,6 +242,7 @@ class Phalanx {
 | `queue-leave`         | ✅   |         | Leave matchmaking queue           |
 | `queue-status`        |      | ✅      | Queue join/leave confirmation     |
 | `match-found`         |      | ✅      | Match created, countdown starting |
+| `match-waiting-for-players` |      | ✅      | Match is waiting for disconnected participants before countdown |
 | `game-start`          |      | ✅      | Countdown finished, load assets   |
 | `client-ready`        | ✅   |         | Client finished loading, ready for ticks |
 | `player-ready`        |      | ✅      | A player reported ready           |
@@ -218,20 +281,55 @@ If a client does not send `client-ready` within 30 seconds, the match ends with 
 
 ### Private Room Recovery
 
-Private rooms support a `room-recover` handshake so a host whose socket was dropped (e.g. mobile OS suspended the WebSocket while the user was sharing the invite link) can seamlessly reclaim the room without losing the guest's pending join or an in-flight countdown.
+Private rooms support a `room-recover` handshake so a participant whose socket was dropped (e.g. mobile OS suspended the WebSocket while the user was sharing the invite link) can seamlessly reclaim either a waiting room or a private-room match without losing the pending join or countdown state.
+
+`room-recover` requires both the deterministic `playerId` and the original room `code`. Treat the room code as a bearer recovery secret: possession of the code is what proves the caller is allowed to recover that waiting room or match.
 
 #### Recovery protocol
 
-1. Client calls `room-recover` with the room's invite code after reconnecting.
-2. Server validates the code, verifies the caller was the original host, and rebinds the room to the new socket.
-3. If a guest had already joined while the host was disconnected the server immediately re-emits `match-found` + `reconnect-state` (carrying the countdown snapshot) to the recovered socket so the client-side `waitForMatch`/`waitForCountdown`/`waitForGameStart` chain resumes naturally.
-4. Server responds with `room-recovered` on success or `room-error` (e.g. `'Room expired'`, `'Room not found'`) on terminal failure.
+1. Client calls `room-recover` with `{ playerId, code }` after reconnecting.
+2. If the code still maps to a waiting room, only the original host can recover it. The server rebinds the host socket and emits `room-recovered`.
+3. If the code has already been consumed into a match, any participant in that match can recover with the original code. The server emits `room-recovered` and delegates to the match reconnect flow.
+4. If the match is still waiting for disconnected participants, reconnecting everyone starts the countdown. If the match is already in progress, the normal reconnect state is delivered.
+5. Server responds with `room-error: { message: 'Room expired' }` on terminal failure. The same generic message is used for missing, expired, wrong-player, and already-finished cases so callers cannot probe room ownership.
 
 #### Server-side room TTL
 
-Rooms are kept alive for `ROOM_TTL_MS` (default 5 minutes) after the host disconnects. Clients should mirror this TTL in their local persistence layer so they do not attempt `room-recover` for a room the server has certainly already evicted.
+Waiting rooms are kept alive for `ROOM_TTL_MS` (default 5 minutes) from creation. If the host disconnects, the room remains recoverable until that original TTL expires; if no host socket is connected at expiry time, there is no `room-expired` recipient to notify. Clients should mirror this TTL in their local persistence layer so they do not attempt `room-recover` for a room the server has certainly already evicted.
 
 The client-side [`RoomRecoveryController`](../phalanx-client/README.md#mobile-friendly-room-recovery) handles the full recovery lifecycle automatically when `roomRecovery.enabled: true` is passed to `PhalanxClient`.
+
+### Trusted Server-Side Private Room Creation
+
+Trusted integrations can create a private room for a host that is not currently connected over Socket.IO. This is intended for server-side entry points such as bot commands: the bot creates a room, sends the invite link containing the room code, and the host later opens the game and recovers the room with the same deterministic `playerId`.
+
+```typescript
+const room = app.createPrivateRoomForHost({
+  playerId: `telegram:${telegramUserId}`,
+  username: telegramUsername,
+  gameType: 'chapayev',
+});
+
+const inviteUrl = `https://game.example.com/?room=${room.code}`;
+```
+
+`createPrivateRoomForHost`:
+
+- Requires `playerId` and accepts optional `username` and `gameType`.
+- Defaults `username` to `playerId` and `gameType` to the default game type when omitted.
+- Returns `{ code }`. If the same host already has an active waiting room, the existing room code is reused rather than creating a duplicate room.
+- Throws if Phalanx is not running, if the host is already queued for matchmaking, or if the host is already in an active private-room match.
+- Does not emit `room-created`, because there is no host socket yet.
+
+Typical bot/webhook flow:
+
+1. A trusted HTTP handler validates the webhook request.
+2. The handler derives a stable server-trusted `playerId` from the external identity, such as `telegram:123456`.
+3. The handler calls `createPrivateRoomForHost` and sends the invite URL/code back through the external channel.
+4. The host opens the game and emits `room-recover` with the same `playerId` and code.
+5. The guest opens the invite and emits `room-join` with the code.
+
+Do not expose `createPrivateRoomForHost` as an unauthenticated browser endpoint. Browser clients should continue using the Socket.IO `room-create` flow, while trusted server integrations should authenticate the external request before creating rooms.
 
 ## Game Types
 
