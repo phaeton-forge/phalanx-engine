@@ -19,6 +19,11 @@ import type { MatchFoundEvent, ReconnectStateEvent } from 'phalanx-client';
 import type { PlatformAdapter } from '../platform/PlatformAdapter.ts';
 import { t } from '../i18n/i18n.ts';
 import { generateBotOpponentDisplayName } from '../util/botOpponentName.ts';
+import {
+  trackGameEnd,
+  trackGameExit,
+  trackGameStart,
+} from '../analytics/yandexMetrika.ts';
 
 export type GameMode = 'hotseat' | 'online' | 'ai' | 'online_ai';
 
@@ -68,6 +73,11 @@ export class Game {
   private localTeam: TeamTag = TeamTag.White;
   private hasSentClientReady = false;
   private inGame = false;
+
+  /** Metrika `game_type` for the active session (set when play starts). */
+  private activeAnalyticsGameType: string | null = null;
+  /** Wall-clock start for `game_end` duration (set with `game_start`). */
+  private gameSessionStartedAt: number | null = null;
 
   /**
    * Distinguishes real online play from a local AI substitute after matchmaking
@@ -134,6 +144,7 @@ export class Game {
       onPause: () => {
         if (this.onlineSessionKind === 'substitute_ai') {
           void this.platform.showFullscreenAd();
+          this.trackVoluntaryGameExit();
           this.returnToMainMenu();
           return;
         }
@@ -141,6 +152,7 @@ export class Game {
       },
       onResume: () => this.pauseController?.requestResume(),
       onLeaveMatch: async () => {
+        this.trackVoluntaryGameExit();
         await this.platform.showFullscreenAd();
         this.returnToMainMenu();
       },
@@ -186,7 +198,8 @@ export class Game {
         stopMenuAutoRotate: () => this.menuPresenter.stopAutoRotate(),
       },
       {
-        onMatchReady: (matchData) => this.startOnlineGame(matchData),
+        onMatchReady: (matchData, origin) =>
+          this.startOnlineGame(matchData, origin),
         onCancelled: () => this.returnToMainMenu(),
       }
     );
@@ -198,7 +211,8 @@ export class Game {
         matchmaking: this.ui.matchmaking,
       },
       {
-        onMatchReady: (matchData) => this.startOnlineGame(matchData),
+        onMatchReady: (matchData, origin) =>
+          this.startOnlineGame(matchData, origin),
         onError: () => this.returnToMainMenu(),
         onQueueTimeoutFallbackAI: () => this.startMatchmakingSubstituteAI(),
       }
@@ -246,6 +260,7 @@ export class Game {
     this.inGame = false;
     this.onlineSessionKind = 'none';
     this.hasSentClientReady = false;
+    this.clearAnalyticsSession();
     this.flickInputSystem = null;
     this.pauseController?.reset();
     this.recovery?.stop();
@@ -298,7 +313,10 @@ export class Game {
     this.ui.uiManager.destroyScreen('game');
 
     const hud = new GameHUDScreen(this.ui.uiManager, {
-      onPause: () => this.returnToMainMenu(),
+      onPause: () => {
+        this.trackVoluntaryGameExit();
+        this.returnToMainMenu();
+      },
       onSettings: () => this.ui.showInGameSettings(),
     });
     this.ui.uiManager.showScreen('game');
@@ -326,6 +344,9 @@ export class Game {
       setTimeout(() => this.returnToMainMenu(), delayMs);
     };
 
+    const analyticsType = localMode === 'ai' ? 'local_ai' : 'local_hotseat';
+    this.beginAnalyticsSession(analyticsType);
+
     bindHUDToWorld(
       world,
       hud,
@@ -333,9 +354,18 @@ export class Game {
         ? {
             mode: 'online',
             localTeam: TeamTag.White,
-            onGameOver: () => scheduleReturn(3500),
+            onGameOver: () => {
+              this.trackNaturalGameEnd();
+              scheduleReturn(3500);
+            },
           }
-        : { mode: 'hotseat', onGameOver: () => scheduleReturn(4500) }
+        : {
+            mode: 'hotseat',
+            onGameOver: () => {
+              this.trackNaturalGameEnd();
+              scheduleReturn(4500);
+            },
+          }
     );
 
     const { composer, controls } = this.sceneCtx;
@@ -350,7 +380,10 @@ export class Game {
 
   // ── Online game start (after matchmaking) ───────────────────────
 
-  private startOnlineGame(matchData: MatchFoundEvent): void {
+  private startOnlineGame(
+    matchData: MatchFoundEvent,
+    origin: 'public' | 'private'
+  ): void {
     if (!this.ctx) return;
 
     this.inGame = true;
@@ -394,10 +427,14 @@ export class Game {
     // Keep a minimal frame subscription so PhalanxClient flushes commands.
     this.commandFlushUnsubscribe = this.ctx.manager.client.onFrame(() => {});
 
+    const analyticsType = origin === 'private' ? 'online_private' : 'online';
+    this.beginAnalyticsSession(analyticsType);
+
     bindHUDToWorld(world, this.ui.gameHUD, {
       mode: 'online',
       localTeam: this.localTeam,
       onGameOver: () => {
+        this.trackNaturalGameEnd();
         setTimeout(() => this.returnToMainMenu(), 3500);
       },
     });
@@ -467,10 +504,15 @@ export class Game {
       setTimeout(() => this.returnToMainMenu(), delayMs);
     };
 
+    this.beginAnalyticsSession('online_ai');
+
     bindHUDToWorld(world, this.ui.gameHUD, {
       mode: 'online',
       localTeam: this.localTeam,
-      onGameOver: () => scheduleReturn(3500),
+      onGameOver: () => {
+        this.trackNaturalGameEnd();
+        scheduleReturn(3500);
+      },
     });
 
     const { composer, controls } = this.sceneCtx;
@@ -481,6 +523,34 @@ export class Game {
         this.resolveFirstFrame();
       },
     });
+  }
+
+  private beginAnalyticsSession(gameType: string): void {
+    this.activeAnalyticsGameType = gameType;
+    this.gameSessionStartedAt = Date.now();
+    trackGameStart(gameType);
+  }
+
+  private clearAnalyticsSession(): void {
+    this.activeAnalyticsGameType = null;
+    this.gameSessionStartedAt = null;
+  }
+
+  private sessionDurationMs(): number {
+    if (this.gameSessionStartedAt == null) return 0;
+    return Math.max(0, Date.now() - this.gameSessionStartedAt);
+  }
+
+  private trackNaturalGameEnd(): void {
+    const gameType = this.activeAnalyticsGameType;
+    if (!gameType) return;
+    trackGameEnd(gameType, this.sessionDurationMs());
+  }
+
+  private trackVoluntaryGameExit(): void {
+    const gameType = this.activeAnalyticsGameType;
+    if (!gameType) return;
+    trackGameExit(gameType);
   }
 
   // ── Network events ──────────────────────────────────────────────

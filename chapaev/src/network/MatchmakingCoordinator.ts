@@ -2,10 +2,11 @@ import type { CountdownEvent, MatchFoundEvent } from 'phalanx-client';
 import type { NetworkContext } from './NetworkContext.ts';
 import type { UIManager } from '../ui/UIManager.ts';
 import type { MatchmakingScreen } from '../ui/screens/Matchmaking.ts';
+import { trackMatchFound } from '../analytics/yandexMetrika.ts';
 import { t } from '../i18n/i18n.ts';
 
 export interface MatchmakingCallbacks {
-  onMatchReady(matchData: MatchFoundEvent): void;
+  onMatchReady(matchData: MatchFoundEvent, origin: 'public' | 'private'): void;
   onError(): void;
   /** Queue waited too long with no opponent — leave queue and start local AI substitute. */
   onQueueTimeoutFallbackAI(): void | Promise<void>;
@@ -98,6 +99,8 @@ export class MatchmakingCoordinator {
       const matchData = matchOrTimeout;
       matchmaking.stopTimer();
 
+      trackMatchFound('public');
+
       uiManager.hideScreen('matchmaking');
       uiManager.destroyScreen('countdown');
       uiManager.showScreen('countdown');
@@ -118,7 +121,7 @@ export class MatchmakingCoordinator {
       this.ctx.cleanupConnectListeners();
 
       uiManager.hideScreen('countdown');
-      this.callbacks.onMatchReady(matchData);
+      this.callbacks.onMatchReady(matchData, 'public');
     } catch (error) {
       console.error(
         '[Matchmaking] Failed:',

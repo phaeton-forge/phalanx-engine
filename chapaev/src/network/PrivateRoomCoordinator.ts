@@ -1,16 +1,14 @@
-import type {
-  CountdownEvent,
-  MatchFoundEvent,
-} from 'phalanx-client';
+import type { CountdownEvent, MatchFoundEvent } from 'phalanx-client';
 import type { NetworkContext } from './NetworkContext.ts';
 import type { RoomRecoveryManager } from './RoomRecoveryManager.ts';
 import type { UIManager } from '../ui/UIManager.ts';
 import type { MatchmakingScreen } from '../ui/screens/Matchmaking.ts';
 import type { PrivateMatchScreen } from '../ui/screens/PrivateMatch.ts';
+import { trackMatchFound } from '../analytics/yandexMetrika.ts';
 import { t } from '../i18n/i18n.ts';
 
 export interface PrivateRoomCallbacks {
-  onMatchReady(matchData: MatchFoundEvent): void;
+  onMatchReady(matchData: MatchFoundEvent, origin: 'public' | 'private'): void;
   onCancelled(): void;
 }
 
@@ -33,7 +31,6 @@ interface UIRefs {
  * coordinator does not need its own copy of that timer.
  */
 export class PrivateRoomCoordinator {
-
   constructor(
     private readonly ctx: NetworkContext,
     private readonly recovery: RoomRecoveryManager,
@@ -125,6 +122,8 @@ export class PrivateRoomCoordinator {
       }
       matchmaking.stopTimer();
 
+      trackMatchFound('private');
+
       uiManager.hideScreen('matchmaking');
       uiManager.destroyScreen('countdown');
       uiManager.showScreen('countdown');
@@ -146,7 +145,7 @@ export class PrivateRoomCoordinator {
       this.recovery.stop();
 
       uiManager.hideScreen('countdown');
-      this.callbacks.onMatchReady(matchData);
+      this.callbacks.onMatchReady(matchData, 'private');
     } catch (error) {
       // Surface the actual server message — without this it's
       // impossible to distinguish "Room not found" / "Already in a
@@ -174,7 +173,10 @@ export class PrivateRoomCoordinator {
       await this.ctx.manager.client.connect();
 
       const recoverAbort = new AbortController();
-      const matchPromise = this.awaitMatchStart(matchmaking, recoverAbort.signal);
+      const matchPromise = this.awaitMatchStart(
+        matchmaking,
+        recoverAbort.signal
+      );
 
       try {
         await this.ctx.manager.client.recoverRoom(normalizedCode, 2_000);
@@ -272,15 +274,17 @@ export class PrivateRoomCoordinator {
    */
   private async awaitMatchStart(
     matchmaking: MatchmakingScreen,
-    abortSignal?: AbortSignal,
+    abortSignal?: AbortSignal
   ): Promise<void> {
     const { uiManager, privateMatch } = this.ui;
 
-    const matchFoundPromise =
-      this.waitForClientEvent<MatchFoundEvent>('matchFound', abortSignal);
+    const matchFoundPromise = this.waitForClientEvent<MatchFoundEvent>(
+      'matchFound',
+      abortSignal
+    );
     const gameStartPromise = this.waitForClientEvent<unknown>(
       'gameStart',
-      abortSignal,
+      abortSignal
     );
     const unsubCountdown = this.ctx.manager.client.on(
       'countdown',
@@ -294,6 +298,8 @@ export class PrivateRoomCoordinator {
       privateMatch.stopWaitingTimer();
       matchmaking.stopTimer();
 
+      trackMatchFound('private');
+
       uiManager.hideScreen('private-match');
       uiManager.destroyScreen('countdown');
       uiManager.showScreen('countdown');
@@ -305,7 +311,7 @@ export class PrivateRoomCoordinator {
       this.recovery.stop();
 
       uiManager.hideScreen('countdown');
-      this.callbacks.onMatchReady(matchData);
+      this.callbacks.onMatchReady(matchData, 'private');
     } finally {
       unsubCountdown();
     }
@@ -313,7 +319,7 @@ export class PrivateRoomCoordinator {
 
   private waitForClientEvent<T>(
     eventName: 'matchFound' | 'gameStart',
-    abortSignal?: AbortSignal,
+    abortSignal?: AbortSignal
   ): Promise<T> {
     return new Promise((resolve, reject) => {
       if (abortSignal?.aborted) {
