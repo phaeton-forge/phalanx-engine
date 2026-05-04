@@ -241,6 +241,17 @@ export class Game {
 
   private handleCancelMatchmaking(): void {
     this.ui.matchmaking.stopTimer();
+    this.matchmaking?.markCancelledByUser();
+
+    const client = this.ctx?.manager.client;
+    if (client?.isConnected()) {
+      try {
+        client.leaveQueue();
+      } catch {
+        /* still proceed to replace */
+      }
+    }
+
     this.ctx!.replace();
     this.ui.uiManager.hideScreen('matchmaking');
     this.ui.uiManager.showScreen('main-menu');

@@ -22,14 +22,27 @@ interface UIRefs {
 
 /** Owns the public matchmaking flow (queue → match → countdown → start). */
 export class MatchmakingCoordinator {
+  /** Set when the user leaves the matchmaking UI so late async errors are ignored. */
+  private cancelledByUser = false;
+
   constructor(
     private readonly ctx: NetworkContext,
     private readonly ui: UIRefs,
     private readonly callbacks: MatchmakingCallbacks
   ) {}
 
+  /**
+   * Call before tearing down the socket from the matchmaking screen so a
+   * racing `connectAndStart` failure does not fire `onError` / main-menu redirect.
+   */
+  markCancelledByUser(): void {
+    this.cancelledByUser = true;
+  }
+
   async connectAndStart(): Promise<void> {
     const { uiManager, matchmaking } = this.ui;
+
+    this.cancelledByUser = false;
 
     try {
       matchmaking.setStatus(t('net.connecting'));
@@ -123,6 +136,10 @@ export class MatchmakingCoordinator {
       uiManager.hideScreen('countdown');
       this.callbacks.onMatchReady(matchData, 'public');
     } catch (error) {
+      if (this.cancelledByUser) {
+        this.cancelledByUser = false;
+        return;
+      }
       console.error(
         '[Matchmaking] Failed:',
         error instanceof Error ? error.message : JSON.stringify(error),

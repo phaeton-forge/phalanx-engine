@@ -17,6 +17,7 @@
     "dev:game-server": "pnpm --filter game-test-server dev",
     "build:game-server": "pnpm --filter game-test-server build",
     "deploy:babylon": "cd direct-strike-babylon-example && pnpm run deploy",
+    "deploy:chapaev": "cd chapaev && pnpm run deploy",
     "heroku-postbuild": "corepack enable && corepack prepare pnpm@10.33.0 --activate && pnpm install && pnpm --filter phalanx-math build && pnpm --filter phalanx-server build && pnpm --filter game-test-server build",
     "render-build:chapaev-client": "corepack enable && corepack prepare pnpm@10.33.0 --activate && pnpm install && pnpm --filter chapaev... build",
     "render-build:chapaev-server": "corepack enable && corepack prepare pnpm@10.33.0 --activate && pnpm install && pnpm --filter chapaev-server... build",
