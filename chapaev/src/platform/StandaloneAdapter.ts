@@ -88,8 +88,8 @@ export class StandaloneAdapter implements PlatformAdapter {
     return defaultInviteShareUrl(roomCode);
   }
 
-  async showFullscreenAd(): Promise<void> {
-    // No ads in standalone.
+  async tryShowFullscreenAd(): Promise<boolean> {
+    return false;
   }
 
   hapticImpact(_style: 'light' | 'medium' | 'heavy'): void {

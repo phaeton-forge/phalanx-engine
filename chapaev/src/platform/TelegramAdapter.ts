@@ -191,8 +191,8 @@ export class TelegramAdapter implements PlatformAdapter {
     return `https://t.me/${bot ?? 'your_bot'}?start=${encodeURIComponent(code)}`;
   }
 
-  async showFullscreenAd(): Promise<void> {
-    // Not applicable for Telegram channel; handled by Adsgram integration.
+  async tryShowFullscreenAd(): Promise<boolean> {
+    return false;
   }
 
   hapticImpact(style: 'light' | 'medium' | 'heavy'): void {
