@@ -1,4 +1,9 @@
-import type { PlatformAdapter, SafeAreaInsets, AuthScheme, Platform } from './PlatformAdapter.ts';
+import type {
+  PlatformAdapter,
+  SafeAreaInsets,
+  AuthScheme,
+  Platform,
+} from './PlatformAdapter.ts';
 import type { Language } from '../i18n/i18n.ts';
 import {
   mapLanguageCode,
@@ -7,6 +12,28 @@ import {
 } from './platformUtils.ts';
 
 const ZERO_INSETS: SafeAreaInsets = { top: 0, right: 0, bottom: 0, left: 0 };
+const GUEST_ID_KEY = 'chapaev_guest_id';
+
+function createGuestUserId(): string {
+  const cryptoApi = globalThis.crypto;
+
+  if (typeof cryptoApi?.randomUUID === 'function') {
+    return cryptoApi.randomUUID();
+  }
+
+  if (typeof cryptoApi?.getRandomValues === 'function') {
+    const bytes = new Uint8Array(16);
+    cryptoApi.getRandomValues(bytes);
+
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
+    const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0'));
+    return `${hex.slice(0, 4).join('')}-${hex.slice(4, 6).join('')}-${hex.slice(6, 8).join('')}-${hex.slice(8, 10).join('')}-${hex.slice(10).join('')}`;
+  }
+
+  return `guest-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
 
 /**
  * StandaloneAdapter — no-op implementation for local browser dev.
@@ -101,18 +128,15 @@ export class StandaloneAdapter implements PlatformAdapter {
   // ── Private ──────────────────────────────────────────────────────────
 
   private loadOrCreateUserId(): string {
-    const KEY = 'chapaev_guest_id';
     try {
-      const stored = localStorage.getItem(KEY);
+      const stored = localStorage.getItem(GUEST_ID_KEY);
       if (stored) return stored;
-      const id = crypto.randomUUID();
-      localStorage.setItem(KEY, id);
+      const id = createGuestUserId();
+      localStorage.setItem(GUEST_ID_KEY, id);
       return id;
     } catch {
       // Private mode / storage blocked — fall back to in-memory id.
-      return crypto.randomUUID();
+      return createGuestUserId();
     }
   }
 }
-
-

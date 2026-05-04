@@ -18,11 +18,15 @@ export class CapacitorAdapter extends StandaloneAdapter {
 
     // Dynamically import Capacitor App plugin to avoid bundling it on web.
     try {
-      // @ts-expect-error — @capacitor/app types may not be present in all envs
       const { App } = await import('@capacitor/app');
-      await (App as { addListener: (event: string, handler: () => void) => Promise<unknown> }).addListener('backButton', () => {
+      await (
+        App as {
+          addListener: (event: string, handler: () => void) => Promise<unknown>;
+        }
+      ).addListener('backButton', () => {
         if (this.backButtonListeners.length > 0) {
-          const last = this.backButtonListeners[this.backButtonListeners.length - 1];
+          const last =
+            this.backButtonListeners[this.backButtonListeners.length - 1];
           last?.();
         }
       });
@@ -40,6 +44,3 @@ export class CapacitorAdapter extends StandaloneAdapter {
     };
   }
 }
-
-
-
