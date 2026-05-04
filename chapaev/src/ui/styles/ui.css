@@ -55,7 +55,7 @@
 }
 
 html[data-platform='telegram'] {
-  --hud-top-gap: 20px;
+  --hud-top-gap: 30px;
 }
 
 /* ── UI Root Container ─────────────────────────────────────────── */
