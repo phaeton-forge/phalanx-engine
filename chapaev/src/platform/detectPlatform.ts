@@ -9,7 +9,10 @@ let cached: Platform | null = null;
  * Order matters:
  * 1. Capacitor native shell (Android / iOS app).
  * 2. Telegram Mini App (WebApp global injected by Telegram client).
- * 3. Yandex Games (YaGames global injected by the SDK script).
+ * 3. Yandex Games — CDN host (`*.games.s3.yandex.*`), optional `?yandex_games=`,
+ *    or `YaGames` already on `window` (e.g. host injected the script before our bundle).
+ *    The SDK is loaded in `YandexAdapter.init()`, so `YaGames` is usually absent at
+ *    detection time; do not rely on it alone.
  * 4. Standalone browser / local dev.
  */
 export function detectPlatform(): Platform {
@@ -48,8 +51,17 @@ function resolve(): Platform {
   const hasYandexParam = new URLSearchParams(window.location.search).has(
     'yandex_games'
   );
-  if (hasYaGames || hasYandexParam) return 'yandex';
+  if (hasYaGames || hasYandexParam || isYandexGamesCdnHost()) return 'yandex';
 
   return 'standalone';
+}
+
+/** True when the game document is served from Yandex Games object storage (production iframe). */
+function isYandexGamesCdnHost(): boolean {
+  try {
+    return /\.games\.s3\.yandex\./i.test(window.location.hostname);
+  } catch {
+    return false;
+  }
 }
 

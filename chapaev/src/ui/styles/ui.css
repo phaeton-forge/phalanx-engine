@@ -41,6 +41,21 @@
   /* Transitions */
   --transition-fast: 180ms cubic-bezier(0.16, 1, 0.3, 1);
   --transition-medium: 300ms cubic-bezier(0.16, 1, 0.3, 1);
+
+  /**
+   * JS sets --sai-* from the platform adapter; native shell adapters may report 0
+   * while env() still has the real notch / home-indicator insets. Use the larger.
+   * --hud-top-gap: extra air below status bar / Telegram mini-app header.
+   */
+  --hud-top-gap: 8px;
+  --hud-safe-top: max(var(--sai-top, 0px), env(safe-area-inset-top, 0px));
+  --hud-safe-bottom: max(var(--sai-bottom, 0px), env(safe-area-inset-bottom, 0px));
+  --hud-safe-left: max(var(--sai-left, 0px), env(safe-area-inset-left, 0px));
+  --hud-safe-right: max(var(--sai-right, 0px), env(safe-area-inset-right, 0px));
+}
+
+html[data-platform='telegram'] {
+  --hud-top-gap: 12px;
 }
 
 /* ── UI Root Container ─────────────────────────────────────────── */
@@ -403,7 +418,10 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 12px;
+  padding-top: calc(var(--hud-safe-top) + var(--hud-top-gap));
+  padding-bottom: 8px;
+  padding-left: calc(12px + var(--hud-safe-left));
+  padding-right: calc(12px + var(--hud-safe-right));
   background: var(--glass-bg);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
@@ -477,7 +495,7 @@
 
 .hud-turn-indicator {
   position: absolute;
-  bottom: 80px;
+  bottom: calc(var(--hud-safe-bottom) + 104px);
   left: 50%;
   transform: translateX(-50%);
   padding: 8px 24px;
@@ -506,12 +524,16 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 16px;
+  gap: 12px;
+  padding-top: 10px;
+  padding-bottom: calc(var(--hud-safe-bottom) + 18px);
+  padding-left: calc(16px + var(--hud-safe-left));
+  padding-right: calc(16px + var(--hud-safe-right));
   background: var(--glass-bg);
   backdrop-filter: var(--glass-blur);
   -webkit-backdrop-filter: var(--glass-blur);
   border-top: 1px solid var(--glass-border);
-  min-height: 40px;
+  min-height: 0;
   pointer-events: auto;
 }
 
@@ -519,14 +541,24 @@
   background: transparent;
   border: none;
   color: var(--text-muted);
-  font-size: 18px;
+  font-size: 24px;
+  line-height: 1;
   cursor: pointer;
-  padding: 4px 8px;
-  transition: color var(--transition-fast);
+  min-width: 52px;
+  min-height: 52px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  transition:
+    color var(--transition-fast),
+    background var(--transition-fast);
 }
 
 .hud-bottom-bar button:hover {
   color: var(--text-primary);
+}
+
+.hud-bottom-bar button:active {
+  background: rgba(255, 255, 255, 0.06);
 }
 
 /* ── Match Result ──────────────────────────────────────────────── */
@@ -764,7 +796,10 @@
 
   .hud-top-bar {
     flex-wrap: wrap;
-    padding: 6px 8px;
+    padding-top: calc(var(--hud-safe-top) + var(--hud-top-gap));
+    padding-bottom: 6px;
+    padding-left: calc(8px + var(--hud-safe-left));
+    padding-right: calc(8px + var(--hud-safe-right));
     min-height: auto;
     gap: 2px 4px;
   }
@@ -794,7 +829,7 @@
 
   .hud-turn-indicator {
     font-size: 16px;
-    bottom: 60px;
+    bottom: calc(var(--hud-safe-bottom) + 92px);
   }
 
   .countdown-number {

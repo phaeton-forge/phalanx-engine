@@ -41,6 +41,7 @@ async function bootstrap(): Promise<void> {
   // ── Platform detection & adapter instantiation ────────────────────
   // Use dynamic imports so only the active platform's SDK is downloaded.
   const platform = detectPlatform();
+  document.documentElement.dataset.platform = platform;
   let adapter: PlatformAdapter;
 
   switch (platform) {
