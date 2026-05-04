@@ -132,18 +132,17 @@ export class Game {
     this.ctx = new NetworkContext(this.getNetworkOptions());
 
     this.ui.build({
-      onFindMatch: () => this.handleFindMatch(),
-      onPrivateMatch: () => this.ui.showPrivateMatch(),
+      onFindMatch: () => void this.handleFindMatch(),
+      onPrivateMatch: () => void this.openPrivateMatchAfterAd(),
       onLocalGame: () => this.ui.showLocalGameMode(),
-      onLocalGameVsAI: () => this.handleStartLocal('ai'),
-      onLocalGameHotseat: () => this.handleStartLocal('hotseat'),
+      onLocalGameVsAI: () => void this.startLocalAfterAd('ai'),
+      onLocalGameHotseat: () => void this.startLocalAfterAd('hotseat'),
       onSignOut: () => {},
 
       onCancelMatchmaking: () => this.handleCancelMatchmaking(),
 
       onPause: () => {
         if (this.onlineSessionKind === 'substitute_ai') {
-          void this.platform.showFullscreenAd();
           this.trackVoluntaryGameExit();
           this.returnToMainMenu();
           return;
@@ -151,15 +150,13 @@ export class Game {
         this.pauseController?.requestPause();
       },
       onResume: () => this.pauseController?.requestResume(),
-      onLeaveMatch: async () => {
+      onLeaveMatch: () => {
         this.trackVoluntaryGameExit();
-        await this.platform.showFullscreenAd();
         this.returnToMainMenu();
       },
 
-      onNewGame: () => this.handleFindMatch(),
-      onMainMenu: async () => {
-        await this.platform.showFullscreenAd();
+      onNewGame: () => void this.handleFindMatch(),
+      onMainMenu: () => {
         this.returnToMainMenu();
       },
 
@@ -233,7 +230,18 @@ export class Game {
 
   // ── UI handlers ─────────────────────────────────────────────────
 
-  private handleFindMatch(): void {
+  private async openPrivateMatchAfterAd(): Promise<void> {
+    await this.platform.tryShowFullscreenAd();
+    this.ui.showPrivateMatch();
+  }
+
+  private async startLocalAfterAd(mode: LocalMode): Promise<void> {
+    await this.platform.tryShowFullscreenAd();
+    this.handleStartLocal(mode);
+  }
+
+  private async handleFindMatch(): Promise<void> {
+    await this.platform.tryShowFullscreenAd();
     this.menuPresenter.stopAutoRotate();
     this.ui.showMatchmaking();
     void this.matchmaking!.connectAndStart();

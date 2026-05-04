@@ -56,7 +56,11 @@ export interface PlatformAdapter {
    */
   getInviteShareUrl(roomCode: string): string;
 
-  showFullscreenAd(): Promise<void>;
+  /**
+   * Shows a fullscreen interstitial when supported.
+   * @returns true if an ad was displayed (per SDK callback), false if skipped, unavailable, or errored.
+   */
+  tryShowFullscreenAd(): Promise<boolean>;
 
   // ── UX features ────────────────────────────────────────────────────
 

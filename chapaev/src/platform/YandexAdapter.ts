@@ -7,6 +7,7 @@ import {
   consumeUrlRoomCode,
   resolveYandexGamesAppId,
 } from './platformUtils.ts';
+import { FullscreenAdGate } from './FullscreenAdGate.ts';
 
 const ZERO_INSETS: SafeAreaInsets = { top: 0, right: 0, bottom: 0, left: 0 };
 
@@ -15,7 +16,7 @@ type YandexSDKInstance = {
     showFullscreenAdv?: (options: {
       callbacks?: {
         onOpen?: () => void;
-        onClose?: () => void;
+        onClose?: (wasShown?: boolean) => void;
         onError?: (e?: unknown) => void;
         onOffline?: () => void;
       };
@@ -49,6 +50,7 @@ export class YandexAdapter implements PlatformAdapter {
   readonly platform = 'yandex' as const;
 
   private ysdk: YandexSDKInstance | null = null;
+  private readonly fullscreenAdGate = new FullscreenAdGate();
   private detectedLanguage: Language | null = null;
   private resumeListeners: Array<() => void> = [];
   private visibilityHandler: (() => void) | null = null;
@@ -106,26 +108,31 @@ export class YandexAdapter implements PlatformAdapter {
     return `https://yandex.${tld}/games/app/${appId}?payload=${encodeURIComponent(normalized)}`;
   }
 
-  async showFullscreenAd(): Promise<void> {
-    if (!this.ysdk) return;
+  async tryShowFullscreenAd(): Promise<boolean> {
+    if (!this.ysdk) return false;
+    if (!this.fullscreenAdGate.canShow()) return false;
 
-    await new Promise<void>((resolve) => {
+    const shown = await new Promise<boolean>((resolve) => {
       try {
         const show = this.ysdk!.adv?.showFullscreenAdv;
         if (!show) {
-          resolve();
+          resolve(false);
           return;
         }
         show({
           callbacks: {
-            onClose: resolve,
-            onError: () => resolve(),
+            onClose: (wasShown?: boolean) => {
+              resolve(wasShown === true);
+            },
+            onError: () => resolve(false),
           },
         });
       } catch {
-        resolve();
+        resolve(false);
       }
     });
+    if (shown) this.fullscreenAdGate.recordShown();
+    return shown;
   }
 
   hapticImpact(_style: 'light' | 'medium' | 'heavy'): void {
