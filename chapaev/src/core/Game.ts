@@ -306,6 +306,21 @@ export class Game {
   // ── Local mode (hot-seat / vs AI) ───────────────────────────────
 
   /**
+   * Menu auto-rotate adds a decorative board + checkers to `sceneCtx.scene`.
+   * Any live `GameWorld` adds real meshes via `ThreeRenderSystem`. If a new
+   * match starts without tearing both down, pieces appear duplicated.
+   */
+  private clearSceneAndWorldBeforeNewMatch(): void {
+    this.menuPresenter.stopAutoRotate();
+    if (this.world) {
+      this.world.stop();
+      this.world.dispose();
+      this.world = null;
+    }
+    this.flickInputSystem = null;
+  }
+
+  /**
    * Transition from the main menu into a local match without reloading the page.
    * Tears down menu visuals, hides menu screens, then delegates to `startLocal`.
    */
@@ -318,7 +333,7 @@ export class Game {
 
   private startLocal(localMode: LocalMode): void {
     this.inGame = true;
-    this.menuPresenter.stopAutoRotate();
+    this.clearSceneAndWorldBeforeNewMatch();
 
     // Replace any previous game screen so HUD callbacks bind to local mode.
     this.ui.uiManager.destroyScreen('game');
@@ -396,6 +411,8 @@ export class Game {
     origin: 'public' | 'private'
   ): void {
     if (!this.ctx) return;
+
+    this.clearSceneAndWorldBeforeNewMatch();
 
     this.inGame = true;
     this.onlineSessionKind = 'network';
@@ -477,6 +494,8 @@ export class Game {
    */
   private async startMatchmakingSubstituteAI(): Promise<void> {
     if (!this.ctx) return;
+
+    this.clearSceneAndWorldBeforeNewMatch();
 
     this.inGame = true;
     this.onlineSessionKind = 'substitute_ai';

@@ -25,6 +25,9 @@ export class MatchmakingCoordinator {
   /** Set when the user leaves the matchmaking UI so late async errors are ignored. */
   private cancelledByUser = false;
 
+  /** AI fallback timer — must be cleared on cancel or `Promise.race` still wins with `'timeout'`. */
+  private queueFallbackTimer: ReturnType<typeof setTimeout> | null = null;
+
   constructor(
     private readonly ctx: NetworkContext,
     private readonly ui: UIRefs,
@@ -37,12 +40,21 @@ export class MatchmakingCoordinator {
    */
   markCancelledByUser(): void {
     this.cancelledByUser = true;
+    this.clearQueueFallbackTimer();
+  }
+
+  private clearQueueFallbackTimer(): void {
+    if (this.queueFallbackTimer !== null) {
+      clearTimeout(this.queueFallbackTimer);
+      this.queueFallbackTimer = null;
+    }
   }
 
   async connectAndStart(): Promise<void> {
     const { uiManager, matchmaking } = this.ui;
 
     this.cancelledByUser = false;
+    this.clearQueueFallbackTimer();
 
     try {
       matchmaking.setStatus(t('net.connecting'));
@@ -63,19 +75,15 @@ export class MatchmakingCoordinator {
 
       await this.ctx.manager.client.joinQueue();
 
-      let queueWaitTimer: ReturnType<typeof setTimeout> | null = null;
       const clearQueueTimer = (): void => {
-        if (queueWaitTimer !== null) {
-          clearTimeout(queueWaitTimer);
-          queueWaitTimer = null;
-        }
+        this.clearQueueFallbackTimer();
       };
 
       const queueTimeoutPromise = new Promise<'timeout'>((resolve) => {
-        queueWaitTimer = setTimeout(
-          () => resolve('timeout'),
-          PUBLIC_QUEUE_MATCH_TIMEOUT_MS
-        );
+        this.queueFallbackTimer = setTimeout(() => {
+          this.queueFallbackTimer = null;
+          resolve('timeout');
+        }, PUBLIC_QUEUE_MATCH_TIMEOUT_MS);
       });
 
       const matchPromise = this.ctx.manager.client.waitForMatch();
@@ -95,6 +103,10 @@ export class MatchmakingCoordinator {
       ]);
 
       if (matchOrTimeout === 'timeout') {
+        if (this.cancelledByUser) {
+          this.cancelledByUser = false;
+          return;
+        }
         clearQueueTimer();
         try {
           this.ctx.manager.client.leaveQueue();
