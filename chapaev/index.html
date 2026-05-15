@@ -48,6 +48,7 @@
         margin: 0;
         padding: 0;
         box-sizing: border-box;
+        -webkit-tap-highlight-color: transparent;
       }
       :root {
         --sai-top: env(safe-area-inset-top, 0px);
@@ -62,12 +63,24 @@
         background: #2b1d0e;
         overscroll-behavior: none;
         touch-action: none;
+        user-select: none;
+        -webkit-user-select: none;
+        -webkit-touch-callout: none;
       }
       #app {
         width: 100%;
         height: 100%;
         display: block;
         touch-action: none;
+        user-select: none;
+        -webkit-user-select: none;
+        -webkit-user-drag: none;
+        -webkit-touch-callout: none;
+      }
+      #ui-root {
+        user-select: none;
+        -webkit-user-select: none;
+        -webkit-touch-callout: none;
       }
     </style>
   </head>

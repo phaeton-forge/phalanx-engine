@@ -4,6 +4,7 @@
  */
 
 import type { Language } from '../i18n/i18n.ts';
+import type { SDK as YandexSDKInstance } from 'ysdk';
 import {
   ROOM_CODE_PATTERN,
   mapLanguageCode,
@@ -47,34 +48,6 @@ export class NoopPlatformAds implements IPlatformAds {
     return null;
   }
 }
-
-type YandexSDKInstance = {
-  adv?: {
-    showFullscreenAdv?: (options: {
-      callbacks?: {
-        onOpen?: () => void;
-        onClose?: (wasShown?: boolean) => void;
-        onError?: (e?: unknown) => void;
-        onOffline?: () => void;
-      };
-    }) => void;
-  };
-  features?: {
-    LoadingAPI?: {
-      ready?: () => void;
-    };
-  };
-  environment?: {
-    app?: { id?: string | number };
-    payload?: string;
-    i18n?: {
-      lang?: string;
-      tld?: string;
-    };
-  };
-};
-
-declare const YaGames: { init(): Promise<YandexSDKInstance> };
 
 export class YandexSDK implements IPlatformAds {
   private ysdk: YandexSDKInstance | null = null;
@@ -136,13 +109,25 @@ export class YandexSDK implements IPlatformAds {
 
         show({
           callbacks: {
+            onOpen: () => {
+              console.log('[YandexAds] fullscreen onOpen');
+            },
             onClose: (wasShown?: boolean) => {
+              console.log('[YandexAds] fullscreen onClose', { wasShown });
               resolve(wasShown === true);
             },
-            onError: () => resolve(false),
+            onError: (e?: unknown) => {
+              console.warn('[YandexAds] fullscreen onError', e);
+              resolve(false);
+            },
+            onOffline: () => {
+              console.warn('[YandexAds] fullscreen onOffline');
+              resolve(false);
+            },
           },
         });
-      } catch {
+      } catch (e) {
+        console.warn('[YandexAds] fullscreen showFullscreenAdv threw', e);
         resolve(false);
       }
     });

@@ -166,6 +166,34 @@ export class SoundSystem extends GameSystem {
   /** Unsubscribe from audioSettings changes */
   private settingsUnsub: (() => void) | null = null;
 
+  /** True when this system suspended audio because the page was hidden. */
+  private pageLifecycleSuspendedAudio = false;
+
+  private readonly handlePageHidden = (): void => {
+    if (!this.audioCtx || this.audioCtx.state !== 'running') return;
+    this.pageLifecycleSuspendedAudio = true;
+    void this.audioCtx.suspend();
+  };
+
+  private readonly handlePageVisible = (): void => {
+    if (this.isPageHidden()) return;
+    if (this.pageLifecycleSuspendedAudio && this.audioCtx) {
+      this.pageLifecycleSuspendedAudio = false;
+      void this.audioCtx.resume();
+    }
+    if (this.loaded && !this.bgmStarted) {
+      this.startBgm();
+    }
+  };
+
+  private readonly handleVisibilityChange = (): void => {
+    if (this.isPageHidden()) {
+      this.handlePageHidden();
+      return;
+    }
+    this.handlePageVisible();
+  };
+
   // ── Lifecycle ──────────────────────────────────────────────────
 
   public override init(context: SystemContext): void {
@@ -183,7 +211,24 @@ export class SoundSystem extends GameSystem {
     this.subscribe<RapierContactEvent>(RAPIER_CONTACT, (e) => this.onRapierContact(e));
     this.subscribe(RAPIER_SETTLED, () => this.fadeOutSlidingSound());
 
+    this.addPageLifecycleListeners();
     this.loadSounds();
+  }
+
+  private addPageLifecycleListeners(): void {
+    document.addEventListener('visibilitychange', this.handleVisibilityChange);
+    window.addEventListener('pagehide', this.handlePageHidden);
+    window.addEventListener('pageshow', this.handlePageVisible);
+    window.addEventListener('blur', this.handlePageHidden);
+    window.addEventListener('focus', this.handlePageVisible);
+  }
+
+  private removePageLifecycleListeners(): void {
+    document.removeEventListener('visibilitychange', this.handleVisibilityChange);
+    window.removeEventListener('pagehide', this.handlePageHidden);
+    window.removeEventListener('pageshow', this.handlePageVisible);
+    window.removeEventListener('blur', this.handlePageHidden);
+    window.removeEventListener('focus', this.handlePageVisible);
   }
 
   // ── Sound loading ──────────────────────────────────────────────
@@ -196,6 +241,8 @@ export class SoundSystem extends GameSystem {
    * and then decode any pre-fetched raw buffers.
    */
   private readonly unlockAudio = (): void => {
+    if (this.isPageHidden()) return;
+
     // Create AudioContext inside the gesture if it doesn't exist yet
     if (!this.audioCtx) {
       this.audioCtx = this.createAudioContext();
@@ -385,15 +432,23 @@ export class SoundSystem extends GameSystem {
     return this.bgmMasterGain ?? this.audioCtx!.destination;
   }
 
+  private isPageHidden(): boolean {
+    return document.hidden || document.visibilityState === 'hidden';
+  }
+
+  private ensureAudioRunning(): boolean {
+    if (!this.audioCtx || this.isPageHidden()) return false;
+    if (this.audioCtx.state !== 'running') {
+      void this.audioCtx.resume();
+    }
+    return true;
+  }
+
   // ── Playback ───────────────────────────────────────────────────
 
   private playHitSound(): void {
     if (!this.loaded || !this.audioCtx || this.hitBuffers.length === 0) return;
-
-    // Resume suspended/interrupted context (browser autoplay policy)
-    if (this.audioCtx.state !== 'running') {
-      void this.audioCtx.resume();
-    }
+    if (!this.ensureAudioRunning()) return;
 
     const buffer = this.rng.pick(this.hitBuffers);
     const source = this.audioCtx.createBufferSource();
@@ -421,10 +476,7 @@ export class SoundSystem extends GameSystem {
   /** Play the rim/border hit sound when a checker hits the table border rail. */
   private playRimHitSound(): void {
     if (!this.loaded || !this.audioCtx || !this.rimHitBuffer) return;
-
-    if (this.audioCtx.state !== 'running') {
-      void this.audioCtx.resume();
-    }
+    if (!this.ensureAudioRunning()) return;
 
     const source = this.audioCtx.createBufferSource();
     source.buffer = this.rimHitBuffer;
@@ -437,10 +489,7 @@ export class SoundSystem extends GameSystem {
     if (!this.loaded || !this.audioCtx || this.fallOffBuffers.length === 0) return;
     // Don't restart if already playing or fading out
     if (this.slidingSource) return;
-
-    if (this.audioCtx.state !== 'running') {
-      void this.audioCtx.resume();
-    }
+    if (!this.ensureAudioRunning()) return;
 
     const gain = this.audioCtx.createGain();
     gain.gain.value = 1;
@@ -507,10 +556,7 @@ export class SoundSystem extends GameSystem {
   private startMovementSound(initialSpeed: number): void {
     if (!this.loaded || !this.audioCtx || !this.movementBuffer) return;
     if (initialSpeed <= STOP_THRESHOLD) return;
-
-    if (this.audioCtx.state !== 'running') {
-      void this.audioCtx.resume();
-    }
+    if (!this.ensureAudioRunning()) return;
 
     // Stop previous movement sound if still playing
     this.stopMovementSound();
@@ -610,6 +656,7 @@ export class SoundSystem extends GameSystem {
    */
   private startBgm(): void {
     if (this.bgmStarted || this.bgmBuffers.length === 0 || !this.audioCtx) return;
+    if (this.isPageHidden()) return;
     this.bgmStarted = true;
 
     // Pick a random first track
@@ -620,10 +667,7 @@ export class SoundSystem extends GameSystem {
   /** Play a specific BGM track by index, fading in over BGM_CROSSFADE_DURATION. */
   private playBgmTrack(index: number): void {
     if (!this.audioCtx || this.bgmBuffers.length === 0) return;
-
-    if (this.audioCtx.state !== 'running') {
-      void this.audioCtx.resume();
-    }
+    if (!this.ensureAudioRunning()) return;
 
     const gain = this.audioCtx.createGain();
     gain.gain.setValueAtTime(0, this.audioCtx.currentTime);
@@ -706,6 +750,7 @@ export class SoundSystem extends GameSystem {
     this.stopSlidingSound();
     this.stopBgm();
     this.removeUnlockListeners();
+    this.removePageLifecycleListeners();
     this.silentModeHint.dispose();
     this.settingsUnsub?.();
     this.settingsUnsub = null;

@@ -4,6 +4,7 @@ import { installDebugConsole } from './debug/installDebugConsole.ts';
 import { detectPlatform } from './platform/detectPlatform.ts';
 import type { PlatformAdapter } from './platform/PlatformAdapter.ts';
 import { setLanguage } from './i18n/i18n.ts';
+import { installInteractionGuards } from './installInteractionGuards.ts';
 
 const canvas = document.getElementById('app') as HTMLCanvasElement | null;
 
@@ -36,6 +37,7 @@ function reportStartupError(error: unknown): void {
 }
 
 async function bootstrap(): Promise<void> {
+  installInteractionGuards();
   await installDebugConsole();
 
   // ── Platform detection & adapter instantiation ────────────────────

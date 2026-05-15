@@ -1,5 +1,6 @@
 import type { PlatformAdapter, SafeAreaInsets, AuthScheme } from './PlatformAdapter.ts';
 import type { Language } from '../i18n/i18n.ts';
+import type { SDK as YandexSDKInstance } from 'ysdk';
 import {
   ROOM_CODE_PATTERN,
   mapLanguageCode,
@@ -10,41 +11,16 @@ import {
 import { FullscreenAdGate } from './FullscreenAdGate.ts';
 
 const ZERO_INSETS: SafeAreaInsets = { top: 0, right: 0, bottom: 0, left: 0 };
+const YANDEX_SDK_SCRIPT_ID = 'yandex-games-sdk';
+const YANDEX_SDK_SRC = '/sdk.js';
 
-type YandexSDKInstance = {
-  adv?: {
-    showFullscreenAdv?: (options: {
-      callbacks?: {
-        onOpen?: () => void;
-        onClose?: (wasShown?: boolean) => void;
-        onError?: (e?: unknown) => void;
-        onOffline?: () => void;
-      };
-    }) => void;
-  };
-  features?: {
-    LoadingAPI?: {
-      ready?: () => void;
-    };
-  };
-  environment?: {
-    app?: { id?: string | number };
-    payload?: string;
-    i18n?: {
-      lang?: string;
-      tld?: string;
-    };
-  };
-};
-
-declare const YaGames: { init(): Promise<YandexSDKInstance> };
+let yandexSDKScriptPromise: Promise<void> | null = null;
 
 /**
  * YandexAdapter — wraps the Yandex Games SDK.
  *
- * The SDK script tag has been removed from index.html.
- * Instead, `init()` injects it dynamically so the ~80 KB SDK script is
- * NEVER downloaded when the game runs under Telegram or in standalone mode.
+ * The SDK is loaded from the documented `/sdk.js` loader endpoint only when
+ * the game runs under Yandex Games.
  */
 export class YandexAdapter implements PlatformAdapter {
   readonly platform = 'yandex' as const;
@@ -109,6 +85,7 @@ export class YandexAdapter implements PlatformAdapter {
   }
 
   async tryShowFullscreenAd(): Promise<boolean> {
+    console.log('[YandexAds] tryShowFullscreenAd');
     if (!this.ysdk) return false;
     if (!this.fullscreenAdGate.canShow()) return false;
 
@@ -116,18 +93,32 @@ export class YandexAdapter implements PlatformAdapter {
       try {
         const show = this.ysdk!.adv?.showFullscreenAdv;
         if (!show) {
+          console.warn('[YandexAds] fullscreen showFullscreenAdv not available');
           resolve(false);
           return;
         }
-        show({
+        console.log('[YandexAds] fullscreen showFullscreenAdv');
+        this.ysdk!.adv?.showFullscreenAdv?.({
           callbacks: {
+            onOpen: () => {
+              console.log('[YandexAds] fullscreen onOpen');
+            },
             onClose: (wasShown?: boolean) => {
+              console.log('[YandexAds] fullscreen onClose', { wasShown });
               resolve(wasShown === true);
             },
-            onError: () => resolve(false),
+            onError: (e?: unknown) => {
+              console.warn('[YandexAds] fullscreen onError', e);
+              resolve(false);
+            },
+            onOffline: () => {
+              console.warn('[YandexAds] fullscreen onOffline');
+              resolve(false);
+            },
           },
         });
-      } catch {
+      } catch (e) {
+        console.warn('[YandexAds] fullscreen showFullscreenAdv threw', e);
         resolve(false);
       }
     });
@@ -170,20 +161,41 @@ export class YandexAdapter implements PlatformAdapter {
   // ── Private ────────────────────────────────────────────────────────
 
   private injectSDKScript(): Promise<void> {
-    return new Promise((resolve, reject) => {
-      // Already loaded (e.g. hot-reload in dev).
-      if (typeof YaGames !== 'undefined') {
-        resolve();
+    // Already loaded (e.g. hot-reload in dev).
+    if (typeof YaGames !== 'undefined') {
+      return Promise.resolve();
+    }
+
+    if (yandexSDKScriptPromise) {
+      return yandexSDKScriptPromise;
+    }
+
+    yandexSDKScriptPromise = new Promise((resolve, reject) => {
+      const existing = document.getElementById(YANDEX_SDK_SCRIPT_ID);
+      if (existing) {
+        existing.addEventListener('load', () => resolve(), { once: true });
+        existing.addEventListener('error', () => rejectSDKLoad(reject), {
+          once: true,
+        });
         return;
       }
+
       const script = document.createElement('script');
-      script.src = 'https://yandex.ru/games/sdk/v2';
+      script.id = YANDEX_SDK_SCRIPT_ID;
+      script.async = true;
+      script.src = YANDEX_SDK_SRC;
       script.onload = () => resolve();
-      script.onerror = () =>
-        reject(new Error('Failed to load Yandex Games SDK script'));
+      script.onerror = () => rejectSDKLoad(reject);
       document.head.appendChild(script);
     });
+
+    return yandexSDKScriptPromise;
   }
+}
+
+function rejectSDKLoad(reject: (reason?: unknown) => void): void {
+  yandexSDKScriptPromise = null;
+  reject(new Error('Failed to load Yandex Games SDK script'));
 }
 
 
