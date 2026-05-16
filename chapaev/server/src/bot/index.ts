@@ -8,7 +8,10 @@ import { makeStartHandler } from './handlers/start.js';
 import { makePlayHandler } from './handlers/play.js';
 import { makeFriendsHandler } from './handlers/friends.js';
 import { makeHelpHandler } from './handlers/help.js';
+import { makeFeedbackHandlers } from './handlers/feedback.js';
+import { makeTextGateMiddleware } from './handlers/textGate.js';
 import { applyBotSettings } from './setup.js';
+import { ensureUserStateTable } from './userState.js';
 
 export interface BotPrivateRoomRequest {
   playerId: string;
@@ -67,8 +70,10 @@ export async function mountBot(
   const telegramAppName = config.TELEGRAM_APP_NAME;
   const webhookSecret = config.TELEGRAM_WEBHOOK_SECRET!;
   const webhookPath = `${config.TELEGRAM_WEBHOOK_PATH}/${webhookSecret}`;
+  const feedbackChatId = config.FEEDBACK_CHAT_ID!;
 
   const bot = createBot(token);
+  ensureUserStateTable(db);
 
   // grammy requires bot info to be loaded before handling webhook updates
   await bot.init();
@@ -89,6 +94,8 @@ export async function mountBot(
     return next();
   });
 
+  bot.use(makeTextGateMiddleware(db, webAppUrl));
+
   const startHandler = makeStartHandler(db, { webAppUrl, botUsername }, log);
   const playHandler = makePlayHandler({ webAppUrl });
   const friendsHandler = makeFriendsHandler({
@@ -98,14 +105,23 @@ export async function mountBot(
     createPrivateRoom: deps.createPrivateRoom,
   });
   const helpHandler = makeHelpHandler();
+  const feedbackHandlers = makeFeedbackHandlers(db, log, feedbackChatId);
 
   bot.command('start', startHandler);
   bot.command('play', playHandler);
+  bot.command('feedback', feedbackHandlers.entryHandler);
   bot.command('invite', friendsHandler);
   bot.command('friends', friendsHandler);
   bot.command('rules', helpHandler);
   bot.command('help', helpHandler);
+  bot.command('cancel', feedbackHandlers.cancelHandler);
   bot.callbackQuery('show_rules', helpHandler);
+  bot.callbackQuery('feedback_start', feedbackHandlers.entryHandler);
+  bot.callbackQuery(
+    /^feedback_(bug|idea|review|cancel)$/,
+    feedbackHandlers.categoryHandler,
+  );
+  bot.on('message', feedbackHandlers.messageHandler);
 
   const requestHandler = async (
     req: IncomingMessage,

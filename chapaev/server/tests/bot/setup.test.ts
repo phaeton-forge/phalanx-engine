@@ -49,9 +49,10 @@ describe('applyBotSettings', () => {
     expect(commandsCall).toBeDefined();
     expect(commandsCall!.payload).toEqual({
       commands: [
-        { command: 'play', description: 'Играть' },
-        { command: 'invite', description: 'Пригласить друга в игру' },
-        { command: 'rules', description: 'Правила игры' },
+        { command: 'play', description: '🎮 Играть' },
+        { command: 'feedback', description: '✉️ Оставить отзыв' },
+        { command: 'rules', description: '📖 Правила' },
+        { command: 'help', description: 'ℹ️ Помощь' },
       ],
     });
 

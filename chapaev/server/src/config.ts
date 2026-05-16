@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+export const DEFAULT_WEB_APP_URL = 'https://chapaev.onrender.com';
+
 const Schema = z
   .object({
     PORT: z.coerce.number().default(3000),
@@ -13,9 +15,13 @@ const Schema = z
     TELEGRAM_WEBHOOK_SECRET: z.string().min(16).optional(),
     TELEGRAM_WEBHOOK_PATH: z.string().default('/telegram/webhook'),
     PUBLIC_URL: z.string().url().optional(),
-    WEB_APP_URL: z.string().url().optional(),
+    WEB_APP_URL: z.string().url().default(DEFAULT_WEB_APP_URL),
     BOT_USERNAME: z.string().optional(),
     TELEGRAM_APP_NAME: z.string().optional(),
+    FEEDBACK_CHAT_ID: z.preprocess(
+      (value) => (value === '' ? undefined : value),
+      z.coerce.number().int().optional(),
+    ),
   })
   .superRefine((v, ctx) => {
     if (v.BOT_ENABLED) {
@@ -23,8 +29,8 @@ const Schema = z
         'TELEGRAM_BOT_TOKEN',
         'TELEGRAM_WEBHOOK_SECRET',
         'PUBLIC_URL',
-        'WEB_APP_URL',
         'BOT_USERNAME',
+        'FEEDBACK_CHAT_ID',
       ] as const;
       for (const k of required) {
         if (!v[k]) {
