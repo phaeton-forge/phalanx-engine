@@ -27,6 +27,20 @@ export const strings = {
     btnShare: '📤 Поделиться в Telegram',
     btnCopyLink: '📋 Скопировать ссылку',
     btnRules: '📖 Правила',
+    btnFeedback: '✉️ Оставить отзыв',
+    btnFeedbackBug: '🐛 Баг',
+    btnFeedbackIdea: '💡 Идея',
+    btnFeedbackReview: '❤️ Отзыв',
+    btnCancel: '❌ Отмена',
+    textGate:
+      'Чат с ботом — только для игры 🎮\nЧтобы оставить отзыв — нажми кнопку ниже или /feedback.',
+    feedbackCategoryPrompt: 'Что хочешь отправить?',
+    feedbackMessagePrompt:
+      'Напиши свой отзыв одним сообщением (3–2000 символов). Для отмены — /cancel.',
+    feedbackLengthError:
+      'Отзыв должен быть от 3 до 2000 символов. Напиши его одним сообщением или отправь /cancel.',
+    feedbackThanks: 'Спасибо! 🙌 Отзыв отправлен.',
+    feedbackCancelled: 'Отменено.',
   },
   en: {
     startNew:
@@ -48,6 +62,20 @@ export const strings = {
     btnShare: '📤 Share in Telegram',
     btnCopyLink: '📋 Copy link',
     btnRules: '📖 Rules',
+    btnFeedback: '✉️ Leave feedback',
+    btnFeedbackBug: '🐛 Bug',
+    btnFeedbackIdea: '💡 Idea',
+    btnFeedbackReview: '❤️ Review',
+    btnCancel: '❌ Cancel',
+    textGate:
+      'Chat with the bot is only for the game 🎮\nTo leave feedback, tap the button below or use /feedback.',
+    feedbackCategoryPrompt: 'What would you like to send?',
+    feedbackMessagePrompt:
+      'Write your feedback in one message (3-2000 characters). To cancel, use /cancel.',
+    feedbackLengthError:
+      'Feedback must be 3 to 2000 characters. Write it in one message or send /cancel.',
+    feedbackThanks: 'Thanks! 🙌 Feedback sent.',
+    feedbackCancelled: 'Cancelled.',
   },
 } as const satisfies Record<Lang, Record<string, string>>;
 
