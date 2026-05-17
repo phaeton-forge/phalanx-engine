@@ -1,0 +1,1 @@
+export { AttributeAggregationSystem } from './AttributeAggregationSystem';
