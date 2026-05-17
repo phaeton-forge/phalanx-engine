@@ -4,6 +4,7 @@ packages:
   - 'phalanx-client'
   - 'phalanx-ecs'
   - 'phalanx-physics'
+  - 'phalanx-abilities'
   - 'game-test'
   - 'game-test-server'
   - 'direct-strike-babylon-example'
