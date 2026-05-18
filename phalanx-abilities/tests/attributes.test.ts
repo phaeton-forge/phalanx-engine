@@ -7,6 +7,7 @@ import {
   ActiveEffectsComponent,
   AttributeAggregationSystem,
   createAbilitySystemRegistries,
+  createAbilitySystemRuntime,
   defineAttribute,
   defineEffect,
 } from '../src';
@@ -45,9 +46,10 @@ describe('attributes and aggregation', () => {
         clamp: 'both',
       })
     );
+    const runtime = createAbilitySystemRuntime();
     const world = new GameWorld({ componentTypes: [AbilitiesComponentType.Attributes] });
     world.registerSystems([new AttributeAggregationSystem(registries)], []);
-    const facade = new AbilitySystemFacade(world.entityManager, registries);
+    const facade = new AbilitySystemFacade(world.entityManager, registries, runtime);
 
     const entity = addEntity(world);
     facade.initAttributesForEntity(entity.id);
@@ -112,9 +114,10 @@ describe('attributes and aggregation', () => {
         modifiers: [{ attributeId: 'ClampMax', op: 'Add', magnitude: FP.FromInt(200) }],
       })
     );
+    const runtime = createAbilitySystemRuntime();
     const world = new GameWorld({ componentTypes: [AbilitiesComponentType.Attributes] });
     world.registerSystems([new AttributeAggregationSystem(registries)], []);
-    const facade = new AbilitySystemFacade(world.entityManager, registries);
+    const facade = new AbilitySystemFacade(world.entityManager, registries, runtime);
 
     const entity = addEntity(world);
     const attributes = facade.initAttributesForEntity(entity.id);
@@ -399,11 +402,12 @@ function createTestWorld() {
     })
   );
 
+  const runtime = createAbilitySystemRuntime();
   const world = new GameWorld({ componentTypes: [AbilitiesComponentType.Attributes] });
   world.registerSystems([new AttributeAggregationSystem(registries)], []);
-  const facade = new AbilitySystemFacade(world.entityManager, registries);
+  const facade = new AbilitySystemFacade(world.entityManager, registries, runtime);
 
-  return { world, facade, registries };
+  return { world, facade, registries, runtime };
 }
 
 function addEntity(world: GameWorld): Entity {
