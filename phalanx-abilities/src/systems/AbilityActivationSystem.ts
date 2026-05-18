@@ -62,7 +62,7 @@ import type { AbilityDef, ProvidedTarget, TargetOrigin, TargetSpec } from '../ty
  *  - Enqueues every `targetEffectIds` entry on each resolved target's
  *    `pendingAdd`.
  *  - Emits an {@link AbilityActivatedEvent} on the world event bus.
- *  - Appends a {@link ResolvedAbilityActivation} to
+ *  - Appends a {@link ResolvedAbilityActivationRecord} to
  *    `runtime.resolvedActivationsThisTick` so
  *    `AbilityHookExecutorSystem` can fire `hookId` later in the tick.
  *
