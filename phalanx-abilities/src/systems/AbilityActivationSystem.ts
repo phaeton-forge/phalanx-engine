@@ -15,7 +15,8 @@ import type {
   AbilitySystemRuntime,
   ResolvedAbilityActivationRecord,
 } from '../runtime';
-import type { AbilityDef, ProvidedTarget, TargetOrigin, TargetSpec } from '../types';
+import { TargetResolver } from '../targeting';
+import type { AbilityDef, ProvidedTarget } from '../types';
 
 /**
  * Drains pending {@link AbilityActivationRequest}s from the runtime, runs
@@ -55,10 +56,11 @@ import type { AbilityDef, ProvidedTarget, TargetOrigin, TargetSpec } from '../ty
  * After successful CanActivate the system:
  *  - Enqueues `costEffectId` (if any), `cooldownEffectId` (if any), and
  *    every `selfEffectIds` entry on the caster's `pendingAdd`.
- *  - Resolves `target` for the trivial shapes supported in Stage 5
- *    (`Self`, `Entity { Caster | Caller | TargetEntity }`). `Radius` and
- *    `Point` are deferred to Stage 6's `TargetResolutionSystem` and throw
- *    here.
+ *  - Resolves `target` via {@link TargetResolver}. Every `TargetSpec.kind`
+ *    (`Self`, `Entity`, `Point`, `Radius`) and every `TargetOrigin.kind`
+ *    including `Caller` is supported. Radius shapes additionally require
+ *    a registered `ISpatialQuery` (see
+ *    `AbilitySystemFacade.registerSpatialQuery`).
  *  - Enqueues every `targetEffectIds` entry on each resolved target's
  *    `pendingAdd`.
  *  - Emits an {@link AbilityActivatedEvent} on the world event bus.
@@ -81,6 +83,14 @@ export class AbilityActivationSystem extends GameSystem {
    * `debit` is stored as raw `FixedPoint` for cheap accumulation.
    */
   private readonly inFlightCostsByCaster = new Map<number, Map<string, bigint>>();
+
+  /**
+   * Lazily constructed once the entity manager has been attached (the
+   * GameSystem base class sets `this.entityManager` after construction).
+   * The resolver is stateless apart from the registries + entityManager
+   * pair it captures.
+   */
+  private targetResolver: TargetResolver | undefined;
 
   public constructor(
     private readonly registries: AbilitySystemRegistries,
@@ -470,72 +480,30 @@ export class AbilityActivationSystem extends GameSystem {
   // ---------------------------------------------------------------------------
 
   /**
-   * Minimal in-system target resolver covering only the shapes that make
-   * sense without spatial queries:
-   *  - `Self`            → `[casterId]`.
-   *  - `Entity { Caster }`     → `[casterId]`.
-   *  - `Entity { Caller }`     → `[providedTarget.entityId]` (required).
-   *  - `Entity { TargetEntity }` → `[origin.entityId]`.
-   *  - `Point` and `Radius` → throw. They require Stage 6's
-   *    `TargetResolutionSystem` for deterministic spatial resolve.
+   * Stage 6 — delegate to {@link TargetResolver}. The resolver handles every
+   * `TargetSpec.kind` (`Self`, `Entity`, `Point`, `Radius`) and every
+   * `TargetOrigin.kind` including `Caller`. For shapes that require a
+   * spatial query (`Radius`), the resolver throws with an actionable
+   * message if `AbilitySystemFacade.registerSpatialQuery` was never
+   * called.
    *
-   * Targets are returned in a freshly-allocated array because the resolved
-   * activations buffer holds it for the hook executor; sharing would couple
-   * lifetimes.
+   * Targets are returned in a freshly-allocated array because the
+   * resolved-activations buffer holds it for the hook executor; sharing
+   * would couple lifetimes.
    */
   private resolveTargets(
     caster: Entity,
     def: AbilityDef,
     providedTarget: ProvidedTarget | undefined
   ): number[] {
-    return resolveSimpleTargets(caster.id, def.target, providedTarget);
-  }
-}
-
-function resolveSimpleTargets(
-  casterId: number,
-  target: TargetSpec,
-  providedTarget: ProvidedTarget | undefined
-): number[] {
-  switch (target.kind) {
-    case 'Self':
-      return [casterId];
-    case 'Entity': {
-      const entityId = resolveEntityOrigin(casterId, target.origin, providedTarget);
-      if (entityId === undefined) {
-        return [];
-      }
-      return [entityId];
+    if (this.targetResolver === undefined) {
+      this.targetResolver = new TargetResolver(this.entityManager, this.registries);
     }
-    case 'Point':
-      throw new Error(
-        "TargetSpec.kind === 'Point' requires Stage 6's TargetResolutionSystem (not yet implemented)."
-      );
-    case 'Radius':
-      throw new Error(
-        "TargetSpec.kind === 'Radius' requires Stage 6's TargetResolutionSystem (not yet implemented)."
-      );
-  }
-}
-
-function resolveEntityOrigin(
-  casterId: number,
-  origin: TargetOrigin,
-  providedTarget: ProvidedTarget | undefined
-): number | undefined {
-  switch (origin.kind) {
-    case 'Caster':
-      return casterId;
-    case 'TargetEntity':
-      return origin.entityId;
-    case 'Caller':
-      // Caller-style: read from providedTarget. Missing entityId means the
-      // caller forgot to supply a target — silently drop the activation.
-      return providedTarget?.entityId;
-    case 'Point':
-      throw new Error(
-        "TargetOrigin.kind === 'Point' is only meaningful for TargetSpec.kind 'Radius'/'Point'."
-      );
+    return this.targetResolver.resolve({
+      casterEntityId: caster.id,
+      spec: def.target,
+      providedTarget,
+    });
   }
 }
 
