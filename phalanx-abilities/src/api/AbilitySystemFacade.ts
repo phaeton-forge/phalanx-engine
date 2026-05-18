@@ -172,11 +172,14 @@ export class AbilitySystemFacade {
    * launcher should not damage themselves with their own splash, even
    * when the rocket has no "source" in the gameplay sense.
    *
-   * Returns the resolved target list (the same array {@link TargetResolver}
-   * produced) so user code can drive secondary effects — cues, damage
-   * numbers, screen shakes. The list is sorted by entity id ASC; user
-   * code that needs presentation order should re-sort by distance or
-   * other criteria.
+   * Returns the list of entity ids that actually received the effect
+   * (i.e. had `pendingAdd` enqueued). The list is sorted by entity id ASC.
+   * It is a subset of what {@link TargetResolver} produced: any id that
+   * the resolver returned but that no longer exists in the entity
+   * manager at enqueue time is omitted. User code can rely on this list
+   * to drive secondary effects — cues, damage numbers, screen shakes —
+   * without re-validating entities itself. Re-sort by distance if you
+   * need presentation order.
    *
    * Throws if no spatial query is registered. Self / Entity / Point
    * abilities do not need one, but this method always does — it is the
@@ -210,20 +213,23 @@ export class AbilitySystemFacade {
         includeSelf: opts.includeSelf,
       },
     });
+    // Only return ids that successfully enqueued the effect. The resolver
+    // already drops stale ids, but a removal can still happen between
+    // resolve and enqueue inside a single tick (e.g. an earlier hook in
+    // the same activation despawned the target). Returning the enqueued
+    // subset gives callers a precise "who actually got hit" list and
+    // matches what observers will see via component pendingAdd queues.
+    const applied: number[] = [];
     for (let i = 0; i < targets.length; i++) {
       const entity = this.entityManager.getEntity(targets[i]);
       if (!entity) {
-        // The resolver already filtered out unknown entities for tag
-        // checks, but a removal between resolve and enqueue is still
-        // possible inside a single tick (e.g. an earlier hook in the
-        // same activation despawned the target). Skip silently — every
-        // peer makes the same observation.
         continue;
       }
       const activeEffects = this.getOrCreateActiveEffects(entity);
       activeEffects.pendingAdd.push({ defId: effectId, sourceEntityId });
+      applied.push(targets[i]);
     }
-    return targets;
+    return applied;
   }
 
   /**

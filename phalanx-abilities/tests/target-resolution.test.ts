@@ -23,7 +23,7 @@ import type {
 } from '../src';
 
 // ---------------------------------------------------------------------------
-// Stage 6 — Targeting: Radius + TargetResolutionSystem + applyEffectAoE
+// Stage 6 — Targeting: Radius + TargetResolver + applyEffectAoE
 //
 // These tests cover the resolver behaviour end-to-end through the facade and
 // through ability activation. They exercise determinism guarantees that are
@@ -294,7 +294,7 @@ describe('TargetResolver via applyEffectAoE — Radius behaviour', () => {
     world.dispose();
   });
 
-  it('drops entity ids returned by the spatial query that have been removed already', () => {
+  it('drops entity ids returned by the spatial query that have been removed already (with filter)', () => {
     const { world, facade, spatial } = createTestWorld();
     const a = addEntity(world);
     const b = addEntity(world);
@@ -303,8 +303,6 @@ describe('TargetResolver via applyEffectAoE — Radius behaviour', () => {
     world.processAllTicks(1);
 
     const ghostId = 9999; // never added to the world
-    // Return one ghost id alongside legit ones. Filter forces the
-    // resolver to look the entity up — and the lookup fails cleanly.
     spatial.setQuery(() => [a.id, ghostId, b.id]);
 
     const targets = facade.applyEffectAoE(
@@ -316,10 +314,62 @@ describe('TargetResolver via applyEffectAoE — Radius behaviour', () => {
         filter: { tagsBlocked: ['Never.Granted'] },
       }
     );
-    // Without filter the resolver still passes the ghost id through;
-    // the facade's enqueue loop drops it because entityManager.getEntity
-    // returns undefined. With filter the resolver drops it earlier.
     expect(targets).toEqual([a.id, b.id]);
+
+    world.dispose();
+  });
+
+  it('drops entity ids returned by the spatial query that have been removed already (no filter)', () => {
+    // The resolver checks entity existence unconditionally — even when
+    // no filter is provided — so ghost ids never leak into the returned
+    // list. Without this guarantee the facade's enqueue loop would have
+    // been the only thing keeping them out, and callers reading the
+    // return value of `applyEffectAoE` could observe phantom hits.
+    const { world, facade, spatial } = createTestWorld();
+    const a = addEntity(world);
+    const b = addEntity(world);
+    facade.initAttributesForEntity(a.id);
+    facade.initAttributesForEntity(b.id);
+    world.processAllTicks(1);
+
+    const ghostId = 9999;
+    spatial.setQuery(() => [a.id, ghostId, b.id]);
+
+    const targets = facade.applyEffectAoE(
+      { x: FP.FromInt(0), z: FP.FromInt(0) },
+      'Effect.Explosion',
+      -1,
+      { radius: FP.FromInt(10) }
+    );
+    expect(targets).toEqual([a.id, b.id]);
+
+    world.dispose();
+  });
+
+  it('returns the enqueued subset — maxTargets === 0 yields an empty list', () => {
+    // Guard for the `maxTargets === 0` edge case: the loop guard must
+    // run BEFORE pushing the first id, so the call resolves to no
+    // targets at all (not one).
+    const { world, facade, spatial } = createTestWorld();
+    const a = addEntity(world);
+    const b = addEntity(world);
+    facade.initAttributesForEntity(a.id);
+    facade.initAttributesForEntity(b.id);
+    world.processAllTicks(1);
+
+    spatial.setQuery(() => [a.id, b.id]);
+
+    const targets = facade.applyEffectAoE(
+      { x: FP.FromInt(0), z: FP.FromInt(0) },
+      'Effect.Explosion',
+      -1,
+      { radius: FP.FromInt(10), maxTargets: 0 }
+    );
+    expect(targets).toEqual([]);
+
+    world.processAllTicks(2);
+    expect(FP.ToFloat(facade.getAttribute(a.id, 'Health').current)).toBe(100);
+    expect(FP.ToFloat(facade.getAttribute(b.id, 'Health').current)).toBe(100);
 
     world.dispose();
   });
@@ -451,7 +501,11 @@ describe('TargetResolver via ability activation — Radius origin kinds', () => 
     world.dispose();
   });
 
-  it("throws when origin 'Caster' is used but no getEntityPosition is available", () => {
+  it("throws when origin 'Caster' is used but getEntityPosition returns undefined", () => {
+    // The adapter implements the optional method but has no position
+    // for the caster (e.g. entity hasn't been added to the spatial
+    // index yet). The error should still actionably point at
+    // ISpatialQuery.getEntityPosition.
     const { world, facade, spatial } = createTestWorld({
       abilities: [
         defineAbility({
@@ -469,11 +523,86 @@ describe('TargetResolver via ability activation — Radius origin kinds', () => 
     facade.initAttributesForEntity(caster.id);
     world.processAllTicks(1);
 
-    // Caster has no registered position.
+    // Caster has no registered position — getEntityPosition will return
+    // undefined for this id.
     spatial.clearPositions();
 
     facade.activateAbility(caster.id, 'Ability.Nova');
-    expect(() => world.processAllTicks(2)).toThrow(/requires the caster.*to have a position/);
+    expect(() => world.processAllTicks(2)).toThrow(
+      /getEntityPosition/
+    );
+
+    world.dispose();
+  });
+
+  it("throws when origin 'Caster' is used but the adapter does not implement getEntityPosition", () => {
+    // Validate the adapter-shape-mismatch path: a spatial query that
+    // satisfies the minimal ISpatialQuery contract (queryRadius) but
+    // omits the optional getEntityPosition entirely. Caster/TargetEntity
+    // Radius origins should fail loudly so users know which method to
+    // add to their adapter.
+    const registries = createAbilitySystemRegistries();
+    registries.attributes.register(
+      defineAttribute({
+        id: 'Health',
+        default: FP.FromInt(100),
+        min: FP.FromInt(0),
+        max: FP.FromInt(100),
+        clamp: 'both',
+      })
+    );
+    registries.effects.register(
+      defineEffect({
+        id: 'Effect.Explosion',
+        type: 'Instant',
+        modifiers: [{ attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(-50) }],
+      })
+    );
+    registries.abilities.register(
+      defineAbility({
+        id: 'Ability.Nova',
+        target: {
+          kind: 'Radius',
+          origin: { kind: 'Caster' },
+          radius: FP.FromInt(10),
+        },
+        targetEffectIds: ['Effect.Explosion'],
+      })
+    );
+    const runtime = createAbilitySystemRuntime();
+    const world = new GameWorld({
+      componentTypes: [
+        AbilitiesComponentType.Attributes,
+        AbilitiesComponentType.ActiveEffects,
+        AbilitiesComponentType.GameplayTags,
+      ],
+    });
+    world.registerSystems(
+      [
+        new AbilityActivationSystem(registries, runtime),
+        new EffectApplicationSystem(registries, runtime),
+        new AbilityHookExecutorSystem(registries, runtime),
+        new EffectTickSystem(registries),
+        new AttributeAggregationSystem(registries),
+      ],
+      []
+    );
+    const facade = new AbilitySystemFacade(world.entityManager, registries, runtime);
+
+    // Bare-bones spatial query: just queryRadius, no getEntityPosition.
+    // This is the realistic shape of a v1 physics adapter that hasn't
+    // been upgraded for Stage 6 yet.
+    const bareAdapter: ISpatialQuery = {
+      queryRadius: () => [],
+    };
+    facade.registerSpatialQuery(bareAdapter);
+
+    const caster = addEntity(world);
+    facade.initAttributesForEntity(caster.id);
+    world.processAllTicks(1);
+
+    facade.activateAbility(caster.id, 'Ability.Nova');
+    expect(() => world.processAllTicks(2)).toThrow(/getEntityPosition/);
 
     world.dispose();
   });

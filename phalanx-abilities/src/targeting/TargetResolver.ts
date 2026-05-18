@@ -136,11 +136,26 @@ export class TargetResolver {
     // contract stays purely geometric.
     const filter = spec.filter;
 
-    const out: number[] = [];
+    // `maxTargets === 0` and negative values are treated as "resolve no
+    // targets at all". Guarding up front keeps the main loop simple and
+    // avoids the `>= limit` pre-decrement edge case where we'd otherwise
+    // push one entity before breaking on `1 >= 0`.
     const limit = spec.maxTargets;
+    if (limit !== undefined && limit <= 0) {
+      return [];
+    }
+
+    const out: number[] = [];
     for (let i = 0; i < buf.length; i++) {
       const id = buf[i];
       if (!includeSelf && id === casterId) {
+        continue;
+      }
+      // Drop stale ids unconditionally — even when no filter is set, the
+      // resolver's contract is to return real entities only. Without this
+      // check, callers like `applyEffectAoE` would see ghost ids in the
+      // returned list and enqueue logic would have to dedupe per-call.
+      if (!this.entityManager.getEntity(id)) {
         continue;
       }
       if (filter && !this.passesFilter(id, filter)) {
@@ -198,22 +213,25 @@ export class TargetResolver {
   ): { x: FixedPoint; z: FixedPoint } | undefined {
     switch (origin.kind) {
       case 'Caster': {
-        const pos = this.tryGetCasterPosition(input.casterEntityId);
+        const pos = this.tryGetEntityPosition(input.casterEntityId);
         if (!pos) {
           throw new Error(
             `TargetSpec.kind === 'Radius' with origin 'Caster' requires the caster ` +
-              `(entity ${input.casterEntityId}) to have a position. Provide a position ` +
-              `via the spatial query implementation or use TargetOrigin.kind === 'Point'.`
+              `(entity ${input.casterEntityId}) to have a position. The registered ` +
+              `ISpatialQuery must implement getEntityPosition(entityId) and return a ` +
+              `position for this entity, or the ability must use TargetOrigin.kind === 'Point'.`
           );
         }
         return pos;
       }
       case 'TargetEntity': {
-        const pos = this.tryGetCasterPosition(origin.entityId);
+        const pos = this.tryGetEntityPosition(origin.entityId);
         if (!pos) {
           throw new Error(
             `TargetSpec.kind === 'Radius' with origin 'TargetEntity' requires the target ` +
-              `(entity ${origin.entityId}) to have a position resolvable by ISpatialQuery.`
+              `(entity ${origin.entityId}) to have a position. The registered ` +
+              `ISpatialQuery must implement getEntityPosition(entityId) and return a ` +
+              `position for this entity.`
           );
         }
         return pos;
@@ -238,10 +256,10 @@ export class TargetResolver {
    * `getEntityPosition` extension method (duck-typed) before giving up.
    *
    * Returning `undefined` here causes the resolver to throw an actionable
-   * error pointing the user at registerSpatialQuery, instead of silently
-   * dropping the activation.
+   * error pointing the user at `ISpatialQuery.getEntityPosition`, instead
+   * of silently dropping the activation.
    */
-  private tryGetCasterPosition(
+  private tryGetEntityPosition(
     entityId: number
   ): { x: FixedPoint; z: FixedPoint } | undefined {
     const spatial = this.registries.spatialQuery;
