@@ -1,17 +1,18 @@
-import type { Entity, EntityManager } from 'phalanx-ecs';
+import { Entity, type EntityManager } from 'phalanx-ecs';
 import { FP } from 'phalanx-math';
 import type { FixedPoint } from 'phalanx-math';
 import {
   AbilitiesComponentType,
   ActiveEffectsComponent,
   AttributesComponent,
+  AuraComponent,
   GameplayTagsComponent,
 } from '../components';
 import type { AbilitySystemRegistries } from '../registry';
 import type { AbilitySystemRuntime } from '../runtime';
 import type { ISpatialQuery } from '../spatial';
 import { TargetResolver } from '../targeting';
-import type { AbilityHook, ProvidedTarget, TargetFilter } from '../types';
+import type { AbilityHook, ProvidedTarget, TargetSpec, TargetFilter } from '../types';
 
 export interface AttributeValue {
   base: FixedPoint;
@@ -471,6 +472,106 @@ export class AbilitySystemFacade {
       tags.tags.delete(tag);
     }
     return true;
+  }
+
+  // -----------------------------------------------------------------------
+  // Auras
+  // -----------------------------------------------------------------------
+
+  /**
+   * Spawn a persistent aura zone — a new entity bearing an
+   * {@link AuraComponent} that re-resolves its target spec and applies
+   * its effects every `periodTicks`. Returns the freshly allocated zone
+   * entity so the caller can position it (e.g. register it with their
+   * spatial index, set transform, attach extra components).
+   *
+   * Lifecycle is tag-driven: when `params.lifetimeEffectId` is provided
+   * the zone entity also receives that `Duration`-typed effect on
+   * spawn, granting `params.lifetimeTag`. {@link AuraTickSystem} watches
+   * the tag — when it disappears (because the effect expired naturally
+   * or because user code force-removed it via
+   * {@link removeEffectsByTag}), the zone entity is despawned on the
+   * next aura tick. Leaving `lifetimeEffectId` undefined skips the
+   * lifetime effect entirely; the aura then persists until the caller
+   * removes the entity directly. The system then has no tag to watch,
+   * which is exactly what users of "manually managed" auras want.
+   *
+   * Determinism: spawning an entity here uses {@link Entity}'s shared
+   * id counter — every peer creating an aura on the same tick gets the
+   * same id sequence (which is exactly why lockstep replay requires
+   * `resetEntityIdCounter()` at game start). The first aura tick fires
+   * on `currentTick + 1` so it lines up with the standard "writes
+   * enqueue this tick, system observes them next tick" discipline used
+   * by `applyEffect`. Hooks that spawn auras should call this method
+   * directly inside the hook callback — they then observe the zone
+   * starting to fire on the tick after activation.
+   */
+  public spawnAura(params: {
+    abilityId: string;
+    target: TargetSpec;
+    effectIds: readonly string[];
+    periodTicks: number;
+    ownerEntityId: number;
+    lifetimeEffectId?: string;
+    lifetimeTag?: string;
+  }): Entity {
+    // Validate up front. AuraComponent's constructor enforces shape
+    // (periodTicks ≥ 1, non-empty effectIds), but we also want every
+    // referenced effect id to exist in the registry — otherwise the
+    // first fire would throw deep inside AuraTickSystem and the user
+    // would lose the spawn site context.
+    for (const effectId of params.effectIds) {
+      if (!this.registries.effects.has(effectId)) {
+        throw new Error(
+          `EffectRegistry does not contain '${effectId}' (referenced by aura '${params.abilityId}')`
+        );
+      }
+    }
+    if (params.lifetimeEffectId !== undefined && !this.registries.effects.has(params.lifetimeEffectId)) {
+      throw new Error(
+        `EffectRegistry does not contain '${params.lifetimeEffectId}' ` +
+          `(referenced as lifetimeEffectId for aura '${params.abilityId}')`
+      );
+    }
+
+    const zone = new Entity();
+    this.entityManager.addEntity(zone);
+
+    // First fire scheduled for currentTick + 1 so an aura spawned by a
+    // hook on tick N fires for the first time on tick N+1, matching the
+    // "writes are visible next tick" convention. `currentTick` is -1
+    // during world bootstrap (before the first processTick); offsetting
+    // by +1 yields 0 there, which is the first real simulation tick.
+    const nextTick = this.runtime.currentTick + 1;
+
+    const aura = new AuraComponent(
+      params.abilityId,
+      params.target,
+      params.effectIds,
+      params.periodTicks,
+      nextTick,
+      params.ownerEntityId,
+      params.lifetimeTag
+    );
+    zone.addComponent(aura);
+    this.entityManager.onComponentAdded(zone, aura.type);
+
+    if (params.lifetimeEffectId !== undefined) {
+      // Apply the lifetime effect through the standard pendingAdd path
+      // so the tag is granted by EffectApplicationSystem on the same
+      // tick the aura first fires — keeping the tag-grant and the
+      // first fire in lockstep. Without this, AuraTickSystem could
+      // observe the aura on tick N+1 *before* the lifetime tag has
+      // been granted, triggering the lifecycle-end despawn path on
+      // its very first tick.
+      const activeEffects = this.getOrCreateActiveEffects(zone);
+      activeEffects.pendingAdd.push({
+        defId: params.lifetimeEffectId,
+        sourceEntityId: params.ownerEntityId,
+      });
+    }
+
+    return zone;
   }
 
   // -----------------------------------------------------------------------
