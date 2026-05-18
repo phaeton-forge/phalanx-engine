@@ -26,9 +26,10 @@ export interface ResolvedAbilityActivationRecord {
  * {@link AbilityActivationSystem} on the next tick.
  *
  * Held on the per-world runtime (not on a component) for two reasons:
- *  1. The facade is `not` a `GameSystem` and has no entity manager privileges
- *     — writing directly to a runtime field keeps the facade trivially
- *     stateless beyond the registries it already holds.
+ *  1. The facade is `not` a `GameSystem`; even though it may use the entity
+ *     manager for lookups/component creation, the runtime remains the owner
+ *     of mutable per-world execution state, which keeps this queue out of the
+ *     registries the facade already holds.
  *  2. A single FIFO queue across all casters gives us a deterministic global
  *     order without an extra singleton entity. The drain pass iterates in
  *     enqueue order; the system itself decides whether to spread requests
