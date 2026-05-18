@@ -5,10 +5,11 @@ import type { ProvidedTarget } from '../types';
  * activation request has cleared `CanActivate` and the caster-side effects
  * (cost, cooldown, `selfEffectIds`) have been queued for application.
  *
- * The event fires from a deterministic point in the tick (see system order in
- * the package README), so subscribers may use it to drive deterministic game
- * logic — for example, a projectile-spawn system that also runs as a
- * `processTick` callback ordered after the abilities pipeline.
+ * The event fires from a deterministic point in the tick: after activation
+ * has been accepted and caster-side effects have been queued, but before
+ * Stage 6 target resolution populates `resolvedTargets`. Subscribers may use
+ * it to drive deterministic game logic — for example, a projectile-spawn
+ * system that runs later in the same tick, after the abilities pipeline.
  *
  * Determinism notes:
  *  - `resolvedTargets` may already contain resolved entity IDs in Stage 5 for
