@@ -1,7 +1,7 @@
 export type { AttributeClampMode, AttributeDef } from './AttributeDef';
 export type { ActiveEffectInstance } from './ActiveEffectInstance';
 export type { AbilityDef } from './AbilityDef';
-export type { AbilityActivationContext, AbilityActivationPoint, AbilityHook } from './AbilityHook';
+export type { AbilityActivationContext, AbilityHook } from './AbilityHook';
 export type { AuraComponent } from './AuraComponent';
 export type { CueEvent } from './CueEvent';
 export type { EffectDef, EffectType } from './EffectDef';

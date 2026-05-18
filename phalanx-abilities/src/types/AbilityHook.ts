@@ -1,4 +1,3 @@
-import type { FixedPoint } from 'phalanx-math';
 import type { ProvidedTarget } from './TargetSpec';
 
 export interface AbilityActivationContext {
@@ -10,8 +9,3 @@ export interface AbilityActivationContext {
 }
 
 export type AbilityHook = (ctx: AbilityActivationContext) => void;
-
-export interface AbilityActivationPoint {
-  x: FixedPoint;
-  z: FixedPoint;
-}

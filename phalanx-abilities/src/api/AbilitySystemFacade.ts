@@ -34,6 +34,10 @@ export class AbilitySystemFacade {
       const rawDefault = FP.ToRaw(defs[index].default);
       attributes.base[index] = rawDefault;
       attributes.current[index] = rawDefault;
+      // Mark every attribute dirty so AttributeAggregationSystem clamps the
+      // seeded default value on the next tick. Without this, a default that
+      // violates its own min/max would silently persist in `current`.
+      attributes.dirty[index] = 1;
     }
 
     entity.addComponent(attributes);
@@ -43,19 +47,43 @@ export class AbilitySystemFacade {
   }
 
   public getAttribute(entityId: number, attrId: string): AttributeValue {
-    const entity = this.entityManager.getEntity(entityId);
+    const value = this.tryGetAttribute(entityId, attrId);
+    if (!value) {
+      // Differentiate which precondition failed so callers get a useful message.
+      const entity = this.entityManager.getEntity(entityId);
+      if (!entity) {
+        throw new Error(`Entity ${entityId} does not exist`);
+      }
+      if (!entity.getComponent<AttributesComponent>(AbilitiesComponentType.Attributes)) {
+        throw new Error(`Entity ${entityId} does not have AttributesComponent`);
+      }
+      throw new Error(`AttributeRegistry does not contain '${attrId}'`);
+    }
+    return value;
+  }
 
+  /**
+   * Non-throwing read. Returns `undefined` when the entity is missing, has no
+   * {@link AttributesComponent}, or the attribute id is not registered. Useful
+   * for user-side damage pipelines that need to fall back to a neutral value
+   * (e.g. `IncomingDamageMultiplier === 1`) when the target has no abilities
+   * setup.
+   */
+  public tryGetAttribute(entityId: number, attrId: string): AttributeValue | undefined {
+    const entity = this.entityManager.getEntity(entityId);
     if (!entity) {
-      throw new Error(`Entity ${entityId} does not exist`);
+      return undefined;
     }
 
     const attributes = entity.getComponent<AttributesComponent>(AbilitiesComponentType.Attributes);
-
     if (!attributes) {
-      throw new Error(`Entity ${entityId} does not have AttributesComponent`);
+      return undefined;
     }
 
-    const index = this.registries.attributes.indexOf(attrId);
+    const index = this.registries.attributes.indexOfOrMinusOne(attrId);
+    if (index === -1) {
+      return undefined;
+    }
 
     return {
       base: FP.FromRaw(attributes.base[index]),
