@@ -202,7 +202,7 @@ export class AbilitySystemFacade {
     }
     const resolver = this.getTargetResolver();
     const selfId = opts.selfId !== undefined ? opts.selfId : sourceEntityId;
-    const targets = resolver.resolve({
+    const resolution = resolver.resolve({
       casterEntityId: selfId,
       spec: {
         kind: 'Radius',
@@ -213,6 +213,14 @@ export class AbilitySystemFacade {
         includeSelf: opts.includeSelf,
       },
     });
+    // The synthetic spec above uses a literal Point origin (never
+    // Caller), so the resolver cannot return `dropped: true` here.
+    // Assert defensively in case the spec construction ever changes.
+    /* istanbul ignore if */
+    if (resolution.dropped) {
+      return [];
+    }
+    const targets = resolution.targets;
     // Only return ids that successfully enqueued the effect. The resolver
     // already drops stale ids, but a removal can still happen between
     // resolve and enqueue inside a single tick (e.g. an earlier hook in

@@ -3,6 +3,7 @@ import { Entity, GameWorld } from 'phalanx-ecs';
 import { FP } from 'phalanx-math';
 import type { FixedPoint } from 'phalanx-math';
 import {
+  ABILITY_ACTIVATED_EVENT,
   AbilitiesComponentType,
   AbilityActivationSystem,
   AbilityHookExecutorSystem,
@@ -17,6 +18,7 @@ import {
   defineEffect,
 } from '../src';
 import type {
+  AbilityActivatedEvent,
   AbilitySystemRegistries,
   AbilitySystemRuntime,
   ISpatialQuery,
@@ -649,19 +651,54 @@ describe('TargetResolver via ability activation — Radius origin kinds', () => 
   });
 
   it('silently drops a Caller-origin Radius activation with no point provided', () => {
-    const { world, facade, spatial } = createTestWorld({
-      abilities: [
-        defineAbility({
-          id: 'Ability.FrostNova',
-          target: {
-            kind: 'Radius',
-            origin: { kind: 'Caller' },
-            radius: FP.FromInt(10),
-          },
-          targetEffectIds: ['Effect.Explosion'],
-        }),
-      ],
-    });
+    // The hard requirement: a Caller-origin Radius activation without a
+    // point must NOT charge cost, NOT enqueue cooldown, NOT emit the
+    // AbilityActivated event, NOT schedule the hook, AND not run the
+    // spatial query. Earlier implementations of the resolver returned an
+    // empty array indistinguishable from a legitimate "AoE hit nobody",
+    // which let processOne charge the caster anyway.
+    const { world, facade, spatial, registries } = createTestWorld();
+    // Define cost + cooldown effects so we can assert the caster was
+    // NOT charged. Mana is a custom attribute we add for this test.
+    registries.attributes.register(
+      defineAttribute({
+        id: 'Mana',
+        default: FP.FromInt(100),
+        min: FP.FromInt(0),
+        max: FP.FromInt(100),
+        clamp: 'both',
+      })
+    );
+    registries.effects.register(
+      defineEffect({
+        id: 'Effect.SpendMana20',
+        type: 'Instant',
+        modifiers: [{ attributeId: 'Mana', op: 'Add', magnitude: FP.FromInt(-20) }],
+      })
+    );
+    registries.effects.register(
+      defineEffect({
+        id: 'Effect.FrostNova.Cooldown',
+        type: 'Duration',
+        durationTicks: 5,
+        tagsGranted: ['Cooldown.Ability.FrostNova'],
+      })
+    );
+    registries.abilities.register(
+      defineAbility({
+        id: 'Ability.FrostNova',
+        target: {
+          kind: 'Radius',
+          origin: { kind: 'Caller' },
+          radius: FP.FromInt(10),
+        },
+        targetEffectIds: ['Effect.Explosion'],
+        costEffectId: 'Effect.SpendMana20',
+        cooldownEffectId: 'Effect.FrostNova.Cooldown',
+        hookId: 'Hook.Nova',
+      })
+    );
+
     const caster = addEntity(world);
     const enemy = addEntity(world);
     facade.initAttributesForEntity(caster.id);
@@ -674,12 +711,122 @@ describe('TargetResolver via ability activation — Radius origin kinds', () => 
       return [enemy.id];
     });
 
+    let eventEmitted = false;
+    world.eventBus.on<AbilityActivatedEvent>(ABILITY_ACTIVATED_EVENT, () => {
+      eventEmitted = true;
+    });
+    let hookCalled = false;
+    facade.registerHook('Hook.Nova', () => {
+      hookCalled = true;
+    });
+
     // No providedTarget — Caller has nothing to read.
     facade.activateAbility(caster.id, 'Ability.FrostNova');
     world.processAllTicks(2);
 
+    // No side effects of any kind:
     expect(queryCalled).toBe(false);
+    expect(eventEmitted).toBe(false);
+    expect(hookCalled).toBe(false);
+    // Mana untouched (cost NOT charged).
+    expect(FP.ToFloat(facade.getAttribute(caster.id, 'Mana').current)).toBe(100);
+    // Cooldown tag NOT applied — caster can still cast.
+    expect(facade.hasTag(caster.id, 'Cooldown.Ability.FrostNova')).toBe(false);
+    // Enemy untouched.
     expect(FP.ToFloat(facade.getAttribute(enemy.id, 'Health').current)).toBe(100);
+    world.dispose();
+  });
+
+  it('silently drops a Caller-origin Entity activation with no entityId provided', () => {
+    // Same contract for Entity-shape abilities: forgetting to pass
+    // `{ entityId }` must not charge cost or run the hook.
+    const { world, facade, registries } = createTestWorld();
+    registries.attributes.register(
+      defineAttribute({
+        id: 'Mana',
+        default: FP.FromInt(100),
+        min: FP.FromInt(0),
+        max: FP.FromInt(100),
+        clamp: 'both',
+      })
+    );
+    registries.effects.register(
+      defineEffect({
+        id: 'Effect.SpendMana15',
+        type: 'Instant',
+        modifiers: [{ attributeId: 'Mana', op: 'Add', magnitude: FP.FromInt(-15) }],
+      })
+    );
+    registries.abilities.register(
+      defineAbility({
+        id: 'Ability.Smite',
+        target: { kind: 'Entity', origin: { kind: 'Caller' } },
+        targetEffectIds: ['Effect.Explosion'],
+        costEffectId: 'Effect.SpendMana15',
+        hookId: 'Hook.Smite',
+      })
+    );
+
+    const caster = addEntity(world);
+    facade.initAttributesForEntity(caster.id);
+    world.processAllTicks(1);
+
+    let hookCalled = false;
+    facade.registerHook('Hook.Smite', () => {
+      hookCalled = true;
+    });
+
+    facade.activateAbility(caster.id, 'Ability.Smite');
+    world.processAllTicks(2);
+
+    expect(hookCalled).toBe(false);
+    expect(FP.ToFloat(facade.getAttribute(caster.id, 'Mana').current)).toBe(100);
+    world.dispose();
+  });
+
+  it('silently drops a Caller-origin Point activation with no point provided', () => {
+    // Point-shape abilities also drop when origin Caller has no point.
+    // Otherwise the rocket hook would run with no impact location.
+    const { world, facade, registries } = createTestWorld();
+    registries.attributes.register(
+      defineAttribute({
+        id: 'Mana',
+        default: FP.FromInt(100),
+        min: FP.FromInt(0),
+        max: FP.FromInt(100),
+        clamp: 'both',
+      })
+    );
+    registries.effects.register(
+      defineEffect({
+        id: 'Effect.SpendMana25',
+        type: 'Instant',
+        modifiers: [{ attributeId: 'Mana', op: 'Add', magnitude: FP.FromInt(-25) }],
+      })
+    );
+    registries.abilities.register(
+      defineAbility({
+        id: 'Ability.Rocket',
+        target: { kind: 'Point', origin: { kind: 'Caller' } },
+        costEffectId: 'Effect.SpendMana25',
+        hookId: 'Hook.Rocket',
+      })
+    );
+
+    const caster = addEntity(world);
+    facade.initAttributesForEntity(caster.id);
+    world.processAllTicks(1);
+
+    let hookCalled = false;
+    facade.registerHook('Hook.Rocket', () => {
+      hookCalled = true;
+    });
+
+    facade.activateAbility(caster.id, 'Ability.Rocket');
+    world.processAllTicks(2);
+
+    expect(hookCalled).toBe(false);
+    expect(FP.ToFloat(facade.getAttribute(caster.id, 'Mana').current)).toBe(100);
     world.dispose();
   });
 });

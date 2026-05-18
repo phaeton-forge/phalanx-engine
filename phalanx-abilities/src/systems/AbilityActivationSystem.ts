@@ -16,6 +16,7 @@ import type {
   ResolvedAbilityActivationRecord,
 } from '../runtime';
 import { TargetResolver } from '../targeting';
+import type { TargetResolutionResult } from '../targeting';
 import type { AbilityDef, ProvidedTarget } from '../types';
 
 /**
@@ -181,9 +182,17 @@ export class AbilityActivationSystem extends GameSystem {
       return;
     }
 
-    // 1) Resolve targets BEFORE enqueueing target effects so failures here
-    //    abort the activation cleanly (no half-application of cost/cooldown).
-    const resolvedTargets = this.resolveTargets(caster, abilityDef, request.providedTarget);
+    // 1) Resolve targets BEFORE enqueueing any effects. If the caller
+    //    forgot to supply required input (Caller-origin point/entity)
+    //    the resolver returns `dropped: true` and we abort here — no
+    //    cost, no cooldown, no event, no hook. Other failure modes
+    //    (missing spatial query, missing entity position) throw inside
+    //    `resolve` and propagate up via the drain loop's try/finally.
+    const resolution = this.resolveTargets(caster, abilityDef, request.providedTarget);
+    if (resolution.dropped) {
+      return;
+    }
+    const resolvedTargets = resolution.targets;
 
     // 2) Apply caster-side effects (cost, cooldown, selfEffectIds).
     this.enqueueCasterEffects(caster, abilityDef);
@@ -476,7 +485,7 @@ export class AbilityActivationSystem extends GameSystem {
   }
 
   // ---------------------------------------------------------------------------
-  // Target resolution (Stage 5 subset; Radius lands in Stage 6)
+  // Target resolution
   // ---------------------------------------------------------------------------
 
   /**
@@ -487,15 +496,17 @@ export class AbilityActivationSystem extends GameSystem {
    * message if `AbilitySystemFacade.registerSpatialQuery` was never
    * called.
    *
-   * Targets are returned in a freshly-allocated array because the
-   * resolved-activations buffer holds it for the hook executor; sharing
-   * would couple lifetimes.
+   * Returns the resolver's discriminated result so `processOne` can
+   * distinguish a legitimate empty target list ("AoE with nobody in it")
+   * from a silent drop ("Caller forgot to supply the target point").
+   * Drops abort the activation before any side effects — see
+   * {@link TargetResolutionResult} for the contract.
    */
   private resolveTargets(
     caster: Entity,
     def: AbilityDef,
     providedTarget: ProvidedTarget | undefined
-  ): number[] {
+  ): TargetResolutionResult {
     if (this.targetResolver === undefined) {
       this.targetResolver = new TargetResolver(this.entityManager, this.registries);
     }

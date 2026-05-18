@@ -20,11 +20,31 @@ export interface TargetResolutionInput {
    * Caller-supplied target for `TargetOrigin.kind === 'Caller'`. May supply
    * `entityId` (for `Entity` shapes) or `x`/`z` (for `Point`/`Radius`
    * origins). When the origin kind is `Caller` and the required field is
-   * missing the activation is silently dropped — see
-   * {@link resolveTargets} return value.
+   * missing, {@link TargetResolver.resolve} returns a `{ dropped: true }`
+   * result so the caller can abort the activation cleanly.
    */
   providedTarget?: ProvidedTarget;
 }
+
+/**
+ * Result of {@link TargetResolver.resolve}. The discriminated `dropped`
+ * flag distinguishes between:
+ *   - `{ dropped: false, targets: [...] }`: resolution succeeded. `targets`
+ *     is the deterministic, possibly-empty list of affected entity ids.
+ *     An empty list is a legitimate outcome (e.g. an AoE that contained
+ *     no entities, or a `Point` target shape) and the activation should
+ *     proceed: caster-side effects, event emission, hook scheduling.
+ *   - `{ dropped: true }`: the caller forgot to supply required input
+ *     (e.g. `TargetOrigin.kind === 'Caller'` on a Radius without a
+ *     point). The activation must NOT enqueue cost / cooldown / self
+ *     effects, must NOT emit `AbilityActivated`, and must NOT schedule
+ *     hooks. This matches the documented contract that "the verdict is
+ *     observed via side effects, not via `activateAbility`'s return
+ *     value".
+ */
+export type TargetResolutionResult =
+  | { dropped: false; targets: number[] }
+  | { dropped: true };
 
 /**
  * Pure resolver for {@link TargetSpec}. Owns the entire mapping from a
@@ -61,19 +81,36 @@ export class TargetResolver {
     private readonly registries: AbilitySystemRegistries
   ) {}
 
-  public resolve(input: TargetResolutionInput): number[] {
+  /**
+   * Sentinel value for the "drop activation" outcome. Reused across calls
+   * so the system path can compare by reference.
+   */
+  private static readonly DROPPED: TargetResolutionResult = { dropped: true };
+
+  public resolve(input: TargetResolutionInput): TargetResolutionResult {
     const { spec } = input;
     switch (spec.kind) {
       case 'Self':
-        return [input.casterEntityId];
+        return { dropped: false, targets: [input.casterEntityId] };
       case 'Entity': {
-        const entityId = this.resolveEntityOrigin(input.casterEntityId, spec.origin, input.providedTarget);
-        if (entityId === undefined) {
-          return [];
+        const resolved = this.resolveEntityOrigin(
+          input.casterEntityId,
+          spec.origin,
+          input.providedTarget
+        );
+        if (resolved.dropped) {
+          return TargetResolver.DROPPED;
         }
-        return [entityId];
+        if (resolved.entityId === undefined) {
+          // Legitimate "no target" — e.g. TargetEntity origin pointing
+          // at an id that's no longer present. We continue the
+          // activation: the caster pays the cost, the hook fires with
+          // an empty target list.
+          return { dropped: false, targets: [] };
+        }
+        return { dropped: false, targets: [resolved.entityId] };
       }
-      case 'Point':
+      case 'Point': {
         // A Point target intentionally resolves to zero entities. The point
         // itself is consumed by ability hooks via providedTarget (or by
         // user code reading AbilityActivationContext). `targetEffectIds`
@@ -81,7 +118,19 @@ export class TargetResolver {
         // expected: damage/heal is applied by the rocket/projectile hook
         // on impact via `applyEffectAoE`, not by the ability's
         // target-effects pipeline.
-        return [];
+        //
+        // However, when the origin is `Caller` the caller MUST supply a
+        // point — otherwise the hook has no impact location and the
+        // activation should drop. Other origins (Point, Caster,
+        // TargetEntity) carry the point inside the spec itself.
+        if (spec.origin.kind === 'Caller') {
+          const provided = input.providedTarget;
+          if (!provided || provided.x === undefined || provided.z === undefined) {
+            return TargetResolver.DROPPED;
+          }
+        }
+        return { dropped: false, targets: [] };
+      }
       case 'Radius':
         return this.resolveRadius(input);
     }
@@ -91,12 +140,13 @@ export class TargetResolver {
   // Radius (the heavy path)
   // ---------------------------------------------------------------------------
 
-  private resolveRadius(input: TargetResolutionInput): number[] {
+  private resolveRadius(input: TargetResolutionInput): TargetResolutionResult {
     const spec = input.spec as Extract<TargetSpec, { kind: 'Radius' }>;
-    const center = this.resolveRadiusOrigin(input, spec.origin);
-    if (!center) {
-      return [];
+    const originResult = this.resolveRadiusOrigin(input, spec.origin);
+    if (originResult.dropped) {
+      return TargetResolver.DROPPED;
     }
+    const center = originResult.center;
 
     const spatial = this.registries.spatialQuery;
     if (!spatial) {
@@ -142,7 +192,7 @@ export class TargetResolver {
     // push one entity before breaking on `1 >= 0`.
     const limit = spec.maxTargets;
     if (limit !== undefined && limit <= 0) {
-      return [];
+      return { dropped: false, targets: [] };
     }
 
     const out: number[] = [];
@@ -166,31 +216,38 @@ export class TargetResolver {
         break;
       }
     }
-    return out;
+    return { dropped: false, targets: out };
   }
 
   // ---------------------------------------------------------------------------
   // Origin resolution
   // ---------------------------------------------------------------------------
 
-  /** Resolve an `Entity`-shape origin to a single target entity id. */
+  /**
+   * Resolve an `Entity`-shape origin to a single target entity id, or a
+   * drop signal if the caller forgot to supply required input.
+   *
+   * `entityId: undefined` (with `dropped: false`) is a legitimate "target
+   * resolved but to nothing" outcome — currently unreachable here, but
+   * preserved so the call site can distinguish the empty case from the
+   * drop case in future origin kinds.
+   */
   private resolveEntityOrigin(
     casterId: number,
     origin: TargetOrigin,
     providedTarget: ProvidedTarget | undefined
-  ): number | undefined {
+  ): { dropped: false; entityId: number | undefined } | { dropped: true } {
     switch (origin.kind) {
       case 'Caster':
-        return casterId;
+        return { dropped: false, entityId: casterId };
       case 'TargetEntity':
-        return origin.entityId;
+        return { dropped: false, entityId: origin.entityId };
       case 'Caller':
-        // Missing entityId means the caller forgot to supply a target —
-        // silently drop the activation. The facade-level
-        // `activateAbility` already returned `true` for "request
-        // accepted"; this matches the documented "verdict observed via
-        // side effects, not return value" contract.
-        return providedTarget?.entityId;
+        if (providedTarget?.entityId === undefined) {
+          // Caller forgot to supply a target entity — drop the activation.
+          return { dropped: true };
+        }
+        return { dropped: false, entityId: providedTarget.entityId };
       case 'Point':
         // `Point` origin is meaningful only for `Radius`/`Point` target
         // shapes; using it as an `Entity` origin is a programming
@@ -202,15 +259,19 @@ export class TargetResolver {
   }
 
   /**
-   * Resolve a `Radius`-shape origin to a center point. Returns `undefined`
-   * for the silent-drop case (Caller origin with no point provided) —
-   * the resolver hands an empty target list back to the caller without
-   * reaching the spatial query at all.
+   * Resolve a `Radius`-shape origin to a center point, or signal a drop.
+   *
+   * The `dropped: true` outcome corresponds to a Caller origin without a
+   * point provided. All other failure modes (missing spatial query, no
+   * position for an entity) throw rather than drop — they are
+   * misconfigurations, not legitimate runtime states.
    */
   private resolveRadiusOrigin(
     input: TargetResolutionInput,
     origin: TargetOrigin
-  ): { x: FixedPoint; z: FixedPoint } | undefined {
+  ):
+    | { dropped: false; center: { x: FixedPoint; z: FixedPoint } }
+    | { dropped: true } {
     switch (origin.kind) {
       case 'Caster': {
         const pos = this.tryGetEntityPosition(input.casterEntityId);
@@ -222,7 +283,7 @@ export class TargetResolver {
               `position for this entity, or the ability must use TargetOrigin.kind === 'Point'.`
           );
         }
-        return pos;
+        return { dropped: false, center: pos };
       }
       case 'TargetEntity': {
         const pos = this.tryGetEntityPosition(origin.entityId);
@@ -234,17 +295,16 @@ export class TargetResolver {
               `position for this entity.`
           );
         }
-        return pos;
+        return { dropped: false, center: pos };
       }
       case 'Point':
-        return { x: origin.x, z: origin.z };
+        return { dropped: false, center: { x: origin.x, z: origin.z } };
       case 'Caller': {
         const providedTarget = input.providedTarget;
         if (!providedTarget || providedTarget.x === undefined || providedTarget.z === undefined) {
-          // Caller forgot to supply a point — silently drop.
-          return undefined;
+          return { dropped: true };
         }
-        return { x: providedTarget.x, z: providedTarget.z };
+        return { dropped: false, center: { x: providedTarget.x, z: providedTarget.z } };
       }
     }
   }
