@@ -65,22 +65,32 @@ export class AuraComponent implements IComponent {
    *
    * Activation gates (Stage 7.1):
    *  - {@link isActive} is an imperative on/off switch. While `false`, the
-   *    aura skips its period check entirely — `nextTick` is NOT advanced,
-   *    so toggling back to `true` resumes the original cadence without
-   *    "catching up" missed fires. Intended for player-controlled toggles
-   *    (channeled auras, click-to-toggle abilities, charge-based systems).
-   *    Use {@link AbilitySystemFacade.setAuraActive} rather than mutating
-   *    this field directly so the optional schedule reset is handled
-   *    consistently.
+   *    aura skips its period check entirely — `nextTick` is NOT advanced.
+   *    On reactivation, the standard period check runs against the
+   *    preserved (potentially in-the-past) `nextTick` and produces one
+   *    catch-up fire per missed period via its `while (tick >= nextTick)`
+   *    loop. To opt out of catch-up after a long pause, use
+   *    {@link AbilitySystemFacade.setAuraActive} with
+   *    `{ resetSchedule: true }` rather than mutating this field directly
+   *    — the facade method centralises the schedule-reset logic so
+   *    rules stay consistent across call sites. Intended for
+   *    player-controlled toggles (channeled auras, click-to-toggle
+   *    abilities, charge-based systems).
    *  - {@link requiredTag} is a declarative gate. If set, the aura fires
-   *    only while the carrier entity has that gameplay tag. Designed for
-   *    data-driven suppression — "silenced" / "polymorphed" / "inside
-   *    anti-magic field" effects can grant a counter-tag, or the aura's
-   *    own activation can be driven by a status effect that grants the
-   *    required tag. Multiple suppression sources naturally compose
-   *    because tags are sets, not booleans, and the engine's existing
-   *    tag tooling (`addTag`, `removeTag`, effect-driven grants) Just
-   *    Works.
+   *    only while the carrier entity has that gameplay tag. Like
+   *    {@link isActive}, the gate freezes `nextTick` while closed and
+   *    yields catch-up fires when reopened — but unlike the imperative
+   *    gate, there is no `resetSchedule` opt-out: tag flips happen
+   *    through generic tag tooling (`addTag`, `removeTag`, effect-
+   *    driven grants), which does not know about aura-specific
+   *    scheduling. Authors who need fresh-schedule semantics under a
+   *    tag flip must reset `nextTick` themselves at the same time.
+   *    Designed for data-driven suppression — "silenced" /
+   *    "polymorphed" / "inside anti-magic field" effects can grant a
+   *    counter-tag, or the aura's own activation can be driven by a
+   *    status effect that grants the required tag. Multiple
+   *    suppression sources naturally compose because tags are sets,
+   *    not booleans.
    *
    * The two gates compose: an aura fires only when **both**
    * `isActive === true` AND (`requiredTag === undefined` OR the carrier

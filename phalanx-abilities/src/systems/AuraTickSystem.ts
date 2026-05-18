@@ -30,9 +30,24 @@ import { TargetResolver } from '../targeting';
  *  2. **Activation gates** (Stage 7.1). If {@link AuraComponent.isActive}
  *     is `false`, or {@link AuraComponent.requiredTag} is configured and
  *     the carrier entity does not currently have that tag, the period
- *     check is skipped WITHOUT advancing `nextTick`. Toggling activation
- *     back on resumes the original cadence rather than producing a burst
- *     of catch-up fires. Both gates are independent and compose with AND.
+ *     check is skipped WITHOUT advancing `nextTick`. Both gates are
+ *     independent and compose with AND.
+ *
+ *     Cadence interaction with catch-up: while the gate is closed,
+ *     `nextTick` is frozen. When the gate opens, the standard period
+ *     check in step 3 below runs against the (potentially in-the-past)
+ *     `nextTick`, and its `while (tick >= nextTick)` catch-up loop
+ *     fires ONCE for every missed period before draining. So a gate
+ *     that was closed for N periods produces a burst of N catch-up
+ *     fires on the tick it reopens (matching `EffectTickSystem`'s
+ *     periodic catch-up semantics). Callers that need fresh-schedule
+ *     behaviour on reactivation should use
+ *     {@link AbilitySystemFacade.setAuraActive}'s `resetSchedule: true`
+ *     option, which sets `nextTick = currentTick + periodTicks` at
+ *     reactivation time — there is no equivalent for tag-driven gates,
+ *     so authors driving activation purely through `requiredTag`
+ *     should design their period to make the catch-up acceptable (or
+ *     manage `nextTick` themselves alongside the tag flip).
  *
  *  3. **Period check.** If `currentTick >= nextTick`, the aura fires.
  *     Targets are re-resolved fresh every period via {@link TargetResolver}
@@ -132,9 +147,13 @@ export class AuraTickSystem extends GameSystem {
    *    counts as "tag absent".
    *
    * Both gates short-circuit the period check rather than advancing
-   * `nextTick`, so a long pause does not produce a burst of catch-up
-   * fires when activation resumes. Hook authors who want catch-up
-   * semantics can manually reset `nextTick` before re-activating.
+   * `nextTick`. When the gate reopens, the standard period check
+   * fires ONCE per missed period via its `while (tick >= nextTick)`
+   * catch-up loop — callers that prefer fresh-schedule behaviour over
+   * catch-up should use {@link AbilitySystemFacade.setAuraActive}'s
+   * `resetSchedule: true` option (applies to the imperative gate;
+   * tag-driven gates have no equivalent and authors should design
+   * `periodTicks` so the catch-up is acceptable).
    */
   private isActivationGateOpen(entity: Entity, aura: AuraComponent): boolean {
     if (!aura.isActive) {

@@ -527,11 +527,19 @@ export class AbilitySystemFacade {
      */
     requiredTag?: string;
   }): Entity {
-    // Validate up front. AuraComponent's constructor enforces shape
-    // (periodTicks ≥ 1, non-empty effectIds), but we also want every
-    // referenced effect id to exist in the registry — otherwise the
+    // ---------------------------------------------------------------
+    // Validation phase. All checks happen BEFORE the zone entity is
+    // created so a thrown error never leaves a zombie entity behind in
+    // the world (Copilot review #36, line 550). The two phases are:
+    //   (a) registry + effect-shape checks against `params`,
+    //   (b) AuraComponent construction (shape checks: periodTicks ≥ 1,
+    //       non-empty effectIds, requiredTag non-empty if present).
+    // Only after both phases succeed do we call entityManager.addEntity.
+    // ---------------------------------------------------------------
+
+    // (a1) Every effect id must exist in the registry. Otherwise the
     // first fire would throw deep inside AuraTickSystem and the user
-    // would lose the spawn site context.
+    // would lose the spawn-site context.
     for (const effectId of params.effectIds) {
       if (!this.registries.effects.has(effectId)) {
         throw new Error(
@@ -539,15 +547,66 @@ export class AbilitySystemFacade {
         );
       }
     }
-    if (params.lifetimeEffectId !== undefined && !this.registries.effects.has(params.lifetimeEffectId)) {
-      throw new Error(
-        `EffectRegistry does not contain '${params.lifetimeEffectId}' ` +
-          `(referenced as lifetimeEffectId for aura '${params.abilityId}')`
-      );
+
+    // (a2) Aura effects must be `Instant` (see AuraComponent JSDoc).
+    // Duration/Periodic effects re-applied every period would compound:
+    // each fire would push a new active-effect instance onto the
+    // target, and `tagsGranted` would accumulate without bound. Reject
+    // at spawn time so the misconfiguration surfaces here, not as a
+    // mysterious memory leak hours into a session (Copilot review #36,
+    // line 541).
+    for (const effectId of params.effectIds) {
+      const def = this.registries.effects.get(effectId);
+      if (def.type !== 'Instant') {
+        throw new Error(
+          `Aura '${params.abilityId}' references non-Instant effect '${effectId}' ` +
+            `(type='${def.type}'). Aura effects must be Instant — Duration/Periodic ` +
+            `effects would stack new instances every aura fire.`
+        );
+      }
     }
 
-    const zone = new Entity();
-    this.entityManager.addEntity(zone);
+    // (a3) Lifetime effect, if configured, must exist AND must actually
+    // grant `lifetimeTag` (Copilot review #36, line 546). If the user
+    // configures a `lifetimeEffectId` without a `lifetimeTag` the aura
+    // would persist forever despite the user's evident intent to gate
+    // it on the effect. If they configure both but the effect's
+    // `tagsGranted` does not include `lifetimeTag`, the aura would
+    // despawn on its very first tick because the watched tag is never
+    // present. Both are silent footguns; reject up front.
+    if (params.lifetimeEffectId !== undefined) {
+      if (!this.registries.effects.has(params.lifetimeEffectId)) {
+        throw new Error(
+          `EffectRegistry does not contain '${params.lifetimeEffectId}' ` +
+            `(referenced as lifetimeEffectId for aura '${params.abilityId}')`
+        );
+      }
+      if (params.lifetimeTag === undefined) {
+        throw new Error(
+          `Aura '${params.abilityId}' configures lifetimeEffectId='${params.lifetimeEffectId}' ` +
+            `but no lifetimeTag. The lifetime effect must grant a tag that AuraTickSystem ` +
+            `watches — pass both fields together or omit both.`
+        );
+      }
+      const lifetimeDef = this.registries.effects.get(params.lifetimeEffectId);
+      const grantsTag =
+        lifetimeDef.tagsGranted !== undefined &&
+        lifetimeDef.tagsGranted.includes(params.lifetimeTag);
+      if (!grantsTag) {
+        throw new Error(
+          `Aura '${params.abilityId}' lifetimeEffectId='${params.lifetimeEffectId}' ` +
+            `does not grant lifetimeTag='${params.lifetimeTag}' (effect.tagsGranted=` +
+            `${JSON.stringify(lifetimeDef.tagsGranted ?? [])}). The lifetime effect must ` +
+            `grant the watched tag, otherwise the aura would despawn on its first tick.`
+        );
+      }
+    } else if (params.lifetimeTag !== undefined) {
+      // The reverse pairing — lifetimeTag without lifetimeEffectId —
+      // is the legitimate "caller is managing the tag manually" path.
+      // We do not reject it: callers may want to grant the tag via
+      // applyEffect / addTag after spawnAura returns. This is
+      // documented in the lifetimeTag JSDoc.
+    }
 
     // First fire scheduled for currentTick + 1 so an aura spawned by a
     // hook on tick N fires for the first time on tick N+1, matching the
@@ -556,6 +615,9 @@ export class AbilitySystemFacade {
     // by +1 yields 0 there, which is the first real simulation tick.
     const nextTick = this.runtime.currentTick + 1;
 
+    // (b) Construct the component. Its constructor enforces remaining
+    // shape invariants (periodTicks, effectIds non-empty, requiredTag
+    // non-empty). If any throw, we've still not touched the world.
     const aura = new AuraComponent(
       params.abilityId,
       params.target,
@@ -569,6 +631,13 @@ export class AbilitySystemFacade {
         requiredTag: params.requiredTag,
       }
     );
+
+    // ---------------------------------------------------------------
+    // Mutation phase. From here, every step succeeds or the function
+    // returns; nothing below throws.
+    // ---------------------------------------------------------------
+    const zone = new Entity();
+    this.entityManager.addEntity(zone);
     zone.addComponent(aura);
     this.entityManager.onComponentAdded(zone, aura.type);
 
@@ -595,9 +664,25 @@ export class AbilitySystemFacade {
    *
    * The carrier entity must already have an {@link AuraComponent}. While
    * `active` is `false`, {@link AuraTickSystem} skips the period check
-   * for this aura without advancing `nextTick` — so re-activating with
-   * `active = true` resumes the original cadence rather than firing a
-   * burst of catch-up fires for the paused interval.
+   * for this aura without advancing `nextTick`.
+   *
+   * Cadence on reactivation:
+   *  - **Default (`resetSchedule` unset or `false`):** when the gate
+   *    reopens, `nextTick` is still where it was at pause time. If the
+   *    pause spanned several periods, the standard period check fires
+   *    ONCE per missed period on the reactivation tick (catch-up
+   *    while-loop). This is the right default for short pauses where
+   *    "pay back what we missed" is intuitive (e.g. a one-tick stun).
+   *  - **`resetSchedule: true`:** sets `nextTick = currentTick +
+   *    periodTicks` at the moment of reactivation, so the next fire
+   *    happens one full period from now. This is the right choice for
+   *    long pauses (player toggled the aura off for 30 seconds) where
+   *    a catch-up burst would be undesirable, and is the only way to
+   *    avoid the catch-up under the imperative gate. NOTE: the
+   *    declarative `requiredTag` gate has no equivalent opt-out —
+   *    authors driving activation purely through tags must either
+   *    accept catch-up or manage `nextTick` themselves alongside the
+   *    tag flip.
    *
    * Intended use cases:
    *  - Player toggles a channeled aura on/off with a hotkey.
@@ -616,13 +701,11 @@ export class AbilitySystemFacade {
    *   silently no-op'ing.
    * @param active Target value for the activation flag.
    * @param options Optional. Pass `{ resetSchedule: true }` to also set
-   *   `nextTick = currentTick + periodTicks` — useful when you want
-   *   re-activation to feel like a fresh start rather than continuing a
-   *   long-pre-existing schedule (e.g. a player reactivating an aura
-   *   that has been off for 30 seconds should not fire on the next tick
-   *   just because `nextTick` is decades in the past). Defaults to
-   *   `false` (preserve schedule — the documented default behaviour).
-   *   Has no effect when `active === false`.
+   *   `nextTick = currentTick + periodTicks` so the first post-reactivation
+   *   fire is a full period in the future — suppressing catch-up after
+   *   long pauses. Defaults to `false`, which preserves `nextTick` and
+   *   produces one catch-up fire per missed period on reactivation. Has
+   *   no effect when `active === false`.
    */
   public setAuraActive(
     entityId: number,

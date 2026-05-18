@@ -566,6 +566,166 @@ describe('AuraComponent + AuraTickSystem — Self target spec', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Stage 7 Copilot review #36 — additional validation paths in spawnAura
+//
+// These tests cover the three validation tightenings landed after the
+// initial Stage 7 review:
+//   - line 541: aura effects must be Instant (Duration/Periodic rejected)
+//   - line 546: lifetimeEffectId must be paired with lifetimeTag AND the
+//     effect's tagsGranted must include that tag
+//   - line 550: validation runs BEFORE addEntity, so a thrown error must
+//     not leave a zombie zone entity in the world
+// ---------------------------------------------------------------------------
+
+describe('spawnAura — Stage 7 review validation', () => {
+  it('rejects non-Instant effects in effectIds (Duration would stack on every fire)', () => {
+    // Effect.HealingAura.Lifetime is a Duration effect, registered by
+    // createTestWorld for the lifetime-tag tests. Reusing it as an
+    // aura effect is exactly the misconfiguration the validation
+    // exists to catch.
+    const { world, facade } = createTestWorld();
+    addEntity(world);
+    world.processAllTicks(1);
+
+    expect(() =>
+      facade.spawnAura({
+        abilityId: 'Ability.BadInstant',
+        target: { kind: 'Self' },
+        effectIds: ['Effect.HealingAura.Lifetime'],
+        periodTicks: 1,
+        ownerEntityId: 1,
+      })
+    ).toThrow(/non-Instant/);
+
+    world.dispose();
+  });
+
+  it('rejects lifetimeEffectId without a paired lifetimeTag', () => {
+    // lifetimeEffectId by itself is a silent footgun: the lifetime
+    // effect would run (and grant whatever tags it lists), but no
+    // tag is being watched, so the aura would persist forever.
+    const { world, facade } = createTestWorld();
+    addEntity(world);
+    world.processAllTicks(1);
+
+    expect(() =>
+      facade.spawnAura({
+        abilityId: 'Ability.MissingTag',
+        target: { kind: 'Self' },
+        effectIds: ['Effect.Heal5'],
+        periodTicks: 1,
+        ownerEntityId: 1,
+        lifetimeEffectId: 'Effect.HealingAura.Lifetime',
+        // lifetimeTag intentionally omitted.
+      })
+    ).toThrow(/lifetimeTag/);
+
+    world.dispose();
+  });
+
+  it('rejects lifetimeEffectId whose tagsGranted does not include lifetimeTag', () => {
+    // The lifetime effect exists and grants a tag, but the user has
+    // configured a DIFFERENT lifetimeTag to watch. Without this check
+    // the aura would despawn on its very first tick because the
+    // watched tag is never granted by anyone.
+    const { world, facade } = createTestWorld();
+    addEntity(world);
+    world.processAllTicks(1);
+
+    expect(() =>
+      facade.spawnAura({
+        abilityId: 'Ability.MismatchedTag',
+        target: { kind: 'Self' },
+        effectIds: ['Effect.Heal5'],
+        periodTicks: 1,
+        ownerEntityId: 1,
+        // Effect.HealingAura.Lifetime grants 'Aura.HealingAura.Active'.
+        lifetimeEffectId: 'Effect.HealingAura.Lifetime',
+        lifetimeTag: 'Aura.SomeOther.Active',
+      })
+    ).toThrow(/does not grant/);
+
+    world.dispose();
+  });
+
+  it('allows lifetimeTag without lifetimeEffectId (caller manages the tag manually)', () => {
+    // The reverse pairing is legitimate: a caller may want to grant
+    // the watched tag via applyEffect / addTag after spawnAura
+    // returns. This must NOT throw.
+    const { world, facade } = createTestWorld();
+    const caster = addEntity(world);
+    world.processAllTicks(1);
+
+    expect(() =>
+      facade.spawnAura({
+        abilityId: 'Ability.ManualTagAura',
+        target: { kind: 'Self' },
+        effectIds: ['Effect.Heal5'],
+        periodTicks: 1,
+        ownerEntityId: caster.id,
+        // No lifetimeEffectId — caller will grant/revoke the tag.
+        lifetimeTag: 'Aura.Manual.Active',
+      })
+    ).not.toThrow();
+
+    world.dispose();
+  });
+
+  it('does not leave a zombie zone entity in the world when validation throws', () => {
+    // The whole point of the validation phase is that addEntity must
+    // not have been called when we throw. Count entities before and
+    // after to confirm no zombie zone was created.
+    const { world, facade } = createTestWorld();
+    const caster = addEntity(world);
+    world.processAllTicks(1);
+
+    const entitiesBefore = world.entityManager.getAllEntities().length;
+
+    // Trigger every validation throw — each must leave entity count
+    // unchanged. We use the same shape as the dedicated tests above
+    // but inline them here so a single regression (e.g. someone
+    // moving addEntity back above validation) shows up as a count
+    // mismatch on whichever throw they reorder.
+    expect(() =>
+      facade.spawnAura({
+        abilityId: 'Ability.Z1',
+        target: { kind: 'Self' },
+        effectIds: ['Effect.NoSuchThing'],
+        periodTicks: 1,
+        ownerEntityId: caster.id,
+      })
+    ).toThrow();
+    expect(world.entityManager.getAllEntities().length).toBe(entitiesBefore);
+
+    expect(() =>
+      facade.spawnAura({
+        abilityId: 'Ability.Z2',
+        target: { kind: 'Self' },
+        effectIds: ['Effect.HealingAura.Lifetime'],
+        periodTicks: 1,
+        ownerEntityId: caster.id,
+      })
+    ).toThrow(/non-Instant/);
+    expect(world.entityManager.getAllEntities().length).toBe(entitiesBefore);
+
+    expect(() =>
+      facade.spawnAura({
+        abilityId: 'Ability.Z3',
+        target: { kind: 'Self' },
+        effectIds: ['Effect.Heal5'],
+        periodTicks: 1,
+        ownerEntityId: caster.id,
+        lifetimeEffectId: 'Effect.HealingAura.Lifetime',
+        lifetimeTag: 'Aura.Wrong.Active',
+      })
+    ).toThrow(/does not grant/);
+    expect(world.entityManager.getAllEntities().length).toBe(entitiesBefore);
+
+    world.dispose();
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Test helpers
 // ---------------------------------------------------------------------------
 
