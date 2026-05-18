@@ -9,7 +9,9 @@ import {
 } from '../components';
 import type { AbilitySystemRegistries } from '../registry';
 import type { AbilitySystemRuntime } from '../runtime';
-import type { AbilityHook, ProvidedTarget } from '../types';
+import type { ISpatialQuery } from '../spatial';
+import { TargetResolver } from '../targeting';
+import type { AbilityHook, ProvidedTarget, TargetFilter } from '../types';
 
 export interface AttributeValue {
   base: FixedPoint;
@@ -149,6 +151,93 @@ export class AbilitySystemFacade {
 
     const activeEffects = this.getOrCreateActiveEffects(target);
     activeEffects.pendingAdd.push({ defId: effectId, sourceEntityId });
+  }
+
+  /**
+   * Short-circuit AoE: resolve every entity inside a disc and enqueue
+   * `effectId` onto each. Designed for the projectile-impact path used by
+   * rockets and grenades — the projectile entity lives in user code, and
+   * when it impacts the user calls `applyEffectAoE(point, ...)` directly,
+   * bypassing the ability layer.
+   *
+   * The resolve is deterministic: every peer using the same
+   * {@link ISpatialQuery} implementation and the same world state
+   * produces the same sorted, deduplicated, capped target list. See
+   * {@link TargetResolver} for the determinism rules.
+   *
+   * `selfId` is the entity that "owns" the AoE for `includeSelf`
+   * filtering. Defaults to `sourceEntityId`. Pass an explicit value
+   * when the source is `NO_SOURCE_ENTITY_ID` (world hazards) and you
+   * still want to exclude a specific entity — e.g. the rocket's
+   * launcher should not damage themselves with their own splash, even
+   * when the rocket has no "source" in the gameplay sense.
+   *
+   * Returns the list of entity ids that actually received the effect
+   * (i.e. had `pendingAdd` enqueued). The list is sorted by entity id ASC.
+   * It is a subset of what {@link TargetResolver} produced: any id that
+   * the resolver returned but that no longer exists in the entity
+   * manager at enqueue time is omitted. User code can rely on this list
+   * to drive secondary effects — cues, damage numbers, screen shakes —
+   * without re-validating entities itself. Re-sort by distance if you
+   * need presentation order.
+   *
+   * Throws if no spatial query is registered. Self / Entity / Point
+   * abilities do not need one, but this method always does — it is the
+   * Radius shape by construction.
+   */
+  public applyEffectAoE(
+    origin: { x: FixedPoint; z: FixedPoint },
+    effectId: string,
+    sourceEntityId: number = NO_SOURCE_ENTITY_ID,
+    opts: {
+      radius: FixedPoint;
+      maxTargets?: number;
+      filter?: TargetFilter;
+      includeSelf?: boolean;
+      selfId?: number;
+    }
+  ): number[] {
+    if (!this.registries.effects.has(effectId)) {
+      throw new Error(`EffectRegistry does not contain '${effectId}'`);
+    }
+    const resolver = this.getTargetResolver();
+    const selfId = opts.selfId !== undefined ? opts.selfId : sourceEntityId;
+    const resolution = resolver.resolve({
+      casterEntityId: selfId,
+      spec: {
+        kind: 'Radius',
+        origin: { kind: 'Point', x: origin.x, z: origin.z },
+        radius: opts.radius,
+        maxTargets: opts.maxTargets,
+        filter: opts.filter,
+        includeSelf: opts.includeSelf,
+      },
+    });
+    // The synthetic spec above uses a literal Point origin (never
+    // Caller), so the resolver cannot return `dropped: true` here.
+    // Assert defensively in case the spec construction ever changes.
+    /* istanbul ignore if */
+    if (resolution.dropped) {
+      return [];
+    }
+    const targets = resolution.targets;
+    // Only return ids that successfully enqueued the effect. The resolver
+    // already drops stale ids, but a removal can still happen between
+    // resolve and enqueue inside a single tick (e.g. an earlier hook in
+    // the same activation despawned the target). Returning the enqueued
+    // subset gives callers a precise "who actually got hit" list and
+    // matches what observers will see via component pendingAdd queues.
+    const applied: number[] = [];
+    for (let i = 0; i < targets.length; i++) {
+      const entity = this.entityManager.getEntity(targets[i]);
+      if (!entity) {
+        continue;
+      }
+      const activeEffects = this.getOrCreateActiveEffects(entity);
+      activeEffects.pendingAdd.push({ defId: effectId, sourceEntityId });
+      applied.push(targets[i]);
+    }
+    return applied;
   }
 
   /**
@@ -303,6 +392,22 @@ export class AbilitySystemFacade {
     this.registries.hooks.register(hookId, hook);
   }
 
+  /**
+   * Install the {@link ISpatialQuery} adapter that the resolver uses for
+   * `TargetSpec.kind === 'Radius'` and {@link applyEffectAoE}. The
+   * adapter is a thin wrapper over the user's spatial index (typically
+   * `SpatialHashGrid` in `phalanx-physics`); the package itself stays
+   * physics-free.
+   *
+   * Registration is a one-shot world-bootstrap step. Re-registering the
+   * same query replaces the previous one — useful for tests that swap
+   * the implementation. Callers wanting to detect a missing setup can
+   * read {@link AbilitySystemRegistries.spatialQuery} directly.
+   */
+  public registerSpatialQuery(query: ISpatialQuery): void {
+    this.registries.spatialQuery = query;
+  }
+
   // -----------------------------------------------------------------------
   // Tags
   // -----------------------------------------------------------------------
@@ -380,6 +485,20 @@ export class AbilitySystemFacade {
    */
   public get runtimeInternal(): AbilitySystemRuntime {
     return this.runtime;
+  }
+
+  /**
+   * Lazy singleton resolver. Stateless apart from its captured
+   * `entityManager` + `registries` pair; constructed on first use so
+   * tests that never touch AoE pay no allocation cost.
+   */
+  private targetResolver: TargetResolver | undefined;
+
+  private getTargetResolver(): TargetResolver {
+    if (!this.targetResolver) {
+      this.targetResolver = new TargetResolver(this.entityManager, this.registries);
+    }
+    return this.targetResolver;
   }
 
   private requireEntity(entityId: number): Entity {
