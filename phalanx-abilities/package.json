@@ -1,0 +1,38 @@
+{
+  "name": "phalanx-abilities",
+  "version": "0.1.0",
+  "description": "Deterministic gameplay ability system for Phalanx Engine",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "rebuild": "npm run clean && npm run build",
+    "test": "vitest run"
+  },
+  "peerDependencies": {
+    "phalanx-ecs": "^0.1.0",
+    "phalanx-math": "^0.1.0"
+  },
+  "devDependencies": {
+    "phalanx-ecs": "workspace:*",
+    "phalanx-math": "workspace:*",
+    "typescript": "~5.9.3",
+    "vitest": "^1.0.0"
+  },
+  "keywords": [
+    "abilities",
+    "gameplay-ability-system",
+    "deterministic",
+    "fixed-point",
+    "ecs",
+    "phalanx"
+  ]
+}
