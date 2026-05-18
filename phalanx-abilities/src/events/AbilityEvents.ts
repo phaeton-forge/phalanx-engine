@@ -11,9 +11,11 @@ import type { ProvidedTarget } from '../types';
  * `processTick` callback ordered after the abilities pipeline.
  *
  * Determinism notes:
- *  - `resolvedTargets` is empty in Stage 5: target resolution is the job of
- *    Stage 6's `TargetResolutionSystem`. It is included in the payload so
- *    later stages can populate it without changing the event shape.
+ *  - `resolvedTargets` may already contain resolved entity IDs in Stage 5 for
+ *    target kinds handled by {@link AbilityActivationSystem}, including
+ *    `Self` and direct `Entity` targets. Later stages such as Stage 6's
+ *    `TargetResolutionSystem` may still resolve additional target kinds
+ *    without changing the event shape.
  *  - Non-deterministic side effects (audio, Date.now, Math.random) MUST NOT
  *    be triggered from synchronous subscribers running inside the tick.
  *    Visual cues belong on the cue queue, dispatched only by clients.
