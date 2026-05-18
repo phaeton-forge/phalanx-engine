@@ -39,10 +39,16 @@ import type { ActiveEffectInstance, EffectDef, Modifier, ModifierOp } from '../t
  *        relies on);
  *      - mark every attribute referenced by the effect's modifiers dirty.
  *  6. For `Periodic`:
- *      - Stage 4 will handle the periodic tick semantics. In Stage 3 we
- *        treat the application identically to `Duration` (queue + dirty)
- *        but do not yet apply per-period modifiers. The dedicated test
- *        suite for Periodic lives in stage 4.
+ *      - Same queueing, tag-grant and lifetime-countdown path as `Duration`.
+ *      - The per-period payload is applied Instant-style (modifiers fold
+ *        into `base`, attributes marked dirty) by {@link EffectTickSystem}
+ *        whenever `currentTick >= nextPeriodTick`. `nextPeriodTick` is
+ *        initialized to `tick + periodTicks` here.
+ *      - When `executePeriodicOnApplication` is true, modifiers also fire
+ *        once immediately at apply time (Instant-style on the same tick),
+ *        in addition to the regular schedule. The first scheduled firing
+ *        still lands one full period later — the apply-time landing is an
+ *        extra one-off, mirroring Unreal's GAS semantics.
  *
  * The system itself never *removes* effects — that responsibility belongs
  * to {@link EffectTickSystem}, including expirations from `removeEffectsBy*`
@@ -119,6 +125,15 @@ export class EffectApplicationSystem extends GameSystem {
       case 'Duration':
       case 'Periodic':
         this.queueDurational(entity, effectDef, pending, attributeIndexCache, tick);
+        // Periodic with executePeriodicOnApplication: fire the payload once
+        // at apply time. Instance was queued above so the lifetime countdown
+        // and subsequent periodic firings keep working. Determinism is
+        // preserved because the queueing path allocated the FIFO instanceId
+        // before we mutate base, so aggregation on the same tick observes
+        // ordering identical to a freshly-applied Instant.
+        if (effectDef.type === 'Periodic' && effectDef.executePeriodicOnApplication === true) {
+          this.applyInstant(entity, effectDef, attributeIndexCache);
+        }
         return;
     }
   }
@@ -142,6 +157,14 @@ export class EffectApplicationSystem extends GameSystem {
       if (durationTicks === undefined || durationTicks <= 0) {
         throw new Error(
           `EffectDef '${effectDef.id}' is type '${effectDef.type}' but has invalid durationTicks=${String(durationTicks)}`
+        );
+      }
+    }
+    if (effectDef.type === 'Periodic') {
+      const periodTicks = effectDef.periodTicks;
+      if (periodTicks === undefined || periodTicks <= 0) {
+        throw new Error(
+          `EffectDef '${effectDef.id}' is type 'Periodic' but has invalid periodTicks=${String(periodTicks)}`
         );
       }
     }
@@ -226,12 +249,17 @@ export class EffectApplicationSystem extends GameSystem {
     // durationTicks was validated upstream in validateEffectOrThrow, so the
     // non-null assertion below is safe — keep the cast local.
     const durationTicksValidated = effectDef.durationTicks as number;
+    // For Periodic effects, schedule the first firing one full period after
+    // application. `executePeriodicOnApplication` (handled separately in
+    // applyOne) does NOT advance nextPeriodTick — the immediate landing is
+    // additive to the regular schedule, matching Unreal's GAS semantics.
+    const nextPeriodTick =
+      effectDef.type === 'Periodic' ? tick + (effectDef.periodTicks as number) : 0;
     const instance: ActiveEffectInstance = {
       instanceId: this.runtime.instanceIdCounter.next(),
       defId: effectDef.id,
       remainingTicks: durationTicksValidated,
-      // Stage 4 will use nextPeriodTick; in Stage 3 we initialize to 0.
-      nextPeriodTick: 0,
+      nextPeriodTick,
       sourceEntityId: pending.sourceEntityId,
       // Record the application tick so EffectTickSystem can skip the very
       // first countdown for this instance — without that, a durationTicks=1
