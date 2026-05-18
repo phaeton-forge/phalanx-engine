@@ -9,6 +9,7 @@ import {
 } from '../components';
 import type { AbilitySystemRegistries } from '../registry';
 import type { AbilitySystemRuntime } from '../runtime';
+import type { AbilityHook, ProvidedTarget } from '../types';
 
 export interface AttributeValue {
   base: FixedPoint;
@@ -217,6 +218,89 @@ export class AbilitySystemFacade {
       }
     }
     return flagged;
+  }
+
+  // -----------------------------------------------------------------------
+  // Abilities
+  // -----------------------------------------------------------------------
+
+  /**
+   * Enqueue an ability activation request. The actual `CanActivate` check
+   * (tag predicates, cost, cooldown) and the application of caster-side
+   * effects (cost, cooldown, `selfEffectIds`) are performed by
+   * `AbilityActivationSystem` on the next tick. Target-side effects
+   * (`targetEffectIds`) and the hook (if any) follow on the same tick as
+   * activation.
+   *
+   * Returns `true` if the request was accepted and queued; `false` only if
+   * the caster or ability id are unknown. A return value of `true` does
+   * NOT mean the activation will succeed — the verdict is delivered
+   * asynchronously via the `AbilityActivatedEvent` on the world event bus,
+   * and observable through side effects (cooldown tag granted, cost
+   * deducted). This mirrors UE5's GAS where `TryActivateAbility` accepts
+   * the input but the server-authoritative side decides whether the
+   * ability actually fires.
+   *
+   * `providedTarget` is required for abilities whose `TargetSpec.origin` is
+   * `{ kind: 'Caller' }` — it carries the target the user clicked on (an
+   * entity id, a point, or both). It is ignored for `Self`-targeted
+   * abilities and abilities resolving target from the registry.
+   *
+   * Deterministic enqueue order: requests are appended to a single FIFO
+   * queue on the runtime. Multiple casters racing the same ability on the
+   * same tick are resolved in the strict order their `activateAbility`
+   * calls arrived. In lockstep games this order is the input-replay order,
+   * which every peer reconstructs identically.
+   */
+  public activateAbility(
+    casterEntityId: number,
+    abilityId: string,
+    providedTarget?: ProvidedTarget
+  ): boolean {
+    if (!this.entityManager.getEntity(casterEntityId)) {
+      return false;
+    }
+    if (!this.registries.abilities.has(abilityId)) {
+      return false;
+    }
+    // Snapshot `providedTarget` so callers that reuse or mutate their
+    // target object between this call and the next tick cannot retroactively
+    // change an already-enqueued activation. `ProvidedTarget` is a flat
+    // record of primitives + bigint FixedPoint values, so a shallow copy is
+    // sufficient to make the request immutable.
+    const snapshotTarget: ProvidedTarget | undefined =
+      providedTarget === undefined
+        ? undefined
+        : {
+            entityId: providedTarget.entityId,
+            x: providedTarget.x,
+            z: providedTarget.z,
+          };
+    this.runtime.activationRequests.push({
+      casterEntityId,
+      abilityId,
+      providedTarget: snapshotTarget,
+      enqueueTick: this.runtime.currentTick,
+    });
+    return true;
+  }
+
+  /**
+   * Register a callback for `AbilityDef.hookId`. The callback fires inside
+   * `AbilityHookExecutorSystem` after `EffectApplicationSystem` has run on
+   * the activation tick, so the hook observes freshly-applied
+   * cost/cooldown/self-effects on the caster.
+   *
+   * Hooks MUST be deterministic — no `Date.now`, no `Math.random`, no
+   * non-replayable floating-point math. They may spawn entities (e.g.
+   * projectiles, aura zones) and write into the physics package; the
+   * resulting state is observable on the next tick.
+   *
+   * Throws if `hookId` is already registered. Registration is a one-shot
+   * setup step done at world boot.
+   */
+  public registerHook(hookId: string, hook: AbilityHook): void {
+    this.registries.hooks.register(hookId, hook);
   }
 
   // -----------------------------------------------------------------------
