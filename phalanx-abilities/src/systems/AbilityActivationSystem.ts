@@ -120,20 +120,38 @@ export class AbilityActivationSystem extends GameSystem {
       return;
     }
 
+    // Compact the queue inside a `try`/`finally` so that even if
+    // `processOne` throws (e.g. on a misconfigured effect or an unsupported
+    // target shape), every already-visited request is removed from the
+    // queue. Otherwise a loud activation error would leave processed
+    // requests behind to be replayed on a later tick — after their effects
+    // were already enqueued and their `AbilityActivated` event emitted.
+    let readIndex = 0;
     let writeIndex = 0;
-    for (let readIndex = 0; readIndex < pending.length; readIndex++) {
-      const request = pending[readIndex];
-      if (request.enqueueTick === tick) {
-        // Defer to next tick.
-        if (writeIndex !== readIndex) {
-          pending[writeIndex] = request;
+    try {
+      for (; readIndex < pending.length; readIndex++) {
+        const request = pending[readIndex];
+        if (request.enqueueTick === tick) {
+          // Defer to next tick.
+          if (writeIndex !== readIndex) {
+            pending[writeIndex] = request;
+          }
+          writeIndex += 1;
+          continue;
         }
-        writeIndex += 1;
-        continue;
+        this.processOne(request, tick);
       }
-      this.processOne(request, tick);
+    } finally {
+      // Preserve any unread tail (readIndex+1..end) after the compacted
+      // prefix so deferred requests from later in the queue are not lost
+      // when an exception interrupts the drain mid-loop.
+      if (readIndex + 1 < pending.length) {
+        for (let k = readIndex + 1; k < pending.length; k++) {
+          pending[writeIndex++] = pending[k];
+        }
+      }
+      pending.length = writeIndex;
     }
-    pending.length = writeIndex;
   }
 
   private processOne(request: AbilityActivationRequest, tick: number): void {

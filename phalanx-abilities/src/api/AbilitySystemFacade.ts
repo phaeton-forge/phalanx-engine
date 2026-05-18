@@ -263,10 +263,23 @@ export class AbilitySystemFacade {
     if (!this.registries.abilities.has(abilityId)) {
       return false;
     }
+    // Snapshot `providedTarget` so callers that reuse or mutate their
+    // target object between this call and the next tick cannot retroactively
+    // change an already-enqueued activation. `ProvidedTarget` is a flat
+    // record of primitives + bigint FixedPoint values, so a shallow copy is
+    // sufficient to make the request immutable.
+    const snapshotTarget: ProvidedTarget | undefined =
+      providedTarget === undefined
+        ? undefined
+        : {
+            entityId: providedTarget.entityId,
+            x: providedTarget.x,
+            z: providedTarget.z,
+          };
     this.runtime.activationRequests.push({
       casterEntityId,
       abilityId,
-      providedTarget,
+      providedTarget: snapshotTarget,
       enqueueTick: this.runtime.currentTick,
     });
     return true;

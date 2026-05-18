@@ -672,6 +672,105 @@ describe('ability activation — request lifecycle', () => {
 
     world.dispose();
   });
+
+  it('snapshots providedTarget so mutating the caller object after enqueue does not change the request', () => {
+    const { world, facade } = createTestWorld({
+      effects: [
+        defineEffect({
+          id: 'Effect.Mark',
+          type: 'Instant',
+          modifiers: [{ attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(-7) }],
+        }),
+      ],
+      abilities: [
+        defineAbility({
+          id: 'Ability.MarkTarget',
+          target: { kind: 'Entity', origin: { kind: 'Caller' } },
+          targetEffectIds: ['Effect.Mark'],
+        }),
+      ],
+    });
+    const caster = addEntity(world);
+    const intendedTarget = addEntity(world);
+    const bystander = addEntity(world);
+    facade.initAttributesForEntity(caster.id);
+    facade.initAttributesForEntity(intendedTarget.id);
+    facade.initAttributesForEntity(bystander.id);
+    world.processAllTicks(1);
+
+    const providedTarget = { entityId: intendedTarget.id };
+    facade.activateAbility(caster.id, 'Ability.MarkTarget', providedTarget);
+
+    // Caller mutates the original object before the activation drains. The
+    // snapshot in the queue must keep pointing at the intended target.
+    providedTarget.entityId = bystander.id;
+
+    world.processAllTicks(2);
+
+    expect(FP.ToFloat(facade.getAttribute(intendedTarget.id, 'Health').current)).toBe(93);
+    expect(FP.ToFloat(facade.getAttribute(bystander.id, 'Health').current)).toBe(100);
+
+    world.dispose();
+  });
+
+  it('compacts the queue even when processOne throws, so processed requests are not replayed', () => {
+    // Two abilities share a tick. The first has a misconfigured cooldown
+    // effect (no `tagsGranted`) and will throw during processing. The
+    // second is well-formed and should NOT be replayed on a later tick
+    // after the throw is swallowed by the test — the drain must compact
+    // away the throwing request so reprocessing cannot happen.
+    const { world, facade, runtime } = createTestWorld({
+      effects: [
+        defineEffect({
+          id: 'Effect.BadCooldown',
+          // Duration with no tagsGranted — isOffCooldown will throw.
+          type: 'Duration',
+          durationTicks: 10,
+        }),
+        defineEffect({
+          id: 'Effect.GoodCooldown',
+          type: 'Duration',
+          durationTicks: 10,
+          tagsGranted: ['Cooldown.Ability.Good'],
+        }),
+      ],
+      abilities: [
+        defineAbility({
+          id: 'Ability.Bad',
+          cooldownEffectId: 'Effect.BadCooldown',
+          target: { kind: 'Self' },
+        }),
+        defineAbility({
+          id: 'Ability.Good',
+          cooldownEffectId: 'Effect.GoodCooldown',
+          target: { kind: 'Self' },
+        }),
+      ],
+    });
+    const caster = addEntity(world);
+    facade.initAttributesForEntity(caster.id);
+    world.processAllTicks(1);
+
+    facade.activateAbility(caster.id, 'Ability.Bad');
+    facade.activateAbility(caster.id, 'Ability.Good');
+    expect(runtime.activationRequests.length).toBe(2);
+
+    // Tick 2 drains. The bad request throws — the good request that was
+    // queued AFTER it has not been processed yet and must be preserved
+    // for next tick. The bad request must be discarded.
+    expect(() => world.processAllTicks(2)).toThrow();
+    expect(runtime.activationRequests.length).toBe(1);
+    expect(runtime.activationRequests[0].abilityId).toBe('Ability.Good');
+    // Bad cooldown tag must not be present (effect was never applied).
+    expect(facade.hasTag(caster.id, 'Cooldown.Ability.Good')).toBe(false);
+
+    // Tick 3: the surviving good request drains cleanly.
+    world.processAllTicks(3);
+    expect(runtime.activationRequests.length).toBe(0);
+    expect(facade.hasTag(caster.id, 'Cooldown.Ability.Good')).toBe(true);
+
+    world.dispose();
+  });
 });
 
 // ---------------------------------------------------------------------------
