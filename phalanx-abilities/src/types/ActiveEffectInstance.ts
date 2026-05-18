@@ -3,7 +3,14 @@ export interface ActiveEffectInstance {
   instanceId: number;
   defId: string;
   remainingTicks: number;
-  /** Only meaningful for Periodic effects. */
+  /**
+   * Only meaningful for Periodic effects. Holds the next absolute simulation
+   * tick at which the effect's modifiers must fire (Instant-style writes to
+   * `AttributesComponent.base`). When `currentTick >= nextPeriodTick` and the
+   * instance was not just inserted on the same tick, EffectTickSystem applies
+   * the modifiers and advances `nextPeriodTick` by `EffectDef.periodTicks`.
+   * For Duration instances the field is left at `0` and ignored.
+   */
   nextPeriodTick: number;
   /**
    * Source entity that applied the effect, or `-1` for no source (e.g. world

@@ -340,20 +340,26 @@ describe('effect application', () => {
     world.dispose();
   });
 
-  it('Periodic effects do not bleed into AttributeAggregationSystem in Stage 3', () => {
-    // Periodic effects share the queue path with Duration so they get a
-    // lifecycle and grant tags today, but their modifiers must NOT be applied
-    // continuously by aggregation — Stage 4 will introduce per-period
-    // semantics. The Periodic effect below would otherwise drop Armor by 30.
+  it('Periodic effects do not contribute to AttributeAggregationSystem continuously', () => {
+    // Periodic effects fire their modifiers Instant-style on each scheduled
+    // tick (handled by EffectTickSystem in Stage 4). They must NOT also be
+    // applied as continuous modifiers by AttributeAggregationSystem —
+    // otherwise every DoT tick would double-count. We assert that property
+    // here by checking the gap between application tick and the first
+    // scheduled firing: tagsGranted is on (lifecycle works), but the periodic
+    // modifier has not landed yet, so Armor.current still reads the
+    // un-shredded value. Dedicated periodic behavior tests live in
+    // periodic-effects.test.ts.
     const { world, facade } = createTestWorld({
       effects: [
         defineEffect({
-          id: 'Effect.Poison.Periodic',
+          id: 'Effect.Poison.Periodic.Slow',
           type: 'Periodic',
-          durationTicks: 5,
-          periodTicks: 1,
+          durationTicks: 100,
+          periodTicks: 10,
           modifiers: [{ attributeId: 'Armor', op: 'Add', magnitude: FP.FromInt(-30) }],
           tagsGranted: ['State.Debuff.Poisoned'],
+          // executePeriodicOnApplication defaults to false: no immediate hit.
         }),
       ],
     });
@@ -361,15 +367,16 @@ describe('effect application', () => {
     facade.initAttributesForEntity(entity.id);
     world.processAllTicks(1);
 
-    facade.applyEffect(entity.id, 'Effect.Poison.Periodic', entity.id);
+    facade.applyEffect(entity.id, 'Effect.Poison.Periodic.Slow', entity.id);
+    // Apply tick = 2 -> nextPeriodTick = 12.
     world.processAllTicks(2);
 
-    // Tag is granted (lifecycle works), but Armor.current is unchanged: the
-    // Periodic modifier is intentionally invisible to aggregation pre-Stage 4.
+    // Tag granted, no periodic landing yet (would be on tick 12).
     expect(facade.hasTag(entity.id, 'State.Debuff.Poisoned')).toBe(true);
     expect(FP.ToFloat(facade.getAttribute(entity.id, 'Armor').current)).toBe(50);
 
-    world.processAllTicks(3);
+    // Tick 11: still before first scheduled firing.
+    world.processAllTicks(11);
     expect(FP.ToFloat(facade.getAttribute(entity.id, 'Armor').current)).toBe(50);
 
     world.dispose();
