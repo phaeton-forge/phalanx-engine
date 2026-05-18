@@ -101,10 +101,15 @@ export class EffectApplicationSystem extends GameSystem {
       return;
     }
 
-    // Tag grants are applied regardless of effect type (Instant grants are
-    // ephemeral in practice because Instant carries no lifecycle — but we
-    // honor `tagsGranted` for both for consistency; users who don't want
-    // sticky tags on Instant simply leave the field empty).
+    // Validate everything that can throw BEFORE any visible mutation so a
+    // misconfigured effect cannot leave the entity in a half-applied state
+    // (e.g. tags granted while the effect itself was rejected). The cost is
+    // two extra passes for Duration/Periodic — cheap given typical modifier
+    // counts (1-3) and amortized by attributeIndexCache.
+    this.validateEffectOrThrow(effectDef, attributeIndexCache);
+
+    // From here on out the effect cannot reject itself, so it is safe to
+    // grant tags and queue the instance atomically.
     this.grantTags(effectDef, tags);
 
     switch (effectDef.type) {
@@ -115,6 +120,35 @@ export class EffectApplicationSystem extends GameSystem {
       case 'Periodic':
         this.queueDurational(entity, effectDef, pending, attributeIndexCache, tick);
         return;
+    }
+  }
+
+  /**
+   * Pre-flight validation for the slow paths that can throw at apply time.
+   * Currently catches:
+   *  - Duration/Periodic with missing or non-positive `durationTicks`.
+   *  - Modifiers that reference an attribute id not registered with this world.
+   *
+   * Throws on any inconsistency; otherwise returns silently. Populates
+   * `attributeIndexCache` as a side-effect so the subsequent apply path does
+   * not re-resolve indices.
+   */
+  private validateEffectOrThrow(
+    effectDef: EffectDef,
+    attributeIndexCache: Map<string, number>
+  ): void {
+    if (effectDef.type === 'Duration' || effectDef.type === 'Periodic') {
+      const durationTicks = effectDef.durationTicks;
+      if (durationTicks === undefined || durationTicks <= 0) {
+        throw new Error(
+          `EffectDef '${effectDef.id}' is type '${effectDef.type}' but has invalid durationTicks=${String(durationTicks)}`
+        );
+      }
+    }
+    // Pre-resolve modifier attribute indices so registry.indexOf failures
+    // surface here, not after tag grants. Cached resolutions are reused.
+    for (const modifier of effectDef.modifiers) {
+      this.resolveAttributeIndex(modifier.attributeId, attributeIndexCache);
     }
   }
 
@@ -140,7 +174,13 @@ export class EffectApplicationSystem extends GameSystem {
     if (!effectDef.tagsGranted) {
       return;
     }
+    // Increment per-tag effect-grant ref count and reflect into the unified
+    // `tags` set. The unified set is the lookup surface (hasTag uses it); the
+    // ref count is the source of truth for revocation. Ad-hoc ownership in
+    // `adHocTags` is unaffected by grants.
     for (const tag of effectDef.tagsGranted) {
+      const current = tags.effectGrantCounts.get(tag) ?? 0;
+      tags.effectGrantCounts.set(tag, current + 1);
       tags.tags.add(tag);
     }
   }
@@ -183,17 +223,13 @@ export class EffectApplicationSystem extends GameSystem {
       throw new Error('ActiveEffectsComponent missing while draining pendingAdd');
     }
 
-    const durationTicks = effectDef.durationTicks;
-    if (durationTicks === undefined || durationTicks <= 0) {
-      throw new Error(
-        `EffectDef '${effectDef.id}' is type '${effectDef.type}' but has invalid durationTicks=${String(durationTicks)}`
-      );
-    }
-
+    // durationTicks was validated upstream in validateEffectOrThrow, so the
+    // non-null assertion below is safe — keep the cast local.
+    const durationTicksValidated = effectDef.durationTicks as number;
     const instance: ActiveEffectInstance = {
       instanceId: this.runtime.instanceIdCounter.next(),
       defId: effectDef.id,
-      remainingTicks: durationTicks,
+      remainingTicks: durationTicksValidated,
       // Stage 4 will use nextPeriodTick; in Stage 3 we initialize to 0.
       nextPeriodTick: 0,
       sourceEntityId: pending.sourceEntityId,

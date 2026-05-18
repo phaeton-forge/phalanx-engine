@@ -375,6 +375,113 @@ describe('effect application', () => {
     world.dispose();
   });
 
+  it('expiring an effect does not revoke a tag that is also held ad hoc', () => {
+    // Regression: previously revokeTags deleted the granted tag directly from
+    // the unified set without checking ad-hoc ownership, so an expiring effect
+    // could drop a manually managed (faction/team-like) tag.
+    const { world, facade } = createTestWorld({
+      effects: [
+        defineEffect({
+          id: 'Effect.GrantsMarked',
+          type: 'Duration',
+          durationTicks: 1,
+          tagsGranted: ['State.Marked'],
+          modifiers: [],
+        }),
+      ],
+    });
+    const entity = addEntity(world);
+    facade.initAttributesForEntity(entity.id);
+    facade.addTag(entity.id, 'State.Marked');
+    expect(facade.hasTag(entity.id, 'State.Marked')).toBe(true);
+
+    facade.applyEffect(entity.id, 'Effect.GrantsMarked', entity.id);
+    world.processAllTicks(1);
+    expect(facade.hasTag(entity.id, 'State.Marked')).toBe(true);
+
+    // Tick 2: the effect expires. The ad-hoc grant must keep the tag alive.
+    world.processAllTicks(2);
+    expect(facade.hasTag(entity.id, 'State.Marked')).toBe(true);
+
+    world.dispose();
+  });
+
+  it('removeTag preserves an effect-granted tag and only clears ad-hoc ownership', () => {
+    // Regression: previously removeTag deleted from the single Set, so calling
+    // it while an effect granted the same tag silently dropped the effect’s
+    // contribution and the tag never came back on later ticks.
+    const { world, facade } = createTestWorld({
+      effects: [
+        defineEffect({
+          id: 'Effect.GrantsBuff',
+          type: 'Duration',
+          durationTicks: 5,
+          tagsGranted: ['State.Buffed'],
+          modifiers: [],
+        }),
+      ],
+    });
+    const entity = addEntity(world);
+    facade.initAttributesForEntity(entity.id);
+
+    facade.addTag(entity.id, 'State.Buffed');
+    facade.applyEffect(entity.id, 'Effect.GrantsBuff', entity.id);
+    world.processAllTicks(1);
+    expect(facade.hasTag(entity.id, 'State.Buffed')).toBe(true);
+
+    // Caller clears their ad-hoc ownership while the effect still grants it.
+    const cleared = facade.removeTag(entity.id, 'State.Buffed');
+    expect(cleared).toBe(true);
+    // Tag stays — the effect's grant is still in force.
+    expect(facade.hasTag(entity.id, 'State.Buffed')).toBe(true);
+
+    // A second removeTag call now returns false (no ad-hoc to clear) and the
+    // tag is still held by the effect.
+    expect(facade.removeTag(entity.id, 'State.Buffed')).toBe(false);
+    expect(facade.hasTag(entity.id, 'State.Buffed')).toBe(true);
+
+    world.dispose();
+  });
+
+  it('a misconfigured effect throws atomically and leaves no tag grants behind', () => {
+    // Regression: previously tagsGranted was applied before durationTicks /
+    // modifier-attribute validation, so a throwing effect could leave the
+    // entity with leaked tag grants.
+    const { world, facade } = createTestWorld({
+      effects: [
+        // Duration with no durationTicks — invalid; should throw at apply time.
+        defineEffect({
+          id: 'Effect.BadDuration',
+          type: 'Duration',
+          tagsGranted: ['State.LeakSentinel'],
+          modifiers: [],
+        }),
+        // Modifier references an attribute that the test world does not register.
+        defineEffect({
+          id: 'Effect.BadModifierAttr',
+          type: 'Instant',
+          tagsGranted: ['State.LeakSentinel2'],
+          modifiers: [
+            { attributeId: 'NonExistentAttribute', op: 'Add', magnitude: FP.FromInt(-1) },
+          ],
+        }),
+      ],
+    });
+    const entity = addEntity(world);
+    facade.initAttributesForEntity(entity.id);
+    world.processAllTicks(1);
+
+    facade.applyEffect(entity.id, 'Effect.BadDuration', entity.id);
+    expect(() => world.processAllTicks(2)).toThrow();
+    expect(facade.hasTag(entity.id, 'State.LeakSentinel')).toBe(false);
+
+    facade.applyEffect(entity.id, 'Effect.BadModifierAttr', entity.id);
+    expect(() => world.processAllTicks(3)).toThrow();
+    expect(facade.hasTag(entity.id, 'State.LeakSentinel2')).toBe(false);
+
+    world.dispose();
+  });
+
   it('applyEffect omits sourceEntityId and records the sentinel NO_SOURCE_ENTITY_ID', () => {
     const { world, facade } = createTestWorld({
       effects: [

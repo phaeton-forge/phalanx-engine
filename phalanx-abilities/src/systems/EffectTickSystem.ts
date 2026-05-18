@@ -128,37 +128,29 @@ export class EffectTickSystem extends GameSystem {
   private revokeTags(
     effectDef: EffectDef,
     tags: GameplayTagsComponent | undefined,
-    remainingQueue: readonly ActiveEffectInstance[]
+    _remainingQueue: readonly ActiveEffectInstance[]
   ): void {
     if (!tags || !effectDef.tagsGranted || effectDef.tagsGranted.length === 0) {
       return;
     }
 
+    // Decrement per-tag effect-grant ref counts. A tag is removed from the
+    // unified `tags` set only when its grant count reaches zero AND the tag
+    // is not also held ad hoc (via `addTag`). This keeps lifecycle revocation
+    // from clobbering manually managed tags, and — because shared grants are
+    // now tracked by counts rather than queue scans — removes the O(n*m)
+    // re-scan of the remaining queue per expired effect.
     for (const grantedTag of effectDef.tagsGranted) {
-      if (this.tagGrantedByAnyRemaining(grantedTag, remainingQueue)) {
-        // Another still-active instance grants the same tag; keep it.
-        continue;
-      }
-      tags.tags.delete(grantedTag);
-    }
-  }
-
-  private tagGrantedByAnyRemaining(
-    tag: string,
-    queue: readonly ActiveEffectInstance[]
-  ): boolean {
-    for (let i = 0; i < queue.length; i++) {
-      const def = this.registries.effects.tryGet(queue[i].defId);
-      if (!def || !def.tagsGranted) {
-        continue;
-      }
-      for (const grantedTag of def.tagsGranted) {
-        if (grantedTag === tag) {
-          return true;
+      const current = tags.effectGrantCounts.get(grantedTag) ?? 0;
+      if (current <= 1) {
+        tags.effectGrantCounts.delete(grantedTag);
+        if (!tags.adHocTags.has(grantedTag)) {
+          tags.tags.delete(grantedTag);
         }
+      } else {
+        tags.effectGrantCounts.set(grantedTag, current - 1);
       }
     }
-    return false;
   }
 
   private markModifiersDirty(

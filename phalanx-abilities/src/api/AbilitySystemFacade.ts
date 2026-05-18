@@ -241,20 +241,27 @@ export class AbilitySystemFacade {
    * Intended for setup code (team / faction tags assigned at spawn). For
    * lifecycle-managed state tags, prefer `tagsGranted` on an effect so the
    * tag is automatically revoked when the effect expires.
+   *
+   * Ad-hoc and effect-granted ownership are tracked separately: adding the
+   * same tag both ways is safe and idempotent. The tag survives until both
+   * sources release it.
    */
   public addTag(entityId: number, tag: string): void {
     const entity = this.requireEntity(entityId);
     const tags = this.getOrCreateTags(entity);
+    tags.adHocTags.add(tag);
     tags.tags.add(tag);
   }
 
   /**
-   * Remove an ad-hoc tag. Note: this does NOT remove tags that are
-   * currently granted by an active effect — those will be re-granted on
-   * the next {@link EffectApplicationSystem} pass (today, application is
-   * one-shot from pendingAdd, so a re-grant requires a fresh applyEffect;
-   * see Stage 5 for grant-on-tick semantics). For predictable removal
-   * use {@link removeEffectsByTag}.
+   * Remove ad-hoc ownership of `tag`. If the tag is still granted by one or
+   * more active effects, it remains in {@link GameplayTagsComponent.tags}
+   * (and {@link hasTag} keeps returning `true`) until the last grant expires.
+   * For predictable removal of effect-granted tags use
+   * {@link removeEffectsByTag}.
+   *
+   * Returns `true` if ad-hoc ownership was actually cleared, `false` if the
+   * entity / component is missing or the tag was not held ad hoc.
    */
   public removeTag(entityId: number, tag: string): boolean {
     const entity = this.entityManager.getEntity(entityId);
@@ -265,7 +272,16 @@ export class AbilitySystemFacade {
     if (!tags) {
       return false;
     }
-    return tags.tags.delete(tag);
+    const wasAdHoc = tags.adHocTags.delete(tag);
+    if (!wasAdHoc) {
+      return false;
+    }
+    // Only drop from the unified set when no active effect still grants it.
+    const grantCount = tags.effectGrantCounts.get(tag) ?? 0;
+    if (grantCount === 0) {
+      tags.tags.delete(tag);
+    }
+    return true;
   }
 
   // -----------------------------------------------------------------------
