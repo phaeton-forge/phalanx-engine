@@ -56,7 +56,7 @@ export class EffectApplicationSystem extends GameSystem {
     super();
   }
 
-  public override processTick(_tick: number): void {
+  public override processTick(tick: number): void {
     const entities = this.entityManager.queryEntities(AbilitiesComponentType.ActiveEffects);
     const attributeIndexCache = this.attributeIndexCache;
     attributeIndexCache.clear();
@@ -75,7 +75,7 @@ export class EffectApplicationSystem extends GameSystem {
       const drained = activeEffects.pendingAdd.splice(0, activeEffects.pendingAdd.length);
 
       for (let i = 0; i < drained.length; i++) {
-        this.applyOne(entity, drained[i], attributeIndexCache);
+        this.applyOne(entity, drained[i], attributeIndexCache, tick);
       }
     }
   }
@@ -85,7 +85,8 @@ export class EffectApplicationSystem extends GameSystem {
   private applyOne(
     entity: Entity,
     pending: PendingEffectAdd,
-    attributeIndexCache: Map<string, number>
+    attributeIndexCache: Map<string, number>,
+    tick: number
   ): void {
     const effectDef = this.registries.effects.tryGet(pending.defId);
     if (!effectDef) {
@@ -112,7 +113,7 @@ export class EffectApplicationSystem extends GameSystem {
         return;
       case 'Duration':
       case 'Periodic':
-        this.queueDurational(entity, effectDef, pending, attributeIndexCache);
+        this.queueDurational(entity, effectDef, pending, attributeIndexCache, tick);
         return;
     }
   }
@@ -171,7 +172,8 @@ export class EffectApplicationSystem extends GameSystem {
     entity: Entity,
     effectDef: EffectDef,
     pending: PendingEffectAdd,
-    attributeIndexCache: Map<string, number>
+    attributeIndexCache: Map<string, number>,
+    tick: number
   ): void {
     const activeEffects = entity.getComponent<ActiveEffectsComponent>(
       AbilitiesComponentType.ActiveEffects
@@ -195,6 +197,10 @@ export class EffectApplicationSystem extends GameSystem {
       // Stage 4 will use nextPeriodTick; in Stage 3 we initialize to 0.
       nextPeriodTick: 0,
       sourceEntityId: pending.sourceEntityId,
+      // Record the application tick so EffectTickSystem can skip the very
+      // first countdown for this instance — without that, a durationTicks=1
+      // effect would expire before AttributeAggregationSystem ever sees it.
+      enteredOnTick: tick,
     };
     activeEffects.queue.push(instance);
 

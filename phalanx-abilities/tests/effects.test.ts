@@ -7,6 +7,7 @@ import {
   AttributeAggregationSystem,
   EffectApplicationSystem,
   EffectTickSystem,
+  NO_SOURCE_ENTITY_ID,
   createAbilitySystemRegistries,
   createAbilitySystemRuntime,
   defineAttribute,
@@ -60,18 +61,24 @@ describe('effect application', () => {
 
     facade.applyEffect(entity.id, 'Effect.ArmorShred', entity.id);
 
-    // Tick 2: application applies modifier + dirty, aggregation produces Armor=30,
-    // tagsGranted is now present. EffectTickSystem decrements remaining 3 -> 2.
+    // Tick 2: application inserts the instance with enteredOnTick=2 and
+    // remainingTicks=3, aggregation produces Armor=30, tagsGranted is now
+    // present. EffectTickSystem deliberately does NOT decrement an instance
+    // on its application tick (otherwise durationTicks=1 would be invisible).
     world.processAllTicks(2);
     expect(FP.ToFloat(facade.getAttribute(entity.id, 'Armor').current)).toBe(30);
     expect(facade.hasTag(entity.id, 'State.Debuff.ArmorShred')).toBe(true);
 
-    // Tick 3: remaining 2 -> 1.
+    // Tick 3: remaining 3 -> 2.
     world.processAllTicks(3);
     expect(FP.ToFloat(facade.getAttribute(entity.id, 'Armor').current)).toBe(30);
 
-    // Tick 4: remaining 1 -> 0, expires, tag revoked, Armor recomputes to 50.
+    // Tick 4: remaining 2 -> 1.
     world.processAllTicks(4);
+    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Armor').current)).toBe(30);
+
+    // Tick 5: remaining 1 -> 0, expires, tag revoked, Armor recomputes to 50.
+    world.processAllTicks(5);
     expect(FP.ToFloat(facade.getAttribute(entity.id, 'Armor').current)).toBe(50);
     expect(facade.hasTag(entity.id, 'State.Debuff.ArmorShred')).toBe(false);
 
@@ -294,6 +301,107 @@ describe('effect application', () => {
     expect(() => facade.applyEffect(9999, 'Effect.DoesNotExist', entity.id)).toThrow(
       'Entity 9999 does not exist'
     );
+
+    world.dispose();
+  });
+
+  it('a durationTicks=1 effect is visible on its application tick and gone the next', () => {
+    // Regression guard: an earlier implementation decremented every instance
+    // on the same tick it was inserted, which made durationTicks=1 effects
+    // expire before AttributeAggregationSystem ever observed them.
+    const { world, facade } = createTestWorld({
+      effects: [
+        defineEffect({
+          id: 'Effect.OneTickBuff',
+          type: 'Duration',
+          durationTicks: 1,
+          modifiers: [{ attributeId: 'Armor', op: 'Add', magnitude: FP.FromInt(25) }],
+          tagsGranted: ['State.Buff.OneTick'],
+        }),
+      ],
+    });
+    const entity = addEntity(world);
+    facade.initAttributesForEntity(entity.id);
+    world.processAllTicks(1);
+    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Armor').current)).toBe(50);
+
+    facade.applyEffect(entity.id, 'Effect.OneTickBuff', entity.id);
+
+    // Tick 2 (application tick): aggregation must see the buff exactly once.
+    world.processAllTicks(2);
+    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Armor').current)).toBe(75);
+    expect(facade.hasTag(entity.id, 'State.Buff.OneTick')).toBe(true);
+
+    // Tick 3 (next tick): decrement 1 -> 0, expire, tag revoked, Armor recompute.
+    world.processAllTicks(3);
+    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Armor').current)).toBe(50);
+    expect(facade.hasTag(entity.id, 'State.Buff.OneTick')).toBe(false);
+
+    world.dispose();
+  });
+
+  it('Periodic effects do not bleed into AttributeAggregationSystem in Stage 3', () => {
+    // Periodic effects share the queue path with Duration so they get a
+    // lifecycle and grant tags today, but their modifiers must NOT be applied
+    // continuously by aggregation — Stage 4 will introduce per-period
+    // semantics. The Periodic effect below would otherwise drop Armor by 30.
+    const { world, facade } = createTestWorld({
+      effects: [
+        defineEffect({
+          id: 'Effect.Poison.Periodic',
+          type: 'Periodic',
+          durationTicks: 5,
+          periodTicks: 1,
+          modifiers: [{ attributeId: 'Armor', op: 'Add', magnitude: FP.FromInt(-30) }],
+          tagsGranted: ['State.Debuff.Poisoned'],
+        }),
+      ],
+    });
+    const entity = addEntity(world);
+    facade.initAttributesForEntity(entity.id);
+    world.processAllTicks(1);
+
+    facade.applyEffect(entity.id, 'Effect.Poison.Periodic', entity.id);
+    world.processAllTicks(2);
+
+    // Tag is granted (lifecycle works), but Armor.current is unchanged: the
+    // Periodic modifier is intentionally invisible to aggregation pre-Stage 4.
+    expect(facade.hasTag(entity.id, 'State.Debuff.Poisoned')).toBe(true);
+    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Armor').current)).toBe(50);
+
+    world.processAllTicks(3);
+    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Armor').current)).toBe(50);
+
+    world.dispose();
+  });
+
+  it('applyEffect omits sourceEntityId and records the sentinel NO_SOURCE_ENTITY_ID', () => {
+    const { world, facade } = createTestWorld({
+      effects: [
+        defineEffect({
+          id: 'Effect.Sourceless',
+          type: 'Duration',
+          durationTicks: 10,
+          modifiers: [{ attributeId: 'Armor', op: 'Add', magnitude: FP.FromInt(-5) }],
+          tagsGranted: ['State.Sourceless'],
+        }),
+      ],
+    });
+    const entity = addEntity(world);
+    facade.initAttributesForEntity(entity.id);
+
+    // No source argument — valid call.
+    facade.applyEffect(entity.id, 'Effect.Sourceless');
+    world.processAllTicks(1);
+
+    const activeEffects = world.entityManager
+      .getEntity(entity.id)!
+      .getComponent<import('../src').ActiveEffectsComponent>(
+        AbilitiesComponentType.ActiveEffects
+      )!;
+    expect(activeEffects.queue.length).toBe(1);
+    expect(activeEffects.queue[0].sourceEntityId).toBe(NO_SOURCE_ENTITY_ID);
+    expect(facade.hasTag(entity.id, 'State.Sourceless')).toBe(true);
 
     world.dispose();
   });

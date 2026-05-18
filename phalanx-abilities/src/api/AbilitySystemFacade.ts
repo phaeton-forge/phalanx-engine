@@ -16,6 +16,13 @@ export interface AttributeValue {
 }
 
 /**
+ * Sentinel `sourceEntityId` written by {@link AbilitySystemFacade.applyEffect}
+ * when the caller does not supply a source. Distinct from any real entity id
+ * (entity ids are non-negative) so consumers can branch on it cheaply.
+ */
+export const NO_SOURCE_ENTITY_ID = -1;
+
+/**
  * Single user-facing entry point for the ability system.
  *
  * Determinism note: all mutations enqueue work and are processed by the
@@ -118,12 +125,22 @@ export class AbilitySystemFacade {
    * {@link EffectApplicationSystem} on the next system pass. Throws if
    * the target entity or the effect id are unknown.
    *
+   * `sourceEntityId` is optional: omit it for sourceless applications such
+   * as world hazards, debug helpers, or initial spawn-time buffs. When
+   * omitted, the recorded source is {@link NO_SOURCE_ENTITY_ID} (`-1`).
+   * This is a deterministic default — every peer that omits a source ends
+   * up with the same sentinel — so lockstep reproducibility is preserved.
+   *
    * Returns nothing in Stage 3 — the future `ActiveEffectInstance.instanceId`
    * is allocated during application, not enqueue, so the facade cannot hand
    * it back synchronously. If callers need to track an applied instance,
    * Stage 5 will introduce an `apply` event on `EventBus`.
    */
-  public applyEffect(targetEntityId: number, effectId: string, sourceEntityId: number): void {
+  public applyEffect(
+    targetEntityId: number,
+    effectId: string,
+    sourceEntityId: number = NO_SOURCE_ENTITY_ID
+  ): void {
     const target = this.requireEntity(targetEntityId);
     if (!this.registries.effects.has(effectId)) {
       throw new Error(`EffectRegistry does not contain '${effectId}'`);

@@ -129,6 +129,7 @@ describe('attributes and aggregation', () => {
         remainingTicks: 10,
         nextPeriodTick: 0,
         sourceEntityId: entity.id,
+        enteredOnTick: 0,
       },
       {
         instanceId: 2,
@@ -136,6 +137,7 @@ describe('attributes and aggregation', () => {
         remainingTicks: 10,
         nextPeriodTick: 0,
         sourceEntityId: entity.id,
+        enteredOnTick: 0,
       },
       {
         instanceId: 3,
@@ -143,6 +145,7 @@ describe('attributes and aggregation', () => {
         remainingTicks: 10,
         nextPeriodTick: 0,
         sourceEntityId: entity.id,
+        enteredOnTick: 0,
       }
     );
     attributes.dirty[0] = 1;

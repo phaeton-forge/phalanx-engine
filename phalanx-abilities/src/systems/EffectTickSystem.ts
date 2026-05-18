@@ -38,7 +38,7 @@ export class EffectTickSystem extends GameSystem {
     super();
   }
 
-  public override processTick(_tick: number): void {
+  public override processTick(tick: number): void {
     const entities = this.entityManager.queryEntities(AbilitiesComponentType.ActiveEffects);
 
     for (const entity of entities) {
@@ -49,18 +49,31 @@ export class EffectTickSystem extends GameSystem {
         continue;
       }
 
-      this.tickEntity(entity, activeEffects);
+      this.tickEntity(entity, activeEffects, tick);
     }
   }
 
-  private tickEntity(entity: Entity, activeEffects: ActiveEffectsComponent): void {
+  private tickEntity(
+    entity: Entity,
+    activeEffects: ActiveEffectsComponent,
+    tick: number
+  ): void {
     const queue = activeEffects.queue;
 
     // First pass: countdown.
+    //
+    // Instances inserted by EffectApplicationSystem earlier in *this same*
+    // tick must NOT be decremented yet — otherwise a valid durationTicks=1
+    // effect would reach remainingTicks=0 and be removed before
+    // AttributeAggregationSystem runs, never becoming visible. We identify
+    // such instances by enteredOnTick === current tick. Effects scheduled
+    // for immediate removal (remainingTicks <= 0, set by removeEffectsBy*)
+    // are also left alone here and harvested in the second pass.
     for (let i = 0; i < queue.length; i++) {
       const instance = queue[i];
-      // Effects scheduled for immediate removal carry remainingTicks <= 0
-      // already; do not underflow them further.
+      if (instance.enteredOnTick === tick) {
+        continue;
+      }
       if (instance.remainingTicks > 0) {
         instance.remainingTicks -= 1;
       }

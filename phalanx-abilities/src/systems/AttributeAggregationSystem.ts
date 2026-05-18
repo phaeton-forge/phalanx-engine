@@ -123,11 +123,26 @@ export class AttributeAggregationSystem extends GameSystem {
 
   private readonly resolvedEffectDefsBuffer: EffectDef[] = [];
 
+  /**
+   * Resolve {@link EffectDef}s for the entity's ordered queue.
+   *
+   * `Periodic` effects are deliberately filtered out here: in Stage 3 their
+   * application path enqueues them like `Duration` effects (so their
+   * `tagsGranted` and lifecycle work today), but their modifiers must NOT be
+   * applied continuously to `current` — by definition periodic modifiers are
+   * supposed to fire on a per-period cadence, which Stage 4 will implement.
+   * Until then, treating their modifiers as always-on would be incorrect and
+   * would diverge from the documented Stage 3 contract.
+   */
   private resolveEffectDefs(orderedEffects: readonly ActiveEffectInstance[]): readonly EffectDef[] {
     const buffer = this.resolvedEffectDefsBuffer;
     buffer.length = 0;
     for (let i = 0; i < orderedEffects.length; i++) {
-      buffer.push(this.registries.effects.get(orderedEffects[i].defId));
+      const def = this.registries.effects.get(orderedEffects[i].defId);
+      if (def.type === 'Periodic') {
+        continue;
+      }
+      buffer.push(def);
     }
     return buffer;
   }
