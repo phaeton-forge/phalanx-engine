@@ -514,6 +514,18 @@ export class AbilitySystemFacade {
     ownerEntityId: number;
     lifetimeEffectId?: string;
     lifetimeTag?: string;
+    /**
+     * Stage 7.1. Pass `false` to spawn the aura in a dormant state
+     * (component attached, but no fires until
+     * {@link setAuraActive} flips it back on). Defaults to `true`.
+     */
+    isActive?: boolean;
+    /**
+     * Stage 7.1. If set, the aura fires only while the carrier entity
+     * (the zone) has this gameplay tag. Composes with `isActive` via
+     * AND: both gates must pass for a fire to occur.
+     */
+    requiredTag?: string;
   }): Entity {
     // Validate up front. AuraComponent's constructor enforces shape
     // (periodTicks ≥ 1, non-empty effectIds), but we also want every
@@ -551,7 +563,11 @@ export class AbilitySystemFacade {
       params.periodTicks,
       nextTick,
       params.ownerEntityId,
-      params.lifetimeTag
+      params.lifetimeTag,
+      {
+        isActive: params.isActive,
+        requiredTag: params.requiredTag,
+      }
     );
     zone.addComponent(aura);
     this.entityManager.onComponentAdded(zone, aura.type);
@@ -572,6 +588,62 @@ export class AbilitySystemFacade {
     }
 
     return zone;
+  }
+
+  /**
+   * Toggle the imperative activation flag on an aura carrier (Stage 7.1).
+   *
+   * The carrier entity must already have an {@link AuraComponent}. While
+   * `active` is `false`, {@link AuraTickSystem} skips the period check
+   * for this aura without advancing `nextTick` — so re-activating with
+   * `active = true` resumes the original cadence rather than firing a
+   * burst of catch-up fires for the paused interval.
+   *
+   * Intended use cases:
+   *  - Player toggles a channeled aura on/off with a hotkey.
+   *  - A charge-based system disables the aura when charges hit zero
+   *    and re-enables when they recharge.
+   *  - Test code wants to deterministically pause a specific aura
+   *    without grafting in a `requiredTag` just for that purpose.
+   *
+   * For data-driven suppression (silence, polymorph, anti-magic) prefer
+   * {@link AuraComponent.requiredTag} + the existing tag tooling — it
+   * composes naturally across multiple suppression sources, which a
+   * single boolean cannot.
+   *
+   * @param entityId Carrier entity. Must currently have an AuraComponent;
+   *   throws otherwise so the bug surfaces at the call site rather than
+   *   silently no-op'ing.
+   * @param active Target value for the activation flag.
+   * @param options Optional. Pass `{ resetSchedule: true }` to also set
+   *   `nextTick = currentTick + periodTicks` — useful when you want
+   *   re-activation to feel like a fresh start rather than continuing a
+   *   long-pre-existing schedule (e.g. a player reactivating an aura
+   *   that has been off for 30 seconds should not fire on the next tick
+   *   just because `nextTick` is decades in the past). Defaults to
+   *   `false` (preserve schedule — the documented default behaviour).
+   *   Has no effect when `active === false`.
+   */
+  public setAuraActive(
+    entityId: number,
+    active: boolean,
+    options?: { readonly resetSchedule?: boolean }
+  ): void {
+    const entity = this.requireEntity(entityId);
+    const aura = entity.getComponent<AuraComponent>(AbilitiesComponentType.Aura);
+    if (!aura) {
+      throw new Error(
+        `setAuraActive: entity ${entityId} has no AuraComponent`
+      );
+    }
+    aura.isActive = active;
+    if (active && options?.resetSchedule === true) {
+      // Schedule the next fire one full period out from "now" so the
+      // first post-reactivation fire feels like a fresh start. We do
+      // NOT fire on the next tick, because that would let a player
+      // exploit toggle-off/toggle-on to fire faster than `periodTicks`.
+      aura.nextTick = this.runtime.currentTick + aura.periodTicks;
+    }
   }
 
   // -----------------------------------------------------------------------

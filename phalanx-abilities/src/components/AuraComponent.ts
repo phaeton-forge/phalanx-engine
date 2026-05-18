@@ -62,6 +62,36 @@ export class AuraComponent implements IComponent {
    *   keeps it alive. When the tag is missing at the start of an aura
    *   tick, `AuraTickSystem` despawns the zone. Omit (or pass `undefined`)
    *   to make the aura persist until the entity is removed by user code.
+   *
+   * Activation gates (Stage 7.1):
+   *  - {@link isActive} is an imperative on/off switch. While `false`, the
+   *    aura skips its period check entirely — `nextTick` is NOT advanced,
+   *    so toggling back to `true` resumes the original cadence without
+   *    "catching up" missed fires. Intended for player-controlled toggles
+   *    (channeled auras, click-to-toggle abilities, charge-based systems).
+   *    Use {@link AbilitySystemFacade.setAuraActive} rather than mutating
+   *    this field directly so the optional schedule reset is handled
+   *    consistently.
+   *  - {@link requiredTag} is a declarative gate. If set, the aura fires
+   *    only while the carrier entity has that gameplay tag. Designed for
+   *    data-driven suppression — "silenced" / "polymorphed" / "inside
+   *    anti-magic field" effects can grant a counter-tag, or the aura's
+   *    own activation can be driven by a status effect that grants the
+   *    required tag. Multiple suppression sources naturally compose
+   *    because tags are sets, not booleans, and the engine's existing
+   *    tag tooling (`addTag`, `removeTag`, effect-driven grants) Just
+   *    Works.
+   *
+   * The two gates compose: an aura fires only when **both**
+   * `isActive === true` AND (`requiredTag === undefined` OR the carrier
+   * has the tag). Both gates pause cadence rather than reset it — see
+   * {@link AuraTickSystem} for the exact ordering relative to the
+   * lifecycle check.
+   *
+   * @param options Optional fields. Pass `{ isActive: false }` to spawn
+   *   a dormant aura (it will sit on the entity but not fire until
+   *   `setAuraActive(entityId, true)` is called). Pass `requiredTag` to
+   *   gate fires on a gameplay tag.
    */
   public constructor(
     public readonly abilityId: string,
@@ -70,7 +100,11 @@ export class AuraComponent implements IComponent {
     public readonly periodTicks: number,
     public nextTick: number,
     public readonly ownerEntityId: number,
-    public readonly lifetimeTag?: string
+    public readonly lifetimeTag?: string,
+    options?: {
+      readonly isActive?: boolean;
+      readonly requiredTag?: string;
+    }
   ) {
     if (!Number.isInteger(periodTicks) || periodTicks < 1) {
       throw new Error(
@@ -86,5 +120,31 @@ export class AuraComponent implements IComponent {
       // Reject up front so the bug surfaces at spawn time.
       throw new Error(`AuraComponent.effectIds must be non-empty (abilityId='${abilityId}')`);
     }
+    if (options?.requiredTag !== undefined && options.requiredTag.length === 0) {
+      // An empty string would never match any real gameplay tag, leaving
+      // the aura permanently dormant. Surface the misconfiguration
+      // instead of silently disabling the aura.
+      throw new Error(
+        `AuraComponent.requiredTag must be a non-empty string when provided ` +
+          `(abilityId='${abilityId}')`
+      );
+    }
+    this.isActive = options?.isActive ?? true;
+    this.requiredTag = options?.requiredTag;
   }
+
+  /**
+   * Imperative activation flag. Mutated through
+   * {@link AbilitySystemFacade.setAuraActive}. Defaults to `true`.
+   */
+  public isActive: boolean;
+
+  /**
+   * Optional gameplay tag whose presence on the carrier entity gates
+   * firing. `undefined` means "no tag gate" (the legacy behaviour).
+   * Tag identity is established at construction time and never changes
+   * — use {@link addTag} / {@link removeTag} on the carrier to control
+   * activation, not mutation of this field.
+   */
+  public readonly requiredTag: string | undefined;
 }

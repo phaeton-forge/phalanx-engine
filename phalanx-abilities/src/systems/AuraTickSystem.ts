@@ -27,7 +27,14 @@ import { TargetResolver } from '../targeting';
  *     `nextTick` happens to coincide with its lifetime expiry tick fires
  *     zero (not one) extra time at the boundary.
  *
- *  2. **Period check.** If `currentTick >= nextTick`, the aura fires.
+ *  2. **Activation gates** (Stage 7.1). If {@link AuraComponent.isActive}
+ *     is `false`, or {@link AuraComponent.requiredTag} is configured and
+ *     the carrier entity does not currently have that tag, the period
+ *     check is skipped WITHOUT advancing `nextTick`. Toggling activation
+ *     back on resumes the original cadence rather than producing a burst
+ *     of catch-up fires. Both gates are independent and compose with AND.
+ *
+ *  3. **Period check.** If `currentTick >= nextTick`, the aura fires.
  *     Targets are re-resolved fresh every period via {@link TargetResolver}
  *     — auras intentionally do NOT cache target lists, so entities that
  *     walk in or out of the radius between periods are picked up/dropped
@@ -102,8 +109,46 @@ export class AuraTickSystem extends GameSystem {
         continue;
       }
 
+      if (!this.isActivationGateOpen(entity, aura)) {
+        // Activation gates pause the aura WITHOUT advancing nextTick, so
+        // toggling activation back on resumes the original cadence rather
+        // than catching up missed fires. Skip the period check entirely.
+        continue;
+      }
+
       this.fireIfDue(entity, aura, tick);
     }
+  }
+
+  /**
+   * Check the activation gates introduced in Stage 7.1. Returns `true`
+   * when the aura is allowed to fire this tick.
+   *
+   * Two gates, both must pass:
+   *  - {@link AuraComponent.isActive} — imperative on/off, mutated via
+   *    {@link AbilitySystemFacade.setAuraActive}.
+   *  - {@link AuraComponent.requiredTag} — if set, the carrier entity
+   *    must currently have that gameplay tag. A missing tags component
+   *    counts as "tag absent".
+   *
+   * Both gates short-circuit the period check rather than advancing
+   * `nextTick`, so a long pause does not produce a burst of catch-up
+   * fires when activation resumes. Hook authors who want catch-up
+   * semantics can manually reset `nextTick` before re-activating.
+   */
+  private isActivationGateOpen(entity: Entity, aura: AuraComponent): boolean {
+    if (!aura.isActive) {
+      return false;
+    }
+    const requiredTag = aura.requiredTag;
+    if (requiredTag === undefined) {
+      return true;
+    }
+    const tags = entity.getComponent<GameplayTagsComponent>(AbilitiesComponentType.GameplayTags);
+    if (!tags) {
+      return false;
+    }
+    return tags.tags.has(requiredTag);
   }
 
   /**
