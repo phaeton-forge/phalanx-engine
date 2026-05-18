@@ -9,7 +9,14 @@ import {
   GameplayTagsComponent,
 } from '../components';
 import type { AbilitySystemRegistries } from '../registry';
-import type { ActiveEffectInstance, EffectDef, ModifierOp } from '../types';
+import type { AbilitySystemRuntime } from '../runtime';
+import { getCueIdsForPhase } from '../types';
+import type {
+  ActiveEffectInstance,
+  CuePhase,
+  EffectDef,
+  ModifierOp,
+} from '../types';
 
 /**
  * Per-tick lifecycle for `Duration` and `Periodic` effects.
@@ -44,7 +51,10 @@ import type { ActiveEffectInstance, EffectDef, ModifierOp } from '../types';
  * — that `queue` is sorted by `instanceId` ASC. It does not re-sort.
  */
 export class EffectTickSystem extends GameSystem {
-  public constructor(private readonly registries: AbilitySystemRegistries) {
+  public constructor(
+    private readonly registries: AbilitySystemRegistries,
+    private readonly runtime: AbilitySystemRuntime
+  ) {
     super();
   }
 
@@ -120,13 +130,14 @@ export class EffectTickSystem extends GameSystem {
       return;
     }
 
-    this.processExpirations(entity, activeEffects, expired);
+    this.processExpirations(entity, activeEffects, expired, tick);
   }
 
   private processExpirations(
     entity: Entity,
     activeEffects: ActiveEffectsComponent,
-    expired: readonly ActiveEffectInstance[]
+    expired: readonly ActiveEffectInstance[],
+    tick: number
   ): void {
     const tags = entity.getComponent<GameplayTagsComponent>(AbilitiesComponentType.GameplayTags);
     const attributes = entity.getComponent<AttributesComponent>(
@@ -143,6 +154,7 @@ export class EffectTickSystem extends GameSystem {
 
       this.revokeTags(effectDef, tags, activeEffects.queue);
       this.markModifiersDirty(effectDef, attributes);
+      this.pushCueEvents(effectDef, 'OnExpired', instance, entity.id, tick);
     }
   }
 
@@ -204,8 +216,28 @@ export class EffectTickSystem extends GameSystem {
 
       while (tick >= instance.nextPeriodTick) {
         this.applyPeriodicPayload(effectDef, attributes);
+        this.pushCueEvents(effectDef, 'OnPeriodic', instance, entity.id, tick);
         instance.nextPeriodTick += periodTicks;
       }
+    }
+  }
+
+  private pushCueEvents(
+    effectDef: EffectDef,
+    phase: CuePhase,
+    instance: ActiveEffectInstance,
+    targetEntityId: number,
+    tick: number
+  ): void {
+    const cueIds = getCueIdsForPhase(effectDef.cues, phase);
+    for (const cueId of cueIds) {
+      this.runtime.gameplayCueBuffer.events.push({
+        tick,
+        cueId,
+        sourceEntityId: instance.sourceEntityId,
+        targetEntityId,
+        phase,
+      });
     }
   }
 

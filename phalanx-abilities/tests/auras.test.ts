@@ -810,7 +810,7 @@ function createTestWorld(): TestWorld {
   world.registerSystems(
     [
       new EffectApplicationSystem(registries, runtime),
-      new EffectTickSystem(registries),
+      new EffectTickSystem(registries, runtime),
       new AuraTickSystem(registries, runtime),
       new AttributeAggregationSystem(registries),
     ],

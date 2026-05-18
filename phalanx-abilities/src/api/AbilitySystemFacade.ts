@@ -9,7 +9,8 @@ import {
   GameplayTagsComponent,
 } from '../components';
 import type { AbilitySystemRegistries } from '../registry';
-import type { AbilitySystemRuntime } from '../runtime';
+import type { AbilitySystemRuntime } from '../runtime/AbilitySystemRuntime';
+import type { GameplayCueBuffer } from '../runtime/GameplayCueBuffer';
 import type { ISpatialQuery } from '../spatial';
 import { TargetResolver } from '../targeting';
 import type { AbilityHook, ProvidedTarget, TargetSpec, TargetFilter } from '../types';
@@ -755,6 +756,10 @@ export class AbilitySystemFacade {
       this.targetResolver = new TargetResolver(this.entityManager, this.registries);
     }
     return this.targetResolver;
+  }
+
+  public get gameplayCueBufferInternal(): GameplayCueBuffer {
+    return this.runtime.gameplayCueBuffer;
   }
 
   private requireEntity(entityId: number): Entity {

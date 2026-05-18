@@ -1,4 +1,6 @@
 import type { ProvidedTarget } from '../types';
+import { createGameplayCueBuffer } from './GameplayCueBuffer';
+import type { GameplayCueBuffer } from './GameplayCueBuffer';
 import { InstanceIdCounter } from './InstanceIdCounter';
 
 /**
@@ -85,6 +87,12 @@ export interface AbilitySystemRuntime {
    * activation system asserts this invariant.
    */
   resolvedActivationsThisTick: ResolvedAbilityActivationRecord[];
+  /**
+   * Per-world deterministic gameplay cue event buffer. Simulation systems push
+   * into it during a tick; client-only dispatch systems may mirror it to the
+   * local EventBus; cleanup clears it at the end of the abilities pipeline.
+   */
+  gameplayCueBuffer: GameplayCueBuffer;
 }
 
 export function createAbilitySystemRuntime(): AbilitySystemRuntime {
@@ -93,5 +101,6 @@ export function createAbilitySystemRuntime(): AbilitySystemRuntime {
     activationRequests: [],
     currentTick: -1,
     resolvedActivationsThisTick: [],
+    gameplayCueBuffer: createGameplayCueBuffer(),
   };
 }

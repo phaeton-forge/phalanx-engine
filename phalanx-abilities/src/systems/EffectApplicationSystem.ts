@@ -11,7 +11,14 @@ import {
 import type { PendingEffectAdd } from '../components';
 import type { AbilitySystemRegistries } from '../registry';
 import type { AbilitySystemRuntime } from '../runtime';
-import type { ActiveEffectInstance, EffectDef, Modifier, ModifierOp } from '../types';
+import { getCueIdsForPhase } from '../types';
+import type {
+  ActiveEffectInstance,
+  CuePhase,
+  EffectDef,
+  Modifier,
+  ModifierOp,
+} from '../types';
 
 /**
  * Drains `ActiveEffectsComponent.pendingAdd` per entity and applies each
@@ -121,20 +128,63 @@ export class EffectApplicationSystem extends GameSystem {
     switch (effectDef.type) {
       case 'Instant':
         this.applyInstant(entity, effectDef, attributeIndexCache);
+        this.pushCueEvents(
+          effectDef,
+          'OnApplied',
+          tick,
+          pending.sourceEntityId,
+          entity.id
+        );
         return;
       case 'Duration':
       case 'Periodic':
         this.queueDurational(entity, effectDef, pending, attributeIndexCache, tick);
+        this.pushCueEvents(
+          effectDef,
+          'OnApplied',
+          tick,
+          pending.sourceEntityId,
+          entity.id
+        );
         // Periodic with executePeriodicOnApplication: fire the payload once
         // at apply time. Instance was queued above so the lifetime countdown
         // and subsequent periodic firings keep working. Determinism is
         // preserved because the queueing path allocated the FIFO instanceId
         // before we mutate base, so aggregation on the same tick observes
         // ordering identical to a freshly-applied Instant.
-        if (effectDef.type === 'Periodic' && effectDef.executePeriodicOnApplication === true) {
+        if (
+          effectDef.type === 'Periodic' &&
+          effectDef.executePeriodicOnApplication === true
+        ) {
           this.applyInstant(entity, effectDef, attributeIndexCache);
+          this.pushCueEvents(
+            effectDef,
+            'OnPeriodic',
+            tick,
+            pending.sourceEntityId,
+            entity.id
+          );
         }
         return;
+    }
+  }
+
+  private pushCueEvents(
+    effectDef: EffectDef,
+    phase: CuePhase,
+    tick: number,
+    sourceEntityId: number,
+    targetEntityId: number
+  ): void {
+    const cueIds = getCueIdsForPhase(effectDef.cues, phase);
+    for (const cueId of cueIds) {
+      this.runtime.gameplayCueBuffer.events.push({
+        tick,
+        cueId,
+        sourceEntityId,
+        targetEntityId,
+        phase,
+      });
     }
   }
 
