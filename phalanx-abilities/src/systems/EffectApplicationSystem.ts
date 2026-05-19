@@ -10,8 +10,14 @@ import {
 } from '../components';
 import type { PendingEffectAdd } from '../components';
 import type { AbilitySystemRegistries } from '../registry';
+import { appendGameplayCueEvents } from '../runtime';
 import type { AbilitySystemRuntime } from '../runtime';
-import type { ActiveEffectInstance, EffectDef, Modifier, ModifierOp } from '../types';
+import type {
+  ActiveEffectInstance,
+  EffectDef,
+  Modifier,
+  ModifierOp,
+} from '../types';
 
 /**
  * Drains `ActiveEffectsComponent.pendingAdd` per entity and applies each
@@ -121,18 +127,45 @@ export class EffectApplicationSystem extends GameSystem {
     switch (effectDef.type) {
       case 'Instant':
         this.applyInstant(entity, effectDef, attributeIndexCache);
+        appendGameplayCueEvents(
+          this.runtime.gameplayCueBuffer,
+          effectDef.cues,
+          'OnApplied',
+          tick,
+          pending.sourceEntityId,
+          entity.id
+        );
         return;
       case 'Duration':
       case 'Periodic':
         this.queueDurational(entity, effectDef, pending, attributeIndexCache, tick);
+        appendGameplayCueEvents(
+          this.runtime.gameplayCueBuffer,
+          effectDef.cues,
+          'OnApplied',
+          tick,
+          pending.sourceEntityId,
+          entity.id
+        );
         // Periodic with executePeriodicOnApplication: fire the payload once
         // at apply time. Instance was queued above so the lifetime countdown
         // and subsequent periodic firings keep working. Determinism is
         // preserved because the queueing path allocated the FIFO instanceId
         // before we mutate base, so aggregation on the same tick observes
         // ordering identical to a freshly-applied Instant.
-        if (effectDef.type === 'Periodic' && effectDef.executePeriodicOnApplication === true) {
+        if (
+          effectDef.type === 'Periodic' &&
+          effectDef.executePeriodicOnApplication === true
+        ) {
           this.applyInstant(entity, effectDef, attributeIndexCache);
+          appendGameplayCueEvents(
+            this.runtime.gameplayCueBuffer,
+            effectDef.cues,
+            'OnPeriodic',
+            tick,
+            pending.sourceEntityId,
+            entity.id
+          );
         }
         return;
     }

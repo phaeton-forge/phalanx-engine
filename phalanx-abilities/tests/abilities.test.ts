@@ -853,7 +853,7 @@ function createTestWorld(opts: TestWorldOpts): TestWorld {
       new AbilityActivationSystem(registries, runtime),
       new EffectApplicationSystem(registries, runtime),
       new AbilityHookExecutorSystem(registries, runtime),
-      new EffectTickSystem(registries),
+      new EffectTickSystem(registries, runtime),
       new AttributeAggregationSystem(registries),
     ],
     []

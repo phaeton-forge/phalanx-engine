@@ -608,7 +608,7 @@ function createTestWorld(opts: TestWorldOpts): TestWorld {
   world.registerSystems(
     [
       new EffectApplicationSystem(registries, runtime),
-      new EffectTickSystem(registries),
+      new EffectTickSystem(registries, runtime),
       new AttributeAggregationSystem(registries),
     ],
     []

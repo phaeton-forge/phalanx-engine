@@ -9,7 +9,7 @@ import {
   GameplayTagsComponent,
 } from '../components';
 import type { AbilitySystemRegistries } from '../registry';
-import type { AbilitySystemRuntime } from '../runtime';
+import type { AbilitySystemRuntime, GameplayCueBufferView } from '../runtime';
 import type { ISpatialQuery } from '../spatial';
 import { TargetResolver } from '../targeting';
 import type { AbilityHook, ProvidedTarget, TargetSpec, TargetFilter } from '../types';
@@ -755,6 +755,17 @@ export class AbilitySystemFacade {
       this.targetResolver = new TargetResolver(this.entityManager, this.registries);
     }
     return this.targetResolver;
+  }
+
+  /**
+   * Read-only view of this world's gameplay cue buffer for tests and debug
+   * tooling that need to inspect cues before {@link CueBufferCleanupSystem}
+   * clears them. Not for general gameplay code; cue listeners should subscribe
+   * through {@link CueDispatchSystem} instead of mutating this deterministic
+   * runtime buffer directly.
+   */
+  public get gameplayCueBufferInternal(): GameplayCueBufferView {
+    return this.runtime.gameplayCueBuffer;
   }
 
   private requireEntity(entityId: number): Entity {
