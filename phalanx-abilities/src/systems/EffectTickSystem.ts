@@ -9,14 +9,9 @@ import {
   GameplayTagsComponent,
 } from '../components';
 import type { AbilitySystemRegistries } from '../registry';
+import { appendGameplayCueEvents } from '../runtime';
 import type { AbilitySystemRuntime } from '../runtime';
-import { getCueIdsForPhase } from '../types';
-import type {
-  ActiveEffectInstance,
-  CuePhase,
-  EffectDef,
-  ModifierOp,
-} from '../types';
+import type { ActiveEffectInstance, EffectDef, ModifierOp } from '../types';
 
 /**
  * Per-tick lifecycle for `Duration` and `Periodic` effects.
@@ -154,7 +149,14 @@ export class EffectTickSystem extends GameSystem {
 
       this.revokeTags(effectDef, tags, activeEffects.queue);
       this.markModifiersDirty(effectDef, attributes);
-      this.pushCueEvents(effectDef, 'OnExpired', instance, entity.id, tick);
+      appendGameplayCueEvents(
+        this.runtime.gameplayCueBuffer,
+        effectDef.cues,
+        'OnExpired',
+        tick,
+        instance.sourceEntityId,
+        entity.id
+      );
     }
   }
 
@@ -216,28 +218,16 @@ export class EffectTickSystem extends GameSystem {
 
       while (tick >= instance.nextPeriodTick) {
         this.applyPeriodicPayload(effectDef, attributes);
-        this.pushCueEvents(effectDef, 'OnPeriodic', instance, entity.id, tick);
+        appendGameplayCueEvents(
+          this.runtime.gameplayCueBuffer,
+          effectDef.cues,
+          'OnPeriodic',
+          tick,
+          instance.sourceEntityId,
+          entity.id
+        );
         instance.nextPeriodTick += periodTicks;
       }
-    }
-  }
-
-  private pushCueEvents(
-    effectDef: EffectDef,
-    phase: CuePhase,
-    instance: ActiveEffectInstance,
-    targetEntityId: number,
-    tick: number
-  ): void {
-    const cueIds = getCueIdsForPhase(effectDef.cues, phase);
-    for (const cueId of cueIds) {
-      this.runtime.gameplayCueBuffer.events.push({
-        tick,
-        cueId,
-        sourceEntityId: instance.sourceEntityId,
-        targetEntityId,
-        phase,
-      });
     }
   }
 

@@ -10,11 +10,10 @@ import {
 } from '../components';
 import type { PendingEffectAdd } from '../components';
 import type { AbilitySystemRegistries } from '../registry';
+import { appendGameplayCueEvents } from '../runtime';
 import type { AbilitySystemRuntime } from '../runtime';
-import { getCueIdsForPhase } from '../types';
 import type {
   ActiveEffectInstance,
-  CuePhase,
   EffectDef,
   Modifier,
   ModifierOp,
@@ -128,8 +127,9 @@ export class EffectApplicationSystem extends GameSystem {
     switch (effectDef.type) {
       case 'Instant':
         this.applyInstant(entity, effectDef, attributeIndexCache);
-        this.pushCueEvents(
-          effectDef,
+        appendGameplayCueEvents(
+          this.runtime.gameplayCueBuffer,
+          effectDef.cues,
           'OnApplied',
           tick,
           pending.sourceEntityId,
@@ -139,8 +139,9 @@ export class EffectApplicationSystem extends GameSystem {
       case 'Duration':
       case 'Periodic':
         this.queueDurational(entity, effectDef, pending, attributeIndexCache, tick);
-        this.pushCueEvents(
-          effectDef,
+        appendGameplayCueEvents(
+          this.runtime.gameplayCueBuffer,
+          effectDef.cues,
           'OnApplied',
           tick,
           pending.sourceEntityId,
@@ -157,8 +158,9 @@ export class EffectApplicationSystem extends GameSystem {
           effectDef.executePeriodicOnApplication === true
         ) {
           this.applyInstant(entity, effectDef, attributeIndexCache);
-          this.pushCueEvents(
-            effectDef,
+          appendGameplayCueEvents(
+            this.runtime.gameplayCueBuffer,
+            effectDef.cues,
             'OnPeriodic',
             tick,
             pending.sourceEntityId,
@@ -166,25 +168,6 @@ export class EffectApplicationSystem extends GameSystem {
           );
         }
         return;
-    }
-  }
-
-  private pushCueEvents(
-    effectDef: EffectDef,
-    phase: CuePhase,
-    tick: number,
-    sourceEntityId: number,
-    targetEntityId: number
-  ): void {
-    const cueIds = getCueIdsForPhase(effectDef.cues, phase);
-    for (const cueId of cueIds) {
-      this.runtime.gameplayCueBuffer.events.push({
-        tick,
-        cueId,
-        sourceEntityId,
-        targetEntityId,
-        phase,
-      });
     }
   }
 
