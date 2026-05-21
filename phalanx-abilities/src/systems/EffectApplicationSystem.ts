@@ -7,6 +7,9 @@ import {
   ActiveEffectsComponent,
   AttributesComponent,
   GameplayTagsComponent,
+  getActiveEffectsComponent,
+  getAttributesComponent,
+  getGameplayTagsComponent,
 } from '../components';
 import type { PendingEffectAdd } from '../components';
 import type { AbilitySystemRegistries } from '../registry';
@@ -69,14 +72,15 @@ export class EffectApplicationSystem extends GameSystem {
   }
 
   public override processTick(tick: number): void {
-    const entities = this.entityManager.queryEntities(AbilitiesComponentType.ActiveEffects);
+    const entities = this.entityManager.queryEntitiesAny(
+      AbilitiesComponentType.AbilitySystem,
+      AbilitiesComponentType.ActiveEffects
+    );
     const attributeIndexCache = this.attributeIndexCache;
     attributeIndexCache.clear();
 
     for (const entity of entities) {
-      const activeEffects = entity.getComponent<ActiveEffectsComponent>(
-        AbilitiesComponentType.ActiveEffects
-      );
+      const activeEffects = getActiveEffectsComponent(entity);
       if (!activeEffects || activeEffects.pendingAdd.length === 0) {
         continue;
       }
@@ -246,7 +250,7 @@ export class EffectApplicationSystem extends GameSystem {
     effectDef: EffectDef,
     attributeIndexCache: Map<string, number>
   ): void {
-    const attributes = entity.getComponent<AttributesComponent>(AbilitiesComponentType.Attributes);
+    const attributes = getAttributesComponent(entity);
     if (!attributes) {
       // Instant effects with attribute modifiers need an AttributesComponent.
       // If the target has none, we silently no-op the modifier application —
@@ -271,9 +275,7 @@ export class EffectApplicationSystem extends GameSystem {
     attributeIndexCache: Map<string, number>,
     tick: number
   ): void {
-    const activeEffects = entity.getComponent<ActiveEffectsComponent>(
-      AbilitiesComponentType.ActiveEffects
-    );
+    const activeEffects = getActiveEffectsComponent(entity);
     // pendingAdd lives on ActiveEffectsComponent, so it must exist here.
     if (!activeEffects) {
       throw new Error('ActiveEffectsComponent missing while draining pendingAdd');
@@ -314,7 +316,7 @@ export class EffectApplicationSystem extends GameSystem {
     if (modifiers.length === 0) {
       return;
     }
-    const attributes = entity.getComponent<AttributesComponent>(AbilitiesComponentType.Attributes);
+    const attributes = getAttributesComponent(entity);
     if (!attributes) {
       return;
     }
@@ -338,9 +340,7 @@ export class EffectApplicationSystem extends GameSystem {
   }
 
   private getOrCreateTags(entity: Entity): GameplayTagsComponent {
-    const existing = entity.getComponent<GameplayTagsComponent>(
-      AbilitiesComponentType.GameplayTags
-    );
+    const existing = getGameplayTagsComponent(entity);
     if (existing) {
       return existing;
     }

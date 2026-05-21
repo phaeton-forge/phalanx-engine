@@ -1,25 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { Entity, GameWorld } from 'phalanx-ecs';
+import { Entity } from 'phalanx-ecs';
 import { FP } from 'phalanx-math';
-import type { FixedPoint } from 'phalanx-math';
-import {
-  AbilitiesComponentType,
-  AbilitySystemFacade,
-  AttributeAggregationSystem,
-  AuraTickSystem,
-  EffectApplicationSystem,
-  EffectTickSystem,
-  createAbilitySystemRegistries,
-  createAbilitySystemRuntime,
-  defineAttribute,
-  defineEffect,
-} from '../src';
-import type {
-  AbilitySystemRegistries,
-  AbilitySystemRuntime,
-  AuraComponent,
-  ISpatialQuery,
-} from '../src';
+import { AbilitiesComponentType, AuraComponent, defineEffect } from '../src';
+import { createTestWorld, equipEntity, HealthAttribute, spawnEntity } from './helpers';
 
 // ---------------------------------------------------------------------------
 // Stage 7 — Auras (persistent AoE zones)
@@ -46,29 +29,25 @@ describe('AuraComponent + AuraTickSystem — healing aura', () => {
     // targets allies in a 10-unit radius, period 3 ticks, healing +5.
     // We damage the allies first so the heal is observable (Health is
     // clamped at the 100 max).
-    const { world, facade, spatial } = createTestWorld();
-    const caster = addEntity(world);
-    const ally1 = addEntity(world);
-    const ally2 = addEntity(world);
-    const enemy = addEntity(world);
-    facade.initAttributesForEntity(caster.id);
-    facade.initAttributesForEntity(ally1.id);
-    facade.initAttributesForEntity(ally2.id);
-    facade.initAttributesForEntity(enemy.id);
-    facade.addTag(caster.id, 'Team.Ally');
-    facade.addTag(ally1.id, 'Team.Ally');
-    facade.addTag(ally2.id, 'Team.Ally');
-    facade.addTag(enemy.id, 'Team.Enemy');
+    const { world, abilities, spatial } = createAuraWorld();
+    const caster = spawnEntity(world, abilities);
+    const ally1 = spawnEntity(world, abilities);
+    const ally2 = spawnEntity(world, abilities);
+    const enemy = spawnEntity(world, abilities);
+    abilities.addTag(caster.id, 'Team.Ally');
+    abilities.addTag(ally1.id, 'Team.Ally');
+    abilities.addTag(ally2.id, 'Team.Ally');
+    abilities.addTag(enemy.id, 'Team.Enemy');
     world.processAllTicks(1);
 
     // Drop allies to 50 HP so a +5 heal is visible (otherwise the 100
     // clamp would mask it).
-    facade.applyEffect(ally1.id, 'Effect.Damage50');
-    facade.applyEffect(ally2.id, 'Effect.Damage50');
-    facade.applyEffect(caster.id, 'Effect.Damage50');
+    abilities.applyEffect(ally1.id, 'Effect.Damage50');
+    abilities.applyEffect(ally2.id, 'Effect.Damage50');
+    abilities.applyEffect(caster.id, 'Effect.Damage50');
     world.processAllTicks(2);
-    expect(FP.ToFloat(facade.getAttribute(ally1.id, 'Health').current)).toBe(50);
-    expect(FP.ToFloat(facade.getAttribute(ally2.id, 'Health').current)).toBe(50);
+    expect(FP.ToFloat(abilities.getAttribute(ally1.id, 'Health').current)).toBe(50);
+    expect(FP.ToFloat(abilities.getAttribute(ally2.id, 'Health').current)).toBe(50);
 
     // Spatial query returns all four entities — the aura's filter is
     // what excludes the enemy.
@@ -77,7 +56,7 @@ describe('AuraComponent + AuraTickSystem — healing aura', () => {
     // Spawn the aura as the caster would inside a hook. The zone entity
     // itself is what the spatial query centres on, so we register the
     // zone's position with the fake adapter.
-    const zone = facade.spawnAura({
+    const zone = abilities.spawnAura({
       abilityId: 'Ability.HealingAura',
       target: {
         kind: 'Radius',
@@ -111,30 +90,30 @@ describe('AuraComponent + AuraTickSystem — healing aura', () => {
     // grants the lifetime tag and AuraTickSystem fires for the first
     // time, enqueuing the heal onto each ally + caster as pendingAdd.
     world.processAllTicks(3);
-    expect(facade.hasTag(zone.id, 'Aura.HealingAura.Active')).toBe(true);
+    expect(abilities.hasTag(zone.id, 'Aura.HealingAura.Active')).toBe(true);
     // Targets still at 50 — the heal pendingAdd will be processed on
     // the NEXT tick (matching the standard pendingAdd cadence).
-    expect(FP.ToFloat(facade.getAttribute(ally1.id, 'Health').current)).toBe(50);
+    expect(FP.ToFloat(abilities.getAttribute(ally1.id, 'Health').current)).toBe(50);
 
     // Tick 4: EffectApplicationSystem applies the heal; allies and
     // caster climb to 55. Enemy is untouched.
     world.processAllTicks(4);
-    expect(FP.ToFloat(facade.getAttribute(ally1.id, 'Health').current)).toBe(55);
-    expect(FP.ToFloat(facade.getAttribute(ally2.id, 'Health').current)).toBe(55);
-    expect(FP.ToFloat(facade.getAttribute(caster.id, 'Health').current)).toBe(55);
-    expect(FP.ToFloat(facade.getAttribute(enemy.id, 'Health').current)).toBe(100);
+    expect(FP.ToFloat(abilities.getAttribute(ally1.id, 'Health').current)).toBe(55);
+    expect(FP.ToFloat(abilities.getAttribute(ally2.id, 'Health').current)).toBe(55);
+    expect(FP.ToFloat(abilities.getAttribute(caster.id, 'Health').current)).toBe(55);
+    expect(FP.ToFloat(abilities.getAttribute(enemy.id, 'Health').current)).toBe(100);
 
     // Tick 5 / 6: no fire (period is 3, next fire at tick 6).
     world.processAllTicks(5);
-    expect(FP.ToFloat(facade.getAttribute(ally1.id, 'Health').current)).toBe(55);
+    expect(FP.ToFloat(abilities.getAttribute(ally1.id, 'Health').current)).toBe(55);
     world.processAllTicks(6);
     // Tick 6 is the second fire; targets still at 55 until tick 7
     // applies the pendingAdd.
-    expect(FP.ToFloat(facade.getAttribute(ally1.id, 'Health').current)).toBe(55);
+    expect(FP.ToFloat(abilities.getAttribute(ally1.id, 'Health').current)).toBe(55);
     world.processAllTicks(7);
-    expect(FP.ToFloat(facade.getAttribute(ally1.id, 'Health').current)).toBe(60);
-    expect(FP.ToFloat(facade.getAttribute(ally2.id, 'Health').current)).toBe(60);
-    expect(FP.ToFloat(facade.getAttribute(enemy.id, 'Health').current)).toBe(100);
+    expect(FP.ToFloat(abilities.getAttribute(ally1.id, 'Health').current)).toBe(60);
+    expect(FP.ToFloat(abilities.getAttribute(ally2.id, 'Health').current)).toBe(60);
+    expect(FP.ToFloat(abilities.getAttribute(enemy.id, 'Health').current)).toBe(100);
 
     world.dispose();
   });
@@ -143,29 +122,25 @@ describe('AuraComponent + AuraTickSystem — healing aura', () => {
     // Same shape as the previous test but uses two allies and two
     // enemies — purely to assert the filter contract under a tighter
     // setup. The previous test focuses on cadence; this one on filter.
-    const { world, facade, spatial } = createTestWorld();
-    const caster = addEntity(world);
-    const ally = addEntity(world);
-    const enemyA = addEntity(world);
-    const enemyB = addEntity(world);
-    facade.initAttributesForEntity(caster.id);
-    facade.initAttributesForEntity(ally.id);
-    facade.initAttributesForEntity(enemyA.id);
-    facade.initAttributesForEntity(enemyB.id);
-    facade.addTag(ally.id, 'Team.Ally');
-    facade.addTag(enemyA.id, 'Team.Enemy');
-    facade.addTag(enemyB.id, 'Team.Enemy');
+    const { world, abilities, spatial } = createAuraWorld();
+    const caster = spawnEntity(world, abilities);
+    const ally = spawnEntity(world, abilities);
+    const enemyA = spawnEntity(world, abilities);
+    const enemyB = spawnEntity(world, abilities);
+    abilities.addTag(ally.id, 'Team.Ally');
+    abilities.addTag(enemyA.id, 'Team.Enemy');
+    abilities.addTag(enemyB.id, 'Team.Enemy');
     world.processAllTicks(1);
 
-    facade.applyEffect(ally.id, 'Effect.Damage50');
-    facade.applyEffect(enemyA.id, 'Effect.Damage50');
-    facade.applyEffect(enemyB.id, 'Effect.Damage50');
+    abilities.applyEffect(ally.id, 'Effect.Damage50');
+    abilities.applyEffect(enemyA.id, 'Effect.Damage50');
+    abilities.applyEffect(enemyB.id, 'Effect.Damage50');
     world.processAllTicks(2);
-    expect(FP.ToFloat(facade.getAttribute(ally.id, 'Health').current)).toBe(50);
+    expect(FP.ToFloat(abilities.getAttribute(ally.id, 'Health').current)).toBe(50);
 
     spatial.setQuery(() => [ally.id, enemyA.id, enemyB.id]);
 
-    const zone = facade.spawnAura({
+    const zone = abilities.spawnAura({
       abilityId: 'Ability.HealingAura',
       target: {
         kind: 'Radius',
@@ -191,9 +166,9 @@ describe('AuraComponent + AuraTickSystem — healing aura', () => {
     world.processAllTicks(3);
     // Tick 4: heal applied to ally only.
     world.processAllTicks(4);
-    expect(FP.ToFloat(facade.getAttribute(ally.id, 'Health').current)).toBe(55);
-    expect(FP.ToFloat(facade.getAttribute(enemyA.id, 'Health').current)).toBe(50);
-    expect(FP.ToFloat(facade.getAttribute(enemyB.id, 'Health').current)).toBe(50);
+    expect(FP.ToFloat(abilities.getAttribute(ally.id, 'Health').current)).toBe(55);
+    expect(FP.ToFloat(abilities.getAttribute(enemyA.id, 'Health').current)).toBe(50);
+    expect(FP.ToFloat(abilities.getAttribute(enemyB.id, 'Health').current)).toBe(50);
 
     world.dispose();
   });
@@ -204,29 +179,28 @@ describe('AuraComponent + AuraTickSystem — lifetime management', () => {
     // Lifetime effect duration is 4 ticks; the aura fires every 2.
     // After the Duration expires, the next AuraTickSystem pass must
     // remove the zone entity.
-    const { world, facade, spatial, registries } = createTestWorld();
-    registries.effects.register(
-      defineEffect({
-        id: 'Effect.ShortAura.Lifetime',
-        type: 'Duration',
-        durationTicks: 4,
-        tagsGranted: ['Aura.Short.Active'],
-      })
-    );
+    const { world, abilities, spatial } = createAuraWorld({
+      effects: [
+        defineEffect({
+          id: 'Effect.ShortAura.Lifetime',
+          type: 'Duration',
+          durationTicks: 4,
+          tagsGranted: ['Aura.Short.Active'],
+        }),
+      ],
+    });
 
-    const caster = addEntity(world);
-    const ally = addEntity(world);
-    facade.initAttributesForEntity(caster.id);
-    facade.initAttributesForEntity(ally.id);
-    facade.addTag(ally.id, 'Team.Ally');
-    facade.applyEffect(ally.id, 'Effect.Damage50');
+    const caster = spawnEntity(world, abilities);
+    const ally = spawnEntity(world, abilities);
+    abilities.addTag(ally.id, 'Team.Ally');
+    abilities.applyEffect(ally.id, 'Effect.Damage50');
     world.processAllTicks(1);
     world.processAllTicks(2);
-    expect(FP.ToFloat(facade.getAttribute(ally.id, 'Health').current)).toBe(50);
+    expect(FP.ToFloat(abilities.getAttribute(ally.id, 'Health').current)).toBe(50);
 
     spatial.setQuery(() => [ally.id]);
 
-    const zone = facade.spawnAura({
+    const zone = abilities.spawnAura({
       abilityId: 'Ability.ShortAura',
       target: {
         kind: 'Radius',
@@ -254,17 +228,17 @@ describe('AuraComponent + AuraTickSystem — lifetime management', () => {
 
     // Tick 3: lifetime tag granted, aura fires (period 2, nextTick=3).
     world.processAllTicks(3);
-    expect(facade.hasTag(zoneId, 'Aura.Short.Active')).toBe(true);
+    expect(abilities.hasTag(zoneId, 'Aura.Short.Active')).toBe(true);
     // Tick 4: heal lands → ally 55.
     world.processAllTicks(4);
-    expect(FP.ToFloat(facade.getAttribute(ally.id, 'Health').current)).toBe(55);
+    expect(FP.ToFloat(abilities.getAttribute(ally.id, 'Health').current)).toBe(55);
     // Tick 5: aura fires again (period 2, nextTick advanced from 3 → 5).
     world.processAllTicks(5);
     // Tick 6: heal lands → ally 60. Lifetime effect was applied on tick
     // 3 with remainingTicks=4, so it expires on tick 7
     // (3 → +4 = expire at 7).
     world.processAllTicks(6);
-    expect(FP.ToFloat(facade.getAttribute(ally.id, 'Health').current)).toBe(60);
+    expect(FP.ToFloat(abilities.getAttribute(ally.id, 'Health').current)).toBe(60);
     // Tick 7: lifetime tag revoked by EffectTickSystem at step 5;
     // AuraTickSystem at step 6 observes the missing tag and despawns
     // the zone. The aura was scheduled to fire on tick 7 (nextTick=7)
@@ -274,7 +248,7 @@ describe('AuraComponent + AuraTickSystem — lifetime management', () => {
     expect(world.entityManager.getEntity(zoneId)).toBeUndefined();
     // No additional heal lands on tick 8 either.
     world.processAllTicks(8);
-    expect(FP.ToFloat(facade.getAttribute(ally.id, 'Health').current)).toBe(60);
+    expect(FP.ToFloat(abilities.getAttribute(ally.id, 'Health').current)).toBe(60);
 
     world.dispose();
   });
@@ -282,19 +256,17 @@ describe('AuraComponent + AuraTickSystem — lifetime management', () => {
   it('despawns the zone when user code force-removes the lifetime tag mid-life', () => {
     // removeEffectsByTag on the zone simulates "player toggled the
     // channeled aura off" — the aura must die on the next aura tick.
-    const { world, facade, spatial } = createTestWorld();
-    const caster = addEntity(world);
-    const ally = addEntity(world);
-    facade.initAttributesForEntity(caster.id);
-    facade.initAttributesForEntity(ally.id);
-    facade.addTag(ally.id, 'Team.Ally');
-    facade.applyEffect(ally.id, 'Effect.Damage50');
+    const { world, abilities, spatial } = createAuraWorld();
+    const caster = spawnEntity(world, abilities);
+    const ally = spawnEntity(world, abilities);
+    abilities.addTag(ally.id, 'Team.Ally');
+    abilities.applyEffect(ally.id, 'Effect.Damage50');
     world.processAllTicks(1);
     world.processAllTicks(2);
 
     spatial.setQuery(() => [ally.id]);
 
-    const zone = facade.spawnAura({
+    const zone = abilities.spawnAura({
       abilityId: 'Ability.HealingAura',
       target: {
         kind: 'Radius',
@@ -317,14 +289,14 @@ describe('AuraComponent + AuraTickSystem — lifetime management', () => {
     spatial.setPosition(zone.id, { x: FP.FromInt(0), z: FP.FromInt(0) });
 
     world.processAllTicks(3);
-    expect(facade.hasTag(zone.id, 'Aura.HealingAura.Active')).toBe(true);
+    expect(abilities.hasTag(zone.id, 'Aura.HealingAura.Active')).toBe(true);
     world.processAllTicks(4);
-    expect(FP.ToFloat(facade.getAttribute(ally.id, 'Health').current)).toBe(55);
+    expect(FP.ToFloat(abilities.getAttribute(ally.id, 'Health').current)).toBe(55);
 
     // Force-remove the lifetime tag. removeEffectsByTag flags the
     // duration instance for removal; EffectTickSystem revokes the
     // tag on the next tick.
-    const flagged = facade.removeEffectsByTag(zone.id, 'Aura.HealingAura.Active');
+    const flagged = abilities.removeEffectsByTag(zone.id, 'Aura.HealingAura.Active');
     expect(flagged).toBe(1);
 
     // Tick 5: EffectTickSystem revokes the tag at step 5; AuraTickSystem
@@ -335,11 +307,11 @@ describe('AuraComponent + AuraTickSystem — lifetime management', () => {
     // revoked.
     world.processAllTicks(5);
     expect(world.entityManager.getEntity(zone.id)).toBeUndefined();
-    expect(FP.ToFloat(facade.getAttribute(ally.id, 'Health').current)).toBe(60);
+    expect(FP.ToFloat(abilities.getAttribute(ally.id, 'Health').current)).toBe(60);
     // No further heals — ally stays at 60 once the zone is gone.
     world.processAllTicks(6);
     world.processAllTicks(7);
-    expect(FP.ToFloat(facade.getAttribute(ally.id, 'Health').current)).toBe(60);
+    expect(FP.ToFloat(abilities.getAttribute(ally.id, 'Health').current)).toBe(60);
 
     world.dispose();
   });
@@ -347,19 +319,17 @@ describe('AuraComponent + AuraTickSystem — lifetime management', () => {
   it('persists indefinitely when no lifetimeTag is configured', () => {
     // Some auras (e.g. world hazards) should never expire on their own.
     // Omitting `lifetimeTag` should skip the lifecycle check entirely.
-    const { world, facade, spatial } = createTestWorld();
-    const caster = addEntity(world);
-    const ally = addEntity(world);
-    facade.initAttributesForEntity(caster.id);
-    facade.initAttributesForEntity(ally.id);
-    facade.addTag(ally.id, 'Team.Ally');
-    facade.applyEffect(ally.id, 'Effect.Damage50');
+    const { world, abilities, spatial } = createAuraWorld();
+    const caster = spawnEntity(world, abilities);
+    const ally = spawnEntity(world, abilities);
+    abilities.addTag(ally.id, 'Team.Ally');
+    abilities.applyEffect(ally.id, 'Effect.Damage50');
     world.processAllTicks(1);
     world.processAllTicks(2);
 
     spatial.setQuery(() => [ally.id]);
 
-    const zone = facade.spawnAura({
+    const zone = abilities.spawnAura({
       abilityId: 'Ability.EternalAura',
       target: {
         kind: 'Radius',
@@ -390,7 +360,7 @@ describe('AuraComponent + AuraTickSystem — lifetime management', () => {
       world.processAllTicks(tick);
     }
     expect(world.entityManager.getEntity(zone.id)).toBeDefined();
-    expect(FP.ToFloat(facade.getAttribute(ally.id, 'Health').current)).toBe(100);
+    expect(FP.ToFloat(abilities.getAttribute(ally.id, 'Health').current)).toBe(100);
 
     world.dispose();
   });
@@ -398,12 +368,12 @@ describe('AuraComponent + AuraTickSystem — lifetime management', () => {
 
 describe('AuraComponent + AuraTickSystem — validation and edge cases', () => {
   it('AuraComponent rejects non-positive periodTicks', () => {
-    const { world, facade } = createTestWorld();
-    addEntity(world);
+    const { world, abilities } = createAuraWorld();
+    spawnEntity(world, abilities);
     world.processAllTicks(1);
 
     expect(() =>
-      facade.spawnAura({
+      abilities.spawnAura({
         abilityId: 'Ability.Bad',
         target: { kind: 'Self' },
         effectIds: ['Effect.Heal5'],
@@ -416,12 +386,12 @@ describe('AuraComponent + AuraTickSystem — validation and edge cases', () => {
   });
 
   it('AuraComponent rejects an empty effectIds list', () => {
-    const { world, facade } = createTestWorld();
-    addEntity(world);
+    const { world, abilities } = createAuraWorld();
+    spawnEntity(world, abilities);
     world.processAllTicks(1);
 
     expect(() =>
-      facade.spawnAura({
+      abilities.spawnAura({
         abilityId: 'Ability.Bad',
         target: { kind: 'Self' },
         effectIds: [],
@@ -434,12 +404,12 @@ describe('AuraComponent + AuraTickSystem — validation and edge cases', () => {
   });
 
   it('spawnAura rejects unknown effect ids up front (clear spawn-site error)', () => {
-    const { world, facade } = createTestWorld();
-    addEntity(world);
+    const { world, abilities } = createAuraWorld();
+    spawnEntity(world, abilities);
     world.processAllTicks(1);
 
     expect(() =>
-      facade.spawnAura({
+      abilities.spawnAura({
         abilityId: 'Ability.Bad',
         target: { kind: 'Self' },
         effectIds: ['Effect.NoSuchThing'],
@@ -452,12 +422,12 @@ describe('AuraComponent + AuraTickSystem — validation and edge cases', () => {
   });
 
   it('spawnAura rejects an unknown lifetimeEffectId up front', () => {
-    const { world, facade } = createTestWorld();
-    addEntity(world);
+    const { world, abilities } = createAuraWorld();
+    spawnEntity(world, abilities);
     world.processAllTicks(1);
 
     expect(() =>
-      facade.spawnAura({
+      abilities.spawnAura({
         abilityId: 'Ability.Bad',
         target: { kind: 'Self' },
         effectIds: ['Effect.Heal5'],
@@ -475,12 +445,11 @@ describe('AuraComponent + AuraTickSystem — validation and edge cases', () => {
     // Caller origin requires a providedTarget at activation time — auras
     // run inside the system loop with no caller, so this must be a
     // programming error, not a silent drop.
-    const { world, facade } = createTestWorld();
-    const caster = addEntity(world);
-    facade.initAttributesForEntity(caster.id);
+    const { world, abilities } = createAuraWorld();
+    const caster = spawnEntity(world, abilities);
     world.processAllTicks(1);
 
-    facade.spawnAura({
+    abilities.spawnAura({
       abilityId: 'Ability.MisconfiguredAura',
       target: { kind: 'Radius', origin: { kind: 'Caller' }, radius: FP.FromInt(10) },
       effectIds: ['Effect.Heal5'],
@@ -496,14 +465,13 @@ describe('AuraComponent + AuraTickSystem — validation and edge cases', () => {
   it('processes auras with no resolved targets without error (legitimate empty fire)', () => {
     // Empty radius is a legal outcome — e.g. an enemy walked out. The
     // aura must keep ticking and not throw.
-    const { world, facade, spatial } = createTestWorld();
-    const caster = addEntity(world);
-    facade.initAttributesForEntity(caster.id);
+    const { world, abilities, spatial } = createAuraWorld();
+    const caster = spawnEntity(world, abilities);
     world.processAllTicks(1);
 
     spatial.setQuery(() => []);
 
-    const zone = facade.spawnAura({
+    const zone = abilities.spawnAura({
       abilityId: 'Ability.EmptyAura',
       target: {
         kind: 'Radius',
@@ -537,29 +505,28 @@ describe('AuraComponent + AuraTickSystem — Self target spec', () => {
     // `casterEntityId: zone.id` to the resolver, so Self → the zone
     // itself. Useful for area-of-effect entities that buff themselves
     // (e.g. a totem that pulses its own buffs to drive cues).
-    const { world, facade } = createTestWorld();
-    const caster = addEntity(world);
-    facade.initAttributesForEntity(caster.id);
+    const { world, abilities } = createAuraWorld();
+    const caster = spawnEntity(world, abilities);
     world.processAllTicks(1);
 
     // Spawn the aura with target Self and explicitly initialise the
     // zone's attributes so the heal is observable.
-    const zone = facade.spawnAura({
+    const zone = abilities.spawnAura({
       abilityId: 'Ability.SelfPulse',
       target: { kind: 'Self' },
       effectIds: ['Effect.Heal5'],
       periodTicks: 1,
       ownerEntityId: caster.id,
     });
-    facade.initAttributesForEntity(zone.id);
-    facade.applyEffect(zone.id, 'Effect.Damage50');
+    equipEntity(world, zone, abilities);
+    abilities.applyEffect(zone.id, 'Effect.Damage50');
 
     // Tick 2: damage applied, aura fires (heal enqueued).
     world.processAllTicks(2);
-    expect(FP.ToFloat(facade.getAttribute(zone.id, 'Health').current)).toBe(50);
+    expect(FP.ToFloat(abilities.getAttribute(zone.id, 'Health').current)).toBe(50);
     // Tick 3: heal lands → 55.
     world.processAllTicks(3);
-    expect(FP.ToFloat(facade.getAttribute(zone.id, 'Health').current)).toBe(55);
+    expect(FP.ToFloat(abilities.getAttribute(zone.id, 'Health').current)).toBe(55);
 
     world.dispose();
   });
@@ -583,12 +550,12 @@ describe('spawnAura — Stage 7 review validation', () => {
     // createTestWorld for the lifetime-tag tests. Reusing it as an
     // aura effect is exactly the misconfiguration the validation
     // exists to catch.
-    const { world, facade } = createTestWorld();
-    addEntity(world);
+    const { world, abilities } = createAuraWorld();
+    spawnEntity(world, abilities);
     world.processAllTicks(1);
 
     expect(() =>
-      facade.spawnAura({
+      abilities.spawnAura({
         abilityId: 'Ability.BadInstant',
         target: { kind: 'Self' },
         effectIds: ['Effect.HealingAura.Lifetime'],
@@ -604,12 +571,12 @@ describe('spawnAura — Stage 7 review validation', () => {
     // lifetimeEffectId by itself is a silent footgun: the lifetime
     // effect would run (and grant whatever tags it lists), but no
     // tag is being watched, so the aura would persist forever.
-    const { world, facade } = createTestWorld();
-    addEntity(world);
+    const { world, abilities } = createAuraWorld();
+    spawnEntity(world, abilities);
     world.processAllTicks(1);
 
     expect(() =>
-      facade.spawnAura({
+      abilities.spawnAura({
         abilityId: 'Ability.MissingTag',
         target: { kind: 'Self' },
         effectIds: ['Effect.Heal5'],
@@ -628,12 +595,12 @@ describe('spawnAura — Stage 7 review validation', () => {
     // configured a DIFFERENT lifetimeTag to watch. Without this check
     // the aura would despawn on its very first tick because the
     // watched tag is never granted by anyone.
-    const { world, facade } = createTestWorld();
-    addEntity(world);
+    const { world, abilities } = createAuraWorld();
+    spawnEntity(world, abilities);
     world.processAllTicks(1);
 
     expect(() =>
-      facade.spawnAura({
+      abilities.spawnAura({
         abilityId: 'Ability.MismatchedTag',
         target: { kind: 'Self' },
         effectIds: ['Effect.Heal5'],
@@ -652,12 +619,12 @@ describe('spawnAura — Stage 7 review validation', () => {
     // The reverse pairing is legitimate: a caller may want to grant
     // the watched tag via applyEffect / addTag after spawnAura
     // returns. This must NOT throw.
-    const { world, facade } = createTestWorld();
-    const caster = addEntity(world);
+    const { world, abilities } = createAuraWorld();
+    const caster = spawnEntity(world, abilities);
     world.processAllTicks(1);
 
     expect(() =>
-      facade.spawnAura({
+      abilities.spawnAura({
         abilityId: 'Ability.ManualTagAura',
         target: { kind: 'Self' },
         effectIds: ['Effect.Heal5'],
@@ -675,8 +642,8 @@ describe('spawnAura — Stage 7 review validation', () => {
     // The whole point of the validation phase is that addEntity must
     // not have been called when we throw. Count entities before and
     // after to confirm no zombie zone was created.
-    const { world, facade } = createTestWorld();
-    const caster = addEntity(world);
+    const { world, abilities } = createAuraWorld();
+    const caster = spawnEntity(world, abilities);
     world.processAllTicks(1);
 
     const entitiesBefore = world.entityManager.getAllEntities().length;
@@ -687,7 +654,7 @@ describe('spawnAura — Stage 7 review validation', () => {
     // moving addEntity back above validation) shows up as a count
     // mismatch on whichever throw they reorder.
     expect(() =>
-      facade.spawnAura({
+      abilities.spawnAura({
         abilityId: 'Ability.Z1',
         target: { kind: 'Self' },
         effectIds: ['Effect.NoSuchThing'],
@@ -698,7 +665,7 @@ describe('spawnAura — Stage 7 review validation', () => {
     expect(world.entityManager.getAllEntities().length).toBe(entitiesBefore);
 
     expect(() =>
-      facade.spawnAura({
+      abilities.spawnAura({
         abilityId: 'Ability.Z2',
         target: { kind: 'Self' },
         effectIds: ['Effect.HealingAura.Lifetime'],
@@ -709,7 +676,7 @@ describe('spawnAura — Stage 7 review validation', () => {
     expect(world.entityManager.getAllEntities().length).toBe(entitiesBefore);
 
     expect(() =>
-      facade.spawnAura({
+      abilities.spawnAura({
         abilityId: 'Ability.Z3',
         target: { kind: 'Self' },
         effectIds: ['Effect.Heal5'],
@@ -725,107 +692,30 @@ describe('spawnAura — Stage 7 review validation', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Test helpers
-// ---------------------------------------------------------------------------
-
-interface TestWorld {
-  world: GameWorld;
-  facade: AbilitySystemFacade;
-  registries: AbilitySystemRegistries;
-  runtime: AbilitySystemRuntime;
-  spatial: FakeSpatialQuery;
-}
-
-class FakeSpatialQuery implements ISpatialQuery {
-  private queryFn: (x: FixedPoint, z: FixedPoint, r: FixedPoint) => number[] = () => [];
-  private positions = new Map<number, { x: FixedPoint; z: FixedPoint }>();
-
-  public queryRadius(x: FixedPoint, z: FixedPoint, radius: FixedPoint): number[] {
-    return this.queryFn(x, z, radius);
-  }
-
-  public getEntityPosition(
-    entityId: number
-  ): { x: FixedPoint; z: FixedPoint } | undefined {
-    return this.positions.get(entityId);
-  }
-
-  public setQuery(fn: (x: FixedPoint, z: FixedPoint, r: FixedPoint) => number[]): void {
-    this.queryFn = fn;
-  }
-
-  public setPosition(entityId: number, pos: { x: FixedPoint; z: FixedPoint }): void {
-    this.positions.set(entityId, pos);
-  }
-}
-
-function createTestWorld(): TestWorld {
-  const registries = createAbilitySystemRegistries();
-  registries.attributes.register(
-    defineAttribute({
-      id: 'Health',
-      default: FP.FromInt(100),
-      min: FP.FromInt(0),
-      max: FP.FromInt(100),
-      clamp: 'both',
-    })
-  );
-  registries.effects.register(
-    defineEffect({
-      id: 'Effect.Heal5',
-      type: 'Instant',
-      modifiers: [{ attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(5) }],
-    })
-  );
-  registries.effects.register(
-    defineEffect({
-      id: 'Effect.Damage50',
-      type: 'Instant',
-      modifiers: [{ attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(-50) }],
-    })
-  );
-  // Healing-aura lifetime: long enough for the cadence tests (8 ticks).
-  registries.effects.register(
-    defineEffect({
-      id: 'Effect.HealingAura.Lifetime',
-      type: 'Duration',
-      durationTicks: 100,
-      tagsGranted: ['Aura.HealingAura.Active'],
-    })
-  );
-
-  const runtime = createAbilitySystemRuntime();
-  const world = new GameWorld({
-    componentTypes: [
-      AbilitiesComponentType.Attributes,
-      AbilitiesComponentType.ActiveEffects,
-      AbilitiesComponentType.GameplayTags,
-      AbilitiesComponentType.Aura,
+function createAuraWorld(extra: { effects?: readonly ReturnType<typeof defineEffect>[] } = {}) {
+  return createTestWorld({
+    pipeline: 'auras',
+    attributes: [HealthAttribute],
+    effects: [
+      defineEffect({
+        id: 'Effect.Heal5',
+        type: 'Instant',
+        modifiers: [{ attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(5) }],
+      }),
+      defineEffect({
+        id: 'Effect.Damage50',
+        type: 'Instant',
+        modifiers: [{ attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(-50) }],
+      }),
+      defineEffect({
+        id: 'Effect.HealingAura.Lifetime',
+        type: 'Duration',
+        durationTicks: 100,
+        tagsGranted: ['Aura.HealingAura.Active'],
+      }),
+      ...(extra.effects ?? []),
     ],
   });
-  // Stage 7 doesn't need the ability activation pipeline — only the
-  // effect application + tick + aura pipeline. Mirror the plan's per-tick
-  // order: application → effect tick → aura tick → aggregation.
-  world.registerSystems(
-    [
-      new EffectApplicationSystem(registries, runtime),
-      new EffectTickSystem(registries, runtime),
-      new AuraTickSystem(registries, runtime),
-      new AttributeAggregationSystem(registries),
-    ],
-    []
-  );
-  const facade = new AbilitySystemFacade(world.entityManager, registries, runtime);
-  const spatial = new FakeSpatialQuery();
-  facade.registerSpatialQuery(spatial);
-  return { world, facade, registries, runtime, spatial };
-}
-
-function addEntity(world: GameWorld): Entity {
-  const entity = new Entity();
-  world.entityManager.addEntity(entity);
-  return entity;
 }
 
 /**

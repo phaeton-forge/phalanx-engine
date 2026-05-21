@@ -1,19 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { Entity, GameWorld } from 'phalanx-ecs';
 import { FP } from 'phalanx-math';
+import { AbilitiesComponentType, defineEffect } from '../src';
+import type { AbilitySystemComponent } from '../src';
 import {
-  AbilitiesComponentType,
-  AbilitySystemFacade,
-  ActiveEffectsComponent,
-  AttributeAggregationSystem,
-  EffectApplicationSystem,
-  EffectTickSystem,
-  createAbilitySystemRegistries,
-  createAbilitySystemRuntime,
-  defineAttribute,
-  defineEffect,
-} from '../src';
-import type { AbilitySystemRegistries, AbilitySystemRuntime } from '../src';
+  ArmorAttribute,
+  HealthAttribute,
+  createTestWorld,
+  spawnEntity,
+} from './helpers';
+import {GameWorld} from "phalanx-ecs";
 
 // ---------------------------------------------------------------------------
 // Stage 4 — Periodic effects.
@@ -47,7 +42,9 @@ import type { AbilitySystemRegistries, AbilitySystemRuntime } from '../src';
 describe('Periodic effects', () => {
   it('fires its payload one period after application (default scheduling)', () => {
     // DoT: -3 Health every 5 ticks, total lifetime 20 ticks => 4 firings.
-    const { world, facade } = createTestWorld({
+    const { world, abilities } = createTestWorld({
+      pipeline: 'effects',
+      attributes: [HealthAttribute, ArmorAttribute],
       effects: [
         defineEffect({
           id: 'Effect.DoT.Bleed',
@@ -61,42 +58,41 @@ describe('Periodic effects', () => {
         }),
       ],
     });
-    const entity = addEntity(world);
-    facade.initAttributesForEntity(entity.id);
+    const entity = spawnEntity(world, abilities);
     world.processAllTicks(1);
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Health').current)).toBe(
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
       100
     );
 
-    facade.applyEffect(entity.id, 'Effect.DoT.Bleed', entity.id);
+    abilities.applyEffect(entity.id, 'Effect.DoT.Bleed', entity.id);
     // Tick 2: apply tick — instance queued, nextPeriodTick = 7. Tag granted.
     world.processAllTicks(2);
-    expect(facade.hasTag(entity.id, 'State.Debuff.Bleed')).toBe(true);
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Health').current)).toBe(
+    expect(abilities.hasTag(entity.id, 'State.Debuff.Bleed')).toBe(true);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
       100
     );
 
     // Ticks 3..6: still before first firing.
     for (let t = 3; t <= 6; t++) {
       world.processAllTicks(t);
-      expect(FP.ToFloat(facade.getAttribute(entity.id, 'Health').current)).toBe(
+      expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
         100
       );
     }
 
     // Tick 7: first firing. -3 Health.
     world.processAllTicks(7);
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Health').current)).toBe(
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
       97
     );
 
     // Tick 12: second firing.
     for (let t = 8; t <= 11; t++) world.processAllTicks(t);
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Health').current)).toBe(
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
       97
     );
     world.processAllTicks(12);
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Health').current)).toBe(
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
       94
     );
 
@@ -106,21 +102,21 @@ describe('Periodic effects', () => {
     // firing on tick 22 still happens.
     for (let t = 13; t <= 16; t++) world.processAllTicks(t);
     world.processAllTicks(17);
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Health').current)).toBe(
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
       91
     );
 
     for (let t = 18; t <= 21; t++) world.processAllTicks(t);
     world.processAllTicks(22);
     // Fourth firing fired, then countdown expired the instance, tag revoked.
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Health').current)).toBe(
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
       88
     );
-    expect(facade.hasTag(entity.id, 'State.Debuff.Bleed')).toBe(false);
+    expect(abilities.hasTag(entity.id, 'State.Debuff.Bleed')).toBe(false);
 
     // No more firings after expiry.
     for (let t = 23; t <= 30; t++) world.processAllTicks(t);
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Health').current)).toBe(
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
       88
     );
 
@@ -131,7 +127,9 @@ describe('Periodic effects', () => {
     // HoT: +2 Health every 3 ticks, with on-application firing. Lifetime 9.
     // Expected firings: tick T (apply) + T+3 + T+6 + T+9. That is, 4 firings
     // versus 3 if executePeriodicOnApplication were false.
-    const { world, facade } = createTestWorld({
+    const { world, abilities } = createTestWorld({
+      pipeline: 'effects',
+      attributes: [HealthAttribute, ArmorAttribute],
       effects: [
         defineEffect({
           id: 'Effect.HoT.Regen',
@@ -153,36 +151,35 @@ describe('Periodic effects', () => {
         }),
       ],
     });
-    const entity = addEntity(world);
-    facade.initAttributesForEntity(entity.id);
+    const entity = spawnEntity(world, abilities);
     world.processAllTicks(1);
 
     // Drop Health to 80 so we can observe the +2 heals (clamp would otherwise
     // hide them at the max-100 ceiling).
-    facade.applyEffect(entity.id, 'Effect.SeedDamage', entity.id);
+    abilities.applyEffect(entity.id, 'Effect.SeedDamage', entity.id);
     world.processAllTicks(2);
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Health').current)).toBe(
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
       80
     );
 
-    facade.applyEffect(entity.id, 'Effect.HoT.Regen', entity.id);
+    abilities.applyEffect(entity.id, 'Effect.HoT.Regen', entity.id);
     // Apply tick = 3. on-application fires now (+2), nextPeriodTick = 6.
     world.processAllTicks(3);
-    expect(facade.hasTag(entity.id, 'State.Buff.Regen')).toBe(true);
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Health').current)).toBe(
+    expect(abilities.hasTag(entity.id, 'State.Buff.Regen')).toBe(true);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
       82
     );
 
     // Tick 4, 5: no firing.
     world.processAllTicks(4);
     world.processAllTicks(5);
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Health').current)).toBe(
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
       82
     );
 
     // Tick 6: second firing (+2 -> 84).
     world.processAllTicks(6);
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Health').current)).toBe(
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
       84
     );
 
@@ -190,7 +187,7 @@ describe('Periodic effects', () => {
     world.processAllTicks(7);
     world.processAllTicks(8);
     world.processAllTicks(9);
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Health').current)).toBe(
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
       86
     );
 
@@ -198,14 +195,14 @@ describe('Periodic effects', () => {
     world.processAllTicks(10);
     world.processAllTicks(11);
     world.processAllTicks(12);
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Health').current)).toBe(
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
       88
     );
-    expect(facade.hasTag(entity.id, 'State.Buff.Regen')).toBe(false);
+    expect(abilities.hasTag(entity.id, 'State.Buff.Regen')).toBe(false);
 
     // No firings after expiry.
     for (let t = 13; t <= 20; t++) world.processAllTicks(t);
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Health').current)).toBe(
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
       88
     );
 
@@ -216,7 +213,9 @@ describe('Periodic effects', () => {
     // Sanity-count firings via Override: each firing sets Health to a known
     // value, so we can verify by inspecting current after expiry. Use a
     // counter attribute via Add, which is more direct than Override here.
-    const { world, facade } = createTestWorld({
+    const { world, abilities } = createTestWorld({
+      pipeline: 'effects',
+      attributes: [HealthAttribute, ArmorAttribute],
       effects: [
         defineEffect({
           id: 'Effect.DoT.Count',
@@ -229,16 +228,15 @@ describe('Periodic effects', () => {
         }),
       ],
     });
-    const entity = addEntity(world);
-    facade.initAttributesForEntity(entity.id);
+    const entity = spawnEntity(world, abilities);
     world.processAllTicks(1);
 
-    facade.applyEffect(entity.id, 'Effect.DoT.Count', entity.id);
+    abilities.applyEffect(entity.id, 'Effect.DoT.Count', entity.id);
     // Apply tick 2. nextPeriodTick = 6. durationTicks=12 means remaining
     // reaches 0 on tick 14. Firings: 6, 10, 14 — three firings = 12/4.
     for (let t = 2; t <= 20; t++) world.processAllTicks(t);
 
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Health').current)).toBe(
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
       97
     );
 
@@ -246,7 +244,9 @@ describe('Periodic effects', () => {
   });
 
   it('advances nextPeriodTick by periodTicks per firing (queue-level invariant)', () => {
-    const { world, facade } = createTestWorld({
+    const { world, abilities } = createTestWorld({
+      pipeline: 'effects',
+      attributes: [HealthAttribute, ArmorAttribute],
       effects: [
         defineEffect({
           id: 'Effect.Tick',
@@ -259,11 +259,10 @@ describe('Periodic effects', () => {
         }),
       ],
     });
-    const entity = addEntity(world);
-    facade.initAttributesForEntity(entity.id);
+    const entity = spawnEntity(world, abilities);
     world.processAllTicks(1);
 
-    facade.applyEffect(entity.id, 'Effect.Tick', entity.id);
+    abilities.applyEffect(entity.id, 'Effect.Tick', entity.id);
     world.processAllTicks(2);
     const queue = activeEffectsOf(world, entity.id).queue;
     expect(queue.length).toBe(1);
@@ -275,14 +274,14 @@ describe('Periodic effects', () => {
     world.processAllTicks(5);
     world.processAllTicks(6);
     expect(queue[0].nextPeriodTick).toBe(10);
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Health').current)).toBe(
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
       99
     );
 
     // After tick 10 (second firing): nextPeriodTick = 14.
     for (let t = 7; t <= 10; t++) world.processAllTicks(t);
     expect(queue[0].nextPeriodTick).toBe(14);
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Health').current)).toBe(
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
       98
     );
 
@@ -290,7 +289,9 @@ describe('Periodic effects', () => {
   });
 
   it('removeEffectsByTag cancels future periodic firings without producing an extra landing', () => {
-    const { world, facade } = createTestWorld({
+    const { world, abilities } = createTestWorld({
+      pipeline: 'effects',
+      attributes: [HealthAttribute, ArmorAttribute],
       effects: [
         defineEffect({
           id: 'Effect.DoT.Cancelable',
@@ -304,34 +305,33 @@ describe('Periodic effects', () => {
         }),
       ],
     });
-    const entity = addEntity(world);
-    facade.initAttributesForEntity(entity.id);
+    const entity = spawnEntity(world, abilities);
     world.processAllTicks(1);
 
-    facade.applyEffect(entity.id, 'Effect.DoT.Cancelable', entity.id);
+    abilities.applyEffect(entity.id, 'Effect.DoT.Cancelable', entity.id);
     world.processAllTicks(2); // apply tick, nextPeriodTick = 7
     for (let t = 3; t <= 7; t++) world.processAllTicks(t);
     // One firing at tick 7.
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Health').current)).toBe(
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
       95
     );
 
     // Cancel before the next firing window. removeEffectsByTag sets
     // remainingTicks=0 on the matched instance.
-    const flagged = facade.removeEffectsByTag(entity.id, 'State.Debuff.DoT');
+    const flagged = abilities.removeEffectsByTag(entity.id, 'State.Debuff.DoT');
     expect(flagged).toBe(1);
 
     // Tick 8 runs EffectTickSystem: periodic fire skipped (remainingTicks=0),
     // countdown skipped, expiry pass harvests the instance, tag revoked.
     world.processAllTicks(8);
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Health').current)).toBe(
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
       95
     );
-    expect(facade.hasTag(entity.id, 'State.Debuff.DoT')).toBe(false);
+    expect(abilities.hasTag(entity.id, 'State.Debuff.DoT')).toBe(false);
 
     // No further firings.
     for (let t = 9; t <= 30; t++) world.processAllTicks(t);
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Health').current)).toBe(
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
       95
     );
 
@@ -340,7 +340,9 @@ describe('Periodic effects', () => {
 
   it('rejects a Periodic effect with missing or non-positive periodTicks atomically', () => {
     // Both bad shapes throw at apply time and must not leak tagsGranted.
-    const { world, facade } = createTestWorld({
+    const { world, abilities } = createTestWorld({
+      pipeline: 'effects',
+      attributes: [HealthAttribute, ArmorAttribute],
       effects: [
         defineEffect({
           id: 'Effect.Periodic.BadMissing',
@@ -374,21 +376,20 @@ describe('Periodic effects', () => {
         }),
       ],
     });
-    const entity = addEntity(world);
-    facade.initAttributesForEntity(entity.id);
+    const entity = spawnEntity(world, abilities);
     world.processAllTicks(1);
 
-    facade.applyEffect(entity.id, 'Effect.Periodic.BadMissing', entity.id);
+    abilities.applyEffect(entity.id, 'Effect.Periodic.BadMissing', entity.id);
     expect(() => world.processAllTicks(2)).toThrow(/invalid periodTicks/);
-    expect(facade.hasTag(entity.id, 'State.LeakSentinel.A')).toBe(false);
+    expect(abilities.hasTag(entity.id, 'State.LeakSentinel.A')).toBe(false);
 
-    facade.applyEffect(entity.id, 'Effect.Periodic.BadZero', entity.id);
+    abilities.applyEffect(entity.id, 'Effect.Periodic.BadZero', entity.id);
     expect(() => world.processAllTicks(3)).toThrow(/invalid periodTicks/);
-    expect(facade.hasTag(entity.id, 'State.LeakSentinel.B')).toBe(false);
+    expect(abilities.hasTag(entity.id, 'State.LeakSentinel.B')).toBe(false);
 
-    facade.applyEffect(entity.id, 'Effect.Periodic.BadNegative', entity.id);
+    abilities.applyEffect(entity.id, 'Effect.Periodic.BadNegative', entity.id);
     expect(() => world.processAllTicks(4)).toThrow(/invalid periodTicks/);
-    expect(facade.hasTag(entity.id, 'State.LeakSentinel.C')).toBe(false);
+    expect(abilities.hasTag(entity.id, 'State.LeakSentinel.C')).toBe(false);
 
     world.dispose();
   });
@@ -397,7 +398,9 @@ describe('Periodic effects', () => {
     // Multiply lets us check the FixedPoint round-tripping at each firing:
     // Health *= 0.5 each period. Starting at 100, after 3 firings should be
     // exactly 12.5 (clamped above 0).
-    const { world, facade } = createTestWorld({
+    const { world, abilities } = createTestWorld({
+      pipeline: 'effects',
+      attributes: [HealthAttribute, ArmorAttribute],
       effects: [
         defineEffect({
           id: 'Effect.Halver',
@@ -414,32 +417,31 @@ describe('Periodic effects', () => {
         }),
       ],
     });
-    const entity = addEntity(world);
-    facade.initAttributesForEntity(entity.id);
+    const entity = spawnEntity(world, abilities);
     world.processAllTicks(1);
 
-    facade.applyEffect(entity.id, 'Effect.Halver', entity.id);
+    abilities.applyEffect(entity.id, 'Effect.Halver', entity.id);
     // Apply tick 2; firings at 5, 8, 11; expires at tick 11 (lands on final
     // firing thanks to fire-before-countdown).
     for (let t = 2; t <= 4; t++) world.processAllTicks(t);
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Health').current)).toBe(
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
       100
     );
 
     world.processAllTicks(5);
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Health').current)).toBe(
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
       50
     );
     world.processAllTicks(6);
     world.processAllTicks(7);
     world.processAllTicks(8);
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Health').current)).toBe(
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
       25
     );
     world.processAllTicks(9);
     world.processAllTicks(10);
     world.processAllTicks(11);
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Health').current)).toBe(
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
       12.5
     );
 
@@ -449,7 +451,9 @@ describe('Periodic effects', () => {
   it('periodic with executePeriodicOnApplication=true and durationTicks=periodTicks fires exactly twice', () => {
     // Edge case: a one-period lifetime with on-application produces apply-tick
     // firing AND the regular firing at the lifetime boundary.
-    const { world, facade } = createTestWorld({
+    const { world, abilities } = createTestWorld({
+      pipeline: 'effects',
+      attributes: [HealthAttribute, ArmorAttribute],
       effects: [
         defineEffect({
           id: 'Effect.Bookends',
@@ -464,38 +468,39 @@ describe('Periodic effects', () => {
         }),
       ],
     });
-    const entity = addEntity(world);
-    facade.initAttributesForEntity(entity.id);
+    const entity = spawnEntity(world, abilities);
     world.processAllTicks(1);
 
-    facade.applyEffect(entity.id, 'Effect.Bookends', entity.id);
+    abilities.applyEffect(entity.id, 'Effect.Bookends', entity.id);
     // Apply tick = 2. on-application fires once (-7 -> 93). nextPeriodTick = 6.
     world.processAllTicks(2);
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Health').current)).toBe(
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
       93
     );
-    expect(facade.hasTag(entity.id, 'State.Debuff.Bookends')).toBe(true);
+    expect(abilities.hasTag(entity.id, 'State.Debuff.Bookends')).toBe(true);
 
     world.processAllTicks(3);
     world.processAllTicks(4);
     world.processAllTicks(5);
     // No firing yet.
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Health').current)).toBe(
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
       93
     );
 
     // Tick 6: second firing (-7 -> 86), countdown 1→0, expire, tag off.
     world.processAllTicks(6);
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Health').current)).toBe(
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
       86
     );
-    expect(facade.hasTag(entity.id, 'State.Debuff.Bookends')).toBe(false);
+    expect(abilities.hasTag(entity.id, 'State.Debuff.Bookends')).toBe(false);
 
     world.dispose();
   });
 
   it('two independent periodics on the same entity each follow their own schedule', () => {
-    const { world, facade } = createTestWorld({
+    const { world, abilities } = createTestWorld({
+      pipeline: 'effects',
+      attributes: [HealthAttribute, ArmorAttribute],
       effects: [
         defineEffect({
           id: 'Effect.SlowDoT',
@@ -517,12 +522,11 @@ describe('Periodic effects', () => {
         }),
       ],
     });
-    const entity = addEntity(world);
-    facade.initAttributesForEntity(entity.id);
+    const entity = spawnEntity(world, abilities);
     world.processAllTicks(1);
 
-    facade.applyEffect(entity.id, 'Effect.SlowDoT', entity.id);
-    facade.applyEffect(entity.id, 'Effect.FastDoT', entity.id);
+    abilities.applyEffect(entity.id, 'Effect.SlowDoT', entity.id);
+    abilities.applyEffect(entity.id, 'Effect.FastDoT', entity.id);
     // Apply tick = 2. Slow nextPeriodTick = 12, Fast nextPeriodTick = 5.
 
     for (let t = 2; t <= 32; t++) world.processAllTicks(t);
@@ -532,7 +536,7 @@ describe('Periodic effects', () => {
     //     fire-before-countdown lets the boundary fire happen). => 3 hits.
     //   Fast fires at 5,8,11,14,17,20,23,26,29,32 => 10 hits.
     // Total Health delta: -13 => 87.
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Health').current)).toBe(
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
       87
     );
 
@@ -540,87 +544,12 @@ describe('Periodic effects', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Test world helper (parallel to effects.test.ts; kept local to avoid coupling
-// the two suites' setup).
-// ---------------------------------------------------------------------------
-
-interface TestWorldOpts {
-  effects: readonly ReturnType<typeof defineEffect>[];
-}
-
-interface TestWorld {
-  world: GameWorld;
-  facade: AbilitySystemFacade;
-  registries: AbilitySystemRegistries;
-  runtime: AbilitySystemRuntime;
-}
-
-function createTestWorld(opts: TestWorldOpts): TestWorld {
-  const registries = createAbilitySystemRegistries();
-  registries.attributes.register(
-    defineAttribute({
-      id: 'Health',
-      default: FP.FromInt(100),
-      min: FP.FromInt(0),
-      max: FP.FromInt(100),
-      clamp: 'both',
-    })
-  );
-  registries.attributes.register(
-    defineAttribute({
-      id: 'Armor',
-      default: FP.FromInt(50),
-      min: FP.FromInt(0),
-      max: FP.FromInt(1000),
-      clamp: 'min',
-    })
-  );
-  for (const effect of opts.effects) {
-    registries.effects.register(effect);
-  }
-
-  const runtime = createAbilitySystemRuntime();
-  const world = new GameWorld({
-    componentTypes: [
-      AbilitiesComponentType.Attributes,
-      AbilitiesComponentType.ActiveEffects,
-      AbilitiesComponentType.GameplayTags,
-    ],
-  });
-  // Order must match production: application -> tick -> aggregation.
-  world.registerSystems(
-    [
-      new EffectApplicationSystem(registries, runtime),
-      new EffectTickSystem(registries, runtime),
-      new AttributeAggregationSystem(registries),
-    ],
-    []
-  );
-  const facade = new AbilitySystemFacade(
-    world.entityManager,
-    registries,
-    runtime
-  );
-  return { world, facade, registries, runtime };
-}
-
-function addEntity(world: GameWorld): Entity {
-  const entity = new Entity();
-  world.entityManager.addEntity(entity);
-  return entity;
-}
-
-function activeEffectsOf(
-  world: GameWorld,
-  entityId: number
-): ActiveEffectsComponent {
+function activeEffectsOf(world: GameWorld, entityId: number) {
   const entity = world.entityManager.getEntity(entityId);
   if (!entity) throw new Error(`entity ${entityId} missing`);
-  const component = entity.getComponent<ActiveEffectsComponent>(
-    AbilitiesComponentType.ActiveEffects
-  );
-  if (!component)
-    throw new Error(`ActiveEffectsComponent missing on ${entityId}`);
+  const component =
+    entity.getComponent<AbilitySystemComponent>(AbilitiesComponentType.AbilitySystem)
+      ?.activeEffects;
+  if (!component) throw new Error(`ability effects missing on ${entityId}`);
   return component;
 }

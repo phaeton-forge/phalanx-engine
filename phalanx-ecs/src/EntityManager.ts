@@ -73,7 +73,7 @@ export class EntityManager {
    * Call this during initialization with your game's component types
    * @param componentTypes - Array of component type symbols
    */
-  public registerComponentTypes(componentTypes: symbol[]): void {
+  public registerComponentTypes(componentTypes: readonly symbol[]): void {
     for (const type of componentTypes) {
       if (!this.componentIndices.has(type)) {
         this.componentIndices.set(type, []);

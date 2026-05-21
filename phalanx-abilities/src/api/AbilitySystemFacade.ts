@@ -7,6 +7,9 @@ import {
   AttributesComponent,
   AuraComponent,
   GameplayTagsComponent,
+  getActiveEffectsComponent,
+  getAttributesComponent,
+  getGameplayTagsComponent,
 } from '../components';
 import type { AbilitySystemRegistries } from '../registry';
 import type { AbilitySystemRuntime, GameplayCueBufferView } from '../runtime';
@@ -49,7 +52,7 @@ export class AbilitySystemFacade {
   public initAttributesForEntity(entityId: number): AttributesComponent {
     const entity = this.requireEntity(entityId);
 
-    const existing = entity.getComponent<AttributesComponent>(AbilitiesComponentType.Attributes);
+    const existing = getAttributesComponent(entity);
 
     if (existing) {
       return existing;
@@ -82,7 +85,7 @@ export class AbilitySystemFacade {
       if (!entity) {
         throw new Error(`Entity ${entityId} does not exist`);
       }
-      if (!entity.getComponent<AttributesComponent>(AbilitiesComponentType.Attributes)) {
+      if (!getAttributesComponent(entity)) {
         throw new Error(`Entity ${entityId} does not have AttributesComponent`);
       }
       throw new Error(`AttributeRegistry does not contain '${attrId}'`);
@@ -103,7 +106,7 @@ export class AbilitySystemFacade {
       return undefined;
     }
 
-    const attributes = entity.getComponent<AttributesComponent>(AbilitiesComponentType.Attributes);
+    const attributes = getAttributesComponent(entity);
     if (!attributes) {
       return undefined;
     }
@@ -255,9 +258,7 @@ export class AbilitySystemFacade {
     if (!entity) {
       return 0;
     }
-    const activeEffects = entity.getComponent<ActiveEffectsComponent>(
-      AbilitiesComponentType.ActiveEffects
-    );
+    const activeEffects = getActiveEffectsComponent(entity);
     if (!activeEffects) {
       return 0;
     }
@@ -289,9 +290,7 @@ export class AbilitySystemFacade {
     if (!entity) {
       return 0;
     }
-    const activeEffects = entity.getComponent<ActiveEffectsComponent>(
-      AbilitiesComponentType.ActiveEffects
-    );
+    const activeEffects = getActiveEffectsComponent(entity);
     if (!activeEffects) {
       return 0;
     }
@@ -394,11 +393,10 @@ export class AbilitySystemFacade {
   }
 
   /**
-   * Install the {@link ISpatialQuery} adapter that the resolver uses for
-   * `TargetSpec.kind === 'Radius'` and {@link applyEffectAoE}. The
-   * adapter is a thin wrapper over the user's spatial index (typically
-   * `SpatialHashGrid` in `phalanx-physics`); the package itself stays
-   * physics-free.
+   * Install a custom {@link ISpatialQuery} adapter for `TargetSpec.kind ===
+   * 'Radius'` and {@link applyEffectAoE}. Most games should pass
+   * `physicsWorld` to `createAbilitySystem` instead; use this method for
+   * non-physics prototypes or to override the default physics-backed query.
    *
    * Registration is a one-shot world-bootstrap step. Re-registering the
    * same query replaces the previous one — useful for tests that swap
@@ -418,7 +416,7 @@ export class AbilitySystemFacade {
     if (!entity) {
       return false;
     }
-    const tags = entity.getComponent<GameplayTagsComponent>(AbilitiesComponentType.GameplayTags);
+    const tags = getGameplayTagsComponent(entity);
     if (!tags) {
       return false;
     }
@@ -458,7 +456,7 @@ export class AbilitySystemFacade {
     if (!entity) {
       return false;
     }
-    const tags = entity.getComponent<GameplayTagsComponent>(AbilitiesComponentType.GameplayTags);
+    const tags = getGameplayTagsComponent(entity);
     if (!tags) {
       return false;
     }
@@ -777,9 +775,7 @@ export class AbilitySystemFacade {
   }
 
   private getOrCreateActiveEffects(entity: Entity): ActiveEffectsComponent {
-    const existing = entity.getComponent<ActiveEffectsComponent>(
-      AbilitiesComponentType.ActiveEffects
-    );
+    const existing = getActiveEffectsComponent(entity);
     if (existing) {
       return existing;
     }
@@ -790,9 +786,7 @@ export class AbilitySystemFacade {
   }
 
   private getOrCreateTags(entity: Entity): GameplayTagsComponent {
-    const existing = entity.getComponent<GameplayTagsComponent>(
-      AbilitiesComponentType.GameplayTags
-    );
+    const existing = getGameplayTagsComponent(entity);
     if (existing) {
       return existing;
     }

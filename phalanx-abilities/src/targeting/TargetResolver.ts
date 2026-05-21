@@ -1,6 +1,6 @@
 import type { EntityManager } from 'phalanx-ecs';
 import type { FixedPoint } from 'phalanx-math';
-import { AbilitiesComponentType, GameplayTagsComponent } from '../components';
+import { getGameplayTagsComponent } from '../components';
 import type { AbilitySystemRegistries } from '../registry';
 import type { ProvidedTarget, TargetFilter, TargetOrigin, TargetSpec } from '../types';
 
@@ -152,7 +152,7 @@ export class TargetResolver {
     if (!spatial) {
       throw new Error(
         "TargetSpec.kind === 'Radius' requires a spatial query. " +
-          'Call AbilitySystemFacade.registerSpatialQuery(...) at world bootstrap.'
+          'Pass physicsWorld to createAbilitySystem, or call AbilitySystemFacade.registerSpatialQuery(...) at world bootstrap.'
       );
     }
 
@@ -326,7 +326,7 @@ export class TargetResolver {
     if (!spatial) {
       throw new Error(
         "TargetSpec.kind === 'Radius' requires a spatial query. " +
-          'Call AbilitySystemFacade.registerSpatialQuery(...) at world bootstrap.'
+          'Pass physicsWorld to createAbilitySystem, or call AbilitySystemFacade.registerSpatialQuery(...) at world bootstrap.'
       );
     }
     if (typeof spatial.getEntityPosition === 'function') {
@@ -355,9 +355,7 @@ export class TargetResolver {
       // can't satisfy any predicate that needs to read its tags.
       return false;
     }
-    const tagsComponent = entity.getComponent<GameplayTagsComponent>(
-      AbilitiesComponentType.GameplayTags
-    );
+    const tagsComponent = getGameplayTagsComponent(entity);
     if (filter.tagsRequired && filter.tagsRequired.length > 0) {
       if (!tagsComponent) {
         // No tag component at all → cannot satisfy a `required` filter.

@@ -7,6 +7,9 @@ import {
   ActiveEffectsComponent,
   AttributesComponent,
   GameplayTagsComponent,
+  getActiveEffectsComponent,
+  getAttributesComponent,
+  getGameplayTagsComponent,
 } from '../components';
 import type { AbilitySystemRegistries } from '../registry';
 import { appendGameplayCueEvents } from '../runtime';
@@ -54,12 +57,13 @@ export class EffectTickSystem extends GameSystem {
   }
 
   public override processTick(tick: number): void {
-    const entities = this.entityManager.queryEntities(AbilitiesComponentType.ActiveEffects);
+    const entities = this.entityManager.queryEntitiesAny(
+      AbilitiesComponentType.AbilitySystem,
+      AbilitiesComponentType.ActiveEffects
+    );
 
     for (const entity of entities) {
-      const activeEffects = entity.getComponent<ActiveEffectsComponent>(
-        AbilitiesComponentType.ActiveEffects
-      );
+      const activeEffects = getActiveEffectsComponent(entity);
       if (!activeEffects || activeEffects.queue.length === 0) {
         continue;
       }
@@ -134,10 +138,8 @@ export class EffectTickSystem extends GameSystem {
     expired: readonly ActiveEffectInstance[],
     tick: number
   ): void {
-    const tags = entity.getComponent<GameplayTagsComponent>(AbilitiesComponentType.GameplayTags);
-    const attributes = entity.getComponent<AttributesComponent>(
-      AbilitiesComponentType.Attributes
-    );
+    const tags = getGameplayTagsComponent(entity);
+    const attributes = getAttributesComponent(entity);
 
     for (const instance of expired) {
       const effectDef = this.registries.effects.tryGet(instance.defId);
@@ -212,8 +214,7 @@ export class EffectTickSystem extends GameSystem {
       // Resolve attributes lazily — a queue with only Duration entries should
       // not pay for the component lookup.
       if (attributes === undefined) {
-        attributes =
-          entity.getComponent<AttributesComponent>(AbilitiesComponentType.Attributes) ?? undefined;
+        attributes = getAttributesComponent(entity);
       }
 
       while (tick >= instance.nextPeriodTick) {

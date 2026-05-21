@@ -13,6 +13,10 @@ export { PhysicsSystem } from './systems/PhysicsSystem';
 // Facade
 export { PhysicsWorld } from './PhysicsWorld';
 
+// Ability-system spatial adapter
+export { createPhysicsSpatialQuery } from './spatial/createPhysicsSpatialQuery';
+export type { PhysicsSpatialQuery } from './spatial/createPhysicsSpatialQuery';
+
 // Config & Types
 export type { PhysicsWorldConfig } from './PhysicsWorldConfig';
 export type { TransformFieldMapping, CollisionFilter, CollisionEvent, PhysicsConfig } from './types';

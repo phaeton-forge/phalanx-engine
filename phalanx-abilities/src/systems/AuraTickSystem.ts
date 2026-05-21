@@ -5,6 +5,8 @@ import {
   ActiveEffectsComponent,
   AuraComponent,
   GameplayTagsComponent,
+  getActiveEffectsComponent,
+  getGameplayTagsComponent,
 } from '../components';
 import type { AbilitySystemRegistries } from '../registry';
 import type { AbilitySystemRuntime } from '../runtime';
@@ -163,7 +165,7 @@ export class AuraTickSystem extends GameSystem {
     if (requiredTag === undefined) {
       return true;
     }
-    const tags = entity.getComponent<GameplayTagsComponent>(AbilitiesComponentType.GameplayTags);
+    const tags = getGameplayTagsComponent(entity);
     if (!tags) {
       return false;
     }
@@ -184,7 +186,7 @@ export class AuraTickSystem extends GameSystem {
     if (lifetimeTag === undefined) {
       return false;
     }
-    const tags = entity.getComponent<GameplayTagsComponent>(AbilitiesComponentType.GameplayTags);
+    const tags = getGameplayTagsComponent(entity);
     if (tags && tags.tags.has(lifetimeTag)) {
       return false;
     }
@@ -253,9 +255,7 @@ export class AuraTickSystem extends GameSystem {
           // applyEffectAoE — silently skip.
           continue;
         }
-        let activeEffects = targetEntity.getComponent<ActiveEffectsComponent>(
-          AbilitiesComponentType.ActiveEffects
-        );
+        let activeEffects = getActiveEffectsComponent(targetEntity);
         if (!activeEffects) {
           activeEffects = new ActiveEffectsComponent();
           targetEntity.addComponent(activeEffects);

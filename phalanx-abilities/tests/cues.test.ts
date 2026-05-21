@@ -1,27 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { Entity, GameWorld, resetEntityIdCounter } from 'phalanx-ecs';
-import type { GameSystem } from 'phalanx-ecs';
 import { FP } from 'phalanx-math';
+import { defineEffect, gameplayCueKey } from '../src';
+import { GAMEPLAY_CUE_EVENT } from '../src/events';
+import type { CueEvent } from '../src';
 import {
-  AbilitiesComponentType,
-  AbilitySystemFacade,
-  AttributeAggregationSystem,
-  CueBufferCleanupSystem,
-  CueDispatchSystem,
-  EffectApplicationSystem,
-  EffectTickSystem,
-  GAMEPLAY_CUE_EVENT,
-  createAbilitySystemRegistries,
-  createAbilitySystemRuntime,
-  defineAttribute,
-  defineEffect,
-  gameplayCueKey,
-} from '../src';
-import type { AbilitySystemRegistries, AbilitySystemRuntime, CueEvent } from '../src';
+  ArmorAttribute,
+  HealthAttribute,
+  addEntity,
+  createTestWorld,
+  spawnEntity,
+} from './helpers';
 
 describe('gameplay cues', () => {
   it('pushes OnApplied for an Instant effect using the string[] shortcut', () => {
-    const { world, facade, runtime } = createTestWorld({
+    const { world, abilities } = createTestWorld({
+      pipeline: 'effects-retain-cues',
+      attributes: [HealthAttribute, ArmorAttribute],
       effects: [
         defineEffect({
           id: 'Effect.AutoAttack.Damage',
@@ -31,15 +25,14 @@ describe('gameplay cues', () => {
         }),
       ],
     });
-    const source = addEntity(world);
-    const target = addEntity(world);
-    facade.initAttributesForEntity(target.id);
+    const source = spawnEntity(world, abilities);
+    const target = spawnEntity(world, abilities);
     world.processAllTicks(1);
 
-    facade.applyEffect(target.id, 'Effect.AutoAttack.Damage', source.id);
+    abilities.applyEffect(target.id, 'Effect.AutoAttack.Damage', source.id);
     world.processAllTicks(2);
 
-    expect(runtime.gameplayCueBuffer.events).toEqual([
+    expect(abilities.gameplayCueBuffer.events).toEqual([
       {
         tick: 2,
         cueId: 'Cue.AutoAttack.Hit',
@@ -52,9 +45,10 @@ describe('gameplay cues', () => {
   });
 
   it('dispatches OnApplied and OnExpired for a Duration effect with cleanup between ticks', () => {
-    const { world, facade, cueLog } = createTestWorld({
-      dispatchCues: true,
-      cleanupCues: true,
+    const { world, abilities, cueLog } = createTestWorld({
+      pipeline: 'effects',
+      attributes: [HealthAttribute, ArmorAttribute],
+      cues: 'dispatch',
       effects: [
         defineEffect({
           id: 'Effect.ArmorShred',
@@ -68,12 +62,11 @@ describe('gameplay cues', () => {
         }),
       ],
     });
-    const source = addEntity(world);
-    const target = addEntity(world);
-    facade.initAttributesForEntity(target.id);
+    const source = spawnEntity(world, abilities);
+    const target = spawnEntity(world, abilities);
     world.processAllTicks(1);
 
-    facade.applyEffect(target.id, 'Effect.ArmorShred', source.id);
+    abilities.applyEffect(target.id, 'Effect.ArmorShred', source.id);
     world.processAllTicks(2);
     expect(cueLog).toEqual([
       {
@@ -84,11 +77,11 @@ describe('gameplay cues', () => {
         phase: 'OnApplied',
       },
     ]);
-    expect(facade.gameplayCueBufferInternal.events).toEqual([]);
+    expect(abilities.gameplayCueBuffer.events).toEqual([]);
 
     world.processAllTicks(3);
     expect(cueLog).toHaveLength(1);
-    expect(facade.gameplayCueBufferInternal.events).toEqual([]);
+    expect(abilities.gameplayCueBuffer.events).toEqual([]);
 
     world.processAllTicks(4);
     expect(cueLog).toEqual([
@@ -107,14 +100,15 @@ describe('gameplay cues', () => {
         phase: 'OnExpired',
       },
     ]);
-    expect(facade.gameplayCueBufferInternal.events).toEqual([]);
+    expect(abilities.gameplayCueBuffer.events).toEqual([]);
     world.dispose();
   });
 
   it('pushes OnPeriodic exactly on scheduled periodic landings', () => {
-    const { world, facade, cueLog } = createTestWorld({
-      dispatchCues: true,
-      cleanupCues: true,
+    const { world, abilities, cueLog } = createTestWorld({
+      pipeline: 'effects',
+      attributes: [HealthAttribute, ArmorAttribute],
+      cues: 'dispatch',
       effects: [
         defineEffect({
           id: 'Effect.Poison',
@@ -126,12 +120,11 @@ describe('gameplay cues', () => {
         }),
       ],
     });
-    const source = addEntity(world);
-    const target = addEntity(world);
-    facade.initAttributesForEntity(target.id);
+    const source = spawnEntity(world, abilities);
+    const target = spawnEntity(world, abilities);
     world.processAllTicks(1);
 
-    facade.applyEffect(target.id, 'Effect.Poison', source.id);
+    abilities.applyEffect(target.id, 'Effect.Poison', source.id);
     for (let tick = 2; tick <= 8; tick++) {
       world.processAllTicks(tick);
     }
@@ -145,9 +138,10 @@ describe('gameplay cues', () => {
   });
 
   it('pushes immediate OnPeriodic only from structured cues', () => {
-    const { world, facade, cueLog } = createTestWorld({
-      dispatchCues: true,
-      cleanupCues: true,
+    const { world, abilities, cueLog } = createTestWorld({
+      pipeline: 'effects',
+      attributes: [HealthAttribute, ArmorAttribute],
+      cues: 'dispatch',
       effects: [
         defineEffect({
           id: 'Effect.BurningWeapon',
@@ -172,13 +166,12 @@ describe('gameplay cues', () => {
         }),
       ],
     });
-    const source = addEntity(world);
-    const target = addEntity(world);
-    facade.initAttributesForEntity(target.id);
+    const source = spawnEntity(world, abilities);
+    const target = spawnEntity(world, abilities);
     world.processAllTicks(1);
 
-    facade.applyEffect(target.id, 'Effect.BurningWeapon', source.id);
-    facade.applyEffect(target.id, 'Effect.ShortcutPeriodic', source.id);
+    abilities.applyEffect(target.id, 'Effect.BurningWeapon', source.id);
+    abilities.applyEffect(target.id, 'Effect.ShortcutPeriodic', source.id);
     world.processAllTicks(2);
 
     expect(cueLog).toEqual([
@@ -209,21 +202,22 @@ describe('gameplay cues', () => {
 
   it('preserves deterministic entity and pending-add cue order', () => {
     const runScenario = (): CueEvent[] => {
-      const { world, facade, cueLog } = createTestWorld({
-        dispatchCues: true,
-        cleanupCues: true,
+      const { world, abilities, cueLog } = createTestWorld({
+        pipeline: 'effects',
+        attributes: [HealthAttribute, ArmorAttribute],
+        cues: 'dispatch',
         effects: [
           defineEffect({ id: 'Effect.First', type: 'Instant', cues: ['Cue.First'] }),
           defineEffect({ id: 'Effect.Second', type: 'Instant', cues: ['Cue.Second'] }),
         ],
       });
-      const source = addEntity(world);
-      const firstTarget = addEntity(world);
-      const secondTarget = addEntity(world);
-      facade.applyEffect(firstTarget.id, 'Effect.First', source.id);
-      facade.applyEffect(firstTarget.id, 'Effect.Second', source.id);
-      facade.applyEffect(secondTarget.id, 'Effect.First', source.id);
-      facade.applyEffect(secondTarget.id, 'Effect.Second', source.id);
+      const source = spawnEntity(world, abilities);
+      const firstTarget = spawnEntity(world, abilities);
+      const secondTarget = spawnEntity(world, abilities);
+      abilities.applyEffect(firstTarget.id, 'Effect.First', source.id);
+      abilities.applyEffect(firstTarget.id, 'Effect.Second', source.id);
+      abilities.applyEffect(secondTarget.id, 'Effect.First', source.id);
+      abilities.applyEffect(secondTarget.id, 'Effect.Second', source.id);
       world.processAllTicks(1);
       world.dispose();
       return cueLog;
@@ -248,19 +242,20 @@ describe('gameplay cues', () => {
   });
 
   it('dispatches each cue on global and per-cue EventBus keys', () => {
-    const { world, facade } = createTestWorld({
-      dispatchCues: true,
-      cleanupCues: true,
+    const { world, abilities } = createTestWorld({
+      pipeline: 'effects',
+      attributes: [HealthAttribute, ArmorAttribute],
+      cues: 'dispatch',
       effects: [defineEffect({ id: 'Effect.Signal', type: 'Instant', cues: ['Cue.X'] })],
     });
     const globalEvents: CueEvent[] = [];
     const perCueEvents: CueEvent[] = [];
     world.eventBus.on<CueEvent>(GAMEPLAY_CUE_EVENT, (event) => globalEvents.push(event));
     world.eventBus.on<CueEvent>(gameplayCueKey('Cue.X'), (event) => perCueEvents.push(event));
-    const source = addEntity(world);
-    const target = addEntity(world);
+    const source = spawnEntity(world, abilities);
+    const target = spawnEntity(world, abilities);
 
-    facade.applyEffect(target.id, 'Effect.Signal', source.id);
+    abilities.applyEffect(target.id, 'Effect.Signal', source.id);
     world.processAllTicks(1);
 
     expect(globalEvents).toHaveLength(1);
@@ -273,26 +268,28 @@ describe('gameplay cues', () => {
       targetEntityId: target.id,
       phase: 'OnApplied',
     });
-    expect(facade.gameplayCueBufferInternal.events).toEqual([]);
+    expect(abilities.gameplayCueBuffer.events).toEqual([]);
     world.dispose();
   });
 
   it('cleans the cue buffer even without CueDispatchSystem', () => {
-    const { world, facade } = createTestWorld({
-      cleanupCues: true,
+    const { world, abilities } = createTestWorld({
+      pipeline: 'effects', attributes: [HealthAttribute, ArmorAttribute], cues: 'buffer',
       effects: [defineEffect({ id: 'Effect.Cleanup', type: 'Instant', cues: ['Cue.Cleanup'] })],
     });
-    const entity = addEntity(world);
+    const entity = spawnEntity(world, abilities);
 
-    facade.applyEffect(entity.id, 'Effect.Cleanup', entity.id);
+    abilities.applyEffect(entity.id, 'Effect.Cleanup', entity.id);
     world.processAllTicks(1);
 
-    expect(facade.gameplayCueBufferInternal.events).toEqual([]);
+    expect(abilities.gameplayCueBuffer.events).toEqual([]);
     world.dispose();
   });
 
   it('does not push OnApplied for a tag-gated rejected effect', () => {
-    const { world, facade, runtime } = createTestWorld({
+    const { world, abilities } = createTestWorld({
+      pipeline: 'effects',
+      attributes: [HealthAttribute, ArmorAttribute],
       effects: [
         defineEffect({
           id: 'Effect.BlockedDamage',
@@ -303,19 +300,20 @@ describe('gameplay cues', () => {
         }),
       ],
     });
-    const entity = addEntity(world);
-    facade.initAttributesForEntity(entity.id);
-    facade.addTag(entity.id, 'State.Invulnerable');
+    const entity = spawnEntity(world, abilities);
+    abilities.addTag(entity.id, 'State.Invulnerable');
 
-    facade.applyEffect(entity.id, 'Effect.BlockedDamage', entity.id);
+    abilities.applyEffect(entity.id, 'Effect.BlockedDamage', entity.id);
     world.processAllTicks(1);
 
-    expect(runtime.gameplayCueBuffer.events).toEqual([]);
+    expect(abilities.gameplayCueBuffer.events).toEqual([]);
     world.dispose();
   });
 
   it('pushes OnExpired when removeEffectsByTag forces removal', () => {
-    const { world, facade, runtime } = createTestWorld({
+    const { world, abilities } = createTestWorld({
+      pipeline: 'effects-retain-cues',
+      attributes: [HealthAttribute, ArmorAttribute],
       effects: [
         defineEffect({
           id: 'Effect.RemovableShield',
@@ -327,18 +325,16 @@ describe('gameplay cues', () => {
         }),
       ],
     });
-    const source = addEntity(world);
-    const target = addEntity(world);
-    facade.initAttributesForEntity(target.id);
-
-    facade.applyEffect(target.id, 'Effect.RemovableShield', source.id);
+    const source = spawnEntity(world, abilities);
+    const target = spawnEntity(world, abilities);
+    abilities.applyEffect(target.id, 'Effect.RemovableShield', source.id);
     world.processAllTicks(1);
-    runtime.gameplayCueBuffer.events.length = 0;
+    abilities.gameplayCueBuffer.events.length = 0;
 
-    expect(facade.removeEffectsByTag(target.id, 'State.Shielded')).toBe(1);
+    expect(abilities.removeEffectsByTag(target.id, 'State.Shielded')).toBe(1);
     world.processAllTicks(2);
 
-    expect(runtime.gameplayCueBuffer.events).toEqual([
+    expect(abilities.gameplayCueBuffer.events).toEqual([
       {
         tick: 2,
         cueId: 'Cue.Shield.Removed',
@@ -352,9 +348,10 @@ describe('gameplay cues', () => {
 
   it('produces identical cue logs across independent deterministic runs', () => {
     const runScenario = (): CueEvent[] => {
-      const { world, facade, cueLog } = createTestWorld({
-        dispatchCues: true,
-        cleanupCues: true,
+      const { world, abilities, cueLog } = createTestWorld({
+        pipeline: 'effects',
+        attributes: [HealthAttribute, ArmorAttribute],
+        cues: 'dispatch',
         effects: [
           defineEffect({ id: 'Effect.Hit', type: 'Instant', cues: ['Cue.Hit'] }),
           defineEffect({
@@ -391,25 +388,23 @@ describe('gameplay cues', () => {
           }),
         ],
       });
-      const source = addEntity(world);
-      const target = addEntity(world);
-      facade.initAttributesForEntity(target.id);
-
+      const source = spawnEntity(world, abilities);
+      const target = spawnEntity(world, abilities);
       for (let tick = 1; tick <= 100; tick++) {
         if (tick % 10 === 1) {
-          facade.applyEffect(target.id, 'Effect.Hit', source.id);
+          abilities.applyEffect(target.id, 'Effect.Hit', source.id);
         }
         if (tick % 20 === 2) {
-          facade.applyEffect(target.id, 'Effect.Dot', source.id);
+          abilities.applyEffect(target.id, 'Effect.Dot', source.id);
         }
         if (tick % 25 === 3) {
-          facade.applyEffect(target.id, 'Effect.Buff', source.id);
+          abilities.applyEffect(target.id, 'Effect.Buff', source.id);
         }
         if (tick % 30 === 4) {
-          facade.applyEffect(target.id, 'Effect.ImmediateDot', source.id);
+          abilities.applyEffect(target.id, 'Effect.ImmediateDot', source.id);
         }
         if (tick % 40 === 5) {
-          facade.applyEffect(target.id, 'Effect.ShortcutPeriodic', source.id);
+          abilities.applyEffect(target.id, 'Effect.ShortcutPeriodic', source.id);
         }
         world.processAllTicks(tick);
       }
@@ -420,81 +415,6 @@ describe('gameplay cues', () => {
     expect(runScenario()).toEqual(runScenario());
   });
 });
-
-interface TestWorldOpts {
-  effects: readonly ReturnType<typeof defineEffect>[];
-  dispatchCues?: boolean;
-  cleanupCues?: boolean;
-}
-
-interface TestWorld {
-  world: GameWorld;
-  facade: AbilitySystemFacade;
-  registries: AbilitySystemRegistries;
-  runtime: AbilitySystemRuntime;
-  cueLog: CueEvent[];
-}
-
-function createTestWorld(opts: TestWorldOpts): TestWorld {
-  resetEntityIdCounter();
-  const registries = createAbilitySystemRegistries();
-  registries.attributes.register(
-    defineAttribute({
-      id: 'Health',
-      default: FP.FromInt(100),
-      min: FP.FromInt(0),
-      max: FP.FromInt(100),
-      clamp: 'both',
-    })
-  );
-  registries.attributes.register(
-    defineAttribute({
-      id: 'Armor',
-      default: FP.FromInt(50),
-      min: FP.FromInt(0),
-      max: FP.FromInt(1000),
-      clamp: 'min',
-    })
-  );
-  for (const effect of opts.effects) {
-    registries.effects.register(effect);
-  }
-
-  const runtime = createAbilitySystemRuntime();
-  const world = new GameWorld({
-    componentTypes: [
-      AbilitiesComponentType.Attributes,
-      AbilitiesComponentType.ActiveEffects,
-      AbilitiesComponentType.GameplayTags,
-    ],
-  });
-  const cueLog: CueEvent[] = [];
-  if (opts.dispatchCues === true) {
-    world.eventBus.on<CueEvent>(GAMEPLAY_CUE_EVENT, (event) => cueLog.push(event));
-  }
-
-  const tickSystems: GameSystem[] = [
-    new EffectApplicationSystem(registries, runtime),
-    new EffectTickSystem(registries, runtime),
-    new AttributeAggregationSystem(registries),
-  ];
-  if (opts.dispatchCues === true) {
-    tickSystems.push(new CueDispatchSystem(runtime));
-  }
-  if (opts.cleanupCues === true) {
-    tickSystems.push(new CueBufferCleanupSystem(runtime));
-  }
-  world.registerSystems(tickSystems, []);
-
-  const facade = new AbilitySystemFacade(world.entityManager, registries, runtime);
-  return { world, facade, registries, runtime, cueLog };
-}
-
-function addEntity(world: GameWorld): Entity {
-  const entity = new Entity();
-  world.entityManager.addEntity(entity);
-  return entity;
-}
 
 function periodicEvent(tick: number, sourceEntityId: number, targetEntityId: number): CueEvent {
   return {

@@ -5,9 +5,11 @@ import type { FixedPoint } from 'phalanx-math';
  * "which entities are inside this disc?".
  *
  * The interface is intentionally tiny so `phalanx-abilities` stays free of
- * a hard `phalanx-physics` peer dependency. Implementations are expected
- * to be a thin wrapper over the project's existing spatial index (a hash
- * grid, a quadtree, or even an O(n) linear scan for prototype scenes).
+ * a hard `phalanx-physics` peer dependency. For the usual physics-backed
+ * game, pass `physicsWorld` to `createAbilitySystem` (or call
+ * `createPhysicsSpatialQuery` from `phalanx-physics`) instead of hand-rolling
+ * this adapter. Custom implementations remain supported for prototypes and
+ * non-physics scenes (hash grid, quadtree, linear scan).
  *
  * Contract for `queryRadius`:
  *   - Returns every entity whose position satisfies

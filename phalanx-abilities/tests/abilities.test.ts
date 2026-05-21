@@ -1,22 +1,15 @@
-import { describe, expect, it } from 'vitest';
-import { Entity, GameWorld } from 'phalanx-ecs';
+import { describe, expect, it, vi } from 'vitest';
 import { FP } from 'phalanx-math';
+import { ABILITY_ACTIVATED_EVENT, defineAbility, defineEffect } from '../src';
+import type { AbilityActivatedEvent } from '../src';
 import {
-  ABILITY_ACTIVATED_EVENT,
-  AbilitiesComponentType,
-  AbilityActivationSystem,
-  AbilityHookExecutorSystem,
-  AbilitySystemFacade,
-  AttributeAggregationSystem,
-  EffectApplicationSystem,
-  EffectTickSystem,
-  createAbilitySystemRegistries,
-  createAbilitySystemRuntime,
-  defineAbility,
-  defineAttribute,
-  defineEffect,
-} from '../src';
-import type { AbilityActivatedEvent, AbilitySystemRegistries, AbilitySystemRuntime } from '../src';
+  ArmorAttribute,
+  HealthAttribute,
+  IncomingDamageMultiplierAttribute,
+  ManaAttribute,
+  createTestWorld,
+  spawnCombatEntity,
+} from './helpers';
 
 // ---------------------------------------------------------------------------
 // Stage 5 — Abilities: cost / cooldown / CanActivate / hooks
@@ -31,7 +24,9 @@ import type { AbilityActivatedEvent, AbilitySystemRegistries, AbilitySystemRunti
 
 describe('ability activation — happy paths', () => {
   it('queues cost + cooldown + selfEffectIds on the caster on the activation tick', () => {
-    const { world, facade } = createTestWorld({
+    const { world, abilities, abilityIds } = createTestWorld({
+      pipeline: 'activation',
+      attributes: [HealthAttribute, ManaAttribute, ArmorAttribute, IncomingDamageMultiplierAttribute],
       effects: [
         defineEffect({
           id: 'Effect.SpendMana10',
@@ -62,27 +57,28 @@ describe('ability activation — happy paths', () => {
         }),
       ],
     });
-    const caster = addEntity(world);
-    facade.initAttributesForEntity(caster.id);
+    const caster = spawnCombatEntity(world, abilities, abilityIds);
     world.processAllTicks(1);
-    expect(FP.ToFloat(facade.getAttribute(caster.id, 'Mana').current)).toBe(50);
+    expect(FP.ToFloat(abilities.getAttribute(caster.id, 'Mana').current)).toBe(50);
 
-    facade.activateAbility(caster.id, 'Ability.Fireball');
+    abilities.activateAbility(caster.id, 'Ability.Fireball');
 
     // Tick 2: activation drains, cost+cooldown+self enqueued, EffectApplication
     // applies them on the same tick because of system order.
     world.processAllTicks(2);
-    expect(FP.ToFloat(facade.getAttribute(caster.id, 'Mana').current)).toBe(40);
-    expect(facade.hasTag(caster.id, 'Cooldown.Ability.Fireball')).toBe(true);
-    expect(facade.hasTag(caster.id, 'State.Buff.CastSpeed')).toBe(true);
+    expect(FP.ToFloat(abilities.getAttribute(caster.id, 'Mana').current)).toBe(40);
+    expect(abilities.hasTag(caster.id, 'Cooldown.Ability.Fireball')).toBe(true);
+    expect(abilities.hasTag(caster.id, 'State.Buff.CastSpeed')).toBe(true);
     // Self-effect's Armor buff folded through aggregation.
-    expect(FP.ToFloat(facade.getAttribute(caster.id, 'Armor').current)).toBe(55);
+    expect(FP.ToFloat(abilities.getAttribute(caster.id, 'Armor').current)).toBe(55);
 
     world.dispose();
   });
 
   it('emits AbilityActivated on the world event bus when activation succeeds', () => {
-    const { world, facade } = createTestWorld({
+    const { world, abilities, abilityIds } = createTestWorld({
+      pipeline: 'activation',
+      attributes: [HealthAttribute, ManaAttribute, ArmorAttribute, IncomingDamageMultiplierAttribute],
       effects: [
         defineEffect({
           id: 'Effect.Mark',
@@ -102,10 +98,8 @@ describe('ability activation — happy paths', () => {
         }),
       ],
     });
-    const caster = addEntity(world);
-    const enemy = addEntity(world);
-    facade.initAttributesForEntity(caster.id);
-    facade.initAttributesForEntity(enemy.id);
+    const caster = spawnCombatEntity(world, abilities, abilityIds);
+    const enemy = spawnCombatEntity(world, abilities, abilityIds);
     world.processAllTicks(1);
 
     const seen: AbilityActivatedEvent[] = [];
@@ -113,7 +107,7 @@ describe('ability activation — happy paths', () => {
       seen.push(e);
     });
 
-    facade.activateAbility(caster.id, 'Ability.MarkBeam', { entityId: enemy.id });
+    abilities.activateAbility(caster.id, 'Ability.MarkBeam', { entityId: enemy.id });
     world.processAllTicks(2);
 
     expect(seen).toHaveLength(1);
@@ -125,13 +119,15 @@ describe('ability activation — happy paths', () => {
 
     // targetEffects were enqueued onto the enemy in the same tick and applied
     // by EffectApplicationSystem.
-    expect(facade.hasTag(enemy.id, 'State.Marked')).toBe(true);
+    expect(abilities.hasTag(enemy.id, 'State.Marked')).toBe(true);
 
     world.dispose();
   });
 
   it('applies targetEffectIds to the entity returned by TargetSpec resolution', () => {
-    const { world, facade } = createTestWorld({
+    const { world, abilities, abilityIds } = createTestWorld({
+      pipeline: 'activation',
+      attributes: [HealthAttribute, ManaAttribute, ArmorAttribute, IncomingDamageMultiplierAttribute],
       effects: [
         defineEffect({
           id: 'Effect.ArmorShred',
@@ -149,25 +145,25 @@ describe('ability activation — happy paths', () => {
         }),
       ],
     });
-    const caster = addEntity(world);
-    const enemy = addEntity(world);
-    facade.initAttributesForEntity(caster.id);
-    facade.initAttributesForEntity(enemy.id);
+    const caster = spawnCombatEntity(world, abilities, abilityIds);
+    const enemy = spawnCombatEntity(world, abilities, abilityIds);
     world.processAllTicks(1);
-    expect(FP.ToFloat(facade.getAttribute(enemy.id, 'Armor').current)).toBe(50);
+    expect(FP.ToFloat(abilities.getAttribute(enemy.id, 'Armor').current)).toBe(50);
 
-    facade.activateAbility(caster.id, 'Ability.ShredBeam', { entityId: enemy.id });
+    abilities.activateAbility(caster.id, 'Ability.ShredBeam', { entityId: enemy.id });
     world.processAllTicks(2);
 
-    expect(FP.ToFloat(facade.getAttribute(enemy.id, 'Armor').current)).toBe(30);
+    expect(FP.ToFloat(abilities.getAttribute(enemy.id, 'Armor').current)).toBe(30);
     // Caster is unaffected by a pure-target-effect ability.
-    expect(FP.ToFloat(facade.getAttribute(caster.id, 'Armor').current)).toBe(50);
+    expect(FP.ToFloat(abilities.getAttribute(caster.id, 'Armor').current)).toBe(50);
 
     world.dispose();
   });
 
   it('resolves Self targeting to the caster and applies targetEffectIds to self', () => {
-    const { world, facade } = createTestWorld({
+    const { world, abilities, abilityIds } = createTestWorld({
+      pipeline: 'activation',
+      attributes: [HealthAttribute, ManaAttribute, ArmorAttribute, IncomingDamageMultiplierAttribute],
       effects: [
         defineEffect({
           id: 'Effect.SelfHeal',
@@ -188,18 +184,17 @@ describe('ability activation — happy paths', () => {
         }),
       ],
     });
-    const caster = addEntity(world);
-    facade.initAttributesForEntity(caster.id);
+    const caster = spawnCombatEntity(world, abilities, abilityIds);
     world.processAllTicks(1);
     // Drop the caster's health so a heal is observable (clamp would mask it
     // otherwise — Health defaults to its max).
-    facade.applyEffect(caster.id, 'Effect.TestDamage40', caster.id);
+    abilities.applyEffect(caster.id, 'Effect.TestDamage40', caster.id);
     world.processAllTicks(2);
-    expect(FP.ToFloat(facade.getAttribute(caster.id, 'Health').current)).toBe(60);
+    expect(FP.ToFloat(abilities.getAttribute(caster.id, 'Health').current)).toBe(60);
 
-    facade.activateAbility(caster.id, 'Ability.SelfHeal');
+    abilities.activateAbility(caster.id, 'Ability.SelfHeal');
     world.processAllTicks(3);
-    expect(FP.ToFloat(facade.getAttribute(caster.id, 'Health').current)).toBe(80);
+    expect(FP.ToFloat(abilities.getAttribute(caster.id, 'Health').current)).toBe(80);
 
     world.dispose();
   });
@@ -207,7 +202,9 @@ describe('ability activation — happy paths', () => {
 
 describe('ability activation — CanActivate gating', () => {
   it('blocks activation when caster has any activationBlockedTags', () => {
-    const { world, facade } = createTestWorld({
+    const { world, abilities, abilityIds } = createTestWorld({
+      pipeline: 'activation',
+      attributes: [HealthAttribute, ManaAttribute, ArmorAttribute, IncomingDamageMultiplierAttribute],
       effects: [
         defineEffect({
           id: 'Effect.Fireball.Cooldown',
@@ -225,23 +222,24 @@ describe('ability activation — CanActivate gating', () => {
         }),
       ],
     });
-    const caster = addEntity(world);
-    facade.initAttributesForEntity(caster.id);
+    const caster = spawnCombatEntity(world, abilities, abilityIds);
     world.processAllTicks(1);
-    facade.addTag(caster.id, 'State.Stun');
+    abilities.addTag(caster.id, 'State.Stun');
 
-    facade.activateAbility(caster.id, 'Ability.Fireball');
+    abilities.activateAbility(caster.id, 'Ability.Fireball');
     world.processAllTicks(2);
 
     // Cooldown tag must NOT be granted: activation was rejected, no cooldown
     // effect was enqueued.
-    expect(facade.hasTag(caster.id, 'Cooldown.Ability.Fireball')).toBe(false);
+    expect(abilities.hasTag(caster.id, 'Cooldown.Ability.Fireball')).toBe(false);
 
     world.dispose();
   });
 
   it('blocks activation when caster lacks any tagsRequired', () => {
-    const { world, facade } = createTestWorld({
+    const { world, abilities, abilityIds } = createTestWorld({
+      pipeline: 'activation',
+      attributes: [HealthAttribute, ManaAttribute, ArmorAttribute, IncomingDamageMultiplierAttribute],
       effects: [
         defineEffect({
           id: 'Effect.Stance.Cooldown',
@@ -259,26 +257,27 @@ describe('ability activation — CanActivate gating', () => {
         }),
       ],
     });
-    const caster = addEntity(world);
-    facade.initAttributesForEntity(caster.id);
+    const caster = spawnCombatEntity(world, abilities, abilityIds);
     world.processAllTicks(1);
 
     // Missing required tag: activation rejected.
-    facade.activateAbility(caster.id, 'Ability.WarriorStance');
+    abilities.activateAbility(caster.id, 'Ability.WarriorStance');
     world.processAllTicks(2);
-    expect(facade.hasTag(caster.id, 'Cooldown.Ability.Stance')).toBe(false);
+    expect(abilities.hasTag(caster.id, 'Cooldown.Ability.Stance')).toBe(false);
 
     // Grant the tag and try again: activation now succeeds.
-    facade.addTag(caster.id, 'Class.Warrior');
-    facade.activateAbility(caster.id, 'Ability.WarriorStance');
+    abilities.addTag(caster.id, 'Class.Warrior');
+    abilities.activateAbility(caster.id, 'Ability.WarriorStance');
     world.processAllTicks(3);
-    expect(facade.hasTag(caster.id, 'Cooldown.Ability.Stance')).toBe(true);
+    expect(abilities.hasTag(caster.id, 'Cooldown.Ability.Stance')).toBe(true);
 
     world.dispose();
   });
 
   it('blocks activation while the cooldown tag is present, then allows after expiry', () => {
-    const { world, facade } = createTestWorld({
+    const { world, abilities, abilityIds } = createTestWorld({
+      pipeline: 'activation',
+      attributes: [HealthAttribute, ManaAttribute, ArmorAttribute, IncomingDamageMultiplierAttribute],
       effects: [
         defineEffect({
           id: 'Effect.Snipe.Cooldown',
@@ -302,38 +301,38 @@ describe('ability activation — CanActivate gating', () => {
         }),
       ],
     });
-    const caster = addEntity(world);
-    const enemy = addEntity(world);
-    facade.initAttributesForEntity(caster.id);
-    facade.initAttributesForEntity(enemy.id);
+    const caster = spawnCombatEntity(world, abilities, abilityIds);
+    const enemy = spawnCombatEntity(world, abilities, abilityIds);
     world.processAllTicks(1);
 
     // First cast lands.
-    facade.activateAbility(caster.id, 'Ability.Snipe', { entityId: enemy.id });
+    abilities.activateAbility(caster.id, 'Ability.Snipe', { entityId: enemy.id });
     world.processAllTicks(2);
-    expect(FP.ToFloat(facade.getAttribute(enemy.id, 'Health').current)).toBe(90);
-    expect(facade.hasTag(caster.id, 'Cooldown.Ability.Snipe')).toBe(true);
+    expect(FP.ToFloat(abilities.getAttribute(enemy.id, 'Health').current)).toBe(90);
+    expect(abilities.hasTag(caster.id, 'Cooldown.Ability.Snipe')).toBe(true);
 
     // Second cast on the next tick is blocked by the cooldown tag.
-    facade.activateAbility(caster.id, 'Ability.Snipe', { entityId: enemy.id });
+    abilities.activateAbility(caster.id, 'Ability.Snipe', { entityId: enemy.id });
     world.processAllTicks(3);
-    expect(FP.ToFloat(facade.getAttribute(enemy.id, 'Health').current)).toBe(90);
+    expect(FP.ToFloat(abilities.getAttribute(enemy.id, 'Health').current)).toBe(90);
 
     // Cooldown expires (durationTicks=3 from tick 2): tick 5 sees the tag
     // gone. Cast again — lands.
     world.processAllTicks(4);
     world.processAllTicks(5);
-    expect(facade.hasTag(caster.id, 'Cooldown.Ability.Snipe')).toBe(false);
+    expect(abilities.hasTag(caster.id, 'Cooldown.Ability.Snipe')).toBe(false);
 
-    facade.activateAbility(caster.id, 'Ability.Snipe', { entityId: enemy.id });
+    abilities.activateAbility(caster.id, 'Ability.Snipe', { entityId: enemy.id });
     world.processAllTicks(6);
-    expect(FP.ToFloat(facade.getAttribute(enemy.id, 'Health').current)).toBe(80);
+    expect(FP.ToFloat(abilities.getAttribute(enemy.id, 'Health').current)).toBe(80);
 
     world.dispose();
   });
 
   it('blocks a same-tick second activation via in-flight cooldown bookkeeping', () => {
-    const { world, facade } = createTestWorld({
+    const { world, abilities, abilityIds } = createTestWorld({
+      pipeline: 'activation',
+      attributes: [HealthAttribute, ManaAttribute, ArmorAttribute, IncomingDamageMultiplierAttribute],
       effects: [
         defineEffect({
           id: 'Effect.Burst.Cooldown',
@@ -357,26 +356,26 @@ describe('ability activation — CanActivate gating', () => {
         }),
       ],
     });
-    const caster = addEntity(world);
-    const enemy = addEntity(world);
-    facade.initAttributesForEntity(caster.id);
-    facade.initAttributesForEntity(enemy.id);
+    const caster = spawnCombatEntity(world, abilities, abilityIds);
+    const enemy = spawnCombatEntity(world, abilities, abilityIds);
     world.processAllTicks(1);
 
     // Two activations queued on the same tick. Only the first should land
     // because the second sees the in-flight cooldown tag from the first.
-    facade.activateAbility(caster.id, 'Ability.Burst', { entityId: enemy.id });
-    facade.activateAbility(caster.id, 'Ability.Burst', { entityId: enemy.id });
+    abilities.activateAbility(caster.id, 'Ability.Burst', { entityId: enemy.id });
+    abilities.activateAbility(caster.id, 'Ability.Burst', { entityId: enemy.id });
     world.processAllTicks(2);
 
-    expect(FP.ToFloat(facade.getAttribute(enemy.id, 'Health').current)).toBe(90);
-    expect(facade.hasTag(caster.id, 'Cooldown.Ability.Burst')).toBe(true);
+    expect(FP.ToFloat(abilities.getAttribute(enemy.id, 'Health').current)).toBe(90);
+    expect(abilities.hasTag(caster.id, 'Cooldown.Ability.Burst')).toBe(true);
 
     world.dispose();
   });
 
   it('rejects activation when cost cannot be afforded', () => {
-    const { world, facade } = createTestWorld({
+    const { world, abilities, abilityIds } = createTestWorld({
+      pipeline: 'activation',
+      attributes: [HealthAttribute, ManaAttribute, ArmorAttribute, IncomingDamageMultiplierAttribute],
       effects: [
         defineEffect({
           id: 'Effect.SpendMana60',
@@ -399,23 +398,24 @@ describe('ability activation — CanActivate gating', () => {
         }),
       ],
     });
-    const caster = addEntity(world);
-    facade.initAttributesForEntity(caster.id);
+    const caster = spawnCombatEntity(world, abilities, abilityIds);
     world.processAllTicks(1);
     // Default Mana is 50 — cannot afford 60.
-    expect(FP.ToFloat(facade.getAttribute(caster.id, 'Mana').current)).toBe(50);
+    expect(FP.ToFloat(abilities.getAttribute(caster.id, 'Mana').current)).toBe(50);
 
-    facade.activateAbility(caster.id, 'Ability.Heavy');
+    abilities.activateAbility(caster.id, 'Ability.Heavy');
     world.processAllTicks(2);
 
-    expect(FP.ToFloat(facade.getAttribute(caster.id, 'Mana').current)).toBe(50);
-    expect(facade.hasTag(caster.id, 'Cooldown.Ability.Heavy')).toBe(false);
+    expect(FP.ToFloat(abilities.getAttribute(caster.id, 'Mana').current)).toBe(50);
+    expect(abilities.hasTag(caster.id, 'Cooldown.Ability.Heavy')).toBe(false);
 
     world.dispose();
   });
 
   it('rejects a same-tick second activation when its cost would overdraw the caster', () => {
-    const { world, facade } = createTestWorld({
+    const { world, abilities, abilityIds } = createTestWorld({
+      pipeline: 'activation',
+      attributes: [HealthAttribute, ManaAttribute, ArmorAttribute, IncomingDamageMultiplierAttribute],
       effects: [
         defineEffect({
           id: 'Effect.SpendMana30',
@@ -431,16 +431,15 @@ describe('ability activation — CanActivate gating', () => {
         }),
       ],
     });
-    const caster = addEntity(world);
-    facade.initAttributesForEntity(caster.id);
+    const caster = spawnCombatEntity(world, abilities, abilityIds);
     world.processAllTicks(1);
     // Default Mana 50: one cast (30) is fine, two casts (60) is not.
 
-    facade.activateAbility(caster.id, 'Ability.SpendMana');
-    facade.activateAbility(caster.id, 'Ability.SpendMana');
+    abilities.activateAbility(caster.id, 'Ability.SpendMana');
+    abilities.activateAbility(caster.id, 'Ability.SpendMana');
     world.processAllTicks(2);
 
-    expect(FP.ToFloat(facade.getAttribute(caster.id, 'Mana').current)).toBe(20);
+    expect(FP.ToFloat(abilities.getAttribute(caster.id, 'Mana').current)).toBe(20);
 
     world.dispose();
   });
@@ -448,7 +447,16 @@ describe('ability activation — CanActivate gating', () => {
 
 describe('ability activation — hooks', () => {
   it('invokes registered hooks after the application pass with the resolved targets', () => {
-    const { world, facade } = createTestWorld({
+    const calls: Array<{
+      abilityId: string;
+      casterEntityId: number;
+      targets: readonly number[];
+      tick: number;
+      casterHasCooldown: boolean;
+    }> = [];
+    const { world, abilities, abilityIds } = createTestWorld({
+      pipeline: 'activation',
+      attributes: [HealthAttribute, ManaAttribute, ArmorAttribute, IncomingDamageMultiplierAttribute],
       effects: [
         defineEffect({
           id: 'Effect.AutoAttack.Cooldown',
@@ -466,33 +474,26 @@ describe('ability activation — hooks', () => {
           hookId: 'Hook.SpawnProjectile',
         }),
       ],
+      hooks: {
+        'Hook.SpawnProjectile': (ctx) => {
+          calls.push({
+            abilityId: ctx.abilityId,
+            casterEntityId: ctx.casterEntityId,
+            targets: [...ctx.resolvedTargets],
+            tick: ctx.tick,
+            casterHasCooldown: abilities.hasTag(
+              ctx.casterEntityId,
+              'Cooldown.Ability.AutoAttack'
+            ),
+          });
+        },
+      },
     });
-    const caster = addEntity(world);
-    const enemy = addEntity(world);
-    facade.initAttributesForEntity(caster.id);
-    facade.initAttributesForEntity(enemy.id);
+    const caster = spawnCombatEntity(world, abilities, abilityIds);
+    const enemy = spawnCombatEntity(world, abilities, abilityIds);
     world.processAllTicks(1);
 
-    const calls: Array<{
-      abilityId: string;
-      casterEntityId: number;
-      targets: readonly number[];
-      tick: number;
-      casterHasCooldown: boolean;
-    }> = [];
-    facade.registerHook('Hook.SpawnProjectile', ctx => {
-      calls.push({
-        abilityId: ctx.abilityId,
-        casterEntityId: ctx.casterEntityId,
-        targets: [...ctx.resolvedTargets],
-        tick: ctx.tick,
-        // Inside the hook, the cooldown effect must have already been
-        // applied — system order guarantees this.
-        casterHasCooldown: facade.hasTag(ctx.casterEntityId, 'Cooldown.Ability.AutoAttack'),
-      });
-    });
-
-    facade.activateAbility(caster.id, 'Ability.AutoAttack', { entityId: enemy.id });
+    abilities.activateAbility(caster.id, 'Ability.AutoAttack', { entityId: enemy.id });
     world.processAllTicks(2);
 
     expect(calls).toHaveLength(1);
@@ -506,7 +507,10 @@ describe('ability activation — hooks', () => {
   });
 
   it('does not invoke any hook when CanActivate rejects the request', () => {
-    const { world, facade } = createTestWorld({
+    let invoked = 0;
+    const { world, abilities, abilityIds } = createTestWorld({
+      pipeline: 'activation',
+      attributes: [HealthAttribute, ManaAttribute, ArmorAttribute, IncomingDamageMultiplierAttribute],
       effects: [
         defineEffect({
           id: 'Effect.AutoAttack.Cooldown',
@@ -524,18 +528,17 @@ describe('ability activation — hooks', () => {
           hookId: 'Hook.SpawnProjectile',
         }),
       ],
+      hooks: {
+        'Hook.SpawnProjectile': () => {
+          invoked += 1;
+        },
+      },
     });
-    const caster = addEntity(world);
-    facade.initAttributesForEntity(caster.id);
+    const caster = spawnCombatEntity(world, abilities, abilityIds);
     world.processAllTicks(1);
-    facade.addTag(caster.id, 'State.Stun');
+    abilities.addTag(caster.id, 'State.Stun');
 
-    let invoked = 0;
-    facade.registerHook('Hook.SpawnProjectile', () => {
-      invoked += 1;
-    });
-
-    facade.activateAbility(caster.id, 'Ability.AutoAttack');
+    abilities.activateAbility(caster.id, 'Ability.AutoAttack');
     world.processAllTicks(2);
 
     expect(invoked).toBe(0);
@@ -544,7 +547,9 @@ describe('ability activation — hooks', () => {
   });
 
   it('throws when an ability references a hookId that was never registered', () => {
-    const { world, facade } = createTestWorld({
+    const { world, abilities, abilityIds } = createTestWorld({
+      pipeline: 'activation',
+      attributes: [HealthAttribute, ManaAttribute, ArmorAttribute, IncomingDamageMultiplierAttribute],
       effects: [],
       abilities: [
         defineAbility({
@@ -554,11 +559,10 @@ describe('ability activation — hooks', () => {
         }),
       ],
     });
-    const caster = addEntity(world);
-    facade.initAttributesForEntity(caster.id);
+    const caster = spawnCombatEntity(world, abilities, abilityIds);
     world.processAllTicks(1);
 
-    facade.activateAbility(caster.id, 'Ability.Ghost');
+    abilities.activateAbility(caster.id, 'Ability.Ghost');
     expect(() => world.processAllTicks(2)).toThrow(
       "AbilityHooksRegistry does not contain 'Hook.DoesNotExist'"
     );
@@ -569,7 +573,9 @@ describe('ability activation — hooks', () => {
 
 describe('ability activation — request lifecycle', () => {
   it('returns false from activateAbility when caster or ability is unknown', () => {
-    const { world, facade } = createTestWorld({
+    const { world, abilities, abilityIds } = createTestWorld({
+      pipeline: 'activation',
+      attributes: [HealthAttribute, ManaAttribute, ArmorAttribute, IncomingDamageMultiplierAttribute],
       effects: [],
       abilities: [
         defineAbility({
@@ -578,17 +584,20 @@ describe('ability activation — request lifecycle', () => {
         }),
       ],
     });
-    const caster = addEntity(world);
+    const caster = spawnCombatEntity(world, abilities, abilityIds);
 
-    expect(facade.activateAbility(999, 'Ability.Ghost')).toBe(false);
-    expect(facade.activateAbility(caster.id, 'Ability.DoesNotExist')).toBe(false);
-    expect(facade.activateAbility(caster.id, 'Ability.Ghost')).toBe(true);
+    expect(abilities.activateAbility(999, 'Ability.Ghost')).toBe(false);
+    expect(abilities.activateAbility(caster.id, 'Ability.DoesNotExist')).toBe(false);
+    expect(abilities.activateAbility(caster.id, 'Ability.Ghost')).toBe(true);
 
     world.dispose();
   });
 
   it('defers activation requests enqueued INSIDE the tick to the next tick', () => {
-    const { world, facade } = createTestWorld({
+    let hookInvocations = 0;
+    const { world, abilities, abilityIds } = createTestWorld({
+      pipeline: 'activation',
+      attributes: [HealthAttribute, ManaAttribute, ArmorAttribute, IncomingDamageMultiplierAttribute],
       effects: [
         defineEffect({
           id: 'Effect.Reentrant.Cooldown',
@@ -606,24 +615,19 @@ describe('ability activation — request lifecycle', () => {
           hookId: 'Hook.Reentrant',
         }),
       ],
+      hooks: {
+        'Hook.Reentrant': (ctx) => {
+          hookInvocations += 1;
+          if (hookInvocations === 1) {
+            abilities.activateAbility(ctx.casterEntityId, 'Ability.Reentrant');
+          }
+        },
+      },
     });
-    const caster = addEntity(world);
-    facade.initAttributesForEntity(caster.id);
+    const caster = spawnCombatEntity(world, abilities, abilityIds);
     world.processAllTicks(1);
 
-    // The hook fires inside tick 2 and enqueues a new activation request
-    // with enqueueTick === 2. The activation system must defer it to tick 3
-    // — otherwise we'd risk an infinite loop where the hook drives the same
-    // tick repeatedly.
-    let hookInvocations = 0;
-    facade.registerHook('Hook.Reentrant', ctx => {
-      hookInvocations += 1;
-      if (hookInvocations === 1) {
-        facade.activateAbility(ctx.casterEntityId, 'Ability.Reentrant');
-      }
-    });
-
-    facade.activateAbility(caster.id, 'Ability.Reentrant');
+    abilities.activateAbility(caster.id, 'Ability.Reentrant');
 
     world.processAllTicks(2);
     expect(hookInvocations).toBe(1);
@@ -638,7 +642,10 @@ describe('ability activation — request lifecycle', () => {
   });
 
   it('skips a request whose caster has despawned between enqueue and drain', () => {
-    const { world, facade } = createTestWorld({
+    let invoked = 0;
+    const { world, abilities, abilityIds } = createTestWorld({
+      pipeline: 'activation',
+      attributes: [HealthAttribute, ManaAttribute, ArmorAttribute, IncomingDamageMultiplierAttribute],
       effects: [
         defineEffect({
           id: 'Effect.Boom',
@@ -654,17 +661,16 @@ describe('ability activation — request lifecycle', () => {
           hookId: 'Hook.Boom',
         }),
       ],
+      hooks: {
+        'Hook.Boom': () => {
+          invoked += 1;
+        },
+      },
     });
-    const caster = addEntity(world);
-    facade.initAttributesForEntity(caster.id);
+    const caster = spawnCombatEntity(world, abilities, abilityIds);
     world.processAllTicks(1);
 
-    let invoked = 0;
-    facade.registerHook('Hook.Boom', () => {
-      invoked += 1;
-    });
-
-    facade.activateAbility(caster.id, 'Ability.Boom');
+    abilities.activateAbility(caster.id, 'Ability.Boom');
     world.entityManager.removeEntity(caster);
 
     expect(() => world.processAllTicks(2)).not.toThrow();
@@ -674,7 +680,9 @@ describe('ability activation — request lifecycle', () => {
   });
 
   it('snapshots providedTarget so mutating the caller object after enqueue does not change the request', () => {
-    const { world, facade } = createTestWorld({
+    const { world, abilities, abilityIds } = createTestWorld({
+      pipeline: 'activation',
+      attributes: [HealthAttribute, ManaAttribute, ArmorAttribute, IncomingDamageMultiplierAttribute],
       effects: [
         defineEffect({
           id: 'Effect.Mark',
@@ -690,16 +698,13 @@ describe('ability activation — request lifecycle', () => {
         }),
       ],
     });
-    const caster = addEntity(world);
-    const intendedTarget = addEntity(world);
-    const bystander = addEntity(world);
-    facade.initAttributesForEntity(caster.id);
-    facade.initAttributesForEntity(intendedTarget.id);
-    facade.initAttributesForEntity(bystander.id);
+    const caster = spawnCombatEntity(world, abilities, abilityIds);
+    const intendedTarget = spawnCombatEntity(world, abilities, abilityIds);
+    const bystander = spawnCombatEntity(world, abilities, abilityIds);
     world.processAllTicks(1);
 
     const providedTarget = { entityId: intendedTarget.id };
-    facade.activateAbility(caster.id, 'Ability.MarkTarget', providedTarget);
+    abilities.activateAbility(caster.id, 'Ability.MarkTarget', providedTarget);
 
     // Caller mutates the original object before the activation drains. The
     // snapshot in the queue must keep pointing at the intended target.
@@ -707,8 +712,8 @@ describe('ability activation — request lifecycle', () => {
 
     world.processAllTicks(2);
 
-    expect(FP.ToFloat(facade.getAttribute(intendedTarget.id, 'Health').current)).toBe(93);
-    expect(FP.ToFloat(facade.getAttribute(bystander.id, 'Health').current)).toBe(100);
+    expect(FP.ToFloat(abilities.getAttribute(intendedTarget.id, 'Health').current)).toBe(93);
+    expect(FP.ToFloat(abilities.getAttribute(bystander.id, 'Health').current)).toBe(100);
 
     world.dispose();
   });
@@ -719,7 +724,9 @@ describe('ability activation — request lifecycle', () => {
     // second is well-formed and should NOT be replayed on a later tick
     // after the throw is swallowed by the test — the drain must compact
     // away the throwing request so reprocessing cannot happen.
-    const { world, facade, runtime } = createTestWorld({
+    const { world, abilities, abilityIds } = createTestWorld({
+      pipeline: 'activation',
+      attributes: [HealthAttribute, ManaAttribute, ArmorAttribute, IncomingDamageMultiplierAttribute],
       effects: [
         defineEffect({
           id: 'Effect.BadCooldown',
@@ -747,124 +754,28 @@ describe('ability activation — request lifecycle', () => {
         }),
       ],
     });
-    const caster = addEntity(world);
-    facade.initAttributesForEntity(caster.id);
+    const caster = spawnCombatEntity(world, abilities, abilityIds);
     world.processAllTicks(1);
 
-    facade.activateAbility(caster.id, 'Ability.Bad');
-    facade.activateAbility(caster.id, 'Ability.Good');
-    expect(runtime.activationRequests.length).toBe(2);
+    abilities.activateAbility(caster.id, 'Ability.Bad');
+    abilities.activateAbility(caster.id, 'Ability.Good');
+    expect(abilities.pendingActivationCount).toBe(2);
 
     // Tick 2 drains. The bad request throws — the good request that was
     // queued AFTER it has not been processed yet and must be preserved
     // for next tick. The bad request must be discarded.
     expect(() => world.processAllTicks(2)).toThrow();
-    expect(runtime.activationRequests.length).toBe(1);
-    expect(runtime.activationRequests[0].abilityId).toBe('Ability.Good');
+    expect(abilities.pendingActivationCount).toBe(1);
+    expect(abilities.pendingActivationAbilityId(0)).toBe('Ability.Good');
     // Bad cooldown tag must not be present (effect was never applied).
-    expect(facade.hasTag(caster.id, 'Cooldown.Ability.Good')).toBe(false);
+    expect(abilities.hasTag(caster.id, 'Cooldown.Ability.Good')).toBe(false);
 
     // Tick 3: the surviving good request drains cleanly.
     world.processAllTicks(3);
-    expect(runtime.activationRequests.length).toBe(0);
-    expect(facade.hasTag(caster.id, 'Cooldown.Ability.Good')).toBe(true);
+    expect(abilities.pendingActivationCount).toBe(0);
+    expect(abilities.hasTag(caster.id, 'Cooldown.Ability.Good')).toBe(true);
 
     world.dispose();
   });
 });
-
-// ---------------------------------------------------------------------------
-// Test world helper
-// ---------------------------------------------------------------------------
-
-interface TestWorldOpts {
-  effects: readonly ReturnType<typeof defineEffect>[];
-  abilities: readonly ReturnType<typeof defineAbility>[];
-}
-
-interface TestWorld {
-  world: GameWorld;
-  facade: AbilitySystemFacade;
-  registries: AbilitySystemRegistries;
-  runtime: AbilitySystemRuntime;
-}
-
-function createTestWorld(opts: TestWorldOpts): TestWorld {
-  const registries = createAbilitySystemRegistries();
-  registries.attributes.register(
-    defineAttribute({
-      id: 'Health',
-      default: FP.FromInt(100),
-      min: FP.FromInt(0),
-      max: FP.FromInt(100),
-      clamp: 'both',
-    })
-  );
-  registries.attributes.register(
-    defineAttribute({
-      id: 'Mana',
-      default: FP.FromInt(50),
-      min: FP.FromInt(0),
-      max: FP.FromInt(50),
-      clamp: 'both',
-    })
-  );
-  registries.attributes.register(
-    defineAttribute({
-      id: 'Armor',
-      default: FP.FromInt(50),
-      min: FP.FromInt(0),
-      max: FP.FromInt(1000),
-      clamp: 'min',
-    })
-  );
-  registries.attributes.register(
-    defineAttribute({
-      id: 'IncomingDamageMultiplier',
-      default: FP.FromInt(1),
-      min: FP.FromInt(0),
-      max: FP.FromInt(10),
-      clamp: 'both',
-    })
-  );
-  for (const effect of opts.effects) {
-    registries.effects.register(effect);
-  }
-  for (const ability of opts.abilities) {
-    registries.abilities.register(ability);
-  }
-
-  const runtime = createAbilitySystemRuntime();
-  const world = new GameWorld({
-    componentTypes: [
-      AbilitiesComponentType.Attributes,
-      AbilitiesComponentType.ActiveEffects,
-      AbilitiesComponentType.GameplayTags,
-    ],
-  });
-  // System order matches the design doc Stage 5:
-  //  AbilityActivation -> EffectApplication -> AbilityHookExecutor ->
-  //  EffectTick -> AttributeAggregation.
-  // Activation enqueues effects on pendingAdd; EffectApplication drains
-  // them; the hook fires after application sees the new state; tick
-  // counts down lifetimes; aggregation resolves `current`.
-  world.registerSystems(
-    [
-      new AbilityActivationSystem(registries, runtime),
-      new EffectApplicationSystem(registries, runtime),
-      new AbilityHookExecutorSystem(registries, runtime),
-      new EffectTickSystem(registries, runtime),
-      new AttributeAggregationSystem(registries),
-    ],
-    []
-  );
-  const facade = new AbilitySystemFacade(world.entityManager, registries, runtime);
-  return { world, facade, registries, runtime };
-}
-
-function addEntity(world: GameWorld): Entity {
-  const entity = new Entity();
-  world.entityManager.addEntity(entity);
-  return entity;
-}
 

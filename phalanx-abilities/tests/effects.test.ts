@@ -1,23 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { Entity, GameWorld } from 'phalanx-ecs';
 import { FP } from 'phalanx-math';
+import { getActiveEffectsComponent, NO_SOURCE_ENTITY_ID, defineEffect } from '../src';
 import {
-  AbilitiesComponentType,
-  AbilitySystemFacade,
-  AttributeAggregationSystem,
-  EffectApplicationSystem,
-  EffectTickSystem,
-  NO_SOURCE_ENTITY_ID,
-  createAbilitySystemRegistries,
-  createAbilitySystemRuntime,
-  defineAttribute,
-  defineEffect,
-} from '../src';
-import type { AbilitySystemRegistries, AbilitySystemRuntime } from '../src';
+  ArmorAttribute,
+  HealthAttribute,
+  addEntity,
+  createTestWorld,
+  spawnEntity,
+} from './helpers';
 
 describe('effect application', () => {
   it('applies an Instant effect to base on the same tick (single tick visibility)', () => {
-    const { world, facade } = createTestWorld({
+    const { world, abilities } = createTestWorld({
+      pipeline: 'effects',
+      attributes: [HealthAttribute, ArmorAttribute],
       effects: [
         defineEffect({
           id: 'Effect.Damage',
@@ -26,24 +22,25 @@ describe('effect application', () => {
         }),
       ],
     });
-    const entity = addEntity(world);
-    facade.initAttributesForEntity(entity.id);
+    const entity = spawnEntity(world, abilities);
     // Settle defaults so dirty starts clean.
     world.processAllTicks(1);
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Health').current)).toBe(100);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(100);
 
-    facade.applyEffect(entity.id, 'Effect.Damage', entity.id);
+    abilities.applyEffect(entity.id, 'Effect.Damage', entity.id);
 
     // Application + aggregation both run on tick 2.
     world.processAllTicks(2);
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Health').base)).toBe(90);
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Health').current)).toBe(90);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').base)).toBe(90);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(90);
 
     world.dispose();
   });
 
   it('queues a Duration effect and reflects it via aggregation; expires on schedule', () => {
-    const { world, facade } = createTestWorld({
+    const { world, abilities } = createTestWorld({
+      pipeline: 'effects',
+      attributes: [HealthAttribute, ArmorAttribute],
       effects: [
         defineEffect({
           id: 'Effect.ArmorShred',
@@ -54,39 +51,40 @@ describe('effect application', () => {
         }),
       ],
     });
-    const entity = addEntity(world);
-    facade.initAttributesForEntity(entity.id);
+    const entity = spawnEntity(world, abilities);
     world.processAllTicks(1);
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Armor').current)).toBe(50);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(50);
 
-    facade.applyEffect(entity.id, 'Effect.ArmorShred', entity.id);
+    abilities.applyEffect(entity.id, 'Effect.ArmorShred', entity.id);
 
     // Tick 2: application inserts the instance with enteredOnTick=2 and
     // remainingTicks=3, aggregation produces Armor=30, tagsGranted is now
     // present. EffectTickSystem deliberately does NOT decrement an instance
     // on its application tick (otherwise durationTicks=1 would be invisible).
     world.processAllTicks(2);
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Armor').current)).toBe(30);
-    expect(facade.hasTag(entity.id, 'State.Debuff.ArmorShred')).toBe(true);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(30);
+    expect(abilities.hasTag(entity.id, 'State.Debuff.ArmorShred')).toBe(true);
 
     // Tick 3: remaining 3 -> 2.
     world.processAllTicks(3);
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Armor').current)).toBe(30);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(30);
 
     // Tick 4: remaining 2 -> 1.
     world.processAllTicks(4);
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Armor').current)).toBe(30);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(30);
 
     // Tick 5: remaining 1 -> 0, expires, tag revoked, Armor recomputes to 50.
     world.processAllTicks(5);
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Armor').current)).toBe(50);
-    expect(facade.hasTag(entity.id, 'State.Debuff.ArmorShred')).toBe(false);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(50);
+    expect(abilities.hasTag(entity.id, 'State.Debuff.ArmorShred')).toBe(false);
 
     world.dispose();
   });
 
   it('drops effects gated by tagsBlocked and grants tagsGranted on accepted ones', () => {
-    const { world, facade } = createTestWorld({
+    const { world, abilities } = createTestWorld({
+      pipeline: 'effects',
+      attributes: [HealthAttribute, ArmorAttribute],
       effects: [
         defineEffect({
           id: 'Effect.Damage',
@@ -96,26 +94,27 @@ describe('effect application', () => {
         }),
       ],
     });
-    const entity = addEntity(world);
-    facade.initAttributesForEntity(entity.id);
+    const entity = spawnEntity(world, abilities);
     world.processAllTicks(1);
 
-    facade.addTag(entity.id, 'State.Invulnerable');
-    facade.applyEffect(entity.id, 'Effect.Damage', entity.id);
+    abilities.addTag(entity.id, 'State.Invulnerable');
+    abilities.applyEffect(entity.id, 'Effect.Damage', entity.id);
     world.processAllTicks(2);
     // Effect was dropped: Health unchanged.
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Health').base)).toBe(100);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').base)).toBe(100);
 
-    facade.removeTag(entity.id, 'State.Invulnerable');
-    facade.applyEffect(entity.id, 'Effect.Damage', entity.id);
+    abilities.removeTag(entity.id, 'State.Invulnerable');
+    abilities.applyEffect(entity.id, 'Effect.Damage', entity.id);
     world.processAllTicks(3);
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Health').base)).toBe(90);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').base)).toBe(90);
 
     world.dispose();
   });
 
   it('honors tagsRequired (effect drops when missing, applies when present)', () => {
-    const { world, facade } = createTestWorld({
+    const { world, abilities } = createTestWorld({
+      pipeline: 'effects',
+      attributes: [HealthAttribute, ArmorAttribute],
       effects: [
         defineEffect({
           id: 'Effect.ExecuteWounded',
@@ -125,25 +124,26 @@ describe('effect application', () => {
         }),
       ],
     });
-    const entity = addEntity(world);
-    facade.initAttributesForEntity(entity.id);
+    const entity = spawnEntity(world, abilities);
     world.processAllTicks(1);
 
     // No `State.Wounded` yet: must be dropped.
-    facade.applyEffect(entity.id, 'Effect.ExecuteWounded', entity.id);
+    abilities.applyEffect(entity.id, 'Effect.ExecuteWounded', entity.id);
     world.processAllTicks(2);
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Health').base)).toBe(100);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').base)).toBe(100);
 
-    facade.addTag(entity.id, 'State.Wounded');
-    facade.applyEffect(entity.id, 'Effect.ExecuteWounded', entity.id);
+    abilities.addTag(entity.id, 'State.Wounded');
+    abilities.applyEffect(entity.id, 'Effect.ExecuteWounded', entity.id);
     world.processAllTicks(3);
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Health').base)).toBe(50);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').base)).toBe(50);
 
     world.dispose();
   });
 
   it('removeEffectsByTag flags matching instances for expiry on the next tick', () => {
-    const { world, facade } = createTestWorld({
+    const { world, abilities } = createTestWorld({
+      pipeline: 'effects',
+      attributes: [HealthAttribute, ArmorAttribute],
       effects: [
         defineEffect({
           id: 'Effect.ArmorShred',
@@ -154,29 +154,30 @@ describe('effect application', () => {
         }),
       ],
     });
-    const entity = addEntity(world);
-    facade.initAttributesForEntity(entity.id);
+    const entity = spawnEntity(world, abilities);
     world.processAllTicks(1);
 
-    facade.applyEffect(entity.id, 'Effect.ArmorShred', entity.id);
+    abilities.applyEffect(entity.id, 'Effect.ArmorShred', entity.id);
     world.processAllTicks(2);
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Armor').current)).toBe(30);
-    expect(facade.hasTag(entity.id, 'State.Debuff.ArmorShred')).toBe(true);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(30);
+    expect(abilities.hasTag(entity.id, 'State.Debuff.ArmorShred')).toBe(true);
 
-    const flagged = facade.removeEffectsByTag(entity.id, 'State.Debuff.ArmorShred');
+    const flagged = abilities.removeEffectsByTag(entity.id, 'State.Debuff.ArmorShred');
     expect(flagged).toBe(1);
 
     // Tick 3 runs EffectTickSystem: the flagged instance reaches 0 and is removed,
     // the tag is revoked, and aggregation recomputes Armor without the modifier.
     world.processAllTicks(3);
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Armor').current)).toBe(50);
-    expect(facade.hasTag(entity.id, 'State.Debuff.ArmorShred')).toBe(false);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(50);
+    expect(abilities.hasTag(entity.id, 'State.Debuff.ArmorShred')).toBe(false);
 
     world.dispose();
   });
 
   it('removeEffectsByDefId only removes matching defId instances', () => {
-    const { world, facade } = createTestWorld({
+    const { world, abilities } = createTestWorld({
+      pipeline: 'effects',
+      attributes: [HealthAttribute, ArmorAttribute],
       effects: [
         defineEffect({
           id: 'Effect.Slow',
@@ -194,29 +195,30 @@ describe('effect application', () => {
         }),
       ],
     });
-    const entity = addEntity(world);
-    facade.initAttributesForEntity(entity.id);
+    const entity = spawnEntity(world, abilities);
     world.processAllTicks(1);
 
-    facade.applyEffect(entity.id, 'Effect.Slow', entity.id);
-    facade.applyEffect(entity.id, 'Effect.Poison', entity.id);
+    abilities.applyEffect(entity.id, 'Effect.Slow', entity.id);
+    abilities.applyEffect(entity.id, 'Effect.Poison', entity.id);
     world.processAllTicks(2);
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Armor').current)).toBe(35);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(35);
 
-    const flagged = facade.removeEffectsByDefId(entity.id, 'Effect.Slow');
+    const flagged = abilities.removeEffectsByDefId(entity.id, 'Effect.Slow');
     expect(flagged).toBe(1);
 
     world.processAllTicks(3);
     // Slow gone, Poison still active.
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Armor').current)).toBe(45);
-    expect(facade.hasTag(entity.id, 'State.Slowed')).toBe(false);
-    expect(facade.hasTag(entity.id, 'State.Poisoned')).toBe(true);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(45);
+    expect(abilities.hasTag(entity.id, 'State.Slowed')).toBe(false);
+    expect(abilities.hasTag(entity.id, 'State.Poisoned')).toBe(true);
 
     world.dispose();
   });
 
   it('does not revoke a tag while another active instance still grants it', () => {
-    const { world, facade } = createTestWorld({
+    const { world, abilities } = createTestWorld({
+      pipeline: 'effects',
+      attributes: [HealthAttribute, ArmorAttribute],
       effects: [
         defineEffect({
           id: 'Effect.MarkShort',
@@ -234,32 +236,33 @@ describe('effect application', () => {
         }),
       ],
     });
-    const entity = addEntity(world);
-    facade.initAttributesForEntity(entity.id);
+    const entity = spawnEntity(world, abilities);
     world.processAllTicks(1);
 
-    facade.applyEffect(entity.id, 'Effect.MarkShort', entity.id);
-    facade.applyEffect(entity.id, 'Effect.MarkLong', entity.id);
+    abilities.applyEffect(entity.id, 'Effect.MarkShort', entity.id);
+    abilities.applyEffect(entity.id, 'Effect.MarkLong', entity.id);
     world.processAllTicks(2);
-    expect(facade.hasTag(entity.id, 'State.Marked')).toBe(true);
+    expect(abilities.hasTag(entity.id, 'State.Marked')).toBe(true);
 
     // Advance until Effect.MarkShort expires: durationTicks=2 means it survives
     // ticks 2 and 3, expires on tick 4. Effect.MarkLong is still active.
     world.processAllTicks(3);
     world.processAllTicks(4);
-    expect(facade.hasTag(entity.id, 'State.Marked')).toBe(true);
+    expect(abilities.hasTag(entity.id, 'State.Marked')).toBe(true);
 
     // After MarkLong also expires (tick 7), the tag is revoked.
     world.processAllTicks(5);
     world.processAllTicks(6);
     world.processAllTicks(7);
-    expect(facade.hasTag(entity.id, 'State.Marked')).toBe(false);
+    expect(abilities.hasTag(entity.id, 'State.Marked')).toBe(false);
 
     world.dispose();
   });
 
   it('allocates monotonic instance ids in apply order (FIFO is enforced)', () => {
-    const { world, facade, runtime } = createTestWorld({
+    const { world, abilities } = createTestWorld({
+      pipeline: 'effects',
+      attributes: [HealthAttribute, ArmorAttribute],
       effects: [
         defineEffect({
           id: 'Effect.OverrideHealth.10',
@@ -275,30 +278,31 @@ describe('effect application', () => {
         }),
       ],
     });
-    const entity = addEntity(world);
-    facade.initAttributesForEntity(entity.id);
+    const entity = spawnEntity(world, abilities);
     world.processAllTicks(1);
-    const before = runtime.instanceIdCounter.current;
+    const before = abilities.instanceIdCounter;
 
     // Apply in order: 10 first, then 50. Highest-instanceId Override wins.
-    facade.applyEffect(entity.id, 'Effect.OverrideHealth.10', entity.id);
-    facade.applyEffect(entity.id, 'Effect.OverrideHealth.50', entity.id);
+    abilities.applyEffect(entity.id, 'Effect.OverrideHealth.10', entity.id);
+    abilities.applyEffect(entity.id, 'Effect.OverrideHealth.50', entity.id);
     world.processAllTicks(2);
 
-    expect(runtime.instanceIdCounter.current).toBe(before + 2);
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Health').current)).toBe(50);
+    expect(abilities.instanceIdCounter).toBe(before + 2);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(50);
 
     world.dispose();
   });
 
   it('applyEffect throws on unknown effect id or missing entity', () => {
-    const { world, facade } = createTestWorld({ effects: [] });
+    const { world, abilities } = createTestWorld({
+      pipeline: 'effects',
+      attributes: [HealthAttribute, ArmorAttribute], effects: [] });
     const entity = addEntity(world);
 
-    expect(() => facade.applyEffect(entity.id, 'Effect.DoesNotExist', entity.id)).toThrow(
+    expect(() => abilities.applyEffect(entity.id, 'Effect.DoesNotExist', entity.id)).toThrow(
       "EffectRegistry does not contain 'Effect.DoesNotExist'"
     );
-    expect(() => facade.applyEffect(9999, 'Effect.DoesNotExist', entity.id)).toThrow(
+    expect(() => abilities.applyEffect(9999, 'Effect.DoesNotExist', entity.id)).toThrow(
       'Entity 9999 does not exist'
     );
 
@@ -309,7 +313,9 @@ describe('effect application', () => {
     // Regression guard: an earlier implementation decremented every instance
     // on the same tick it was inserted, which made durationTicks=1 effects
     // expire before AttributeAggregationSystem ever observed them.
-    const { world, facade } = createTestWorld({
+    const { world, abilities } = createTestWorld({
+      pipeline: 'effects',
+      attributes: [HealthAttribute, ArmorAttribute],
       effects: [
         defineEffect({
           id: 'Effect.OneTickBuff',
@@ -320,22 +326,21 @@ describe('effect application', () => {
         }),
       ],
     });
-    const entity = addEntity(world);
-    facade.initAttributesForEntity(entity.id);
+    const entity = spawnEntity(world, abilities);
     world.processAllTicks(1);
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Armor').current)).toBe(50);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(50);
 
-    facade.applyEffect(entity.id, 'Effect.OneTickBuff', entity.id);
+    abilities.applyEffect(entity.id, 'Effect.OneTickBuff', entity.id);
 
     // Tick 2 (application tick): aggregation must see the buff exactly once.
     world.processAllTicks(2);
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Armor').current)).toBe(75);
-    expect(facade.hasTag(entity.id, 'State.Buff.OneTick')).toBe(true);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(75);
+    expect(abilities.hasTag(entity.id, 'State.Buff.OneTick')).toBe(true);
 
     // Tick 3 (next tick): decrement 1 -> 0, expire, tag revoked, Armor recompute.
     world.processAllTicks(3);
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Armor').current)).toBe(50);
-    expect(facade.hasTag(entity.id, 'State.Buff.OneTick')).toBe(false);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(50);
+    expect(abilities.hasTag(entity.id, 'State.Buff.OneTick')).toBe(false);
 
     world.dispose();
   });
@@ -350,7 +355,9 @@ describe('effect application', () => {
     // modifier has not landed yet, so Armor.current still reads the
     // un-shredded value. Dedicated periodic behavior tests live in
     // periodic-effects.test.ts.
-    const { world, facade } = createTestWorld({
+    const { world, abilities } = createTestWorld({
+      pipeline: 'effects',
+      attributes: [HealthAttribute, ArmorAttribute],
       effects: [
         defineEffect({
           id: 'Effect.Poison.Periodic.Slow',
@@ -363,21 +370,20 @@ describe('effect application', () => {
         }),
       ],
     });
-    const entity = addEntity(world);
-    facade.initAttributesForEntity(entity.id);
+    const entity = spawnEntity(world, abilities);
     world.processAllTicks(1);
 
-    facade.applyEffect(entity.id, 'Effect.Poison.Periodic.Slow', entity.id);
+    abilities.applyEffect(entity.id, 'Effect.Poison.Periodic.Slow', entity.id);
     // Apply tick = 2 -> nextPeriodTick = 12.
     world.processAllTicks(2);
 
     // Tag granted, no periodic landing yet (would be on tick 12).
-    expect(facade.hasTag(entity.id, 'State.Debuff.Poisoned')).toBe(true);
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Armor').current)).toBe(50);
+    expect(abilities.hasTag(entity.id, 'State.Debuff.Poisoned')).toBe(true);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(50);
 
     // Tick 11: still before first scheduled firing.
     world.processAllTicks(11);
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Armor').current)).toBe(50);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(50);
 
     world.dispose();
   });
@@ -386,7 +392,9 @@ describe('effect application', () => {
     // Regression: previously revokeTags deleted the granted tag directly from
     // the unified set without checking ad-hoc ownership, so an expiring effect
     // could drop a manually managed (faction/team-like) tag.
-    const { world, facade } = createTestWorld({
+    const { world, abilities } = createTestWorld({
+      pipeline: 'effects',
+      attributes: [HealthAttribute, ArmorAttribute],
       effects: [
         defineEffect({
           id: 'Effect.GrantsMarked',
@@ -397,18 +405,17 @@ describe('effect application', () => {
         }),
       ],
     });
-    const entity = addEntity(world);
-    facade.initAttributesForEntity(entity.id);
-    facade.addTag(entity.id, 'State.Marked');
-    expect(facade.hasTag(entity.id, 'State.Marked')).toBe(true);
+    const entity = spawnEntity(world, abilities);
+    abilities.addTag(entity.id, 'State.Marked');
+    expect(abilities.hasTag(entity.id, 'State.Marked')).toBe(true);
 
-    facade.applyEffect(entity.id, 'Effect.GrantsMarked', entity.id);
+    abilities.applyEffect(entity.id, 'Effect.GrantsMarked', entity.id);
     world.processAllTicks(1);
-    expect(facade.hasTag(entity.id, 'State.Marked')).toBe(true);
+    expect(abilities.hasTag(entity.id, 'State.Marked')).toBe(true);
 
     // Tick 2: the effect expires. The ad-hoc grant must keep the tag alive.
     world.processAllTicks(2);
-    expect(facade.hasTag(entity.id, 'State.Marked')).toBe(true);
+    expect(abilities.hasTag(entity.id, 'State.Marked')).toBe(true);
 
     world.dispose();
   });
@@ -417,7 +424,9 @@ describe('effect application', () => {
     // Regression: previously removeTag deleted from the single Set, so calling
     // it while an effect granted the same tag silently dropped the effect’s
     // contribution and the tag never came back on later ticks.
-    const { world, facade } = createTestWorld({
+    const { world, abilities } = createTestWorld({
+      pipeline: 'effects',
+      attributes: [HealthAttribute, ArmorAttribute],
       effects: [
         defineEffect({
           id: 'Effect.GrantsBuff',
@@ -428,24 +437,23 @@ describe('effect application', () => {
         }),
       ],
     });
-    const entity = addEntity(world);
-    facade.initAttributesForEntity(entity.id);
+    const entity = spawnEntity(world, abilities);
 
-    facade.addTag(entity.id, 'State.Buffed');
-    facade.applyEffect(entity.id, 'Effect.GrantsBuff', entity.id);
+    abilities.addTag(entity.id, 'State.Buffed');
+    abilities.applyEffect(entity.id, 'Effect.GrantsBuff', entity.id);
     world.processAllTicks(1);
-    expect(facade.hasTag(entity.id, 'State.Buffed')).toBe(true);
+    expect(abilities.hasTag(entity.id, 'State.Buffed')).toBe(true);
 
     // Caller clears their ad-hoc ownership while the effect still grants it.
-    const cleared = facade.removeTag(entity.id, 'State.Buffed');
+    const cleared = abilities.removeTag(entity.id, 'State.Buffed');
     expect(cleared).toBe(true);
     // Tag stays — the effect's grant is still in force.
-    expect(facade.hasTag(entity.id, 'State.Buffed')).toBe(true);
+    expect(abilities.hasTag(entity.id, 'State.Buffed')).toBe(true);
 
     // A second removeTag call now returns false (no ad-hoc to clear) and the
     // tag is still held by the effect.
-    expect(facade.removeTag(entity.id, 'State.Buffed')).toBe(false);
-    expect(facade.hasTag(entity.id, 'State.Buffed')).toBe(true);
+    expect(abilities.removeTag(entity.id, 'State.Buffed')).toBe(false);
+    expect(abilities.hasTag(entity.id, 'State.Buffed')).toBe(true);
 
     world.dispose();
   });
@@ -454,7 +462,9 @@ describe('effect application', () => {
     // Regression: previously tagsGranted was applied before durationTicks /
     // modifier-attribute validation, so a throwing effect could leave the
     // entity with leaked tag grants.
-    const { world, facade } = createTestWorld({
+    const { world, abilities } = createTestWorld({
+      pipeline: 'effects',
+      attributes: [HealthAttribute, ArmorAttribute],
       effects: [
         // Duration with no durationTicks — invalid; should throw at apply time.
         defineEffect({
@@ -474,23 +484,24 @@ describe('effect application', () => {
         }),
       ],
     });
-    const entity = addEntity(world);
-    facade.initAttributesForEntity(entity.id);
+    const entity = spawnEntity(world, abilities);
     world.processAllTicks(1);
 
-    facade.applyEffect(entity.id, 'Effect.BadDuration', entity.id);
+    abilities.applyEffect(entity.id, 'Effect.BadDuration', entity.id);
     expect(() => world.processAllTicks(2)).toThrow();
-    expect(facade.hasTag(entity.id, 'State.LeakSentinel')).toBe(false);
+    expect(abilities.hasTag(entity.id, 'State.LeakSentinel')).toBe(false);
 
-    facade.applyEffect(entity.id, 'Effect.BadModifierAttr', entity.id);
+    abilities.applyEffect(entity.id, 'Effect.BadModifierAttr', entity.id);
     expect(() => world.processAllTicks(3)).toThrow();
-    expect(facade.hasTag(entity.id, 'State.LeakSentinel2')).toBe(false);
+    expect(abilities.hasTag(entity.id, 'State.LeakSentinel2')).toBe(false);
 
     world.dispose();
   });
 
   it('applyEffect omits sourceEntityId and records the sentinel NO_SOURCE_ENTITY_ID', () => {
-    const { world, facade } = createTestWorld({
+    const { world, abilities } = createTestWorld({
+      pipeline: 'effects',
+      attributes: [HealthAttribute, ArmorAttribute],
       effects: [
         defineEffect({
           id: 'Effect.Sourceless',
@@ -501,27 +512,24 @@ describe('effect application', () => {
         }),
       ],
     });
-    const entity = addEntity(world);
-    facade.initAttributesForEntity(entity.id);
+    const entity = spawnEntity(world, abilities);
 
     // No source argument — valid call.
-    facade.applyEffect(entity.id, 'Effect.Sourceless');
+    abilities.applyEffect(entity.id, 'Effect.Sourceless');
     world.processAllTicks(1);
 
-    const activeEffects = world.entityManager
-      .getEntity(entity.id)!
-      .getComponent<import('../src').ActiveEffectsComponent>(
-        AbilitiesComponentType.ActiveEffects
-      )!;
+    const activeEffects = getActiveEffectsComponent(world.entityManager.getEntity(entity.id)!)!;
     expect(activeEffects.queue.length).toBe(1);
     expect(activeEffects.queue[0].sourceEntityId).toBe(NO_SOURCE_ENTITY_ID);
-    expect(facade.hasTag(entity.id, 'State.Sourceless')).toBe(true);
+    expect(abilities.hasTag(entity.id, 'State.Sourceless')).toBe(true);
 
     world.dispose();
   });
 
   it('reapplying a Duration effect after expiry restores tag and modifier', () => {
-    const { world, facade } = createTestWorld({
+    const { world, abilities } = createTestWorld({
+      pipeline: 'effects',
+      attributes: [HealthAttribute, ArmorAttribute],
       effects: [
         defineEffect({
           id: 'Effect.ShortShred',
@@ -532,93 +540,25 @@ describe('effect application', () => {
         }),
       ],
     });
-    const entity = addEntity(world);
-    facade.initAttributesForEntity(entity.id);
+    const entity = spawnEntity(world, abilities);
     world.processAllTicks(1);
 
-    facade.applyEffect(entity.id, 'Effect.ShortShred', entity.id);
+    abilities.applyEffect(entity.id, 'Effect.ShortShred', entity.id);
     world.processAllTicks(2);
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Armor').current)).toBe(35);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(35);
 
     // durationTicks=2: survives ticks 2 and 3, expires on tick 4.
     world.processAllTicks(3);
     world.processAllTicks(4);
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Armor').current)).toBe(50);
-    expect(facade.hasTag(entity.id, 'State.Debuff.Shred')).toBe(false);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(50);
+    expect(abilities.hasTag(entity.id, 'State.Debuff.Shred')).toBe(false);
 
-    facade.applyEffect(entity.id, 'Effect.ShortShred', entity.id);
+    abilities.applyEffect(entity.id, 'Effect.ShortShred', entity.id);
     world.processAllTicks(5);
-    expect(FP.ToFloat(facade.getAttribute(entity.id, 'Armor').current)).toBe(35);
-    expect(facade.hasTag(entity.id, 'State.Debuff.Shred')).toBe(true);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(35);
+    expect(abilities.hasTag(entity.id, 'State.Debuff.Shred')).toBe(true);
 
     world.dispose();
   });
 });
 
-// ---------------------------------------------------------------------------
-// Test world helper
-// ---------------------------------------------------------------------------
-
-interface TestWorldOpts {
-  effects: readonly ReturnType<typeof defineEffect>[];
-}
-
-interface TestWorld {
-  world: GameWorld;
-  facade: AbilitySystemFacade;
-  registries: AbilitySystemRegistries;
-  runtime: AbilitySystemRuntime;
-}
-
-function createTestWorld(opts: TestWorldOpts): TestWorld {
-  const registries = createAbilitySystemRegistries();
-  registries.attributes.register(
-    defineAttribute({
-      id: 'Health',
-      default: FP.FromInt(100),
-      min: FP.FromInt(0),
-      max: FP.FromInt(100),
-      clamp: 'both',
-    })
-  );
-  registries.attributes.register(
-    defineAttribute({
-      id: 'Armor',
-      default: FP.FromInt(50),
-      min: FP.FromInt(0),
-      max: FP.FromInt(1000),
-      clamp: 'min',
-    })
-  );
-  for (const effect of opts.effects) {
-    registries.effects.register(effect);
-  }
-
-  const runtime = createAbilitySystemRuntime();
-  const world = new GameWorld({
-    componentTypes: [
-      AbilitiesComponentType.Attributes,
-      AbilitiesComponentType.ActiveEffects,
-      AbilitiesComponentType.GameplayTags,
-    ],
-  });
-  // System order matches the design doc:
-  // EffectApplicationSystem -> EffectTickSystem -> AttributeAggregationSystem.
-  // Each tick: drain pendingAdd, then decrement/expire, then resolve current.
-  world.registerSystems(
-    [
-      new EffectApplicationSystem(registries, runtime),
-      new EffectTickSystem(registries, runtime),
-      new AttributeAggregationSystem(registries),
-    ],
-    []
-  );
-  const facade = new AbilitySystemFacade(world.entityManager, registries, runtime);
-  return { world, facade, registries, runtime };
-}
-
-function addEntity(world: GameWorld): Entity {
-  const entity = new Entity();
-  world.entityManager.addEntity(entity);
-  return entity;
-}

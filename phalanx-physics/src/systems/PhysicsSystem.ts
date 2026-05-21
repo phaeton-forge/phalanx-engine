@@ -492,6 +492,33 @@ export class PhysicsSystem extends GameSystem {
     return this.config;
   }
 
+  /**
+   * Fixed-point position of an entity with a linked transform, or `undefined`
+   * when the entity has no physics body or transform row.
+   */
+  public getEntityPosition(
+    entityId: number
+  ): { x: FixedPoint; z: FixedPoint } | undefined {
+    if (!this.transformStore || !this.fieldMapping) {
+      return undefined;
+    }
+    const transformIndex = this.transformStore.indexOf(entityId);
+    if (transformIndex === -1) {
+      return undefined;
+    }
+    const physIndex = this.physicsStore.indexOf(entityId);
+    if (physIndex === -1) {
+      return undefined;
+    }
+    const txArrays = this.transformStore.arrays;
+    const fpPosXArr = txArrays[this.fieldMapping.fpPositionX] as BigInt64Array;
+    const fpPosZArr = txArrays[this.fieldMapping.fpPositionZ] as BigInt64Array;
+    return {
+      x: FP.FromRaw(fpPosXArr[transformIndex]),
+      z: FP.FromRaw(fpPosZArr[transformIndex]),
+    };
+  }
+
   /** Direct access to the spatial grid for custom queries (e.g. range finding) */
   public getSpatialGrid(): SpatialHashGrid {
     return this.spatialGrid;

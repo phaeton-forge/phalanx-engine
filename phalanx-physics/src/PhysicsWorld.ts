@@ -144,6 +144,16 @@ export class PhysicsWorld {
     return this.physicsSystem.getSpatialGrid();
   }
 
+  /**
+   * Fixed-point position for ability targeting (`Caster` / `TargetEntity` origins).
+   * Requires `setTransformStore` before the first physics tick.
+   */
+  public getEntityPosition(
+    entityId: number
+  ): { x: FixedPoint; z: FixedPoint } | undefined {
+    return this.physicsSystem.getEntityPosition(entityId);
+  }
+
   /** Clean up all subscriptions and system resources */
   public dispose(): void {
     for (const unsub of this.unsubscribers) {

@@ -1,31 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { Entity, GameWorld } from 'phalanx-ecs';
+import { Entity } from 'phalanx-ecs';
 import { FP } from 'phalanx-math';
-import type { FixedPoint } from 'phalanx-math';
-import {
-  AbilitiesComponentType,
-  AbilitySystemFacade,
-  AttributeAggregationSystem,
-  AuraComponent,
-  AuraTickSystem,
-  EffectApplicationSystem,
-  EffectTickSystem,
-  createAbilitySystemRegistries,
-  createAbilitySystemRuntime,
-  defineAttribute,
-  defineEffect,
-} from '../src';
-import type {
-  AbilitySystemRegistries,
-  AbilitySystemRuntime,
-  ISpatialQuery,
-} from '../src';
+import { AbilitiesComponentType, AuraComponent, defineEffect } from '../src';
+import { createTestWorld, HealthAttribute, spawnEntity } from './helpers';
 
 // ---------------------------------------------------------------------------
 // Stage 7.1 — Aura activation gates
 //
 // Two independent gates layered on top of the Stage 7 cadence:
-//   - isActive (imperative): mutated via facade.setAuraActive
+//   - isActive (imperative): mutated via abilities.setAuraActive
 //   - requiredTag (declarative): gameplay tag on the carrier
 //
 // Both gates short-circuit the period check WITHOUT advancing nextTick, so
@@ -42,17 +25,16 @@ describe('AuraTickSystem — isActive gate', () => {
     // scheduled fire); nextTick stays at 5 while the aura is dormant.
     // After re-enabling at tick 8, the aura fires on the very next tick
     // (8 >= nextTick=5), and on its own schedule from there.
-    const { world, facade, spatial } = createTestWorld();
-    const ally = addEntity(world);
-    facade.initAttributesForEntity(ally.id);
-    facade.addTag(ally.id, 'Team.Ally');
-    facade.applyEffect(ally.id, 'Effect.Damage50');
+    const { world, abilities, spatial } = createAuraWorld();
+    const ally = spawnEntity(world, abilities);
+    abilities.addTag(ally.id, 'Team.Ally');
+    abilities.applyEffect(ally.id, 'Effect.Damage50');
     world.processAllTicks(1);
     world.processAllTicks(2);
-    expect(FP.ToFloat(facade.getAttribute(ally.id, 'Health').current)).toBe(50);
+    expect(FP.ToFloat(abilities.getAttribute(ally.id, 'Health').current)).toBe(50);
 
     spatial.setQuery(() => [ally.id]);
-    const zone = facade.spawnAura({
+    const zone = abilities.spawnAura({
       abilityId: 'Ability.HealingAura',
       target: {
         kind: 'Radius',
@@ -76,11 +58,11 @@ describe('AuraTickSystem — isActive gate', () => {
     world.processAllTicks(3);
     // Tick 4: heal lands.
     world.processAllTicks(4);
-    expect(FP.ToFloat(facade.getAttribute(ally.id, 'Health').current)).toBe(55);
+    expect(FP.ToFloat(abilities.getAttribute(ally.id, 'Health').current)).toBe(55);
 
     // Disable before tick 5 (the next scheduled fire). Aura must NOT
     // fire on tick 5; nextTick must NOT advance.
-    facade.setAuraActive(zone.id, false);
+    abilities.setAuraActive(zone.id, false);
     const auraComp = world.entityManager
       .getEntity(zone.id)!
       .getComponent<AuraComponent>(AbilitiesComponentType.Aura)!;
@@ -90,7 +72,7 @@ describe('AuraTickSystem — isActive gate', () => {
     world.processAllTicks(5);
     world.processAllTicks(6);
     world.processAllTicks(7);
-    expect(FP.ToFloat(facade.getAttribute(ally.id, 'Health').current)).toBe(55);
+    expect(FP.ToFloat(abilities.getAttribute(ally.id, 'Health').current)).toBe(55);
     // nextTick preserved (no advancement while dormant).
     expect(auraComp.nextTick).toBe(5);
 
@@ -101,11 +83,11 @@ describe('AuraTickSystem — isActive gate', () => {
     // So tick 8 fires TWICE (catch-up for missed periods 5 and 7).
     // That's the documented "catch-up after long pause" behaviour. The
     // test for "fresh schedule" (no catch-up) is the next case below.
-    facade.setAuraActive(zone.id, true);
+    abilities.setAuraActive(zone.id, true);
     world.processAllTicks(8);
     // Two fires on tick 8 → two heals queued. They land tick 9.
     world.processAllTicks(9);
-    expect(FP.ToFloat(facade.getAttribute(ally.id, 'Health').current)).toBe(65);
+    expect(FP.ToFloat(abilities.getAttribute(ally.id, 'Health').current)).toBe(65);
 
     world.dispose();
   });
@@ -115,16 +97,15 @@ describe('AuraTickSystem — isActive gate', () => {
     // pause, nextTick should be reset to currentTick + periodTicks so
     // only ONE fire happens on the next period boundary, not a catch-up
     // burst.
-    const { world, facade, spatial } = createTestWorld();
-    const ally = addEntity(world);
-    facade.initAttributesForEntity(ally.id);
-    facade.addTag(ally.id, 'Team.Ally');
-    facade.applyEffect(ally.id, 'Effect.Damage50');
+    const { world, abilities, spatial } = createAuraWorld();
+    const ally = spawnEntity(world, abilities);
+    abilities.addTag(ally.id, 'Team.Ally');
+    abilities.applyEffect(ally.id, 'Effect.Damage50');
     world.processAllTicks(1);
     world.processAllTicks(2);
 
     spatial.setQuery(() => [ally.id]);
-    const zone = facade.spawnAura({
+    const zone = abilities.spawnAura({
       abilityId: 'Ability.HealingAura',
       target: {
         kind: 'Radius',
@@ -146,29 +127,29 @@ describe('AuraTickSystem — isActive gate', () => {
 
     world.processAllTicks(3); // fire → heal queued
     world.processAllTicks(4); // heal lands (50→55)
-    expect(FP.ToFloat(facade.getAttribute(ally.id, 'Health').current)).toBe(55);
+    expect(FP.ToFloat(abilities.getAttribute(ally.id, 'Health').current)).toBe(55);
 
-    facade.setAuraActive(zone.id, false);
+    abilities.setAuraActive(zone.id, false);
     world.processAllTicks(5);
     world.processAllTicks(6);
     world.processAllTicks(7);
-    expect(FP.ToFloat(facade.getAttribute(ally.id, 'Health').current)).toBe(55);
+    expect(FP.ToFloat(abilities.getAttribute(ally.id, 'Health').current)).toBe(55);
 
     // runtime.currentTick is 7 at this point. resetSchedule pushes
     // nextTick to 7 + 2 = 9. Tick 8: gate open, but 8 < 9 → no fire.
     // Tick 9: fire (9 >= 9), heal queued. nextTick → 11. Tick 10: heal
     // lands → 60.
-    facade.setAuraActive(zone.id, true, { resetSchedule: true });
+    abilities.setAuraActive(zone.id, true, { resetSchedule: true });
     const auraComp = world.entityManager
       .getEntity(zone.id)!
       .getComponent<AuraComponent>(AbilitiesComponentType.Aura)!;
     expect(auraComp.nextTick).toBe(9);
 
     world.processAllTicks(8);
-    expect(FP.ToFloat(facade.getAttribute(ally.id, 'Health').current)).toBe(55);
+    expect(FP.ToFloat(abilities.getAttribute(ally.id, 'Health').current)).toBe(55);
     world.processAllTicks(9);
     world.processAllTicks(10);
-    expect(FP.ToFloat(facade.getAttribute(ally.id, 'Health').current)).toBe(60);
+    expect(FP.ToFloat(abilities.getAttribute(ally.id, 'Health').current)).toBe(60);
 
     world.dispose();
   });
@@ -177,16 +158,15 @@ describe('AuraTickSystem — isActive gate', () => {
     // Aura attached but dormant. No heal should occur for many ticks
     // until setAuraActive(true) is called. Verifies isActive is checked
     // on the very first tick.
-    const { world, facade, spatial } = createTestWorld();
-    const ally = addEntity(world);
-    facade.initAttributesForEntity(ally.id);
-    facade.addTag(ally.id, 'Team.Ally');
-    facade.applyEffect(ally.id, 'Effect.Damage50');
+    const { world, abilities, spatial } = createAuraWorld();
+    const ally = spawnEntity(world, abilities);
+    abilities.addTag(ally.id, 'Team.Ally');
+    abilities.applyEffect(ally.id, 'Effect.Damage50');
     world.processAllTicks(1);
     world.processAllTicks(2);
 
     spatial.setQuery(() => [ally.id]);
-    const zone = facade.spawnAura({
+    const zone = abilities.spawnAura({
       abilityId: 'Ability.HealingAura',
       target: {
         kind: 'Radius',
@@ -210,33 +190,33 @@ describe('AuraTickSystem — isActive gate', () => {
     for (let tick = 3; tick <= 8; tick++) {
       world.processAllTicks(tick);
     }
-    expect(FP.ToFloat(facade.getAttribute(ally.id, 'Health').current)).toBe(50);
+    expect(FP.ToFloat(abilities.getAttribute(ally.id, 'Health').current)).toBe(50);
 
     // Activate at tick 8. With resetSchedule (no catch-up): nextTick →
     // 8 + 1 = 9. Tick 9 fires; tick 10 heal lands.
-    facade.setAuraActive(zone.id, true, { resetSchedule: true });
+    abilities.setAuraActive(zone.id, true, { resetSchedule: true });
     world.processAllTicks(9);
     world.processAllTicks(10);
-    expect(FP.ToFloat(facade.getAttribute(ally.id, 'Health').current)).toBe(55);
+    expect(FP.ToFloat(abilities.getAttribute(ally.id, 'Health').current)).toBe(55);
 
     world.dispose();
   });
 
   it('setAuraActive throws when the entity has no AuraComponent', () => {
-    const { world, facade } = createTestWorld();
-    const plain = addEntity(world);
+    const { world, abilities } = createAuraWorld();
+    const plain = spawnEntity(world, abilities);
     world.processAllTicks(1);
 
-    expect(() => facade.setAuraActive(plain.id, false)).toThrow(/AuraComponent/);
+    expect(() => abilities.setAuraActive(plain.id, false)).toThrow(/AuraComponent/);
 
     world.dispose();
   });
 
   it('setAuraActive throws when the entity does not exist', () => {
-    const { world, facade } = createTestWorld();
+    const { world, abilities } = createAuraWorld();
     world.processAllTicks(1);
 
-    expect(() => facade.setAuraActive(9999, false)).toThrow(/Entity 9999/);
+    expect(() => abilities.setAuraActive(9999, false)).toThrow(/Entity 9999/);
 
     world.dispose();
   });
@@ -246,16 +226,15 @@ describe('AuraTickSystem — requiredTag gate', () => {
   it('fires only while the carrier entity has the required tag', () => {
     // The aura fires only when the zone carries 'State.AuraActive'.
     // Drive activation purely through addTag/removeTag.
-    const { world, facade, spatial } = createTestWorld();
-    const ally = addEntity(world);
-    facade.initAttributesForEntity(ally.id);
-    facade.addTag(ally.id, 'Team.Ally');
-    facade.applyEffect(ally.id, 'Effect.Damage50');
+    const { world, abilities, spatial } = createAuraWorld();
+    const ally = spawnEntity(world, abilities);
+    abilities.addTag(ally.id, 'Team.Ally');
+    abilities.applyEffect(ally.id, 'Effect.Damage50');
     world.processAllTicks(1);
     world.processAllTicks(2);
 
     spatial.setQuery(() => [ally.id]);
-    const zone = facade.spawnAura({
+    const zone = abilities.spawnAura({
       abilityId: 'Ability.HealingAura',
       target: {
         kind: 'Radius',
@@ -281,7 +260,7 @@ describe('AuraTickSystem — requiredTag gate', () => {
     // gate is closed (gates pause, they don't skip the schedule).
     world.processAllTicks(3);
     world.processAllTicks(4);
-    expect(FP.ToFloat(facade.getAttribute(ally.id, 'Health').current)).toBe(50);
+    expect(FP.ToFloat(abilities.getAttribute(ally.id, 'Health').current)).toBe(50);
 
     // Grant the tag between ticks 4 and 5. The aura now has frozen
     // nextTick=3 and a current tick of 5, which triggers the inherited
@@ -291,25 +270,25 @@ describe('AuraTickSystem — requiredTag gate', () => {
     // missed fires are paid back as catch-up. Designers who want
     // "fresh start, no catch-up" should use setAuraActive(..., {
     // resetSchedule: true }) instead of toggling tags.
-    facade.addTag(zone.id, 'State.AuraActive');
+    abilities.addTag(zone.id, 'State.AuraActive');
     world.processAllTicks(5);
     world.processAllTicks(6);
     // Three heals (catch-up for ticks 3, 4, 5) all land tick 6.
-    expect(FP.ToFloat(facade.getAttribute(ally.id, 'Health').current)).toBe(65);
+    expect(FP.ToFloat(abilities.getAttribute(ally.id, 'Health').current)).toBe(65);
 
     // Revoke the tag. Aura goes dormant; nextTick stays where it is.
     // The fire from tick 6 (gate still open, 6>=6, nextTick advanced to
     // 7 inside catch-up loop) is already in pendingAdd and lands tick 7.
-    facade.removeTag(zone.id, 'State.AuraActive');
+    abilities.removeTag(zone.id, 'State.AuraActive');
     world.processAllTicks(7);
     // The tick-6 fire's heal landed on tick 7 before the gate-close
     // took effect for tick 7 (the gate check happens at tick 7's aura
     // tick, AFTER the heal was applied in EffectApplicationSystem).
-    expect(FP.ToFloat(facade.getAttribute(ally.id, 'Health').current)).toBe(70);
+    expect(FP.ToFloat(abilities.getAttribute(ally.id, 'Health').current)).toBe(70);
     // No further heals from here — gate is closed.
     world.processAllTicks(8);
     world.processAllTicks(9);
-    expect(FP.ToFloat(facade.getAttribute(ally.id, 'Health').current)).toBe(70);
+    expect(FP.ToFloat(abilities.getAttribute(ally.id, 'Health').current)).toBe(70);
 
     world.dispose();
   });
@@ -317,16 +296,15 @@ describe('AuraTickSystem — requiredTag gate', () => {
   it('treats a missing GameplayTagsComponent as "tag absent"', () => {
     // Carrier entity has no tags component at all. requiredTag gate
     // must safely return false (not throw, not crash).
-    const { world, facade, spatial } = createTestWorld();
-    const ally = addEntity(world);
-    facade.initAttributesForEntity(ally.id);
-    facade.addTag(ally.id, 'Team.Ally');
-    facade.applyEffect(ally.id, 'Effect.Damage50');
+    const { world, abilities, spatial } = createAuraWorld();
+    const ally = spawnEntity(world, abilities);
+    abilities.addTag(ally.id, 'Team.Ally');
+    abilities.applyEffect(ally.id, 'Effect.Damage50');
     world.processAllTicks(1);
     world.processAllTicks(2);
 
     spatial.setQuery(() => [ally.id]);
-    const zone = facade.spawnAura({
+    const zone = abilities.spawnAura({
       abilityId: 'Ability.HealingAura',
       target: {
         kind: 'Radius',
@@ -355,8 +333,8 @@ describe('AuraTickSystem — requiredTag gate', () => {
     for (let tick = 3; tick <= 8; tick++) {
       world.processAllTicks(tick);
     }
-    expect(FP.ToFloat(facade.getAttribute(ally.id, 'Health').current)).toBe(50);
-    expect(facade.hasTag(zone.id, 'State.AuraActive')).toBe(false);
+    expect(FP.ToFloat(abilities.getAttribute(ally.id, 'Health').current)).toBe(50);
+    expect(abilities.hasTag(zone.id, 'State.AuraActive')).toBe(false);
 
     world.dispose();
   });
@@ -364,16 +342,15 @@ describe('AuraTickSystem — requiredTag gate', () => {
 
 describe('AuraTickSystem — combined gates and validation', () => {
   it('both gates must pass: isActive=false suppresses fires even when requiredTag is present', () => {
-    const { world, facade, spatial } = createTestWorld();
-    const ally = addEntity(world);
-    facade.initAttributesForEntity(ally.id);
-    facade.addTag(ally.id, 'Team.Ally');
-    facade.applyEffect(ally.id, 'Effect.Damage50');
+    const { world, abilities, spatial } = createAuraWorld();
+    const ally = spawnEntity(world, abilities);
+    abilities.addTag(ally.id, 'Team.Ally');
+    abilities.applyEffect(ally.id, 'Effect.Damage50');
     world.processAllTicks(1);
     world.processAllTicks(2);
 
     spatial.setQuery(() => [ally.id]);
-    const zone = facade.spawnAura({
+    const zone = abilities.spawnAura({
       abilityId: 'Ability.HealingAura',
       target: {
         kind: 'Radius',
@@ -396,28 +373,27 @@ describe('AuraTickSystem — combined gates and validation', () => {
 
     // requiredTag set; isActive cleared. Even with the tag granted,
     // fires are suppressed because the imperative gate is closed.
-    facade.addTag(zone.id, 'State.AuraActive');
-    facade.setAuraActive(zone.id, false);
+    abilities.addTag(zone.id, 'State.AuraActive');
+    abilities.setAuraActive(zone.id, false);
 
     for (let tick = 3; tick <= 8; tick++) {
       world.processAllTicks(tick);
     }
-    expect(FP.ToFloat(facade.getAttribute(ally.id, 'Health').current)).toBe(50);
+    expect(FP.ToFloat(abilities.getAttribute(ally.id, 'Health').current)).toBe(50);
 
     world.dispose();
   });
 
   it('both gates must pass: requiredTag missing suppresses fires even when isActive=true', () => {
-    const { world, facade, spatial } = createTestWorld();
-    const ally = addEntity(world);
-    facade.initAttributesForEntity(ally.id);
-    facade.addTag(ally.id, 'Team.Ally');
-    facade.applyEffect(ally.id, 'Effect.Damage50');
+    const { world, abilities, spatial } = createAuraWorld();
+    const ally = spawnEntity(world, abilities);
+    abilities.addTag(ally.id, 'Team.Ally');
+    abilities.applyEffect(ally.id, 'Effect.Damage50');
     world.processAllTicks(1);
     world.processAllTicks(2);
 
     spatial.setQuery(() => [ally.id]);
-    const zone = facade.spawnAura({
+    const zone = abilities.spawnAura({
       abilityId: 'Ability.HealingAura',
       target: {
         kind: 'Radius',
@@ -443,7 +419,7 @@ describe('AuraTickSystem — combined gates and validation', () => {
     for (let tick = 3; tick <= 8; tick++) {
       world.processAllTicks(tick);
     }
-    expect(FP.ToFloat(facade.getAttribute(ally.id, 'Health').current)).toBe(50);
+    expect(FP.ToFloat(abilities.getAttribute(ally.id, 'Health').current)).toBe(50);
 
     world.dispose();
   });
@@ -452,12 +428,12 @@ describe('AuraTickSystem — combined gates and validation', () => {
     // An empty tag would never match any real gameplay tag, leaving the
     // aura permanently dormant. Surface the misconfiguration at
     // construction time so the bug never reaches the tick loop.
-    const { world, facade } = createTestWorld();
-    addEntity(world);
+    const { world, abilities } = createAuraWorld();
+    spawnEntity(world, abilities);
     world.processAllTicks(1);
 
     expect(() =>
-      facade.spawnAura({
+      abilities.spawnAura({
         abilityId: 'Ability.Bad',
         target: { kind: 'Self' },
         effectIds: ['Effect.Heal5'],
@@ -474,16 +450,15 @@ describe('AuraTickSystem — combined gates and validation', () => {
     // Backward compatibility: callers that pass no Stage 7.1 options
     // get an immediately-firing aura with no tag gate, identical to
     // Stage 7 behaviour.
-    const { world, facade, spatial } = createTestWorld();
-    const ally = addEntity(world);
-    facade.initAttributesForEntity(ally.id);
-    facade.addTag(ally.id, 'Team.Ally');
-    facade.applyEffect(ally.id, 'Effect.Damage50');
+    const { world, abilities, spatial } = createAuraWorld();
+    const ally = spawnEntity(world, abilities);
+    abilities.addTag(ally.id, 'Team.Ally');
+    abilities.applyEffect(ally.id, 'Effect.Damage50');
     world.processAllTicks(1);
     world.processAllTicks(2);
 
     spatial.setQuery(() => [ally.id]);
-    const zone = facade.spawnAura({
+    const zone = abilities.spawnAura({
       abilityId: 'Ability.HealingAura',
       target: {
         kind: 'Radius',
@@ -510,7 +485,7 @@ describe('AuraTickSystem — combined gates and validation', () => {
     // And the aura fires normally.
     world.processAllTicks(3); // fire
     world.processAllTicks(4); // heal lands
-    expect(FP.ToFloat(facade.getAttribute(ally.id, 'Health').current)).toBe(55);
+    expect(FP.ToFloat(abilities.getAttribute(ally.id, 'Health').current)).toBe(55);
 
     world.dispose();
   });
@@ -522,91 +497,23 @@ describe('AuraTickSystem — combined gates and validation', () => {
 // unlikely to drift).
 // ---------------------------------------------------------------------------
 
-interface TestWorld {
-  world: GameWorld;
-  facade: AbilitySystemFacade;
-  registries: AbilitySystemRegistries;
-  runtime: AbilitySystemRuntime;
-  spatial: FakeSpatialQuery;
-}
-
-class FakeSpatialQuery implements ISpatialQuery {
-  private queryFn: (x: FixedPoint, z: FixedPoint, r: FixedPoint) => number[] = () => [];
-  private positions = new Map<number, { x: FixedPoint; z: FixedPoint }>();
-
-  public queryRadius(x: FixedPoint, z: FixedPoint, radius: FixedPoint): number[] {
-    return this.queryFn(x, z, radius);
-  }
-
-  public getEntityPosition(
-    entityId: number
-  ): { x: FixedPoint; z: FixedPoint } | undefined {
-    return this.positions.get(entityId);
-  }
-
-  public setQuery(fn: (x: FixedPoint, z: FixedPoint, r: FixedPoint) => number[]): void {
-    this.queryFn = fn;
-  }
-
-  public setPosition(entityId: number, pos: { x: FixedPoint; z: FixedPoint }): void {
-    this.positions.set(entityId, pos);
-  }
-}
-
-function createTestWorld(): TestWorld {
-  const registries = createAbilitySystemRegistries();
-  registries.attributes.register(
-    defineAttribute({
-      id: 'Health',
-      default: FP.FromInt(100),
-      min: FP.FromInt(0),
-      max: FP.FromInt(100),
-      clamp: 'both',
-    })
-  );
-  registries.effects.register(
-    defineEffect({
-      id: 'Effect.Heal5',
-      type: 'Instant',
-      modifiers: [{ attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(5) }],
-    })
-  );
-  registries.effects.register(
-    defineEffect({
-      id: 'Effect.Damage50',
-      type: 'Instant',
-      modifiers: [{ attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(-50) }],
-    })
-  );
-
-  const runtime = createAbilitySystemRuntime();
-  const world = new GameWorld({
-    componentTypes: [
-      AbilitiesComponentType.Attributes,
-      AbilitiesComponentType.ActiveEffects,
-      AbilitiesComponentType.GameplayTags,
-      AbilitiesComponentType.Aura,
+function createAuraWorld() {
+  return createTestWorld({
+    pipeline: 'auras',
+    attributes: [HealthAttribute],
+    effects: [
+      defineEffect({
+        id: 'Effect.Heal5',
+        type: 'Instant',
+        modifiers: [{ attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(5) }],
+      }),
+      defineEffect({
+        id: 'Effect.Damage50',
+        type: 'Instant',
+        modifiers: [{ attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(-50) }],
+      }),
     ],
   });
-  world.registerSystems(
-    [
-      new EffectApplicationSystem(registries, runtime),
-      new EffectTickSystem(registries, runtime),
-      new AuraTickSystem(registries, runtime),
-      new AttributeAggregationSystem(registries),
-    ],
-    []
-  );
-  const facade = new AbilitySystemFacade(world.entityManager, registries, runtime);
-  const spatial = new FakeSpatialQuery();
-  facade.registerSpatialQuery(spatial);
-  return { world, facade, registries, runtime, spatial };
-}
-
-function addEntity(world: GameWorld): Entity {
-  const entity = new Entity();
-  world.entityManager.addEntity(entity);
-  return entity;
 }
 
 function rewireAuraTarget(zone: Entity, target: AuraComponent['target']): void {

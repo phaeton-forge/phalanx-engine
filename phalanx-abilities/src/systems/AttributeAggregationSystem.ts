@@ -5,6 +5,8 @@ import {
   ActiveEffectsComponent,
   AttributesComponent,
   AbilitiesComponentType,
+  getActiveEffectsComponent,
+  getAttributesComponent,
 } from '../components';
 import type { AbilitySystemRegistries } from '../registry';
 import type { ActiveEffectInstance, AttributeDef, EffectDef, ModifierOp } from '../types';
@@ -39,13 +41,14 @@ export class AttributeAggregationSystem extends GameSystem {
   }
 
   public override processTick(_tick: number): void {
-    const entities = this.entityManager.queryEntities(AbilitiesComponentType.Attributes);
+    const entities = this.entityManager.queryEntitiesAny(
+      AbilitiesComponentType.AbilitySystem,
+      AbilitiesComponentType.Attributes
+    );
     const attributeDefs = this.registries.attributes.values();
 
     for (const entity of entities) {
-      const attributes = entity.getComponent<AttributesComponent>(
-        AbilitiesComponentType.Attributes
-      );
+      const attributes = getAttributesComponent(entity);
       if (!attributes) {
         continue;
       }
@@ -55,9 +58,7 @@ export class AttributeAggregationSystem extends GameSystem {
         continue;
       }
 
-      const activeEffects = entity.getComponent<ActiveEffectsComponent>(
-        AbilitiesComponentType.ActiveEffects
-      );
+      const activeEffects = getActiveEffectsComponent(entity);
       const orderedEffects = this.takeOrderedEffects(activeEffects);
       // Resolve each EffectDef once per entity per tick instead of per dirty attribute.
       const resolvedEffectDefs = this.resolveEffectDefs(orderedEffects);

@@ -2,10 +2,11 @@ import { GameSystem } from 'phalanx-ecs';
 import type { Entity } from 'phalanx-ecs';
 import { FP } from 'phalanx-math';
 import {
-  AbilitiesComponentType,
   ActiveEffectsComponent,
-  AttributesComponent,
-  GameplayTagsComponent,
+  getAbilitySystemComponent,
+  getActiveEffectsComponent,
+  getAttributesComponent,
+  getGameplayTagsComponent,
 } from '../components';
 import { ABILITY_ACTIVATED_EVENT } from '../events';
 import type { AbilityActivatedEvent } from '../events';
@@ -60,7 +61,7 @@ import type { AbilityDef, ProvidedTarget } from '../types';
  *  - Resolves `target` via {@link TargetResolver}. Every `TargetSpec.kind`
  *    (`Self`, `Entity`, `Point`, `Radius`) and every `TargetOrigin.kind`
  *    including `Caller` is supported. Radius shapes additionally require
- *    a registered `ISpatialQuery` (see
+ *    a spatial query (`createAbilitySystem({ physicsWorld })` or
  *    `AbilitySystemFacade.registerSpatialQuery`).
  *  - Enqueues every `targetEffectIds` entry on each resolved target's
  *    `pendingAdd`.
@@ -251,7 +252,11 @@ export class AbilityActivationSystem extends GameSystem {
 
   private canActivate(caster: Entity, def: AbilityDef): boolean {
     const casterId = caster.id;
-    const tags = caster.getComponent<GameplayTagsComponent>(AbilitiesComponentType.GameplayTags);
+    const abilitySystem = getAbilitySystemComponent(caster);
+    if (abilitySystem && !abilitySystem.abilities.has(def.id)) {
+      return false;
+    }
+    const tags = getGameplayTagsComponent(caster);
     const inFlightTags = this.inFlightTagsByCaster.get(casterId);
 
     if (def.activationBlockedTags) {
@@ -319,7 +324,7 @@ export class AbilityActivationSystem extends GameSystem {
       return true;
     }
 
-    const attributes = caster.getComponent<AttributesComponent>(AbilitiesComponentType.Attributes);
+    const attributes = getAttributesComponent(caster);
     if (!attributes) {
       // No attribute store at all — cost cannot be charged. Reject so the
       // caller isn't silently let through.
@@ -381,7 +386,7 @@ export class AbilityActivationSystem extends GameSystem {
       );
     }
 
-    const tags = caster.getComponent<GameplayTagsComponent>(AbilitiesComponentType.GameplayTags);
+    const tags = getGameplayTagsComponent(caster);
     const inFlightTags = this.inFlightTagsByCaster.get(caster.id);
 
     for (const tag of effectDef.tagsGranted) {
@@ -429,9 +434,7 @@ export class AbilityActivationSystem extends GameSystem {
   }
 
   private getOrCreateActiveEffects(target: Entity): ActiveEffectsComponent {
-    const existing = target.getComponent<ActiveEffectsComponent>(
-      AbilitiesComponentType.ActiveEffects
-    );
+    const existing = getActiveEffectsComponent(target);
     if (existing) {
       return existing;
     }
@@ -493,8 +496,8 @@ export class AbilityActivationSystem extends GameSystem {
    * `TargetSpec.kind` (`Self`, `Entity`, `Point`, `Radius`) and every
    * `TargetOrigin.kind` including `Caller`. For shapes that require a
    * spatial query (`Radius`), the resolver throws with an actionable
-   * message if `AbilitySystemFacade.registerSpatialQuery` was never
-   * called.
+   * message if no spatial query was configured (`physicsWorld` or
+   * `registerSpatialQuery`).
    *
    * Returns the resolver's discriminated result so `processOne` can
    * distinguish a legitimate empty target list ("AoE with nobody in it")
