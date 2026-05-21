@@ -10,6 +10,7 @@ A game-agnostic deterministic lockstep multiplayer engine with authentication, m
 - 📖 [Client Documentation](./phalanx-client/README.md)
 - 📖 [ECS Documentation](./phalanx-ecs/README.md)
 - 📖 [Physics Documentation](./phalanx-physics/README.md)
+- 📖 [Abilities Documentation](./phalanx-abilities/README.md)
 - 📖 [Math Documentation](./phalanx-math/README.md)
 - 🎮 [Babylon RTS Demo](./direct-strike-babylon-example/README.md)
 
@@ -33,6 +34,7 @@ This repository is a pnpm workspace containing the following publishable package
 | [phalanx-client](./phalanx-client)   | Browser/Node client for connecting to Phalanx servers                        |
 | [phalanx-ecs](./phalanx-ecs)         | Renderer-agnostic ECS library with `GameWorld` facade and SoA storage        |
 | [phalanx-physics](./phalanx-physics) | Deterministic fixed-point physics (spatial hash, narrow phase, impulses)     |
+| [phalanx-abilities](./phalanx-abilities) | Deterministic gameplay ability system (attributes, effects, tags, AoE, auras) |
 | [phalanx-math](./phalanx-math)       | Deterministic fixed-point math library for lockstep games                    |
 
 In addition to the libraries, the workspace contains reference applications under `direct-strike-babylon-example/`, `chapaev/`, `arena-shooter/`, `game-test/`, and `game-test-server/`.
@@ -57,13 +59,15 @@ In addition to the libraries, the workspace contains reference applications unde
                                        │     phalanx-physics        │
                                        │ deterministic FP physics · │
                                        │ spatial hash · collisions  │
-                                       └────────────────┬───────────┘
-                                                        │
-                                                        ▼
-                                       ┌────────────────────────────┐
-                                       │       phalanx-math         │
-                                       │ FP fixed-point arithmetic  │
-                                       └────────────────────────────┘
+                                       └──────────────┬─────────────┘
+                                                      │
+                        ┌─────────────────────────────┴─────────────────────────────┐
+                        ▼                                                           ▼
+           ┌────────────────────────────┐                         ┌────────────────────────────┐
+           │    phalanx-abilities       │                         │       phalanx-math         │
+           │ GAS-style attributes ·     │                         │ FP fixed-point arithmetic  │
+           │ effects · tags · AoE       │                         └────────────────────────────┘
+           └────────────────────────────┘
 ```
 
 `phalanx-client` and `phalanx-ecs` both implement the `ITickFrameProvider` interface, so a `GameWorld` can be driven by either an internal `TickFrameManager` (single-player) or by the multiplayer client (`PhalanxClient` is fed the server's authoritative ticks).

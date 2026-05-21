@@ -9,6 +9,7 @@ After cloning any repository, scan for skill definitions. Replace `<repo-root>` 
 
 ```bash
 find <repo-root>/.claude/skills -name "SKILL.md" 2>/dev/null
+find <repo-root>/skills -name "SKILL.md" 2>/dev/null
 find <repo-root>/.codex/agents \( -name "*.md" -o -name "*.toml" \) 2>/dev/null
 find <repo-root>/.skills -name "SKILL.md" 2>/dev/null
 ```
