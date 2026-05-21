@@ -1,0 +1,29 @@
+{
+  "name": "abilities-playground",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "server": "tsx server/index.ts",
+    "dev:all": "concurrently \"npm run server\" \"npm run dev\""
+  },
+  "dependencies": {
+    "@babylonjs/core": "8.53.0",
+    "@babylonjs/gui": "8.53.0",
+    "@babylonjs/loaders": "8.53.0",
+    "phalanx-abilities": "workspace:*",
+    "phalanx-client": "workspace:*",
+    "phalanx-ecs": "workspace:*",
+    "phalanx-math": "workspace:*",
+    "phalanx-server": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.1",
+    "concurrently": "^9.2.1",
+    "tsx": "^4.20.6",
+    "typescript": "~5.9.3",
+    "vite": "8.0.5"
+  }
+}

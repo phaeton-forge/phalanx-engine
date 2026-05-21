@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <title>Abilities Playground</title>
+  </head>
+  <body>
+    <div id="lobby">
+      <h1>Abilities Playground</h1>
+      <p class="subtitle">Multiplayer lockstep demo</p>
+      <button id="find-match-btn">Find Match</button>
+      <div id="status"></div>
+    </div>
+
+    <div id="game-container">
+      <canvas id="app"></canvas>
+      <div id="overlay-center" class="overlay-card">
+        <button id="start-simulation-btn">▶ START</button>
+      </div>
+      <div id="result-overlay" class="overlay-card hidden">
+        <div id="result-text"></div>
+        <button id="return-lobby-btn">Return to Lobby</button>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

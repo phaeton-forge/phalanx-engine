@@ -11,3 +11,4 @@ packages:
   - 'arena-shooter'
   - 'chapaev'
   - 'chapaev/server'
+  - 'abilities-playground'
