@@ -2,13 +2,33 @@ import * as THREE from 'three';
 import type { MatchFoundEvent, PhalanxClient } from 'phalanx-client';
 import { Entity, GameWorld } from 'phalanx-ecs';
 import type { CommandsBatch, SoAComponentStore, SoASchemaDefinition } from 'phalanx-ecs';
-import { FP } from 'phalanx-math';
+import { FP, FPVector3 } from 'phalanx-math';
+import { PhysicsBodyComponent, PhysicsSoASchema, PHYSICS_BODY_COMPONENT_TYPE } from 'phalanx-physics';
 import { PhysicsWorld } from 'phalanx-physics';
+import { createAbilitySystem } from 'phalanx-abilities';
+import type { AbilitySystem } from 'phalanx-abilities';
 import { arenaParams, cameraConfig, networkConfig, physicsConfig } from '../config/constants';
+import { combatDefs, HEAL_AURA_PERIOD_TICKS, HEAL_AURA_RADIUS, UNIT_MOVE_SPEED } from '../config/abilityDefinitions';
 import { UNIT_ROSTER, type UnitKind } from '../config/unitRoster';
-import { ComponentType, SimulationStateComponent, TransformSoASchema } from '../components';
+import {
+  ComponentType,
+  HealerAuraLinkComponent,
+  SimulationStateComponent,
+  TransformComponent,
+  TransformSoASchema,
+} from '../components';
 import { UnitEntity } from '../entities/UnitEntity';
-import { InterpolationSystem, MovementIntentSystem, RenderSyncSystem, StartSimulationSystem, TargetingSystem } from '../systems';
+import {
+  AttackSystem,
+  // BeamSystem,
+  DeathSystem,
+  HealerAuraSystem,
+  InterpolationSystem,
+  MovementIntentSystem,
+  RenderSyncSystem,
+  StartSimulationSystem,
+  TargetingSystem,
+} from '../systems';
 
 export class PreviewGame {
   private readonly client: PhalanxClient;
@@ -22,10 +42,12 @@ export class PreviewGame {
   private readonly startButton: HTMLButtonElement;
   private readonly world: GameWorld;
   private readonly physicsWorld: PhysicsWorld;
+  private readonly abilities: AbilitySystem;
   private readonly startSimulationSystem = new StartSimulationSystem();
   private readonly interpolationSystem = new InterpolationSystem();
   private readonly renderSyncSystem = new RenderSyncSystem();
   private readonly networkEventUnsubscribers: (() => void)[] = [];
+  private gameOverShown = false;
   private readonly pressedKeys = new Set<string>();
   private readonly cameraAnchor = new THREE.Vector3();
   private readonly disposables: Array<THREE.BufferGeometry | THREE.Material> = [];
@@ -69,13 +91,45 @@ export class PreviewGame {
         maxZ: FP.FromFloat(arenaParams.length / 2),
       },
     });
+    this.abilities = createAbilitySystem(this.world, {
+      definitions: combatDefs,
+      physicsWorld: this.physicsWorld,
+      cues: 'dispatch',
+      hooks: {
+        'Hook.AutoAttack': (ctx) => {
+          console.log(
+            `[AutoAttack] tick=${ctx.tick} caster=${ctx.casterEntityId} targets=${JSON.stringify(ctx.resolvedTargets)}`,
+          );
+        },
+      },
+    });
+
+    this.renderSyncSystem.setAbilitySystem(this.abilities);
+
+    const movementSystem = new MovementIntentSystem();
+    movementSystem.setAbilitySystem(this.abilities);
+    // const beamSystem = new BeamSystem();
+    // beamSystem.setAbilitySystem(this.abilities);
+    const attackSystem = new AttackSystem();
+    attackSystem.setAbilitySystem(this.abilities);
+    const deathSystem = new DeathSystem();
+    deathSystem.setAbilitySystem(this.abilities);
+
     const { physicsSystem } = this.physicsWorld.getSystems();
-    this.world.registerSystems([
-      this.startSimulationSystem,
-      new TargetingSystem(),
-      new MovementIntentSystem(),
-      physicsSystem,
-    ], [this.renderSyncSystem]);
+    this.world.registerSystems(
+      [
+        this.startSimulationSystem,
+        new TargetingSystem(),
+        // beamSystem,
+        attackSystem,
+        new HealerAuraSystem(),
+        ...this.abilities.tickSystems,
+        movementSystem,
+        physicsSystem,
+        deathSystem,
+      ],
+      [this.interpolationSystem, this.renderSyncSystem],
+    );
     this.setupScene();
     this.spawnSimulationState();
     this.spawnUnits();
@@ -91,7 +145,6 @@ export class PreviewGame {
     this.startOverlay.classList.add('visible');
     this.resultOverlay.classList.remove('visible', 'victory', 'defeat');
     this.linkTransformStore();
-    this.interpolationSystem.snapToCurrentPositions();
     this.world.start({
       beforeTick: (_tick: number, commandsBatch: CommandsBatch) => {
         this.linkTransformStore();
@@ -100,6 +153,7 @@ export class PreviewGame {
       },
       afterTick: () => {
         this.interpolationSystem.captureCurrentPositions();
+        this.checkGameOver();
       },
       beforeFrame: (_alpha: number, dt: number) => {
         this.updateCamera(dt);
@@ -110,6 +164,7 @@ export class PreviewGame {
         this.renderer.render(this.scene, this.camera);
       },
     });
+    this.interpolationSystem.snapToCurrentPositions();
     this.client.sendReady();
     console.log(`[PreviewGame] ready match=${this.matchData.matchId} team=${this.matchData.teamId}`);
   }
@@ -178,9 +233,75 @@ export class PreviewGame {
         renderRefs.root.rotation.y = teamId === 0 ? 0 : Math.PI;
         this.scene.add(renderRefs.root);
         this.scene.add(renderRefs.healthBarRoot);
-        this.world.entityManager.addEntity(new UnitEntity(rosterEntry, teamId, { x, y, z }, renderRefs));
+
+        const unitEntity = new UnitEntity(rosterEntry, teamId, { x, y, z }, renderRefs);
+        unitEntity.addComponent(
+          this.abilities.initComponent({
+            attributes: {
+              Health: FP.FromFloat(rosterEntry.maxHealth),
+              MaxHealth: FP.FromFloat(rosterEntry.maxHealth),
+              MoveSpeed: FP.FromFloat(UNIT_MOVE_SPEED),
+              IncomingDamageMultiplier: FP.FromInt(1),
+            },
+            abilities: ['Ability.AutoAttack'],
+            tags: [`Team.${teamId}`],
+          }),
+        );
+        this.world.entityManager.addEntity(unitEntity);
+
+        if (rosterEntry.kind === 'cube') {
+          this.spawnHealerAura(unitEntity, teamId, { x, z });
+        }
       }
     }
+  }
+
+  private spawnHealerAura(
+    cubeEntity: UnitEntity,
+    teamId: 0 | 1,
+    position: { x: number; z: number },
+  ): void {
+    const link = cubeEntity.getComponent<HealerAuraLinkComponent>(ComponentType.HealerAuraLink);
+    if (!link) return;
+
+    const zoneEntity = this.abilities.spawnAura({
+      abilityId: 'Ability.HealAura',
+      target: {
+        kind: 'Radius',
+        origin: { kind: 'Caster' },
+        radius: FP.FromFloat(HEAL_AURA_RADIUS),
+        filter: {
+          tagsRequired: [`Team.${teamId}`],
+          tagsBlocked: ['State.Dead'],
+        },
+        includeSelf: true,
+      },
+      effectIds: ['Effect.HealAura.Tick'],
+      periodTicks: HEAL_AURA_PERIOD_TICKS,
+      ownerEntityId: cubeEntity.id,
+    });
+
+    const initialFp = FPVector3.FromFloat(position.x, 0, position.z);
+    const zoneTransform = new TransformComponent(zoneEntity.id, initialFp);
+    zoneEntity.addComponent(zoneTransform);
+    this.world.entityManager.onComponentAdded(zoneEntity, ComponentType.Transform);
+
+    const zonePhysics = new PhysicsBodyComponent(zoneEntity.id, {
+      radius: FP.FromFloat(0.1),
+      mass: FP.FromFloat(1),
+      friction: FP.FromFloat(0),
+      restitution: FP.FromFloat(0),
+    });
+    zoneEntity.addComponent(zonePhysics);
+    this.world.entityManager.onComponentAdded(zoneEntity, PHYSICS_BODY_COMPONENT_TYPE);
+
+    const physStore = this.world.entityManager.getOrCreateSoAStore(PhysicsSoASchema);
+    const physIdx = physStore.indexOf(zoneEntity.id);
+    if (physIdx !== -1) {
+      physStore.arrays.ignorePhysics[physIdx] = 1;
+    }
+
+    link.auraEntityId = zoneEntity.id;
   }
 
   private createUnitRenderRefs(kind: UnitKind, teamId: 0 | 1): {
@@ -278,6 +399,21 @@ export class PreviewGame {
     const halfLength = arenaParams.length / 2 + cameraConfig.boundsPadding;
     this.cameraAnchor.x = THREE.MathUtils.clamp(this.cameraAnchor.x, -halfWidth, halfWidth);
     this.cameraAnchor.z = THREE.MathUtils.clamp(this.cameraAnchor.z, -halfLength, halfLength);
+  }
+
+  private checkGameOver(): void {
+    if (this.gameOverShown || this.disposed) return;
+    const [stateEntity] = this.world.entityManager.queryEntities(ComponentType.SimulationState);
+    const state = stateEntity?.getComponent<SimulationStateComponent>(ComponentType.SimulationState);
+    if (!state?.gameOver) return;
+    this.gameOverShown = true;
+    const title =
+      state.winner === null
+        ? 'Draw'
+        : state.winner === this.localTeamId
+          ? 'Victory!'
+          : 'Defeat';
+    this.showResultOverlay(title);
   }
 
   private showResultOverlay(title: string): void {

@@ -34,7 +34,7 @@ export const cameraConfig = {
 /** Distance from each end of the arena (along Z) to the team spawn line. */
 export const arenaSpawnInset = 20;
 
-const arenaLength = 400;
+const arenaLength = 200;
 
 export const arenaParams = {
   width: 60,
