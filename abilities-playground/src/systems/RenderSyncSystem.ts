@@ -1,6 +1,6 @@
 import { GameSystem } from 'phalanx-ecs';
-import { FP } from 'phalanx-math';
 import type { AbilitySystem } from 'phalanx-abilities';
+import { FP } from 'phalanx-math';
 import {
   ComponentType,
   HealthBarComponent,
@@ -10,11 +10,7 @@ import {
 } from '../components';
 
 export class RenderSyncSystem extends GameSystem {
-  private abilities: AbilitySystem | null = null;
-
-  setAbilitySystem(abilities: AbilitySystem): void {
-    this.abilities = abilities;
-  }
+  private get _abilities(): AbilitySystem { return this.abilities as AbilitySystem; }
 
   public override update(_deltaTime: number): void {
     const entities = this.entityManager.queryEntities(
@@ -31,8 +27,8 @@ export class RenderSyncSystem extends GameSystem {
       const team = entity.getComponent<TeamComponent>(ComponentType.Team);
       if (!healthBar || !renderRefs || !stats || !team) continue;
 
-      const health = this.abilities?.tryGetAttribute(entity.id, 'Health')?.current;
-      const maxHealth = this.abilities?.tryGetAttribute(entity.id, 'MaxHealth')?.base;
+      const health = this._abilities.tryGetAttribute(entity.id, 'Health')?.current;
+      const maxHealth = this._abilities.tryGetAttribute(entity.id, 'MaxHealth')?.base;
       const healthRatio =
         health && maxHealth && FP.Gt(maxHealth, FP._0)
           ? Math.max(0, Math.min(1, FP.ToFloat(FP.Div(health, maxHealth))))

@@ -1,6 +1,7 @@
 import type { SystemContext } from './SystemContext';
 import type { EventBus } from './EventBus';
 import type { EntityManager } from './EntityManager';
+import type { IAbilitySystem } from './IAbilitySystem';
 
 /**
  * GameSystem - Abstract base class for all game systems
@@ -30,6 +31,16 @@ export abstract class GameSystem {
   /** Convenience accessor for EntityManager */
   protected get entityManager(): EntityManager {
     return this.context.entityManager;
+  }
+
+  /**
+   * The ability system for this game world, or undefined if the game does not
+   * use phalanx-abilities. Set by `createAbilitySystem()` before systems are
+   * registered. The concrete AbilitySystem type from phalanx-abilities
+   * satisfies this interface structurally.
+   */
+  protected get abilities(): IAbilitySystem | undefined {
+    return this.context.abilities;
   }
 
   /** Whether this system is enabled */

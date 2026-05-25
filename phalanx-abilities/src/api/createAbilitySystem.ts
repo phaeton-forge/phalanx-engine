@@ -1,4 +1,4 @@
-import type { Entity, GameSystem, GameWorld } from 'phalanx-ecs';
+import type { Entity, GameSystem, GameWorld, IAbilitySystem } from 'phalanx-ecs';
 import { FP } from 'phalanx-math';
 import type { FixedPoint } from 'phalanx-math';
 import {
@@ -86,7 +86,7 @@ export interface CreateAbilitySystemConfig {
   cues?: 'buffer' | 'dispatch';
 }
 
-export interface AbilitySystem {
+export interface AbilitySystem extends IAbilitySystem {
   readonly tickSystems: readonly GameSystem[];
   readonly gameplayCueBuffer: GameplayCueBufferView;
   /** High-water mark of allocated active-effect instance ids (for tests). */
@@ -157,13 +157,20 @@ export function createAbilitySystem(
 
   world.entityManager.registerComponentTypes(abilityComponentTypes);
 
-  return new AbilitySystemImpl(
+  const abilitySystem = new AbilitySystemImpl(
     registries,
     runtime,
     facade,
     config.pipeline ?? 'full',
     config.cues === 'dispatch'
   );
+
+  // Assign on context so every GameSystem can access it via this.abilities.
+  // Must be called before world.registerSystems() so that init() can safely
+  // read this.abilities during system initialisation.
+  world.context.abilities = abilitySystem;
+
+  return abilitySystem;
 }
 
 export const abilityComponentTypes: readonly symbol[] = [

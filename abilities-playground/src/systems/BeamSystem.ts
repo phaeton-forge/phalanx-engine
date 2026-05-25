@@ -1,8 +1,8 @@
 import { GameSystem } from 'phalanx-ecs';
 import type { SoAComponentStore, SystemContext } from 'phalanx-ecs';
+import type { AbilitySystem } from 'phalanx-abilities';
 import { FP } from 'phalanx-math';
 import type { FixedPoint } from 'phalanx-math';
-import type { AbilitySystem } from 'phalanx-abilities';
 import {
   ComponentType,
   ConeBeamComponent,
@@ -14,12 +14,8 @@ import {
 } from '../components';
 
 export class BeamSystem extends GameSystem {
+  private get _abilities(): AbilitySystem { return this.abilities as AbilitySystem; }
   private transformStore!: SoAComponentStore<typeof TransformSoASchema.definition>;
-  private abilities!: AbilitySystem;
-
-  setAbilitySystem(abilities: AbilitySystem): void {
-    this.abilities = abilities;
-  }
 
   public override init(context: SystemContext): void {
     super.init(context);
@@ -63,13 +59,13 @@ export class BeamSystem extends GameSystem {
 
       for (const targetId of [first, second]) {
         if (targetId === null) continue;
-        if (!this.abilities.hasTag(targetId, 'State.Illuminated')) {
-          this.abilities.applyEffect(targetId, 'Effect.Illuminated', cone.id);
+        if (!this._abilities.hasTag(targetId, 'State.Illuminated')) {
+          this._abilities.applyEffect(targetId, 'Effect.Illuminated', cone.id);
         }
       }
 
-      if (first !== null && !this.abilities.hasTag(first, 'State.Jammed')) {
-        this.abilities.applyEffect(first, 'Effect.Jammed', cone.id);
+      if (first !== null && !this._abilities.hasTag(first, 'State.Jammed')) {
+        this._abilities.applyEffect(first, 'Effect.Jammed', cone.id);
       }
     }
   }

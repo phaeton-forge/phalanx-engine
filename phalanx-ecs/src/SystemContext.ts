@@ -1,6 +1,7 @@
 import type { EventBus } from './EventBus';
 import type { EntityManager } from './EntityManager';
 import type { GameSystem } from './GameSystem';
+import type { IAbilitySystem } from './IAbilitySystem';
 
 /**
  * SystemContext - Shared dependencies container for all game systems
@@ -29,6 +30,14 @@ export class SystemContext {
 
   /** Internal registry of all systems for getSystem() lookup */
   private systemRegistry: Map<Function, GameSystem> = new Map();
+
+  /**
+   * The ability system for this game world.
+   * Set by `createAbilitySystem()` from phalanx-abilities before
+   * `registerSystems()` is called. Undefined in games that don't use
+   * phalanx-abilities.
+   */
+  public abilities: IAbilitySystem | undefined = undefined;
 
   constructor(
     eventBus: EventBus,

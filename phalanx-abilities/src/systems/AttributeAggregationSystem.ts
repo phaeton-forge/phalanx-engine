@@ -2,12 +2,11 @@ import { GameSystem } from 'phalanx-ecs';
 import { FP } from 'phalanx-math';
 import type { FixedPoint } from 'phalanx-math';
 import {
-  ActiveEffectsComponent,
-  AttributesComponent,
   AbilitiesComponentType,
   getActiveEffectsComponent,
   getAttributesComponent,
 } from '../components';
+import type { ActiveEffectsComponent } from '../components';
 import type { AbilitySystemRegistries } from '../registry';
 import type { ActiveEffectInstance, AttributeDef, EffectDef, ModifierOp } from '../types';
 

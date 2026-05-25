@@ -70,6 +70,13 @@ export type {
   DebugPanelConfig,
 } from './debug';
 
+// Optional system lifecycle hook interfaces
+export type { IBeforeTick, IAfterTick, IBeforeFrame, IAfterFrame } from './ISystemLifecycleHooks';
+export { isBeforeTick, isAfterTick, isBeforeFrame, isAfterFrame } from './ISystemLifecycleHooks';
+
+// Ability system contract (implemented by phalanx-abilities)
+export type { IAbilitySystem } from './IAbilitySystem';
+
 // Tick/Frame Management
 export { TickFrameManager } from './TickFrameManager';
 export type { TickFrameManagerConfig } from './TickFrameManager';

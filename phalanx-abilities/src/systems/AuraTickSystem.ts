@@ -4,7 +4,6 @@ import {
   AbilitiesComponentType,
   ActiveEffectsComponent,
   AuraComponent,
-  GameplayTagsComponent,
   getActiveEffectsComponent,
   getGameplayTagsComponent,
 } from '../components';

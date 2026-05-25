@@ -4,8 +4,6 @@ import { FP } from 'phalanx-math';
 import type { FixedPoint } from 'phalanx-math';
 import {
   AbilitiesComponentType,
-  ActiveEffectsComponent,
-  AttributesComponent,
   GameplayTagsComponent,
   getActiveEffectsComponent,
   getAttributesComponent,

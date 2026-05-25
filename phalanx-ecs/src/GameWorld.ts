@@ -12,6 +12,16 @@ import type { EntityManager } from './EntityManager';
 import type { SystemContext } from './SystemContext';
 import type { GameSystem } from './GameSystem';
 import {resetEntityIdCounter} from "./Entity";
+import {
+  isBeforeTick,
+  isAfterTick,
+  isBeforeFrame,
+  isAfterFrame,
+  type IBeforeTick,
+  type IAfterTick,
+  type IBeforeFrame,
+  type IAfterFrame,
+} from './ISystemLifecycleHooks';
 
 /**
  * Well-known event names emitted on the GameWorld's EventBus when the
@@ -109,6 +119,13 @@ export class GameWorld {
   private readonly _debugProvider: DebugDataProvider | null;
   private readonly _debugPanelConfig: DebugPanelConfig | undefined;
   private _debugPanel: DebugPanel | null = null;
+
+  // Cached systems that implement the optional lifecycle hook interfaces.
+  // Built lazily on first registerSystems() call; rebuilt on subsequent calls.
+  private beforeTickSystems: IBeforeTick[] = [];
+  private afterTickSystems: IAfterTick[] = [];
+  private beforeFrameSystems: IBeforeFrame[] = [];
+  private afterFrameSystems: IAfterFrame[] = [];
 
   // Unsubscribe handles for tick/frame
   private unsubscribeTick: Unsubscribe | null = null;
@@ -280,12 +297,30 @@ export class GameWorld {
 
   /**
    * Register tick and frame systems, then call init() on each.
+   * Also collects systems that implement optional lifecycle hook interfaces
+   * (IBeforeTick, IAfterTick, IBeforeFrame, IAfterFrame) so GameWorld can
+   * invoke them automatically at the right pipeline phase.
    */
   public registerSystems(
     tickSystems: GameSystem[],
     frameSystems: GameSystem[]
   ): void {
     this.systemRegistry.registerSystems(tickSystems, frameSystems);
+    this.buildLifecycleCaches();
+  }
+
+  private buildLifecycleCaches(): void {
+    this.beforeTickSystems = [];
+    this.afterTickSystems = [];
+    this.beforeFrameSystems = [];
+    this.afterFrameSystems = [];
+
+    for (const system of this.systemRegistry.getAllSystems()) {
+      if (isBeforeTick(system)) this.beforeTickSystems.push(system);
+      if (isAfterTick(system)) this.afterTickSystems.push(system);
+      if (isBeforeFrame(system)) this.beforeFrameSystems.push(system);
+      if (isAfterFrame(system)) this.afterFrameSystems.push(system);
+    }
   }
 
   /**
@@ -349,16 +384,20 @@ export class GameWorld {
     // Subscribe to tick events
     this.unsubscribeTick = this.provider.onTick((tick, commands) => {
       if (this._paused) return;
+      for (const s of this.beforeTickSystems) s.beforeTick(tick, commands);
       hooks?.beforeTick?.(tick, commands);
       this.processAllTicks(tick);
+      for (const s of this.afterTickSystems) s.afterTick(tick);
       hooks?.afterTick?.(tick);
     });
 
     // Subscribe to frame events
     this.unsubscribeFrame = this.provider.onFrame((alpha, dt) => {
       if (this._paused) return;
+      for (const s of this.beforeFrameSystems) s.beforeFrame(alpha, dt);
       hooks?.beforeFrame?.(alpha, dt);
       this.updateAll(dt);
+      for (const s of this.afterFrameSystems) s.afterFrame(alpha, dt);
       hooks?.afterFrame?.(alpha, dt);
     });
 

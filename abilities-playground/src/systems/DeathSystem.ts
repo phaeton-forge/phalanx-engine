@@ -1,8 +1,8 @@
 import { GameSystem } from 'phalanx-ecs';
 import type { SoAComponentStore, SystemContext } from 'phalanx-ecs';
+import type { AbilitySystem } from 'phalanx-abilities';
 import { FP } from 'phalanx-math';
 import { PhysicsSoASchema } from 'phalanx-physics';
-import type { AbilitySystem } from 'phalanx-abilities';
 import {
   ComponentType,
   SimulationStateComponent,
@@ -11,12 +11,8 @@ import {
 } from '../components';
 
 export class DeathSystem extends GameSystem {
+  private get _abilities(): AbilitySystem { return this.abilities as AbilitySystem; }
   private physicsStore!: SoAComponentStore<typeof PhysicsSoASchema.definition>;
-  private abilities!: AbilitySystem;
-
-  setAbilitySystem(abilities: AbilitySystem): void {
-    this.abilities = abilities;
-  }
 
   public override init(context: SystemContext): void {
     super.init(context);
@@ -37,7 +33,7 @@ export class DeathSystem extends GameSystem {
       if (!stats || !team) continue;
 
       if (stats.alive) {
-        const health = this.abilities.tryGetAttribute(unit.id, 'Health')?.current;
+        const health = this._abilities.tryGetAttribute(unit.id, 'Health')?.current;
         if (health && FP.Lte(health, FP._0)) {
           this.killUnit(unit.id, stats);
         }
@@ -59,7 +55,7 @@ export class DeathSystem extends GameSystem {
 
   private killUnit(entityId: number, stats: UnitStatsComponent): void {
     stats.alive = false;
-    this.abilities.addTag(entityId, 'State.Dead');
+    this._abilities.addTag(entityId, 'State.Dead');
     const physIdx = this.physicsStore.indexOf(entityId);
     if (physIdx !== -1) {
       this.physicsStore.arrays.ignorePhysics[physIdx] = 1;

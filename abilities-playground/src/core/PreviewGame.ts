@@ -104,16 +104,10 @@ export class PreviewGame {
       },
     });
 
-    this.renderSyncSystem.setAbilitySystem(this.abilities);
-
     const movementSystem = new MovementIntentSystem();
-    movementSystem.setAbilitySystem(this.abilities);
     // const beamSystem = new BeamSystem();
-    // beamSystem.setAbilitySystem(this.abilities);
     const attackSystem = new AttackSystem();
-    attackSystem.setAbilitySystem(this.abilities);
     const deathSystem = new DeathSystem();
-    deathSystem.setAbilitySystem(this.abilities);
 
     const { physicsSystem } = this.physicsWorld.getSystems();
     this.world.registerSystems(
@@ -123,7 +117,6 @@ export class PreviewGame {
         // beamSystem,
         attackSystem,
         new HealerAuraSystem(),
-        ...this.abilities.tickSystems,
         movementSystem,
         physicsSystem,
         deathSystem,
@@ -148,18 +141,15 @@ export class PreviewGame {
     this.world.start({
       beforeTick: (_tick: number, commandsBatch: CommandsBatch) => {
         this.linkTransformStore();
-        this.interpolationSystem.snapshotPositions();
         this.startSimulationSystem.processCommands(commandsBatch);
       },
       afterTick: () => {
-        this.interpolationSystem.captureCurrentPositions();
         this.checkGameOver();
       },
       beforeFrame: (_alpha: number, dt: number) => {
         this.updateCamera(dt);
       },
-      afterFrame: (alpha: number) => {
-        this.interpolationSystem.interpolate(alpha);
+      afterFrame: () => {
         this.renderSyncSystem.update(0);
         this.renderer.render(this.scene, this.camera);
       },

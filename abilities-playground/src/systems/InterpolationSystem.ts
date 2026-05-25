@@ -1,4 +1,6 @@
 import { GameSystem } from 'phalanx-ecs';
+import type { CommandsBatch } from 'phalanx-ecs';
+import type { IBeforeTick, IAfterTick, IAfterFrame } from 'phalanx-ecs';
 import { FPVector3 } from 'phalanx-math';
 import {
   ComponentType,
@@ -7,7 +9,43 @@ import {
   TransformComponent,
 } from '../components';
 
-export class InterpolationSystem extends GameSystem {
+/**
+ * InterpolationSystem — smooth visual movement between simulation ticks.
+ *
+ * Implements IBeforeTick, IAfterTick, and IAfterFrame so GameWorld drives
+ * the lifecycle automatically once this system is registered:
+ *
+ *   IBeforeTick  → snapshotPositions()          (before tick systems run)
+ *   IAfterTick   → captureCurrentPositions()    (after tick systems run)
+ *   IAfterFrame  → interpolate(alpha)            (after frame systems run)
+ *
+ * Call snapToCurrentPositions() once after world.start() to initialize
+ * visual positions on the first rendered frame.
+ */
+export class InterpolationSystem
+  extends GameSystem
+  implements IBeforeTick, IAfterTick, IAfterFrame
+{
+  // IBeforeTick ─────────────────────────────────────────────────────────────
+
+  beforeTick(_tick: number, _commands: CommandsBatch): void {
+    this.snapshotPositions();
+  }
+
+  // IAfterTick ──────────────────────────────────────────────────────────────
+
+  afterTick(_tick: number): void {
+    this.captureCurrentPositions();
+  }
+
+  // IAfterFrame ─────────────────────────────────────────────────────────────
+
+  afterFrame(alpha: number, _dt: number): void {
+    this.interpolate(alpha);
+  }
+
+  // ── Public helpers (also callable explicitly when needed) ─────────────────
+
   snapshotPositions(): void {
     const entities = this.entityManager.queryEntities(ComponentType.Interpolation);
     for (const entity of entities) {

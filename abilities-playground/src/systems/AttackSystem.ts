@@ -1,7 +1,7 @@
 import { GameSystem } from 'phalanx-ecs';
 import type { SoAComponentStore, SystemContext } from 'phalanx-ecs';
-import { FP } from 'phalanx-math';
 import type { AbilitySystem } from 'phalanx-abilities';
+import { FP } from 'phalanx-math';
 import {
   ComponentType,
   SimulationStateComponent,
@@ -12,12 +12,8 @@ import {
 } from '../components';
 
 export class AttackSystem extends GameSystem {
+  private get _abilities(): AbilitySystem { return this.abilities as AbilitySystem; }
   private transformStore!: SoAComponentStore<typeof TransformSoASchema.definition>;
-  private abilities!: AbilitySystem;
-
-  setAbilitySystem(abilities: AbilitySystem): void {
-    this.abilities = abilities;
-  }
 
   public override init(context: SystemContext): void {
     super.init(context);
@@ -43,7 +39,7 @@ export class AttackSystem extends GameSystem {
 
       if (!this.isInAttackRange(unit.id, targetState.targetEntityId, stats.stopRange)) continue;
 
-      this.abilities.activateAbility(unit.id, 'Ability.AutoAttack', {
+      this._abilities.activateAbility(unit.id, 'Ability.AutoAttack', {
         entityId: targetState.targetEntityId,
       });
     }

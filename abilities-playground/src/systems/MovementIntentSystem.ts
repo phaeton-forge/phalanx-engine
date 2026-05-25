@@ -1,9 +1,9 @@
 import { GameSystem } from 'phalanx-ecs';
 import type { SoAComponentStore, SystemContext } from 'phalanx-ecs';
+import type { AbilitySystem } from 'phalanx-abilities';
 import { PhysicsSoASchema } from 'phalanx-physics';
 import { FP } from 'phalanx-math';
 import type { FixedPoint } from 'phalanx-math';
-import type { AbilitySystem } from 'phalanx-abilities';
 import {
   ComponentType,
   SimulationStateComponent,
@@ -14,19 +14,14 @@ import {
 } from '../components';
 
 export class MovementIntentSystem extends GameSystem {
+  private get _abilities(): AbilitySystem { return this.abilities as AbilitySystem; }
   private physicsStore!: SoAComponentStore<typeof PhysicsSoASchema.definition>;
   private transformStore!: SoAComponentStore<typeof TransformSoASchema.definition>;
-  private abilities: AbilitySystem | null = null;
-
-  setAbilitySystem(abilities: AbilitySystem): void {
-    this.abilities = abilities;
-  }
 
   public override init(context: SystemContext): void {
     super.init(context);
     this.physicsStore = this.entityManager.getOrCreateSoAStore(PhysicsSoASchema);
-    this.transformStore =
-      this.entityManager.getOrCreateSoAStore(TransformSoASchema);
+    this.transformStore = this.entityManager.getOrCreateSoAStore(TransformSoASchema);
   }
 
   public override processTick(): void {
@@ -46,9 +41,7 @@ export class MovementIntentSystem extends GameSystem {
         this.physicsStore.arrays.ignorePhysics[physicsIndex] === 1;
 
       const entity = this.entityManager.getEntity(entityId);
-      const stats = entity?.getComponent<UnitStatsComponent>(
-        ComponentType.UnitStats,
-      );
+      const stats = entity?.getComponent<UnitStatsComponent>(ComponentType.UnitStats);
       if (shouldFreeze || !entity || !stats?.alive) {
         velocityX[physicsIndex] = zeroRaw;
         velocityZ[physicsIndex] = zeroRaw;
@@ -69,7 +62,7 @@ export class MovementIntentSystem extends GameSystem {
         continue;
       }
 
-      const effectiveSpeed = this.abilities?.tryGetAttribute(entityId, 'MoveSpeed')?.current;
+      const effectiveSpeed = this._abilities.tryGetAttribute(entityId, 'MoveSpeed')?.current;
       if (!effectiveSpeed) continue;
       velocityX[physicsIndex] = FP.ToRaw(FP.Mul(direction.x, effectiveSpeed));
       velocityZ[physicsIndex] = FP.ToRaw(FP.Mul(direction.z, effectiveSpeed));
@@ -82,12 +75,8 @@ export class MovementIntentSystem extends GameSystem {
     const entity = this.entityManager.getEntity(entityId);
     if (!entity) return null;
 
-    const targetState = entity.getComponent<TargetStateComponent>(
-      ComponentType.TargetState,
-    );
-    const stats = entity.getComponent<UnitStatsComponent>(
-      ComponentType.UnitStats,
-    );
+    const targetState = entity.getComponent<TargetStateComponent>(ComponentType.TargetState);
+    const stats = entity.getComponent<UnitStatsComponent>(ComponentType.UnitStats);
     const team = entity.getComponent<TeamComponent>(ComponentType.Team);
     const ownIndex = this.transformStore.indexOf(entityId);
     if (!targetState || !stats || !team || ownIndex === -1) return null;
@@ -127,11 +116,7 @@ export class MovementIntentSystem extends GameSystem {
   }
 
   private getSimulationState(): SimulationStateComponent | undefined {
-    const [stateEntity] = this.entityManager.queryEntities(
-      ComponentType.SimulationState,
-    );
-    return stateEntity?.getComponent<SimulationStateComponent>(
-      ComponentType.SimulationState,
-    );
+    const [stateEntity] = this.entityManager.queryEntities(ComponentType.SimulationState);
+    return stateEntity?.getComponent<SimulationStateComponent>(ComponentType.SimulationState);
   }
 }
