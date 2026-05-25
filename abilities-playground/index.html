@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="theme-color" content="#1a1a2e" />
+    <title>Abilities Playground — 1v1</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        font-family: system-ui, -apple-system, Segoe UI, Arial, sans-serif;
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+
+      #lobby {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+        color: white;
+        padding: 20px;
+        text-align: center;
+      }
+
+      #lobby h1 {
+        font-size: clamp(1.5rem, 5vw, 2.2rem);
+        margin-bottom: 0.5rem;
+        color: #4ecca3;
+      }
+
+      #lobby p.subtitle {
+        font-size: 1rem;
+        color: #888;
+        margin-bottom: 2rem;
+      }
+
+      #find-match-btn {
+        padding: 0.875rem 2rem;
+        font-size: 1rem;
+        background: #4ecca3;
+        border: none;
+        border-radius: 8px;
+        color: #1a1a2e;
+        cursor: pointer;
+        font-weight: bold;
+        min-height: 44px;
+        min-width: 44px;
+        transition: background 0.2s, transform 0.1s;
+      }
+
+      #find-match-btn:hover:not(:disabled) {
+        background: #3ba882;
+      }
+
+      #find-match-btn:disabled {
+        background: #555;
+        cursor: not-allowed;
+      }
+
+      #status {
+        margin-top: 1.25rem;
+        font-size: 1rem;
+        color: #ccc;
+        min-height: 1.5em;
+      }
+
+      #game-container {
+        display: none;
+        width: 100%;
+        height: 100%;
+        position: relative;
+        background: #0f0f1a;
+      }
+
+      #app {
+        width: 100%;
+        height: 100%;
+        display: block;
+      }
+
+      .overlay {
+        display: none;
+        position: absolute;
+        inset: 0;
+        z-index: 20;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        gap: 1rem;
+        background: rgba(0, 0, 0, 0.55);
+        color: white;
+        text-align: center;
+        padding: 24px;
+      }
+
+      .overlay.visible {
+        display: flex;
+      }
+
+      .overlay h2 {
+        font-size: clamp(1.8rem, 6vw, 2.5rem);
+        font-weight: 800;
+        text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
+      }
+
+      #start-overlay #start-btn {
+        padding: 1rem 2.5rem;
+        font-size: 1.25rem;
+        font-weight: bold;
+        border: none;
+        border-radius: 10px;
+        background: #4ecca3;
+        color: #1a1a2e;
+        cursor: pointer;
+        min-height: 48px;
+        min-width: 48px;
+      }
+
+      #result-overlay.victory h2 {
+        color: #4ecca3;
+      }
+
+      #result-overlay.defeat h2 {
+        color: #e74c3c;
+      }
+
+      .overlay button.secondary {
+        padding: 0.75rem 1.5rem;
+        font-size: 1rem;
+        border: 1px solid rgba(255, 255, 255, 0.35);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.08);
+        color: white;
+        cursor: pointer;
+        min-height: 44px;
+      }
+
+      .overlay button.secondary:hover {
+        background: rgba(255, 255, 255, 0.16);
+      }
+
+      @media (max-width: 768px) {
+        #find-match-btn {
+          font-size: 16px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="lobby">
+      <h1>Abilities Playground</h1>
+      <p class="subtitle">1v1 deterministic combat demo</p>
+      <button id="find-match-btn" type="button">Find Match</button>
+      <div id="status"></div>
+    </div>
+
+    <div id="game-container">
+      <canvas id="app"></canvas>
+
+      <div id="start-overlay" class="overlay">
+        <h2>Ready</h2>
+        <button id="start-btn" type="button">START</button>
+      </div>
+
+      <div id="result-overlay" class="overlay">
+        <h2 id="result-title">Victory</h2>
+        <button id="return-lobby-btn" class="secondary" type="button">Return to Lobby</button>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
