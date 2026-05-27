@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { arenaParams } from '../config/constants';
 import type { UnitKind } from '../config/unitRoster';
+import { DEFAULT_UNIT_DETECTION_RANGE } from '../config/unitRoster';
 import type { ArenaScene } from './ArenaScene';
 export interface SpawnPointRef {
     marker: THREE.Object3D;
@@ -11,6 +12,7 @@ export interface UnitRenderRefs {
   healthBarRoot: THREE.Object3D;
   healthBarFill: THREE.Object3D;
   healthBarFullWidth: number;
+  detectionRing: THREE.Mesh;
   spawnPoint?: SpawnPointRef;
 }
 
@@ -21,8 +23,14 @@ export class UnitFactory {
     this.arenaScene = arenaScene;
   }
 
-  createRenderRefs(kind: UnitKind, teamId: 0 | 1): UnitRenderRefs {
+  createRenderRefs(
+    kind: UnitKind,
+    teamId: 0 | 1,
+    detectionRange = DEFAULT_UNIT_DETECTION_RANGE,
+  ): UnitRenderRefs {
     const root = this.createMesh(kind, teamId);
+    const detectionRing = this.createDetectionRing(teamId, detectionRange);
+    root.add(detectionRing);
     const healthBarRoot = new THREE.Group();
     const healthBarFullWidth = 6;
 
@@ -48,7 +56,36 @@ export class UnitFactory {
       root.add(spawnPoint.marker);
     }
 
-    return { root, healthBarRoot, healthBarFill: fill, healthBarFullWidth, spawnPoint };
+    return {
+      root,
+      healthBarRoot,
+      healthBarFill: fill,
+      healthBarFullWidth,
+      detectionRing,
+      spawnPoint,
+    };
+  }
+
+  /** Unit-radius ring; scale X/Z in RenderSyncSystem to match detectionRange. */
+  private createDetectionRing(teamId: 0 | 1, radius: number): THREE.Mesh {
+    const teamColor = teamId === 0 ? arenaParams.team1Color : arenaParams.team2Color;
+    const ring = new THREE.Mesh(
+      this.arenaScene.trackGeometry(new THREE.RingGeometry(0.92, 1, 64)),
+      this.arenaScene.trackMaterial(
+        new THREE.MeshBasicMaterial({
+          color: teamColor,
+          transparent: true,
+          opacity: 0.45,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+        }),
+      ),
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.05;
+    ring.renderOrder = 1;
+    ring.scale.set(radius, radius, 1);
+    return ring;
   }
 
   private createSphereSpawnPoint(): SpawnPointRef {

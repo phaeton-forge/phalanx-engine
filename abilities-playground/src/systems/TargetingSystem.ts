@@ -2,18 +2,26 @@ import { GameSystem } from 'phalanx-ecs';
 import type { SoAComponentStore, SystemContext } from 'phalanx-ecs';
 import { FP } from 'phalanx-math';
 import type { FixedPoint } from 'phalanx-math';
+import type { PhysicsSpatialQuery } from 'phalanx-physics';
 import {
   ComponentType,
   TargetStateComponent,
   TeamComponent,
   TransformSoASchema,
   StatsComponent,
+  UnitTypeComponent,
 } from '../components';
 
 export class TargetingSystem extends GameSystem {
   private transformStore!: SoAComponentStore<
     typeof TransformSoASchema.definition
   >;
+  private readonly spatialQuery: PhysicsSpatialQuery;
+
+  constructor(spatialQuery: PhysicsSpatialQuery) {
+    super();
+    this.spatialQuery = spatialQuery;
+  }
 
   public override init(context: SystemContext): void {
     super.init(context);
@@ -26,29 +34,41 @@ export class TargetingSystem extends GameSystem {
       ComponentType.Team,
       ComponentType.TargetState,
       ComponentType.UnitStats,
+      ComponentType.UnitType,
       ComponentType.Transform,
     );
 
     for (const unit of units) {
-      const stats = unit.getComponent<StatsComponent>(
-        ComponentType.UnitStats,
-      );
+      const stats = unit.getComponent<StatsComponent>(ComponentType.UnitStats);
       const targetState = unit.getComponent<TargetStateComponent>(
         ComponentType.TargetState,
       );
       const team = unit.getComponent<TeamComponent>(ComponentType.Team);
-      if (!stats?.alive || !targetState || !team) continue;
+      const unitType = unit.getComponent<UnitTypeComponent>(ComponentType.UnitType);
+      if (!stats?.alive || !targetState || !team || !unitType) continue;
 
-      let bestTargetId: number | null = null;
-      let bestDistanceSq: FixedPoint | null = null;
       const unitIndex = this.transformStore.indexOf(unit.id);
       if (unitIndex === -1) continue;
 
       const unitX = FP.FromRaw(this.transformStore.arrays.fpPositionX[unitIndex]);
       const unitZ = FP.FromRaw(this.transformStore.arrays.fpPositionZ[unitIndex]);
+      const detectionRadius = unitType.detectionRadius;
+      const detectionRadiusSq = FP.Mul(detectionRadius, detectionRadius);
 
-      for (const candidate of units) {
-        if (candidate.id === unit.id) continue;
+      let bestTargetId: number | null = null;
+      let bestDistanceSq: FixedPoint | null = null;
+
+      const candidateIds = this.spatialQuery.queryRadius(
+        unitX,
+        unitZ,
+        detectionRadius,
+      );
+
+      for (const candidateId of candidateIds) {
+        if (candidateId === unit.id) continue;
+
+        const candidate = this.entityManager.getEntity(candidateId);
+        if (!candidate) continue;
 
         const candidateStats = candidate.getComponent<StatsComponent>(
           ComponentType.UnitStats,
@@ -60,7 +80,7 @@ export class TargetingSystem extends GameSystem {
           continue;
         }
 
-        const candidateIndex = this.transformStore.indexOf(candidate.id);
+        const candidateIndex = this.transformStore.indexOf(candidateId);
         if (candidateIndex === -1) continue;
 
         const dx = FP.Sub(
@@ -72,13 +92,15 @@ export class TargetingSystem extends GameSystem {
           unitZ,
         );
         const distanceSq = FP.Add(FP.Mul(dx, dx), FP.Mul(dz, dz));
+        if (FP.Gt(distanceSq, detectionRadiusSq)) continue;
+
         if (
           bestDistanceSq === null ||
           FP.Lt(distanceSq, bestDistanceSq) ||
           (FP.Eq(distanceSq, bestDistanceSq) &&
-            (bestTargetId === null || candidate.id < bestTargetId))
+            (bestTargetId === null || candidateId < bestTargetId))
         ) {
-          bestTargetId = candidate.id;
+          bestTargetId = candidateId;
           bestDistanceSq = distanceSq;
         }
       }

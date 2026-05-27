@@ -20,6 +20,7 @@ export const ComponentType = createComponentTypeRegistry({
   SimulationState: 'SimulationState',
   PhysicsBody: 'PhysicsBody',
   SpawnPoint: 'SpawnPoint',
+  DetectionRing: 'DetectionRing',
 });
 
 (ComponentType as Record<string, symbol>).PhysicsBody =

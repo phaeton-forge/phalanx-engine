@@ -4,12 +4,12 @@ import { Entity, GameWorld } from 'phalanx-ecs';
 import type { SoAComponentStore, SoASchemaDefinition } from 'phalanx-ecs';
 import { FP, FPVector3 } from 'phalanx-math';
 import { PhysicsBodyComponent, PhysicsSoASchema, PHYSICS_BODY_COMPONENT_TYPE } from 'phalanx-physics';
-import { PhysicsWorld } from 'phalanx-physics';
+import { createPhysicsSpatialQuery, PhysicsWorld } from 'phalanx-physics';
 import {type AbilityActivationContext, createAbilitySystem} from 'phalanx-abilities';
 import type { AbilitySystem } from 'phalanx-abilities';
 import { arenaParams, networkConfig, physicsConfig } from '../config/constants';
 import { combatDefs, HEAL_AURA_PERIOD_TICKS, HEAL_AURA_RADIUS, UNIT_MOVE_SPEED } from '../config/abilityDefinitions';
-import { UNIT_ROSTER } from '../config/unitRoster';
+import { DEFAULT_UNIT_DETECTION_RANGE, UNIT_ROSTER } from '../config/unitRoster';
 import {
   ComponentType,
   HealerAuraLinkComponent,
@@ -94,11 +94,12 @@ export class SimulationContainer {
       },
     });
 
+    const spatialQuery = createPhysicsSpatialQuery(this.physicsWorld);
     const { physicsSystem } = this.physicsWorld.getSystems();
     this.world.registerSystems(
       [
         this.startSimulationSystem,
-        new TargetingSystem(),
+        new TargetingSystem(spatialQuery),
         new AttackSystem(),
         new HealerAuraSystem(),
         new MovementSystem(),
@@ -159,7 +160,13 @@ export class SimulationContainer {
         const x = offsetX;
         const z = spawnZ + offsetZ * forwardZ;
         const y = unitFactory.getHeightOffset(rosterEntry.kind);
-        const renderRefs = unitFactory.createRenderRefs(rosterEntry.kind, teamId);
+        const detectionRange =
+          rosterEntry.detectionRange ?? DEFAULT_UNIT_DETECTION_RANGE;
+        const renderRefs = unitFactory.createRenderRefs(
+          rosterEntry.kind,
+          teamId,
+          detectionRange,
+        );
 
         renderRefs.root.position.set(x, y, z);
         renderRefs.root.rotation.y = teamId === 0 ? 0 : Math.PI;

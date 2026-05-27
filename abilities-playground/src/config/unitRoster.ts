@@ -1,5 +1,8 @@
 export type UnitKind = 'sphere' | 'cube' | 'cone';
 
+/** Default hostile detection radius (world units); matches gameplay and debug ring. */
+export const DEFAULT_UNIT_DETECTION_RANGE = 25;
+
 export interface UnitSpawnOffset {
   readonly offsetX: number;
   readonly offsetZ: number;
@@ -12,6 +15,8 @@ export interface UnitRosterEntry {
   readonly mass: number;
   readonly stopRange: number;
   readonly maxHealth: number;
+  /** Hostile detection radius; defaults to {@link DEFAULT_UNIT_DETECTION_RANGE}. */
+  readonly detectionRange?: number;
 }
 
 export const UNIT_ROSTER: readonly UnitRosterEntry[] = [

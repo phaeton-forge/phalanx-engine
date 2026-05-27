@@ -4,6 +4,7 @@ import type { FixedPoint } from 'phalanx-math';
 import type { IComponent } from './Component';
 import { ComponentType } from './Component';
 import type { UnitKind } from '../config/unitRoster';
+import { DEFAULT_UNIT_DETECTION_RANGE } from '../config/unitRoster';
 import type {IResettableComponent} from "phalanx-ecs";
 
 export type TeamId = 0 | 1;
@@ -28,9 +29,24 @@ export class TeamComponent implements IResettableComponent {
 export class UnitTypeComponent implements IComponent {
   public readonly type = ComponentType.UnitType;
   public readonly kind: UnitKind;
+  public readonly detectionRadius: FixedPoint;
 
-  constructor(kind: UnitKind) {
+  constructor(
+    kind: UnitKind,
+    detectionRadius: FixedPoint = FP.FromFloat(DEFAULT_UNIT_DETECTION_RANGE),
+  ) {
     this.kind = kind;
+    this.detectionRadius = detectionRadius;
+  }
+}
+
+/** Team-colored XZ ring showing {@link UnitTypeComponent.detectionRadius} for tuning. */
+export class DetectionRingComponent implements IComponent {
+  public readonly type = ComponentType.DetectionRing;
+  public readonly root: THREE.Object3D;
+
+  constructor(root: THREE.Object3D) {
+    this.root = root;
   }
 }
 

@@ -12,6 +12,7 @@ export {
   HealerAuraLinkComponent,
   ConeBeamComponent,
   SimulationStateComponent,
+  DetectionRingComponent,
 } from './UnitComponents';
 export type { TeamId } from './UnitComponents';
 export { TransformComponent, TransformSoASchema } from './TransformComponent';

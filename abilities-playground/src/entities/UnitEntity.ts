@@ -13,9 +13,11 @@ import {
   TransformComponent,
   StatsComponent,
   UnitTypeComponent,
+  DetectionRingComponent,
 } from '../components';
 import type { TeamId } from '../components';
 import type { UnitRosterEntry } from '../config/unitRoster';
+import { DEFAULT_UNIT_DETECTION_RANGE } from '../config/unitRoster';
 import type { UnitRenderRefs } from '../core/UnitFactory';
 
 export class UnitEntity extends Entity {
@@ -28,13 +30,19 @@ export class UnitEntity extends Entity {
     super();
 
     const fpPosition = FPVector3.FromFloat(position.x, position.y, position.z);
+    const detectionRange =
+      rosterEntry.detectionRange ?? DEFAULT_UNIT_DETECTION_RANGE;
 
-    this.addComponent(new TransformComponent(this.id, fpPosition));
+    const initialRotationY = teamId === 0 ? 0 : Math.PI;
+    this.addComponent(new TransformComponent(this.id, fpPosition, initialRotationY));
     this.addComponent(new TeamComponent(teamId));
-    this.addComponent(new UnitTypeComponent(rosterEntry.kind));
+    this.addComponent(
+      new UnitTypeComponent(rosterEntry.kind, FP.FromFloat(detectionRange)),
+    );
     this.addComponent(new StatsComponent({ stopRange: rosterEntry.stopRange }));
     this.addComponent(new TargetStateComponent());
     this.addComponent(new MeshComponent(renderRefs.root));
+    this.addComponent(new DetectionRingComponent(renderRefs.detectionRing));
     this.addComponent(
       new HealthBarComponent(
         renderRefs.healthBarRoot,

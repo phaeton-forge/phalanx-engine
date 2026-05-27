@@ -12,6 +12,7 @@ export const TransformSoASchema = defineSoASchema(
     visualPositionY: 'f64',
     visualPositionZ: 'f64',
     visualRotationY: 'f64',
+    previousVisualRotationY: 'f64',
   },
   'Transform',
 );
@@ -28,7 +29,11 @@ export class TransformComponent extends SoAComponent<
     z: FP._0,
   };
 
-  constructor(entityId: number, initialPosition: FPVector3Type) {
+  constructor(
+    entityId: number,
+    initialPosition: FPVector3Type,
+    initialRotationY = 0,
+  ) {
     const visualPosition = FPVector3.ToFloat(initialPosition);
 
     super(TransformSoASchema, entityId, {
@@ -38,7 +43,8 @@ export class TransformComponent extends SoAComponent<
       visualPositionX: visualPosition.x,
       visualPositionY: visualPosition.y,
       visualPositionZ: visualPosition.z,
-      visualRotationY: 0,
+      visualRotationY: initialRotationY,
+      previousVisualRotationY: initialRotationY,
     });
   }
 
