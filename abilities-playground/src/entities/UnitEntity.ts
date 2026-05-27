@@ -1,5 +1,4 @@
 import { Entity } from 'phalanx-ecs';
-import type * as THREE from 'three';
 import { FP, FPVector3 } from 'phalanx-math';
 import { PhysicsBodyComponent } from 'phalanx-physics';
 import {
@@ -8,6 +7,7 @@ import {
   HealthBarComponent,
   InterpolationComponent,
   MeshComponent,
+  SpawnPointComponent,
   TargetStateComponent,
   TeamComponent,
   TransformComponent,
@@ -16,18 +16,14 @@ import {
 } from '../components';
 import type { TeamId } from '../components';
 import type { UnitRosterEntry } from '../config/unitRoster';
+import type { UnitRenderRefs } from '../core/UnitFactory';
 
 export class UnitEntity extends Entity {
   constructor(
     rosterEntry: UnitRosterEntry,
     teamId: TeamId,
     position: { x: number; y: number; z: number },
-    renderRefs: {
-      root: THREE.Object3D;
-      healthBarRoot: THREE.Object3D;
-      healthBarFill: THREE.Object3D;
-      healthBarFullWidth: number;
-    },
+    renderRefs: UnitRenderRefs,
   ) {
     super();
 
@@ -60,6 +56,10 @@ export class UnitEntity extends Entity {
         restitution: FP.FromFloat(0.05),
       }),
     );
+
+    if (renderRefs.spawnPoint) {
+      this.addComponent(new SpawnPointComponent(renderRefs.spawnPoint.marker));
+    }
 
     if (rosterEntry.kind === 'cube') {
       this.addComponent(new HealerAuraLinkComponent());

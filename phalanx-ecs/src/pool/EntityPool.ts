@@ -70,8 +70,8 @@ export class EntityPool<T extends Entity = Entity> {
     for (const template of this.componentTemplates) {
       const comp = entity.getComponent(template.type);
       if (comp) {
-        if ('reset' in comp && typeof (comp as IPoolable).reset === 'function') {
-          (comp as IPoolable).reset();
+        if ('reset' in comp) {
+          (comp as unknown as IPoolable).reset();
         }
       }
       // No need to recreate — templates are preserved via prepareForPool/createEntity
@@ -129,8 +129,8 @@ export class EntityPool<T extends Entity = Entity> {
     entity.reset();
 
     for (const comp of savedComps) {
-      if ('reset' in comp && typeof (comp as IPoolable).reset === 'function') {
-        (comp as IPoolable).reset();
+      if ('reset' in comp) {
+        (comp as unknown as IPoolable).reset();
       }
       entity.addComponent(comp);
     }

@@ -15,3 +15,4 @@ export {
 } from './UnitComponents';
 export type { TeamId } from './UnitComponents';
 export { TransformComponent, TransformSoASchema } from './TransformComponent';
+export { SpawnPointComponent } from './SpawnPointComponent';

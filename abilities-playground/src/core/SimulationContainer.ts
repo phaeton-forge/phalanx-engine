@@ -13,10 +13,12 @@ import { UNIT_ROSTER } from '../config/unitRoster';
 import {
   ComponentType,
   HealerAuraLinkComponent,
+  MeshComponent,
   SimulationStateComponent,
   TransformComponent,
   TransformSoASchema,
 } from '../components';
+import { PROJECTILE_RADIUS } from '../entities/Projectile.ts';
 import { UnitEntity } from '../entities/UnitEntity';
 import {
   AttackSystem,
@@ -25,12 +27,14 @@ import {
   InterpolationSystem,
   MovementSystem,
   RenderSyncSystem,
+  RotationSystem,
   StartSimulationSystem,
   TargetingSystem,
 } from '../systems';
 import type { UnitFactory } from './UnitFactory';
 import {ProjectileEntity} from "../entities/Projectile.ts";
 import {autoAttack} from "../hooks/AutoAttack.ts";
+import {ProjectileMovementSystem} from "../systems/ProjectileMovementSystem.ts";
 
 export class SimulationContainer {
   readonly world: GameWorld;
@@ -56,7 +60,12 @@ export class SimulationContainer {
           'projectile': {
             factory: () => new ProjectileEntity(),
             pool: { initialSize: 50, maxSize: 200 },
-            components: [],
+            components: [
+              {
+                type: ComponentType.Mesh,
+                factory: () => MeshComponent.createProjectile(PROJECTILE_RADIUS),
+              },
+            ],
           },
         },
       },
@@ -93,7 +102,9 @@ export class SimulationContainer {
         new AttackSystem(),
         new HealerAuraSystem(),
         new MovementSystem(),
+        new ProjectileMovementSystem(this.world),
         physicsSystem,
+        new RotationSystem(),
         new DeathSystem(),
       ],
       [this.interpolationSystem, this.renderSyncSystem],
@@ -144,13 +155,15 @@ export class SimulationContainer {
       const spawnZ = teamId === 0 ? arenaParams.team1SpawnZ : arenaParams.team2SpawnZ;
       const forwardZ = teamId === 0 ? 1 : -1;
       for (const rosterEntry of UNIT_ROSTER) {
-        const x = rosterEntry.offsetX;
-        const z = spawnZ + rosterEntry.offsetZ * forwardZ;
+        const { offsetX, offsetZ } = rosterEntry.spawns[teamId];
+        const x = offsetX;
+        const z = spawnZ + offsetZ * forwardZ;
         const y = unitFactory.getHeightOffset(rosterEntry.kind);
         const renderRefs = unitFactory.createRenderRefs(rosterEntry.kind, teamId);
+
         renderRefs.root.position.set(x, y, z);
         renderRefs.root.rotation.y = teamId === 0 ? 0 : Math.PI;
-        this.scene.add(renderRefs.root);
+
         this.scene.add(renderRefs.healthBarRoot);
 
         const unitEntity = new UnitEntity(rosterEntry, teamId, { x, y, z }, renderRefs);

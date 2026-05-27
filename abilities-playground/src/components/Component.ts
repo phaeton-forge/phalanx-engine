@@ -19,6 +19,7 @@ export const ComponentType = createComponentTypeRegistry({
   Interpolation: 'Interpolation',
   SimulationState: 'SimulationState',
   PhysicsBody: 'PhysicsBody',
+  SpawnPoint: 'SpawnPoint',
 });
 
 (ComponentType as Record<string, symbol>).PhysicsBody =

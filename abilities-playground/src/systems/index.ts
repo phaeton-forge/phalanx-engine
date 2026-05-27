@@ -5,5 +5,6 @@ export { HealerAuraSystem } from './HealerAuraSystem';
 export { InterpolationSystem } from './InterpolationSystem';
 export { MovementSystem } from './MovementSystem.ts';
 export { RenderSyncSystem } from './RenderSyncSystem';
+export { RotationSystem } from './RotationSystem';
 export { StartSimulationSystem } from './StartSimulationSystem';
 export { TargetingSystem } from './TargetingSystem';

@@ -1,59 +1,56 @@
-import * as THREE from 'three';
-import {Entity, type IPoolable} from 'phalanx-ecs';
-import {FP, FPVector3} from "phalanx-math";
+import { Entity, type IPoolable } from 'phalanx-ecs';
+import { FP, FPVector3 } from 'phalanx-math';
 import {
-    ComponentType,
-    InterpolationComponent,
-    MeshComponent,
-    TeamComponent,
-    TransformComponent,
-} from "../components";
-import {PhysicsBodyComponent} from "phalanx-physics";
-import {ProjectileComponent} from "../components/ProjectileComponent.ts";
+  ComponentType,
+  InterpolationComponent,
+  MeshComponent,
+  TeamComponent,
+  TransformComponent,
+} from '../components';
+import { PhysicsBodyComponent } from 'phalanx-physics';
+import { ProjectileComponent } from '../components/ProjectileComponent.ts';
 
-const PROJECTILE_RADIUS = 0.2;
+export const PROJECTILE_RADIUS = 0.5;
 const PROJECTILE_MASS = 1;
 
 export class ProjectileEntity extends Entity implements IPoolable {
-    constructor() {
-        super();
+  private _active = false;
 
-        console.log("Creating projectile entity");
+  public get active() {
+    return this._active;
+  }
 
-        const fpPosition = FPVector3.FromFloat(0, 0, 0);
+  public set active(value: boolean) {
+    this._active = value;
+  }
 
-        this.addComponent(new ProjectileComponent());
-        this.addComponent(new TransformComponent(this.id, fpPosition));
-        this.addComponent(new TeamComponent(0)); // Team will be set when fired
-        this.addComponent(new MeshComponent(new THREE.Mesh(new THREE.SphereGeometry(PROJECTILE_RADIUS, 32, 32)))); // Placeholder, should be set to actual mesh when fired
+  reinitialize() {
+    this._active = true;
 
-        const interpCmp = new InterpolationComponent();
+    this.getComponent<MeshComponent>(ComponentType.Mesh)!.reinitialize();
 
-        interpCmp.init(fpPosition);
+    const fpPosition = FPVector3.FromFloat(0, 0, 0);
 
-        this.addComponent(interpCmp);
-        this.addComponent(
-            new PhysicsBodyComponent(this.id, {
-                radius: FP.FromFloat(PROJECTILE_RADIUS),
-                mass: FP.FromFloat(PROJECTILE_MASS),
-                friction: FP.FromFloat(0.15),
-                restitution: FP.FromFloat(0.05),
-            }),
-        );
-    }
+    this.addComponent(new ProjectileComponent());
+    this.addComponent(new TransformComponent(this.id, fpPosition));
+    this.addComponent(new TeamComponent(0));
 
-    reset() {
-        super.reset();
+    const interpCmp = new InterpolationComponent();
+    interpCmp.init(fpPosition);
+    this.addComponent(interpCmp);
 
-        // hide mesh
-        (this.getComponent(ComponentType.Mesh) as MeshComponent).root.visible = false;
+    this.addComponent(
+      new PhysicsBodyComponent(this.id, {
+        radius: FP.FromFloat(PROJECTILE_RADIUS),
+        mass: FP.FromFloat(PROJECTILE_MASS),
+        friction: FP.FromFloat(0.15),
+        restitution: FP.FromFloat(0.05),
+      }),
+    );
+  }
 
-        // reset transform
-        const transform = this.getComponent(ComponentType.Transform) as TransformComponent;
-        transform.fpPosition = FPVector3.FromFloat(0, 0, 0);
-
-        // reset team
-        const teamComponent = this.getComponent(ComponentType.Team) as TeamComponent;
-        teamComponent.teamId = 0;
-    }
+  reset() {
+    super.reset();
+    this._active = false;
+  }
 }

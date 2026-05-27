@@ -11,6 +11,7 @@ export const TransformSoASchema = defineSoASchema(
     visualPositionX: 'f64',
     visualPositionY: 'f64',
     visualPositionZ: 'f64',
+    visualRotationY: 'f64',
   },
   'Transform',
 );
@@ -37,6 +38,7 @@ export class TransformComponent extends SoAComponent<
       visualPositionX: visualPosition.x,
       visualPositionY: visualPosition.y,
       visualPositionZ: visualPosition.z,
+      visualRotationY: 0,
     });
   }
 

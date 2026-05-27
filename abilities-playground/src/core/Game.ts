@@ -6,6 +6,7 @@ import { CameraController } from './CameraController';
 import { GameUI } from './GameUI';
 import { SimulationContainer } from './SimulationContainer';
 import { UnitFactory } from './UnitFactory';
+import {MeshComponent} from "../components";
 
 export class Game {
   private readonly client: PhalanxClient;
@@ -31,6 +32,8 @@ export class Game {
 
     this.arenaScene = new ArenaScene();
     this.arenaScene.build();
+
+    MeshComponent.initScene(this.arenaScene.scene);
 
     this.cameraController = new CameraController(this.localTeamId);
     this.cameraController.addListeners(canvas);
@@ -61,7 +64,7 @@ export class Game {
     this.simulation.linkTransformStore();
     this.simulation.world.start({
       beforeTick: (_tick: number, commandsBatch: CommandsBatch) => {
-        this.simulation.linkTransformStore();
+        // this.simulation.linkTransformStore();
         this.simulation.startSimulationSystem.processCommands(commandsBatch);
       },
       afterTick: () => {

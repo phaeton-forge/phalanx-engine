@@ -1,4 +1,4 @@
-import type * as THREE from 'three';
+import * as THREE from 'three';
 import { FP } from 'phalanx-math';
 import type { FixedPoint } from 'phalanx-math';
 import type { IComponent } from './Component';
@@ -49,12 +49,40 @@ export class TargetStateComponent implements IComponent {
   public targetEntityId: number | null = null;
 }
 
-export class MeshComponent implements IComponent {
+export class MeshComponent implements IResettableComponent {
   public readonly type = ComponentType.Mesh;
   public readonly root: THREE.Object3D;
 
+  private static scene: THREE.Scene;
+
+  public static initScene(scene: THREE.Scene): void {
+    MeshComponent.scene = scene;
+  }
+
+  public static createProjectile(radius: number): MeshComponent {
+    const root = new THREE.Mesh(new THREE.SphereGeometry(radius, 32, 32));
+    root.visible = false;
+    return new MeshComponent(root);
+  }
+
   constructor(root: THREE.Object3D) {
     this.root = root;
+
+    if (!MeshComponent.scene) {
+      throw new Error('MeshComponent.initScene must be called before creating MeshComponent');
+    }
+
+    if (root.parent !== MeshComponent.scene) {
+      MeshComponent.scene.add(root);
+    }
+  }
+
+  reinitialize(): void {
+    this.root.visible = true;
+  }
+
+  reset(): void {
+    this.root.visible = false;
   }
 }
 

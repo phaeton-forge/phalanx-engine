@@ -15,6 +15,9 @@ export const physicsConfig = {
   pushStrength: 12,
 };
 
+/** Seconds before an active projectile is returned to the pool. */
+export const PROJECTILE_LIFETIME_SECONDS = 3;
+
 export const pauseConfig = {
   maxPausesPerPlayer: 3,
   requireSamePlayerToResume: true,
