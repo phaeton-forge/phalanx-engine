@@ -4,15 +4,24 @@ import type { FixedPoint } from 'phalanx-math';
 import type { IComponent } from './Component';
 import { ComponentType } from './Component';
 import type { UnitKind } from '../config/unitRoster';
+import type {IResettableComponent} from "phalanx-ecs";
 
 export type TeamId = 0 | 1;
 
-export class TeamComponent implements IComponent {
+export class TeamComponent implements IResettableComponent {
   public readonly type = ComponentType.Team;
-  public readonly teamId: TeamId;
+  public teamId: TeamId;
 
-  constructor(teamId: TeamId) {
+  constructor(teamId: TeamId = 0) {
     this.teamId = teamId;
+  }
+
+  reinitialize(teamId: TeamId): void {
+      this.teamId = teamId;
+  }
+
+  reset(): void {
+      this.teamId = 0;
   }
 }
 
@@ -25,7 +34,7 @@ export class UnitTypeComponent implements IComponent {
   }
 }
 
-export class UnitStatsComponent implements IComponent {
+export class StatsComponent implements IComponent {
   public readonly type = ComponentType.UnitStats;
   public readonly stopRange: FixedPoint;
   public alive = true;
@@ -40,8 +49,8 @@ export class TargetStateComponent implements IComponent {
   public targetEntityId: number | null = null;
 }
 
-export class RenderRefsComponent implements IComponent {
-  public readonly type = ComponentType.RenderRefs;
+export class MeshComponent implements IComponent {
+  public readonly type = ComponentType.Mesh;
   public readonly root: THREE.Object3D;
 
   constructor(root: THREE.Object3D) {

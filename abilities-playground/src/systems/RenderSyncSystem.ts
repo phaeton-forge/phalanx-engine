@@ -4,9 +4,9 @@ import { FP } from 'phalanx-math';
 import {
   ComponentType,
   HealthBarComponent,
-  RenderRefsComponent,
+  MeshComponent,
   TeamComponent,
-  UnitStatsComponent,
+  StatsComponent,
 } from '../components';
 
 export class RenderSyncSystem extends GameSystem {
@@ -15,17 +15,17 @@ export class RenderSyncSystem extends GameSystem {
   public override update(_deltaTime: number): void {
     const entities = this.entityManager.queryEntities(
       ComponentType.HealthBar,
-      ComponentType.RenderRefs,
+      ComponentType.Mesh,
       ComponentType.Team,
       ComponentType.UnitStats,
     );
 
     for (const entity of entities) {
       const healthBar = entity.getComponent<HealthBarComponent>(ComponentType.HealthBar);
-      const renderRefs = entity.getComponent<RenderRefsComponent>(ComponentType.RenderRefs);
-      const stats = entity.getComponent<UnitStatsComponent>(ComponentType.UnitStats);
+      const entityMesh = entity.getComponent<MeshComponent>(ComponentType.Mesh);
+      const stats = entity.getComponent<StatsComponent>(ComponentType.UnitStats);
       const team = entity.getComponent<TeamComponent>(ComponentType.Team);
-      if (!healthBar || !renderRefs || !stats || !team) continue;
+      if (!healthBar || !entityMesh || !stats || !team) continue;
 
       const health = this._abilities.tryGetAttribute(entity.id, 'Health')?.current;
       const maxHealth = this._abilities.tryGetAttribute(entity.id, 'MaxHealth')?.base;
@@ -35,14 +35,14 @@ export class RenderSyncSystem extends GameSystem {
           : 0;
 
       healthBar.root.position.set(
-        renderRefs.root.position.x,
-        renderRefs.root.position.y + 7,
-        renderRefs.root.position.z,
+        entityMesh.root.position.x,
+        entityMesh.root.position.y + 7,
+        entityMesh.root.position.z,
       );
       healthBar.root.rotation.y = team.teamId === 0 ? 0 : Math.PI;
       healthBar.fill.scale.x = healthRatio;
       healthBar.fill.position.x = ((healthRatio - 1) * healthBar.fullWidth) / 2;
-      renderRefs.root.visible = stats.alive;
+      entityMesh.root.visible = stats.alive;
       healthBar.root.visible = stats.alive;
     }
   }

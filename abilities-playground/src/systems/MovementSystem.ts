@@ -10,10 +10,10 @@ import {
   TargetStateComponent,
   TeamComponent,
   TransformSoASchema,
-  UnitStatsComponent,
+  StatsComponent,
 } from '../components';
 
-export class MovementIntentSystem extends GameSystem {
+export class MovementSystem extends GameSystem {
   private get _abilities(): AbilitySystem { return this.abilities as AbilitySystem; }
   private physicsStore!: SoAComponentStore<typeof PhysicsSoASchema.definition>;
   private transformStore!: SoAComponentStore<typeof TransformSoASchema.definition>;
@@ -41,7 +41,7 @@ export class MovementIntentSystem extends GameSystem {
         this.physicsStore.arrays.ignorePhysics[physicsIndex] === 1;
 
       const entity = this.entityManager.getEntity(entityId);
-      const stats = entity?.getComponent<UnitStatsComponent>(ComponentType.UnitStats);
+      const stats = entity?.getComponent<StatsComponent>(ComponentType.UnitStats);
       if (shouldFreeze || !entity || !stats?.alive) {
         velocityX[physicsIndex] = zeroRaw;
         velocityZ[physicsIndex] = zeroRaw;
@@ -76,7 +76,7 @@ export class MovementIntentSystem extends GameSystem {
     if (!entity) return null;
 
     const targetState = entity.getComponent<TargetStateComponent>(ComponentType.TargetState);
-    const stats = entity.getComponent<UnitStatsComponent>(ComponentType.UnitStats);
+    const stats = entity.getComponent<StatsComponent>(ComponentType.UnitStats);
     const team = entity.getComponent<TeamComponent>(ComponentType.Team);
     const ownIndex = this.transformStore.indexOf(entityId);
     if (!targetState || !stats || !team || ownIndex === -1) return null;

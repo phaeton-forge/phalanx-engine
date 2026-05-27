@@ -7,7 +7,7 @@ import {
   TargetStateComponent,
   TeamComponent,
   TransformSoASchema,
-  UnitStatsComponent,
+  StatsComponent,
 } from '../components';
 
 export class TargetingSystem extends GameSystem {
@@ -30,7 +30,7 @@ export class TargetingSystem extends GameSystem {
     );
 
     for (const unit of units) {
-      const stats = unit.getComponent<UnitStatsComponent>(
+      const stats = unit.getComponent<StatsComponent>(
         ComponentType.UnitStats,
       );
       const targetState = unit.getComponent<TargetStateComponent>(
@@ -50,7 +50,7 @@ export class TargetingSystem extends GameSystem {
       for (const candidate of units) {
         if (candidate.id === unit.id) continue;
 
-        const candidateStats = candidate.getComponent<UnitStatsComponent>(
+        const candidateStats = candidate.getComponent<StatsComponent>(
           ComponentType.UnitStats,
         );
         const candidateTeam = candidate.getComponent<TeamComponent>(

@@ -4,7 +4,7 @@ import {
   ComponentType,
   HealerAuraLinkComponent,
   TransformSoASchema,
-  UnitStatsComponent,
+  StatsComponent,
 } from '../components';
 
 /**
@@ -28,7 +28,7 @@ export class HealerAuraSystem extends GameSystem {
     );
 
     for (const cube of cubes) {
-      const stats = cube.getComponent<UnitStatsComponent>(ComponentType.UnitStats);
+      const stats = cube.getComponent<StatsComponent>(ComponentType.UnitStats);
       const link = cube.getComponent<HealerAuraLinkComponent>(ComponentType.HealerAuraLink);
       if (!stats || !link?.auraEntityId) continue;
 

@@ -1,8 +1,13 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { Entity, resetEntityIdCounter } from '../src/Entity';
-import { EntityPool } from '../src/pool/EntityPool';
-import type { IComponent } from '../src/Component';
-import type { IResettableComponent } from '../src/pool/IResettableComponent';
+import {
+  defineSoASchema,
+  Entity,
+  EntityManager,
+  EntityPool,
+  resetEntityIdCounter,
+  SoAComponent,
+  type IResettableComponent,
+} from '../src';
 
 const TestType = Symbol('Test');
 
@@ -16,6 +21,41 @@ class TestResettableComponent implements IResettableComponent {
 
   reinitialize(value: number): void {
     this.value = value;
+  }
+}
+
+const PooledSoASchema = defineSoASchema({
+  value: 'i32',
+}, 'PooledSoA');
+
+type PooledSoASchemaDef = typeof PooledSoASchema.definition;
+
+const PooledSoAType = Symbol('PooledSoA');
+
+class PooledSoAComponent extends SoAComponent<PooledSoASchemaDef> {
+  public readonly type = PooledSoAType;
+  static readonly soaSchema = PooledSoASchema;
+
+  constructor(entityId: number) {
+    super(PooledSoASchema, entityId, { value: 0 });
+  }
+
+  get value(): number { return this.getField('value'); }
+  set value(value: number) { this.setField('value', value); }
+}
+
+class PooledSoAEntity extends Entity {
+  public readonly soaComponent: PooledSoAComponent;
+
+  constructor() {
+    super();
+    this.soaComponent = new PooledSoAComponent(this.id);
+    this.addComponent(this.soaComponent);
+  }
+
+  public override reset(): void {
+    this._revive();
+    this.soaComponent.value = 0;
   }
 }
 
@@ -36,7 +76,7 @@ describe('EntityPool', () => {
     expect(factoryCalls).toBe(1);
   });
 
-  it('assigns new ID on acquire', () => {
+  it('keeps the same ID when reusing an entity', () => {
     const pool = new EntityPool(() => new Entity());
 
     const e1 = pool.acquire();
@@ -46,8 +86,7 @@ describe('EntityPool', () => {
     const e2 = pool.acquire();
 
     expect(e2).toBe(e1); // same instance
-    expect(e2.id).not.toBe(id1); // new ID
-    expect(e2.id).toBeGreaterThan(id1);
+    expect(e2.id).toBe(id1); // stable ID
   });
 
   it('revives entity on acquire', () => {
@@ -162,6 +201,33 @@ describe('EntityPool', () => {
 
     pool.release(e1);
     const e2 = pool.acquire();
-    expect(e2.id).toBe(id1 + 2);
+    expect(e2.id).toBe(id1);
+  });
+
+  it('keeps SoA-backed component rows valid across release/acquire', () => {
+    const entityManager = new EntityManager();
+    SoAComponent.useEntityManager(entityManager);
+
+    try {
+      const pool = new EntityPool(() => new PooledSoAEntity());
+
+      const entity = pool.acquire();
+      const id = entity.id;
+      entity.soaComponent.value = 42;
+      expect(entity.soaComponent.value).toBe(42);
+
+      pool.release(entity);
+      const reused = pool.acquire();
+
+      expect(reused).toBe(entity);
+      expect(reused.id).toBe(id);
+      expect(reused.soaComponent.value).toBe(0);
+
+      reused.soaComponent.value = 99;
+      expect(reused.soaComponent.value).toBe(99);
+      expect(entityManager.getSoAStore(PooledSoASchema)?.indexOf(id)).not.toBe(-1);
+    } finally {
+      SoAComponent.resetContext();
+    }
   });
 });

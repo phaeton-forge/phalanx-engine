@@ -9,7 +9,7 @@ import {
   SimulationStateComponent,
   TeamComponent,
   TransformSoASchema,
-  UnitStatsComponent,
+  StatsComponent,
   UnitTypeComponent,
 } from '../components';
 
@@ -41,7 +41,7 @@ export class BeamSystem extends GameSystem {
       const type = cone.getComponent<UnitTypeComponent>(ComponentType.UnitType);
       if (type?.kind !== 'cone') continue;
 
-      const stats = cone.getComponent<UnitStatsComponent>(ComponentType.UnitStats);
+      const stats = cone.getComponent<StatsComponent>(ComponentType.UnitStats);
       const beam = cone.getComponent<ConeBeamComponent>(ComponentType.ConeBeam);
       const team = cone.getComponent<TeamComponent>(ComponentType.Team);
       if (!stats?.alive || !beam || !team) continue;
@@ -85,7 +85,7 @@ export class BeamSystem extends GameSystem {
     for (const candidate of units) {
       if (candidate.id === coneId) continue;
       const candidateTeam = candidate.getComponent<TeamComponent>(ComponentType.Team);
-      const candidateStats = candidate.getComponent<UnitStatsComponent>(ComponentType.UnitStats);
+      const candidateStats = candidate.getComponent<StatsComponent>(ComponentType.UnitStats);
       if (!candidateStats?.alive || candidateTeam?.teamId === coneTeamId) continue;
 
       const idx = this.transformStore.indexOf(candidate.id);

@@ -1,10 +1,10 @@
 import * as THREE from 'three';
 import { FP } from 'phalanx-math';
 import type { FPVector3 as FPVector3Type } from 'phalanx-math';
-import type { IComponent } from './Component';
 import { ComponentType } from './Component';
+import type {IResettableComponent} from "phalanx-ecs";
 
-export class InterpolationComponent implements IComponent {
+export class InterpolationComponent implements IResettableComponent {
   public readonly type = ComponentType.Interpolation;
   public readonly previousFpPosition: FPVector3Type = {
     x: FP._0,
@@ -16,12 +16,25 @@ export class InterpolationComponent implements IComponent {
     y: FP._0,
     z: FP._0,
   };
-  public readonly visualPosition = new THREE.Vector3();
-  public active: boolean;
+  public visualPosition = new THREE.Vector3();
+  public active = false;
 
-  constructor(initialPosition: FPVector3Type, active = true) {
+  public init(initialPosition: FPVector3Type, active = true): void {
     this.active = active;
     this.snapToPosition(initialPosition);
+  }
+
+  reinitialize(initialPosition: FPVector3Type, active = true): void {
+    this.init(initialPosition, active);
+  }
+
+  reset(): void {
+      this.active = false;
+      this.snapToPosition({
+        x: FP._0,
+        y: FP._0,
+        z: FP._0,
+      });
   }
 
   snapshotPosition(): void {

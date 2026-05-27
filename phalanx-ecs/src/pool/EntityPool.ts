@@ -1,13 +1,19 @@
 import type { IComponent } from '../Component';
 import type { Entity } from '../Entity';
-import { nextEntityId } from '../Entity';
 import type { IPoolable } from './IPoolable';
 import type { EntityPoolConfig, PoolStats, ComponentTemplate, ResolvedPoolConfig } from './types';
 import { resolvePoolConfig } from './types';
 
 /**
  * Entity-specific pool with component template support.
- * Manages entity lifecycle: ID assignment, revive, and component templates.
+ *
+ * Pooled entities keep stable IDs across release/acquire cycles. This makes
+ * pooled entities reusable ECS slots and keeps SoA-backed component rows keyed
+ * to the same entity ID for the lifetime of the entity instance.
+ *
+ * Game code owns gameplay-state cleanup by implementing Entity.reset() or by
+ * resetting components before release. The pool only manages availability,
+ * revive/dispose state, and optional template preservation on release.
  */
 export class EntityPool<T extends Entity = Entity> {
   private readonly available: T[] = [];
@@ -28,7 +34,7 @@ export class EntityPool<T extends Entity = Entity> {
 
   /**
    * Get an entity from the pool.
-   * Assigns a new ID, revives, and returns a ready-to-use entity.
+   * Reused entities keep their original IDs to preserve SoA row mappings.
    */
   acquire(): T {
     this._acquireCount++;
@@ -55,8 +61,7 @@ export class EntityPool<T extends Entity = Entity> {
     }
 
     if (fromPool) {
-      // Reused entity — assign fresh ID and revive
-      entity._setId(nextEntityId());
+      // Reused entity — keep stable ID and revive only.
       entity._revive();
     }
     // For fresh entities: constructor already assigned ID, _isDestroyed is false
@@ -154,9 +159,11 @@ export class EntityPool<T extends Entity = Entity> {
     const entity = this.entityFactory();
     this._totalCreated++;
 
-    // Attach template components
-    for (const template of this.componentTemplates) {
-      entity.addComponent(template.factory());
+    if (this.componentTemplates && this.componentTemplates.length > 0) {
+      // Attach template components
+      for (const template of this.componentTemplates) {
+        entity.addComponent(template.factory());
+      }
     }
 
     return entity;

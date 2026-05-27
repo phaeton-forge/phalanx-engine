@@ -7,11 +7,11 @@ import {
   HealerAuraLinkComponent,
   HealthBarComponent,
   InterpolationComponent,
-  RenderRefsComponent,
+  MeshComponent,
   TargetStateComponent,
   TeamComponent,
   TransformComponent,
-  UnitStatsComponent,
+  StatsComponent,
   UnitTypeComponent,
 } from '../components';
 import type { TeamId } from '../components';
@@ -32,12 +32,13 @@ export class UnitEntity extends Entity {
     super();
 
     const fpPosition = FPVector3.FromFloat(position.x, position.y, position.z);
+
     this.addComponent(new TransformComponent(this.id, fpPosition));
     this.addComponent(new TeamComponent(teamId));
     this.addComponent(new UnitTypeComponent(rosterEntry.kind));
-    this.addComponent(new UnitStatsComponent({ stopRange: rosterEntry.stopRange }));
+    this.addComponent(new StatsComponent({ stopRange: rosterEntry.stopRange }));
     this.addComponent(new TargetStateComponent());
-    this.addComponent(new RenderRefsComponent(renderRefs.root));
+    this.addComponent(new MeshComponent(renderRefs.root));
     this.addComponent(
       new HealthBarComponent(
         renderRefs.healthBarRoot,
@@ -45,7 +46,12 @@ export class UnitEntity extends Entity {
         renderRefs.healthBarFullWidth,
       ),
     );
-    this.addComponent(new InterpolationComponent(fpPosition));
+
+    const interpCmp = new InterpolationComponent();
+
+    interpCmp.init(fpPosition);
+
+    this.addComponent(interpCmp);
     this.addComponent(
       new PhysicsBodyComponent(this.id, {
         radius: FP.FromFloat(rosterEntry.radius),

@@ -1,7 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { Entity, resetEntityIdCounter } from '../src/Entity';
-import { PoolManager } from '../src/pool/PoolManager';
-import type { IResettableComponent } from '../src/pool/IResettableComponent';
+import {
+  Entity,
+  PoolManager,
+  resetEntityIdCounter,
+  type IResettableComponent,
+} from '../src';
 
 const TestType = Symbol('Test');
 
@@ -62,7 +65,7 @@ describe('PoolManager', () => {
 
     const reused = manager.acquire('test');
     expect(reused).toBe(entity);
-    expect(reused.id).not.toBe(firstId);
+    expect(reused.id).toBe(firstId);
   });
 
   it('prewarmAll uses initialSize', () => {

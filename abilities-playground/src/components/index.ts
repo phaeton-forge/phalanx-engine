@@ -4,9 +4,9 @@ export { InterpolationComponent } from './InterpolationComponent';
 export {
   TeamComponent,
   UnitTypeComponent,
-  UnitStatsComponent,
+  StatsComponent,
   TargetStateComponent,
-  RenderRefsComponent,
+  MeshComponent,
   HealthBarComponent,
   DeathFadeComponent,
   HealerAuraLinkComponent,

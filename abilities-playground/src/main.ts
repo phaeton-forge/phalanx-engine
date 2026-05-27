@@ -1,8 +1,8 @@
 import { LobbyScene } from './scenes/LobbyScene';
-import { PreviewGame } from './core/PreviewGame';
+import { Game } from './core/Game.ts';
 import type { PhalanxClient, MatchFoundEvent } from 'phalanx-client';
 
-let game: PreviewGame | null = null;
+let game: Game | null = null;
 
 const lobbyScene = new LobbyScene();
 
@@ -21,7 +21,7 @@ lobbyScene.setOnGameStart(
       throw new Error("Canvas element with id 'app' not found");
     }
 
-    game = new PreviewGame(canvas, client, matchData);
+    game = new Game(canvas, client, matchData);
     game.setOnExit(returnToLobby);
 
     await game.initialize();

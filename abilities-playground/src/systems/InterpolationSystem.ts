@@ -5,23 +5,10 @@ import { FPVector3 } from 'phalanx-math';
 import {
   ComponentType,
   InterpolationComponent,
-  RenderRefsComponent,
+  MeshComponent,
   TransformComponent,
 } from '../components';
 
-/**
- * InterpolationSystem — smooth visual movement between simulation ticks.
- *
- * Implements IBeforeTick, IAfterTick, and IAfterFrame so GameWorld drives
- * the lifecycle automatically once this system is registered:
- *
- *   IBeforeTick  → snapshotPositions()          (before tick systems run)
- *   IAfterTick   → captureCurrentPositions()    (after tick systems run)
- *   IAfterFrame  → interpolate(alpha)            (after frame systems run)
- *
- * Call snapToCurrentPositions() once after world.start() to initialize
- * visual positions on the first rendered frame.
- */
 export class InterpolationSystem
   extends GameSystem
   implements IBeforeTick, IAfterTick, IAfterFrame
@@ -79,17 +66,17 @@ export class InterpolationSystem
     const clampedAlpha = Math.max(0, Math.min(1, alpha));
     const entities = this.entityManager.queryEntities(
       ComponentType.Interpolation,
-      ComponentType.RenderRefs,
+      ComponentType.Mesh,
     );
 
     for (const entity of entities) {
       const interpolation = entity.getComponent<InterpolationComponent>(
         ComponentType.Interpolation,
       );
-      const renderRefs = entity.getComponent<RenderRefsComponent>(
-        ComponentType.RenderRefs,
+      const entityMesh = entity.getComponent<MeshComponent>(
+        ComponentType.Mesh,
       );
-      if (!interpolation?.active || !renderRefs) continue;
+      if (!interpolation?.active || !entityMesh) continue;
 
       const previous = FPVector3.ToFloat(interpolation.previousFpPosition);
       const current = FPVector3.ToFloat(interpolation.currentFpPosition);
@@ -98,7 +85,7 @@ export class InterpolationSystem
         previous.y + (current.y - previous.y) * clampedAlpha,
         previous.z + (current.z - previous.z) * clampedAlpha,
       );
-      renderRefs.root.position.copy(interpolation.visualPosition);
+      entityMesh.root.position.copy(interpolation.visualPosition);
     }
   }
 

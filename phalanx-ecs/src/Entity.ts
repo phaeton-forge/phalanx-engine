@@ -13,7 +13,8 @@ export function resetEntityIdCounter(): void {
 
 /**
  * Allocate and return the next sequential entity ID from the global counter.
- * Used by EntityPool to assign fresh IDs on acquire.
+ * Primarily used by Entity construction and specialized callers that need a
+ * deterministic ID allocation without constructing an Entity directly.
  */
 export function nextEntityId(): number {
   return ++entityIdCounter;
@@ -47,7 +48,8 @@ export class Entity implements IPoolable {
   }
 
   /**
-   * @internal Used by EntityPool to assign a new ID on acquire.
+   * @internal Reassigns the entity ID. Avoid for pooled entities because SoA
+   * components and stores are keyed by stable entity IDs.
    */
   public _setId(id: number): void {
     this._id = id;

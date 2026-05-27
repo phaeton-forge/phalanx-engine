@@ -7,7 +7,7 @@ import {
   ComponentType,
   SimulationStateComponent,
   TeamComponent,
-  UnitStatsComponent,
+  StatsComponent,
 } from '../components';
 
 export class DeathSystem extends GameSystem {
@@ -28,7 +28,7 @@ export class DeathSystem extends GameSystem {
 
     const units = this.entityManager.queryEntities(ComponentType.UnitStats, ComponentType.Team);
     for (const unit of units) {
-      const stats = unit.getComponent<UnitStatsComponent>(ComponentType.UnitStats);
+      const stats = unit.getComponent<StatsComponent>(ComponentType.UnitStats);
       const team = unit.getComponent<TeamComponent>(ComponentType.Team);
       if (!stats || !team) continue;
 
@@ -53,7 +53,7 @@ export class DeathSystem extends GameSystem {
     }
   }
 
-  private killUnit(entityId: number, stats: UnitStatsComponent): void {
+  private killUnit(entityId: number, stats: StatsComponent): void {
     stats.alive = false;
     this._abilities.addTag(entityId, 'State.Dead');
     const physIdx = this.physicsStore.indexOf(entityId);

@@ -7,7 +7,7 @@ import {
   SimulationStateComponent,
   TargetStateComponent,
   TransformSoASchema,
-  UnitStatsComponent,
+  StatsComponent,
   UnitTypeComponent,
 } from '../components';
 
@@ -33,7 +33,7 @@ export class AttackSystem extends GameSystem {
       const type = unit.getComponent<UnitTypeComponent>(ComponentType.UnitType);
       if (type?.kind !== 'sphere') continue;
 
-      const stats = unit.getComponent<UnitStatsComponent>(ComponentType.UnitStats);
+      const stats = unit.getComponent<StatsComponent>(ComponentType.UnitStats);
       const targetState = unit.getComponent<TargetStateComponent>(ComponentType.TargetState);
       if (!stats?.alive || !targetState?.targetEntityId) continue;
 
