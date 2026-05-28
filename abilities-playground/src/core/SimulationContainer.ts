@@ -5,7 +5,12 @@ import type { SoAComponentStore, SoASchemaDefinition } from 'phalanx-ecs';
 import { FP, FPVector3 } from 'phalanx-math';
 import { PhysicsBodyComponent, PhysicsSoASchema, PHYSICS_BODY_COMPONENT_TYPE } from 'phalanx-physics';
 import { createPhysicsSpatialQuery, PhysicsWorld } from 'phalanx-physics';
-import {type AbilityActivationContext, createAbilitySystem} from 'phalanx-abilities';
+import {
+  gameplayCueKey,
+  type AbilityActivationContext,
+  type GameplayCueDispatchedEvent,
+  createAbilitySystem,
+} from 'phalanx-abilities';
 import type { AbilitySystem } from 'phalanx-abilities';
 import { arenaParams, networkConfig, physicsConfig } from '../config/constants';
 import { combatDefs, HEAL_AURA_PERIOD_TICKS, HEAL_AURA_RADIUS, UNIT_MOVE_SPEED } from '../config/abilityDefinitions';
@@ -14,6 +19,7 @@ import {
   ComponentType,
   HealerAuraLinkComponent,
   MeshComponent,
+  StatsComponent,
   SimulationStateComponent,
   TransformComponent,
   TransformSoASchema,
@@ -36,6 +42,9 @@ import {ProjectileEntity} from "../entities/Projectile.ts";
 import {autoAttack} from "../hooks/AutoAttack.ts";
 import { ProjectileCollisionSystem } from '../systems/ProjectileCollisionSystem';
 import { ProjectileMovementSystem } from '../systems/ProjectileMovementSystem.ts';
+import { ProjectileDespawnQueueSystem } from '../systems/ProjectileDespawnQueueSystem';
+import { damageSphereCue, updateCueVfx } from '../cues/damageSphereCue.ts';
+import { deathCue } from '../cues/deathCue.ts';
 
 export class SimulationContainer {
   readonly world: GameWorld;
@@ -47,6 +56,8 @@ export class SimulationContainer {
   private readonly abilities: AbilitySystem;
   private readonly scene: THREE.Scene;
   private transformStoreLinked = false;
+  private readonly activeCueVfx: Parameters<typeof damageSphereCue>[3] = [];
+  private readonly projectileDespawnQueueSystem: ProjectileDespawnQueueSystem;
 
   constructor(client: PhalanxClient, unitFactory: UnitFactory, scene: THREE.Scene) {
     this.scene = scene;
@@ -94,12 +105,25 @@ export class SimulationContainer {
         'Hook.AutoAttack': (ctx: AbilityActivationContext) => autoAttack(ctx, this.world),
       },
     });
+    this.projectileDespawnQueueSystem = new ProjectileDespawnQueueSystem(this.world);
+
+    this.world.eventBus.on<GameplayCueDispatchedEvent>(gameplayCueKey('Cue.Damage.Sphere'), (e) => {
+      damageSphereCue(this.scene, this.world, e, this.activeCueVfx);
+    });
+    this.world.eventBus.on<GameplayCueDispatchedEvent>(gameplayCueKey('Cue.Death'), (e) => {
+      deathCue(this.scene, this.world, e, this.activeCueVfx);
+    });
 
     const entityManager = this.world.entityManager;
     this.physicsWorld.setCollisionFilter((entityIdA, entityIdB) => {
       const eA = entityManager.getEntity(entityIdA);
       const eB = entityManager.getEntity(entityIdB);
       if (!eA || !eB) return false;
+
+      const statsA = eA.getComponent<StatsComponent>(ComponentType.UnitStats);
+      if (statsA && !statsA.alive) return false;
+      const statsB = eB.getComponent<StatsComponent>(ComponentType.UnitStats);
+      if (statsB && !statsB.alive) return false;
 
       const aProjectile = eA.hasComponent(ComponentType.Projectile);
       const bProjectile = eB.hasComponent(ComponentType.Projectile);
@@ -119,9 +143,10 @@ export class SimulationContainer {
         new MovementSystem(),
         new ProjectileMovementSystem(this.world),
         physicsSystem,
-        new ProjectileCollisionSystem(this.world),
+        new ProjectileCollisionSystem(),
         new RotationSystem(),
         new DeathSystem(),
+        this.projectileDespawnQueueSystem,
       ],
       [this.interpolationSystem, this.renderSyncSystem],
     );
@@ -160,6 +185,10 @@ export class SimulationContainer {
     this.physicsWorld.dispose();
   }
 
+  updatePresentation(dtSeconds: number): void {
+    updateCueVfx(this.scene, this.activeCueVfx, dtSeconds);
+  }
+
   private spawnSimulationState(): void {
     const stateEntity = new Entity();
     stateEntity.addComponent(new SimulationStateComponent());
@@ -171,7 +200,9 @@ export class SimulationContainer {
       const spawnZ = teamId === 0 ? arenaParams.team1SpawnZ : arenaParams.team2SpawnZ;
       const forwardZ = teamId === 0 ? 1 : -1;
       for (const rosterEntry of UNIT_ROSTER) {
-        const { offsetX, offsetZ } = rosterEntry.spawns[teamId];
+        const spawn = rosterEntry.spawns[teamId];
+        if (!spawn) continue;
+        const { offsetX, offsetZ } = spawn;
         const x = offsetX;
         const z = spawnZ + offsetZ * forwardZ;
         const y = unitFactory.getHeightOffset(rosterEntry.kind);
@@ -226,7 +257,7 @@ export class SimulationContainer {
         radius: FP.FromFloat(HEAL_AURA_RADIUS),
         filter: {
           tagsRequired: [`Team.${teamId}`],
-          tagsBlocked: ['State.Dead'],
+          tagsBlocked: ['State.Death'],
         },
         includeSelf: true,
       },

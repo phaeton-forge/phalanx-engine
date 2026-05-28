@@ -92,7 +92,7 @@ export class UnitFactory {
   }
 
   private createSphereSpawnPoint(): SpawnPointRef {
-    const SPHERE_VISUAL_RADIUS = 3;
+    const SPHERE_VISUAL_RADIUS = 2;
     const FORWARD_OFFSET = 1.0;
     const offsetZ = SPHERE_VISUAL_RADIUS + FORWARD_OFFSET;
 
@@ -116,7 +116,7 @@ export class UnitFactory {
     switch (kind) {
       case 'cube': return 2.5;
       case 'cone': return 3.5;
-      case 'sphere': return 3;
+      case 'sphere': return 2;
     }
   }
 
@@ -141,7 +141,7 @@ export class UnitFactory {
         );
       case 'sphere':
         return new THREE.Mesh(
-          this.arenaScene.trackGeometry(new THREE.SphereGeometry(3, 24, 16)),
+          this.arenaScene.trackGeometry(new THREE.SphereGeometry(2, 24, 16)),
           material,
         );
     }

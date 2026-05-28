@@ -1,6 +1,6 @@
 import { GameSystem, type GameWorld, type SoAComponentStore, type SystemContext } from 'phalanx-ecs';
 import { PhysicsSoASchema } from 'phalanx-physics';
-import { FP, FPVector2 } from 'phalanx-math';
+import { FP } from 'phalanx-math';
 import { networkConfig, PROJECTILE_SPEED } from '../config/constants';
 import { ComponentType, TransformSoASchema } from '../components';
 import { ProjectileComponent } from '../components/ProjectileComponent';
@@ -29,8 +29,6 @@ export class ProjectileMovementSystem extends GameSystem {
   public override processTick(): void {
     const velocityX = this.physicsStore.arrays.velocityX;
     const velocityZ = this.physicsStore.arrays.velocityZ;
-    const positionX = this.transformStore.arrays.fpPositionX;
-    const positionZ = this.transformStore.arrays.fpPositionZ;
 
     const projectiles = this.entityManager.queryEntities(
       ComponentType.Projectile,
@@ -57,14 +55,7 @@ export class ProjectileMovementSystem extends GameSystem {
 
       if (transformIndex === -1 || physicsIndex === -1) continue;
 
-      const ownX = FP.FromRaw(positionX[transformIndex]);
-      const ownZ = FP.FromRaw(positionZ[transformIndex]);
-      const target = projectileComponent.fpTargetPosition;
-
-      const dx = FP.Sub(target.x, ownX);
-      const dz = FP.Sub(target.z, ownZ);
-      const direction2 = FPVector2.Normalize({ x: dx, y: dz });
-
+      const direction2 = projectileComponent.fpDirection2;
       velocityX[physicsIndex] = FP.ToRaw(FP.Mul(direction2.x, FP_PROJECTILE_SPEED));
       velocityZ[physicsIndex] = FP.ToRaw(FP.Mul(direction2.y, FP_PROJECTILE_SPEED));
     }

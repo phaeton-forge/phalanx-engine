@@ -56,9 +56,17 @@ export const combatDefs = defineAbilitySystem({
       tagsGranted: ['Cooldown.Ability.AutoAttack'],
     }),
     defineEffect({
+      id: 'Effect.Death',
+      type: 'Instant',
+      modifiers: [],
+      tagsGranted: ['State.Death'],
+      cues: ['Cue.Death'],
+    }),
+    defineEffect({
       id: 'Effect.Damage.Sphere',
       type: 'Instant',
       modifiers: [{ attributeId: 'Health', op: 'Add', magnitude: FP.FromFloat(-18) }],
+      cues: ['Cue.Damage.Sphere'],
     }),
     defineEffect({
       id: 'Effect.Damage.SphereIlluminated',

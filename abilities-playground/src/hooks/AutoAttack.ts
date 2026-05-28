@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import {ComponentType, InterpolationComponent, MeshComponent, SpawnPointComponent, TeamComponent, TransformComponent} from "../components";
 import {ProjectileEntity} from "../entities/Projectile.ts";
 import type {ProjectileComponent} from "../components/ProjectileComponent.ts";
-import {FP, FPVector3} from "phalanx-math";
+import {FP, FPVector2, FPVector3} from "phalanx-math";
 import type {AbilityActivationContext} from "phalanx-abilities";
 import {GameWorld} from "phalanx-ecs";
 
@@ -43,7 +43,13 @@ export const autoAttack = (ctx: AbilityActivationContext, world: GameWorld) => {
 
     projectileTransform.fpPosition = spawnPosition;
     interpolation.snapToPosition(spawnPosition);
-    projectileComponent.reinitialize(targetTransform.fpPosition as FPVector3);
+
+    const targetPos = targetTransform.fpPosition as FPVector3;
+    const direction2 = FPVector2.Normalize({
+        x: FP.Sub(targetPos.x, spawnPosition.x),
+        y: FP.Sub(targetPos.z, spawnPosition.z),
+    });
+    projectileComponent.reinitialize(direction2);
     projectileTeamComponent.reinitialize(casterTeamComponent.teamId);
 };
 

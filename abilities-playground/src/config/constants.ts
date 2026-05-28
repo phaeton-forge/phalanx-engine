@@ -8,7 +8,7 @@ export const networkConfig = {
   tickTimestep: 1 / 20,
 };
 
-/** World units per second for projectile travel toward fpTargetPosition. */
+/** World units per second for projectile forward travel. */
 export const PROJECTILE_SPEED = 120;
 
 export const physicsConfig = {
@@ -24,6 +24,9 @@ export const physicsConfig = {
 
 /** Seconds before an active projectile is returned to the pool. */
 export const PROJECTILE_LIFETIME_SECONDS = 3;
+
+/** Delay after impact before projectile entity is removed (keeps transform readable for cues). */
+export const PROJECTILE_DESPAWN_DELAY_TICKS = 20;
 
 export const pauseConfig = {
   maxPausesPerPlayer: 3,
