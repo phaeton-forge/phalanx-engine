@@ -34,7 +34,8 @@ import {
 import type { UnitFactory } from './UnitFactory';
 import {ProjectileEntity} from "../entities/Projectile.ts";
 import {autoAttack} from "../hooks/AutoAttack.ts";
-import {ProjectileMovementSystem} from "../systems/ProjectileMovementSystem.ts";
+import { ProjectileCollisionSystem } from '../systems/ProjectileCollisionSystem';
+import { ProjectileMovementSystem } from '../systems/ProjectileMovementSystem.ts';
 
 export class SimulationContainer {
   readonly world: GameWorld;
@@ -94,6 +95,19 @@ export class SimulationContainer {
       },
     });
 
+    const entityManager = this.world.entityManager;
+    this.physicsWorld.setCollisionFilter((entityIdA, entityIdB) => {
+      const eA = entityManager.getEntity(entityIdA);
+      const eB = entityManager.getEntity(entityIdB);
+      if (!eA || !eB) return false;
+
+      const aProjectile = eA.hasComponent(ComponentType.Projectile);
+      const bProjectile = eB.hasComponent(ComponentType.Projectile);
+      if (aProjectile && bProjectile) return false;
+
+      return true;
+    });
+
     const spatialQuery = createPhysicsSpatialQuery(this.physicsWorld);
     const { physicsSystem } = this.physicsWorld.getSystems();
     this.world.registerSystems(
@@ -105,6 +119,7 @@ export class SimulationContainer {
         new MovementSystem(),
         new ProjectileMovementSystem(this.world),
         physicsSystem,
+        new ProjectileCollisionSystem(this.world),
         new RotationSystem(),
         new DeathSystem(),
       ],

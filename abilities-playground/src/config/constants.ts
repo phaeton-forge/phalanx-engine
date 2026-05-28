@@ -8,10 +8,17 @@ export const networkConfig = {
   tickTimestep: 1 / 20,
 };
 
+/** World units per second for projectile travel toward fpTargetPosition. */
+export const PROJECTILE_SPEED = 120;
+
 export const physicsConfig = {
   subSteps: 3,
   gridCellSize: 8,
-  maxVelocity: 18,
+  /**
+   * Physics clamps every body's velocity magnitude to this value during integration.
+   * Must be >= {@link PROJECTILE_SPEED} or projectiles will not reach their configured speed.
+   */
+  maxVelocity: Math.max(PROJECTILE_SPEED, 18),
   pushStrength: 12,
 };
 

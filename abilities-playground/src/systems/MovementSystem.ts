@@ -41,7 +41,12 @@ export class MovementSystem extends GameSystem {
         this.physicsStore.arrays.ignorePhysics[physicsIndex] === 1;
 
       const entity = this.entityManager.getEntity(entityId);
+      if (entity?.hasComponent(ComponentType.Projectile)) {
+        continue;
+      }
+
       const stats = entity?.getComponent<StatsComponent>(ComponentType.UnitStats);
+
       if (shouldFreeze || !entity || !stats?.alive) {
         velocityX[physicsIndex] = zeroRaw;
         velocityZ[physicsIndex] = zeroRaw;
@@ -49,6 +54,7 @@ export class MovementSystem extends GameSystem {
       }
 
       const transformIndex = this.transformStore.indexOf(entityId);
+
       if (transformIndex === -1) {
         velocityX[physicsIndex] = zeroRaw;
         velocityZ[physicsIndex] = zeroRaw;
@@ -56,6 +62,7 @@ export class MovementSystem extends GameSystem {
       }
 
       const direction = this.getDesiredDirection(entityId);
+
       if (!direction) {
         velocityX[physicsIndex] = zeroRaw;
         velocityZ[physicsIndex] = zeroRaw;
@@ -63,7 +70,9 @@ export class MovementSystem extends GameSystem {
       }
 
       const effectiveSpeed = this._abilities.tryGetAttribute(entityId, 'MoveSpeed')?.current;
+
       if (!effectiveSpeed) continue;
+
       velocityX[physicsIndex] = FP.ToRaw(FP.Mul(direction.x, effectiveSpeed));
       velocityZ[physicsIndex] = FP.ToRaw(FP.Mul(direction.z, effectiveSpeed));
     }

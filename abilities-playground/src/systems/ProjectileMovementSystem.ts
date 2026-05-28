@@ -1,12 +1,14 @@
-import { GameSystem, GameWorld, type SoAComponentStore, type SystemContext } from 'phalanx-ecs';
+import { GameSystem, type GameWorld, type SoAComponentStore, type SystemContext } from 'phalanx-ecs';
 import { PhysicsSoASchema } from 'phalanx-physics';
-import { FP } from 'phalanx-math';
-import { networkConfig } from '../config/constants';
+import { FP, FPVector2 } from 'phalanx-math';
+import { networkConfig, PROJECTILE_SPEED } from '../config/constants';
 import { ComponentType, TransformSoASchema } from '../components';
 import { ProjectileComponent } from '../components/ProjectileComponent';
 import { ProjectileEntity } from '../entities/Projectile.ts';
+import { despawnProjectile } from './projectileDespawn';
 
 const FP_TICK_TIMESTEP = FP.FromFloat(networkConfig.tickTimestep);
+const FP_PROJECTILE_SPEED = FP.FromFloat(PROJECTILE_SPEED);
 
 export class ProjectileMovementSystem extends GameSystem {
   private physicsStore!: SoAComponentStore<typeof PhysicsSoASchema.definition>;
@@ -44,17 +46,31 @@ export class ProjectileMovementSystem extends GameSystem {
       if (!projectileComponent) continue;
 
       projectileComponent.lifeTime = FP.Sub(projectileComponent.lifeTime, FP_TICK_TIMESTEP);
+
       if (FP.Lte(projectileComponent.lifeTime, FP._0)) {
-        this.entityManager.removeEntity(projectile);
-        this.world.pools?.release('projectile', projectile);
+        this.releaseProjectile(projectile);
         continue;
       }
 
+      const transformIndex = this.transformStore.indexOf(projectile.id);
       const physicsIndex = this.physicsStore.indexOf(projectile.id);
-      if (physicsIndex === -1) continue;
 
-      positionX[physicsIndex] += velocityX[physicsIndex];
-      positionZ[physicsIndex] += velocityZ[physicsIndex];
+      if (transformIndex === -1 || physicsIndex === -1) continue;
+
+      const ownX = FP.FromRaw(positionX[transformIndex]);
+      const ownZ = FP.FromRaw(positionZ[transformIndex]);
+      const target = projectileComponent.fpTargetPosition;
+
+      const dx = FP.Sub(target.x, ownX);
+      const dz = FP.Sub(target.z, ownZ);
+      const direction2 = FPVector2.Normalize({ x: dx, y: dz });
+
+      velocityX[physicsIndex] = FP.ToRaw(FP.Mul(direction2.x, FP_PROJECTILE_SPEED));
+      velocityZ[physicsIndex] = FP.ToRaw(FP.Mul(direction2.y, FP_PROJECTILE_SPEED));
     }
+  }
+
+  private releaseProjectile(projectile: ProjectileEntity): void {
+    despawnProjectile(this.world, this.entityManager, projectile);
   }
 }

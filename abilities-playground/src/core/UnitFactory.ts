@@ -30,10 +30,11 @@ export class UnitFactory {
   ): UnitRenderRefs {
     const root = this.createMesh(kind, teamId);
     const detectionRing = this.createDetectionRing(teamId, detectionRange);
+
     root.add(detectionRing);
+
     const healthBarRoot = new THREE.Group();
     const healthBarFullWidth = 6;
-
     const background = new THREE.Mesh(
       this.arenaScene.trackGeometry(new THREE.BoxGeometry(healthBarFullWidth, 0.35, 0.25)),
       this.arenaScene.trackMaterial(new THREE.MeshBasicMaterial({ color: 0x1f1f1f })),
@@ -46,11 +47,13 @@ export class UnitFactory {
         }),
       ),
     );
+
     fill.position.z = -0.02;
     healthBarRoot.add(background);
     healthBarRoot.add(fill);
 
     let spawnPoint: SpawnPointRef | undefined;
+
     if (kind === 'sphere') {
       spawnPoint = this.createSphereSpawnPoint();
       root.add(spawnPoint.marker);
@@ -70,7 +73,7 @@ export class UnitFactory {
   private createDetectionRing(teamId: 0 | 1, radius: number): THREE.Mesh {
     const teamColor = teamId === 0 ? arenaParams.team1Color : arenaParams.team2Color;
     const ring = new THREE.Mesh(
-      this.arenaScene.trackGeometry(new THREE.RingGeometry(0.92, 1, 64)),
+      this.arenaScene.trackGeometry(new THREE.RingGeometry(0.97, 1, 64)),
       this.arenaScene.trackMaterial(
         new THREE.MeshBasicMaterial({
           color: teamColor,
