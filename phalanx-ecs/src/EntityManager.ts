@@ -1,5 +1,6 @@
 import type { Entity } from './Entity';
 import { SoAComponentStore } from './SoAComponentStore';
+import type { SoAComponentStoreOptions } from './SoAComponentStore';
 import type { SoASchema, SoASchemaDefinition } from './SoASchema';
 
 /**
@@ -350,17 +351,18 @@ export class EntityManager {
    * Otherwise a new one is created, registered, and returned.
    *
    * @param schema - The schema definition
-   * @param initialCapacity - Initial entity capacity (default: 1024)
+   * @param initialCapacityOrOptions - Initial entity capacity (default: 1024),
+   *   or a {@link SoAComponentStoreOptions} object to also enable auto-shrink.
    */
   public getOrCreateSoAStore<S extends SoASchemaDefinition>(
     schema: SoASchema<S>,
-    initialCapacity: number = 1024
+    initialCapacityOrOptions: number | SoAComponentStoreOptions = 1024
   ): SoAComponentStore<S> {
     const existing = this.soaStores.get(schema.type) as SoAComponentStore<S> | undefined;
     if (existing) {
       return existing;
     }
-    const store = new SoAComponentStore<S>(schema, initialCapacity);
+    const store = new SoAComponentStore<S>(schema, initialCapacityOrOptions);
     this.soaStores.set(schema.type, store);
     return store;
   }

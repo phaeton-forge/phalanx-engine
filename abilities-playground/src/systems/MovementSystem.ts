@@ -1,5 +1,5 @@
 import { GameSystem } from 'phalanx-ecs';
-import type { SoAComponentStore, SystemContext } from 'phalanx-ecs';
+import type { Entity, SoAComponentStore, SystemContext } from 'phalanx-ecs';
 import type { AbilitySystem } from 'phalanx-abilities';
 import { PhysicsSoASchema } from 'phalanx-physics';
 import { FP } from 'phalanx-math';
@@ -17,6 +17,9 @@ export class MovementSystem extends GameSystem {
   private get _abilities(): AbilitySystem { return this.abilities as AbilitySystem; }
   private physicsStore!: SoAComponentStore<typeof PhysicsSoASchema.definition>;
   private transformStore!: SoAComponentStore<typeof TransformSoASchema.definition>;
+
+  /** Cached singleton simulation-state entity (re-resolved if it disappears). */
+  private simStateEntity?: Entity;
 
   public override init(context: SystemContext): void {
     super.init(context);
@@ -61,7 +64,7 @@ export class MovementSystem extends GameSystem {
         continue;
       }
 
-      const direction = this.getDesiredDirection(entityId);
+      const direction = this.getDesiredDirection(entity, transformIndex);
 
       if (!direction) {
         velocityX[physicsIndex] = zeroRaw;
@@ -78,17 +81,21 @@ export class MovementSystem extends GameSystem {
     }
   }
 
+  /**
+   * Compute the normalized desired movement direction for an entity.
+   *
+   * @param entity - The moving entity (already resolved by the caller).
+   * @param ownIndex - The entity's index in the transform store (already
+   *   resolved and validated as != -1 by the caller).
+   */
   private getDesiredDirection(
-    entityId: number,
+    entity: Entity,
+    ownIndex: number,
   ): { x: FixedPoint; z: FixedPoint } | null {
-    const entity = this.entityManager.getEntity(entityId);
-    if (!entity) return null;
-
     const targetState = entity.getComponent<TargetStateComponent>(ComponentType.TargetState);
     const stats = entity.getComponent<StatsComponent>(ComponentType.UnitStats);
     const team = entity.getComponent<TeamComponent>(ComponentType.Team);
-    const ownIndex = this.transformStore.indexOf(entityId);
-    if (!targetState || !stats || !team || ownIndex === -1) return null;
+    if (!targetState || !stats || !team) return null;
 
     const ownX = FP.FromRaw(this.transformStore.arrays.fpPositionX[ownIndex]);
     const ownZ = FP.FromRaw(this.transformStore.arrays.fpPositionZ[ownIndex]);
@@ -125,7 +132,11 @@ export class MovementSystem extends GameSystem {
   }
 
   private getSimulationState(): SimulationStateComponent | undefined {
-    const [stateEntity] = this.entityManager.queryEntities(ComponentType.SimulationState);
-    return stateEntity?.getComponent<SimulationStateComponent>(ComponentType.SimulationState);
+    // Re-resolve only when the cached entity is missing or has been destroyed,
+    // avoiding a full queryEntities() pass every tick for this singleton.
+    if (!this.simStateEntity || this.simStateEntity.isDestroyed) {
+      [this.simStateEntity] = this.entityManager.queryEntities(ComponentType.SimulationState);
+    }
+    return this.simStateEntity?.getComponent<SimulationStateComponent>(ComponentType.SimulationState);
   }
 }

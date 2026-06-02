@@ -40,6 +40,7 @@ export type {
 
 // SoA (Structure-of-Arrays) high-performance storage
 export { SoAComponentStore } from './SoAComponentStore';
+export type { SoAComponentStoreOptions } from './SoAComponentStore';
 export { SoAComponent } from './SoAComponent';
 export {
   defineSoASchema,

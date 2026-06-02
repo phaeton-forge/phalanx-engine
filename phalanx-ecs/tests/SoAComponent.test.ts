@@ -286,3 +286,76 @@ describe('TransformComponent-like direct store access', () => {
     expect(c3.visualPosition.x).toBe(7);
   });
 });
+
+// ── Capacity shrinking (memory reclamation for RTS-style churn) ─────────
+
+describe('SoAComponentStore capacity reclamation', () => {
+  it('grows but never shrinks by default', () => {
+    const store = em().getOrCreateSoAStore(TestSchema, 2);
+    for (let id = 1; id <= 100; id++) {
+      store.add(id, { x: id, y: 0, health: 100, flags: 0, rawValue: 0n });
+    }
+    const peak = store.capacity;
+    expect(peak).toBeGreaterThanOrEqual(100);
+
+    // Kill almost everyone — default behaviour keeps the high-water-mark capacity
+    for (let id = 1; id <= 99; id++) store.remove(id);
+    expect(store.count).toBe(1);
+    expect(store.capacity).toBe(peak);
+  });
+
+  it('shrinkToFit releases memory while preserving live data', () => {
+    const store = em().getOrCreateSoAStore(TestSchema, 2);
+    for (let id = 1; id <= 100; id++) {
+      store.add(id, { x: id, y: id * 2, health: id, flags: 0, rawValue: BigInt(id) });
+    }
+    for (let id = 1; id <= 90; id++) store.remove(id);
+
+    const before = store.capacity;
+    const after = store.shrinkToFit();
+    expect(after).toBeLessThan(before);
+    expect(after).toBeGreaterThanOrEqual(store.count);
+
+    // Surviving entities keep their values and dense ordering
+    for (const id of store.entityIds()) {
+      const idx = store.indexOf(id);
+      expect(store.arrays.x[idx]).toBe(id);
+      expect(store.arrays.rawValue[idx]).toBe(BigInt(id));
+    }
+  });
+
+  it('autoShrink reclaims memory automatically as population drops', () => {
+    const store = em().getOrCreateSoAStore(TestSchema, { initialCapacity: 4, autoShrink: true });
+    for (let id = 1; id <= 200; id++) {
+      store.add(id, { x: id, y: 0, health: 100, flags: 0, rawValue: 0n });
+    }
+    const peak = store.capacity;
+
+    for (let id = 1; id <= 195; id++) store.remove(id);
+
+    expect(store.count).toBe(5);
+    expect(store.capacity).toBeLessThan(peak);
+    expect(store.capacity).toBeGreaterThanOrEqual(4); // never below initial capacity
+
+    // Remaining rows are intact
+    for (const id of store.entityIds()) {
+      expect(store.arrays.x[store.indexOf(id)]).toBe(id);
+    }
+  });
+
+  it('autoShrink never drops below initial capacity', () => {
+    const store = em().getOrCreateSoAStore(TestSchema, { initialCapacity: 64, autoShrink: true });
+    for (let id = 1; id <= 200; id++) {
+      store.add(id, { x: id, y: 0, health: 100, flags: 0, rawValue: 0n });
+    }
+    for (let id = 1; id <= 199; id++) store.remove(id);
+    expect(store.capacity).toBe(64);
+  });
+});
+
+// Local helper to create a fresh EntityManager per assertion block
+function em(): EntityManager {
+  return new EntityManager();
+}
+
+
