@@ -25,7 +25,7 @@ export { PhysicsWorld } from './PhysicsWorld';
 
 // Config & Types
 export type { PhysicsWorldConfig } from './PhysicsWorldConfig';
-export type { TransformFieldMapping, CollisionFilter, CollisionEvent, PhysicsConfig } from './types';
+export type { CollisionFilter, CollisionEvent, PhysicsConfig } from './types';
 export { PhysicsEvents } from './events';
 
 // Tick providers

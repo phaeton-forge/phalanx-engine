@@ -1,13 +1,13 @@
 import { GameSystem, type EventBus, type SoAComponentStore, type SystemContext } from 'phalanx-ecs';
 import { FP, type FixedPoint } from 'phalanx-math';
 import { PhysicsSoASchema } from '../components/PhysicsBodyComponent';
+import { TransformSoASchema } from '../components/TransformComponent';
 import { SpatialHashGrid } from '../collision/SpatialHashGrid';
 import { NarrowPhase } from '../collision/NarrowPhase';
 import type { CollisionManifold } from '../collision/CollisionManifold';
 import { PhysicsEvents } from '../events';
-import type { PhysicsConfig, TransformFieldMapping, CollisionEvent, BoundsExitEvent } from '../types';
+import type { PhysicsConfig, CollisionEvent, BoundsExitEvent } from '../types';
 import type { IPhysicsTickProvider } from '../tick/IPhysicsTickProvider';
-import type { SoASchemaDefinition } from 'phalanx-ecs';
 
 const SEPARATION_HALF = FP.FromFloat(0.5);
 
@@ -21,16 +21,11 @@ const SEPARATION_HALF = FP.FromFloat(0.5);
  *   4. applyFriction()         — per-entity friction damping
  *
  * Reads velocities from PhysicsBodyComponent SoA store and reads/writes
- * positions from the consumer's TransformComponent SoA store. The consumer
- * must call `setTransformStore()` before the first tick to link their
- * transform store.
- *
- * Does NOT own TransformComponent — accepts a reference via setTransformStore().
+ * positions from the shared TransformSoASchema store created in init().
  */
 export class PhysicsSystem extends GameSystem {
   private physicsStore!: SoAComponentStore<typeof PhysicsSoASchema.definition>;
-  private transformStore: SoAComponentStore<SoASchemaDefinition> | null = null;
-  private fieldMapping: TransformFieldMapping | null = null;
+  private transformStore!: SoAComponentStore<typeof TransformSoASchema.definition>;
   private config: PhysicsConfig;
   private readonly spatialGrid: SpatialHashGrid;
   private collisionFilter: ((entityA: number, entityB: number) => boolean) | null = null;
@@ -46,36 +41,23 @@ export class PhysicsSystem extends GameSystem {
   public override init(context: SystemContext): void {
     super.init(context);
     this.physicsStore = this.entityManager.getOrCreateSoAStore(PhysicsSoASchema);
+    this.transformStore = this.entityManager.getOrCreateSoAStore(TransformSoASchema);
     this.tryStartProvider();
   }
 
   /**
    * Start the external tick provider only when ALL required state is ready.
-   * Called from init(), setTransformStore(), and setTickProvider().
+   * Called from init() and setTickProvider().
    */
   private tryStartProvider(): void {
     if (
       this.providerStarted ||
       !this.physicsStore ||
       !this.transformStore ||
-      !this.fieldMapping ||
       !this.externalTickProvider
     ) return;
     this.providerStarted = true;
     this.externalTickProvider.start(() => this.step());
-  }
-
-  /**
-   * Link the consumer's TransformComponent SoA store.
-   * Must be called before the first processTick().
-   */
-  public setTransformStore(
-    store: SoAComponentStore<SoASchemaDefinition>,
-    fieldMapping: TransformFieldMapping
-  ): void {
-    this.transformStore = store;
-    this.fieldMapping = fieldMapping;
-    this.tryStartProvider();
   }
 
   /**
@@ -91,7 +73,6 @@ export class PhysicsSystem extends GameSystem {
    * Called by processTick() in default mode, or directly by a custom IPhysicsTickProvider.
    */
   public step(): void {
-    if (!this.transformStore || !this.fieldMapping) return;
     const subDt = FP.Div(this.config.tickDt, FP.FromFloat(this.config.subSteps));
     for (let i = 0; i < this.config.subSteps; i++) {
       this.applyVelocities(subDt);
@@ -167,16 +148,8 @@ export class PhysicsSystem extends GameSystem {
     const physIsStatic = this.physicsStore.arrays.isStatic;
     const physIgnorePhysics = this.physicsStore.arrays.ignorePhysics;
 
-    const txArrays = this.transformStore!.arrays;
-    const fpPosXArr = txArrays[this.fieldMapping!.fpPositionX] as BigInt64Array;
-    const fpPosZArr = txArrays[this.fieldMapping!.fpPositionZ] as BigInt64Array;
-
-    const visPosXArr = this.fieldMapping!.visualPositionX
-      ? txArrays[this.fieldMapping!.visualPositionX] as Float64Array
-      : null;
-    const visPosZArr = this.fieldMapping!.visualPositionZ
-      ? txArrays[this.fieldMapping!.visualPositionZ] as Float64Array
-      : null;
+    const fpPosXArr = this.transformStore.arrays.fpPositionX;
+    const fpPosZArr = this.transformStore.arrays.fpPositionZ;
 
     const maxVelSq = FP.Mul(this.config.maxVelocity, this.config.maxVelocity);
     const bounds = this.config.worldBounds;
@@ -190,7 +163,7 @@ export class PhysicsSystem extends GameSystem {
       if (physIsStatic[physIndex] === 1) continue;
       if (physIgnorePhysics[physIndex] === 1) continue;
 
-      const transformIndex = this.transformStore!.indexOf(entityId);
+      const transformIndex = this.transformStore.indexOf(entityId);
       if (transformIndex === -1) continue;
 
       // Read velocity
@@ -236,10 +209,6 @@ export class PhysicsSystem extends GameSystem {
 
       fpPosXArr[transformIndex] = FP.ToRaw(newPosX);
       fpPosZArr[transformIndex] = FP.ToRaw(newPosZ);
-
-      // Sync optional visual position cache
-      if (visPosXArr) visPosXArr[transformIndex] = FP.ToFloat(newPosX);
-      if (visPosZArr) visPosZArr[transformIndex] = FP.ToFloat(newPosZ);
     }
 
     // Emit buffered BOUNDS_EXIT events after iteration completes
@@ -258,13 +227,12 @@ export class PhysicsSystem extends GameSystem {
     const physLastZ = this.physicsStore.arrays.lastZ;
     const physRadius = this.physicsStore.arrays.radius;
 
-    const txArrays = this.transformStore!.arrays;
-    const fpPosXArr = txArrays[this.fieldMapping!.fpPositionX] as BigInt64Array;
-    const fpPosZArr = txArrays[this.fieldMapping!.fpPositionZ] as BigInt64Array;
+    const fpPosXArr = this.transformStore.arrays.fpPositionX;
+    const fpPosZArr = this.transformStore.arrays.fpPositionZ;
 
     for (const entityId of this.physicsStore.entityIds()) {
       const physIndex = this.physicsStore.indexOf(entityId);
-      const transformIndex = this.transformStore!.indexOf(entityId);
+      const transformIndex = this.transformStore.indexOf(entityId);
       if (transformIndex === -1) continue;
 
       const posX = FP.FromRaw(fpPosXArr[transformIndex]);
@@ -293,16 +261,8 @@ export class PhysicsSystem extends GameSystem {
     const physIgnorePhysics = this.physicsStore.arrays.ignorePhysics;
     const physRestitution = this.physicsStore.arrays.restitution;
 
-    const txArrays = this.transformStore!.arrays;
-    const fpPosXArr = txArrays[this.fieldMapping!.fpPositionX] as BigInt64Array;
-    const fpPosZArr = txArrays[this.fieldMapping!.fpPositionZ] as BigInt64Array;
-
-    const visPosXArr = this.fieldMapping!.visualPositionX
-      ? txArrays[this.fieldMapping!.visualPositionX] as Float64Array
-      : null;
-    const visPosZArr = this.fieldMapping!.visualPositionZ
-      ? txArrays[this.fieldMapping!.visualPositionZ] as Float64Array
-      : null;
+    const fpPosXArr = this.transformStore.arrays.fpPositionX;
+    const fpPosZArr = this.transformStore.arrays.fpPositionZ;
 
     for (const [entityIdA, entityIdB] of pairs) {
       const physIndexA = this.physicsStore.indexOf(entityIdA);
@@ -319,8 +279,8 @@ export class PhysicsSystem extends GameSystem {
         continue;
       }
 
-      const transformIndexA = this.transformStore!.indexOf(entityIdA);
-      const transformIndexB = this.transformStore!.indexOf(entityIdB);
+      const transformIndexA = this.transformStore.indexOf(entityIdA);
+      const transformIndexB = this.transformStore.indexOf(entityIdB);
       if (transformIndexA === -1 || transformIndexB === -1) continue;
 
       // Read positions
@@ -357,7 +317,6 @@ export class PhysicsSystem extends GameSystem {
         physVelocityX, physVelocityZ,
         physMass, physIsStatic,
         fpPosXArr, fpPosZArr,
-        visPosXArr, visPosZArr
       );
 
       // Emit collision event
@@ -381,7 +340,6 @@ export class PhysicsSystem extends GameSystem {
     physVelocityX: BigInt64Array, physVelocityZ: BigInt64Array,
     physMass: BigInt64Array, physIsStatic: Uint8Array,
     fpPosXArr: BigInt64Array, fpPosZArr: BigInt64Array,
-    visPosXArr: Float64Array | null, visPosZArr: Float64Array | null
   ): void {
     const isStaticA = physIsStatic[physIndexA] === 1;
     const isStaticB = physIsStatic[physIndexB] === 1;
@@ -429,8 +387,6 @@ export class PhysicsSystem extends GameSystem {
       const newAZ = FP.Sub(posAZ, FP.Mul(nz, sepA));
       fpPosXArr[transformIndexA] = FP.ToRaw(newAX);
       fpPosZArr[transformIndexA] = FP.ToRaw(newAZ);
-      if (visPosXArr) visPosXArr[transformIndexA] = FP.ToFloat(newAX);
-      if (visPosZArr) visPosZArr[transformIndexA] = FP.ToFloat(newAZ);
     }
     if (!isStaticB) {
       const sepB = FP.Mul(separation, ratioB);
@@ -440,8 +396,6 @@ export class PhysicsSystem extends GameSystem {
       const newBZ = FP.Add(posBZ, FP.Mul(nz, sepB));
       fpPosXArr[transformIndexB] = FP.ToRaw(newBX);
       fpPosZArr[transformIndexB] = FP.ToRaw(newBZ);
-      if (visPosXArr) visPosXArr[transformIndexB] = FP.ToFloat(newBX);
-      if (visPosZArr) visPosZArr[transformIndexB] = FP.ToFloat(newBZ);
     }
   }
 
@@ -477,14 +431,9 @@ export class PhysicsSystem extends GameSystem {
     return this.physicsStore;
   }
 
-  /** Expose the transform store reference */
-  public getTransformStore(): SoAComponentStore<SoASchemaDefinition> | null {
+  /** Expose the transform SoA store */
+  public getTransformStore(): SoAComponentStore<typeof TransformSoASchema.definition> {
     return this.transformStore;
-  }
-
-  /** Expose the field mapping */
-  public getFieldMapping(): TransformFieldMapping | null {
-    return this.fieldMapping;
   }
 
   /** Expose config */
@@ -499,9 +448,6 @@ export class PhysicsSystem extends GameSystem {
   public getEntityPosition(
     entityId: number
   ): { x: FixedPoint; z: FixedPoint } | undefined {
-    if (!this.transformStore || !this.fieldMapping) {
-      return undefined;
-    }
     const transformIndex = this.transformStore.indexOf(entityId);
     if (transformIndex === -1) {
       return undefined;
@@ -510,9 +456,8 @@ export class PhysicsSystem extends GameSystem {
     if (physIndex === -1) {
       return undefined;
     }
-    const txArrays = this.transformStore.arrays;
-    const fpPosXArr = txArrays[this.fieldMapping.fpPositionX] as BigInt64Array;
-    const fpPosZArr = txArrays[this.fieldMapping.fpPositionZ] as BigInt64Array;
+    const fpPosXArr = this.transformStore.arrays.fpPositionX;
+    const fpPosZArr = this.transformStore.arrays.fpPositionZ;
     return {
       x: FP.FromRaw(fpPosXArr[transformIndex]),
       z: FP.FromRaw(fpPosZArr[transformIndex]),

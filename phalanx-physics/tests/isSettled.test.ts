@@ -5,24 +5,13 @@ import {
   EventBus,
   SystemContext,
   SoAComponent,
-  defineSoASchema,
   type SoAComponentStore,
 } from 'phalanx-ecs';
 import { PhysicsSystem } from '../src/systems/PhysicsSystem';
 import { PhysicsSoASchema } from '../src/components/PhysicsBodyComponent';
+import { TransformSoASchema } from '../src/components/TransformComponent';
 import type { PhysicsConfig } from '../src/types';
-
-const TestTransformSchema = defineSoASchema({
-  fpPositionX: 'i64',
-  fpPositionY: 'i64',
-  fpPositionZ: 'i64',
-}, 'TestTransform_isSettled');
-
-const FIELD_MAPPING = {
-  fpPositionX: 'fpPositionX',
-  fpPositionY: 'fpPositionY',
-  fpPositionZ: 'fpPositionZ',
-};
+import { addTransformRow } from './testTransformHelpers';
 
 function createPhysicsConfig(overrides?: Partial<PhysicsConfig>): PhysicsConfig {
   return {
@@ -58,18 +47,14 @@ describe('isSettled', () => {
     system.init(context);
 
     const physicsStore = entityManager.getOrCreateSoAStore(PhysicsSoASchema);
-    const transformStore = entityManager.getOrCreateSoAStore(TestTransformSchema);
-    system.setTransformStore(
-      transformStore as unknown as SoAComponentStore<Record<string, 'f32' | 'f64' | 'i32' | 'u32' | 'u8' | 'i64'>>,
-      FIELD_MAPPING,
-    );
+    const transformStore = entityManager.getOrCreateSoAStore(TransformSoASchema);
 
     return { system, physicsStore, transformStore };
   }
 
   function addEntity(
     physicsStore: SoAComponentStore<typeof PhysicsSoASchema.definition>,
-    transformStore: SoAComponentStore<typeof TestTransformSchema.definition>,
+    transformStore: SoAComponentStore<typeof TransformSoASchema.definition>,
     entityId: number,
     velX: number = 0,
     velZ: number = 0,
@@ -89,11 +74,7 @@ describe('isSettled', () => {
       lastX: 0,
       lastZ: 0,
     });
-    transformStore.add(entityId, {
-      fpPositionX: FP.ToRaw(FP._0),
-      fpPositionY: FP.ToRaw(FP._0),
-      fpPositionZ: FP.ToRaw(FP._0),
-    });
+    addTransformRow(transformStore, entityId, 0, 0);
   }
 
   it('returns true when all bodies are at rest', () => {

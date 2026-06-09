@@ -5,27 +5,13 @@ import {
   EventBus,
   SystemContext,
   SoAComponent,
-  defineSoASchema,
-  type SoAComponentStore,
 } from 'phalanx-ecs';
 import { PhysicsSystem } from '../src/systems/PhysicsSystem';
 import { PhysicsSoASchema } from '../src/components/PhysicsBodyComponent';
+import { TransformSoASchema } from '../src/components/TransformComponent';
+import { PhysicsWorld } from '../src/PhysicsWorld';
 import type { PhysicsConfig } from '../src/types';
-
-const TestTransformSchema = defineSoASchema(
-  {
-    fpPositionX: 'i64',
-    fpPositionY: 'i64',
-    fpPositionZ: 'i64',
-  },
-  'TestTransform'
-);
-
-const FIELD_MAPPING = {
-  fpPositionX: 'fpPositionX',
-  fpPositionY: 'fpPositionY',
-  fpPositionZ: 'fpPositionZ',
-};
+import { addTransformRow } from './testTransformHelpers';
 
 function createPhysicsConfig(): PhysicsConfig {
   return {
@@ -56,11 +42,7 @@ describe('getEntityPosition', () => {
     const system = new PhysicsSystem(createPhysicsConfig());
     system.init(context);
     const physicsStore = entityManager.getOrCreateSoAStore(PhysicsSoASchema);
-    const transformStore = entityManager.getOrCreateSoAStore(TestTransformSchema);
-    system.setTransformStore(
-      transformStore as unknown as SoAComponentStore<Record<string, 'f32' | 'f64' | 'i32' | 'u32' | 'u8' | 'i64'>>,
-      FIELD_MAPPING
-    );
+    const transformStore = entityManager.getOrCreateSoAStore(TransformSoASchema);
 
     physicsStore.add(1, {
       velocityX: FP.ToRaw(FP._0),
@@ -75,16 +57,41 @@ describe('getEntityPosition', () => {
       lastX: 0,
       lastZ: 0,
     });
-    transformStore.add(1, {
-      fpPositionX: FP.ToRaw(FP.FromFloat(7)),
-      fpPositionY: FP.ToRaw(FP._0),
-      fpPositionZ: FP.ToRaw(FP.FromFloat(9)),
-    });
+    addTransformRow(transformStore, 1, 7, 9);
 
     const pos = system.getEntityPosition(1);
     expect(pos).toBeDefined();
     expect(FP.ToFloat(pos!.x)).toBeCloseTo(7, 5);
     expect(FP.ToFloat(pos!.z)).toBeCloseTo(9, 5);
     expect(system.getEntityPosition(999)).toBeUndefined();
+  });
+
+  it('PhysicsWorld delegates getEntityPosition to PhysicsSystem', () => {
+    const physicsWorld = new PhysicsWorld();
+    const { physicsSystem } = physicsWorld.getSystems();
+    physicsSystem.init(context);
+
+    const physicsStore = entityManager.getOrCreateSoAStore(PhysicsSoASchema);
+    const transformStore = entityManager.getOrCreateSoAStore(TransformSoASchema);
+
+    physicsStore.add(2, {
+      velocityX: FP.ToRaw(FP._0),
+      velocityY: FP.ToRaw(FP._0),
+      velocityZ: FP.ToRaw(FP._0),
+      radius: FP.ToRaw(FP._1),
+      mass: FP.ToRaw(FP._1),
+      restitution: FP.ToRaw(FP.FromFloat(0.5)),
+      friction: FP.ToRaw(FP.FromFloat(0.3)),
+      isStatic: 0,
+      ignorePhysics: 0,
+      lastX: 0,
+      lastZ: 0,
+    });
+    addTransformRow(transformStore, 2, 3, 4);
+
+    const pos = physicsWorld.getEntityPosition(2);
+    expect(pos).toBeDefined();
+    expect(FP.ToFloat(pos!.x)).toBeCloseTo(3, 5);
+    expect(FP.ToFloat(pos!.z)).toBeCloseTo(4, 5);
   });
 });

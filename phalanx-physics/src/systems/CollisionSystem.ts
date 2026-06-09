@@ -1,12 +1,12 @@
 import { GameSystem, type SoAComponentStore, type SystemContext } from 'phalanx-ecs';
 import { FP, type FixedPoint } from 'phalanx-math';
-import type { SoASchemaDefinition } from 'phalanx-ecs';
 import { PhysicsSoASchema } from '../components/PhysicsBodyComponent';
+import { TransformSoASchema } from '../components/TransformComponent';
 import { SpatialHashGrid } from '../collision/SpatialHashGrid';
 import { NarrowPhase } from '../collision/NarrowPhase';
 import type { CollisionManifold } from '../collision/CollisionManifold';
 import { PhysicsEvents } from '../events';
-import type { CollisionEvent, TransformFieldMapping } from '../types';
+import type { CollisionEvent } from '../types';
 
 const SEPARATION_HALF = FP.FromFloat(0.5);
 
@@ -19,8 +19,7 @@ const SEPARATION_HALF = FP.FromFloat(0.5);
  */
 export class CollisionSystem extends GameSystem {
   private physicsStore!: SoAComponentStore<typeof PhysicsSoASchema.definition>;
-  private transformStore: SoAComponentStore<SoASchemaDefinition> | null = null;
-  private fieldMapping: TransformFieldMapping | null = null;
+  private transformStore!: SoAComponentStore<typeof TransformSoASchema.definition>;
   private readonly spatialGrid: SpatialHashGrid;
   private pushStrength: FixedPoint;
   private collisionFilter: ((entityA: number, entityB: number) => boolean) | null = null;
@@ -42,17 +41,7 @@ export class CollisionSystem extends GameSystem {
   public override init(context: SystemContext): void {
     super.init(context);
     this.physicsStore = this.entityManager.getOrCreateSoAStore(PhysicsSoASchema);
-  }
-
-  /**
-   * Link the consumer's TransformComponent SoA store.
-   */
-  public setTransformStore(
-    store: SoAComponentStore<SoASchemaDefinition>,
-    fieldMapping: TransformFieldMapping
-  ): void {
-    this.transformStore = store;
-    this.fieldMapping = fieldMapping;
+    this.transformStore = this.entityManager.getOrCreateSoAStore(TransformSoASchema);
   }
 
   /** Expose the spatial grid for external queries (e.g. range queries) */
@@ -61,8 +50,6 @@ export class CollisionSystem extends GameSystem {
   }
 
   public override processTick(_tick: number): void {
-    if (!this.transformStore || !this.fieldMapping) return;
-
     this.rebuildSpatialGrid();
     this.detectAndResolve();
   }
@@ -77,13 +64,12 @@ export class CollisionSystem extends GameSystem {
     const physLastZ = this.physicsStore.arrays.lastZ;
     const physRadius = this.physicsStore.arrays.radius;
 
-    const txArrays = this.transformStore!.arrays;
-    const fpPosXArr = txArrays[this.fieldMapping!.fpPositionX] as BigInt64Array;
-    const fpPosZArr = txArrays[this.fieldMapping!.fpPositionZ] as BigInt64Array;
+    const fpPosXArr = this.transformStore.arrays.fpPositionX;
+    const fpPosZArr = this.transformStore.arrays.fpPositionZ;
 
     for (const entityId of this.physicsStore.entityIds()) {
       const physIndex = this.physicsStore.indexOf(entityId);
-      const transformIndex = this.transformStore!.indexOf(entityId);
+      const transformIndex = this.transformStore.indexOf(entityId);
       if (transformIndex === -1) continue;
 
       const posX = FP.FromRaw(fpPosXArr[transformIndex]);
@@ -111,16 +97,8 @@ export class CollisionSystem extends GameSystem {
     const physIsStatic = this.physicsStore.arrays.isStatic;
     const physIgnorePhysics = this.physicsStore.arrays.ignorePhysics;
 
-    const txArrays = this.transformStore!.arrays;
-    const fpPosXArr = txArrays[this.fieldMapping!.fpPositionX] as BigInt64Array;
-    const fpPosZArr = txArrays[this.fieldMapping!.fpPositionZ] as BigInt64Array;
-
-    const visPosXArr = this.fieldMapping!.visualPositionX
-      ? txArrays[this.fieldMapping!.visualPositionX] as Float64Array
-      : null;
-    const visPosZArr = this.fieldMapping!.visualPositionZ
-      ? txArrays[this.fieldMapping!.visualPositionZ] as Float64Array
-      : null;
+    const fpPosXArr = this.transformStore.arrays.fpPositionX;
+    const fpPosZArr = this.transformStore.arrays.fpPositionZ;
 
     for (const [entityIdA, entityIdB] of pairs) {
       const physIndexA = this.physicsStore.indexOf(entityIdA);
@@ -137,8 +115,8 @@ export class CollisionSystem extends GameSystem {
         continue;
       }
 
-      const transformIndexA = this.transformStore!.indexOf(entityIdA);
-      const transformIndexB = this.transformStore!.indexOf(entityIdB);
+      const transformIndexA = this.transformStore.indexOf(entityIdA);
+      const transformIndexB = this.transformStore.indexOf(entityIdB);
       if (transformIndexA === -1 || transformIndexB === -1) continue;
 
       // Read positions
@@ -167,7 +145,6 @@ export class CollisionSystem extends GameSystem {
         physVelocityX, physVelocityZ,
         physMass, physIsStatic,
         fpPosXArr, fpPosZArr,
-        visPosXArr, visPosZArr
       );
 
       // Emit collision event
@@ -190,7 +167,6 @@ export class CollisionSystem extends GameSystem {
     physVelocityX: BigInt64Array, physVelocityZ: BigInt64Array,
     physMass: BigInt64Array, physIsStatic: Uint8Array,
     fpPosXArr: BigInt64Array, fpPosZArr: BigInt64Array,
-    visPosXArr: Float64Array | null, visPosZArr: Float64Array | null
   ): void {
     const isStaticA = physIsStatic[physIndexA] === 1;
     const isStaticB = physIsStatic[physIndexB] === 1;
@@ -238,8 +214,6 @@ export class CollisionSystem extends GameSystem {
       const newAZ = FP.Sub(posAZ, FP.Mul(nz, sepA));
       fpPosXArr[transformIndexA] = FP.ToRaw(newAX);
       fpPosZArr[transformIndexA] = FP.ToRaw(newAZ);
-      if (visPosXArr) visPosXArr[transformIndexA] = FP.ToFloat(newAX);
-      if (visPosZArr) visPosZArr[transformIndexA] = FP.ToFloat(newAZ);
     }
     if (!isStaticB) {
       const sepB = FP.Mul(separation, ratioB);
@@ -249,8 +223,6 @@ export class CollisionSystem extends GameSystem {
       const newBZ = FP.Add(posBZ, FP.Mul(nz, sepB));
       fpPosXArr[transformIndexB] = FP.ToRaw(newBX);
       fpPosZArr[transformIndexB] = FP.ToRaw(newBZ);
-      if (visPosXArr) visPosXArr[transformIndexB] = FP.ToFloat(newBX);
-      if (visPosZArr) visPosZArr[transformIndexB] = FP.ToFloat(newBZ);
     }
   }
 

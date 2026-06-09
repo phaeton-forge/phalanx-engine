@@ -2,27 +2,6 @@ import type { FixedPoint } from 'phalanx-math';
 import type { CollisionManifold } from './collision/CollisionManifold';
 
 /**
- * Maps consumer's TransformComponent SoA field names to physics expectations.
- * Tells PhysicsSystem which fields in the consumer's transform store
- * correspond to fpPositionX, fpPositionY, fpPositionZ.
- *
- * Optional `visualPositionX/Y/Z` fields: when provided, the systems will
- * also sync float visual positions whenever fp positions are written.
- * This is useful when game systems read a cached float position during ticks.
- */
-export interface TransformFieldMapping {
-  fpPositionX: string;
-  fpPositionY: string;
-  fpPositionZ: string;
-  /** Optional f64 visual position field name for X. Written as FP.ToFloat(fpX). */
-  visualPositionX?: string;
-  /** Optional f64 visual position field name for Y. Written as FP.ToFloat(fpY). */
-  visualPositionY?: string;
-  /** Optional f64 visual position field name for Z. Written as FP.ToFloat(fpZ). */
-  visualPositionZ?: string;
-}
-
-/**
  * Bitmask-based collision filtering.
  * @remarks Defined for future use. Not yet integrated into PhysicsSystem.
  * The current per-pair callback filter (`setCollisionFilter`) is the active API.

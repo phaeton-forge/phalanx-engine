@@ -5,25 +5,14 @@ import {
   EventBus,
   SystemContext,
   SoAComponent,
-  defineSoASchema,
   type SoAComponentStore,
 } from 'phalanx-ecs';
 import { PhysicsSystem } from '../src/systems/PhysicsSystem';
 import { PhysicsSoASchema } from '../src/components/PhysicsBodyComponent';
+import { TransformSoASchema } from '../src/components/TransformComponent';
 import { PhysicsEvents } from '../src/events';
 import type { PhysicsConfig, CollisionEvent } from '../src/types';
-
-const TestTransformSchema = defineSoASchema({
-  fpPositionX: 'i64',
-  fpPositionY: 'i64',
-  fpPositionZ: 'i64',
-}, 'TestTransform');
-
-const FIELD_MAPPING = {
-  fpPositionX: 'fpPositionX',
-  fpPositionY: 'fpPositionY',
-  fpPositionZ: 'fpPositionZ',
-};
+import { addTransformRow } from './testTransformHelpers';
 
 function createPhysicsConfig(overrides?: Partial<PhysicsConfig>): PhysicsConfig {
   return {
@@ -60,25 +49,21 @@ describe('Collision (via PhysicsSystem)', () => {
   function setupSystem(overrides?: Partial<PhysicsConfig>): {
     system: PhysicsSystem;
     physicsStore: SoAComponentStore<typeof PhysicsSoASchema.definition>;
-    transformStore: SoAComponentStore<typeof TestTransformSchema.definition>;
+    transformStore: SoAComponentStore<typeof TransformSoASchema.definition>;
   } {
     const config = createPhysicsConfig(overrides);
     const system = new PhysicsSystem(config);
     system.init(context);
 
     const physicsStore = entityManager.getOrCreateSoAStore(PhysicsSoASchema);
-    const transformStore = entityManager.getOrCreateSoAStore(TestTransformSchema);
-    system.setTransformStore(
-      transformStore as unknown as SoAComponentStore<Record<string, 'f32' | 'f64' | 'i32' | 'u32' | 'u8' | 'i64'>>,
-      FIELD_MAPPING
-    );
+    const transformStore = entityManager.getOrCreateSoAStore(TransformSoASchema);
 
     return { system, physicsStore, transformStore };
   }
 
   function addEntity(
     physicsStore: SoAComponentStore<typeof PhysicsSoASchema.definition>,
-    transformStore: SoAComponentStore<typeof TestTransformSchema.definition>,
+    transformStore: SoAComponentStore<typeof TransformSoASchema.definition>,
     entityId: number,
     posX: number, posZ: number,
     radius: number = 1,
@@ -97,11 +82,7 @@ describe('Collision (via PhysicsSystem)', () => {
       lastX: 0,
       lastZ: 0,
     });
-    transformStore.add(entityId, {
-      fpPositionX: FP.ToRaw(FP.FromFloat(posX)),
-      fpPositionY: FP.ToRaw(FP._0),
-      fpPositionZ: FP.ToRaw(FP.FromFloat(posZ)),
-    });
+    addTransformRow(transformStore, entityId, posX, posZ);
   }
 
   it('two overlapping circles are pushed apart', () => {
