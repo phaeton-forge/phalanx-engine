@@ -16,7 +16,7 @@ import type { AbilityActivationContext } from '../types';
  *
  * Hook implementation contract:
  *  - Hooks MUST be deterministic. They may spawn entities (projectiles,
- *    auras), enqueue commands into the physics package, or read attributes
+ *    rockets), enqueue commands into the physics package, or read attributes
  *    via `AbilitySystemFacade` — but they must not call `Date.now`,
  *    `Math.random`, or any floating-point math whose results are not
  *    reproducible across peers.

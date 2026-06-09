@@ -1,6 +1,6 @@
 ---
 name: phalanx-abilities
-description: Create deterministic gameplay abilities, effects, attributes, tags, AoE targeting, auras, and activation hooks using phalanx-abilities from the phalanx-engine repository. Use when building GAS-style combat, buffs, cooldowns, channeling, or integrating abilities with phalanx-ecs GameWorld and optional phalanx-physics spatial queries. Covers defineAttribute/defineEffect/defineAbility, createAbilitySystem, AbilitySystemFacade, gameplay cues, and lockstep determinism.
+description: Create deterministic gameplay abilities, effects, attributes, tags, and activation hooks using phalanx-abilities from the phalanx-engine repository. Use when building GAS-style combat, buffs, cooldowns, channeling, or integrating abilities with phalanx-ecs GameWorld. Covers defineAttribute/defineEffect/defineAbility, createAbilitySystem, AbilitySystemFacade, gameplay cues, and lockstep determinism.
 metadata:
   author: phaeton2040-AI
   version: '1.0'
@@ -14,9 +14,7 @@ Use this skill when the user asks to:
 
 - Add a gameplay ability system to a Phalanx ECS game
 - Define attributes, buffs, debuffs, cooldowns, or costs
-- Implement AoE, radius heals, or aura zones
-- Wire abilities to **phalanx-physics** for spatial targeting
-- Add activation hooks for projectiles, rockets, or spawned zones
+- Add activation hooks for projectiles or rockets
 - Implement channeling (beam on / beam off) with tag-driven effect removal
 - Set up gameplay cues for VFX/SFX on the client `GameWorld`
 - Debug non-deterministic combat or lockstep attribute desync
@@ -25,8 +23,7 @@ Use this skill when the user asks to:
 
 - TypeScript project with strict mode
 - `phalanx-ecs` — `GameWorld`, `Entity`, `GameSystem`, `EventBus`, `resetEntityIdCounter`
-- `phalanx-math` — `FP`, `FixedPoint` (all magnitudes and spatial values)
-- **Optional** `phalanx-physics` — `PhysicsWorld` for `createAbilitySystem({ physicsWorld })` and radius/AoE
+- `phalanx-math` - `FP`, `FixedPoint` (all magnitudes)
 - Read [`phalanx-abilities/README.md`](../../phalanx-abilities/README.md) for full API detail
 
 ## Architecture Overview
@@ -34,15 +31,13 @@ Use this skill when the user asks to:
 ```
 GameWorld (phalanx-ecs)
 ├── createAbilitySystem(world, config)
-│   ├── AbilitySystemRegistries   (per-world defs + spatialQuery)
+│   ├── AbilitySystemRegistries   (per-world defs)
 │   ├── AbilitySystemRuntime      (activation FIFO, instance ids, GameplayCueBuffer)
 │   ├── AbilitySystemFacade       (enqueue API)
 │   └── tickSystems[]             → world.registerSystems([...abilities.tickSystems], [])
-└── PhysicsWorld? (optional)      → physicsWorld config → ISpatialQuery adapter
-
 Per tick (full pipeline):
   AbilityActivationSystem → EffectApplicationSystem → AbilityHookExecutorSystem
-  → EffectTickSystem → AuraTickSystem → AttributeAggregationSystem
+  → EffectTickSystem → AttributeAggregationSystem
   → [CueDispatchSystem] → CueBufferCleanupSystem
 ```
 
@@ -93,23 +88,17 @@ export const combatDefs = defineAbilitySystem({
 ```typescript
 import { GameWorld, resetEntityIdCounter } from 'phalanx-ecs';
 import { createAbilitySystem } from 'phalanx-abilities';
-import { PhysicsWorld } from 'phalanx-physics';
 
 resetEntityIdCounter();
 const world = new GameWorld({ tickRate: 20 });
-const physicsWorld = new PhysicsWorld({ tickRate: 20 });
 
 const abilities = createAbilitySystem(world, {
   definitions: combatDefs,
-  physicsWorld,
   hooks: { 'Hook.SpawnProjectile': myHook },
   cues: 'dispatch',
 });
 
-world.registerSystems(
-  [...abilities.tickSystems, physicsWorld.getSystems().physicsSystem],
-  []
-);
+world.registerSystems([...abilities.tickSystems], [], 'default');
 ```
 
 ### 3. Equip entities
@@ -171,23 +160,15 @@ world.eventBus.on<GameplayCueDispatchedEvent>(GAMEPLAY_CUE_EVENT, (e) => {
 | Self-buff | `{ kind: 'Self' }` |
 | Single target from click | `{ kind: 'Entity', origin: { kind: 'Caller' } }` + `providedTarget.entityId` |
 | Ground target | `{ kind: 'Point', origin: { kind: 'Caller' } }` + `providedTarget.x/z` |
-| AoE at caster | `{ kind: 'Radius', origin: { kind: 'Caster' }, radius }` + `physicsWorld` |
-| AoE at point | `applyEffectAoE({ x, z }, effectId, sourceId, { radius })` |
 
 ### Hook vs targetEffectIds
 
 | Pattern | Use |
 |---------|-----|
 | Damage/buff applied directly to resolved targets | `targetEffectIds` |
-| Spawn projectile/rocket/aura entity | `hookId` + `registerHook` / `hooks` config |
+| Spawn projectile/rocket entity | `hookId` + `registerHook` / `hooks` config |
 | Hit damage after projectile travels | Hook spawns entity; **on hit** call `applyEffect` (not `targetEffectIds`) |
 
-### Aura vs one-shot AoE
-
-| Pattern | Use |
-|---------|-----|
-| Explosion at one instant | `applyEffectAoE` on impact |
-| Heal/damage in area every N ticks | `spawnAura` with `periodTicks` and Instant `effectIds` |
 
 ### Channeling
 
@@ -211,28 +192,16 @@ defineAbility({
 // Hook spawns projectile; on hit: abilities.applyEffect(target, 'Effect.AutoAttack.Damage', caster);
 ```
 
-### Healing aura
+### Health regeneration (Periodic Effect)
 
 ```typescript
-// Hook after Self-target activation:
-abilities.spawnAura({
-  abilityId: 'Ability.HealingAura',
-  target: {
-    kind: 'Radius',
-    origin: { kind: 'TargetEntity', entityId: zone.id },
-    radius: FP.FromInt(8),
-    filter: { tagsRequired: ['Team.Ally'] },
-    includeSelf: true,
-  },
-  effectIds: ['Effect.Heal'],
-  periodTicks: 60,
-  ownerEntityId: ctx.casterEntityId,
-  lifetimeEffectId: 'Effect.HealingAura.Lifetime',
-  lifetimeTag: 'Aura.HealingAura.Active',
+defineAbility({
+  id: 'Ability.HealthRegen',
+  target: { kind: 'Self' },
+  targetEffectIds: ['Effect.HealthRegen'],
 });
+// Effect.HealthRegen type: 'Periodic' with durationTicks/periodTicks
 ```
-
-Ensure zone position is visible to `ISpatialQuery` (physics grid or custom adapter).
 
 ### Armor-shred beam
 
@@ -257,15 +226,14 @@ const damage = FP.Mul(baseDamage, mult);
 
 Not automatic in the library (MVP) — v2 execution calculations may absorb this.
 
-### Rocket AoE
+### Custom execution formulas
+
+`phalanx-abilities` doesn't support complex math inside effect definitions yet. For complex formulas (e.g. `Damage = (Base + Strength * 2) * (1 - Armor / 100)`), read the attributes from the facade and calculate manually before calling `applyEffect`.
 
 ```typescript
-abilities.applyEffectAoE(
-  { x: hitX, z: hitZ },
-  'Effect.Explosion',
-  casterId,
-  { radius: FP.FromInt(6), maxTargets: 8, includeSelf: false, selfId: casterId }
-);
+const mult =
+  abilities.tryGetAttribute(targetId, 'IncomingDamageMultiplier')?.current ?? FP.FromInt(1);
+const damage = FP.Mul(baseDamage, mult);
 ```
 
 ## phalanx-ecs integration
@@ -276,43 +244,11 @@ abilities.applyEffectAoE(
 - Attach `AbilitySystemComponent` via `abilities.initComponent()` rather than low-level attribute/tag components unless testing internals
 - `GameplayCueBuffer` is world-scoped runtime — not an `IComponent`
 
-## phalanx-physics integration
-
-```typescript
-import { PhysicsWorld } from 'phalanx-physics';
-import { createAbilitySystem } from 'phalanx-abilities';
-
-const physicsWorld = new PhysicsWorld({ tickRate: 20 });
-
-const abilities = createAbilitySystem(world, {
-  definitions: combatDefs,
-  physicsWorld,
-});
-
-// Link transform store on tick 0 (see phalanx-physics skill), then:
-world.registerSystems(
-  [movementSystem, ...abilities.tickSystems, physicsWorld.getSystems().physicsSystem],
-  frameSystems
-);
-```
-
-Manual adapter (equivalent):
-
-```typescript
-import { createPhysicsSpatialQuery } from 'phalanx-physics';
-import { spatialQueryFromPhysicsWorld } from 'phalanx-abilities';
-
-// Either works; prefer physicsWorld config on createAbilitySystem.
-```
-
-`spatialQuery` in config **overrides** `physicsWorld`.
-
 ## Determinism Rules
 
 - All modifier magnitudes: `FP.FromInt` / `FP.FromFloat` — never raw `number` in defs
 - Durations: integer `durationTicks` / `periodTicks`, not seconds
-- AoE: targets sorted by entity id ASC; `maxTargets` after sort; FP squared distance
-- No `Math.random`, `Date.now`, or native float math in hooks or custom `ISpatialQuery`
+- No `Math.random`, `Date.now`, or native float math in hooks
 - `activateAbility` snapshots `providedTarget` — do not mutate the object after the call
 - `applyEffect` source default: `NO_SOURCE_ENTITY_ID` (`-1`) when omitted
 - Effect removal via `removeEffectsByTag` flags `remainingTicks = 0`; processed next `EffectTickSystem` pass
@@ -324,12 +260,9 @@ import { spatialQueryFromPhysicsWorld } from 'phalanx-abilities';
 |--------------|-----|
 | Expect `activateAbility` === success | Only means queued; listen to `ABILITY_ACTIVATED_EVENT` |
 | Read `current` attribute immediately after `applyEffect` | Wait for tick systems + aggregation |
-| `Math.sqrt` for AoE range | Use squared FP distance in custom queries |
-| Non-Instant effects in `spawnAura` effectIds | Stacks unbounded each period |
 | `applyEffect` from cue listeners | Breaks determinism; use command/input systems |
 | Global attribute/effect registries | Registries are per `createAbilitySystem` / world |
 | Mutate `GameplayTagsComponent.tags` directly | Use `addTag` / effects / `removeEffectsByTag` |
-| Skip `physicsWorld` for `Radius` abilities | Throws at resolve time |
 | Server relay simulating cues | Cues belong on client `GameWorld` only |
 
 ## Exports from phalanx-abilities
@@ -358,7 +291,6 @@ import {
 // Components
 import {
   AbilitySystemComponent,
-  AuraComponent,
   AbilitiesComponentType,
 } from 'phalanx-abilities';
 
@@ -369,13 +301,6 @@ import {
   GAMEPLAY_CUE_EVENT,
   gameplayCueKey,
   type GameplayCueDispatchedEvent,
-} from 'phalanx-abilities';
-
-// Spatial
-import {
-  type ISpatialQuery,
-  spatialQueryFromPhysicsWorld,
-  type PhysicsWorldSpatialQuery,
 } from 'phalanx-abilities';
 
 // Types
@@ -396,7 +321,6 @@ import {
   AbilityActivationSystem,
   EffectApplicationSystem,
   EffectTickSystem,
-  AuraTickSystem,
   AttributeAggregationSystem,
   AbilityHookExecutorSystem,
   CueDispatchSystem,
@@ -414,7 +338,7 @@ resetEntityIdCounter();
 const world = new GameWorld({});
 const abilities = createAbilitySystem(world, {
   definitions: myDefs,
-  pipeline: 'activation', // or 'effects', 'auras', 'full'
+  pipeline: 'activation', // or 'effects', 'full'
 });
 world.registerSystems([...abilities.tickSystems], []);
 world.processAllTicks(2);
@@ -422,10 +346,7 @@ world.processAllTicks(2);
 
 Use `pipeline: 'effects-retain-cues'` to assert on `abilities.gameplayCueBuffer` before cleanup.
 
-See `phalanx-abilities/tests/helpers.ts` for `FakeSpatialQuery` when physics is not required.
-
 ## Related skills
 
 - `phalanx-ecs` — GameWorld, entities, systems, lockstep
-- `phalanx-physics` — PhysicsWorld, spatial grid, transform linking
 - `phalanx-math` — fixed-point arithmetic (use with all ability magnitudes)

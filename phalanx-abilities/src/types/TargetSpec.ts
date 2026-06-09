@@ -14,15 +14,7 @@ export interface TargetFilter {
 export type TargetSpec =
   | { kind: 'Self' }
   | { kind: 'Entity'; origin: TargetOrigin }
-  | { kind: 'Point'; origin: TargetOrigin }
-  | {
-      kind: 'Radius';
-      origin: TargetOrigin;
-      radius: FixedPoint;
-      maxTargets?: number;
-      filter?: TargetFilter;
-      includeSelf?: boolean;
-    };
+  | { kind: 'Point'; origin: TargetOrigin };
 
 export interface ProvidedTarget {
   entityId?: number;

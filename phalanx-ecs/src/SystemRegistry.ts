@@ -66,6 +66,7 @@ export class SystemRegistry {
       this.context.registerSystem(system);
     }
 
+    // Implicitly append ability tick systems if present in context
     if (this.context.abilities) {
       for (const system of this.context.abilities.tickSystems) {
         this.tickSystems.push(system);

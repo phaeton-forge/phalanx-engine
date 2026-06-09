@@ -1,4 +1,4 @@
-import type { Entity, GameSystem, GameWorld, IAbilitySystem } from 'phalanx-ecs';
+import type { GameSystem, GameWorld, IAbilitySystem } from 'phalanx-ecs';
 import { FP } from 'phalanx-math';
 import type { FixedPoint } from 'phalanx-math';
 import {
@@ -9,7 +9,6 @@ import {
   AbilityActivationSystem,
   AbilityHookExecutorSystem,
   AttributeAggregationSystem,
-  AuraTickSystem,
   CueBufferCleanupSystem,
   CueDispatchSystem,
   EffectApplicationSystem,
@@ -20,13 +19,9 @@ import type { AbilitySystemRegistries } from '../registry';
 import { createAbilitySystemRuntime } from '../runtime';
 import type { AbilitySystemRuntime } from '../runtime';
 import type { GameplayCueBufferView } from '../runtime';
-import type { ISpatialQuery, PhysicsWorldSpatialQuery } from '../spatial';
-import { spatialQueryFromPhysicsWorld } from '../spatial';
 import type {
   AbilityHook,
   ProvidedTarget,
-  TargetFilter,
-  TargetSpec,
 } from '../types';
 import { AbilitySystemFacade, NO_SOURCE_ENTITY_ID } from './AbilitySystemFacade';
 import type { AttributeValue } from './AbilitySystemFacade';
@@ -38,8 +33,7 @@ export type AbilitySystemPipeline =
   | 'effects'
   /** Like `effects`, but leaves the cue buffer populated for test assertions. */
   | 'effects-retain-cues'
-  | 'attributes'
-  | 'auras';
+  | 'attributes';
 
 export type AttributeInitializer =
   | FixedPoint
@@ -64,18 +58,6 @@ export interface CreateAbilitySystemConfig {
   definitions: AbilitySystemDefinitions;
   hooks?: Record<string, AbilityHook>;
   /**
-   * When set, registers this adapter for radius targeting and AoE. Takes
-   * precedence over {@link physicsWorld}.
-   */
-  spatialQuery?: ISpatialQuery;
-  /**
-   * Default spatial backend: wraps `physicsWorld.spatialGrid` and
-   * `physicsWorld.getEntityPosition` into {@link ISpatialQuery}. Pass a
-   * {@link import('phalanx-physics').PhysicsWorld | PhysicsWorld} instance;
-   * no extra registration step is required for the common physics + abilities setup.
-   */
-  physicsWorld?: PhysicsWorldSpatialQuery;
-  /**
    * Which simulation systems to register. Defaults to `full`.
    */
   pipeline?: AbilitySystemPipeline;
@@ -97,18 +79,6 @@ export interface AbilitySystem extends IAbilitySystem {
   initComponent(init?: AbilitySystemComponentInit): AbilitySystemComponent;
   activateAbility(casterEntityId: number, abilityId: string, providedTarget?: ProvidedTarget): boolean;
   applyEffect(targetEntityId: number, effectId: string, sourceEntityId?: number): void;
-  applyEffectAoE(
-    origin: { x: FixedPoint; z: FixedPoint },
-    effectId: string,
-    sourceEntityId?: number,
-    opts?: {
-      radius: FixedPoint;
-      maxTargets?: number;
-      filter?: TargetFilter;
-      includeSelf?: boolean;
-      selfId?: number;
-    }
-  ): number[];
   removeEffectsByTag(entityId: number, grantedTag: string): number;
   removeEffectsByDefId(entityId: number, effectId: string): number;
   getAttribute(entityId: number, attrId: string): AttributeValue;
@@ -116,22 +86,6 @@ export interface AbilitySystem extends IAbilitySystem {
   hasTag(entityId: number, tag: string): boolean;
   addTag(entityId: number, tag: string): void;
   removeTag(entityId: number, tag: string): boolean;
-  spawnAura(params: {
-    abilityId: string;
-    target: TargetSpec;
-    effectIds: readonly string[];
-    periodTicks: number;
-    ownerEntityId: number;
-    lifetimeEffectId?: string;
-    lifetimeTag?: string;
-    isActive?: boolean;
-    requiredTag?: string;
-  }): Entity;
-  setAuraActive(
-    entityId: number,
-    active: boolean,
-    options?: { readonly resetSchedule?: boolean }
-  ): void;
 }
 
 export function createAbilitySystem(
@@ -144,11 +98,6 @@ export function createAbilitySystem(
   const runtime = createAbilitySystemRuntime();
   const facade = new AbilitySystemFacade(world.entityManager, registries, runtime);
 
-  if (config.spatialQuery) {
-    facade.registerSpatialQuery(config.spatialQuery);
-  } else if (config.physicsWorld) {
-    facade.registerSpatialQuery(spatialQueryFromPhysicsWorld(config.physicsWorld));
-  }
   if (config.hooks) {
     for (const [hookId, hook] of Object.entries(config.hooks)) {
       facade.registerHook(hookId, hook);
@@ -178,7 +127,6 @@ export const abilityComponentTypes: readonly symbol[] = [
   AbilitiesComponentType.Attributes,
   AbilitiesComponentType.ActiveEffects,
   AbilitiesComponentType.GameplayTags,
-  AbilitiesComponentType.Aura,
 ];
 
 class AbilitySystemImpl implements AbilitySystem {
@@ -234,24 +182,6 @@ class AbilitySystemImpl implements AbilitySystem {
     this.facade.applyEffect(targetEntityId, effectId, sourceEntityId);
   }
 
-  public applyEffectAoE(
-    origin: { x: FixedPoint; z: FixedPoint },
-    effectId: string,
-    sourceEntityId: number = NO_SOURCE_ENTITY_ID,
-    opts?: {
-      radius: FixedPoint;
-      maxTargets?: number;
-      filter?: TargetFilter;
-      includeSelf?: boolean;
-      selfId?: number;
-    }
-  ): number[] {
-    if (!opts) {
-      throw new Error('applyEffectAoE requires opts.radius');
-    }
-    return this.facade.applyEffectAoE(origin, effectId, sourceEntityId, opts);
-  }
-
   public removeEffectsByTag(entityId: number, grantedTag: string): number {
     return this.facade.removeEffectsByTag(entityId, grantedTag);
   }
@@ -278,28 +208,6 @@ class AbilitySystemImpl implements AbilitySystem {
 
   public removeTag(entityId: number, tag: string): boolean {
     return this.facade.removeTag(entityId, tag);
-  }
-
-  public spawnAura(params: {
-    abilityId: string;
-    target: TargetSpec;
-    effectIds: readonly string[];
-    periodTicks: number;
-    ownerEntityId: number;
-    lifetimeEffectId?: string;
-    lifetimeTag?: string;
-    isActive?: boolean;
-    requiredTag?: string;
-  }): Entity {
-    return this.facade.spawnAura(params);
-  }
-
-  public setAuraActive(
-    entityId: number,
-    active: boolean,
-    options?: { readonly resetSchedule?: boolean }
-  ): void {
-    this.facade.setAuraActive(entityId, active, options);
   }
 
   private seedAttributes(
@@ -438,15 +346,12 @@ function buildTickSystems(
         aggregation,
         cueCleanup,
       ];
-    case 'auras':
-      return [effectApplication, effectTick, new AuraTickSystem(registries, runtime), aggregation];
     case 'full':
       return [
         new AbilityActivationSystem(registries, runtime),
         effectApplication,
         new AbilityHookExecutorSystem(registries, runtime),
         effectTick,
-        new AuraTickSystem(registries, runtime),
         aggregation,
         ...(dispatchCues ? [new CueDispatchSystem(runtime)] : []),
         cueCleanup,
