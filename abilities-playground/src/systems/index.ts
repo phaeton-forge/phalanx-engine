@@ -1,11 +1,10 @@
 export { AttackSystem } from './AttackSystem';
-export { BeamSystem } from './BeamSystem';
 export { DeathSystem } from './DeathSystem';
-export { HealerAuraSystem } from './HealerAuraSystem';
 export { InterpolationSystem } from './InterpolationSystem';
 export { MovementSystem } from './MovementSystem.ts';
 export { ProjectileCollisionSystem } from './ProjectileCollisionSystem';
 export { ProjectileMovementSystem } from './ProjectileMovementSystem';
+export { ProjectileDespawnQueueSystem } from './ProjectileDespawnQueueSystem';
 export { RenderSyncSystem } from './RenderSyncSystem';
 export { RotationSystem } from './RotationSystem';
 export { StartSimulationSystem } from './StartSimulationSystem';

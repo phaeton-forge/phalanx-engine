@@ -2,7 +2,6 @@ import { GameSystem } from 'phalanx-ecs';
 import type { SoAComponentStore, SystemContext } from 'phalanx-ecs';
 import { FP } from 'phalanx-math';
 import type { FixedPoint } from 'phalanx-math';
-import type { PhysicsSpatialQuery } from 'phalanx-physics';
 import {
   ComponentType,
   TargetStateComponent,
@@ -16,11 +15,9 @@ export class TargetingSystem extends GameSystem {
   private transformStore!: SoAComponentStore<
     typeof TransformSoASchema.definition
   >;
-  private readonly spatialQuery: PhysicsSpatialQuery;
 
-  constructor(spatialQuery: PhysicsSpatialQuery) {
+  constructor() {
     super();
-    this.spatialQuery = spatialQuery;
   }
 
   public override init(context: SystemContext): void {
@@ -58,16 +55,9 @@ export class TargetingSystem extends GameSystem {
       let bestTargetId: number | null = null;
       let bestDistanceSq: FixedPoint | null = null;
 
-      const candidateIds = this.spatialQuery.queryRadius(
-        unitX,
-        unitZ,
-        detectionRadius,
-      );
-
-      for (const candidateId of candidateIds) {
+      for (const candidate of units) {
+        const candidateId = candidate.id;
         if (candidateId === unit.id) continue;
-
-        const candidate = this.entityManager.getEntity(candidateId);
         if (!candidate) continue;
 
         const candidateStats = candidate.getComponent<StatsComponent>(

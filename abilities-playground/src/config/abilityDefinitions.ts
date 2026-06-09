@@ -10,12 +10,6 @@ export const ATTACK_COOLDOWN_TICKS = 40;
 /** Beam effect duration in ticks */
 export const BEAM_EFFECT_DURATION_TICKS = 3;
 
-/** Healing aura fires every N ticks (1 s at 20 TPS) */
-export const HEAL_AURA_PERIOD_TICKS = 20;
-
-/** Healing aura radius in world units */
-export const HEAL_AURA_RADIUS = 20;
-
 export const combatDefs = defineAbilitySystem({
   attributes: [
     defineAttribute({
@@ -72,11 +66,6 @@ export const combatDefs = defineAbilitySystem({
       id: 'Effect.Damage.SphereIlluminated',
       type: 'Instant',
       modifiers: [{ attributeId: 'Health', op: 'Add', magnitude: FP.FromFloat(-23.4) }],
-    }),
-    defineEffect({
-      id: 'Effect.HealAura.Tick',
-      type: 'Instant',
-      modifiers: [{ attributeId: 'Health', op: 'Add', magnitude: FP.FromFloat(5) }],
     }),
     defineEffect({
       id: 'Effect.Illuminated',

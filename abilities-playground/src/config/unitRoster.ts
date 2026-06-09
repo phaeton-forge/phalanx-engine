@@ -1,4 +1,4 @@
-export type UnitKind = 'sphere' | 'cube' | 'cone';
+export type UnitKind = 'sphere' | 'cube';
 
 /** Default hostile detection radius (world units); matches gameplay and debug ring. */
 export const DEFAULT_UNIT_DETECTION_RANGE = 25;

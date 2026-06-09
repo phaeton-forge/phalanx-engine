@@ -2,8 +2,6 @@ import { Entity } from 'phalanx-ecs';
 import { FP, FPVector3 } from 'phalanx-math';
 import { PhysicsBodyComponent } from 'phalanx-physics';
 import {
-  ConeBeamComponent,
-  HealerAuraLinkComponent,
   HealthBarComponent,
   InterpolationComponent,
   MeshComponent,
@@ -67,13 +65,6 @@ export class UnitEntity extends Entity {
 
     if (renderRefs.spawnPoint) {
       this.addComponent(new SpawnPointComponent(renderRefs.spawnPoint.marker));
-    }
-
-    if (rosterEntry.kind === 'cube') {
-      this.addComponent(new HealerAuraLinkComponent());
-    }
-    if (rosterEntry.kind === 'cone') {
-      this.addComponent(new ConeBeamComponent());
     }
   }
 }

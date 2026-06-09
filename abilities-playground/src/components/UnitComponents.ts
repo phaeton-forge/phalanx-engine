@@ -129,20 +129,6 @@ export class DeathFadeComponent implements IComponent {
   }
 }
 
-export class HealerAuraLinkComponent implements IComponent {
-  public readonly type = ComponentType.HealerAuraLink;
-  public auraEntityId: number | null;
-
-  constructor(auraEntityId: number | null = null) {
-    this.auraEntityId = auraEntityId;
-  }
-}
-
-export class ConeBeamComponent implements IComponent {
-  public readonly type = ComponentType.ConeBeam;
-  public primaryTargetId: number | null = null;
-  public secondaryTargetId: number | null = null;
-}
 
 export class SimulationStateComponent implements IComponent {
   public readonly type = ComponentType.SimulationState;

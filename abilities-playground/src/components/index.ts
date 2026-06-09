@@ -9,8 +9,6 @@ export {
   MeshComponent,
   HealthBarComponent,
   DeathFadeComponent,
-  HealerAuraLinkComponent,
-  ConeBeamComponent,
   SimulationStateComponent,
   DetectionRingComponent,
 } from './UnitComponents';

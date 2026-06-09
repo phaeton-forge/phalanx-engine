@@ -5,7 +5,6 @@ import { FP } from 'phalanx-math';
 import { PhysicsSoASchema } from 'phalanx-physics';
 import {
   ComponentType,
-  HealerAuraLinkComponent,
   SimulationStateComponent,
   TeamComponent,
   StatsComponent,
@@ -91,18 +90,8 @@ export class DeathSystem extends GameSystem {
         continue;
       }
 
-      const auraLink = entity.getComponent<HealerAuraLinkComponent>(ComponentType.HealerAuraLink);
-      const auraEntityId = auraLink?.auraEntityId ?? null;
-
       this.entityManager.removeEntity(entity);
       this.pendingDespawnTickByEntityId.delete(entityId);
-
-      if (auraEntityId !== null) {
-        const auraEntity = this.entityManager.getEntity(auraEntityId);
-        if (auraEntity) {
-          this.entityManager.removeEntity(auraEntity);
-        }
-      }
     }
   }
 

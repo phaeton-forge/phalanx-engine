@@ -14,8 +14,6 @@ export const ComponentType = createComponentTypeRegistry({
   Mesh: 'Mesh',
   HealthBar: 'HealthBar',
   DeathFade: 'DeathFade',
-  HealerAuraLink: 'HealerAuraLink',
-  ConeBeam: 'ConeBeam',
   Interpolation: 'Interpolation',
   SimulationState: 'SimulationState',
   PhysicsBody: 'PhysicsBody',

@@ -115,7 +115,6 @@ export class UnitFactory {
   getHeightOffset(kind: UnitKind): number {
     switch (kind) {
       case 'cube': return 2.5;
-      case 'cone': return 3.5;
       case 'sphere': return 2;
     }
   }
@@ -132,11 +131,6 @@ export class UnitFactory {
       case 'cube':
         return new THREE.Mesh(
           this.arenaScene.trackGeometry(new THREE.BoxGeometry(5, 5, 5)),
-          material,
-        );
-      case 'cone':
-        return new THREE.Mesh(
-          this.arenaScene.trackGeometry(new THREE.ConeGeometry(3.2, 7, 24)),
           material,
         );
       case 'sphere':

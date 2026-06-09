@@ -2,9 +2,8 @@ import * as THREE from 'three';
 import type { PhalanxClient } from 'phalanx-client';
 import { Entity, GameWorld } from 'phalanx-ecs';
 import type { SoAComponentStore, SoASchemaDefinition } from 'phalanx-ecs';
-import { FP, FPVector3 } from 'phalanx-math';
-import { PhysicsBodyComponent, PhysicsSoASchema, PHYSICS_BODY_COMPONENT_TYPE } from 'phalanx-physics';
-import { createPhysicsSpatialQuery, PhysicsWorld } from 'phalanx-physics';
+import { FP } from 'phalanx-math';
+import { PhysicsWorld } from 'phalanx-physics';
 import {
   gameplayCueKey,
   type AbilityActivationContext,
@@ -13,15 +12,13 @@ import {
 } from 'phalanx-abilities';
 import type { AbilitySystem } from 'phalanx-abilities';
 import { arenaParams, networkConfig, physicsConfig } from '../config/constants';
-import { combatDefs, HEAL_AURA_PERIOD_TICKS, HEAL_AURA_RADIUS, UNIT_MOVE_SPEED } from '../config/abilityDefinitions';
+import { combatDefs, UNIT_MOVE_SPEED } from '../config/abilityDefinitions';
 import { DEFAULT_UNIT_DETECTION_RANGE, UNIT_ROSTER } from '../config/unitRoster';
 import {
   ComponentType,
-  HealerAuraLinkComponent,
   MeshComponent,
   StatsComponent,
   SimulationStateComponent,
-  TransformComponent,
   TransformSoASchema,
 } from '../components';
 import { PROJECTILE_RADIUS } from '../entities/Projectile.ts';
@@ -29,7 +26,6 @@ import { UnitEntity } from '../entities/UnitEntity';
 import {
   AttackSystem,
   DeathSystem,
-  HealerAuraSystem,
   InterpolationSystem,
   MovementSystem,
   RenderSyncSystem,
@@ -39,12 +35,9 @@ import {
 } from '../systems';
 import type { UnitFactory } from './UnitFactory';
 import {ProjectileEntity} from "../entities/Projectile.ts";
-import {autoAttack} from "../hooks/AutoAttack.ts";
-import { ProjectileCollisionSystem } from '../systems/ProjectileCollisionSystem';
-import { ProjectileMovementSystem } from '../systems/ProjectileMovementSystem.ts';
-import { ProjectileDespawnQueueSystem } from '../systems/ProjectileDespawnQueueSystem';
-import { damageSphereCue, updateCueVfx } from '../cues/damageSphereCue.ts';
-import { deathCue } from '../cues/deathCue.ts';
+import { autoAttack } from "../hooks/AutoAttack.ts";
+import { ProjectileDespawnQueueSystem, ProjectileCollisionSystem, ProjectileMovementSystem } from '../systems';
+import { damageSphereCue, updateCueVfx, deathCue } from '../cues';
 
 export class SimulationContainer {
   readonly world: GameWorld;
@@ -132,14 +125,12 @@ export class SimulationContainer {
       return true;
     });
 
-    const spatialQuery = createPhysicsSpatialQuery(this.physicsWorld);
     const { physicsSystem } = this.physicsWorld.getSystems();
     this.world.registerSystems(
       [
         this.startSimulationSystem,
-        new TargetingSystem(spatialQuery),
+        new TargetingSystem(),
         new AttackSystem(),
-        new HealerAuraSystem(),
         new MovementSystem(),
         new ProjectileMovementSystem(this.world),
         physicsSystem,
@@ -233,59 +224,7 @@ export class SimulationContainer {
           }),
         );
         this.world.entityManager.addEntity(unitEntity);
-
-        if (rosterEntry.kind === 'cube') {
-          this.spawnHealerAura(unitEntity, teamId, { x, z });
-        }
       }
     }
-  }
-
-  private spawnHealerAura(
-    cubeEntity: UnitEntity,
-    teamId: 0 | 1,
-    position: { x: number; z: number },
-  ): void {
-    const link = cubeEntity.getComponent<HealerAuraLinkComponent>(ComponentType.HealerAuraLink);
-    if (!link) return;
-
-    const zoneEntity = this.abilities.spawnAura({
-      abilityId: 'Ability.HealAura',
-      target: {
-        kind: 'Radius',
-        origin: { kind: 'Caster' },
-        radius: FP.FromFloat(HEAL_AURA_RADIUS),
-        filter: {
-          tagsRequired: [`Team.${teamId}`],
-          tagsBlocked: ['State.Death'],
-        },
-        includeSelf: true,
-      },
-      effectIds: ['Effect.HealAura.Tick'],
-      periodTicks: HEAL_AURA_PERIOD_TICKS,
-      ownerEntityId: cubeEntity.id,
-    });
-
-    const initialFp = FPVector3.FromFloat(position.x, 0, position.z);
-    const zoneTransform = new TransformComponent(zoneEntity.id, initialFp);
-    zoneEntity.addComponent(zoneTransform);
-    this.world.entityManager.onComponentAdded(zoneEntity, ComponentType.Transform);
-
-    const zonePhysics = new PhysicsBodyComponent(zoneEntity.id, {
-      radius: FP.FromFloat(0.1),
-      mass: FP.FromFloat(1),
-      friction: FP.FromFloat(0),
-      restitution: FP.FromFloat(0),
-    });
-    zoneEntity.addComponent(zonePhysics);
-    this.world.entityManager.onComponentAdded(zoneEntity, PHYSICS_BODY_COMPONENT_TYPE);
-
-    const physStore = this.world.entityManager.getOrCreateSoAStore(PhysicsSoASchema);
-    const physIdx = physStore.indexOf(zoneEntity.id);
-    if (physIdx !== -1) {
-      physStore.arrays.ignorePhysics[physIdx] = 1;
-    }
-
-    link.auraEntityId = zoneEntity.id;
   }
 }

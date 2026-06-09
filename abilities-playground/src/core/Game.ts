@@ -65,7 +65,6 @@ export class Game {
     this.simulation.linkTransformStore();
     this.simulation.world.start({
       beforeTick: (_tick: number, commandsBatch: CommandsBatch) => {
-        // this.simulation.linkTransformStore();
         this.simulation.startSimulationSystem.processCommands(commandsBatch);
       },
       afterTick: () => {
@@ -77,6 +76,7 @@ export class Game {
       },
       afterFrame: () => {
         const dt = this.lastFrameDtSeconds || 0;
+
         this.simulation.updatePresentation(dt);
         this.simulation.renderSyncSystem.update(dt);
         this.renderer.render(this.arenaScene.scene, this.cameraController.camera);
@@ -84,7 +84,6 @@ export class Game {
     });
     this.simulation.interpolationSystem.snapToCurrentPositions();
     this.client.sendReady();
-    console.log(`[PreviewGame] ready match=${this.matchData.matchId} team=${this.matchData.teamId}`);
   }
 
   dispose(): void {
@@ -105,8 +104,11 @@ export class Game {
 
   private checkGameOver(): void {
     if (this.gameOverShown || this.disposed) return;
+
     const title = this.simulation.getGameOverTitle(this.localTeamId);
+
     if (title === null) return;
+
     this.gameOverShown = true;
     this.ui.showResultOverlay(title);
   }
@@ -115,6 +117,7 @@ export class Game {
     const canvas = this.renderer.domElement;
     const width = canvas.clientWidth || window.innerWidth;
     const height = canvas.clientHeight || window.innerHeight;
+
     this.cameraController.onResize(width, height);
     this.renderer.setSize(width, height, false);
   };
