@@ -18,7 +18,7 @@ A deterministic gameplay ability system (GAS-inspired) for the [Phalanx Engine](
 
 Included in v0.1: flat modifiers, channeling via `Duration` + `removeEffectsByTag`, hooks.
 
-Planned for v2: execution calculations, granted abilities, stacking rules, `Box`/`Cone` targets, line-of-sight raycast, SoA attribute storage.
+Planned for v2: execution calculations, granted abilities, stacking rules, line-of-sight raycast, SoA attribute storage.
 
 ## Installation
 
@@ -387,8 +387,7 @@ Enable dispatch with `createAbilitySystem(world, { cues: 'dispatch' })`. Headles
 
 - Use `FP.*` from `phalanx-math` for all modifier magnitudes
 - Store durations as integer **ticks**, not floats or `Date.now`
-- Distance checks use `dx*dx + dz*dz <= r*r` in fixed-point — no `Math.sqrt`
-- Target lists are snapshotted at resolve time; late movement does not change who was hit
+- Target resolution is snapshotted at activation; movement after activation does not change which entity or point was targeted
 - Call `resetEntityIdCounter()` from `phalanx-ecs` at match start so projectile spawns get identical ids on every peer
 - Hooks must be pure deterministic simulation — no `Math.random()` or wall-clock time
 
@@ -453,7 +452,7 @@ See `src/index.ts` for the full public surface.
 1. **phalanx-ecs**: `GameWorld`, `Entity`, `resetEntityIdCounter`, register `abilities.tickSystems` in deterministic order alongside movement/physics/combat systems.
 2. **phalanx-math**: `FP.FromInt`, `FP.FromFloat`, `FP.Add`, `FP.Mul`, etc. for all magnitudes.
 3. **Client-only cues**: `cues: 'dispatch'` and subscribe on `world.eventBus`; never mutate simulation from cue handlers.
-4. **User-owned systems**: projectiles, rockets, and damage formulas that read `IncomingDamageMultiplier` stay in game code; call `applyEffect` on deterministic events (collision, impact tick).
+4. **User-owned systems**: projectiles, rockets, AoE searches, and Aura ticking stay in game code. Call `applyEffect` or `activateAbility` from these systems on deterministic events (collision, timer tick).
 
 ## Testing
 

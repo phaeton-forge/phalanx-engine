@@ -250,6 +250,7 @@ const damage = FP.Mul(baseDamage, mult);
 - Durations: integer `durationTicks` / `periodTicks`, not seconds
 - No `Math.random`, `Date.now`, or native float math in hooks
 - `activateAbility` snapshots `providedTarget` — do not mutate the object after the call
+- AoE and Auras are **user-side**: implement radius searches and periodic aura ticks in your own game systems, then call `applyEffect` on targets.
 - `applyEffect` source default: `NO_SOURCE_ENTITY_ID` (`-1`) when omitted
 - Effect removal via `removeEffectsByTag` flags `remainingTicks = 0`; processed next `EffectTickSystem` pass
 - Two peers must register identical definitions before any entity spawns
