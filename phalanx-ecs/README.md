@@ -24,9 +24,10 @@ A lightweight, renderer-agnostic Entity-Component-System (ECS) library with opti
 - **IComponent**: Interface for all components
 
 ### System Architecture
-- **GameSystem**: Base class for all game systems
+- **GameSystem**: Base class for all game systems (convenience accessors for `eventBus`, `entityManager`, `abilities`, `physics`, `pools`)
 - **SystemRegistry**: Low-level system lifecycle and execution order (used internally by GameWorld)
-- **SystemContext**: Dependency injection container
+- **SystemContext**: Dependency injection container (`eventBus`, `entityManager`, optional `abilities` / `physics`, `pools`)
+- **ISystemLifecycleHooks**: Optional `IBeforeTick`, `IAfterTick`, `IBeforeFrame`, `IAfterFrame` interfaces — GameWorld invokes them automatically
 
 ### Event System
 - **EventBus**: Decoupled communication between systems
@@ -113,9 +114,8 @@ world.start({
     cameraController.update(dt);
   },
   afterFrame(alpha, dt) {
-    // Interpolate after frame systems
-    interpolationSystem.interpolate(alpha);
     // Render the scene (must be called manually)
+    // Interpolation is handled by phalanx-physics InterpolationSystem when registered
     scene.render();
   },
 });
@@ -212,6 +212,73 @@ class EntityManager {
   hasSoAStore(schema: SoASchema): boolean
 }
 ```
+
+### SystemContext
+
+```typescript
+class SystemContext {
+  readonly eventBus: EventBus
+  readonly entityManager: EntityManager
+  abilities: IAbilitySystem | undefined   // set by createAbilitySystem() before registerSystems()
+  physics: IPhysicsWorld | undefined      // set by game bootstrap before registerSystems()
+  pools: PoolManager | null               // wired automatically when pooling is configured
+
+  getSystem<T extends GameSystem>(systemClass: new (...args: any[]) => T): T | undefined
+}
+```
+
+Set optional services on `world.context` before calling `registerSystems()`:
+
+```typescript
+import { PhysicsWorld } from 'phalanx-physics';
+
+const physicsWorld = new PhysicsWorld({ tickRate: 20 });
+world.context.physics = physicsWorld;
+
+// Systems access it via the protected getter:
+class RenderSystem extends GameSystem {
+  update(_dt: number): void {
+    const sample = this.physics?.getInterpolatedTransform(entityId);
+  }
+}
+```
+
+### IPhysicsWorld (optional contract)
+
+Implemented by `PhysicsWorld` from phalanx-physics. Keeps phalanx-ecs dependency-free via `unknown` for fixed-point types.
+
+```typescript
+interface IPhysicsWorld {
+  getInterpolatedTransform(entityId: number): InterpolatedTransformSample | undefined
+  getEntityPosition(entityId: number): { x: unknown; z: unknown } | undefined
+  applyImpulse(entityId: number, vx: unknown, vz: unknown): void
+}
+
+interface InterpolatedTransformSample {
+  position: { x: number; y: number; z: number }
+  rotation: { x: number; y: number; z: number }
+}
+```
+
+### System Lifecycle Hooks
+
+Systems can implement optional hook interfaces. GameWorld calls them automatically at the correct pipeline phase (before user-supplied `GameWorldHooks` for "before" variants, after tick/frame systems for "after" variants):
+
+```
+Tick:  IBeforeTick systems → beforeTick hook → tick systems → IAfterTick systems → afterTick hook
+Frame: IBeforeFrame systems → beforeFrame hook → frame systems → IAfterFrame systems → afterFrame hook
+```
+
+```typescript
+import { GameSystem, type IBeforeTick, type IAfterTick, type IBeforeFrame } from 'phalanx-ecs';
+
+class MySystem extends GameSystem implements IBeforeTick, IAfterTick {
+  beforeTick(tick: number, commands: CommandsBatch): void { /* snapshot state */ }
+  afterTick(tick: number): void { /* capture state */ }
+}
+```
+
+Type guards are also exported: `isBeforeTick`, `isAfterTick`, `isBeforeFrame`, `isAfterFrame`.
 
 ### SystemRegistry (Low-level)
 
@@ -510,6 +577,11 @@ import { GameSystem, SystemContext } from 'phalanx-ecs';
 class MySystem extends GameSystem {
   init(context: SystemContext): void {
     super.init(context);
+
+    // Optional: resolve other systems or optional services
+    const movement = context.getSystem(MovementSystem);
+    const physics = this.physics;   // IPhysicsWorld | undefined
+    const abilities = this.abilities; // IAbilitySystem | undefined
 
     // Subscribe to events
     this.subscribe('MY_EVENT', (data) => {

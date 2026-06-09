@@ -1,9 +1,9 @@
 ---
 name: phalanx-ecs
-description: Create game logic using the phalanx-ecs library from the phalanx-engine repository. Use when the user wants to build entities, components, systems, game events, or a GameWorld using the Phalanx ECS architecture. Covers IComponent vs SoAComponent, GameSystem, EntityManager, EventBus, SystemContext, and deterministic lockstep game loop patterns.
+description: Create game logic using the phalanx-ecs library from the phalanx-engine repository. Use when the user wants to build entities, components, systems, game events, or a GameWorld using the Phalanx ECS architecture. Covers IComponent vs SoAComponent, GameSystem, EntityManager, EventBus, SystemContext (abilities, physics, pools), system lifecycle hooks, and deterministic lockstep game loop patterns.
 metadata:
   author: phaeton2040-AI
-  version: '1.0'
+  version: '1.1'
 ---
 
 # Phalanx ECS Skill
@@ -18,7 +18,7 @@ Use this skill when the user asks to:
 - Implement deterministic game logic with ECS
 - Create event-driven communication between systems
 - Query entities by component composition
-- Integrate phalanx-ecs with a rendering engine (Babylon.js, Three.js, Phaser, etc.)
+- Integrate phalanx-ecs with phalanx-physics via `SystemContext.physics` and lifecycle hooks
 - Implement hot-path systems with SoA (Structure-of-Arrays) storage
 
 ## Prerequisites
@@ -34,14 +34,16 @@ Use this skill when the user asks to:
 GameWorld (Facade)
 ├── EntityManager        ← Entity registry + component queries + SoA store management
 ├── EventBus             ← Decoupled system communication
-├── SystemContext         ← Dependency injection for systems
+├── SystemContext         ← Dependency injection (eventBus, entityManager, abilities, physics, pools)
 ├── SystemRegistry       ← System lifecycle and execution order
 └── TickFrameManager     ← Built-in single-player tick/frame loop
     or PhalanxClient     ← Multiplayer tick/frame provider
 ```
 
-Pipeline per tick:  `beforeTick → [tick systems processTick()] → afterTick`
-Pipeline per frame: `beforeFrame → [frame systems update()] → afterFrame`
+Pipeline per tick:  `IBeforeTick systems → beforeTick hook → [tick systems processTick()] → IAfterTick systems → afterTick hook`
+Pipeline per frame: `IBeforeFrame systems → beforeFrame hook → [frame systems update()] → IAfterFrame systems → afterFrame hook`
+
+Systems that implement `IBeforeTick`, `IAfterTick`, `IBeforeFrame`, or `IAfterFrame` are invoked automatically by GameWorld — no manual hook wiring needed.
 
 ## Step-by-Step Instructions
 
@@ -88,19 +90,50 @@ world.start({
     lockstepManager.cleanup();
   },
   afterFrame(alpha, dt) {
-    interpolation.interpolate(alpha);
     scene.render();  // Must call manually — GameWorld does NOT render
+    // Interpolation is handled by phalanx-physics InterpolationSystem when registered
   },
 });
 ```
 
-### 2. Create a Component Type Registry
+### 2. Wire Optional Services on SystemContext
+
+Set `abilities` and/or `physics` on `world.context` **before** `registerSystems()`:
+
+```typescript
+import { PhysicsWorld } from 'phalanx-physics';
+import { createAbilitySystem } from 'phalanx-abilities';
+
+const physicsWorld = new PhysicsWorld({ tickRate: 20 });
+world.context.physics = physicsWorld;
+
+const abilities = createAbilitySystem(world, { definitions: combatDefs });
+// createAbilitySystem sets world.context.abilities internally
+```
+
+Systems access these via protected getters on `GameSystem`:
+
+```typescript
+class RenderSystem extends GameSystem {
+  update(_dt: number): void {
+    const sample = this.physics?.getInterpolatedTransform(entityId);
+    const health = this.abilities?.tryGetAttribute(entityId, 'Health');
+  }
+}
+```
+
+### 3. Create a Component Type Registry
 
 Every game needs a registry mapping component names to unique symbols:
 
 ```typescript
-// src/components/Component.ts
 import { IComponent, createComponentTypeRegistry } from 'phalanx-ecs';
+import {
+  TRANSFORM_COMPONENT_TYPE,
+  INTERPOLATION_COMPONENT_TYPE,
+  PHYSICS_BODY_COMPONENT_TYPE,
+} from 'phalanx-physics';
+
 export type { IComponent };
 
 export const ComponentType = createComponentTypeRegistry({
@@ -109,10 +142,16 @@ export const ComponentType = createComponentTypeRegistry({
   Movement: 'Movement',
   Team: 'Team',
   Transform: 'Transform',
+  Interpolation: 'Interpolation',
   PhysicsBody: 'PhysicsBody',
   Resource: 'Resource',
   UnitType: 'UnitType',
 });
+
+// Override with canonical symbols from phalanx-physics
+(ComponentType as Record<string, symbol>).Transform = TRANSFORM_COMPONENT_TYPE;
+(ComponentType as Record<string, symbol>).Interpolation = INTERPOLATION_COMPONENT_TYPE;
+(ComponentType as Record<string, symbol>).PhysicsBody = PHYSICS_BODY_COMPONENT_TYPE;
 ```
 
 ## Component Types: IComponent vs SoAComponent
@@ -244,93 +283,46 @@ Components backed by contiguous typed arrays (`Float64Array`, `BigInt64Array`, `
 
 #### How to Create a SoAComponent
 
+For physics games, use `TransformComponent` from phalanx-physics instead of defining your own:
+
 ```typescript
-// src/components/TransformComponent.ts
-import { SoAComponent, defineSoASchema } from 'phalanx-ecs';
-import { ComponentType } from './Component';
-import { FP, type FixedPoint, FPVector3, type FPVector3 as FPVector3Type } from 'phalanx-math';
+import { TransformComponent, TransformSoASchema } from 'phalanx-physics';
+import { FPVector3 } from 'phalanx-math';
 
-// 1. Define the schema — maps field names to typed-array element types
-export const TransformSoASchema = defineSoASchema({
-  fpPositionX: 'i64',       // BigInt64Array — deterministic fixed-point
-  fpPositionY: 'i64',
-  fpPositionZ: 'i64',
-  visualPositionX: 'f64',   // Float64Array — cached float for rendering
-  visualPositionY: 'f64',
-  visualPositionZ: 'f64',
-}, 'Transform');
-
-// 2. Extend SoAComponent
-export class TransformComponent extends SoAComponent<typeof TransformSoASchema.definition> {
-  public readonly type = ComponentType.Transform;
-  static readonly soaSchema = TransformSoASchema;
-
-  constructor(entityId: number, initialPosition?: FPVector3Type) {
-    const pos = initialPosition ?? FPVector3.Zero;
-    super(TransformSoASchema, entityId, {
-      fpPositionX: FP.ToRaw(pos.x),
-      fpPositionY: FP.ToRaw(pos.y),
-      fpPositionZ: FP.ToRaw(pos.z),
-      visualPositionX: FP.ToFloat(pos.x),
-      visualPositionY: FP.ToFloat(pos.y),
-      visualPositionZ: FP.ToFloat(pos.z),
-    });
-  }
-
-  // 3. Getters/setters provide clean API for infrequent access (spawning, event handlers)
-  get fpPosition(): FPVector3Type {
-    const idx = this.getIndex();
-    return {
-      x: FP.FromRaw(this.store.arrays.fpPositionX[idx]),
-      y: FP.FromRaw(this.store.arrays.fpPositionY[idx]),
-      z: FP.FromRaw(this.store.arrays.fpPositionZ[idx]),
-    };
-  }
-
-  set fpPosition(value: FPVector3Type) {
-    const idx = this.getIndex();
-    this.store.arrays.fpPositionX[idx] = FP.ToRaw(value.x);
-    this.store.arrays.fpPositionY[idx] = FP.ToRaw(value.y);
-    this.store.arrays.fpPositionZ[idx] = FP.ToRaw(value.z);
-    // Sync visual position
-    this.store.arrays.visualPositionX[idx] = FP.ToFloat(value.x);
-    this.store.arrays.visualPositionY[idx] = FP.ToFloat(value.y);
-    this.store.arrays.visualPositionZ[idx] = FP.ToFloat(value.z);
-  }
-}
+entity.addComponent(new TransformComponent(entity.id, FPVector3.FromFloat(10, 0, 20)));
 ```
 
-Another example — PhysicsBodyComponent:
+For custom SoA components, define a schema and extend `SoAComponent`. For physics bodies, import from phalanx-physics:
 
 ```typescript
-// src/components/PhysicsBodyComponent.ts
+import { PhysicsBodyComponent, PhysicsSoASchema } from 'phalanx-physics';
+import { FP } from 'phalanx-math';
+
+entity.addComponent(new PhysicsBodyComponent(entity.id, { radius: FP.FromFloat(1.0) }));
+```
+
+Custom example:
+
+```typescript
+// src/components/CustomSoAComponent.ts
 import { SoAComponent, defineSoASchema } from 'phalanx-ecs';
-import { FP, type FixedPoint } from 'phalanx-math';
 import { ComponentType } from './Component';
 
-export const PhysicsSoASchema = defineSoASchema({
+export const VelocitySoASchema = defineSoASchema({
   velocityX: 'i64',
   velocityY: 'i64',
   velocityZ: 'i64',
-  radius: 'i64',
-  mass: 'i64',
-  isStatic: 'u8',        // 0 = dynamic, 1 = static
-  ignorePhysics: 'u8',   // 0 = active, 1 = skip
-}, 'PhysicsBody');
+}, 'Velocity');
 
-export class PhysicsBodyComponent extends SoAComponent<typeof PhysicsSoASchema.definition> {
-  public readonly type = ComponentType.PhysicsBody;
-  static readonly soaSchema = PhysicsSoASchema;
+export class VelocityComponent extends SoAComponent<typeof VelocitySoASchema.definition> {
+  public readonly type = ComponentType.Velocity;
+  static readonly soaSchema = VelocitySoASchema;
 
-  constructor(entityId: number, radius: FixedPoint, isStatic: boolean = false) {
-    super(PhysicsSoASchema, entityId, {
-      velocityX: FP.ToRaw(FP._0),
-      velocityY: FP.ToRaw(FP._0),
-      velocityZ: FP.ToRaw(FP._0),
-      radius: FP.ToRaw(radius),
-      mass: FP.ToRaw(FP._1),
-      isStatic: isStatic ? 1 : 0,
-      ignorePhysics: 0,
+  constructor(entityId: number) {
+    super(VelocitySoASchema, entityId, {
+      velocityX: 0n,
+      velocityY: 0n,
+      velocityZ: 0n,
     });
   }
 }
@@ -363,7 +355,34 @@ No manual store registration needed.
 | Strings / variable-length data   | **Yes**               | No                    |
 | Simple to implement              | **Yes**               | Moderate              |
 
-### 3. Create Entities
+### 4. System Lifecycle Hooks
+
+Implement optional hook interfaces on `GameSystem` subclasses. GameWorld invokes them automatically:
+
+```typescript
+import {
+  GameSystem,
+  type IBeforeTick,
+  type IAfterTick,
+  type IBeforeFrame,
+  type CommandsBatch,
+} from 'phalanx-ecs';
+
+class SnapshotSystem extends GameSystem implements IBeforeTick, IAfterTick {
+  beforeTick(_tick: number, _commands: CommandsBatch): void {
+    // snapshot state before tick systems run
+  }
+  afterTick(_tick: number): void {
+    // capture state after tick systems run
+  }
+}
+```
+
+Type guards: `isBeforeTick`, `isAfterTick`, `isBeforeFrame`, `isAfterFrame`.
+
+> phalanx-physics `InterpolationSystem` implements `IBeforeTick`, `IAfterTick`, and `IBeforeFrame` — register it via `physicsWorld.getSystems().interpolationSystem` as a frame system and GameWorld handles the rest.
+
+### 5. Create Entities
 
 Entities are containers for components. The base `Entity` class from phalanx-ecs provides:
 - Auto-incrementing `id` (deterministic across all clients)
@@ -372,14 +391,16 @@ Entities are containers for components. The base `Entity` class from phalanx-ecs
 
 ```typescript
 import { Entity } from 'phalanx-ecs';
-import { HealthComponent, TeamComponent, TransformComponent } from './components';
+import { TransformComponent, InterpolationComponent } from 'phalanx-physics';
 import { FPVector3 } from 'phalanx-math';
 
 // Option A: Use Entity directly
 const entity = new Entity();
+const fpPos = FPVector3.FromFloat(10, 0, 20);
 entity.addComponent(new HealthComponent(100));
 entity.addComponent(new TeamComponent('red'));
-entity.addComponent(new TransformComponent(entity.id, FPVector3.FromFloat(10, 0, 20)));
+entity.addComponent(new TransformComponent(entity.id, fpPos));
+entity.addComponent(new InterpolationComponent(fpPos));
 entityManager.addEntity(entity);
 
 // Option B: Extend Entity for game-specific entities
@@ -425,7 +446,7 @@ import { resetEntityIdCounter } from 'phalanx-ecs';
 resetEntityIdCounter();
 ```
 
-### 4. Create Systems
+### 6. Create Systems
 
 All systems extend `GameSystem` from phalanx-ecs:
 
@@ -496,14 +517,12 @@ world.registerSystems(
 
 #### Accessing Other Systems
 
-Use `context.getSystem()` to resolve another system by its class:
+Use `context.getSystem()` or the convenience getters `this.physics`, `this.abilities`, `this.pools`:
 
 ```typescript
 // In any system
 const movementSystem = this.context.getSystem(MovementSystem);
-if (movementSystem) {
-  movementSystem.moveEntity(entityId, targetPosition);
-}
+const sample = this.physics?.getInterpolatedTransform(entityId);
 ```
 
 #### EventBus vs Direct System Calls
@@ -544,7 +563,7 @@ For maximum performance, bypass the component facade and access SoA stores direc
 
 ```typescript
 import { GameSystem, type SoAComponentStore } from 'phalanx-ecs';
-import { PhysicsSoASchema, TransformSoASchema } from '../components';
+import { PhysicsSoASchema, TransformSoASchema } from 'phalanx-physics';
 import { FP, type FixedPoint } from 'phalanx-math';
 
 class PhysicsSystem extends GameSystem {
@@ -595,10 +614,9 @@ class PhysicsSystem extends GameSystem {
 2. **Use `entityIds()`** for deterministic iteration (sorted by entity ID — required for lockstep)
 3. **Cross-store lookup** via `indexOf(entityId)` when correlating two stores (one `Map.get()` per entity vs the facade's `Map.get()` per field access)
 4. **Single-store loops** are the ideal case — zero cross-store overhead
-5. **Sync visual positions** when writing fp positions directly (the facade setter does it automatically, but direct writes must do it manually)
-6. **Hybrid pattern** for AoS+SoA: get the entity via `entityManager.getEntity(entityId)` to access IComponent data alongside SoA stores
+5. **Sync visual positions** via `InterpolationSystem` + `this.physics.getInterpolatedTransform()` for rendering — do not maintain separate visual position caches on TransformComponent
 
-### 5. EventBus — Decoupled Communication
+### 7. EventBus — Decoupled Communication
 
 ```typescript
 import { EventBus } from 'phalanx-ecs';
@@ -635,7 +653,7 @@ Event naming conventions:
 - **Requested suffix** for requests: `move:requested`, `attack:requested`
 - Use colon-separated namespaces: `combat:attack`, `resource:collected`
 
-### 6. EntityManager — Queries
+### 8. EntityManager — Queries
 
 ```typescript
 const em = world.entityManager;
@@ -683,7 +701,7 @@ const allStores = em.getAllSoAStores();           // ReadonlyMap<symbol, SoAComp
 const stats = em.getComponentTypeStats();         // Map<symbol, number> — component type → entity count
 ```
 
-### 7. GameWorld Lifecycle Hooks
+### 9. GameWorld Lifecycle Hooks
 
 ```typescript
 world.start({
@@ -701,7 +719,7 @@ world.start({
   },
   afterFrame(alpha: number, dt: number): void {
     // Called after all frame systems have run
-    // Use for: interpolation, scene.render()
+    // Use for: scene.render() — interpolation is handled by InterpolationSystem when using phalanx-physics
   },
 });
 
@@ -712,7 +730,7 @@ world.stop();
 world.dispose();
 ```
 
-### 8. GameWorld Full API Reference
+### 10. GameWorld Full API Reference
 
 ```typescript
 // Constructor
@@ -740,7 +758,7 @@ world.entityManager;                   // EntityManager
 world.pools;                           // PoolManager | null
 world.debugProvider;                   // DebugDataProvider | null
 world.debugPanel;                      // DebugPanel | null (created in start() if debug + debugPanelConfig)
-world.context;                         // SystemContext
+world.context;                         // SystemContext (abilities, physics, pools)
 
 // System management
 world.registerSystems(tickSystems, frameSystems);
@@ -762,7 +780,7 @@ GameWorldEvents.PAUSED;   // 'gameWorld:paused'
 GameWorldEvents.RESUMED;  // 'gameWorld:resumed'
 ```
 
-### 9. Debug Tools
+### 11. Debug Tools
 
 Phalanx ECS includes built-in debug tooling for inspecting entities, components, SoA stores, and pools at runtime.
 
@@ -862,7 +880,7 @@ world.debugProvider!.subscribe((snap) => {
 });
 ```
 
-### 10. Implementing a LockstepManager
+### 12. Implementing a LockstepManager
 
 For multiplayer, create a LockstepManager to handle deterministic command execution:
 
@@ -961,6 +979,14 @@ import type {
   DebugSoAStoreSnapshot, DebugPoolSnapshot,
   DebugDataProviderConfig, DebugPanelConfig,
 } from 'phalanx-ecs';
+
+// Optional system lifecycle hook interfaces
+import type { IBeforeTick, IAfterTick, IBeforeFrame, IAfterFrame } from 'phalanx-ecs';
+import { isBeforeTick, isAfterTick, isBeforeFrame, isAfterFrame } from 'phalanx-ecs';
+
+// Ability / physics contracts (implemented by sibling packages)
+import type { IAbilitySystem } from 'phalanx-ecs';
+import type { IPhysicsWorld, InterpolatedTransformSample } from 'phalanx-ecs';
 
 // Tick/Frame management
 import { TickFrameManager } from 'phalanx-ecs';
