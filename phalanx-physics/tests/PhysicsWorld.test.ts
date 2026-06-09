@@ -69,6 +69,11 @@ describe('PhysicsWorld', () => {
     expect(sample!.position.z).toBeCloseTo(0, 5);
   });
 
+  it('does not expose setTransformStore', () => {
+    const physicsWorld = new PhysicsWorld();
+    expect('setTransformStore' in physicsWorld).toBe(false);
+  });
+
   it('getInterpolatedTransform returns undefined for unknown entities', () => {
     const physicsWorld = new PhysicsWorld();
     const { interpolationSystem } = physicsWorld.getSystems();

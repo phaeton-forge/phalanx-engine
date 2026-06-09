@@ -262,6 +262,12 @@ describe('PhysicsSystem', () => {
     expect(velX).toBeCloseTo(5, 0);
   });
 
+  it('does not expose setTransformStore or field-mapping APIs', () => {
+    const system = new PhysicsSystem(createPhysicsConfig());
+    expect('setTransformStore' in system).toBe(false);
+    expect('getFieldMapping' in system).toBe(false);
+  });
+
   it('collision filter can skip pairs', () => {
     const { system, physicsStore, transformStore } = setupSystem();
     addEntity(physicsStore, transformStore, 1, 0, 0, 0, 0);

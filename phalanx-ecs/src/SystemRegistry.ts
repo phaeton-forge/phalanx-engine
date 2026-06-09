@@ -66,9 +66,13 @@ export class SystemRegistry {
       this.context.registerSystem(system);
     }
 
-    // Implicitly append ability tick systems if present in context
+    // Implicitly append ability tick systems if present in context.
+    // Skip systems already passed explicitly to avoid running them twice per tick.
     if (this.context.abilities) {
       for (const system of this.context.abilities.tickSystems) {
+        if (this.tickSystems.includes(system)) {
+          continue;
+        }
         this.tickSystems.push(system);
         this.context.registerSystem(system);
       }

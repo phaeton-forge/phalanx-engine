@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { Entity, EntityManager, EventBus, SoAComponent, SystemContext } from 'phalanx-ecs';
+import {CommandsBatch, Entity, EntityManager, EventBus, SoAComponent, SystemContext} from 'phalanx-ecs';
 import { FP, FPVector3 } from 'phalanx-math';
 import { TransformComponent, TRANSFORM_COMPONENT_TYPE } from '../src/components/TransformComponent';
 import {
@@ -120,6 +120,24 @@ describe('InterpolationSystem', () => {
 
     const sample = system.getInterpolatedTransform(entity.id);
     expect(sample?.position.x).toBeCloseTo(30);
+  });
+
+  it('lifecycle hooks wire snapshot, capture, and interpolate', () => {
+    const entity = addInterpolatedEntity({ x: 0, y: 0, z: 0 });
+    const transform = entity.getComponent<TransformComponent>(TRANSFORM_COMPONENT_TYPE)!;
+
+    system.beforeTick(1, [] as unknown as CommandsBatch);
+    transform.fpPosition = FPVector3.FromFloat(10, 0, 0);
+    system.afterTick(1);
+
+    system.beforeTick(2, [] as unknown as CommandsBatch);
+    transform.fpPosition = FPVector3.FromFloat(20, 0, 0);
+    system.afterTick(2);
+
+    system.beforeFrame(0.5, 0.016);
+
+    const sample = system.getInterpolatedTransform(entity.id);
+    expect(sample?.position.x).toBeCloseTo(15);
   });
 
   it('exposes samples through getInterpolatedTransform only after interpolate', () => {
