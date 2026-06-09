@@ -33,6 +33,7 @@ export const autoAttack = (ctx: AbilityActivationContext, world: GameWorld) => {
         : casterTransform.fpPosition;
 
     const projectileEntity = world.pools?.acquire('projectile') as ProjectileEntity;
+
     projectileEntity.reinitialize();
     world.entityManager.addEntity(projectileEntity);
 
