@@ -61,7 +61,7 @@ export class WeaponSystem extends GameSystem {
         weapon.firedThisTick = true;
 
         const pos = transform.fpPosition;
-        const rot = FP.FromRaw(transform.fpRotationY);
+        const rot = transform.fpRotationY;
 
         // Fire origin: 0.9 units ahead of player centre
         const offsetDist = FP.FromFloat(0.9);

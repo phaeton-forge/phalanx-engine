@@ -1,6 +1,5 @@
 export { AttackSystem } from './AttackSystem';
 export { DeathSystem } from './DeathSystem';
-export { InterpolationSystem } from './InterpolationSystem';
 export { MovementSystem } from './MovementSystem.ts';
 export { ProjectileCollisionSystem } from './ProjectileCollisionSystem';
 export { ProjectileMovementSystem } from './ProjectileMovementSystem';

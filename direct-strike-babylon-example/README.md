@@ -126,10 +126,12 @@ When authentication is enabled:
 ### Build for Production
 
 ```bash
-pnpm build
+pnpm build:local
 ```
 
 This compiles TypeScript and builds optimized assets into the `dist/` folder.
+
+> **Note:** This package is excluded from the root `pnpm build` until it is migrated to the new phalanx-physics transform API. Use `pnpm build:local` here, or `pnpm build:direct-strike` from the repo root.
 
 ### Preview Production Build
 

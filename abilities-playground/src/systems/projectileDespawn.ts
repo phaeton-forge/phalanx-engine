@@ -1,15 +1,18 @@
-import type { EntityManager, GameWorld } from 'phalanx-ecs';
-import { PhysicsSoASchema } from 'phalanx-physics';
-import { ComponentType, MeshComponent, TransformSoASchema } from '../components';
+import type { EntityManager, PoolManager } from 'phalanx-ecs';
+import { FP } from 'phalanx-math';
+import { PhysicsSoASchema, TransformSoASchema } from 'phalanx-physics';
+import { ComponentType, MeshComponent } from '../components';
 import type { ProjectileEntity } from '../entities/Projectile.ts';
 
+const PARKED_POSITION = FP.FromFloat(1e9);
+
 export function despawnProjectile(
-  world: GameWorld,
+  pools: PoolManager | null,
   entityManager: EntityManager,
   projectile: ProjectileEntity,
 ): void {
   entityManager.removeEntity(projectile);
-  world.pools?.release('projectile', projectile);
+  pools?.release('projectile', projectile);
 }
 
 export function softDeactivateProjectile(
@@ -24,10 +27,10 @@ export function softDeactivateProjectile(
   const transformStore = entityManager.getOrCreateSoAStore(TransformSoASchema);
   const tIdx = transformStore.indexOf(projectile.id);
   if (tIdx !== -1) {
-    // Park it far away so it won't be seen if something toggles visibility.
-    transformStore.arrays.visualPositionX[tIdx] = 1e9;
-    transformStore.arrays.visualPositionY[tIdx] = 1e9;
-    transformStore.arrays.visualPositionZ[tIdx] = 1e9;
+    const parked = FP.ToRaw(PARKED_POSITION);
+    transformStore.arrays.fpPositionX[tIdx] = parked;
+    transformStore.arrays.fpPositionY[tIdx] = parked;
+    transformStore.arrays.fpPositionZ[tIdx] = parked;
   }
 
   const physStore = entityManager.getOrCreateSoAStore(PhysicsSoASchema);

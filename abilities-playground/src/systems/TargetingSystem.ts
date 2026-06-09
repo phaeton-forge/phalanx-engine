@@ -1,12 +1,12 @@
 import { GameSystem } from 'phalanx-ecs';
 import type { SoAComponentStore, SystemContext } from 'phalanx-ecs';
 import { FP } from 'phalanx-math';
+import { TransformSoASchema } from 'phalanx-physics';
 import type { FixedPoint } from 'phalanx-math';
 import {
   ComponentType,
   TargetStateComponent,
   TeamComponent,
-  TransformSoASchema,
   StatsComponent,
   UnitTypeComponent,
 } from '../components';

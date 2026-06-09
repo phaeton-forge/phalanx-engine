@@ -1,6 +1,10 @@
 export { ComponentType } from './Component';
 export type { ComponentTypeKey, IComponent } from './Component';
-export { InterpolationComponent } from './InterpolationComponent';
+export {
+  InterpolationComponent,
+  TransformComponent,
+  TransformSoASchema,
+} from 'phalanx-physics';
 export {
   TeamComponent,
   UnitTypeComponent,
@@ -13,5 +17,4 @@ export {
   DetectionRingComponent,
 } from './UnitComponents';
 export type { TeamId } from './UnitComponents';
-export { TransformComponent, TransformSoASchema } from './TransformComponent';
 export { SpawnPointComponent } from './SpawnPointComponent';

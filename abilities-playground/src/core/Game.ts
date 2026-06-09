@@ -60,7 +60,6 @@ export class Game {
     this.onResize();
     this.ui.showStartOverlay();
     this.ui.hideResultOverlay();
-    this.simulation.linkTransformStore();
     this.simulation.world.start({
       beforeTick: (_tick: number, commandsBatch: CommandsBatch) => {
         this.simulation.startSimulationSystem.processCommands(commandsBatch);
@@ -76,11 +75,9 @@ export class Game {
         const dt = this.lastFrameDtSeconds || 0;
 
         this.simulation.updatePresentation(dt);
-        this.simulation.renderSyncSystem.update(dt);
         this.renderer.render(this.arenaScene.scene, this.cameraController.camera);
       },
     });
-    this.simulation.interpolationSystem.snapToCurrentPositions();
     this.client.sendReady();
   }
 

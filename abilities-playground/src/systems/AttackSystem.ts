@@ -2,11 +2,11 @@ import { GameSystem } from 'phalanx-ecs';
 import type { SoAComponentStore, SystemContext } from 'phalanx-ecs';
 import type { AbilitySystem } from 'phalanx-abilities';
 import { FP } from 'phalanx-math';
+import { TransformSoASchema } from 'phalanx-physics';
 import {
   ComponentType,
   SimulationStateComponent,
   TargetStateComponent,
-  TransformSoASchema,
   StatsComponent,
   UnitTypeComponent,
 } from '../components';

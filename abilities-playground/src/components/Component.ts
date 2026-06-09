@@ -1,6 +1,10 @@
 import { createComponentTypeRegistry } from 'phalanx-ecs';
 import type { IComponent } from 'phalanx-ecs';
-import { PHYSICS_BODY_COMPONENT_TYPE } from 'phalanx-physics';
+import {
+  INTERPOLATION_COMPONENT_TYPE,
+  PHYSICS_BODY_COMPONENT_TYPE,
+  TRANSFORM_COMPONENT_TYPE,
+} from 'phalanx-physics';
 
 export type { IComponent };
 
@@ -23,5 +27,8 @@ export const ComponentType = createComponentTypeRegistry({
 
 (ComponentType as Record<string, symbol>).PhysicsBody =
   PHYSICS_BODY_COMPONENT_TYPE;
+(ComponentType as Record<string, symbol>).Transform = TRANSFORM_COMPONENT_TYPE;
+(ComponentType as Record<string, symbol>).Interpolation =
+  INTERPOLATION_COMPONENT_TYPE;
 
 export type ComponentTypeKey = keyof typeof ComponentType;

@@ -1,14 +1,16 @@
 import { Entity } from 'phalanx-ecs';
 import { FP, FPVector3 } from 'phalanx-math';
-import { PhysicsBodyComponent } from 'phalanx-physics';
+import {
+  InterpolationComponent,
+  PhysicsBodyComponent,
+  TransformComponent,
+} from 'phalanx-physics';
 import {
   HealthBarComponent,
-  InterpolationComponent,
   MeshComponent,
   SpawnPointComponent,
   TargetStateComponent,
   TeamComponent,
-  TransformComponent,
   StatsComponent,
   UnitTypeComponent,
   DetectionRingComponent,
@@ -32,7 +34,9 @@ export class UnitEntity extends Entity {
       rosterEntry.detectionRange ?? DEFAULT_UNIT_DETECTION_RANGE;
 
     const initialRotationY = teamId === 0 ? 0 : Math.PI;
-    this.addComponent(new TransformComponent(this.id, fpPosition, initialRotationY));
+    const fpRotation = FPVector3.FromFloat(0, initialRotationY, 0);
+
+    this.addComponent(new TransformComponent(this.id, fpPosition, fpRotation));
     this.addComponent(new TeamComponent(teamId));
     this.addComponent(
       new UnitTypeComponent(rosterEntry.kind, FP.FromFloat(detectionRange)),
@@ -48,12 +52,7 @@ export class UnitEntity extends Entity {
         renderRefs.healthBarFullWidth,
       ),
     );
-
-    const interpCmp = new InterpolationComponent();
-
-    interpCmp.init(fpPosition);
-
-    this.addComponent(interpCmp);
+    this.addComponent(new InterpolationComponent(fpPosition, fpRotation));
     this.addComponent(
       new PhysicsBodyComponent(this.id, {
         radius: FP.FromFloat(rosterEntry.radius),

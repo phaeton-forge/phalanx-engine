@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import {ComponentType, InterpolationComponent, MeshComponent, SpawnPointComponent, TeamComponent, TransformComponent} from "../components";
+import type { TransformComponent } from 'phalanx-physics';
+import {ComponentType, MeshComponent, SpawnPointComponent, TeamComponent} from "../components";
 import {ProjectileEntity} from "../entities/Projectile.ts";
 import type {ProjectileComponent} from "../components/ProjectileComponent.ts";
 import {FP, FPVector2, FPVector3} from "phalanx-math";
@@ -38,12 +39,10 @@ export const autoAttack = (ctx: AbilityActivationContext, world: GameWorld) => {
     world.entityManager.addEntity(projectileEntity);
 
     const projectileTransform = projectileEntity.getComponent<TransformComponent>(ComponentType.Transform)!;
-    const interpolation = projectileEntity.getComponent<InterpolationComponent>(ComponentType.Interpolation)!;
     const projectileComponent = projectileEntity.getComponent<ProjectileComponent>(ComponentType.Projectile)!;
     const projectileTeamComponent = projectileEntity.getComponent<TeamComponent>(ComponentType.Team)!;
 
     projectileTransform.fpPosition = spawnPosition;
-    interpolation.snapToPosition(spawnPosition);
 
     const targetPos = targetTransform.fpPosition as FPVector3;
     const direction2 = FPVector2.Normalize({
@@ -61,6 +60,7 @@ function markerWorldPosition(
 ): FPVector3 {
     const pos = transform.fpPosition;
     mesh.root.position.set(FP.ToFloat(pos.x), FP.ToFloat(pos.y), FP.ToFloat(pos.z));
+    mesh.root.rotation.y = FP.ToFloat(transform.fpRotationY);
     mesh.root.updateWorldMatrix(false, true);
     spawnPoint.marker.getWorldPosition(_worldPos);
     return FPVector3.FromFloat(_worldPos.x, _worldPos.y, _worldPos.z);

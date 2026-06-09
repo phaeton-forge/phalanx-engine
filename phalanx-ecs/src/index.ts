@@ -78,6 +78,9 @@ export { isBeforeTick, isAfterTick, isBeforeFrame, isAfterFrame } from './ISyste
 // Ability system contract (implemented by phalanx-abilities)
 export type { IAbilitySystem } from './IAbilitySystem';
 
+// Physics world contract (implemented by phalanx-physics)
+export type { IPhysicsWorld, InterpolatedTransformSample } from './IPhysicsWorld';
+
 // Tick/Frame Management
 export { TickFrameManager } from './TickFrameManager';
 export type { TickFrameManagerConfig } from './TickFrameManager';

@@ -6,6 +6,7 @@
   "type": "module",
   "scripts": {
     "build": "pnpm -r build",
+    "build:direct-strike": "pnpm --filter direct-strike-babylon-example build:local",
     "clean": "pnpm -r clean",
     "test": "pnpm -r test",
     "test:server": "pnpm --filter phalanx-server test",

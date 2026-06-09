@@ -1,13 +1,15 @@
 import { Entity, type IPoolable } from 'phalanx-ecs';
 import { FP, FPVector3 } from 'phalanx-math';
 import {
-  ComponentType,
   InterpolationComponent,
+  PhysicsBodyComponent,
+  TransformComponent,
+} from 'phalanx-physics';
+import {
+  ComponentType,
   MeshComponent,
   TeamComponent,
-  TransformComponent,
 } from '../components';
-import { PhysicsBodyComponent } from 'phalanx-physics';
 import { ProjectileComponent } from '../components/ProjectileComponent.ts';
 
 export const PROJECTILE_RADIUS = 0.5;
@@ -34,11 +36,7 @@ export class ProjectileEntity extends Entity implements IPoolable {
     this.addComponent(new ProjectileComponent());
     this.addComponent(new TransformComponent(this.id, fpPosition));
     this.addComponent(new TeamComponent(0));
-
-    const interpCmp = new InterpolationComponent();
-    interpCmp.init(fpPosition);
-    this.addComponent(interpCmp);
-
+    this.addComponent(new InterpolationComponent(fpPosition));
     this.addComponent(
       new PhysicsBodyComponent(this.id, {
         radius: FP.FromFloat(PROJECTILE_RADIUS),

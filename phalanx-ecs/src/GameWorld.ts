@@ -161,6 +161,7 @@ export class GameWorld {
       this._poolingConfig = undefined;
       this._pools = null;
     }
+    this.systemRegistry.getContext().pools = this._pools;
 
     // Use external provider or create internal TickFrameManager
     if (config.tickFrameProvider) {

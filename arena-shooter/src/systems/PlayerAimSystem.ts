@@ -132,7 +132,7 @@ export class PlayerAimSystem extends GameSystem {
 
       // Compute rotation angle: atan2(dx, dz) for facing direction
       const angle = FP.Atan2(dx, dz);
-      transform.fpRotationY = FP.ToRaw(angle);
+      transform.fpRotationY = angle;
     }
   }
 }

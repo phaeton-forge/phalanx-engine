@@ -1,8 +1,8 @@
-import { GameSystem, type GameWorld, type SoAComponentStore, type SystemContext } from 'phalanx-ecs';
-import { PhysicsSoASchema } from 'phalanx-physics';
+import { GameSystem, type SoAComponentStore, type SystemContext } from 'phalanx-ecs';
+import { PhysicsSoASchema, TransformSoASchema } from 'phalanx-physics';
 import { FP } from 'phalanx-math';
 import { networkConfig, PROJECTILE_SPEED } from '../config/constants';
-import { ComponentType, TransformSoASchema } from '../components';
+import { ComponentType } from '../components';
 import { ProjectileComponent } from '../components/ProjectileComponent';
 import { ProjectileEntity } from '../entities/Projectile.ts';
 import { despawnProjectile } from './projectileDespawn';
@@ -13,12 +13,6 @@ const FP_PROJECTILE_SPEED = FP.FromFloat(PROJECTILE_SPEED);
 export class ProjectileMovementSystem extends GameSystem {
   private physicsStore!: SoAComponentStore<typeof PhysicsSoASchema.definition>;
   private transformStore!: SoAComponentStore<typeof TransformSoASchema.definition>;
-  private readonly world: GameWorld;
-
-  constructor(world: GameWorld) {
-    super();
-    this.world = world;
-  }
 
   public override init(context: SystemContext): void {
     super.init(context);
@@ -62,6 +56,6 @@ export class ProjectileMovementSystem extends GameSystem {
   }
 
   private releaseProjectile(projectile: ProjectileEntity): void {
-    despawnProjectile(this.world, this.entityManager, projectile);
+    despawnProjectile(this.pools, this.entityManager, projectile);
   }
 }

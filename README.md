@@ -263,7 +263,8 @@ All commands are run from the repository root.
 | Command                   | What it does                                                       |
 | ------------------------- | ------------------------------------------------------------------ |
 | `pnpm install`            | Install workspace dependencies                                     |
-| `pnpm build`              | Build every workspace package (`pnpm -r build`)                    |
+| `pnpm build`              | Build workspace packages (`direct-strike-babylon-example` excluded — no `build` script until physics migration) |
+| `pnpm build:direct-strike`| Build `direct-strike-babylon-example` via `build:local`            |
 | `pnpm clean`              | Run each package's `clean` script                                  |
 | `pnpm test`               | Run all package test suites (Vitest)                               |
 | `pnpm test:server`        | Run only `phalanx-server` tests                                    |

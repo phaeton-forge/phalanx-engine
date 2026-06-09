@@ -1,9 +1,8 @@
 import { Engine, Scene, type Mesh } from '@babylonjs/core';
 import { GameWorld, Entity } from 'phalanx-ecs';
-import type { SoASchemaDefinition, SoAComponentStore } from 'phalanx-ecs';
 import { FP } from 'phalanx-math';
 import { PhysicsWorld } from 'phalanx-physics';
-import { ComponentType, TransformSoASchema } from '../components/index.ts';
+import { ComponentType } from '../components/index.ts';
 import { WaveComponent } from '../components/WaveComponent.ts';
 import type { WeaponComponent } from '../components/WeaponComponent.ts';
 import type { HealthComponent } from '../components/HealthComponent.ts';
@@ -219,21 +218,7 @@ export class Game {
     this.engine.stopRenderLoop();
     this.hud.hideStartScreen();
     this.world.start({
-      beforeTick: (tick: number) => {
-        if (tick === 0) {
-          const txStore = this.world.entityManager.getOrCreateSoAStore(TransformSoASchema);
-          this.physicsWorld.setTransformStore(
-            txStore as unknown as SoAComponentStore<SoASchemaDefinition>,
-            {
-              fpPositionX: 'fpPositionX',
-              fpPositionY: 'fpPositionY',
-              fpPositionZ: 'fpPositionZ',
-              visualPositionX: 'visualPositionX',
-              visualPositionZ: 'visualPositionZ',
-            },
-          );
-        }
-
+      beforeTick: () => {
         this.interpolationSystem.snapshotPositions();
       },
       afterTick: () => {

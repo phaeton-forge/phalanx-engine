@@ -15,14 +15,38 @@ export class RenderSyncSystem extends GameSystem {
   private get _abilities(): AbilitySystem { return this.abilities as AbilitySystem; }
 
   public override update(_deltaTime: number): void {
-    const entities = this.entityManager.queryEntities(
+    const meshEntities = this.entityManager.queryEntities(
+      ComponentType.Mesh,
+      ComponentType.Interpolation,
+    );
+
+    for (const entity of meshEntities) {
+      const entityMesh = entity.getComponent<MeshComponent>(ComponentType.Mesh);
+      if (!entityMesh) continue;
+
+      const interpolated = this.physics?.getInterpolatedTransform(entity.id);
+      if (interpolated) {
+        entityMesh.root.position.set(
+          interpolated.position.x,
+          interpolated.position.y,
+          interpolated.position.z,
+        );
+        entityMesh.root.rotation.set(
+          interpolated.rotation.x,
+          interpolated.rotation.y,
+          interpolated.rotation.z,
+        );
+      }
+    }
+
+    const units = this.entityManager.queryEntities(
       ComponentType.HealthBar,
       ComponentType.Mesh,
       ComponentType.Team,
       ComponentType.UnitStats,
     );
 
-    for (const entity of entities) {
+    for (const entity of units) {
       const healthBar = entity.getComponent<HealthBarComponent>(ComponentType.HealthBar);
       const entityMesh = entity.getComponent<MeshComponent>(ComponentType.Mesh);
       const detectionRing = entity.getComponent<DetectionRingComponent>(

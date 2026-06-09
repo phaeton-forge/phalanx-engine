@@ -1,7 +1,6 @@
 import * as THREE from 'three';
 import type { PhalanxClient } from 'phalanx-client';
 import { Entity, GameWorld, resetEntityIdCounter } from 'phalanx-ecs';
-import type { SoAComponentStore, SoASchemaDefinition } from 'phalanx-ecs';
 import { FP } from 'phalanx-math';
 import { PhysicsWorld } from 'phalanx-physics';
 import {
@@ -19,14 +18,12 @@ import {
   MeshComponent,
   StatsComponent,
   SimulationStateComponent,
-  TransformSoASchema,
 } from '../components';
 import { PROJECTILE_RADIUS } from '../entities/Projectile.ts';
 import { UnitEntity } from '../entities/UnitEntity';
 import {
   AttackSystem,
   DeathSystem,
-  InterpolationSystem,
   MovementSystem,
   RenderSyncSystem,
   RotationSystem,
@@ -42,15 +39,11 @@ import { damageSphereCue, updateCueVfx, deathCue } from '../cues';
 export class SimulationContainer {
   readonly world: GameWorld;
   readonly startSimulationSystem = new StartSimulationSystem();
-  readonly interpolationSystem = new InterpolationSystem();
-  readonly renderSyncSystem = new RenderSyncSystem();
 
   private readonly physicsWorld: PhysicsWorld;
   private readonly abilities: AbilitySystem;
   private readonly scene: THREE.Scene;
-  private transformStoreLinked = false;
   private readonly activeCueVfx: Parameters<typeof damageSphereCue>[3] = [];
-  private readonly projectileDespawnQueueSystem: ProjectileDespawnQueueSystem;
 
   constructor(client: PhalanxClient, unitFactory: UnitFactory, scene: THREE.Scene) {
     resetEntityIdCounter();
@@ -91,6 +84,7 @@ export class SimulationContainer {
         maxZ: FP.FromFloat(arenaParams.length / 2),
       },
     });
+    this.world.context.physics = this.physicsWorld;
 
     this.abilities = createAbilitySystem(this.world, {
       definitions: combatDefs,
@@ -99,7 +93,6 @@ export class SimulationContainer {
         'Hook.AutoAttack': (ctx: AbilityActivationContext) => autoAttack(ctx, this.world),
       },
     });
-    this.projectileDespawnQueueSystem = new ProjectileDespawnQueueSystem(this.world);
 
     this.world.eventBus.on<GameplayCueDispatchedEvent>(gameplayCueKey('Cue.Damage.Sphere'), (e) => {
       damageSphereCue(this.scene, this.world, e, this.activeCueVfx);
@@ -126,41 +119,25 @@ export class SimulationContainer {
       return true;
     });
 
-    const { physicsSystem } = this.physicsWorld.getSystems();
+    const { physicsSystem, interpolationSystem } = this.physicsWorld.getSystems();
     this.world.registerSystems(
       [
         this.startSimulationSystem,
         new TargetingSystem(),
         new AttackSystem(),
         new MovementSystem(),
-        new ProjectileMovementSystem(this.world),
+        new ProjectileMovementSystem(),
         physicsSystem,
         new ProjectileCollisionSystem(),
         new RotationSystem(),
         new DeathSystem(),
-        this.projectileDespawnQueueSystem,
+        new ProjectileDespawnQueueSystem(),
       ],
-      [this.interpolationSystem, this.renderSyncSystem],
+      [interpolationSystem, new RenderSyncSystem()],
     );
 
     this.spawnSimulationState();
     this.spawnUnits(unitFactory);
-  }
-
-  linkTransformStore(): void {
-    if (this.transformStoreLinked) return;
-    const transformStore = this.world.entityManager.getOrCreateSoAStore(TransformSoASchema);
-    this.physicsWorld.setTransformStore(
-      transformStore as unknown as SoAComponentStore<SoASchemaDefinition>,
-      {
-        fpPositionX: 'fpPositionX',
-        fpPositionY: 'fpPositionY',
-        fpPositionZ: 'fpPositionZ',
-        visualPositionX: 'visualPositionX',
-        visualPositionZ: 'visualPositionZ',
-      },
-    );
-    this.transformStoreLinked = true;
   }
 
   /** Returns the result title if game is over, otherwise null. */

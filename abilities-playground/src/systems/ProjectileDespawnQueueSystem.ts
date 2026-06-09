@@ -1,16 +1,10 @@
-import { GameSystem, type GameWorld, type SystemContext } from 'phalanx-ecs';
+import { GameSystem, type SystemContext } from 'phalanx-ecs';
 import type { ProjectileEntity } from '../entities/Projectile';
 import { GameEvents, type ProjectileDespawnRequestedEvent } from '../events/GameEvents';
 import { despawnProjectile } from './projectileDespawn';
 
 export class ProjectileDespawnQueueSystem extends GameSystem {
-  private readonly world: GameWorld;
   private readonly pendingDespawnTickByProjectileId = new Map<number, number>();
-
-  constructor(world: GameWorld) {
-    super();
-    this.world = world;
-  }
 
   public override init(context: SystemContext): void {
     super.init(context);
@@ -32,10 +26,9 @@ export class ProjectileDespawnQueueSystem extends GameSystem {
 
       const entity = this.entityManager.getEntity(projectileId) as ProjectileEntity | undefined;
       if (entity) {
-        despawnProjectile(this.world, this.entityManager, entity);
+        despawnProjectile(this.pools, this.entityManager, entity);
       }
       this.pendingDespawnTickByProjectileId.delete(projectileId);
     }
   }
 }
-

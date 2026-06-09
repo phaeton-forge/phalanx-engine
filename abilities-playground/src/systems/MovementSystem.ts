@@ -1,7 +1,7 @@
 import { GameSystem } from 'phalanx-ecs';
 import type { Entity, SoAComponentStore, SystemContext } from 'phalanx-ecs';
 import type { AbilitySystem } from 'phalanx-abilities';
-import { PhysicsSoASchema } from 'phalanx-physics';
+import { PhysicsSoASchema, TransformSoASchema } from 'phalanx-physics';
 import { FP } from 'phalanx-math';
 import type { FixedPoint } from 'phalanx-math';
 import {
@@ -9,7 +9,6 @@ import {
   SimulationStateComponent,
   TargetStateComponent,
   TeamComponent,
-  TransformSoASchema,
   StatsComponent,
 } from '../components';
 

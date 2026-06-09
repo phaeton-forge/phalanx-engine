@@ -1,31 +1,37 @@
 import { GameSystem } from 'phalanx-ecs';
-import type {
-  CommandsBatch,
-  IAfterFrame,
-  IBeforeTick,
-  SoAComponentStore,
-  SystemContext,
-} from 'phalanx-ecs';
+import type { SoAComponentStore, SystemContext } from 'phalanx-ecs';
 import { FP } from 'phalanx-math';
+import type { FixedPoint } from 'phalanx-math';
+import { TransformSoASchema } from 'phalanx-physics';
+import { UNIT_TURN_SPEED_RADIANS_PER_TICK } from '../config/constants';
 import {
   ComponentType,
-  MeshComponent,
   StatsComponent,
   TargetStateComponent,
   TeamComponent,
-  TransformSoASchema,
 } from '../components';
 
-/** Shortest-path angle interpolation on the Y axis (radians). */
-export function lerpAngleY(from: number, to: number, t: number): number {
-  const clamped = Math.max(0, Math.min(1, t));
-  let delta = to - from;
+const MAX_TURN_PER_TICK = FP.FromFloat(UNIT_TURN_SPEED_RADIANS_PER_TICK);
+
+/** Shortest-path rotation toward a target angle, clamped by max delta (radians). */
+function rotateTowardY(
+  current: FixedPoint,
+  targetRadians: number,
+  maxDelta: FixedPoint,
+): FixedPoint {
+  const currentRad = FP.ToFloat(current);
+  let delta = targetRadians - currentRad;
   if (delta > Math.PI) delta -= 2 * Math.PI;
   if (delta < -Math.PI) delta += 2 * Math.PI;
-  return from + delta * clamped;
+
+  const maxDeltaRad = FP.ToFloat(maxDelta);
+  if (Math.abs(delta) <= maxDeltaRad) {
+    return FP.FromFloat(targetRadians);
+  }
+  return FP.FromFloat(currentRad + Math.sign(delta) * maxDeltaRad);
 }
 
-export class RotationSystem extends GameSystem implements IBeforeTick, IAfterFrame {
+export class RotationSystem extends GameSystem {
   private transformStore!: SoAComponentStore<typeof TransformSoASchema.definition>;
 
   public override init(context: SystemContext): void {
@@ -33,29 +39,7 @@ export class RotationSystem extends GameSystem implements IBeforeTick, IAfterFra
     this.transformStore = this.entityManager.getOrCreateSoAStore(TransformSoASchema);
   }
 
-  public beforeTick(_tick: number, _commands: CommandsBatch): void {
-    const visualRotationY = this.transformStore.arrays.visualRotationY;
-    const previousVisualRotationY = this.transformStore.arrays.previousVisualRotationY;
-    const units = this.entityManager.queryEntities(
-      ComponentType.Team,
-      ComponentType.TargetState,
-      ComponentType.UnitStats,
-      ComponentType.Transform,
-    );
-
-    for (const unit of units) {
-      const stats = unit.getComponent<StatsComponent>(ComponentType.UnitStats);
-      if (!stats?.alive) continue;
-
-      const unitIndex = this.transformStore.indexOf(unit.id);
-      if (unitIndex === -1) continue;
-
-      previousVisualRotationY[unitIndex] = visualRotationY[unitIndex];
-    }
-  }
-
   public override processTick(): void {
-    const visualRotationY = this.transformStore.arrays.visualRotationY;
     const units = this.entityManager.queryEntities(
       ComponentType.Team,
       ComponentType.TargetState,
@@ -72,36 +56,10 @@ export class RotationSystem extends GameSystem implements IBeforeTick, IAfterFra
       const unitIndex = this.transformStore.indexOf(unit.id);
       if (unitIndex === -1) continue;
 
-      visualRotationY[unitIndex] = this.computeFacingAngle(
-        targetState,
-        team,
-        unitIndex,
-      );
-    }
-  }
-
-  public afterFrame(alpha: number, _dt: number): void {
-    const clampedAlpha = Math.max(0, Math.min(1, alpha));
-    const visualRotationY = this.transformStore.arrays.visualRotationY;
-    const previousVisualRotationY = this.transformStore.arrays.previousVisualRotationY;
-    const units = this.entityManager.queryEntities(
-      ComponentType.Mesh,
-      ComponentType.Transform,
-      ComponentType.UnitStats,
-    );
-
-    for (const unit of units) {
-      const stats = unit.getComponent<StatsComponent>(ComponentType.UnitStats);
-      const mesh = unit.getComponent<MeshComponent>(ComponentType.Mesh);
-      if (!stats?.alive || !mesh) continue;
-
-      const unitIndex = this.transformStore.indexOf(unit.id);
-      if (unitIndex === -1) continue;
-
-      mesh.root.rotation.y = lerpAngleY(
-        previousVisualRotationY[unitIndex],
-        visualRotationY[unitIndex],
-        clampedAlpha,
+      const currentY = FP.FromRaw(this.transformStore.arrays.fpRotationY[unitIndex]);
+      const desiredY = this.computeFacingAngle(targetState, team, unitIndex);
+      this.transformStore.arrays.fpRotationY[unitIndex] = FP.ToRaw(
+        rotateTowardY(currentY, desiredY, MAX_TURN_PER_TICK),
       );
     }
   }

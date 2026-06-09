@@ -2,6 +2,8 @@ import type { SystemContext } from './SystemContext';
 import type { EventBus } from './EventBus';
 import type { EntityManager } from './EntityManager';
 import type { IAbilitySystem } from './IAbilitySystem';
+import type { IPhysicsWorld } from './IPhysicsWorld';
+import type { PoolManager } from './pool/PoolManager';
 
 /**
  * GameSystem - Abstract base class for all game systems
@@ -41,6 +43,22 @@ export abstract class GameSystem {
    */
   protected get abilities(): IAbilitySystem | undefined {
     return this.context.abilities;
+  }
+
+  /**
+   * The physics world for this game, or undefined if the game does not
+   * use phalanx-physics. Set on SystemContext before systems are registered.
+   */
+  protected get physics(): IPhysicsWorld | undefined {
+    return this.context.physics;
+  }
+
+  /**
+   * Entity pool manager, or null when pooling is not configured.
+   * Wired automatically by GameWorld when pooling is enabled.
+   */
+  protected get pools(): PoolManager | null {
+    return this.context.pools;
   }
 
   /** Whether this system is enabled */

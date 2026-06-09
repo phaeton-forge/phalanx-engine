@@ -11,6 +11,9 @@ export const networkConfig = {
 /** World units per second for projectile forward travel. */
 export const PROJECTILE_SPEED = 120;
 
+/** Radians of Y rotation applied per simulation tick when turning to face a target. */
+export const UNIT_TURN_SPEED_RADIANS_PER_TICK = Math.PI / 15;
+
 export const physicsConfig = {
   subSteps: 3,
   gridCellSize: 8,
