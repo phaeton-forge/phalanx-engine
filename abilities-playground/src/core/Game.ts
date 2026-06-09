@@ -10,7 +10,6 @@ import {MeshComponent} from "../components";
 
 export class Game {
   private readonly client: PhalanxClient;
-  private readonly matchData: MatchFoundEvent;
   private readonly localTeamId: 0 | 1;
   private readonly renderer: THREE.WebGLRenderer;
   private readonly arenaScene: ArenaScene;
@@ -25,7 +24,6 @@ export class Game {
 
   constructor(canvas: HTMLCanvasElement, client: PhalanxClient, matchData: MatchFoundEvent) {
     this.client = client;
-    this.matchData = matchData;
     this.localTeamId = matchData.teamId === 1 ? 1 : 0;
 
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });

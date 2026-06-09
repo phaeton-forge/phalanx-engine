@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { PhalanxClient } from 'phalanx-client';
-import { Entity, GameWorld } from 'phalanx-ecs';
+import { Entity, GameWorld, resetEntityIdCounter } from 'phalanx-ecs';
 import type { SoAComponentStore, SoASchemaDefinition } from 'phalanx-ecs';
 import { FP } from 'phalanx-math';
 import { PhysicsWorld } from 'phalanx-physics';
@@ -53,6 +53,8 @@ export class SimulationContainer {
   private readonly projectileDespawnQueueSystem: ProjectileDespawnQueueSystem;
 
   constructor(client: PhalanxClient, unitFactory: UnitFactory, scene: THREE.Scene) {
+    resetEntityIdCounter();
+
     this.scene = scene;
     this.world = new GameWorld({
       componentTypes: Object.values(ComponentType),
@@ -92,7 +94,6 @@ export class SimulationContainer {
 
     this.abilities = createAbilitySystem(this.world, {
       definitions: combatDefs,
-      physicsWorld: this.physicsWorld,
       cues: 'dispatch',
       hooks: {
         'Hook.AutoAttack': (ctx: AbilityActivationContext) => autoAttack(ctx, this.world),
