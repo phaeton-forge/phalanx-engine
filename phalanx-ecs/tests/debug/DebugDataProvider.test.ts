@@ -6,7 +6,13 @@ import { defineSoASchema } from '../../src/SoASchema';
 import { PoolManager } from '../../src/pool/PoolManager';
 import { DebugDataProvider } from '../../src/debug/DebugDataProvider';
 import type { IComponent } from '../../src/Component';
+import type { IPoolableEntity } from '../../src/pool/IPoolableEntity';
 import type { DebugSnapshot } from '../../src/debug/types';
+
+class PoolableEntity extends Entity implements IPoolableEntity {
+  onSpawn(): void {}
+  onDespawn(): void {}
+}
 
 // ── Test fixtures ──────────────────────────────────────────────────
 
@@ -164,9 +170,9 @@ describe('DebugDataProvider', () => {
     });
 
     it('collects pool stats when PoolManager is provided', () => {
-      const pools = new PoolManager();
+      const pools = new PoolManager(em);
       pools.registerEntityType('projectile', {
-        factory: () => new Entity(),
+        factory: () => new PoolableEntity(),
         pool: { initialSize: 10 },
       });
       pools.prewarmAll();

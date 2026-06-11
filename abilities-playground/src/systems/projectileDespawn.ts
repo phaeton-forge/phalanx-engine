@@ -8,11 +8,9 @@ const PARKED_POSITION = FP.FromFloat(1e9);
 
 export function despawnProjectile(
   pools: PoolManager | null,
-  entityManager: EntityManager,
   projectile: ProjectileEntity,
 ): void {
-  entityManager.removeEntity(projectile);
-  pools?.release('projectile', projectile);
+  pools?.despawn(projectile);
 }
 
 export function softDeactivateProjectile(

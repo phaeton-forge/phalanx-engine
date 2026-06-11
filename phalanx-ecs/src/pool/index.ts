@@ -1,10 +1,10 @@
 export type { IPoolable } from './IPoolable';
-export type { IResettableComponent } from './IResettableComponent';
+export type { IPoolableEntity, SpawnArgsOf } from './IPoolableEntity';
+export type { IPoolableComponent } from './IPoolableComponent';
+export { isPoolableComponent } from './IPoolableComponent';
 export type {
   PoolConfig,
   PoolStats,
-  ComponentTemplate,
-  EntityPoolConfig,
   EntityTypeConfig,
   PoolingConfig,
   ResolvedPoolConfig,

@@ -43,8 +43,10 @@ A lightweight, renderer-agnostic Entity-Component-System (ECS) library with opti
 
 ### Object Pooling
 - **ObjectPool**: Generic LIFO pool for any `IPoolable` object
-- **EntityPool**: Entity-specific pool with component template support and automatic ID assignment
-- **PoolManager**: Central manager for named entity pools (one per GameWorld)
+- **EntityPool**: Low-level entity storage with stable IDs and growth stats
+- **PoolManager**: Orchestrates spawn/despawn lifecycle and EntityManager registration
+- **IPoolableEntity**: Per-entity `onSpawn(args)` / `onDespawn()` hooks for typed value assignment
+- **IPoolableComponent**: Engine-driven `onSpawn()` / `onDespawn()` hooks for backing storage (SoA rows, visibility)
 
 ## Installation
 
@@ -497,77 +499,93 @@ p.x = 10; p.life = 60;
 pool.release(p);           // returns to pool, calls reset()
 ```
 
-### EntityPool
+### Entity pooling with GameWorld
 
-Entity-specific pool with component template support:
+Attach all components once in the entity constructor. Use `IPoolableEntity` for per-spawn values and let the engine handle SoA row lifecycle automatically:
 
 ```typescript
-import { EntityPool } from 'phalanx-ecs';
+import { GameWorld, Entity, type IPoolableEntity } from 'phalanx-ecs';
 
-const projectilePool = new EntityPool(
-  () => new ProjectileEntity(),
-  {
-    initialSize: 50,
-    componentTemplates: [
-      { type: ComponentType.Transform, factory: () => new TransformComponent() },
-      { type: ComponentType.Projectile, factory: () => new ProjectileComponent() },
-    ],
+export interface ProjectileSpawnArgs {
+  fpPosition: FPVector3;
+  fpDirection2: FPVector2;
+  teamId: number;
+}
+
+export class ProjectileEntity extends Entity implements IPoolableEntity<ProjectileSpawnArgs> {
+  private readonly transform: TransformComponent;
+  private readonly projectile: ProjectileComponent;
+
+  constructor() {
+    super();
+    this.addComponent(MeshComponent.createProjectile(radius));
+    this.projectile = this.addComponent(new ProjectileComponent());
+    // SoA rows are auto-managed — attach wrappers once, never call reattach/detach
+    this.transform = this.addComponent(new TransformComponent(this.id));
+    this.addComponent(new PhysicsBodyComponent(this.id, { radius }));
   }
-);
 
-const entity = projectilePool.acquire();  // new ID, revived, template components reset
-projectilePool.release(entity);           // returned to pool
+  onSpawn(args: ProjectileSpawnArgs): void {
+    this.transform.fpPosition = args.fpPosition;
+    this.projectile.fpDirection2 = args.fpDirection2;
+    this.teamId = args.teamId;
+  }
+
+  onDespawn(): void {
+    this.active = false;
+  }
+}
+
+const world = new GameWorld({
+  componentTypes: Object.values(ComponentType),
+  pooling: {
+    autoPrewarm: true,
+    entityTypes: {
+      projectile: {
+        factory: () => new ProjectileEntity(),
+        pool: { initialSize: 50, maxSize: 200 },
+      },
+    },
+  },
+});
+
+// Spawn: component onSpawn() → entity.onSpawn(args) → EntityManager.addEntity()
+const projectile = world.pools!.spawn<ProjectileEntity>('projectile', {
+  fpPosition: spawnPosition,
+  fpDirection2: direction2,
+  teamId: caster.teamId,
+});
+
+// Despawn: EntityManager.removeEntity() → entity.onDespawn() → component onDespawn() → pool
+world.pools!.despawn(projectile);
 ```
 
 ### PoolManager
 
-Central registry for named entity pools:
+`PoolManager` is constructed with an `EntityManager` and wired automatically when `pooling` is configured on `GameWorld`. Game code uses `spawn()` / `despawn()` — not low-level `acquire()` / `release()`:
 
 ```typescript
-import { PoolManager } from 'phalanx-ecs';
-
-const poolManager = new PoolManager();
-
-poolManager.registerEntityType('projectile', {
-  factory: () => new ProjectileEntity(),
-  pool: { initialSize: 50, maxSize: 200 },
-  components: [
-    { type: ComponentType.Projectile, factory: () => new ProjectileComponent() },
-  ],
-});
-
-poolManager.prewarmAll();
-
-const entity = poolManager.acquire<ProjectileEntity>('projectile');
-poolManager.release('projectile', entity);
-
 // Diagnostics
-const stats = poolManager.getStats(); // Map<string, PoolStats>
+const stats = world.pools!.getStats(); // Map<string, PoolStats>
 ```
 
-### IResettableComponent
+### IPoolableComponent
 
-Components that support pooling should implement `IResettableComponent`:
+Components that manage backing storage (SoA rows, mesh visibility) implement `IPoolableComponent`. The engine calls these hooks automatically — game code never does:
 
 ```typescript
-import type { IResettableComponent } from 'phalanx-ecs';
+import type { IPoolableComponent } from 'phalanx-ecs';
 
-class ProjectileComponent implements IResettableComponent {
-  public readonly type = ComponentType.Projectile;
-  public damage = 0;
-  public speed = 0n;
+// SoAComponent implements IPoolableComponent generically — subclasses need no changes.
+// Custom render components can toggle visibility in onSpawn/onDespawn:
 
-  reset(): void {
-    this.damage = 0;
-    this.speed = 0n;
-  }
-
-  reinitialize(damage: number, speed: bigint): void {
-    this.damage = damage;
-    this.speed = speed;
-  }
+class MeshComponent implements IPoolableComponent {
+  onSpawn(): void { this.mesh.isVisible = true; }
+  onDespawn(): void { this.mesh.isVisible = false; }
 }
 ```
+
+`EntityPool` remains available as a low-level storage primitive; prefer `PoolManager.spawn()` / `despawn()` for gameplay entities.
 
 ## Creating Custom Systems
 

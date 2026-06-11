@@ -26,14 +26,15 @@ export {
   ObjectPool,
   EntityPool,
   PoolManager,
+  isPoolableComponent,
 } from './pool';
 export type {
   IPoolable,
-  IResettableComponent,
+  IPoolableEntity,
+  SpawnArgsOf,
+  IPoolableComponent,
   PoolConfig,
   PoolStats,
-  ComponentTemplate,
-  EntityPoolConfig,
   EntityTypeConfig,
   PoolingConfig,
 } from './pool';

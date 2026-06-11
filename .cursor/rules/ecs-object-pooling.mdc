@@ -1,0 +1,68 @@
+---
+description: Entity pooling lifecycle conventions for Phalanx (IPoolableEntity / IPoolableComponent). Apply when working with pools, pooled entities, or components.
+globs:
+  - "phalanx-ecs/src/pool/**"
+  - "phalanx-ecs/src/Entity.ts"
+  - "phalanx-ecs/src/SoAComponent.ts"
+  - "**/components/**"
+  - "**/entities/**"
+alwaysApply: false
+---
+
+# Entity Pooling Lifecycle
+
+Pooling is **engine-driven**. `PoolManager` owns all spawn/despawn orchestration.
+Game code calls only `pools.spawn(typeKey, args)` and `pools.despawn(entity)`.
+
+## Core invariants (do not violate)
+
+- **Components are pure data.** Never add `reinitialize()` or any
+  manually-called reset method to a component. The deleted `IResettableComponent`
+  / `ComponentTemplate` concept must NOT be reintroduced.
+- **Components are attached once, in the entity constructor**, and live for the
+  entity's whole lifetime. Never recreate or re-add a component on spawn.
+- **No manual SoA row management in game code.** Never call `reattach`/`detach`
+  or `store.add`/`store.remove` from an entity or a call site. SoA row lifecycle
+  is fully automatic (see below).
+
+## The two lifecycle contracts
+
+- `IPoolableEntity<TSpawnArgs>` — written by the game developer.
+  - `onSpawn(args)`: assign per-spawn values via the components' normal typed
+    setters only. Must not allocate. SoA rows already exist with defaults here.
+  - `onDespawn()`: game-level teardown only (flags, timers, targets). Must not allocate.
+  - The entity author must NOT know or care which components are SoA-backed.
+
+- `IPoolableComponent` — implemented by components with non-local state
+  (SoA store rows, render-graph visibility, external resources). Zero-arg
+  `onSpawn()` / `onDespawn()`, called automatically by `PoolManager`. Game code
+  NEVER calls these.
+  - Plain components whose state lives in their own fields do NOT implement this.
+  - `SoAComponent` implements it generically; subclasses (TransformComponent,
+    PhysicsBodyComponent) inherit it with zero changes.
+
+## Engine-enforced ordering (do not change)
+
+- Spawn: component `onSpawn()` (restore rows to defaults) → entity `onSpawn(args)`
+  (typed setters) → `entityManager.addEntity()`.
+- Despawn (exact inverse): `entityManager.removeEntity()` → entity `onDespawn()`
+  → component `onDespawn()` → return to pool.
+- This order must stay identical across all clients — it is part of lockstep
+  determinism. Component hook order = component insertion order = constructor
+  execution order. Do not introduce nondeterministic iteration.
+
+## Maintenance invariants
+
+- `SoAComponent._spawnDefaults` retains the constructor's `initialValues`
+  reference. Callers must pass fresh object literals to the constructor; never
+  pass a shared/mutable object, or pooled respawns will drift.
+- `onDespawn()` on components must be idempotent (row may already be cleared by
+  `removeEntity`; prewarmed factory-fresh entities also call it once).
+
+## When adding a new pooled entity type
+
+1. Subclass `Entity`, implement `IPoolableEntity<YourSpawnArgs>`.
+2. Attach all components in the constructor.
+3. `onSpawn(args)`: typed setter assignments only.
+4. `onDespawn()`: game teardown only.
+5. Register declaratively via `GameWorldConfig.pooling.entityTypes`.

@@ -1,4 +1,5 @@
 import type { IComponent } from './Component';
+import type { IPoolableComponent } from './pool/IPoolableComponent';
 import type { SoASchemaDefinition, SoASchema, SoAFieldsOf } from './SoASchema';
 import type { SoAComponentStore } from './SoAComponentStore';
 import type { EntityManager } from './EntityManager';
@@ -30,7 +31,7 @@ const DEFAULT_STORE_CAPACITY = 1024;
  * }
  * ```
  */
-export abstract class SoAComponent<S extends SoASchemaDefinition> implements IComponent {
+export abstract class SoAComponent<S extends SoASchemaDefinition> implements IComponent, IPoolableComponent {
   public abstract readonly type: symbol;
 
   /** The SoA store backing this component (shared across all instances of the same schema) */
@@ -41,6 +42,9 @@ export abstract class SoAComponent<S extends SoASchemaDefinition> implements ICo
 
   /** Cached dense array index (may change if other entities are removed via swap-and-pop) */
   private _cachedIndex: number = -1;
+
+  /** Constructor-time field values; restored on every pooled respawn. */
+  private readonly _spawnDefaults: SoAFieldsOf<S>;
 
   // ── Static EntityManager context ──────────────────────────────────────
 
@@ -72,12 +76,41 @@ export abstract class SoAComponent<S extends SoASchemaDefinition> implements ICo
 
     this.entityId = entityId;
     this.store = SoAComponent._entityManager.getOrCreateSoAStore<S>(schema, DEFAULT_STORE_CAPACITY);
+    this._spawnDefaults = initialValues;
 
     // Add this entity to the store with initial values
     this.store.add(entityId, initialValues);
 
     // Cache the dense index for fast subsequent access
     this._cachedIndex = this.store.indexOf(entityId);
+  }
+
+  // ── IPoolableComponent ────────────────────────────────────────────────
+
+  /**
+   * Re-add this entity's row with constructor defaults, or reset an existing
+   * row to defaults. Called by PoolManager on spawn, BEFORE the entity's
+   * onSpawn(args) writes per-spawn values via setters.
+   */
+  public onSpawn(): void {
+    if (this.store.indexOf(this.entityId) === -1) {
+      this.store.add(this.entityId, this._spawnDefaults);
+    } else {
+      for (const key of Object.keys(this._spawnDefaults) as (keyof S & string)[]) {
+        this.setField(key, this._spawnDefaults[key]);
+      }
+    }
+    this._cachedIndex = this.store.indexOf(this.entityId);
+  }
+
+  /**
+   * Remove this entity's row. Idempotent — a no-op when EntityManager.removeEntity()
+   * already cleared it; also covers factory-fresh prewarmed entities whose
+   * constructors added rows, keeping dormant pooled entities out of the hot arrays.
+   */
+  public onDespawn(): void {
+    this.store.remove(this.entityId);
+    this._cachedIndex = -1;
   }
 
   // ── Index helpers ─────────────────────────────────────────────────────

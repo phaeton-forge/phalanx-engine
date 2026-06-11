@@ -15,11 +15,9 @@ import { combatDefs, UNIT_MOVE_SPEED } from '../config/abilityDefinitions';
 import { DEFAULT_UNIT_DETECTION_RANGE, UNIT_ROSTER } from '../config/unitRoster';
 import {
   ComponentType,
-  MeshComponent,
   StatsComponent,
   SimulationStateComponent,
 } from '../components';
-import { PROJECTILE_RADIUS } from '../entities/Projectile.ts';
 import { UnitEntity } from '../entities/UnitEntity';
 import {
   AttackSystem,
@@ -60,12 +58,6 @@ export class SimulationContainer {
           'projectile': {
             factory: () => new ProjectileEntity(),
             pool: { initialSize: 50, maxSize: 200 },
-            components: [
-              {
-                type: ComponentType.Mesh,
-                factory: () => MeshComponent.createProjectile(PROJECTILE_RADIUS),
-              },
-            ],
           },
         },
       },

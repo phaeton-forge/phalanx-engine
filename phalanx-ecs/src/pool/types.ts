@@ -1,5 +1,5 @@
 import type { Entity } from '../Entity';
-import type { IResettableComponent } from './IResettableComponent';
+import type { IPoolableEntity } from './IPoolableEntity';
 
 export interface PoolConfig {
   /** Initial number of pre-allocated objects. Default: 0 */
@@ -20,19 +20,9 @@ export interface PoolStats {
   missCount: number;
 }
 
-export interface ComponentTemplate {
-  type: symbol;
-  factory: () => IResettableComponent;
-}
-
-export interface EntityPoolConfig extends PoolConfig {
-  componentTemplates?: ComponentTemplate[];
-}
-
-export interface EntityTypeConfig<T extends Entity = Entity> {
+export interface EntityTypeConfig<T extends Entity & IPoolableEntity<any> = Entity & IPoolableEntity<any>> {
   factory: () => T;
   pool?: PoolConfig;
-  components?: ComponentTemplate[];
 }
 
 export interface PoolingConfig {

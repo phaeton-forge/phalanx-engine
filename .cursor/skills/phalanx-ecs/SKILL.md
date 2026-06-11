@@ -967,10 +967,10 @@ import type {
 // Object Pooling
 import { ObjectPool, EntityPool, PoolManager } from 'phalanx-ecs';
 import type {
-  IPoolable, IResettableComponent,
-  PoolConfig, PoolStats, ComponentTemplate,
-  EntityPoolConfig, EntityTypeConfig, PoolingConfig,
+  IPoolable, IPoolableEntity, IPoolableComponent, SpawnArgsOf,
+  PoolConfig, PoolStats, EntityTypeConfig, PoolingConfig,
 } from 'phalanx-ecs';
+import { isPoolableComponent } from 'phalanx-ecs';
 
 // Debug / Introspection
 import { DebugDataProvider, DebugPanel } from 'phalanx-ecs';
@@ -1036,69 +1036,73 @@ import type {
 ### Object Pooling
 
 - Use `ObjectPool` for generic poolable objects (particles, effects, temporary data)
-- Use `EntityPool` for entity-specific pooling with component template support
-- Use `PoolManager` as a central registry for named entity pools
-- Components in pooled entities should implement `IResettableComponent` (extends `IComponent` + `IPoolable`)
+- Use `PoolManager.spawn()` / `despawn()` for gameplay entities — registers with `EntityManager` automatically
+- Attach all components once in the entity constructor; never reattach/detach SoA wrappers manually
+- Implement `IPoolableEntity<TSpawnArgs>` on pooled entities: `onSpawn(args)` assigns per-spawn values via typed setters; `onDespawn()` clears game state
+- `SoAComponent` implements `IPoolableComponent` generically — rows are removed while dormant and restored on spawn
+- Custom render components can implement `IPoolableComponent` for visibility toggling
 - Prewarm pools at game start with `prewarmAll()` to avoid allocation spikes during gameplay
 - Check `pool.stats` for diagnostics (acquireCount, releaseCount, missCount)
 
-#### EntityPool Example
+#### Pooled Entity Example
 
 ```typescript
-import { EntityPool } from 'phalanx-ecs';
-import type { IResettableComponent } from 'phalanx-ecs';
+import { Entity, type IPoolableEntity } from 'phalanx-ecs';
 
-// Components must implement IResettableComponent for pooling
-class ProjectileComponent implements IResettableComponent {
-  public readonly type = ComponentType.Projectile;
-  public damage = 0;
-  public speed = 0n;
-
-  reset(): void { this.damage = 0; this.speed = 0n; }
-  reinitialize(damage: number, speed: bigint): void {
-    this.damage = damage;
-    this.speed = speed;
-  }
+export interface ProjectileSpawnArgs {
+  fpPosition: FPVector3;
+  fpDirection2: FPVector2;
+  teamId: number;
 }
 
-// Create pool with component templates
-const pool = new EntityPool(
-  () => new ProjectileEntity(),
-  {
-    initialSize: 50,
-    maxSize: 200,
-    componentTemplates: [
-      { type: ComponentType.Transform, factory: () => new TransformComponent() },
-      { type: ComponentType.Projectile, factory: () => new ProjectileComponent() },
-    ],
-  }
-);
+export class ProjectileEntity extends Entity implements IPoolableEntity<ProjectileSpawnArgs> {
+  private readonly transform: TransformComponent;
+  private readonly projectile: ProjectileComponent;
 
-pool.prewarm(50);
-const entity = pool.acquire();   // new ID, revived, template components reset
-pool.release(entity);            // returned to pool
+  constructor() {
+    super();
+    this.addComponent(MeshComponent.createProjectile(radius));
+    this.projectile = this.addComponent(new ProjectileComponent());
+    this.transform = this.addComponent(new TransformComponent(this.id));
+    this.addComponent(new PhysicsBodyComponent(this.id, { radius }));
+  }
+
+  onSpawn(args: ProjectileSpawnArgs): void {
+    this.transform.fpPosition = args.fpPosition;
+    this.projectile.fpDirection2 = args.fpDirection2;
+    this.teamId = args.teamId;
+  }
+
+  onDespawn(): void {
+    this.active = false;
+  }
+}
 ```
 
-#### PoolManager Example
+#### GameWorld Pool Config
 
 ```typescript
-import { PoolManager } from 'phalanx-ecs';
-
-const poolManager = new PoolManager();
-
-poolManager.registerEntityType('projectile', {
-  factory: () => new ProjectileEntity(),
-  pool: { initialSize: 50, maxSize: 200 },
-  components: [
-    { type: ComponentType.Projectile, factory: () => new ProjectileComponent() },
-  ],
+const world = new GameWorld({
+  componentTypes: Object.values(ComponentType),
+  pooling: {
+    autoPrewarm: true,
+    entityTypes: {
+      projectile: {
+        factory: () => new ProjectileEntity(),
+        pool: { initialSize: 50, maxSize: 200 },
+      },
+    },
+  },
 });
 
-poolManager.prewarmAll();
-
-const entity = poolManager.acquire<ProjectileEntity>('projectile');
-poolManager.release('projectile', entity);
+const projectile = world.pools!.spawn<ProjectileEntity>('projectile', {
+  fpPosition, fpDirection2, teamId: caster.teamId,
+});
+world.pools!.despawn(projectile);
 ```
+
+Spawn order: component `onSpawn()` → entity `onSpawn(args)` → `EntityManager.addEntity()`.
+Despawn order: `EntityManager.removeEntity()` → entity `onDespawn()` → component `onDespawn()` → pool.
 
 ### Performance
 

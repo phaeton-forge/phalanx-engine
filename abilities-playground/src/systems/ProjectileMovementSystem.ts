@@ -56,6 +56,6 @@ export class ProjectileMovementSystem extends GameSystem {
   }
 
   private releaseProjectile(projectile: ProjectileEntity): void {
-    despawnProjectile(this.pools, this.entityManager, projectile);
+    despawnProjectile(this.pools, projectile);
   }
 }

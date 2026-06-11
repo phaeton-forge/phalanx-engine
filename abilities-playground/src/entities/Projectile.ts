@@ -1,21 +1,28 @@
-import { Entity, type IPoolable } from 'phalanx-ecs';
+import { Entity, type IPoolableEntity } from 'phalanx-ecs';
 import { FP, FPVector3 } from 'phalanx-math';
+import type { FPVector3 as FPVector3Type, FPVector2 as FPVector2Type } from 'phalanx-math';
 import {
   InterpolationComponent,
   PhysicsBodyComponent,
   TransformComponent,
 } from 'phalanx-physics';
 import {
-  ComponentType,
   MeshComponent,
   TeamComponent,
 } from '../components';
-import { ProjectileComponent } from '../components/ProjectileComponent.ts';
+import type { TeamId } from '../components/UnitComponents';
+import { ProjectileComponent, PROJECTILE_DEFAULT_LIFETIME } from '../components/ProjectileComponent.ts';
 
 export const PROJECTILE_RADIUS = 0.5;
 const PROJECTILE_MASS = 1;
 
-export class ProjectileEntity extends Entity implements IPoolable {
+export interface ProjectileSpawnArgs {
+  fpPosition: FPVector3Type;
+  fpDirection2: FPVector2Type;
+  teamId: TeamId;
+}
+
+export class ProjectileEntity extends Entity implements IPoolableEntity<ProjectileSpawnArgs> {
   private _active = false;
 
   public get active() {
@@ -26,17 +33,22 @@ export class ProjectileEntity extends Entity implements IPoolable {
     this._active = value;
   }
 
-  reinitialize() {
-    this._active = true;
+  // Cached typed references — no getComponent lookups in onSpawn/onDespawn
+  private readonly projectile: ProjectileComponent;
+  private readonly team: TeamComponent;
+  private readonly interpolation: InterpolationComponent;
+  private readonly transform: TransformComponent;
 
-    this.getComponent<MeshComponent>(ComponentType.Mesh)!.reinitialize();
-
-    const fpPosition = FPVector3.FromFloat(0, 0, 0);
-
-    this.addComponent(new ProjectileComponent());
-    this.addComponent(new TransformComponent(this.id, fpPosition));
-    this.addComponent(new TeamComponent(0));
-    this.addComponent(new InterpolationComponent(fpPosition));
+  constructor() {
+    super();
+    // Mesh visibility is handled by MeshComponent's own IPoolableComponent hooks.
+    this.addComponent(MeshComponent.createProjectile(PROJECTILE_RADIUS));
+    this.projectile = this.addComponent(new ProjectileComponent());
+    this.team = this.addComponent(new TeamComponent(0));
+    this.interpolation = this.addComponent(new InterpolationComponent());
+    // SoA wrappers: rows are auto-managed by SoAComponent's IPoolableComponent
+    // hooks (removed while dormant in the pool, restored to defaults on spawn).
+    this.transform = this.addComponent(new TransformComponent(this.id));
     this.addComponent(
       new PhysicsBodyComponent(this.id, {
         radius: FP.FromFloat(PROJECTILE_RADIUS),
@@ -47,8 +59,22 @@ export class ProjectileEntity extends Entity implements IPoolable {
     );
   }
 
-  reset() {
-    super.reset();
+  onSpawn(args: ProjectileSpawnArgs): void {
+    this._active = true;
+
+    // Per-spawn values via typed setters — SoA rows already restored by the engine.
+    this.transform.fpPosition = args.fpPosition;
+    this.projectile.fpDirection2.x = args.fpDirection2.x;
+    this.projectile.fpDirection2.y = args.fpDirection2.y;
+    this.projectile.lifeTime = PROJECTILE_DEFAULT_LIFETIME;
+    this.team.teamId = args.teamId;
+
+    // Snap interpolation so the first frame doesn't blend from a stale position.
+    this.interpolation.capture(args.fpPosition, FPVector3.Zero);
+    this.interpolation.snapshot();
+  }
+
+  onDespawn(): void {
     this._active = false;
   }
 }

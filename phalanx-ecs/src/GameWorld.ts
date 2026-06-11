@@ -153,7 +153,7 @@ export class GameWorld {
     // Setup pooling if configured
     if (config.pooling) {
       this._poolingConfig = config.pooling;
-      this._pools = new PoolManager();
+      this._pools = new PoolManager(this.systemRegistry.entityManager);
       for (const [typeKey, typeConfig] of Object.entries(config.pooling.entityTypes)) {
         this._pools.registerEntityType(typeKey, typeConfig);
       }

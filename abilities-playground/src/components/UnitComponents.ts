@@ -5,24 +5,16 @@ import type { IComponent } from './Component';
 import { ComponentType } from './Component';
 import type { UnitKind } from '../config/unitRoster';
 import { DEFAULT_UNIT_DETECTION_RANGE } from '../config/unitRoster';
-import type {IResettableComponent} from "phalanx-ecs";
+import type { IPoolableComponent } from 'phalanx-ecs';
 
 export type TeamId = 0 | 1;
 
-export class TeamComponent implements IResettableComponent {
+export class TeamComponent {
   public readonly type = ComponentType.Team;
   public teamId: TeamId;
 
   constructor(teamId: TeamId = 0) {
     this.teamId = teamId;
-  }
-
-  reinitialize(teamId: TeamId): void {
-      this.teamId = teamId;
-  }
-
-  reset(): void {
-      this.teamId = 0;
   }
 }
 
@@ -65,7 +57,7 @@ export class TargetStateComponent implements IComponent {
   public targetEntityId: number | null = null;
 }
 
-export class MeshComponent implements IResettableComponent {
+export class MeshComponent implements IPoolableComponent {
   public readonly type = ComponentType.Mesh;
   public readonly root: THREE.Object3D;
 
@@ -93,11 +85,11 @@ export class MeshComponent implements IResettableComponent {
     }
   }
 
-  reinitialize(): void {
+  onSpawn(): void {
     this.root.visible = true;
   }
 
-  reset(): void {
+  onDespawn(): void {
     this.root.visible = false;
   }
 }

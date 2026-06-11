@@ -1,11 +1,10 @@
 import * as THREE from 'three';
 import type { TransformComponent } from 'phalanx-physics';
-import {ComponentType, MeshComponent, SpawnPointComponent, TeamComponent} from "../components";
-import {ProjectileEntity} from "../entities/Projectile.ts";
-import type {ProjectileComponent} from "../components/ProjectileComponent.ts";
-import {FP, FPVector2, FPVector3} from "phalanx-math";
-import type {AbilityActivationContext} from "phalanx-abilities";
-import {GameWorld} from "phalanx-ecs";
+import { ComponentType, MeshComponent, SpawnPointComponent, TeamComponent } from '../components';
+import { ProjectileEntity } from '../entities/Projectile.ts';
+import { FP, FPVector2, FPVector3 } from 'phalanx-math';
+import type { AbilityActivationContext } from 'phalanx-abilities';
+import { GameWorld } from 'phalanx-ecs';
 
 const _worldPos = new THREE.Vector3();
 
@@ -33,24 +32,17 @@ export const autoAttack = (ctx: AbilityActivationContext, world: GameWorld) => {
         ? markerWorldPosition(casterTransform, casterMesh, spawnPoint)
         : casterTransform.fpPosition;
 
-    const projectileEntity = world.pools?.acquire('projectile') as ProjectileEntity;
-
-    projectileEntity.reinitialize();
-    world.entityManager.addEntity(projectileEntity);
-
-    const projectileTransform = projectileEntity.getComponent<TransformComponent>(ComponentType.Transform)!;
-    const projectileComponent = projectileEntity.getComponent<ProjectileComponent>(ComponentType.Projectile)!;
-    const projectileTeamComponent = projectileEntity.getComponent<TeamComponent>(ComponentType.Team)!;
-
-    projectileTransform.fpPosition = spawnPosition;
-
     const targetPos = targetTransform.fpPosition as FPVector3;
     const direction2 = FPVector2.Normalize({
         x: FP.Sub(targetPos.x, spawnPosition.x),
         y: FP.Sub(targetPos.z, spawnPosition.z),
     });
-    projectileComponent.reinitialize(direction2);
-    projectileTeamComponent.reinitialize(casterTeamComponent.teamId);
+
+    world.pools!.spawn<ProjectileEntity>('projectile', {
+        fpPosition: spawnPosition,
+        fpDirection2: direction2,
+        teamId: casterTeamComponent.teamId,
+    });
 };
 
 function markerWorldPosition(

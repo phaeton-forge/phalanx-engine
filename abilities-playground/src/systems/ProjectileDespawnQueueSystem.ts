@@ -26,7 +26,7 @@ export class ProjectileDespawnQueueSystem extends GameSystem {
 
       const entity = this.entityManager.getEntity(projectileId) as ProjectileEntity | undefined;
       if (entity) {
-        despawnProjectile(this.pools, this.entityManager, entity);
+        despawnProjectile(this.pools, entity);
       }
       this.pendingDespawnTickByProjectileId.delete(projectileId);
     }
