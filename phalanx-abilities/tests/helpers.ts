@@ -3,6 +3,7 @@ import { FP } from 'phalanx-math';
 import type { FixedPoint } from 'phalanx-math';
 import {
   createAbilitySystem,
+  Cue,
   defineAbilitySystem,
   defineAttribute,
   defineEffect,
@@ -12,10 +13,27 @@ import {
   type AbilitySystemComponentInit,
   type AbilitySystemPipeline,
   type AttributeDef,
+  type CueConfig,
+  type CueContext,
   type CueEvent,
   type EffectDef,
+  type GameplayCueDispatchedEvent,
 } from '../src';
 import { GAMEPLAY_CUE_EVENT } from '../src/events';
+
+/** Trivial instant cue for tests that only need dispatch enabled. */
+export class NoopCue extends Cue {
+  public onSpawn(_event: GameplayCueDispatchedEvent, _context: CueContext): void {}
+
+  public override isFinished(): boolean {
+    return true;
+  }
+}
+
+/** Enables {@link CueDispatchSystem} without presentation side effects. */
+export const DISPATCH_CUES: CueConfig = {
+  'Cue.Test.Noop': () => new NoopCue(),
+};
 
 export const HealthAttribute = defineAttribute({
   id: 'Health',
@@ -61,7 +79,7 @@ export interface TestWorldOpts {
   abilities?: readonly AbilityDef[];
   pipeline?: AbilitySystemPipeline;
   hooks?: Record<string, AbilityHook>;
-  cues?: 'buffer' | 'dispatch';
+  cues?: CueConfig;
 }
 
 export interface TestWorld {
@@ -76,7 +94,7 @@ export interface TestWorld {
 export function createActivationWorld(opts: TestWorldOpts = {}): TestWorld {
   const world = new GameWorld({});
   const cueLog: CueEvent[] = [];
-  const dispatchCues = opts.cues === 'dispatch';
+  const hasCues = opts.cues !== undefined && Object.keys(opts.cues).length > 0;
 
   const abilities = createAbilitySystem(world, {
     definitions: defineAbilitySystem({
@@ -89,7 +107,7 @@ export function createActivationWorld(opts: TestWorldOpts = {}): TestWorld {
     cues: opts.cues,
   });
 
-  if (dispatchCues) {
+  if (hasCues) {
     world.eventBus.on<CueEvent>(GAMEPLAY_CUE_EVENT, (event) => cueLog.push(event));
   }
 

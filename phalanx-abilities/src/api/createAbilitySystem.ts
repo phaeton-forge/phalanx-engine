@@ -5,12 +5,14 @@ import {
   AbilitiesComponentType,
   AbilitySystemComponent,
 } from '../components';
+import type { CueConfig } from '../cues';
 import {
   AbilityActivationSystem,
   AbilityHookExecutorSystem,
   AttributeAggregationSystem,
   CueBufferCleanupSystem,
   CueDispatchSystem,
+  CuePresentationSystem,
   EffectApplicationSystem,
   EffectTickSystem,
 } from '../systems';
@@ -62,10 +64,12 @@ export interface CreateAbilitySystemConfig {
    */
   pipeline?: AbilitySystemPipeline;
   /**
-   * `dispatch` mirrors deterministic cue buffer entries onto the world event
-   * bus, then clears the buffer at the end of the ability pipeline.
+   * Client-side cue presentation factories, keyed by cue id. When non-empty, the
+   * engine registers {@link CueDispatchSystem} and {@link CuePresentationSystem}
+   * automatically. Each dispatch invokes the matching factory to create a fresh,
+   * self-managing {@link Cue} instance.
    */
-  cues?: 'buffer' | 'dispatch';
+  cues?: CueConfig;
 }
 
 export interface AbilitySystem extends IAbilitySystem {
@@ -106,12 +110,14 @@ export function createAbilitySystem(
 
   world.entityManager.registerComponentTypes(abilityComponentTypes);
 
+  const cues: CueConfig = config.cues ?? {};
+
   const abilitySystem = new AbilitySystemImpl(
     registries,
     runtime,
     facade,
     config.pipeline ?? 'full',
-    config.cues === 'dispatch'
+    cues
   );
 
   // Assign on context so every GameSystem can access it via this.abilities.
@@ -151,10 +157,10 @@ class AbilitySystemImpl implements AbilitySystem {
     private readonly runtime: AbilitySystemRuntime,
     private readonly facade: AbilitySystemFacade,
     pipeline: AbilitySystemPipeline,
-    dispatchCues: boolean
+    cues: CueConfig
   ) {
     this.gameplayCueBuffer = facade.gameplayCueBufferInternal;
-    this.tickSystems = buildTickSystems(registries, runtime, pipeline, dispatchCues);
+    this.tickSystems = buildTickSystems(registries, runtime, pipeline, cues);
   }
 
   public initComponent(init: AbilitySystemComponentInit = {}): AbilitySystemComponent {
@@ -316,45 +322,59 @@ function buildTickSystems(
   registries: AbilitySystemRegistries,
   runtime: AbilitySystemRuntime,
   pipeline: AbilitySystemPipeline,
-  dispatchCues: boolean
+  cues: CueConfig
 ): GameSystem[] {
   const effectApplication = new EffectApplicationSystem(registries, runtime);
   const effectTick = new EffectTickSystem(registries, runtime);
   const aggregation = new AttributeAggregationSystem(registries);
   const cueCleanup = new CueBufferCleanupSystem(runtime);
+  const hasCues = Object.keys(cues).length > 0;
 
-  switch (pipeline) {
-    case 'attributes':
-      return [aggregation];
-    case 'effects':
-    case 'effects-retain-cues': {
-      const systems: GameSystem[] = [effectApplication, effectTick, aggregation];
-      if (dispatchCues) {
-        systems.push(new CueDispatchSystem(runtime));
-      }
-      if (pipeline === 'effects') {
-        systems.push(cueCleanup);
-      }
-      return systems;
-    }
-    case 'activation':
-      return [
-        new AbilityActivationSystem(registries, runtime),
-        effectApplication,
-        new AbilityHookExecutorSystem(registries, runtime),
-        effectTick,
-        aggregation,
-        cueCleanup,
-      ];
-    case 'full':
-      return [
-        new AbilityActivationSystem(registries, runtime),
-        effectApplication,
-        new AbilityHookExecutorSystem(registries, runtime),
-        effectTick,
-        aggregation,
-        ...(dispatchCues ? [new CueDispatchSystem(runtime)] : []),
-        cueCleanup,
-      ];
+  if (
+    pipeline === 'effects-retain-cues' &&
+    !hasCues &&
+    process.env.NODE_ENV !== 'production'
+  ) {
+    console.warn(
+      '[phalanx-abilities] pipeline "effects-retain-cues" with no cues registered: ' +
+        'the cue buffer is retained for manual inspection but nothing dispatches it.'
+    );
   }
+
+  const systems: GameSystem[] = (() => {
+    switch (pipeline) {
+      case 'attributes':
+        return [aggregation];
+
+      case 'effects':
+      case 'effects-retain-cues': {
+        const base: GameSystem[] = [effectApplication, effectTick, aggregation];
+        if (hasCues) {
+          base.push(new CueDispatchSystem(runtime));
+        }
+        if (pipeline === 'effects') {
+          base.push(cueCleanup);
+        }
+        return base;
+      }
+
+      case 'activation':
+      case 'full':
+        return [
+          new AbilityActivationSystem(registries, runtime),
+          effectApplication,
+          new AbilityHookExecutorSystem(registries, runtime),
+          effectTick,
+          aggregation,
+          ...(hasCues ? [new CueDispatchSystem(runtime)] : []),
+          cueCleanup,
+        ];
+    }
+  })();
+
+  if (hasCues) {
+    systems.push(new CuePresentationSystem(cues));
+  }
+
+  return systems;
 }

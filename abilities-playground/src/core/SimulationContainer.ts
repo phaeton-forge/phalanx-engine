@@ -4,9 +4,7 @@ import { Entity, GameWorld, resetEntityIdCounter } from 'phalanx-ecs';
 import { FP } from 'phalanx-math';
 import { PhysicsWorld } from 'phalanx-physics';
 import {
-  gameplayCueKey,
   type AbilityActivationContext,
-  type GameplayCueDispatchedEvent,
   createAbilitySystem,
 } from 'phalanx-abilities';
 import type { AbilitySystem } from 'phalanx-abilities';
@@ -32,7 +30,7 @@ import type { UnitFactory } from './UnitFactory';
 import {ProjectileEntity} from "../entities/Projectile.ts";
 import { autoAttack } from "../hooks/AutoAttack.ts";
 import { ProjectileDespawnQueueSystem, ProjectileCollisionSystem, ProjectileMovementSystem } from '../systems';
-import { damageSphereCue, updateCueVfx, deathCue } from '../cues';
+import { DamageSphereCue, DeathCue } from '../cues';
 
 export class SimulationContainer {
   readonly world: GameWorld;
@@ -41,7 +39,6 @@ export class SimulationContainer {
   private readonly physicsWorld: PhysicsWorld;
   private readonly abilities: AbilitySystem;
   private readonly scene: THREE.Scene;
-  private readonly activeCueVfx: Parameters<typeof damageSphereCue>[3] = [];
 
   constructor(client: PhalanxClient, unitFactory: UnitFactory, scene: THREE.Scene) {
     resetEntityIdCounter();
@@ -80,17 +77,13 @@ export class SimulationContainer {
 
     this.abilities = createAbilitySystem(this.world, {
       definitions: combatDefs,
-      cues: 'dispatch',
+      cues: {
+        'Cue.Damage.Sphere': () => new DamageSphereCue(this.scene),
+        'Cue.Death': () => new DeathCue(this.scene),
+      },
       hooks: {
         'Hook.AutoAttack': (ctx: AbilityActivationContext) => autoAttack(ctx, this.world),
       },
-    });
-
-    this.world.eventBus.on<GameplayCueDispatchedEvent>(gameplayCueKey('Cue.Damage.Sphere'), (e) => {
-      damageSphereCue(this.scene, this.world, e, this.activeCueVfx);
-    });
-    this.world.eventBus.on<GameplayCueDispatchedEvent>(gameplayCueKey('Cue.Death'), (e) => {
-      deathCue(this.scene, this.world, e, this.activeCueVfx);
     });
 
     const entityManager = this.world.entityManager;
@@ -144,10 +137,6 @@ export class SimulationContainer {
   dispose(): void {
     this.world.dispose();
     this.physicsWorld.dispose();
-  }
-
-  updatePresentation(dtSeconds: number): void {
-    updateCueVfx(this.scene, this.activeCueVfx, dtSeconds);
   }
 
   private spawnSimulationState(): void {

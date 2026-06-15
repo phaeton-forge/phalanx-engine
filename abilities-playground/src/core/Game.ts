@@ -20,7 +20,6 @@ export class Game {
   private gameOverShown = false;
   private onExit: (() => void) | null = null;
   private disposed = false;
-  private lastFrameDtSeconds = 0;
 
   constructor(canvas: HTMLCanvasElement, client: PhalanxClient, matchData: MatchFoundEvent) {
     this.client = client;
@@ -68,13 +67,9 @@ export class Game {
         this.checkGameOver();
       },
       beforeFrame: (_alpha: number, dt: number) => {
-        this.lastFrameDtSeconds = dt;
         this.cameraController.update(dt);
       },
       afterFrame: () => {
-        const dt = this.lastFrameDtSeconds || 0;
-
-        this.simulation.updatePresentation(dt);
         this.renderer.render(this.arenaScene.scene, this.cameraController.camera);
       },
     });
