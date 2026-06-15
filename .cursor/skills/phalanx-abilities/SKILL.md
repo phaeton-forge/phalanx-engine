@@ -39,6 +39,8 @@ Per tick (full pipeline):
   AbilityActivationSystem → EffectApplicationSystem → AbilityHookExecutorSystem
   → EffectTickSystem → AttributeAggregationSystem
   → [CueDispatchSystem] → CueBufferCleanupSystem
+Per frame (when cues map is non-empty):
+  CuePresentationSystem → afterFrame: Cue.update(dt), dispose on isFinished()
 ```
 
 **Critical:** Facade methods enqueue work; state changes appear after `processAllTicks()` (or lockstep tick). `activateAbility` returning `true` means queued, not necessarily successful.
@@ -95,7 +97,9 @@ const world = new GameWorld({ tickRate: 20 });
 const abilities = createAbilitySystem(world, {
   definitions: combatDefs,
   hooks: { 'Hook.SpawnProjectile': myHook },
-  cues: 'dispatch',
+  cues: {
+    'Cue.Hit': () => new HitCue(scene),
+  },
 });
 
 world.registerSystems([...abilities.tickSystems], [], 'default');
@@ -132,14 +136,37 @@ abilities.activateAbility(casterId, 'Ability.Strike', { entityId: targetId });
 world.processAllTicks(tick);
 ```
 
-### 5. Optional: gameplay cue listeners
+### 5. Optional: custom `Cue` subclasses
+
+Register self-managing `Cue` subclasses in the `cues` map (see README). The factory runs per dispatch; `CuePresentationSystem` drives `update(dt)` in `afterFrame`:
 
 ```typescript
-import { GAMEPLAY_CUE_EVENT, type GameplayCueDispatchedEvent } from 'phalanx-abilities';
+import { Cue, type CueContext, type GameplayCueDispatchedEvent } from 'phalanx-abilities';
 
-world.eventBus.on<GameplayCueDispatchedEvent>(GAMEPLAY_CUE_EVENT, (e) => {
-  // Presentation only — never applyEffect / activateAbility here
-});
+class HitCue extends Cue {
+  private done = false;
+
+  public constructor(private readonly scene: Scene) {
+    super();
+  }
+
+  public onSpawn(event: GameplayCueDispatchedEvent, ctx: CueContext): void {
+    // build VFX from event + ctx.entityManager
+  }
+
+  public override update(dt: number): void {
+    // animate each render frame
+    if (/* animation complete */) this.done = true;
+  }
+
+  public override isFinished(): boolean {
+    return this.done;
+  }
+
+  public override dispose(): void {
+    // remove VFX / free resources
+  }
+}
 ```
 
 ## Decision Trees
@@ -295,12 +322,17 @@ import {
   AbilitiesComponentType,
 } from 'phalanx-abilities';
 
-// Events
+// Events & cues
 import {
   ABILITY_ACTIVATED_EVENT,
   type AbilityActivatedEvent,
+  Cue,
+  CuePresentationSystem,
   GAMEPLAY_CUE_EVENT,
   gameplayCueKey,
+  type CueConfig,
+  type CueContext,
+  type CueFactory,
   type GameplayCueDispatchedEvent,
 } from 'phalanx-abilities';
 
@@ -325,6 +357,7 @@ import {
   AttributeAggregationSystem,
   AbilityHookExecutorSystem,
   CueDispatchSystem,
+  CuePresentationSystem,
   CueBufferCleanupSystem,
 } from 'phalanx-abilities';
 ```
@@ -345,7 +378,7 @@ world.registerSystems([...abilities.tickSystems], []);
 world.processAllTicks(2);
 ```
 
-Use `pipeline: 'effects-retain-cues'` to assert on `abilities.gameplayCueBuffer` before cleanup.
+Use `pipeline: 'effects-retain-cues'` to assert on `abilities.gameplayCueBuffer` before cleanup. Pass a non-empty `cues` map (e.g. a `NoopCue` factory in test helpers) when you need `GAMEPLAY_CUE_EVENT` dispatch in tests.
 
 ## Related skills
 

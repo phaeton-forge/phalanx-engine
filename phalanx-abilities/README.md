@@ -12,7 +12,7 @@ A deterministic gameplay ability system (GAS-inspired) for the [Phalanx Engine](
 - **Abilities**: declarative definitions, activation queue, cost/cooldown via effects, `CanActivate` checks
 - **Targeting**: `Self`, `Entity`, `Point` with deterministic resolve
 - **Activation hooks**: deterministic callbacks for projectiles and rockets (user-owned entities)
-- **Gameplay cues**: per-tick buffer → optional `EventBus` dispatch for VFX/SFX/UI (client simulation worlds)
+- **Gameplay cues**: per-tick simulation buffer → optional client presentation via self-managing `Cue` instances (VFX/SFX/UI)
 
 ### MVP scope
 
@@ -42,13 +42,36 @@ import { Entity, GameWorld, resetEntityIdCounter } from 'phalanx-ecs';
 import { FP } from 'phalanx-math';
 import {
   createAbilitySystem,
+  Cue,
   defineAbility,
   defineAbilitySystem,
   defineAttribute,
   defineEffect,
-  GAMEPLAY_CUE_EVENT,
+  type CueContext,
   type GameplayCueDispatchedEvent,
 } from 'phalanx-abilities';
+
+/** Presentation cue — spawned per dispatch, animated in afterFrame. */
+class FireballHitCue extends Cue {
+  private done = false;
+
+  public onSpawn(event: GameplayCueDispatchedEvent, _ctx: CueContext): void {
+    // build VFX from event + ctx.entityManager
+  }
+
+  public override update(_dt: number): void {
+    // animate each render frame
+    if (/* animation complete */) this.done = true;
+  }
+
+  public override isFinished(): boolean {
+    return this.done;
+  }
+
+  public override dispose(): void {
+    // remove VFX / free resources
+  }
+}
 
 // 1. Declare attributes, effects, and abilities once (typically a dedicated module).
 const combatDefinitions = defineAbilitySystem({
@@ -101,7 +124,9 @@ const world = new GameWorld({ tickRate: 20 });
 // 2. Create the ability system and register tick systems on the world.
 const abilities = createAbilitySystem(world, {
   definitions: combatDefinitions,
-  cues: 'dispatch', // mirror cues to world.eventBus (client worlds)
+  cues: {
+    'Cue.Fireball.Hit': () => new FireballHitCue(),
+  },
 });
 
 world.registerSystems([...abilities.tickSystems], [], 'default');
@@ -117,13 +142,10 @@ hero.addComponent(abilityComponent);
 world.entityManager.addEntity(hero);
 
 // 4. Drive simulation by tick (lockstep-safe).
-world.eventBus.on<GameplayCueDispatchedEvent>(GAMEPLAY_CUE_EVENT, (e) => {
-  // VFX/SFX only — do not mutate gameplay state here.
-  console.log(e.cueId, e.phase, e.targetEntityId);
-});
-
 abilities.activateAbility(hero.id, 'Ability.Fireball', { entityId: enemyId });
 world.processAllTicks(currentTick);
+// CuePresentationSystem runs in afterFrame — call world.start() or invoke
+// afterFrame on frame systems when driving presentation manually in tests.
 ```
 
 **Tick discipline:** `activateAbility` and `applyEffect` enqueue work. Observable changes (attributes, tags, active effects) apply when ability **tick systems** run inside `world.processAllTicks()` (or your lockstep `beforeTick`/`afterTick` pipeline). Never expect synchronous attribute updates in the same call stack as the facade.
@@ -143,8 +165,11 @@ Per simulation tick (client GameWorld):
   AbilityHookExecutorSystem     → hookId callbacks (projectiles, rockets)
   EffectTickSystem              → duration countdown, Periodic ticks, OnExpired cues
   AttributeAggregationSystem    → FIFO modifiers + clamp → current
-  CueDispatchSystem?            → buffer → EventBus (when cues: 'dispatch')
-  CueBufferCleanupSystem        → clear buffer end of tick
+  CueDispatchSystem?            → CuePresentationSystem (when cues map is non-empty)
+  CueBufferCleanupSystem        → clear buffer end of tick (effects/full pipelines)
+
+Per render frame (client GameWorld):
+  CuePresentationSystem?        → afterFrame: spawn Cue per dispatch, update(dt), dispose
 ```
 
 Registries and runtime state are **per `GameWorld`**, not global singletons. Two worlds do not share attribute indices or cue buffers.
@@ -344,15 +369,16 @@ if (targetMarked) {
 
 ## Gameplay cues
 
-Cues are deterministic simulation-side notifications for local presentation (VFX, SFX, UI). They are **not** networked.
+Cues are deterministic simulation-side notifications for local presentation (VFX, SFX, UI). They are **not** networked. Simulation systems write cue events into an internal per-tick buffer; when you register client presentation, the engine dispatches each event and spawns a short-lived `Cue` instance to animate it.
 
-Pipeline:
+### Simulation pipeline
 
 ```text
-simulation systems → GameplayCueBuffer → CueDispatchSystem → local EventBus → CueBufferCleanupSystem
+simulation systems → GameplayCueBuffer → CueDispatchSystem → CuePresentationSystem
+                                      → CueBufferCleanupSystem (end of tick)
 ```
 
-`GameplayCueBuffer` lives on `AbilitySystemRuntime`, not on entities.
+`GameplayCueBuffer` is internal runtime state on `AbilitySystemRuntime` — not a public config option and not an entity component. For tests, use `pipeline: 'effects-retain-cues'` to keep buffered events across ticks without dispatch.
 
 Effects declare cues as a shortcut array (OnApplied only) or structured phases:
 
@@ -370,18 +396,76 @@ defineEffect({
 });
 ```
 
-Listener example (phalanx-ecs `EventBus`):
+### Per-dispatch self-managing `Cue` model
+
+**One dispatched cue event = one short-lived `Cue` instance.** Register factories in `createAbilitySystem`:
 
 ```typescript
-import { GAMEPLAY_CUE_EVENT, type GameplayCueDispatchedEvent } from 'phalanx-abilities';
+import { Cue, type CueConfig, type CueContext, type GameplayCueDispatchedEvent } from 'phalanx-abilities';
 
-world.eventBus.on<GameplayCueDispatchedEvent>(GAMEPLAY_CUE_EVENT, (event) => {
-  // Do not call applyEffect / activateAbility here.
-  playVfx(event.cueId, event.targetEntityId);
-});
+const cues: CueConfig = {
+  'Cue.Damage.Sphere': () => new DamageSphereCue(scene),
+  'Cue.Death': () => new DeathCue(scene),
+};
+
+createAbilitySystem(world, { definitions, cues });
 ```
 
-Enable dispatch with `createAbilitySystem(world, { cues: 'dispatch' })`. Headless worlds can omit `CueDispatchSystem` but should still run `CueBufferCleanupSystem` if anything writes to the buffer.
+| Type | Role |
+|------|------|
+| `Cue` | Abstract base: `onSpawn`, `update(dt)`, `isFinished()`, `dispose()` |
+| `CueContext` | Read-only `{ entityManager, eventBus }` — no `GameWorld` |
+| `CueFactory` | `() => Cue` — invoked **per dispatch**, not once at init |
+| `CueConfig` | `Readonly<Record<string, CueFactory>>` — map key is the cue id |
+
+**Two-phase init:** the factory closure captures presentation deps (scene, audio); `onSpawn(event, ctx)` binds the instance to the dispatch event and world services.
+
+```typescript
+export class DamageSphereCue extends Cue {
+  private done = false;
+
+  public constructor(private readonly scene: THREE.Scene) {
+    super();
+  }
+
+  public onSpawn(event: GameplayCueDispatchedEvent, ctx: CueContext): void {
+    const impact = resolveImpact(ctx.entityManager, event);
+    if (!impact) {
+      this.done = true; // nothing to show — engine skips the active list
+      return;
+    }
+    this.scene.add(createBurstVfx(impact));
+  }
+
+  public override update(dt: number): void {
+    // animate each render frame
+    if (/* animation complete */) this.done = true;
+  }
+
+  public override isFinished(): boolean {
+    return this.done;
+  }
+
+  public override dispose(): void {
+    // remove VFX / free resources
+  }
+}
+```
+
+**Lifecycle** (driven by `CuePresentationSystem`):
+
+1. Engine subscribes once per `cueId` to `gameplayCueKey(cueId)` on init.
+2. On each dispatch: `factory()` → `onSpawn(event, ctx)` → active list if not `isFinished()`.
+3. Each `afterFrame`: `update(dt)`; when `isFinished()`, `dispose()` and remove.
+4. On world dispose: dispose all live cues.
+
+Cues are **presentation-only** — never call `applyEffect` / `activateAbility` from cue code. `phalanx-abilities` does not import rendering libraries; inject scene/audio via the factory closure.
+
+A non-empty `cues` map automatically registers `CueDispatchSystem` and `CuePresentationSystem`. Omit `cues` (or pass `{}`) for headless/simulation-only worlds; `CueBufferCleanupSystem` still runs where the pipeline requires it.
+
+### Pipeline: `effects-retain-cues`
+
+`pipeline: 'effects-retain-cues'` runs effect systems but **does not** clear the cue buffer each tick — useful for asserting buffered events in tests. It does not register dispatch or presentation unless you also pass a non-empty `cues` map. Using it with an empty `cues` map intentionally retains the buffer without dispatch (dev warning in non-production builds).
 
 ## Determinism rules
 
@@ -403,8 +487,8 @@ createAbilitySystem(world: GameWorld, config: CreateAbilitySystemConfig): Abilit
 |--------------|---------|
 | `definitions` | `defineAbilitySystem({ attributes, effects?, abilities? })` |
 | `hooks` | `Record<hookId, AbilityHook>` |
-| `pipeline` | `'full'` (default), `'activation'`, `'effects'`, `'attributes'`, … |
-| `cues` | `'buffer'` (default) or `'dispatch'` |
+| `pipeline` | `'full'` (default), `'activation'`, `'effects'`, `'effects-retain-cues'`, `'attributes'` |
+| `cues` | `CueConfig` — `cueId → () => Cue`. Non-empty map registers dispatch + presentation |
 
 ### `AbilitySystem` (returned by factory)
 
@@ -435,8 +519,13 @@ defineAbilitySystem(bundle): AbilitySystemDefinitions
 import {
   ABILITY_ACTIVATED_EVENT,
   type AbilityActivatedEvent,
+  Cue,
+  CuePresentationSystem,
   GAMEPLAY_CUE_EVENT,
   gameplayCueKey,
+  type CueConfig,
+  type CueContext,
+  type CueFactory,
   type GameplayCueDispatchedEvent,
 } from 'phalanx-abilities';
 ```
@@ -451,7 +540,7 @@ See `src/index.ts` for the full public surface.
 
 1. **phalanx-ecs**: `GameWorld`, `Entity`, `resetEntityIdCounter`, register `abilities.tickSystems` in deterministic order alongside movement/physics/combat systems.
 2. **phalanx-math**: `FP.FromInt`, `FP.FromFloat`, `FP.Add`, `FP.Mul`, etc. for all magnitudes.
-3. **Client-only cues**: `cues: 'dispatch'` and subscribe on `world.eventBus`; never mutate simulation from cue handlers.
+3. **Client-only cues**: pass a non-empty `cues` map with `Cue` subclasses; presentation runs in `afterFrame`. Never mutate simulation from cue code.
 4. **User-owned systems**: projectiles, rockets, AoE searches, and Aura ticking stay in game code. Call `applyEffect` or `activateAbility` from these systems on deterministic events (collision, timer tick).
 
 ## Testing
