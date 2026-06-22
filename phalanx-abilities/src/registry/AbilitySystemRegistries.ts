@@ -1,4 +1,4 @@
-import type { ISpatialQuery } from '../spatial';
+
 import { AbilityHooksRegistry } from './AbilityHooksRegistry';
 import { AbilityRegistry } from './AbilityRegistry';
 import { AttributeRegistry } from './AttributeRegistry';
@@ -9,32 +9,12 @@ import { EffectRegistry } from './EffectRegistry';
  *
  * `attributes`, `effects`, `abilities`, and `hooks` hold *definitions* —
  * immutable across the lifetime of the world once the world has been built.
- *
- * `spatialQuery` is populated automatically from `physicsWorld` in
- * `createAbilitySystem`, or via {@link AbilitySystemFacade.registerSpatialQuery}.
- * Required only for
- * abilities and `applyEffectAoE` calls that resolve `TargetSpec.kind ===
- * 'Radius'` targets — i.e. abilities that need to ask the world "which
- * entities are inside this disc". Self / Entity / Point targets do not need
- * a spatial query and work without one.
- *
- * Implementations are user-supplied (typically a thin adapter over
- * `SpatialHashGrid` in `phalanx-physics`) so the package stays free of a
- * physics peer dependency.
  */
 export interface AbilitySystemRegistries {
   attributes: AttributeRegistry;
   effects: EffectRegistry;
   abilities: AbilityRegistry;
   hooks: AbilityHooksRegistry;
-  /**
-   * Optional adapter that translates a (center, radius) query into a list of
-   * entity ids. Stage 6's Radius targeting and `applyEffectAoE` require it;
-   * abilities that only use Self/Entity/Point targets do not. Left
-   * `undefined` until `createAbilitySystem({ physicsWorld })` or
-   * `AbilitySystemFacade.registerSpatialQuery` runs.
-   */
-  spatialQuery?: ISpatialQuery;
 }
 
 export function createAbilitySystemRegistries(): AbilitySystemRegistries {

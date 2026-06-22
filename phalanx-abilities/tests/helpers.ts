@@ -3,6 +3,7 @@ import { FP } from 'phalanx-math';
 import type { FixedPoint } from 'phalanx-math';
 import {
   createAbilitySystem,
+  Cue,
   defineAbilitySystem,
   defineAttribute,
   defineEffect,
@@ -12,11 +13,27 @@ import {
   type AbilitySystemComponentInit,
   type AbilitySystemPipeline,
   type AttributeDef,
+  type CueConfig,
+  type CueContext,
   type CueEvent,
   type EffectDef,
+  type GameplayCueDispatchedEvent,
 } from '../src';
 import { GAMEPLAY_CUE_EVENT } from '../src/events';
-import type { ISpatialQuery, PhysicsWorldSpatialQuery } from '../src/spatial';
+
+/** Trivial instant cue for tests that only need dispatch enabled. */
+export class NoopCue extends Cue {
+  public onSpawn(_event: GameplayCueDispatchedEvent, _context: CueContext): void {}
+
+  public override isFinished(): boolean {
+    return true;
+  }
+}
+
+/** Enables {@link CueDispatchSystem} without presentation side effects. */
+export const DISPATCH_CUES: CueConfig = {
+  'Cue.Test.Noop': () => new NoopCue(),
+};
 
 export const HealthAttribute = defineAttribute({
   id: 'Health',
@@ -56,68 +73,28 @@ export const ExplosionEffect = defineEffect({
   modifiers: [{ attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(-50) }],
 });
 
-export const HealEffect = defineEffect({
-  id: 'Effect.Heal',
-  type: 'Instant',
-  modifiers: [{ attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(20) }],
-});
-
 export interface TestWorldOpts {
   attributes?: readonly AttributeDef[];
   effects?: readonly EffectDef[];
   abilities?: readonly AbilityDef[];
   pipeline?: AbilitySystemPipeline;
-  spatialQuery?: ISpatialQuery;
-  physicsWorld?: PhysicsWorldSpatialQuery;
   hooks?: Record<string, AbilityHook>;
-  cues?: 'buffer' | 'dispatch';
-  skipSpatial?: boolean;
+  cues?: CueConfig;
 }
 
 export interface TestWorld {
   world: GameWorld;
   abilities: AbilitySystem;
-  spatial: FakeSpatialQuery;
   cueLog: CueEvent[];
   /** Ability ids from `opts.abilities`, in registration order. */
   abilityIds: readonly string[];
 }
 
-export class FakeSpatialQuery implements ISpatialQuery {
-  private queryFn: (x: FixedPoint, z: FixedPoint, r: FixedPoint) => number[] = () => [];
-  private positions = new Map<number, { x: FixedPoint; z: FixedPoint }>();
-
-  public queryRadius(x: FixedPoint, z: FixedPoint, radius: FixedPoint): number[] {
-    return this.queryFn(x, z, radius);
-  }
-
-  public getEntityPosition(
-    entityId: number
-  ): { x: FixedPoint; z: FixedPoint } | undefined {
-    return this.positions.get(entityId);
-  }
-
-  public setQuery(fn: (x: FixedPoint, z: FixedPoint, r: FixedPoint) => number[]): void {
-    this.queryFn = fn;
-  }
-
-  public setPosition(entityId: number, pos: { x: FixedPoint; z: FixedPoint }): void {
-    this.positions.set(entityId, pos);
-  }
-
-  public clearPositions(): void {
-    this.positions.clear();
-  }
-}
-
 /** Like {@link createTestWorld} but does not reset entity ids (for late-bound ability defs). */
 export function createActivationWorld(opts: TestWorldOpts = {}): TestWorld {
   const world = new GameWorld({});
-  const spatial = opts.spatialQuery instanceof FakeSpatialQuery
-    ? opts.spatialQuery
-    : new FakeSpatialQuery();
   const cueLog: CueEvent[] = [];
-  const dispatchCues = opts.cues === 'dispatch';
+  const hasCues = opts.cues !== undefined && Object.keys(opts.cues).length > 0;
 
   const abilities = createAbilitySystem(world, {
     definitions: defineAbilitySystem({
@@ -126,21 +103,17 @@ export function createActivationWorld(opts: TestWorldOpts = {}): TestWorld {
       abilities: opts.abilities,
     }),
     pipeline: opts.pipeline ?? 'activation',
-    spatialQuery: opts.skipSpatial
-      ? undefined
-      : opts.spatialQuery ?? (opts.physicsWorld ? undefined : spatial),
-    physicsWorld: opts.physicsWorld,
     hooks: opts.hooks,
     cues: opts.cues,
   });
 
-  if (dispatchCues) {
+  if (hasCues) {
     world.eventBus.on<CueEvent>(GAMEPLAY_CUE_EVENT, (event) => cueLog.push(event));
   }
 
   world.registerSystems([...abilities.tickSystems], []);
   const abilityIds = (opts.abilities ?? []).map((def) => def.id);
-  return { world, abilities, spatial, cueLog, abilityIds };
+  return { world, abilities, cueLog, abilityIds };
 }
 
 export function createTestWorld(opts: TestWorldOpts = {}): TestWorld {

@@ -59,10 +59,8 @@ import type { AbilityDef, ProvidedTarget } from '../types';
  *  - Enqueues `costEffectId` (if any), `cooldownEffectId` (if any), and
  *    every `selfEffectIds` entry on the caster's `pendingAdd`.
  *  - Resolves `target` via {@link TargetResolver}. Every `TargetSpec.kind`
- *    (`Self`, `Entity`, `Point`, `Radius`) and every `TargetOrigin.kind`
- *    including `Caller` is supported. Radius shapes additionally require
- *    a spatial query (`createAbilitySystem({ physicsWorld })` or
- *    `AbilitySystemFacade.registerSpatialQuery`).
+ *    (`Self`, `Entity`, `Point`) and every `TargetOrigin.kind`
+ *    including `Caller` is supported.
  *  - Enqueues every `targetEffectIds` entry on each resolved target's
  *    `pendingAdd`.
  *  - Emits an {@link AbilityActivatedEvent} on the world event bus.
@@ -187,7 +185,7 @@ export class AbilityActivationSystem extends GameSystem {
     //    forgot to supply required input (Caller-origin point/entity)
     //    the resolver returns `dropped: true` and we abort here — no
     //    cost, no cooldown, no event, no hook. Other failure modes
-    //    (missing spatial query, missing entity position) throw inside
+    //    (missing entity position) throw inside
     //    `resolve` and propagate up via the drain loop's try/finally.
     const resolution = this.resolveTargets(caster, abilityDef, request.providedTarget);
     if (resolution.dropped) {
@@ -492,16 +490,13 @@ export class AbilityActivationSystem extends GameSystem {
   // ---------------------------------------------------------------------------
 
   /**
-   * Stage 6 — delegate to {@link TargetResolver}. The resolver handles every
-   * `TargetSpec.kind` (`Self`, `Entity`, `Point`, `Radius`) and every
-   * `TargetOrigin.kind` including `Caller`. For shapes that require a
-   * spatial query (`Radius`), the resolver throws with an actionable
-   * message if no spatial query was configured (`physicsWorld` or
-   * `registerSpatialQuery`).
+   * Delegate to {@link TargetResolver}. The resolver handles every
+   * `TargetSpec.kind` (`Self`, `Entity`, `Point`) and every
+   * `TargetOrigin.kind` including `Caller`.
    *
    * Returns the resolver's discriminated result so `processOne` can
-   * distinguish a legitimate empty target list ("AoE with nobody in it")
-   * from a silent drop ("Caller forgot to supply the target point").
+   * distinguish a legitimate empty target list from a silent drop
+   * ("Caller forgot to supply the target point").
    * Drops abort the activation before any side effects — see
    * {@link TargetResolutionResult} for the contract.
    */
@@ -511,7 +506,7 @@ export class AbilityActivationSystem extends GameSystem {
     providedTarget: ProvidedTarget | undefined
   ): TargetResolutionResult {
     if (this.targetResolver === undefined) {
-      this.targetResolver = new TargetResolver(this.entityManager, this.registries);
+      this.targetResolver = new TargetResolver();
     }
     return this.targetResolver.resolve({
       casterEntityId: caster.id,

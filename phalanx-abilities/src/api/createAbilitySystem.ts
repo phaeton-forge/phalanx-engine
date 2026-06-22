@@ -1,17 +1,18 @@
-import type { Entity, GameSystem, GameWorld } from 'phalanx-ecs';
+import type { GameSystem, GameWorld, IAbilitySystem } from 'phalanx-ecs';
 import { FP } from 'phalanx-math';
 import type { FixedPoint } from 'phalanx-math';
 import {
   AbilitiesComponentType,
   AbilitySystemComponent,
 } from '../components';
+import type { CueConfig } from '../cues';
 import {
   AbilityActivationSystem,
   AbilityHookExecutorSystem,
   AttributeAggregationSystem,
-  AuraTickSystem,
   CueBufferCleanupSystem,
   CueDispatchSystem,
+  CuePresentationSystem,
   EffectApplicationSystem,
   EffectTickSystem,
 } from '../systems';
@@ -20,13 +21,9 @@ import type { AbilitySystemRegistries } from '../registry';
 import { createAbilitySystemRuntime } from '../runtime';
 import type { AbilitySystemRuntime } from '../runtime';
 import type { GameplayCueBufferView } from '../runtime';
-import type { ISpatialQuery, PhysicsWorldSpatialQuery } from '../spatial';
-import { spatialQueryFromPhysicsWorld } from '../spatial';
 import type {
   AbilityHook,
   ProvidedTarget,
-  TargetFilter,
-  TargetSpec,
 } from '../types';
 import { AbilitySystemFacade, NO_SOURCE_ENTITY_ID } from './AbilitySystemFacade';
 import type { AttributeValue } from './AbilitySystemFacade';
@@ -38,8 +35,7 @@ export type AbilitySystemPipeline =
   | 'effects'
   /** Like `effects`, but leaves the cue buffer populated for test assertions. */
   | 'effects-retain-cues'
-  | 'attributes'
-  | 'auras';
+  | 'attributes';
 
 export type AttributeInitializer =
   | FixedPoint
@@ -64,29 +60,19 @@ export interface CreateAbilitySystemConfig {
   definitions: AbilitySystemDefinitions;
   hooks?: Record<string, AbilityHook>;
   /**
-   * When set, registers this adapter for radius targeting and AoE. Takes
-   * precedence over {@link physicsWorld}.
-   */
-  spatialQuery?: ISpatialQuery;
-  /**
-   * Default spatial backend: wraps `physicsWorld.spatialGrid` and
-   * `physicsWorld.getEntityPosition` into {@link ISpatialQuery}. Pass a
-   * {@link import('phalanx-physics').PhysicsWorld | PhysicsWorld} instance;
-   * no extra registration step is required for the common physics + abilities setup.
-   */
-  physicsWorld?: PhysicsWorldSpatialQuery;
-  /**
    * Which simulation systems to register. Defaults to `full`.
    */
   pipeline?: AbilitySystemPipeline;
   /**
-   * `dispatch` mirrors deterministic cue buffer entries onto the world event
-   * bus, then clears the buffer at the end of the ability pipeline.
+   * Client-side cue presentation factories, keyed by cue id. When non-empty, the
+   * engine registers {@link CueDispatchSystem} and {@link CuePresentationSystem}
+   * automatically. Each dispatch invokes the matching factory to create a fresh,
+   * self-managing {@link Cue} instance.
    */
-  cues?: 'buffer' | 'dispatch';
+  cues?: CueConfig;
 }
 
-export interface AbilitySystem {
+export interface AbilitySystem extends IAbilitySystem {
   readonly tickSystems: readonly GameSystem[];
   readonly gameplayCueBuffer: GameplayCueBufferView;
   /** High-water mark of allocated active-effect instance ids (for tests). */
@@ -97,18 +83,6 @@ export interface AbilitySystem {
   initComponent(init?: AbilitySystemComponentInit): AbilitySystemComponent;
   activateAbility(casterEntityId: number, abilityId: string, providedTarget?: ProvidedTarget): boolean;
   applyEffect(targetEntityId: number, effectId: string, sourceEntityId?: number): void;
-  applyEffectAoE(
-    origin: { x: FixedPoint; z: FixedPoint },
-    effectId: string,
-    sourceEntityId?: number,
-    opts?: {
-      radius: FixedPoint;
-      maxTargets?: number;
-      filter?: TargetFilter;
-      includeSelf?: boolean;
-      selfId?: number;
-    }
-  ): number[];
   removeEffectsByTag(entityId: number, grantedTag: string): number;
   removeEffectsByDefId(entityId: number, effectId: string): number;
   getAttribute(entityId: number, attrId: string): AttributeValue;
@@ -116,22 +90,6 @@ export interface AbilitySystem {
   hasTag(entityId: number, tag: string): boolean;
   addTag(entityId: number, tag: string): void;
   removeTag(entityId: number, tag: string): boolean;
-  spawnAura(params: {
-    abilityId: string;
-    target: TargetSpec;
-    effectIds: readonly string[];
-    periodTicks: number;
-    ownerEntityId: number;
-    lifetimeEffectId?: string;
-    lifetimeTag?: string;
-    isActive?: boolean;
-    requiredTag?: string;
-  }): Entity;
-  setAuraActive(
-    entityId: number,
-    active: boolean,
-    options?: { readonly resetSchedule?: boolean }
-  ): void;
 }
 
 export function createAbilitySystem(
@@ -144,11 +102,6 @@ export function createAbilitySystem(
   const runtime = createAbilitySystemRuntime();
   const facade = new AbilitySystemFacade(world.entityManager, registries, runtime);
 
-  if (config.spatialQuery) {
-    facade.registerSpatialQuery(config.spatialQuery);
-  } else if (config.physicsWorld) {
-    facade.registerSpatialQuery(spatialQueryFromPhysicsWorld(config.physicsWorld));
-  }
   if (config.hooks) {
     for (const [hookId, hook] of Object.entries(config.hooks)) {
       facade.registerHook(hookId, hook);
@@ -157,13 +110,22 @@ export function createAbilitySystem(
 
   world.entityManager.registerComponentTypes(abilityComponentTypes);
 
-  return new AbilitySystemImpl(
+  const cues: CueConfig = config.cues ?? {};
+
+  const abilitySystem = new AbilitySystemImpl(
     registries,
     runtime,
     facade,
     config.pipeline ?? 'full',
-    config.cues === 'dispatch'
+    cues
   );
+
+  // Assign on context so every GameSystem can access it via this.abilities.
+  // Must be called before world.registerSystems() so that init() can safely
+  // read this.abilities during system initialisation.
+  world.context.abilities = abilitySystem;
+
+  return abilitySystem;
 }
 
 export const abilityComponentTypes: readonly symbol[] = [
@@ -171,7 +133,6 @@ export const abilityComponentTypes: readonly symbol[] = [
   AbilitiesComponentType.Attributes,
   AbilitiesComponentType.ActiveEffects,
   AbilitiesComponentType.GameplayTags,
-  AbilitiesComponentType.Aura,
 ];
 
 class AbilitySystemImpl implements AbilitySystem {
@@ -196,10 +157,10 @@ class AbilitySystemImpl implements AbilitySystem {
     private readonly runtime: AbilitySystemRuntime,
     private readonly facade: AbilitySystemFacade,
     pipeline: AbilitySystemPipeline,
-    dispatchCues: boolean
+    cues: CueConfig
   ) {
     this.gameplayCueBuffer = facade.gameplayCueBufferInternal;
-    this.tickSystems = buildTickSystems(registries, runtime, pipeline, dispatchCues);
+    this.tickSystems = buildTickSystems(registries, runtime, pipeline, cues);
   }
 
   public initComponent(init: AbilitySystemComponentInit = {}): AbilitySystemComponent {
@@ -225,24 +186,6 @@ class AbilitySystemImpl implements AbilitySystem {
     sourceEntityId: number = NO_SOURCE_ENTITY_ID
   ): void {
     this.facade.applyEffect(targetEntityId, effectId, sourceEntityId);
-  }
-
-  public applyEffectAoE(
-    origin: { x: FixedPoint; z: FixedPoint },
-    effectId: string,
-    sourceEntityId: number = NO_SOURCE_ENTITY_ID,
-    opts?: {
-      radius: FixedPoint;
-      maxTargets?: number;
-      filter?: TargetFilter;
-      includeSelf?: boolean;
-      selfId?: number;
-    }
-  ): number[] {
-    if (!opts) {
-      throw new Error('applyEffectAoE requires opts.radius');
-    }
-    return this.facade.applyEffectAoE(origin, effectId, sourceEntityId, opts);
   }
 
   public removeEffectsByTag(entityId: number, grantedTag: string): number {
@@ -271,28 +214,6 @@ class AbilitySystemImpl implements AbilitySystem {
 
   public removeTag(entityId: number, tag: string): boolean {
     return this.facade.removeTag(entityId, tag);
-  }
-
-  public spawnAura(params: {
-    abilityId: string;
-    target: TargetSpec;
-    effectIds: readonly string[];
-    periodTicks: number;
-    ownerEntityId: number;
-    lifetimeEffectId?: string;
-    lifetimeTag?: string;
-    isActive?: boolean;
-    requiredTag?: string;
-  }): Entity {
-    return this.facade.spawnAura(params);
-  }
-
-  public setAuraActive(
-    entityId: number,
-    active: boolean,
-    options?: { readonly resetSchedule?: boolean }
-  ): void {
-    this.facade.setAuraActive(entityId, active, options);
   }
 
   private seedAttributes(
@@ -401,48 +322,59 @@ function buildTickSystems(
   registries: AbilitySystemRegistries,
   runtime: AbilitySystemRuntime,
   pipeline: AbilitySystemPipeline,
-  dispatchCues: boolean
+  cues: CueConfig
 ): GameSystem[] {
   const effectApplication = new EffectApplicationSystem(registries, runtime);
   const effectTick = new EffectTickSystem(registries, runtime);
   const aggregation = new AttributeAggregationSystem(registries);
   const cueCleanup = new CueBufferCleanupSystem(runtime);
+  const hasCues = Object.keys(cues).length > 0;
 
-  switch (pipeline) {
-    case 'attributes':
-      return [aggregation];
-    case 'effects':
-    case 'effects-retain-cues': {
-      const systems: GameSystem[] = [effectApplication, effectTick, aggregation];
-      if (dispatchCues) {
-        systems.push(new CueDispatchSystem(runtime));
-      }
-      if (pipeline === 'effects') {
-        systems.push(cueCleanup);
-      }
-      return systems;
-    }
-    case 'activation':
-      return [
-        new AbilityActivationSystem(registries, runtime),
-        effectApplication,
-        new AbilityHookExecutorSystem(registries, runtime),
-        effectTick,
-        aggregation,
-        cueCleanup,
-      ];
-    case 'auras':
-      return [effectApplication, effectTick, new AuraTickSystem(registries, runtime), aggregation];
-    case 'full':
-      return [
-        new AbilityActivationSystem(registries, runtime),
-        effectApplication,
-        new AbilityHookExecutorSystem(registries, runtime),
-        effectTick,
-        new AuraTickSystem(registries, runtime),
-        aggregation,
-        ...(dispatchCues ? [new CueDispatchSystem(runtime)] : []),
-        cueCleanup,
-      ];
+  if (
+    pipeline === 'effects-retain-cues' &&
+    !hasCues &&
+    process.env.NODE_ENV !== 'production'
+  ) {
+    console.warn(
+      '[phalanx-abilities] pipeline "effects-retain-cues" with no cues registered: ' +
+        'the cue buffer is retained for manual inspection but nothing dispatches it.'
+    );
   }
+
+  const systems: GameSystem[] = (() => {
+    switch (pipeline) {
+      case 'attributes':
+        return [aggregation];
+
+      case 'effects':
+      case 'effects-retain-cues': {
+        const base: GameSystem[] = [effectApplication, effectTick, aggregation];
+        if (hasCues) {
+          base.push(new CueDispatchSystem(runtime));
+        }
+        if (pipeline === 'effects') {
+          base.push(cueCleanup);
+        }
+        return base;
+      }
+
+      case 'activation':
+      case 'full':
+        return [
+          new AbilityActivationSystem(registries, runtime),
+          effectApplication,
+          new AbilityHookExecutorSystem(registries, runtime),
+          effectTick,
+          aggregation,
+          ...(hasCues ? [new CueDispatchSystem(runtime)] : []),
+          cueCleanup,
+        ];
+    }
+  })();
+
+  if (hasCues) {
+    systems.push(new CuePresentationSystem(cues));
+  }
+
+  return systems;
 }

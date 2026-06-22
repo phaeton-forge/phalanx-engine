@@ -1,6 +1,9 @@
 import type { EventBus } from './EventBus';
 import type { EntityManager } from './EntityManager';
 import type { GameSystem } from './GameSystem';
+import type { IAbilitySystem } from './IAbilitySystem';
+import type { IPhysicsWorld } from './IPhysicsWorld';
+import type { PoolManager } from './pool/PoolManager';
 
 /**
  * SystemContext - Shared dependencies container for all game systems
@@ -29,6 +32,29 @@ export class SystemContext {
 
   /** Internal registry of all systems for getSystem() lookup */
   private systemRegistry: Map<Function, GameSystem> = new Map();
+
+  /**
+   * The ability system for this game world.
+   * Set by `createAbilitySystem()` from phalanx-abilities before
+   * `registerSystems()` is called. Undefined in games that don't use
+   * phalanx-abilities.
+   */
+  public abilities: IAbilitySystem | undefined = undefined;
+
+  /**
+   * The physics world for this game.
+   * Set by game bootstrap code (or a phalanx-physics helper) before
+   * `registerSystems()` is called. Undefined in games that don't use
+   * phalanx-physics.
+   */
+  public physics: IPhysicsWorld | undefined = undefined;
+
+  /**
+   * Entity pool manager for this game world.
+   * Wired automatically by GameWorld when pooling is configured.
+   * `null` when pooling is disabled.
+   */
+  public pools: PoolManager | null = null;
 
   constructor(
     eventBus: EventBus,

@@ -42,14 +42,9 @@ describe('Entity pool support', () => {
     expect(entity.isDestroyed).toBe(false);
   });
 
-  it('reset clears components and destroyed flag', () => {
+  it('_inPool is false by default', () => {
     const entity = new Entity();
-    entity.addComponent(new TestComponent(42));
-    entity.destroy();
-
-    entity.reset();
-    expect(entity.isDestroyed).toBe(false);
-    expect(entity.hasComponent(TestType)).toBe(false);
+    expect(entity._inPool).toBe(false);
   });
 
   it('_poolTypeKey is undefined by default', () => {

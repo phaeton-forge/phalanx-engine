@@ -1,22 +1,24 @@
-import { type EventBus, type SoAComponentStore } from 'phalanx-ecs';
-import type { SoASchemaDefinition } from 'phalanx-ecs';
+import { type EventBus } from 'phalanx-ecs';
 import { FP } from 'phalanx-math';
 import { PhysicsSystem } from './systems/PhysicsSystem';
+import { InterpolationSystem } from './systems/InterpolationSystem';
+import type { InterpolatedTransformSample } from './systems/InterpolationSystem';
 import { SpatialHashGrid } from './collision/SpatialHashGrid';
 import { PhysicsEvents } from './events';
 import type { PhysicsWorldConfig } from './PhysicsWorldConfig';
 import type { FixedPoint } from 'phalanx-math';
-import type { TransformFieldMapping, CollisionEvent, PhysicsConfig, BoundsExitEvent } from './types';
+import type { CollisionEvent, PhysicsConfig, BoundsExitEvent } from './types';
 
 /**
- * PhysicsWorld — high-level facade that wires PhysicsSystem.
+ * PhysicsWorld — high-level facade that owns PhysicsSystem and InterpolationSystem.
  *
- * Consumers create a PhysicsWorld, get the system from getSystems(),
- * register it with GameWorld, and then link their TransformComponent store
- * via setTransformStore().
+ * Consumers create a PhysicsWorld, register both systems from getSystems()
+ * with GameWorld, and read interpolated transforms for rendering via
+ * getInterpolatedTransform().
  */
 export class PhysicsWorld {
   private readonly physicsSystem: PhysicsSystem;
+  private readonly interpolationSystem: InterpolationSystem;
   private eventBusRef: EventBus | null = null;
   private readonly unsubscribers: (() => void)[] = [];
   private readonly settleThreshold: FixedPoint | undefined;
@@ -42,6 +44,7 @@ export class PhysicsWorld {
     };
 
     this.physicsSystem = new PhysicsSystem(physicsConfig);
+    this.interpolationSystem = new InterpolationSystem();
     this.settleThreshold = config?.settleThreshold;
 
     if (config?.tickProvider) {
@@ -50,11 +53,15 @@ export class PhysicsWorld {
   }
 
   /**
-   * Returns the physics system to register with GameWorld.
+   * Returns physics and interpolation systems to register with GameWorld.
    */
-  public getSystems(): { physicsSystem: PhysicsSystem } {
+  public getSystems(): {
+    physicsSystem: PhysicsSystem;
+    interpolationSystem: InterpolationSystem;
+  } {
     return {
       physicsSystem: this.physicsSystem,
+      interpolationSystem: this.interpolationSystem,
     };
   }
 
@@ -64,16 +71,6 @@ export class PhysicsWorld {
    */
   public setCollisionFilter(filter: (entityA: number, entityB: number) => boolean): void {
     this.physicsSystem.setCollisionFilter(filter);
-  }
-
-  /**
-   * Link the consumer's TransformComponent SoA store.
-   */
-  public setTransformStore(
-    store: SoAComponentStore<SoASchemaDefinition>,
-    fieldMapping: TransformFieldMapping
-  ): void {
-    this.physicsSystem.setTransformStore(store, fieldMapping);
   }
 
   /**
@@ -146,12 +143,19 @@ export class PhysicsWorld {
 
   /**
    * Fixed-point position for ability targeting (`Caster` / `TargetEntity` origins).
-   * Requires `setTransformStore` before the first physics tick.
    */
   public getEntityPosition(
     entityId: number
   ): { x: FixedPoint; z: FixedPoint } | undefined {
     return this.physicsSystem.getEntityPosition(entityId);
+  }
+
+  /**
+   * Interpolated position and rotation for rendering.
+   * Populated after InterpolationSystem runs its frame hooks.
+   */
+  public getInterpolatedTransform(entityId: number): InterpolatedTransformSample | undefined {
+    return this.interpolationSystem.getInterpolatedTransform(entityId);
   }
 
   /** Clean up all subscriptions and system resources */

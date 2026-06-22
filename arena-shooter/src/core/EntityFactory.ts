@@ -129,7 +129,7 @@ export class EntityFactory {
 
     // Set rotation to face movement direction
     const angle = FP.Atan2(dirX, dirZ);
-    transform.fpRotationY = FP.ToRaw(angle);
+    transform.fpRotationY = angle;
 
     const mesh = this.createProjectileMesh(entity.id, dirX, dirZ);
     // Set mesh position to spawn point BEFORE creating trails

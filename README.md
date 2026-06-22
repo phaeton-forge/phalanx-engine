@@ -34,7 +34,7 @@ This repository is a pnpm workspace containing the following publishable package
 | [phalanx-client](./phalanx-client)   | Browser/Node client for connecting to Phalanx servers                        |
 | [phalanx-ecs](./phalanx-ecs)         | Renderer-agnostic ECS library with `GameWorld` facade and SoA storage        |
 | [phalanx-physics](./phalanx-physics) | Deterministic fixed-point physics (spatial hash, narrow phase, impulses)     |
-| [phalanx-abilities](./phalanx-abilities) | Deterministic gameplay ability system (attributes, effects, tags, AoE, auras) |
+| [phalanx-abilities](./phalanx-abilities) | Deterministic gameplay ability system (attributes, effects, tags) |
 | [phalanx-math](./phalanx-math)       | Deterministic fixed-point math library for lockstep games                    |
 
 In addition to the libraries, the workspace contains reference applications under `direct-strike-babylon-example/`, `chapaev/`, `arena-shooter/`, `game-test/`, and `game-test-server/`.
@@ -66,7 +66,7 @@ In addition to the libraries, the workspace contains reference applications unde
            ┌────────────────────────────┐                         ┌────────────────────────────┐
            │    phalanx-abilities       │                         │       phalanx-math         │
            │ GAS-style attributes ·     │                         │ FP fixed-point arithmetic  │
-           │ effects · tags · AoE       │                         └────────────────────────────┘
+           │ effects · tags             │                         └────────────────────────────┘
            └────────────────────────────┘
 ```
 
@@ -263,7 +263,8 @@ All commands are run from the repository root.
 | Command                   | What it does                                                       |
 | ------------------------- | ------------------------------------------------------------------ |
 | `pnpm install`            | Install workspace dependencies                                     |
-| `pnpm build`              | Build every workspace package (`pnpm -r build`)                    |
+| `pnpm build`              | Build workspace packages (`direct-strike-babylon-example` excluded — no `build` script until physics migration) |
+| `pnpm build:direct-strike`| Build `direct-strike-babylon-example` via `build:local`            |
 | `pnpm clean`              | Run each package's `clean` script                                  |
 | `pnpm test`               | Run all package test suites (Vitest)                               |
 | `pnpm test:server`        | Run only `phalanx-server` tests                                    |

@@ -8,6 +8,12 @@ import { PoolManager } from '../../src/pool/PoolManager';
 import { DebugDataProvider } from '../../src/debug/DebugDataProvider';
 import { DebugPanel } from '../../src/debug/DebugPanel';
 import type { IComponent } from '../../src/Component';
+import type { IPoolableEntity } from '../../src/pool/IPoolableEntity';
+
+class PoolableEntity extends Entity implements IPoolableEntity {
+  onSpawn(): void {}
+  onDespawn(): void {}
+}
 
 // ── Test fixtures ──────────────────────────────────────────────────
 
@@ -178,9 +184,9 @@ describe('DebugPanel', () => {
     });
 
     it('renders pool stats table', () => {
-      const pools = new PoolManager();
+      const pools = new PoolManager(em);
       pools.registerEntityType('projectile', {
-        factory: () => new Entity(),
+        factory: () => new PoolableEntity(),
         pool: { initialSize: 5 },
       });
       pools.prewarmAll();

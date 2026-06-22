@@ -1,8 +1,8 @@
 # Phalanx Abilities
 
-A deterministic gameplay ability system (GAS-inspired) for the [Phalanx Engine](../README.md). Built for lockstep multiplayer: attributes, effects, tags, abilities, targeting, auras, and gameplay cues all run on fixed-point math and tick-aligned ECS systems.
+A deterministic gameplay ability system (GAS-inspired) for the [Phalanx Engine](../README.md). Built for lockstep multiplayer: attributes, effects, tags, abilities, targeting, and gameplay cues all run on fixed-point math and tick-aligned ECS systems.
 
-> Sibling packages: [phalanx-ecs](../phalanx-ecs/README.md) (ECS core), [phalanx-math](../phalanx-math/README.md) (fixed-point math), [phalanx-physics](../phalanx-physics/README.md) (optional spatial queries for AoE).
+> Sibling packages: [phalanx-ecs](../phalanx-ecs/README.md) (ECS core), [phalanx-math](../phalanx-math/README.md) (fixed-point math).
 
 ## Features
 
@@ -10,17 +10,15 @@ A deterministic gameplay ability system (GAS-inspired) for the [Phalanx Engine](
 - **Gameplay effects**: `Instant`, `Duration`, `Periodic` with tick-based `durationTicks` / `periodTicks`
 - **Gameplay tags**: hierarchical strings (`State.Buff.Speed`), `tagsRequired` / `tagsBlocked` / `tagsGranted` on effects and abilities
 - **Abilities**: declarative definitions, activation queue, cost/cooldown via effects, `CanActivate` checks
-- **Targeting**: `Self`, `Entity`, `Point`, `Radius` with deterministic resolve (sorted by entity id, FP distance)
-- **Auras**: persistent zone entities that re-resolve targets every `periodTicks`
-- **Activation hooks**: deterministic callbacks for projectiles, rockets, aura spawn (user-owned entities)
-- **Gameplay cues**: per-tick buffer → optional `EventBus` dispatch for VFX/SFX/UI (client simulation worlds)
-- **Physics integration**: optional `physicsWorld` in `createAbilitySystem` — no hard peer dependency on `phalanx-physics`
+- **Targeting**: `Self`, `Entity`, `Point` with deterministic resolve
+- **Activation hooks**: deterministic callbacks for projectiles and rockets (user-owned entities)
+- **Gameplay cues**: per-tick simulation buffer → optional client presentation via self-managing `Cue` instances (VFX/SFX/UI)
 
 ### MVP scope
 
-Included in v0.1: flat modifiers, channeling via `Duration` + `removeEffectsByTag`, `applyEffectAoE`, hooks, auras.
+Included in v0.1: flat modifiers, channeling via `Duration` + `removeEffectsByTag`, hooks.
 
-Planned for v2: execution calculations, granted abilities, stacking rules, `Box`/`Cone` targets, line-of-sight raycast, SoA attribute storage.
+Planned for v2: execution calculations, granted abilities, stacking rules, line-of-sight raycast, SoA attribute storage.
 
 ## Installation
 
@@ -35,25 +33,45 @@ pnpm --filter phalanx-abilities build
 
 **Peer dependencies:** `phalanx-ecs` ^0.1.0, `phalanx-math` ^0.1.0
 
-**Optional:** `phalanx-physics` for radius targeting and AoE (wired through `ISpatialQuery` / `physicsWorld` config).
-
 ## Quick start
 
-This example wires **phalanx-ecs** (`GameWorld`), **phalanx-math** (`FP`), and optionally **phalanx-physics** (`PhysicsWorld`) into one abilities pipeline.
+This example wires **phalanx-ecs** (`GameWorld`) and **phalanx-math** (`FP`) into one abilities pipeline.
 
 ```typescript
 import { Entity, GameWorld, resetEntityIdCounter } from 'phalanx-ecs';
 import { FP } from 'phalanx-math';
 import {
   createAbilitySystem,
+  Cue,
   defineAbility,
   defineAbilitySystem,
   defineAttribute,
   defineEffect,
-  GAMEPLAY_CUE_EVENT,
+  type CueContext,
   type GameplayCueDispatchedEvent,
 } from 'phalanx-abilities';
-import { PhysicsWorld } from 'phalanx-physics';
+
+/** Presentation cue — spawned per dispatch, animated in afterFrame. */
+class FireballHitCue extends Cue {
+  private done = false;
+
+  public onSpawn(event: GameplayCueDispatchedEvent, _ctx: CueContext): void {
+    // build VFX from event + ctx.entityManager
+  }
+
+  public override update(_dt: number): void {
+    // animate each render frame
+    if (/* animation complete */) this.done = true;
+  }
+
+  public override isFinished(): boolean {
+    return this.done;
+  }
+
+  public override dispose(): void {
+    // remove VFX / free resources
+  }
+}
 
 // 1. Declare attributes, effects, and abilities once (typically a dedicated module).
 const combatDefinitions = defineAbilitySystem({
@@ -102,22 +120,16 @@ const combatDefinitions = defineAbilitySystem({
 resetEntityIdCounter();
 
 const world = new GameWorld({ tickRate: 20 });
-const physicsWorld = new PhysicsWorld({ tickRate: 20 });
 
 // 2. Create the ability system and register tick systems on the world.
 const abilities = createAbilitySystem(world, {
   definitions: combatDefinitions,
-  physicsWorld, // wraps spatialGrid + getEntityPosition — no manual ISpatialQuery
-  cues: 'dispatch', // mirror cues to world.eventBus (client worlds)
+  cues: {
+    'Cue.Fireball.Hit': () => new FireballHitCue(),
+  },
 });
 
-world.registerSystems(
-  [
-    ...abilities.tickSystems,
-    ...physicsWorld.getSystems().physicsSystem,
-  ],
-  []
-);
+world.registerSystems([...abilities.tickSystems], [], 'default');
 
 // 3. Spawn a combatant with the bundled AbilitySystemComponent.
 const hero = new Entity();
@@ -130,35 +142,34 @@ hero.addComponent(abilityComponent);
 world.entityManager.addEntity(hero);
 
 // 4. Drive simulation by tick (lockstep-safe).
-world.eventBus.on<GameplayCueDispatchedEvent>(GAMEPLAY_CUE_EVENT, (e) => {
-  // VFX/SFX only — do not mutate gameplay state here.
-  console.log(e.cueId, e.phase, e.targetEntityId);
-});
-
 abilities.activateAbility(hero.id, 'Ability.Fireball', { entityId: enemyId });
 world.processAllTicks(currentTick);
+// CuePresentationSystem runs in afterFrame — call world.start() or invoke
+// afterFrame on frame systems when driving presentation manually in tests.
 ```
 
-**Tick discipline:** `activateAbility`, `applyEffect`, and `applyEffectAoE` enqueue work. Observable changes (attributes, tags, active effects) apply when ability **tick systems** run inside `world.processAllTicks()` (or your lockstep `beforeTick`/`afterTick` pipeline). Never expect synchronous attribute updates in the same call stack as the facade.
+**Tick discipline:** `activateAbility` and `applyEffect` enqueue work. Observable changes (attributes, tags, active effects) apply when ability **tick systems** run inside `world.processAllTicks()` (or your lockstep `beforeTick`/`afterTick` pipeline). Never expect synchronous attribute updates in the same call stack as the facade.
 
 ## Architecture
 
 ```
 createAbilitySystem(world, config)
-├── AbilitySystemRegistries     (per-world: attributes, effects, abilities, hooks, spatialQuery)
+├── AbilitySystemRegistries     (per-world: attributes, effects, abilities, hooks)
 ├── AbilitySystemRuntime        (activation queue, instance ids, GameplayCueBuffer)
-├── AbilitySystemFacade         (applyEffect, activateAbility, spawnAura, …)
+├── AbilitySystemFacade         (applyEffect, activateAbility, …)
 └── tickSystems[]               (registered on GameWorld)
 
 Per simulation tick (client GameWorld):
   AbilityActivationSystem       → CanActivate, cost/cooldown/self effects
   EffectApplicationSystem       → pendingAdd, Instant/Duration/Periodic, tags, OnApplied cues
-  AbilityHookExecutorSystem     → hookId callbacks (projectiles, aura spawn)
+  AbilityHookExecutorSystem     → hookId callbacks (projectiles, rockets)
   EffectTickSystem              → duration countdown, Periodic ticks, OnExpired cues
-  AuraTickSystem                → periodic re-resolve + Instant effects
   AttributeAggregationSystem    → FIFO modifiers + clamp → current
-  CueDispatchSystem?            → buffer → EventBus (when cues: 'dispatch')
-  CueBufferCleanupSystem        → clear buffer end of tick
+  CueDispatchSystem?            → CuePresentationSystem (when cues map is non-empty)
+  CueBufferCleanupSystem        → clear buffer end of tick (effects/full pipelines)
+
+Per render frame (client GameWorld):
+  CuePresentationSystem?        → afterFrame: spawn Cue per dispatch, update(dt), dispose
 ```
 
 Registries and runtime state are **per `GameWorld`**, not global singletons. Two worlds do not share attribute indices or cue buffers.
@@ -210,15 +221,7 @@ Durations and periods are **whole simulation ticks** (`number`), compared to `ru
 type TargetSpec =
   | { kind: 'Self' }
   | { kind: 'Entity'; origin: TargetOrigin }
-  | { kind: 'Point'; origin: TargetOrigin }
-  | {
-      kind: 'Radius';
-      origin: TargetOrigin;
-      radius: FixedPoint;
-      maxTargets?: number;
-      filter?: TargetFilter;
-      includeSelf?: boolean;
-    };
+  | { kind: 'Point'; origin: TargetOrigin };
 
 type TargetOrigin =
   | { kind: 'Caster' }
@@ -226,14 +229,6 @@ type TargetOrigin =
   | { kind: 'Point'; x: FixedPoint; z: FixedPoint }
   | { kind: 'Caller' }; // reads activateAbility(..., providedTarget)
 ```
-
-`Radius` requires `ISpatialQuery` (via `physicsWorld` or `spatialQuery` config).
-
-### Auras
-
-`abilities.spawnAura` creates a zone `Entity` with `AuraComponent`. Every `periodTicks` the system re-resolves `target` and applies **Instant** `effectIds` to each hit. Lifetime is usually a `Duration` effect on the zone granting `lifetimeTag`; when the tag disappears, the zone is removed.
-
-Aura effects must be `Instant` — `Duration`/`Periodic` would stack unbounded if re-applied every period.
 
 ### Activation hooks
 
@@ -247,24 +242,6 @@ const spawnProjectile: AbilityHook = (ctx) => {
   // Spawn projectile entity; on hit call abilities.applyEffect(targetId, 'Effect.Damage', casterId)
 };
 ```
-
-### Spatial queries (phalanx-physics)
-
-`phalanx-physics` is not a peer dependency. The adapter surface is:
-
-```typescript
-// phalanx-abilities (built-in when you pass physicsWorld)
-import { spatialQueryFromPhysicsWorld } from 'phalanx-abilities';
-
-// phalanx-physics (same behavior, typed PhysicsWorld)
-import { createPhysicsSpatialQuery } from 'phalanx-physics';
-
-createAbilitySystem(world, { physicsWorld: myPhysicsWorld });
-// or
-facade.registerSpatialQuery(createPhysicsSpatialQuery(myPhysicsWorld));
-```
-
-`PhysicsWorld.spatialGrid.queryRadius` and `getEntityPosition` must reflect the same positions your simulation uses for lockstep.
 
 ## Gameplay ability recipes
 
@@ -299,44 +276,22 @@ defineAbility({
 // On hit: abilities.applyEffect(targetId, 'Effect.AutoAttack.Damage', casterId);
 ```
 
-### 2. Healing aura
+### 2. Health regeneration (Periodic Effect)
 
 ```typescript
 defineEffect({
-  id: 'Effect.Heal',
-  type: 'Instant',
+  id: 'Effect.HealthRegen',
+  type: 'Periodic',
+  periodTicks: 60,
+  durationTicks: 600,
   modifiers: [{ attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(5) }],
 });
-defineEffect({
-  id: 'Effect.HealingAura.Lifetime',
-  type: 'Duration',
-  durationTicks: 600,
-  tagsGranted: ['Aura.HealingAura.Active'],
-});
 defineAbility({
-  id: 'Ability.HealingAura',
+  id: 'Ability.HealthRegen',
   target: { kind: 'Self' },
-  hookId: 'Hook.SpawnAura.Healing',
+  targetEffectIds: ['Effect.HealthRegen'],
 });
-
-// In hook: abilities.spawnAura({
-//   abilityId: 'Ability.HealingAura',
-//   target: {
-//     kind: 'Radius',
-//     origin: { kind: 'TargetEntity', entityId: zone.id },
-//     radius: FP.FromInt(8),
-//     filter: { tagsRequired: ['Team.Ally'] },
-//     includeSelf: true,
-//   },
-//   effectIds: ['Effect.Heal'],
-//   periodTicks: 60,
-//   ownerEntityId: ctx.casterEntityId,
-//   lifetimeEffectId: 'Effect.HealingAura.Lifetime',
-//   lifetimeTag: 'Aura.HealingAura.Active',
-// });
 ```
-
-Register the zone entity’s position with your spatial backend (physics grid or custom `ISpatialQuery`).
 
 ### 3. Armor-shred beam (channeling)
 
@@ -394,48 +349,36 @@ function applyDamageWithMark(
 
 This is an intentional MVP limitation — v2 may add execution calculations.
 
-### 5. Rocket AoE (explosion on impact)
+### 5. Custom execution formulas
+
+`phalanx-abilities` doesn't support complex math inside effect definitions yet. For complex formulas (e.g. `Damage = (Base + Strength * 2) * (1 - Armor / 100)`), read the attributes from the facade and calculate manually before calling `applyEffect`.
 
 ```typescript
 defineEffect({
-  id: 'Effect.Explosion',
+  id: 'Effect.Damage.Marked',
   type: 'Instant',
-  modifiers: [{ attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(-50) }],
-  cues: ['Cue.Explosion.Hit'],
-});
-defineAbility({
-  id: 'Ability.Rocket',
-  cooldownEffectId: 'Effect.Rocket.Cooldown',
-  target: { kind: 'Point', origin: { kind: 'Caller' } },
-  hookId: 'Hook.SpawnProjectile.Rocket',
+  modifiers: [{ attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(-10) }],
+  cues: ['Cue.Hit'],
 });
 
-// On impact:
-const hitIds = abilities.applyEffectAoE(
-  { x: impactX, z: impactZ },
-  'Effect.Explosion',
-  casterId,
-  {
-    radius: FP.FromInt(6),
-    maxTargets: 8,
-    filter: { tagsBlocked: ['Team.Ally'] },
-    includeSelf: false,
-    selfId: casterId,
-  }
-);
+const targetMarked = abilities.hasTag(enemyId, 'State.Marked');
+if (targetMarked) {
+  abilities.applyEffect(enemyId, 'Effect.Damage.Marked');
+}
 ```
 
 ## Gameplay cues
 
-Cues are deterministic simulation-side notifications for local presentation (VFX, SFX, UI). They are **not** networked.
+Cues are deterministic simulation-side notifications for local presentation (VFX, SFX, UI). They are **not** networked. Simulation systems write cue events into an internal per-tick buffer; when you register client presentation, the engine dispatches each event and spawns a short-lived `Cue` instance to animate it.
 
-Pipeline:
+### Simulation pipeline
 
 ```text
-simulation systems → GameplayCueBuffer → CueDispatchSystem → local EventBus → CueBufferCleanupSystem
+simulation systems → GameplayCueBuffer → CueDispatchSystem → CuePresentationSystem
+                                      → CueBufferCleanupSystem (end of tick)
 ```
 
-`GameplayCueBuffer` lives on `AbilitySystemRuntime`, not on entities.
+`GameplayCueBuffer` is internal runtime state on `AbilitySystemRuntime` — not a public config option and not an entity component. For tests, use `pipeline: 'effects-retain-cues'` to keep buffered events across ticks without dispatch.
 
 Effects declare cues as a shortcut array (OnApplied only) or structured phases:
 
@@ -453,27 +396,83 @@ defineEffect({
 });
 ```
 
-Listener example (phalanx-ecs `EventBus`):
+### Per-dispatch self-managing `Cue` model
+
+**One dispatched cue event = one short-lived `Cue` instance.** Register factories in `createAbilitySystem`:
 
 ```typescript
-import { GAMEPLAY_CUE_EVENT, type GameplayCueDispatchedEvent } from 'phalanx-abilities';
+import { Cue, type CueConfig, type CueContext, type GameplayCueDispatchedEvent } from 'phalanx-abilities';
 
-world.eventBus.on<GameplayCueDispatchedEvent>(GAMEPLAY_CUE_EVENT, (event) => {
-  // Do not call applyEffect / activateAbility here.
-  playVfx(event.cueId, event.targetEntityId);
-});
+const cues: CueConfig = {
+  'Cue.Damage.Sphere': () => new DamageSphereCue(scene),
+  'Cue.Death': () => new DeathCue(scene),
+};
+
+createAbilitySystem(world, { definitions, cues });
 ```
 
-Enable dispatch with `createAbilitySystem(world, { cues: 'dispatch' })`. Headless worlds can omit `CueDispatchSystem` but should still run `CueBufferCleanupSystem` if anything writes to the buffer.
+| Type | Role |
+|------|------|
+| `Cue` | Abstract base: `onSpawn`, `update(dt)`, `isFinished()`, `dispose()` |
+| `CueContext` | Read-only `{ entityManager, eventBus }` — no `GameWorld` |
+| `CueFactory` | `() => Cue` — invoked **per dispatch**, not once at init |
+| `CueConfig` | `Readonly<Record<string, CueFactory>>` — map key is the cue id |
+
+**Two-phase init:** the factory closure captures presentation deps (scene, audio); `onSpawn(event, ctx)` binds the instance to the dispatch event and world services.
+
+```typescript
+export class DamageSphereCue extends Cue {
+  private done = false;
+
+  public constructor(private readonly scene: THREE.Scene) {
+    super();
+  }
+
+  public onSpawn(event: GameplayCueDispatchedEvent, ctx: CueContext): void {
+    const impact = resolveImpact(ctx.entityManager, event);
+    if (!impact) {
+      this.done = true; // nothing to show — engine skips the active list
+      return;
+    }
+    this.scene.add(createBurstVfx(impact));
+  }
+
+  public override update(dt: number): void {
+    // animate each render frame
+    if (/* animation complete */) this.done = true;
+  }
+
+  public override isFinished(): boolean {
+    return this.done;
+  }
+
+  public override dispose(): void {
+    // remove VFX / free resources
+  }
+}
+```
+
+**Lifecycle** (driven by `CuePresentationSystem`):
+
+1. Engine subscribes once per `cueId` to `gameplayCueKey(cueId)` on init.
+2. On each dispatch: `factory()` → `onSpawn(event, ctx)` → active list if not `isFinished()`.
+3. Each `afterFrame`: `update(dt)`; when `isFinished()`, `dispose()` and remove.
+4. On world dispose: dispose all live cues.
+
+Cues are **presentation-only** — never call `applyEffect` / `activateAbility` from cue code. `phalanx-abilities` does not import rendering libraries; inject scene/audio via the factory closure.
+
+A non-empty `cues` map automatically registers `CueDispatchSystem` and `CuePresentationSystem`. Omit `cues` (or pass `{}`) for headless/simulation-only worlds; `CueBufferCleanupSystem` still runs where the pipeline requires it.
+
+### Pipeline: `effects-retain-cues`
+
+`pipeline: 'effects-retain-cues'` runs effect systems but **does not** clear the cue buffer each tick — useful for asserting buffered events in tests. It does not register dispatch or presentation unless you also pass a non-empty `cues` map. Using it with an empty `cues` map intentionally retains the buffer without dispatch (dev warning in non-production builds).
 
 ## Determinism rules
 
-- Use `FP.*` from `phalanx-math` for all modifier magnitudes and spatial math
+- Use `FP.*` from `phalanx-math` for all modifier magnitudes
 - Store durations as integer **ticks**, not floats or `Date.now`
-- AoE: `queryRadius` results are sorted by **entity id ASC**, then `maxTargets` truncates, then tag filters apply
-- Distance checks use `dx*dx + dz*dz <= r*r` in fixed-point — no `Math.sqrt`
-- Target lists are snapshotted at resolve time; late movement does not change who was hit
-- Call `resetEntityIdCounter()` from `phalanx-ecs` at match start so aura/projectile spawns get identical ids on every peer
+- Target resolution is snapshotted at activation; movement after activation does not change which entity or point was targeted
+- Call `resetEntityIdCounter()` from `phalanx-ecs` at match start so projectile spawns get identical ids on every peer
 - Hooks must be pure deterministic simulation — no `Math.random()` or wall-clock time
 
 ## API reference
@@ -487,11 +486,9 @@ createAbilitySystem(world: GameWorld, config: CreateAbilitySystemConfig): Abilit
 | Config field | Purpose |
 |--------------|---------|
 | `definitions` | `defineAbilitySystem({ attributes, effects?, abilities? })` |
-| `physicsWorld` | Auto-register `ISpatialQuery` from `PhysicsWorld` |
-| `spatialQuery` | Custom query; overrides `physicsWorld` |
 | `hooks` | `Record<hookId, AbilityHook>` |
-| `pipeline` | `'full'` (default), `'activation'`, `'effects'`, `'attributes'`, `'auras'`, … |
-| `cues` | `'buffer'` (default) or `'dispatch'` |
+| `pipeline` | `'full'` (default), `'activation'`, `'effects'`, `'effects-retain-cues'`, `'attributes'` |
+| `cues` | `CueConfig` — `cueId → () => Cue`. Non-empty map registers dispatch + presentation |
 
 ### `AbilitySystem` (returned by factory)
 
@@ -500,11 +497,9 @@ createAbilitySystem(world: GameWorld, config: CreateAbilitySystemConfig): Abilit
 | `initComponent(init?)` | Create `AbilitySystemComponent` with optional seed data |
 | `activateAbility(casterId, abilityId, providedTarget?)` | Queue activation |
 | `applyEffect(targetId, effectId, sourceId?)` | Queue effect (`sourceId` defaults to `-1`) |
-| `applyEffectAoE(origin, effectId, sourceId, { radius, … })` | Radius resolve + queue; returns applied entity ids |
 | `getAttribute` / `tryGetAttribute` | Read base/current |
 | `hasTag` / `addTag` / `removeTag` | Tag queries and ad-hoc tags |
 | `removeEffectsByTag` / `removeEffectsByDefId` | Flag instances for removal next tick |
-| `spawnAura` / `setAuraActive` | Aura zones |
 | `tickSystems` | Register on `GameWorld` |
 
 Lower-level access: `AbilitySystemFacade` is exported for advanced wiring; most games use `createAbilitySystem` only.
@@ -524,15 +519,20 @@ defineAbilitySystem(bundle): AbilitySystemDefinitions
 import {
   ABILITY_ACTIVATED_EVENT,
   type AbilityActivatedEvent,
+  Cue,
+  CuePresentationSystem,
   GAMEPLAY_CUE_EVENT,
   gameplayCueKey,
+  type CueConfig,
+  type CueContext,
+  type CueFactory,
   type GameplayCueDispatchedEvent,
 } from 'phalanx-abilities';
 ```
 
 ### Components and types
 
-Exported: `AbilitySystemComponent`, `AuraComponent`, `AbilitiesComponentType`, effect/attribute/tag types, `ISpatialQuery`, `spatialQueryFromPhysicsWorld`, individual systems for custom pipelines.
+Exported: `AbilitySystemComponent`, `AbilitiesComponentType`, effect/attribute/tag types, individual systems for custom pipelines.
 
 See `src/index.ts` for the full public surface.
 
@@ -540,9 +540,8 @@ See `src/index.ts` for the full public surface.
 
 1. **phalanx-ecs**: `GameWorld`, `Entity`, `resetEntityIdCounter`, register `abilities.tickSystems` in deterministic order alongside movement/physics/combat systems.
 2. **phalanx-math**: `FP.FromInt`, `FP.FromFloat`, `FP.Add`, `FP.Mul`, etc. for all magnitudes.
-3. **phalanx-physics** (if using AoE): create `PhysicsWorld`, link transform store on tick 0, pass `physicsWorld` into `createAbilitySystem`, run `physicsSystem` in the same tick loop.
-4. **Client-only cues**: `cues: 'dispatch'` and subscribe on `world.eventBus`; never mutate simulation from cue handlers.
-5. **User-owned systems**: projectiles, rockets, and damage formulas that read `IncomingDamageMultiplier` stay in game code; call `applyEffect` / `applyEffectAoE` on deterministic events (collision, impact tick).
+3. **Client-only cues**: pass a non-empty `cues` map with `Cue` subclasses; presentation runs in `afterFrame`. Never mutate simulation from cue code.
+4. **User-owned systems**: projectiles, rockets, AoE searches, and Aura ticking stay in game code. Call `applyEffect` or `activateAbility` from these systems on deterministic events (collision, timer tick).
 
 ## Testing
 
@@ -550,7 +549,7 @@ See `src/index.ts` for the full public surface.
 pnpm --filter phalanx-abilities test
 ```
 
-Tests use `GameWorld.processAllTicks()` with pipeline subsets (`activation`, `effects`, `auras`, …) and a `FakeSpatialQuery` when physics is not needed. See `tests/helpers.ts` for patterns.
+Tests use `GameWorld.processAllTicks()` with pipeline subsets (`activation`, `effects`, …). See `tests/helpers.ts` for patterns.
 
 ## Agent skill
 

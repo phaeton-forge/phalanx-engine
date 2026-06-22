@@ -13,6 +13,5 @@ export type {
   CreateAbilitySystemConfig,
   InitialEffect,
 } from './createAbilitySystem';
-export type { PhysicsWorldSpatialQuery } from '../spatial';
 export type { AbilitySystemDefinitions } from './defineAbilitySystem';
 export type { EffectDefInput } from './defineEffect';

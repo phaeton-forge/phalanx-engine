@@ -51,6 +51,30 @@ const DEFAULT_INITIAL_CAPACITY = 256;
 const GROWTH_FACTOR = 2;
 
 /**
+ * When auto-shrink is enabled, the store releases memory once the live count
+ * drops to (capacity >> SHRINK_THRESHOLD_SHIFT). A shift of 2 means "shrink
+ * when the store is <= 25% full", which provides hysteresis so that churn
+ * around a stable population size does not thrash allocations.
+ */
+const SHRINK_THRESHOLD_SHIFT = 2;
+
+/**
+ * Options controlling the runtime behaviour of a {@link SoAComponentStore}.
+ */
+export interface SoAComponentStoreOptions {
+  /** Initial entity capacity before the first resize. */
+  initialCapacity?: number;
+  /**
+   * Automatically release backing memory when the store becomes sparsely
+   * populated (e.g. after a large RTS battle where most units died).
+   *
+   * Disabled by default to preserve the previous "grow-only" behaviour.
+   * When enabled, capacity will never drop below `initialCapacity`.
+   */
+  autoShrink?: boolean;
+}
+
+/**
  * Set a value in a typed array at the given index
  * Handles both number and bigint arrays
  */
@@ -89,6 +113,29 @@ export class SoAComponentStore<S extends SoASchemaDefinition> {
   private _capacity: number;
 
   /**
+   * Lower bound for capacity. Auto-shrink and shrinkToFit will never reduce
+   * capacity below this value, avoiding repeated re-grows for small stores.
+   */
+  private readonly _minCapacity: number;
+
+  /** Whether the store automatically releases memory when sparsely populated. */
+  private readonly _autoShrink: boolean;
+
+  /**
+   * Flat list of field arrays in `schema.fieldNames` order.
+   * Cached to avoid a string-keyed property lookup (`this.arrays[name]`) for
+   * every field on every add/remove. Rebuilt whenever arrays are reallocated.
+   */
+  private _fieldArrays: TypedArrayLike[] = [];
+
+  /**
+   * Per-field flag: true when the field is a BigInt64Array (i64).
+   * Lets hot loops branch once per field instead of calling `instanceof`
+   * for every element.
+   */
+  private _fieldIsBigInt: boolean[] = [];
+
+  /**
    * Maps entity ID → dense array index
    * Sparse array indexed by entity ID for O(1) lookup
    */
@@ -124,9 +171,21 @@ export class SoAComponentStore<S extends SoASchemaDefinition> {
     return low;
   }
 
-  constructor(schema: SoASchema<S>, initialCapacity: number = DEFAULT_INITIAL_CAPACITY) {
+  constructor(
+    schema: SoASchema<S>,
+    initialCapacityOrOptions: number | SoAComponentStoreOptions = DEFAULT_INITIAL_CAPACITY
+  ) {
+    const options: SoAComponentStoreOptions =
+      typeof initialCapacityOrOptions === 'number'
+        ? { initialCapacity: initialCapacityOrOptions }
+        : initialCapacityOrOptions;
+
+    const initialCapacity = Math.max(1, options.initialCapacity ?? DEFAULT_INITIAL_CAPACITY);
+
     this.schema = schema;
     this._capacity = initialCapacity;
+    this._minCapacity = initialCapacity;
+    this._autoShrink = options.autoShrink ?? false;
 
     // Initialize typed arrays for each field
     const arrays: Record<string, TypedArrayLike> = {};
@@ -136,6 +195,22 @@ export class SoAComponentStore<S extends SoASchemaDefinition> {
       arrays[fieldName] = new ArrayConstructor(initialCapacity);
     }
     this.arrays = arrays as SoAArraysOf<S>;
+    this.rebuildFieldCache();
+  }
+
+  /**
+   * Rebuild the flat field-array cache and per-field bigint flags.
+   * Must be called whenever `this.arrays` entries are reallocated (resize).
+   */
+  private rebuildFieldCache(): void {
+    const names = this.schema.fieldNames;
+    this._fieldArrays = new Array(names.length);
+    this._fieldIsBigInt = new Array(names.length);
+    for (let f = 0; f < names.length; f++) {
+      const arr = this.arrays[names[f]] as TypedArrayLike;
+      this._fieldArrays[f] = arr;
+      this._fieldIsBigInt[f] = arr instanceof BigInt64Array;
+    }
   }
 
   /**
@@ -176,8 +251,19 @@ export class SoAComponentStore<S extends SoASchemaDefinition> {
   }
 
   /**
-   * Iterate entity IDs in deterministic sorted order
-   * Use this for lockstep-safe iteration
+   * Iterate entity IDs in deterministic sorted order.
+   *
+   * INVARIANT (relied upon by lockstep systems): the returned list is ALWAYS
+   * sorted ascending by entity ID and reflects exactly the live entities. This
+   * holds at every point in time, including between individual add/remove calls
+   * within a tick. Any future optimisation of add/remove MUST preserve this
+   * ordering, otherwise deterministic iteration across clients breaks.
+   *
+   * The returned array is the store's internal buffer — treat it as read-only
+   * and do not mutate it. It is also not stable across mutations: do not remove
+   * entities while iterating the result directly; snapshot it first if needed.
+   *
+   * @returns Read-only, ascending-sorted list of live entity IDs.
    */
   public entityIds(): readonly number[] {
     return this._sortedEntityIds;
@@ -209,11 +295,15 @@ export class SoAComponentStore<S extends SoASchemaDefinition> {
     const insertIdx = this.binarySearchInsertIndex(this._sortedEntityIds, entityId);
     this._sortedEntityIds.splice(insertIdx, 0, entityId);
 
-    // Set initial values
-    for (const fieldName of this.schema.fieldNames) {
-      const arr = this.arrays[fieldName] as TypedArrayLike;
-      const value = values[fieldName];
-      setTypedArrayValue(arr, index, value);
+    // Set initial values (iterate cached arrays by index, branch on bigint once per field)
+    const names = this.schema.fieldNames;
+    for (let f = 0; f < this._fieldArrays.length; f++) {
+      const value = values[names[f]];
+      if (this._fieldIsBigInt[f]) {
+        (this._fieldArrays[f] as BigInt64Array)[index] = value as bigint;
+      } else {
+        (this._fieldArrays[f] as Exclude<TypedArrayLike, BigInt64Array>)[index] = value as number;
+      }
     }
 
     return index;
@@ -238,10 +328,15 @@ export class SoAComponentStore<S extends SoASchemaDefinition> {
     if (index !== lastIndex) {
       const lastEntityId = this.indexToEntity[lastIndex];
 
-      // Copy last element's data to removed slot
-      for (const fieldName of this.schema.fieldNames) {
-        const arr = this.arrays[fieldName] as TypedArrayLike;
-        setTypedArrayValue(arr, index, getTypedArrayValue(arr, lastIndex));
+      // Copy last element's data to removed slot (same-typed array copy, no instanceof per element)
+      for (let f = 0; f < this._fieldArrays.length; f++) {
+        if (this._fieldIsBigInt[f]) {
+          const arr = this._fieldArrays[f] as BigInt64Array;
+          arr[index] = arr[lastIndex];
+        } else {
+          const arr = this._fieldArrays[f] as Exclude<TypedArrayLike, BigInt64Array>;
+          arr[index] = arr[lastIndex];
+        }
       }
 
       // Update mappings for swapped entity
@@ -259,6 +354,9 @@ export class SoAComponentStore<S extends SoASchemaDefinition> {
     if (this._sortedEntityIds[sortedIdx] === entityId) {
       this._sortedEntityIds.splice(sortedIdx, 1);
     }
+
+    // Optionally release memory after large populations die off (e.g. RTS battles)
+    this.maybeAutoShrink();
 
     return true;
   }
@@ -362,26 +460,69 @@ export class SoAComponentStore<S extends SoASchemaDefinition> {
   }
 
   /**
-   * Resize all arrays to new capacity
+   * Resize all arrays to new capacity.
+   * Works for both growing and shrinking: only the live `_count` elements are
+   * copied, so the dense index of every surviving entity is preserved.
    */
   private resize(newCapacity: number): void {
+    const copyLen = Math.min(this._count, newCapacity);
+
     for (const fieldName of this.schema.fieldNames) {
       const oldArray = this.arrays[fieldName] as TypedArrayLike;
       const fieldType = this.schema.fieldTypes[fieldName];
       const ArrayConstructor = TYPED_ARRAY_CONSTRUCTORS[fieldType];
       const newArray = new ArrayConstructor(newCapacity);
 
-      // Copy existing data
+      // Copy only the live prefix so shrinking never overflows the destination
       if (oldArray instanceof BigInt64Array) {
-        (newArray as BigInt64Array).set(oldArray);
+        (newArray as BigInt64Array).set(oldArray.subarray(0, copyLen));
       } else {
-        (newArray as Float64Array).set(oldArray as Float64Array);
+        (newArray as Float64Array).set((oldArray as Float64Array).subarray(0, copyLen));
       }
 
       (this.arrays as Record<string, TypedArrayLike>)[fieldName] = newArray;
     }
 
     this._capacity = newCapacity;
+    // Field arrays were reallocated — refresh the flat cache
+    this.rebuildFieldCache();
+  }
+
+  /**
+   * Release backing memory if the store is sparsely populated.
+   * No-op unless auto-shrink is enabled. Capacity is never reduced below
+   * `initialCapacity`, and surviving entities keep their dense indices.
+   */
+  private maybeAutoShrink(): void {
+    if (!this._autoShrink) return;
+    if (this._capacity <= this._minCapacity) return;
+    // Shrink only once usage drops to <= 25% of capacity (hysteresis)
+    if (this._count > this._capacity >>> SHRINK_THRESHOLD_SHIFT) return;
+
+    // Leave 2x headroom above the live count to avoid immediate re-grow
+    const target = Math.max(this._minCapacity, this._count * GROWTH_FACTOR);
+    if (target < this._capacity) {
+      this.resize(target);
+    }
+  }
+
+  /**
+   * Explicitly shrink the backing arrays to fit the current entity count
+   * (plus an optional floor). Useful to call at safe points such as the end of
+   * a match or a lull in combat, independent of the `autoShrink` option.
+   *
+   * Surviving entities keep their dense indices, so this is safe to call at any
+   * time. Returns the resulting capacity.
+   *
+   * @param minCapacity - Lower bound for the new capacity (defaults to the
+   *   store's initial capacity).
+   */
+  public shrinkToFit(minCapacity: number = this._minCapacity): number {
+    const target = Math.max(1, minCapacity, this._count);
+    if (target < this._capacity) {
+      this.resize(target);
+    }
+    return this._capacity;
   }
 
   /**

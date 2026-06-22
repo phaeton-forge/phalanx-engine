@@ -43,7 +43,7 @@ if (!bucketName || !accessKeyId || !secretAccessKey) {
 
 // 2. Build the project
 console.log('Building project...');
-const buildProcess = exec('pnpm build');
+const buildProcess = exec('pnpm build:local');
 
 buildProcess.stdout.pipe(process.stdout);
 buildProcess.stderr.pipe(process.stderr);

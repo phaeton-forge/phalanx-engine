@@ -26,20 +26,22 @@ export {
   ObjectPool,
   EntityPool,
   PoolManager,
+  isPoolableComponent,
 } from './pool';
 export type {
   IPoolable,
-  IResettableComponent,
+  IPoolableEntity,
+  SpawnArgsOf,
+  IPoolableComponent,
   PoolConfig,
   PoolStats,
-  ComponentTemplate,
-  EntityPoolConfig,
   EntityTypeConfig,
   PoolingConfig,
 } from './pool';
 
 // SoA (Structure-of-Arrays) high-performance storage
 export { SoAComponentStore } from './SoAComponentStore';
+export type { SoAComponentStoreOptions } from './SoAComponentStore';
 export { SoAComponent } from './SoAComponent';
 export {
   defineSoASchema,
@@ -69,6 +71,16 @@ export type {
   DebugDataProviderConfig,
   DebugPanelConfig,
 } from './debug';
+
+// Optional system lifecycle hook interfaces
+export type { IBeforeTick, IAfterTick, IBeforeFrame, IAfterFrame } from './ISystemLifecycleHooks';
+export { isBeforeTick, isAfterTick, isBeforeFrame, isAfterFrame } from './ISystemLifecycleHooks';
+
+// Ability system contract (implemented by phalanx-abilities)
+export type { IAbilitySystem } from './IAbilitySystem';
+
+// Physics world contract (implemented by phalanx-physics)
+export type { IPhysicsWorld, InterpolatedTransformSample } from './IPhysicsWorld';
 
 // Tick/Frame Management
 export { TickFrameManager } from './TickFrameManager';

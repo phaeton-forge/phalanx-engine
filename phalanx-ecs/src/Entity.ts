@@ -1,5 +1,4 @@
 import type { IComponent } from './Component';
-import type { IPoolable } from './pool';
 
 let entityIdCounter = 0;
 
@@ -13,7 +12,8 @@ export function resetEntityIdCounter(): void {
 
 /**
  * Allocate and return the next sequential entity ID from the global counter.
- * Used by EntityPool to assign fresh IDs on acquire.
+ * Primarily used by Entity construction and specialized callers that need a
+ * deterministic ID allocation without constructing an Entity directly.
  */
 export function nextEntityId(): number {
   return ++entityIdCounter;
@@ -27,13 +27,16 @@ export function nextEntityId(): number {
  * Game-specific subclasses (e.g. Unit) can add mesh, position, and other
  * rendering-related properties.
  */
-export class Entity implements IPoolable {
+export class Entity {
   private _id: number;
   protected components: Map<symbol, IComponent> = new Map();
   private _isDestroyed: boolean = false;
 
-  /** Optional pool type key, set by PoolManager during acquire */
+  /** @internal Set by PoolManager on registration; identifies the entity's pool. */
   public _poolTypeKey?: string;
+
+  /** @internal True while the entity sits despawned inside a pool. Managed by PoolManager. */
+  public _inPool: boolean = false;
 
   constructor() {
     this._id = ++entityIdCounter;
@@ -47,7 +50,8 @@ export class Entity implements IPoolable {
   }
 
   /**
-   * @internal Used by EntityPool to assign a new ID on acquire.
+   * @internal Reassigns the entity ID. Avoid for pooled entities because SoA
+   * components and stores are keyed by stable entity IDs.
    */
   public _setId(id: number): void {
     this._id = id;
@@ -58,15 +62,6 @@ export class Entity implements IPoolable {
    */
   public _revive(): void {
     this._isDestroyed = false;
-  }
-
-  /**
-   * IPoolable: Reset entity to clean state for pool reuse.
-   * Clears destroyed flag and all components.
-   */
-  public reset(): void {
-    this._isDestroyed = false;
-    this.components.clear();
   }
 
   /**

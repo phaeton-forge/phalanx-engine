@@ -17,13 +17,18 @@ A deterministic, fixed-point physics engine for the [Phalanx Engine](../README.m
 - **Impulse API**: `applyImpulse()` sets body velocity for flick/strike mechanics; `isSettled()` queries whether all bodies are at rest
 - **Bounds Exit Mode**: Optional `ejectOnBoundsExit` mode marks out-of-bounds bodies as ignored and emits `BOUNDS_EXIT` events instead of clamping
 - **Event-Driven**: Collision, trigger enter, trigger exit, and bounds exit events emitted via phalanx-ecs `EventBus`
-- **Visual Position Sync**: Optional automatic sync of f64 visual caches alongside i64 authoritative positions
-- **PhysicsWorld Facade**: One-liner setup — wraps PhysicsSystem + CollisionSystem + SpatialHashGrid
+- **Built-in Transform & Interpolation**: `TransformComponent` (SoA fixed-point spatial state), `InterpolationComponent`, and `InterpolationSystem` for tick-to-frame render smoothing
+- **PhysicsWorld Facade**: One-liner setup — wraps PhysicsSystem + InterpolationSystem, exposes event subscriptions, spatial queries, and interpolated transforms
 
 ## Core Components
 
 ### PhysicsWorld (Recommended Entry Point)
-- **PhysicsWorld**: High-level facade — creates systems, wires collision pipeline, exposes event subscriptions and spatial queries
+- **PhysicsWorld**: High-level facade — creates PhysicsSystem and InterpolationSystem, wires collision pipeline, exposes event subscriptions, spatial queries, and `getInterpolatedTransform()`
+
+### Transform & Interpolation
+- **TransformComponent**: SoA-backed fixed-point position and rotation (`TransformSoASchema`, `TRANSFORM_COMPONENT_TYPE`)
+- **InterpolationComponent**: Tick-to-tick transform samples for render smoothing
+- **InterpolationSystem**: Snapshots/captures transform state each tick and interpolates each frame (implements `IBeforeTick`, `IAfterTick`, `IBeforeFrame`)
 
 ### Physics Body
 - **PhysicsBodyComponent**: SoA-backed component with velocity, radius, mass, restitution, friction, isStatic, and ignorePhysics fields
@@ -35,6 +40,7 @@ A deterministic, fixed-point physics engine for the [Phalanx Engine](../README.m
 
 ### Systems
 - **PhysicsSystem**: Velocity integration with sub-stepping, world bounds handling, broad/narrow/resolve collision pipeline, `step()` / `applyImpulse()` / `isSettled()` / `setCollisionFilter()` API. Created and owned by `PhysicsWorld`; retrieve it via `physicsWorld.getSystems().physicsSystem` to register with `GameWorld`.
+- **InterpolationSystem**: Tick/frame lifecycle hooks for transform interpolation. Register as a **frame system** via `physicsWorld.getSystems().interpolationSystem`.
 
 ### Tick Providers
 - **IPhysicsTickProvider**: Interface for custom tick scheduling strategies
@@ -72,6 +78,11 @@ import {
   PhysicsBodyComponent,
   PhysicsSoASchema,
   PHYSICS_BODY_COMPONENT_TYPE,
+  TransformComponent,
+  TransformSoASchema,
+  TRANSFORM_COMPONENT_TYPE,
+  InterpolationComponent,
+  INTERPOLATION_COMPONENT_TYPE,
   type PhysicsBodyConfig,
 
   // Collision primitives
@@ -79,8 +90,10 @@ import {
   NarrowPhase,
   type CollisionManifold,
 
-  // System
+  // Systems
   PhysicsSystem,
+  InterpolationSystem,
+  type InterpolatedTransformSample,
 
   // Events & event types
   PhysicsEvents,
@@ -94,7 +107,6 @@ import {
   ExternalPhysicsTickProvider,
 
   // Misc types
-  type TransformFieldMapping,
   type CollisionFilter,
   type PhysicsConfig,
 } from 'phalanx-physics';
@@ -103,35 +115,43 @@ import {
 ## Quick Start
 
 ```typescript
-import { GameWorld, GameSystem, defineSoASchema } from 'phalanx-ecs';
-import { PhysicsWorld, PhysicsBodyComponent } from 'phalanx-physics';
-import { FP } from 'phalanx-math';
+import { GameWorld, GameSystem, createComponentTypeRegistry } from 'phalanx-ecs';
+import {
+  PhysicsWorld,
+  PhysicsBodyComponent,
+  TransformComponent,
+  InterpolationComponent,
+  PHYSICS_BODY_COMPONENT_TYPE,
+  TRANSFORM_COMPONENT_TYPE,
+  INTERPOLATION_COMPONENT_TYPE,
+} from 'phalanx-physics';
+import { FP, FPVector3 } from 'phalanx-math';
 
-// 0. Define the transform schema your game uses (consumer-owned).
-//    Physics will read fpPositionX/Y/Z and optionally write visualPositionX/Z.
-const TransformSoASchema = defineSoASchema({
-  fpPositionX: 'i64',
-  fpPositionY: 'i64',
-  fpPositionZ: 'i64',
-  visualPositionX: 'f64',
-  visualPositionY: 'f64',
-  visualPositionZ: 'f64',
-}, 'Transform');
+// Register canonical component type symbols from phalanx-physics
+export const ComponentType = createComponentTypeRegistry({
+  Transform: 'Transform',
+  Interpolation: 'Interpolation',
+  PhysicsBody: 'PhysicsBody',
+});
+(ComponentType as Record<string, symbol>).Transform = TRANSFORM_COMPONENT_TYPE;
+(ComponentType as Record<string, symbol>).Interpolation = INTERPOLATION_COMPONENT_TYPE;
+(ComponentType as Record<string, symbol>).PhysicsBody = PHYSICS_BODY_COMPONENT_TYPE;
 
 // Minimal placeholder systems — replace with your real ones.
-// MovementSystem runs BEFORE physics and writes velocities onto PhysicsBody SoA.
 class MovementSystem extends GameSystem {
   public override processTick(_tick: number): void { /* set velocities here */ }
 }
-// RenderSystem runs in the frame pipeline (interpolation, scene updates, etc.).
 class RenderSystem extends GameSystem {
-  public override update(_alpha: number, _dt: number): void { /* render here */ }
+  public override update(_dt: number): void {
+    const sample = this.physics?.getInterpolatedTransform(entityId);
+    if (sample) mesh.position.set(sample.position.x, sample.position.y, sample.position.z);
+  }
 }
 const movementSystem = new MovementSystem();
 const renderSystem = new RenderSystem();
 
 // 1. Create GameWorld and the physics facade
-const world = new GameWorld({ componentTypes: { /* your ComponentType registry */ } as any });
+const world = new GameWorld({ componentTypes: Object.values(ComponentType) });
 
 const physicsWorld = new PhysicsWorld({
   gridCellSize: FP.FromFloat(8),
@@ -141,44 +161,33 @@ const physicsWorld = new PhysicsWorld({
   pushStrength: FP.FromFloat(15),
 });
 
-// 2. Register systems with GameWorld (order matters)
-//    PhysicsWorld owns one PhysicsSystem that runs the full broad → narrow → resolve pipeline.
-const { physicsSystem } = physicsWorld.getSystems();
+// 2. Wire physics into SystemContext so systems can access it
+world.context.physics = physicsWorld;
+
+// 3. Register systems with GameWorld (order matters)
+const { physicsSystem, interpolationSystem } = physicsWorld.getSystems();
 world.registerSystems(
   [movementSystem, physicsSystem],   // tick systems
-  [renderSystem],                    // frame systems
+  [interpolationSystem, renderSystem], // frame systems — InterpolationSystem runs before render
 );
 
-// 3. Link transform store on first tick (after stores have been created)
-world.start({
-  beforeTick: (tick) => {
-    if (tick === 0) {
-      const txStore = world.entityManager.getOrCreateSoAStore(TransformSoASchema);
-      physicsWorld.setTransformStore(txStore as any, {
-        fpPositionX: 'fpPositionX',
-        fpPositionY: 'fpPositionY',
-        fpPositionZ: 'fpPositionZ',
-        // Optional: only X and Z are written by PhysicsSystem
-        visualPositionX: 'visualPositionX',
-        visualPositionZ: 'visualPositionZ',
-      });
-    }
-  },
-});
+world.start();
 
-// 4. Add physics bodies to entities
-//    (entity here is whatever your game uses — typically obtained via world.entityManager)
+// 4. Add transform, interpolation, and physics body to entities
 declare const entity: { id: number; addComponent(c: unknown): void };
-const body = new PhysicsBodyComponent(entity.id, {
-  radius: FP.FromFloat(1.0),
-});
-entity.addComponent(body);
+const fpPosition = FPVector3.FromFloat(0, 0, 0);
+entity.addComponent(new TransformComponent(entity.id, fpPosition));
+entity.addComponent(new InterpolationComponent(fpPosition));
+entity.addComponent(new PhysicsBodyComponent(entity.id, { radius: FP.FromFloat(1.0) }));
+world.entityManager.addEntity(entity as any);
 
 // 5. Subscribe to collision events (must be called after world.start())
 physicsWorld.onCollision((event) => {
   console.log(`Collision: ${event.entityA} ↔ ${event.entityB}`);
 });
 ```
+
+> **Note:** `PhysicsSystem` reads and writes the built-in `TransformSoASchema` store directly — no `setTransformStore()` or consumer-defined transform schema is required. Register `Transform`, `Interpolation`, and `PhysicsBody` component types using the canonical symbols exported from phalanx-physics.
 
 ## Turn-Based Physics (Tick Providers)
 
@@ -246,11 +255,7 @@ class PhysicsWorld {
   constructor(config?: PhysicsWorldConfig);
 
   // System wiring
-  getSystems(): { physicsSystem: PhysicsSystem };
-  setTransformStore(
-    store: SoAComponentStore<SoASchemaDefinition>,
-    fieldMapping: TransformFieldMapping
-  ): void;
+  getSystems(): { physicsSystem: PhysicsSystem; interpolationSystem: InterpolationSystem };
   setCollisionFilter(filter: (entityA: number, entityB: number) => boolean): void;
 
   // Event subscriptions (must be called after GameWorld.start())
@@ -258,8 +263,6 @@ class PhysicsWorld {
   onBoundsExit(callback: (event: BoundsExitEvent) => void): () => void;
 
   // Planned — not yet emitted by PhysicsSystem.
-  // The handlers exist and subscribe to PhysicsEvents.TRIGGER_ENTER / TRIGGER_EXIT,
-  // but PhysicsSystem currently only emits COLLISION and BOUNDS_EXIT.
   onTriggerEnter(callback: (event: CollisionEvent) => void): () => void;
   onTriggerExit(callback: (event: CollisionEvent) => void): () => void;
 
@@ -267,13 +270,19 @@ class PhysicsWorld {
   applyImpulse(entityId: number, vx: FixedPoint, vz: FixedPoint): void;
   isSettled(threshold?: FixedPoint): boolean;
 
-  // Spatial query escape hatch
+  // Spatial / transform queries
   readonly spatialGrid: SpatialHashGrid;
+  getEntityPosition(entityId: number): { x: FixedPoint; z: FixedPoint } | undefined;
+  getInterpolatedTransform(entityId: number): InterpolatedTransformSample | undefined;
 
   // Cleanup
   dispose(): void;
 }
 ```
+
+- **`getSystems()`** — Returns both `physicsSystem` (register as tick system) and `interpolationSystem` (register as frame system).
+- **`getEntityPosition(entityId)`** — Fixed-point position for gameplay queries (e.g. ability targeting).
+- **`getInterpolatedTransform(entityId)`** — Interpolated float position/rotation for rendering, populated after `InterpolationSystem` runs.
 
 - **`applyImpulse(entityId, vx, vz)`** — Set body velocity (replaces, does not accumulate). Re-enables previously ejected bodies.
 - **`isSettled(threshold?)`** — Pure query: `true` when all non-static, non-ignored bodies are below velocity threshold (default from config, falling back to `FP.FromFloat(0.01)`).
@@ -297,6 +306,38 @@ interface PhysicsWorldConfig {
   settleThreshold?: FixedPoint;  // default FP.FromFloat(0.01)
 }
 ```
+
+### `TransformComponent`
+
+```typescript
+class TransformComponent extends SoAComponent<typeof TransformSoASchema.definition> {
+  static readonly soaSchema: typeof TransformSoASchema;
+  readonly type: symbol; // TRANSFORM_COMPONENT_TYPE
+
+  constructor(entityId: number, initialPosition?: FPVector3, initialRotation?: FPVector3);
+
+  fpPosition: FPVector3;   // get/set — authoritative fixed-point position
+  fpRotation: FPVector3;   // get/set — authoritative fixed-point rotation (radians)
+  fpRotationY: FixedPoint; // get/set — convenience for Y-axis rotation
+}
+```
+
+`TransformSoASchema` fields: `fpPositionX/Y/Z`, `fpRotationX/Y/Z` (all `i64`).
+
+### `InterpolationComponent`
+
+```typescript
+class InterpolationComponent implements IComponent {
+  readonly type: symbol; // INTERPOLATION_COMPONENT_TYPE
+
+  constructor(initialPosition?: FPVector3, initialRotation?: FPVector3);
+
+  snapshot(): void;  // copy current → previous (called by InterpolationSystem before tick)
+  capture(fpPosition: FPVector3, fpRotation: FPVector3): void; // capture authoritative state after tick
+}
+```
+
+Attach alongside `TransformComponent` on any entity that needs render interpolation.
 
 ### `PhysicsBodyComponent`
 

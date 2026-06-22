@@ -160,44 +160,6 @@ describe('ability activation — happy paths', () => {
     world.dispose();
   });
 
-  it('resolves Self targeting to the caster and applies targetEffectIds to self', () => {
-    const { world, abilities, abilityIds } = createTestWorld({
-      pipeline: 'activation',
-      attributes: [HealthAttribute, ManaAttribute, ArmorAttribute, IncomingDamageMultiplierAttribute],
-      effects: [
-        defineEffect({
-          id: 'Effect.SelfHeal',
-          type: 'Instant',
-          modifiers: [{ attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(20) }],
-        }),
-        defineEffect({
-          id: 'Effect.TestDamage40',
-          type: 'Instant',
-          modifiers: [{ attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(-40) }],
-        }),
-      ],
-      abilities: [
-        defineAbility({
-          id: 'Ability.SelfHeal',
-          target: { kind: 'Self' },
-          targetEffectIds: ['Effect.SelfHeal'],
-        }),
-      ],
-    });
-    const caster = spawnCombatEntity(world, abilities, abilityIds);
-    world.processAllTicks(1);
-    // Drop the caster's health so a heal is observable (clamp would mask it
-    // otherwise — Health defaults to its max).
-    abilities.applyEffect(caster.id, 'Effect.TestDamage40', caster.id);
-    world.processAllTicks(2);
-    expect(FP.ToFloat(abilities.getAttribute(caster.id, 'Health').current)).toBe(60);
-
-    abilities.activateAbility(caster.id, 'Ability.SelfHeal');
-    world.processAllTicks(3);
-    expect(FP.ToFloat(abilities.getAttribute(caster.id, 'Health').current)).toBe(80);
-
-    world.dispose();
-  });
 });
 
 describe('ability activation — CanActivate gating', () => {

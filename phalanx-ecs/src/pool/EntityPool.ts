@@ -1,18 +1,18 @@
-import type { IComponent } from '../Component';
 import type { Entity } from '../Entity';
-import { nextEntityId } from '../Entity';
-import type { IPoolable } from './IPoolable';
-import type { EntityPoolConfig, PoolStats, ComponentTemplate, ResolvedPoolConfig } from './types';
+import type { PoolConfig, PoolStats, ResolvedPoolConfig } from './types';
 import { resolvePoolConfig } from './types';
 
 /**
- * Entity-specific pool with component template support.
- * Manages entity lifecycle: ID assignment, revive, and component templates.
+ * Pure storage, growth, and stats container for pooled entities.
+ *
+ * Pooled entities keep stable IDs across release/acquire cycles — SoA-backed
+ * component rows remain keyed to the same entity ID for the entity's entire
+ * lifetime. Spawn/despawn lifecycle hooks (IPoolableEntity / IPoolableComponent)
+ * are orchestrated by PoolManager, not here.
  */
 export class EntityPool<T extends Entity = Entity> {
   private readonly available: T[] = [];
   private readonly entityFactory: () => T;
-  private readonly componentTemplates: ComponentTemplate[];
   private readonly config: ResolvedPoolConfig;
 
   private _totalCreated: number = 0;
@@ -20,15 +20,14 @@ export class EntityPool<T extends Entity = Entity> {
   private _releaseCount: number = 0;
   private _missCount: number = 0;
 
-  constructor(entityFactory: () => T, config?: EntityPoolConfig) {
+  constructor(entityFactory: () => T, config?: PoolConfig) {
     this.entityFactory = entityFactory;
-    this.componentTemplates = config?.componentTemplates ?? [];
     this.config = resolvePoolConfig(config);
   }
 
   /**
    * Get an entity from the pool.
-   * Assigns a new ID, revives, and returns a ready-to-use entity.
+   * Reused entities keep their original IDs to preserve SoA row mappings.
    */
   acquire(): T {
     this._acquireCount++;
@@ -55,83 +54,36 @@ export class EntityPool<T extends Entity = Entity> {
     }
 
     if (fromPool) {
-      // Reused entity — assign fresh ID and revive
-      entity._setId(nextEntityId());
       entity._revive();
-    }
-    // For fresh entities: constructor already assigned ID, _isDestroyed is false
-
-    // Reset template components
-    for (const template of this.componentTemplates) {
-      const comp = entity.getComponent(template.type);
-      if (comp) {
-        if ('reset' in comp && typeof (comp as IPoolable).reset === 'function') {
-          (comp as IPoolable).reset();
-        }
-      }
-      // No need to recreate — templates are preserved via prepareForPool/createEntity
     }
 
     return entity;
   }
 
-  /** Return an entity to the pool. Calls reset(). */
+  /** Return an entity to the pool. */
   release(entity: T): void {
     this._releaseCount++;
 
     if (this.config.maxSize > 0 && this.available.length >= this.config.maxSize) {
-      entity.dispose(); // Clean up resources for entities that won't be pooled
+      entity.dispose();
       return;
     }
 
-    this.prepareForPool(entity);
     this.available.push(entity);
   }
 
-  /** Pre-allocate entities with template components. */
+  /** Pre-allocate entities up to `count`. */
   prewarm(count: number): void {
     const toCreate = count - this.available.length;
     for (let i = 0; i < toCreate; i++) {
       if (this.config.maxSize > 0 && this.available.length >= this.config.maxSize) {
         break;
       }
-      const entity = this.createEntity();
-      this.prepareForPool(entity);
-      this.available.push(entity);
+      this.available.push(this.createEntity());
     }
   }
 
-  private growBatch(): void {
-    const batchSize = this.config.growthBatchSize;
-    for (let i = 0; i < batchSize; i++) {
-      if (this.config.maxSize > 0 && this.available.length >= this.config.maxSize) {
-        break;
-      }
-      const entity = this.createEntity();
-      this.prepareForPool(entity);
-      this.available.push(entity);
-    }
-  }
-
-  /** Prepare an entity for storage in the pool — reset while preserving templates. */
-  private prepareForPool(entity: T): void {
-    const savedComps: IComponent[] = [];
-    for (const template of this.componentTemplates) {
-      const comp = entity.getComponent(template.type);
-      if (comp) savedComps.push(comp);
-    }
-
-    entity.reset();
-
-    for (const comp of savedComps) {
-      if ('reset' in comp && typeof (comp as IPoolable).reset === 'function') {
-        (comp as IPoolable).reset();
-      }
-      entity.addComponent(comp);
-    }
-  }
-
-  /** Clear all pooled entities. */
+  /** Remove all pooled entities without disposing them. */
   drain(): void {
     this.available.length = 0;
   }
@@ -153,12 +105,16 @@ export class EntityPool<T extends Entity = Entity> {
   private createEntity(): T {
     const entity = this.entityFactory();
     this._totalCreated++;
-
-    // Attach template components
-    for (const template of this.componentTemplates) {
-      entity.addComponent(template.factory());
-    }
-
     return entity;
+  }
+
+  private growBatch(): void {
+    const batchSize = this.config.growthBatchSize;
+    for (let i = 0; i < batchSize; i++) {
+      if (this.config.maxSize > 0 && this.available.length >= this.config.maxSize) {
+        break;
+      }
+      this.available.push(this.createEntity());
+    }
   }
 }

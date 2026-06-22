@@ -85,6 +85,30 @@ describe('SpatialHashGrid', () => {
     expect(result).not.toContain(3);
   });
 
+  it('queryRadius excludes entities in candidate cells but outside the exact radius', () => {
+    const grid = new SpatialHashGrid(cellSize);
+    const radius = FP.FromFloat(0.5);
+    // Entity 1 is inside the query radius; entity 2 lands in the broad-phase
+    // cell region but its center is outside the exact radius → filtered out.
+    grid.insert(1, FP.FromFloat(1), FP.FromFloat(0), radius);
+    grid.insert(2, FP.FromFloat(3.5), FP.FromFloat(0), radius);
+
+    const result = grid.queryRadius(FP.FromFloat(0), FP.FromFloat(0), FP.FromFloat(2));
+    expect(result).toContain(1);
+    expect(result).not.toContain(2);
+  });
+
+  it('queryRadius reflects updated positions', () => {
+    const grid = new SpatialHashGrid(cellSize);
+    const radius = FP.FromFloat(0.5);
+    grid.insert(1, FP.FromFloat(0), FP.FromFloat(0), radius);
+    expect(grid.queryRadius(FP.FromFloat(0), FP.FromFloat(0), FP.FromFloat(2))).toContain(1);
+
+    // Move entity 1 out of range — exact filter must drop it.
+    grid.update(1, FP.FromFloat(50), FP.FromFloat(50), radius);
+    expect(grid.queryRadius(FP.FromFloat(0), FP.FromFloat(0), FP.FromFloat(2))).not.toContain(1);
+  });
+
   it('queryRadius results are sorted by entity ID', () => {
     const grid = new SpatialHashGrid(cellSize);
     const radius = FP.FromFloat(0.5);

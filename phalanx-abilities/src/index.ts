@@ -1,10 +1,9 @@
 export * from './api';
 export * from './components';
+export * from './cues';
 export * from './events';
 export * from './registry';
 export * from './runtime';
 export * from './systems';
 export * from './targeting';
-export type * from './spatial';
-export { spatialQueryFromPhysicsWorld } from './spatial';
 export * from './types';

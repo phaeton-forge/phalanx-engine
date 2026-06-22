@@ -5,6 +5,7 @@ import { GAMEPLAY_CUE_EVENT } from '../src/events';
 import type { CueEvent } from '../src';
 import {
   ArmorAttribute,
+  DISPATCH_CUES,
   HealthAttribute,
   addEntity,
   createTestWorld,
@@ -48,7 +49,7 @@ describe('gameplay cues', () => {
     const { world, abilities, cueLog } = createTestWorld({
       pipeline: 'effects',
       attributes: [HealthAttribute, ArmorAttribute],
-      cues: 'dispatch',
+      cues: DISPATCH_CUES,
       effects: [
         defineEffect({
           id: 'Effect.ArmorShred',
@@ -108,7 +109,7 @@ describe('gameplay cues', () => {
     const { world, abilities, cueLog } = createTestWorld({
       pipeline: 'effects',
       attributes: [HealthAttribute, ArmorAttribute],
-      cues: 'dispatch',
+      cues: DISPATCH_CUES,
       effects: [
         defineEffect({
           id: 'Effect.Poison',
@@ -141,7 +142,7 @@ describe('gameplay cues', () => {
     const { world, abilities, cueLog } = createTestWorld({
       pipeline: 'effects',
       attributes: [HealthAttribute, ArmorAttribute],
-      cues: 'dispatch',
+      cues: DISPATCH_CUES,
       effects: [
         defineEffect({
           id: 'Effect.BurningWeapon',
@@ -205,7 +206,7 @@ describe('gameplay cues', () => {
       const { world, abilities, cueLog } = createTestWorld({
         pipeline: 'effects',
         attributes: [HealthAttribute, ArmorAttribute],
-        cues: 'dispatch',
+        cues: DISPATCH_CUES,
         effects: [
           defineEffect({ id: 'Effect.First', type: 'Instant', cues: ['Cue.First'] }),
           defineEffect({ id: 'Effect.Second', type: 'Instant', cues: ['Cue.Second'] }),
@@ -245,7 +246,7 @@ describe('gameplay cues', () => {
     const { world, abilities } = createTestWorld({
       pipeline: 'effects',
       attributes: [HealthAttribute, ArmorAttribute],
-      cues: 'dispatch',
+      cues: DISPATCH_CUES,
       effects: [defineEffect({ id: 'Effect.Signal', type: 'Instant', cues: ['Cue.X'] })],
     });
     const globalEvents: CueEvent[] = [];
@@ -274,7 +275,7 @@ describe('gameplay cues', () => {
 
   it('cleans the cue buffer even without CueDispatchSystem', () => {
     const { world, abilities } = createTestWorld({
-      pipeline: 'effects', attributes: [HealthAttribute, ArmorAttribute], cues: 'buffer',
+      pipeline: 'effects', attributes: [HealthAttribute, ArmorAttribute],
       effects: [defineEffect({ id: 'Effect.Cleanup', type: 'Instant', cues: ['Cue.Cleanup'] })],
     });
     const entity = spawnEntity(world, abilities);
@@ -351,7 +352,7 @@ describe('gameplay cues', () => {
       const { world, abilities, cueLog } = createTestWorld({
         pipeline: 'effects',
         attributes: [HealthAttribute, ArmorAttribute],
-        cues: 'dispatch',
+        cues: DISPATCH_CUES,
         effects: [
           defineEffect({ id: 'Effect.Hit', type: 'Instant', cues: ['Cue.Hit'] }),
           defineEffect({

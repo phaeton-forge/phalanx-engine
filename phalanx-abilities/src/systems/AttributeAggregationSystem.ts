@@ -2,12 +2,11 @@ import { GameSystem } from 'phalanx-ecs';
 import { FP } from 'phalanx-math';
 import type { FixedPoint } from 'phalanx-math';
 import {
-  ActiveEffectsComponent,
-  AttributesComponent,
   AbilitiesComponentType,
   getActiveEffectsComponent,
   getAttributesComponent,
 } from '../components';
+import type { ActiveEffectsComponent } from '../components';
 import type { AbilitySystemRegistries } from '../registry';
 import type { ActiveEffectInstance, AttributeDef, EffectDef, ModifierOp } from '../types';
 
@@ -85,7 +84,16 @@ export class AttributeAggregationSystem extends GameSystem {
           }
         }
 
-        attributes.current[attributeIndex] = FP.ToRaw(clampAttribute(value, attributeDef));
+        const clamped = clampAttribute(value, attributeDef);
+        attributes.current[attributeIndex] = FP.ToRaw(clamped);
+        // Write the clamped value back to base so that instant-effect base drift
+        // (e.g. a heal overshooting Health.max) is corrected on the same tick.
+        // Only applies to attributes that have an active clamp; 'none' is left alone.
+        if (attributeDef.clamp !== 'none') {
+          attributes.base[attributeIndex] = FP.ToRaw(
+            clampAttribute(FP.FromRaw(attributes.base[attributeIndex]), attributeDef),
+          );
+        }
         attributes.dirty[attributeIndex] = 0;
       }
     }

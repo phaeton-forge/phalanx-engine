@@ -66,10 +66,33 @@ export class SystemRegistry {
       this.context.registerSystem(system);
     }
 
-    // Initialize all systems (call init() on each)
-    for (const system of allSystems) {
+    // Implicitly append ability tick systems if present in context.
+    // Skip systems already passed explicitly to avoid running them twice per tick.
+    if (this.context.abilities) {
+      for (const system of this.context.abilities.tickSystems) {
+        if (this.tickSystems.includes(system)) {
+          continue;
+        }
+        this.tickSystems.push(system);
+        this.context.registerSystem(system);
+      }
+    }
+
+    // Initialize all systems (call init() on each).
+    // Iterate tickSystems directly so ability tick systems appended above
+    // are included alongside the original allSystems.
+    const toInit = new Set([...this.tickSystems, ...this.frameSystems]);
+    for (const system of toInit) {
       system.init(this.context);
     }
+  }
+
+  /**
+   * Returns a deduplicated set of every registered system (tick + frame).
+   * Used by GameWorld to collect systems that implement lifecycle interfaces.
+   */
+  public getAllSystems(): Set<GameSystem> {
+    return new Set([...this.tickSystems, ...this.frameSystems]);
   }
 
   /**
