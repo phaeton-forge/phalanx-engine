@@ -60,7 +60,8 @@ export class RenderSyncSystem extends GameSystem {
       if (detectionRing && unitType) {
         const radius = FP.ToFloat(unitType.detectionRadius);
         detectionRing.root.scale.set(radius, radius, 1);
-        detectionRing.root.visible = stats.alive;
+        // detectionRing.root.visible = stats.alive;
+        detectionRing.root.visible = false;
       }
 
       const health = this._abilities.tryGetAttribute(entity.id, 'Health')?.current;

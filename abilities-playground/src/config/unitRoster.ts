@@ -1,4 +1,10 @@
-export type UnitKind = 'sphere' | 'cube';
+import {
+  HEAL_AURA_RADIUS,
+  HEAL_PER_PULSE,
+  HEAL_PULSE_TICKS,
+} from './abilityDefinitions';
+
+export type UnitKind = 'sphere' | 'cube' | 'support';
 
 /** Default hostile detection radius (world units); matches gameplay and debug ring. */
 export const DEFAULT_UNIT_DETECTION_RANGE = 25;
@@ -21,9 +27,15 @@ export interface UnitRosterEntry {
   readonly maxHealth: number;
   /** Hostile detection radius; defaults to {@link DEFAULT_UNIT_DETECTION_RANGE}. */
   readonly detectionRange?: number;
+  /** Healing aura radius (world units). Only meaningful for `support` units. */
+  readonly auraRadius?: number;
+  /** Healing applied to each ally per aura pulse. Only for `support` units. */
+  readonly healPerPulse?: number;
+  /** Ticks between aura pulses. Only for `support` units. */
+  readonly healPulseTicks?: number;
 }
 
-const BLUE_TEAM_SPHERES = 12;
+const BLUE_TEAM_SPHERES = 14;
 const RED_TEAM_SPHERES = 10;
 
 // Keep in sync with UnitFactory sphere mesh size (world units).
@@ -102,6 +114,27 @@ const redSpawns = makeFormation(RED_TEAM_SPHERES, {
   seed: 0x52ED,
 });
 
+// it sits inside the friendly cluster (aura covers nearby allies).
+const SUPPORT_RADIUS = 2;
+const SUPPORT_MASS = 3;
+const SUPPORT_MAX_HEALTH = 70;
+
+const SUPPORT_ROSTER: readonly UnitRosterEntry[] = [
+  {
+    kind: 'support',
+    spawns: { 1: { offsetX: 0, offsetZ: -2 } },
+    radius: SUPPORT_RADIUS,
+    mass: SUPPORT_MASS,
+    // Larger stop range than spheres (18) so the healer halts behind the front
+    // line; its aura (radius {@link HEAL_AURA_RADIUS}) still reaches the fighters.
+    stopRange: 22,
+    maxHealth: SUPPORT_MAX_HEALTH,
+    auraRadius: HEAL_AURA_RADIUS,
+    healPerPulse: HEAL_PER_PULSE,
+    healPulseTicks: HEAL_PULSE_TICKS,
+  },
+];
+
 export const UNIT_ROSTER: readonly UnitRosterEntry[] = Array.from(
   { length: Math.max(BLUE_TEAM_SPHERES, RED_TEAM_SPHERES) },
   (_unused, i): UnitRosterEntry => ({
@@ -115,4 +148,4 @@ export const UNIT_ROSTER: readonly UnitRosterEntry[] = Array.from(
     stopRange: SPHERE_STOP_RANGE,
     maxHealth: SPHERE_MAX_HEALTH,
   }),
-);
+).concat(SUPPORT_ROSTER);

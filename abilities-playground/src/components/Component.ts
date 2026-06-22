@@ -23,6 +23,7 @@ export const ComponentType = createComponentTypeRegistry({
   PhysicsBody: 'PhysicsBody',
   SpawnPoint: 'SpawnPoint',
   DetectionRing: 'DetectionRing',
+  HealAura: 'HealAura',
 });
 
 (ComponentType as Record<string, symbol>).PhysicsBody =

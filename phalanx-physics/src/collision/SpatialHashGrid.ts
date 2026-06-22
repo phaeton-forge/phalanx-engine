@@ -16,6 +16,13 @@ export class SpatialHashGrid {
   /** Tracks which cells each entity occupies for efficient removal */
   private readonly entityCells: Map<number, string[]> = new Map();
 
+  /**
+   * Center positions per entity, kept in sync with insert/remove/clear.
+   * Used by {@link queryRadius} for exact (narrow-phase) distance filtering.
+   */
+  private readonly entityPosX: Map<number, FixedPoint> = new Map();
+  private readonly entityPosZ: Map<number, FixedPoint> = new Map();
+
   /** Reusable pairs array — cleared and reused each queryPairs() call */
   private readonly _pairsResult: [number, number][] = [];
 
@@ -32,6 +39,9 @@ export class SpatialHashGrid {
   public insert(entityId: number, posX: FixedPoint, posZ: FixedPoint, radius: FixedPoint): void {
     const cellKeys = this.getCoveredCells(posX, posZ, radius);
     this.entityCells.set(entityId, cellKeys);
+    // Store the center position for exact distance filtering in queryRadius.
+    this.entityPosX.set(entityId, posX);
+    this.entityPosZ.set(entityId, posZ);
 
     for (const key of cellKeys) {
       let cell = this.cells.get(key);
@@ -65,6 +75,8 @@ export class SpatialHashGrid {
       }
     }
     this.entityCells.delete(entityId);
+    this.entityPosX.delete(entityId);
+    this.entityPosZ.delete(entityId);
   }
 
   /**
@@ -111,22 +123,40 @@ export class SpatialHashGrid {
   }
 
   /**
-   * Query all entities within a radius of a point.
-   * Results are sorted by entity ID for determinism.
+   * Query all entities whose center lies within `radius` of the point
+   * `(posX, posZ)`. Results are sorted by entity ID for determinism.
+   *
+   * Two-phase, but the exact pass is internal so callers never re-check distance:
+   *   - broad-phase: gather candidates from overlapping grid cells.
+   *   - narrow-phase: keep only candidates whose squared center-distance is
+   *     `<= radius²` (uses the center positions recorded on insert/update).
+   *
+   * Distance is measured center-to-center (the queried bodies' radii are not
+   * added); this matches "units within range of a point" semantics used by
+   * auras, AoE, and range finding.
    */
   public queryRadius(posX: FixedPoint, posZ: FixedPoint, radius: FixedPoint): number[] {
     this._radiusResult.length = 0;
     const seen = new Set<number>();
+    const radiusSq = FP.Mul(radius, radius);
 
     const cellKeys = this.getCoveredCells(posX, posZ, radius);
     for (const key of cellKeys) {
       const cell = this.cells.get(key);
-      if (cell) {
-        for (const id of cell) {
-          if (!seen.has(id)) {
-            seen.add(id);
-            this._radiusResult.push(id);
-          }
+      if (!cell) continue;
+      for (const id of cell) {
+        if (seen.has(id)) continue;
+        seen.add(id);
+
+        const px = this.entityPosX.get(id);
+        const pz = this.entityPosZ.get(id);
+        if (px === undefined || pz === undefined) continue;
+
+        const dx = FP.Sub(px, posX);
+        const dz = FP.Sub(pz, posZ);
+        const distanceSq = FP.Add(FP.Mul(dx, dx), FP.Mul(dz, dz));
+        if (FP.Lte(distanceSq, radiusSq)) {
+          this._radiusResult.push(id);
         }
       }
     }
@@ -141,6 +171,8 @@ export class SpatialHashGrid {
   public clear(): void {
     this.cells.clear();
     this.entityCells.clear();
+    this.entityPosX.clear();
+    this.entityPosZ.clear();
   }
 
   /**

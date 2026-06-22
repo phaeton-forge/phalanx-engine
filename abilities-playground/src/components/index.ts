@@ -15,6 +15,7 @@ export {
   DeathFadeComponent,
   SimulationStateComponent,
   DetectionRingComponent,
+  HealAuraComponent,
 } from './UnitComponents';
 export type { TeamId } from './UnitComponents';
 export { SpawnPointComponent } from './SpawnPointComponent';

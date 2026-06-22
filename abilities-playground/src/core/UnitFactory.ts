@@ -14,6 +14,8 @@ export interface UnitRenderRefs {
   healthBarFullWidth: number;
   detectionRing: THREE.Mesh;
   spawnPoint?: SpawnPointRef;
+  /** Permanent green aura indicator ring (support units only). */
+  auraRing?: THREE.Mesh;
 }
 
 export class UnitFactory {
@@ -27,6 +29,7 @@ export class UnitFactory {
     kind: UnitKind,
     teamId: 0 | 1,
     detectionRange = DEFAULT_UNIT_DETECTION_RANGE,
+    auraRadius?: number,
   ): UnitRenderRefs {
     const root = this.createMesh(kind, teamId);
     const detectionRing = this.createDetectionRing(teamId, detectionRange);
@@ -59,6 +62,13 @@ export class UnitFactory {
       root.add(spawnPoint.marker);
     }
 
+    let auraRing: THREE.Mesh | undefined;
+
+    if (kind === 'support' && auraRadius !== undefined) {
+      auraRing = this.createAuraRing(auraRadius);
+      root.add(auraRing);
+    }
+
     return {
       root,
       healthBarRoot,
@@ -66,7 +76,29 @@ export class UnitFactory {
       healthBarFullWidth,
       detectionRing,
       spawnPoint,
+      auraRing,
     };
+  }
+
+  /** Thin green ring sized to the healing-aura radius; permanent aura indicator. */
+  private createAuraRing(radius: number): THREE.Mesh {
+    const ring = new THREE.Mesh(
+      this.arenaScene.trackGeometry(new THREE.RingGeometry(0.96, 1, 96)),
+      this.arenaScene.trackMaterial(
+        new THREE.MeshBasicMaterial({
+          color: 0x44ff88,
+          transparent: true,
+          opacity: 0.7,
+          side: THREE.DoubleSide,
+          depthWrite: false,
+        }),
+      ),
+    );
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.06;
+    ring.renderOrder = 2;
+    ring.scale.set(radius, radius, 1);
+    return ring;
   }
 
   /** Unit-radius ring; scale X/Z in RenderSyncSystem to match detectionRange. */
@@ -116,6 +148,7 @@ export class UnitFactory {
     switch (kind) {
       case 'cube': return 2.5;
       case 'sphere': return 2;
+      case 'support': return 2;
     }
   }
 
@@ -136,6 +169,13 @@ export class UnitFactory {
       case 'sphere':
         return new THREE.Mesh(
           this.arenaScene.trackGeometry(new THREE.SphereGeometry(2, 24, 16)),
+          material,
+        );
+      case 'support':
+        // Cone geometry: radius 2, height 4 → base sits on the ground at the
+        // height offset returned by getHeightOffset('support').
+        return new THREE.Mesh(
+          this.arenaScene.trackGeometry(new THREE.ConeGeometry(2, 4, 24)),
           material,
         );
     }

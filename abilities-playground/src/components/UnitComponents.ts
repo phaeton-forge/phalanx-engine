@@ -42,6 +42,32 @@ export class DetectionRingComponent implements IComponent {
   }
 }
 
+/**
+ * Drives the support healing aura. Owned by `support` units. Heal application
+ * is performed by the HealingAuraSystem: every {@link pulseTicks} ticks it
+ * queries allies within {@link radius} and applies a heal pulse.
+ *
+ * `auraRing` is the permanent green indicator mesh (child of the unit root),
+ * sized to {@link radius}.
+ */
+export class HealAuraComponent implements IComponent {
+  public readonly type = ComponentType.HealAura;
+  public readonly radius: FixedPoint;
+  public readonly pulseTicks: number;
+  public readonly auraRing: THREE.Object3D | null;
+  /** Counts down to the next pulse; starts at 1 so the aura fires shortly after spawn. */
+  public ticksUntilPulse = 1;
+
+  constructor(
+    config: { radius: number; pulseTicks: number },
+    auraRing: THREE.Object3D | null = null,
+  ) {
+    this.radius = FP.FromFloat(config.radius);
+    this.pulseTicks = config.pulseTicks;
+    this.auraRing = auraRing;
+  }
+}
+
 export class StatsComponent implements IComponent {
   public readonly type = ComponentType.UnitStats;
   public readonly stopRange: FixedPoint;

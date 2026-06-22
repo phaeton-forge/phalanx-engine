@@ -20,6 +20,7 @@ import { UnitEntity } from '../entities/UnitEntity';
 import {
   AttackSystem,
   DeathSystem,
+  HealingAuraSystem,
   MovementSystem,
   RenderSyncSystem,
   RotationSystem,
@@ -30,7 +31,7 @@ import type { UnitFactory } from './UnitFactory';
 import {ProjectileEntity} from "../entities/Projectile.ts";
 import { autoAttack } from "../hooks/AutoAttack.ts";
 import { ProjectileDespawnQueueSystem, ProjectileCollisionSystem, ProjectileMovementSystem } from '../systems';
-import { DamageSphereCue, DeathCue } from '../cues';
+import { DamageSphereCue, DeathCue, HealCrossCue } from '../cues';
 
 export class SimulationContainer {
   readonly world: GameWorld;
@@ -80,6 +81,7 @@ export class SimulationContainer {
       cues: {
         'Cue.Damage.Sphere': () => new DamageSphereCue(this.scene),
         'Cue.Death': () => new DeathCue(this.scene),
+        'Cue.Heal.Cross': () => new HealCrossCue(this.scene),
       },
       hooks: {
         'Hook.AutoAttack': (ctx: AbilityActivationContext) => autoAttack(ctx, this.world),
@@ -113,6 +115,7 @@ export class SimulationContainer {
         new MovementSystem(),
         new ProjectileMovementSystem(),
         physicsSystem,
+        new HealingAuraSystem(),
         new ProjectileCollisionSystem(),
         new RotationSystem(),
         new DeathSystem(),
@@ -162,6 +165,7 @@ export class SimulationContainer {
           rosterEntry.kind,
           teamId,
           detectionRange,
+          rosterEntry.auraRadius,
         );
 
         renderRefs.root.position.set(x, y, z);
@@ -169,6 +173,7 @@ export class SimulationContainer {
 
         this.scene.add(renderRefs.healthBarRoot);
 
+        const isSupport = rosterEntry.kind === 'support';
         const unitEntity = new UnitEntity(rosterEntry, teamId, { x, y, z }, renderRefs);
         unitEntity.addComponent(
           this.abilities.initComponent({
@@ -178,11 +183,18 @@ export class SimulationContainer {
               MoveSpeed: FP.FromFloat(UNIT_MOVE_SPEED),
               IncomingDamageMultiplier: FP.FromInt(1),
             },
-            abilities: ['Ability.AutoAttack'],
+            // Support units have no auto-attack; they only carry the heal aura.
+            abilities: isSupport ? ['Ability.HealAura'] : ['Ability.AutoAttack'],
             tags: [`Team.${teamId}`],
           }),
         );
         this.world.entityManager.addEntity(unitEntity);
+
+        // Activate the aura at spawn: grants the "aura active" marker so the
+        // HealingAuraSystem starts pulsing and the indicator ring represents it.
+        if (isSupport) {
+          this.abilities.activateAbility(unitEntity.id, 'Ability.HealAura');
+        }
       }
     }
   }

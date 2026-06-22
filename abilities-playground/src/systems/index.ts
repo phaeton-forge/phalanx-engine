@@ -1,5 +1,6 @@
 export { AttackSystem } from './AttackSystem';
 export { DeathSystem } from './DeathSystem';
+export { HealingAuraSystem } from './HealingAuraSystem';
 export { MovementSystem } from './MovementSystem.ts';
 export { ProjectileCollisionSystem } from './ProjectileCollisionSystem';
 export { ProjectileMovementSystem } from './ProjectileMovementSystem';

@@ -14,6 +14,7 @@ import {
   StatsComponent,
   UnitTypeComponent,
   DetectionRingComponent,
+  HealAuraComponent,
 } from '../components';
 import type { TeamId } from '../components';
 import type { UnitRosterEntry } from '../config/unitRoster';
@@ -64,6 +65,19 @@ export class UnitEntity extends Entity {
 
     if (renderRefs.spawnPoint) {
       this.addComponent(new SpawnPointComponent(renderRefs.spawnPoint.marker));
+    }
+
+    if (
+      rosterEntry.kind === 'support' &&
+      rosterEntry.auraRadius !== undefined &&
+      rosterEntry.healPulseTicks !== undefined
+    ) {
+      this.addComponent(
+        new HealAuraComponent(
+          { radius: rosterEntry.auraRadius, pulseTicks: rosterEntry.healPulseTicks },
+          renderRefs.auraRing ?? null,
+        ),
+      );
     }
   }
 }
