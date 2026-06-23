@@ -83,6 +83,19 @@ export class TargetStateComponent implements IComponent {
   public targetEntityId: number | null = null;
 }
 
+/** Tracks up to two enemy and two ally beam targets for cube units. */
+export class CubeStateComponent implements IComponent {
+  public readonly type = ComponentType.CubeState;
+  public readonly enemyTargets: number[] = [];
+  public readonly allyTargets: number[] = [];
+}
+
+/** Per-unit auto-attack cooldown driven by {@link AttackSpeedMultiplier}. */
+export class AutoAttackTimerComponent implements IComponent {
+  public readonly type = ComponentType.AutoAttackTimer;
+  public ticksUntilNextAttack: FixedPoint = FP.FromInt(0);
+}
+
 export class MeshComponent implements IPoolableComponent {
   public readonly type = ComponentType.Mesh;
   public readonly root: THREE.Object3D;

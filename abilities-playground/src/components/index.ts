@@ -16,6 +16,8 @@ export {
   SimulationStateComponent,
   DetectionRingComponent,
   HealAuraComponent,
+  CubeStateComponent,
+  AutoAttackTimerComponent,
 } from './UnitComponents';
 export type { TeamId } from './UnitComponents';
 export { SpawnPointComponent } from './SpawnPointComponent';

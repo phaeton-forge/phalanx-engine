@@ -1,6 +1,5 @@
 import { GameSystem } from 'phalanx-ecs';
 import type { Entity, SoAComponentStore, SystemContext } from 'phalanx-ecs';
-import type { AbilitySystem } from 'phalanx-abilities';
 import { PhysicsSoASchema, TransformSoASchema } from 'phalanx-physics';
 import { FP } from 'phalanx-math';
 import type { FixedPoint } from 'phalanx-math';
@@ -11,9 +10,9 @@ import {
   TeamComponent,
   StatsComponent,
 } from '../components';
+import {UNIT_MOVE_SPEED} from "../config/abilityDefinitions.ts";
 
 export class MovementSystem extends GameSystem {
-  private get _abilities(): AbilitySystem { return this.abilities as AbilitySystem; }
   private physicsStore!: SoAComponentStore<typeof PhysicsSoASchema.definition>;
   private transformStore!: SoAComponentStore<typeof TransformSoASchema.definition>;
 
@@ -71,7 +70,7 @@ export class MovementSystem extends GameSystem {
         continue;
       }
 
-      const effectiveSpeed = this._abilities.tryGetAttribute(entityId, 'MoveSpeed')?.current;
+      const effectiveSpeed = FP.FromInt(UNIT_MOVE_SPEED);
 
       if (!effectiveSpeed) continue;
 

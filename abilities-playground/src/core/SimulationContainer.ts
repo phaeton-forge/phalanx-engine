@@ -9,7 +9,7 @@ import {
 } from 'phalanx-abilities';
 import type { AbilitySystem } from 'phalanx-abilities';
 import { arenaParams, networkConfig, physicsConfig } from '../config/constants';
-import { combatDefs, UNIT_MOVE_SPEED } from '../config/abilityDefinitions';
+import { combatDefs, CUBE_SLOW_TAG, CUBE_SPEED_BUFF_TAG } from '../config/abilityDefinitions';
 import { DEFAULT_UNIT_DETECTION_RANGE, UNIT_ROSTER } from '../config/unitRoster';
 import {
   ComponentType,
@@ -19,6 +19,7 @@ import {
 import { UnitEntity } from '../entities/UnitEntity';
 import {
   AttackSystem,
+  CubeTargetingSystem,
   DeathSystem,
   HealingAuraSystem,
   MovementSystem,
@@ -31,7 +32,7 @@ import type { UnitFactory } from './UnitFactory';
 import {ProjectileEntity} from "../entities/Projectile.ts";
 import { autoAttack } from "../hooks/AutoAttack.ts";
 import { ProjectileDespawnQueueSystem, ProjectileCollisionSystem, ProjectileMovementSystem } from '../systems';
-import { DamageSphereCue, DeathCue, HealCrossCue } from '../cues';
+import { DamageSphereCue, DeathCue, HealCrossCue, BeamCue } from '../cues';
 
 export class SimulationContainer {
   readonly world: GameWorld;
@@ -82,6 +83,8 @@ export class SimulationContainer {
         'Cue.Damage.Sphere': () => new DamageSphereCue(this.scene),
         'Cue.Death': () => new DeathCue(this.scene),
         'Cue.Heal.Cross': () => new HealCrossCue(this.scene),
+        'Cue.Beam.Red': () => new BeamCue(this.scene, 0xff3344, CUBE_SLOW_TAG),
+        'Cue.Beam.Yellow': () => new BeamCue(this.scene, 0xffdd33, CUBE_SPEED_BUFF_TAG),
       },
       hooks: {
         'Hook.AutoAttack': (ctx: AbilityActivationContext) => autoAttack(ctx, this.world),
@@ -119,6 +122,7 @@ export class SimulationContainer {
         new ProjectileCollisionSystem(),
         new RotationSystem(),
         new DeathSystem(),
+        new CubeTargetingSystem(),
         new ProjectileDespawnQueueSystem(),
       ],
       [interpolationSystem, new RenderSyncSystem()],
@@ -174,17 +178,20 @@ export class SimulationContainer {
         this.scene.add(renderRefs.healthBarRoot);
 
         const isSupport = rosterEntry.kind === 'support';
+        const isCube = rosterEntry.kind === 'cube';
         const unitEntity = new UnitEntity(rosterEntry, teamId, { x, y, z }, renderRefs);
+
         unitEntity.addComponent(
           this.abilities.initComponent({
             attributes: {
               Health: FP.FromFloat(rosterEntry.maxHealth),
-              MaxHealth: FP.FromFloat(rosterEntry.maxHealth),
-              MoveSpeed: FP.FromFloat(UNIT_MOVE_SPEED),
-              IncomingDamageMultiplier: FP.FromInt(1),
+              MaxHealth: FP.FromFloat(rosterEntry.maxHealth)
             },
-            // Support units have no auto-attack; they only carry the heal aura.
-            abilities: isSupport ? ['Ability.HealAura'] : ['Ability.AutoAttack'],
+            abilities: isSupport
+              ? ['Ability.HealAura']
+              : isCube
+                ? []
+                : ['Ability.AutoAttack'],
             tags: [`Team.${teamId}`],
           }),
         );

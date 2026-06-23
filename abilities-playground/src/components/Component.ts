@@ -24,6 +24,8 @@ export const ComponentType = createComponentTypeRegistry({
   SpawnPoint: 'SpawnPoint',
   DetectionRing: 'DetectionRing',
   HealAura: 'HealAura',
+  CubeState: 'CubeState',
+  AutoAttackTimer: 'AutoAttackTimer',
 });
 
 (ComponentType as Record<string, symbol>).PhysicsBody =

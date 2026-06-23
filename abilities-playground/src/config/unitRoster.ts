@@ -119,14 +119,77 @@ const SUPPORT_RADIUS = 2;
 const SUPPORT_MASS = 3;
 const SUPPORT_MAX_HEALTH = 70;
 
+// Keep in sync with UnitFactory cube mesh size (BoxGeometry 5 => half-extent 2.5).
+const CUBE_RADIUS = 2.5;
+const CUBE_MASS = 3;
+const CUBE_STOP_RANGE = 24;
+const CUBE_MAX_HEALTH = 120;
+const CUBE_DETECTION_RANGE = 32;
+
+const CUBE_ROSTER: readonly UnitRosterEntry[] = [
+  {
+    kind: 'cube',
+    spawns: {
+      0: { offsetX: -6, offsetZ: -5 },
+      1: { offsetX: 4, offsetZ: -5 },
+    },
+    radius: CUBE_RADIUS,
+    mass: CUBE_MASS,
+    stopRange: CUBE_STOP_RANGE,
+    maxHealth: CUBE_MAX_HEALTH,
+    detectionRange: CUBE_DETECTION_RANGE,
+  },
+  {
+    kind: 'cube',
+    spawns: { 0: { offsetX: 6, offsetZ: -6 } },
+    radius: CUBE_RADIUS,
+    mass: CUBE_MASS,
+    stopRange: CUBE_STOP_RANGE,
+    maxHealth: CUBE_MAX_HEALTH,
+    detectionRange: CUBE_DETECTION_RANGE,
+  },
+  {
+    kind: 'cube',
+    spawns: { 0: { offsetX: 0, offsetZ: -5 } },
+    radius: CUBE_RADIUS,
+    mass: CUBE_MASS,
+    stopRange: CUBE_STOP_RANGE,
+    maxHealth: CUBE_MAX_HEALTH,
+    detectionRange: CUBE_DETECTION_RANGE,
+  },
+];
+
 const SUPPORT_ROSTER: readonly UnitRosterEntry[] = [
   {
     kind: 'support',
-    spawns: { 1: { offsetX: 0, offsetZ: -2 } },
+    // Red left flank — behind the formation, aura reaches the front line (~z 67).
+    spawns: { 1: { offsetX: -13, offsetZ: 1 } },
     radius: SUPPORT_RADIUS,
     mass: SUPPORT_MASS,
-    // Larger stop range than spheres (18) so the healer halts behind the front
-    // line; its aura (radius {@link HEAL_AURA_RADIUS}) still reaches the fighters.
+    stopRange: 22,
+    maxHealth: SUPPORT_MAX_HEALTH,
+    auraRadius: HEAL_AURA_RADIUS,
+    healPerPulse: HEAL_PER_PULSE,
+    healPulseTicks: HEAL_PULSE_TICKS,
+  },
+  {
+    kind: 'support',
+    // Red right flank — mirrored; ~26 world units apart so auras overlap in the center.
+    spawns: { 1: { offsetX: 13, offsetZ: 1 } },
+    radius: SUPPORT_RADIUS,
+    mass: SUPPORT_MASS,
+    stopRange: 22,
+    maxHealth: SUPPORT_MAX_HEALTH,
+    auraRadius: HEAL_AURA_RADIUS,
+    healPerPulse: HEAL_PER_PULSE,
+    healPulseTicks: HEAL_PULSE_TICKS,
+  },
+  {
+    kind: 'support',
+    // Red right flank — mirrored; ~26 world units apart so auras overlap in the center.
+    spawns: { 1: { offsetX: 0, offsetZ: 2 } },
+    radius: SUPPORT_RADIUS,
+    mass: SUPPORT_MASS,
     stopRange: 22,
     maxHealth: SUPPORT_MAX_HEALTH,
     auraRadius: HEAL_AURA_RADIUS,
@@ -148,4 +211,4 @@ export const UNIT_ROSTER: readonly UnitRosterEntry[] = Array.from(
     stopRange: SPHERE_STOP_RANGE,
     maxHealth: SPHERE_MAX_HEALTH,
   }),
-).concat(SUPPORT_ROSTER);
+).concat(CUBE_ROSTER, SUPPORT_ROSTER);

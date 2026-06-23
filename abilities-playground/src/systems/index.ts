@@ -1,4 +1,5 @@
 export { AttackSystem } from './AttackSystem';
+export { CubeTargetingSystem } from './CubeTargetingSystem';
 export { DeathSystem } from './DeathSystem';
 export { HealingAuraSystem } from './HealingAuraSystem';
 export { MovementSystem } from './MovementSystem.ts';

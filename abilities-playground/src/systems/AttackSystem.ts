@@ -3,7 +3,9 @@ import type { SoAComponentStore, SystemContext } from 'phalanx-ecs';
 import type { AbilitySystem } from 'phalanx-abilities';
 import { FP } from 'phalanx-math';
 import { TransformSoASchema } from 'phalanx-physics';
+import { ATTACK_COOLDOWN_TICKS } from '../config/abilityDefinitions';
 import {
+  AutoAttackTimerComponent,
   ComponentType,
   SimulationStateComponent,
   TargetStateComponent,
@@ -27,6 +29,7 @@ export class AttackSystem extends GameSystem {
       ComponentType.UnitStats,
       ComponentType.UnitType,
       ComponentType.TargetState,
+      ComponentType.AutoAttackTimer,
     );
 
     for (const unit of units) {
@@ -35,13 +38,25 @@ export class AttackSystem extends GameSystem {
 
       const stats = unit.getComponent<StatsComponent>(ComponentType.UnitStats);
       const targetState = unit.getComponent<TargetStateComponent>(ComponentType.TargetState);
-      if (!stats?.alive || !targetState?.targetEntityId) continue;
+      const timer = unit.getComponent<AutoAttackTimerComponent>(ComponentType.AutoAttackTimer);
+      if (!stats?.alive || !targetState || !timer) continue;
 
+      const speedMult =
+        this._abilities.tryGetAttribute(unit.id, 'AttackSpeedMultiplier')?.current ??
+        FP.FromInt(1);
+
+      if (FP.Gt(timer.ticksUntilNextAttack, FP.FromInt(0))) {
+        timer.ticksUntilNextAttack = FP.Sub(timer.ticksUntilNextAttack, speedMult);
+        continue;
+      }
+
+      if (!targetState.targetEntityId) continue;
       if (!this.isInAttackRange(unit.id, targetState.targetEntityId, stats.stopRange)) continue;
 
       this._abilities.activateAbility(unit.id, 'Ability.AutoAttack', {
         entityId: targetState.targetEntityId,
       });
+      timer.ticksUntilNextAttack = FP.FromInt(ATTACK_COOLDOWN_TICKS);
     }
   }
 

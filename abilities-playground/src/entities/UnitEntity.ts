@@ -15,6 +15,8 @@ import {
   UnitTypeComponent,
   DetectionRingComponent,
   HealAuraComponent,
+  CubeStateComponent,
+  AutoAttackTimerComponent,
 } from '../components';
 import type { TeamId } from '../components';
 import type { UnitRosterEntry } from '../config/unitRoster';
@@ -78,6 +80,14 @@ export class UnitEntity extends Entity {
           renderRefs.auraRing ?? null,
         ),
       );
+    }
+
+    if (rosterEntry.kind === 'cube') {
+      this.addComponent(new CubeStateComponent());
+    }
+
+    if (rosterEntry.kind === 'sphere') {
+      this.addComponent(new AutoAttackTimerComponent());
     }
   }
 }
