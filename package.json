@@ -23,7 +23,10 @@
     "lint:fix": "eslint . --ext .ts,.tsx --fix",
     "format": "prettier --write \"**/*.{ts,tsx,json,md}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,json,md}\"",
-    "publish:packages": "pnpm -r --filter \"@phalanx-engine/*\" publish --access public --no-git-checks"
+    "publish:packages": "pnpm -r --filter \"@phalanx-engine/*\" publish --access public --no-git-checks",
+    "version:bump": "node scripts/bump-package-versions.mjs",
+    "version:bump:minor": "node scripts/bump-package-versions.mjs minor",
+    "version:bump:major": "node scripts/bump-package-versions.mjs major"
   },
   "keywords": [
     "multiplayer",

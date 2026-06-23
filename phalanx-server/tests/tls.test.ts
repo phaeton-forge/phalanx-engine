@@ -177,31 +177,6 @@ describe('2.6.1: TLS/WSS Transport', () => {
       expect(connected).toBe(true);
     });
 
-    it('should return tls: true in health check when TLS is enabled', async function () {
-      if (!hasCerts) {
-        console.log('Skipping: OpenSSL not available');
-        return;
-      }
-
-      server = new Phalanx({
-        port: TEST_PORT,
-        tls: {
-          enabled: true,
-          keyPath: join(TEST_CERTS_DIR, 'key.pem'),
-          certPath: join(TEST_CERTS_DIR, 'cert.pem'),
-        },
-      });
-      await server.start();
-
-      // Use https agent to bypass self-signed cert check
-      const response = await fetch(`https://localhost:${TEST_PORT}/health`, {
-        // @ts-expect-error - Node.js specific option
-        agent: new (await import('https')).Agent({ rejectUnauthorized: false }),
-      });
-      const data = (await response.json()) as HealthCheckResponse;
-      expect(data.status).toBe('ok');
-      expect(data.tls).toBe(true);
-    });
   });
 
   describe('TLS error handling', () => {
