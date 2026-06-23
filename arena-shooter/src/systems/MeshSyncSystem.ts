@@ -1,4 +1,4 @@
-import { GameSystem, type SystemContext } from 'phalanx-ecs';
+import { GameSystem, type SystemContext } from '@phalanx-engine/ecs';
 import type { Mesh } from '@babylonjs/core';
 import { ComponentType } from '../components/ComponentType.ts';
 import type { InterpolationComponent } from '../components/InterpolationComponent.ts';

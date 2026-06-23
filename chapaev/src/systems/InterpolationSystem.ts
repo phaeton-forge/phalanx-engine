@@ -1,5 +1,5 @@
-import { GameSystem } from 'phalanx-ecs';
-import { FP } from 'phalanx-math';
+import { GameSystem } from '@phalanx-engine/ecs';
+import { FP } from '@phalanx-engine/math';
 import { ComponentType } from '../components/Component.ts';
 import type { InterpolationComponent } from '../components/InterpolationComponent.ts';
 import type { TransformComponent } from '../components/TransformComponent.ts';

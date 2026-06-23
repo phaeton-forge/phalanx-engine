@@ -1,10 +1,10 @@
 import { Vector3 } from '@babylonjs/core';
-import type { PhalanxClient } from 'phalanx-client';
+import type { PhalanxClient } from '@phalanx-engine/client';
 import type {
   EventBus,
   CommandsBatch,
   PlayerCommand,
-} from 'phalanx-ecs';
+} from '@phalanx-engine/ecs';
 import type { MovementSystem } from '../systems/MovementSystem';
 import type { FormationGridSystem } from '../systems/FormationGridSystem';
 import { TeamTag } from '../enums/TeamTag';

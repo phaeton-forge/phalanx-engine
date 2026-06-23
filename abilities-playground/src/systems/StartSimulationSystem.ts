@@ -1,5 +1,5 @@
-import { GameSystem } from 'phalanx-ecs';
-import type { CommandsBatch } from 'phalanx-ecs';
+import { GameSystem } from '@phalanx-engine/ecs';
+import type { CommandsBatch } from '@phalanx-engine/ecs';
 import { ComponentType, SimulationStateComponent } from '../components';
 
 export class StartSimulationSystem extends GameSystem {

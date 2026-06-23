@@ -1,5 +1,5 @@
-import { GameSystem, type EventBus, type SoAComponentStore, type SystemContext } from 'phalanx-ecs';
-import { FP, type FixedPoint } from 'phalanx-math';
+import { GameSystem, type EventBus, type SoAComponentStore, type SystemContext } from '@phalanx-engine/ecs';
+import { FP, type FixedPoint } from '@phalanx-engine/math';
 import { PhysicsSoASchema } from '../components/PhysicsBodyComponent';
 import { TransformSoASchema } from '../components/TransformComponent';
 import { SpatialHashGrid } from '../collision/SpatialHashGrid';

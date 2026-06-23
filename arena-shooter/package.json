@@ -23,9 +23,9 @@
     "@capacitor/android": "^8.3.0",
     "@capacitor/cli": "^8.3.0",
     "@capacitor/core": "^8.3.0",
-    "phalanx-ecs": "workspace:*",
-    "phalanx-math": "workspace:*",
-    "phalanx-physics": "workspace:*"
+    "@phalanx-engine/ecs": "workspace:*",
+    "@phalanx-engine/math": "workspace:*",
+    "@phalanx-engine/physics": "workspace:*"
   },
   "devDependencies": {
     "typescript": "~5.9.3",

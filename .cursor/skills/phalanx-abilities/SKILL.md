@@ -50,13 +50,13 @@ Per frame (when cues map is non-empty):
 ### 1. Declare definitions
 
 ```typescript
-import { FP } from 'phalanx-math';
+import { FP } from '@phalanx-engine/math';
 import {
   defineAbility,
   defineAbilitySystem,
   defineAttribute,
   defineEffect,
-} from 'phalanx-abilities';
+} from '@phalanx-engine/abilities';
 
 export const combatDefs = defineAbilitySystem({
   attributes: [
@@ -88,8 +88,8 @@ export const combatDefs = defineAbilitySystem({
 ### 2. Create ability system on GameWorld
 
 ```typescript
-import { GameWorld, resetEntityIdCounter } from 'phalanx-ecs';
-import { createAbilitySystem } from 'phalanx-abilities';
+import { GameWorld, resetEntityIdCounter } from '@phalanx-engine/ecs';
+import { createAbilitySystem } from '@phalanx-engine/abilities';
 
 resetEntityIdCounter();
 const world = new GameWorld({ tickRate: 20 });
@@ -110,7 +110,7 @@ world.registerSystems([...abilities.tickSystems], [], 'default');
 Prefer the bundled component:
 
 ```typescript
-import { Entity } from 'phalanx-ecs';
+import { Entity } from '@phalanx-engine/ecs';
 
 const unit = new Entity();
 unit.addComponent(
@@ -126,7 +126,7 @@ world.entityManager.addEntity(unit);
 ### 4. Activate and advance ticks
 
 ```typescript
-import { ABILITY_ACTIVATED_EVENT, type AbilityActivatedEvent } from 'phalanx-abilities';
+import { ABILITY_ACTIVATED_EVENT, type AbilityActivatedEvent } from '@phalanx-engine/abilities';
 
 world.eventBus.on<AbilityActivatedEvent>(ABILITY_ACTIVATED_EVENT, (e) => {
   console.log(e.abilityId, e.resolvedTargets);
@@ -141,7 +141,7 @@ world.processAllTicks(tick);
 Register self-managing `Cue` subclasses in the `cues` map (see README). The factory runs per dispatch; `CuePresentationSystem` drives `update(dt)` in `afterFrame`:
 
 ```typescript
-import { Cue, type CueContext, type GameplayCueDispatchedEvent } from 'phalanx-abilities';
+import { Cue, type CueContext, type GameplayCueDispatchedEvent } from '@phalanx-engine/abilities';
 
 class HitCue extends Cue {
   private done = false;
@@ -307,20 +307,20 @@ import {
   type AbilitySystem,
   type CreateAbilitySystemConfig,
   type AbilitySystemPipeline,
-} from 'phalanx-abilities';
+} from '@phalanx-engine/abilities';
 
 // Facade (advanced)
 import {
   AbilitySystemFacade,
   NO_SOURCE_ENTITY_ID,
   type AttributeValue,
-} from 'phalanx-abilities';
+} from '@phalanx-engine/abilities';
 
 // Components
 import {
   AbilitySystemComponent,
   AbilitiesComponentType,
-} from 'phalanx-abilities';
+} from '@phalanx-engine/abilities';
 
 // Events & cues
 import {
@@ -334,7 +334,7 @@ import {
   type CueContext,
   type CueFactory,
   type GameplayCueDispatchedEvent,
-} from 'phalanx-abilities';
+} from '@phalanx-engine/abilities';
 
 // Types
 import type {
@@ -347,7 +347,7 @@ import type {
   AbilityActivationContext,
   Modifier,
   ModifierOp,
-} from 'phalanx-abilities';
+} from '@phalanx-engine/abilities';
 
 // Systems (custom pipelines)
 import {
@@ -359,14 +359,14 @@ import {
   CueDispatchSystem,
   CuePresentationSystem,
   CueBufferCleanupSystem,
-} from 'phalanx-abilities';
+} from '@phalanx-engine/abilities';
 ```
 
 ## Testing patterns
 
 ```typescript
-import { resetEntityIdCounter, GameWorld } from 'phalanx-ecs';
-import { createAbilitySystem, defineAbilitySystem } from 'phalanx-abilities';
+import { resetEntityIdCounter, GameWorld } from '@phalanx-engine/ecs';
+import { createAbilitySystem, defineAbilitySystem } from '@phalanx-engine/abilities';
 
 resetEntityIdCounter();
 const world = new GameWorld({});

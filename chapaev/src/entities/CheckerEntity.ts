@@ -1,6 +1,6 @@
-import { Entity } from 'phalanx-ecs';
-import { FP } from 'phalanx-math';
-import type { FPVector3 as FPVector3Type } from 'phalanx-math';
+import { Entity } from '@phalanx-engine/ecs';
+import { FP } from '@phalanx-engine/math';
+import type { FPVector3 as FPVector3Type } from '@phalanx-engine/math';
 import { TransformComponent } from '../components/TransformComponent.ts';
 import { CheckerComponent } from '../components/CheckerComponent.ts';
 import { PhysicsBodyComponent } from '../components/PhysicsBodyComponent.ts';

@@ -8,7 +8,7 @@
  *
  * @example
  * ```typescript
- * import { FP, FPVector3 } from 'phalanx-math';
+ * import { FP, FPVector3 } from '@phalanx-engine/math';
  *
  * const position = FPVector3.FromFloat(10.5, 0, 20.3);
  * const target = FPVector3.FromFloat(5.0, 0, 10.0);

@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import type { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { GameSystem } from 'phalanx-ecs';
-import type { SystemContext } from 'phalanx-ecs';
-import { FP } from 'phalanx-math';
+import { GameSystem } from '@phalanx-engine/ecs';
+import type { SystemContext } from '@phalanx-engine/ecs';
+import { FP } from '@phalanx-engine/math';
 import { ComponentType } from '../components/Component.ts';
 import type { GameStateComponent } from '../components/GameStateComponent.ts';
 import type { CheckerComponent } from '../components/CheckerComponent.ts';

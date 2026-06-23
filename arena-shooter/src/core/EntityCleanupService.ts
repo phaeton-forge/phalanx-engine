@@ -1,4 +1,4 @@
-import type { EntityManager, Entity } from 'phalanx-ecs';
+import type { EntityManager, Entity } from '@phalanx-engine/ecs';
 import type { Mesh } from '@babylonjs/core';
 import type { EntityFactory } from './EntityFactory.ts';
 

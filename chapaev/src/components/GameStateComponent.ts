@@ -1,4 +1,4 @@
-import type { IComponent } from 'phalanx-ecs';
+import type { IComponent } from '@phalanx-engine/ecs';
 import { ComponentType } from './Component.ts';
 import type { TeamTag } from '../enums/TeamTag.ts';
 

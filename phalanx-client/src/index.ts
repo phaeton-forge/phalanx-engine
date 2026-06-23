@@ -8,7 +8,7 @@
  * ## Quick Start
  *
  * ```typescript
- * import { PhalanxClient } from 'phalanx-client';
+ * import { PhalanxClient } from '@phalanx-engine/client';
  *
  * // Create and connect
  * const client = await PhalanxClient.create({

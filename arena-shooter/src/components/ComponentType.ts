@@ -1,5 +1,5 @@
-import { createComponentTypeRegistry } from 'phalanx-ecs';
-import { PHYSICS_BODY_COMPONENT_TYPE } from 'phalanx-physics';
+import { createComponentTypeRegistry } from '@phalanx-engine/ecs';
+import { PHYSICS_BODY_COMPONENT_TYPE } from '@phalanx-engine/physics';
 
 export const ComponentType = createComponentTypeRegistry({
   Transform: 'Transform',

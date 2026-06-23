@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { Entity, EntityManager, EventBus, SoAComponent, SystemContext } from 'phalanx-ecs';
-import { FPVector3 } from 'phalanx-math';
+import { Entity, EntityManager, EventBus, SoAComponent, SystemContext } from '@phalanx-engine/ecs';
+import { FPVector3 } from '@phalanx-engine/math';
 import { PhysicsWorld } from '../src/PhysicsWorld';
 import { PhysicsSystem } from '../src/systems/PhysicsSystem';
 import { InterpolationSystem } from '../src/systems/InterpolationSystem';

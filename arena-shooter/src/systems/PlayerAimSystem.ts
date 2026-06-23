@@ -1,5 +1,5 @@
-import { GameSystem, type SystemContext } from 'phalanx-ecs';
-import { FP } from 'phalanx-math';
+import { GameSystem, type SystemContext } from '@phalanx-engine/ecs';
+import { FP } from '@phalanx-engine/math';
 import { ComponentType } from '../components/ComponentType.ts';
 import type { TransformComponent } from '../components/TransformComponent.ts';
 import type { InputManager } from '../core/InputManager.ts';

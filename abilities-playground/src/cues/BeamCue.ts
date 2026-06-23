@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import type { Entity } from 'phalanx-ecs';
-import { FPVector3 } from 'phalanx-math';
-import { Cue, getGameplayTagsComponent } from 'phalanx-abilities';
-import type { CueContext, GameplayCueDispatchedEvent } from 'phalanx-abilities';
+import type { Entity } from '@phalanx-engine/ecs';
+import { FPVector3 } from '@phalanx-engine/math';
+import { Cue, getGameplayTagsComponent } from '@phalanx-engine/abilities';
+import type { CueContext, GameplayCueDispatchedEvent } from '@phalanx-engine/abilities';
 import { ComponentType, MeshComponent, StatsComponent, TransformComponent } from '../components';
 
 const BEAM_HEIGHT_OFFSET = 2.8;

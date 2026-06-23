@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { Entity, EntityManager, SoAComponent } from 'phalanx-ecs';
-import { FP, FPVector3 } from 'phalanx-math';
+import { Entity, EntityManager, SoAComponent } from '@phalanx-engine/ecs';
+import { FP, FPVector3 } from '@phalanx-engine/math';
 import {
   TransformComponent,
   TransformSoASchema,

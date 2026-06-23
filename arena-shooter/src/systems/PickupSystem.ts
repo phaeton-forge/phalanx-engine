@@ -1,4 +1,4 @@
-import { GameSystem } from 'phalanx-ecs';
+import { GameSystem } from '@phalanx-engine/ecs';
 import { ComponentType } from '../components/ComponentType.ts';
 import type { PickupComponent } from '../components/PickupComponent.ts';
 

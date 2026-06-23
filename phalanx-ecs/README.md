@@ -51,7 +51,7 @@ A lightweight, renderer-agnostic Entity-Component-System (ECS) library with opti
 ## Installation
 
 ```bash
-npm install phalanx-ecs
+npm install @phalanx-engine/ecs
 ```
 
 ## Usage
@@ -59,7 +59,7 @@ npm install phalanx-ecs
 ### Single-player Mode
 
 ```typescript
-import { GameWorld } from 'phalanx-ecs';
+import { GameWorld } from '@phalanx-engine/ecs';
 
 // Create GameWorld (no rendering dependencies)
 const world = new GameWorld({
@@ -85,8 +85,8 @@ world.start();
 ### Multiplayer Mode (with Phalanx Client)
 
 ```typescript
-import { PhalanxClient } from 'phalanx-client';
-import { GameWorld } from 'phalanx-ecs';
+import { PhalanxClient } from '@phalanx-engine/client';
+import { GameWorld } from '@phalanx-engine/ecs';
 
 // Initialize Phalanx Client
 const client = new PhalanxClient({
@@ -131,7 +131,7 @@ await client.connect();
 For advanced use-cases you can still use `SystemRegistry` and `ITickFrameProvider` directly:
 
 ```typescript
-import { SystemRegistry, TickFrameManager } from 'phalanx-ecs';
+import { SystemRegistry, TickFrameManager } from '@phalanx-engine/ecs';
 
 const registry = new SystemRegistry(componentTypes);
 registry.registerSystems(tickSystems, frameSystems);
@@ -232,7 +232,7 @@ class SystemContext {
 Set optional services on `world.context` before calling `registerSystems()`:
 
 ```typescript
-import { PhysicsWorld } from 'phalanx-physics';
+import { PhysicsWorld } from '@phalanx-engine/physics';
 
 const physicsWorld = new PhysicsWorld({ tickRate: 20 });
 world.context.physics = physicsWorld;
@@ -272,7 +272,7 @@ Frame: IBeforeFrame systems → beforeFrame hook → frame systems → IAfterFra
 ```
 
 ```typescript
-import { GameSystem, type IBeforeTick, type IAfterTick, type IBeforeFrame } from 'phalanx-ecs';
+import { GameSystem, type IBeforeTick, type IAfterTick, type IBeforeFrame } from '@phalanx-engine/ecs';
 
 class MySystem extends GameSystem implements IBeforeTick, IAfterTick {
   beforeTick(tick: number, commands: CommandsBatch): void { /* snapshot state */ }
@@ -367,7 +367,7 @@ Simple class-based components that store data in regular object properties.
 - You want maximum simplicity
 
 ```typescript
-import type { IComponent } from 'phalanx-ecs';
+import type { IComponent } from '@phalanx-engine/ecs';
 
 class ArmorComponent implements IComponent {
   public readonly type = ComponentType.Armor;
@@ -394,7 +394,7 @@ Components backed by contiguous typed arrays (`Float64Array`, `BigInt64Array`, e
 - The component is rarely queried
 
 ```typescript
-import { SoAComponent, defineSoASchema } from 'phalanx-ecs';
+import { SoAComponent, defineSoASchema } from '@phalanx-engine/ecs';
 
 // 1. Define a schema — maps field names to typed-array element types
 const PhysicsSoASchema = defineSoASchema({
@@ -483,8 +483,8 @@ Phalanx ECS includes a built-in pooling system to avoid garbage collection spike
 Generic pool for any object implementing `IPoolable`:
 
 ```typescript
-import { ObjectPool } from 'phalanx-ecs';
-import type { IPoolable } from 'phalanx-ecs';
+import { ObjectPool } from '@phalanx-engine/ecs';
+import type { IPoolable } from '@phalanx-engine/ecs';
 
 class Particle implements IPoolable {
   x = 0; y = 0; life = 0;
@@ -504,7 +504,7 @@ pool.release(p);           // returns to pool, calls reset()
 Attach all components once in the entity constructor. Use `IPoolableEntity` for per-spawn values and let the engine handle SoA row lifecycle automatically:
 
 ```typescript
-import { GameWorld, Entity, type IPoolableEntity } from 'phalanx-ecs';
+import { GameWorld, Entity, type IPoolableEntity } from '@phalanx-engine/ecs';
 
 export interface ProjectileSpawnArgs {
   fpPosition: FPVector3;
@@ -574,7 +574,7 @@ const stats = world.pools!.getStats(); // Map<string, PoolStats>
 Components that manage backing storage (SoA rows, mesh visibility) implement `IPoolableComponent`. The engine calls these hooks automatically — game code never does:
 
 ```typescript
-import type { IPoolableComponent } from 'phalanx-ecs';
+import type { IPoolableComponent } from '@phalanx-engine/ecs';
 
 // SoAComponent implements IPoolableComponent generically — subclasses need no changes.
 // Custom render components can toggle visibility in onSpawn/onDespawn:
@@ -590,7 +590,7 @@ class MeshComponent implements IPoolableComponent {
 ## Creating Custom Systems
 
 ```typescript
-import { GameSystem, SystemContext } from 'phalanx-ecs';
+import { GameSystem, SystemContext } from '@phalanx-engine/ecs';
 
 class MySystem extends GameSystem {
   init(context: SystemContext): void {

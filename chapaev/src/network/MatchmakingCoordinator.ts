@@ -1,4 +1,4 @@
-import type { CountdownEvent, MatchFoundEvent } from 'phalanx-client';
+import type { CountdownEvent, MatchFoundEvent } from '@phalanx-engine/client';
 import type { NetworkContext } from './NetworkContext.ts';
 import type { UIManager } from '../ui/UIManager.ts';
 import type { MatchmakingScreen } from '../ui/screens/Matchmaking.ts';

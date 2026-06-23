@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { FP } from 'phalanx-math';
-import type { GameWorld } from 'phalanx-ecs';
+import { FP } from '@phalanx-engine/math';
+import type { GameWorld } from '@phalanx-engine/ecs';
 import {
   Cue,
   CuePresentationSystem,

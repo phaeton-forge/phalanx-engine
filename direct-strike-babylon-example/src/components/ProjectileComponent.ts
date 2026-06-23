@@ -1,7 +1,7 @@
 import { ComponentType } from './Component';
-import type { IResettableComponent } from 'phalanx-ecs';
-import type { FPVector3 as FPVector3Type, FixedPoint } from 'phalanx-math';
-import { FP } from 'phalanx-math';
+import type { IResettableComponent } from '@phalanx-engine/ecs';
+import type { FPVector3 as FPVector3Type, FixedPoint } from '@phalanx-engine/math';
+import { FP } from '@phalanx-engine/math';
 
 /**
  * ProjectileComponent - Data-only component for projectile state

@@ -1,6 +1,6 @@
-import { GameSystem } from 'phalanx-ecs';
-import type { Entity } from 'phalanx-ecs';
-import { FP } from 'phalanx-math';
+import { GameSystem } from '@phalanx-engine/ecs';
+import type { Entity } from '@phalanx-engine/ecs';
+import { FP } from '@phalanx-engine/math';
 import {
   ActiveEffectsComponent,
   getAbilitySystemComponent,

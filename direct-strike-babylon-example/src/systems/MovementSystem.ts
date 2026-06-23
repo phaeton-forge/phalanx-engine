@@ -1,10 +1,10 @@
 import { Vector3 } from '@babylonjs/core';
-import type { SystemContext, SoAComponentStore } from 'phalanx-ecs';
-import { GameSystem } from 'phalanx-ecs';
+import type { SystemContext, SoAComponentStore } from '@phalanx-engine/ecs';
+import { GameSystem } from '@phalanx-engine/ecs';
 import type { Unit } from '../entities/Unit';
 import { ComponentType, MovementComponent, TransformSoASchema, TransformComponent } from '../components';
-import { PhysicsSoASchema, type PhysicsBodyComponent } from 'phalanx-physics';
-import { FP } from 'phalanx-math';
+import { PhysicsSoASchema, type PhysicsBodyComponent } from '@phalanx-engine/physics';
+import { FP } from '@phalanx-engine/math';
 import { GameEvents, createEvent } from '../events';
 import type {
   MoveStartedEvent,

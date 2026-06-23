@@ -1,8 +1,8 @@
-import { GameSystem } from 'phalanx-ecs';
-import type { SoAComponentStore, SystemContext } from 'phalanx-ecs';
-import type { AbilitySystem } from 'phalanx-abilities';
-import { FP } from 'phalanx-math';
-import { PhysicsSoASchema } from 'phalanx-physics';
+import { GameSystem } from '@phalanx-engine/ecs';
+import type { SoAComponentStore, SystemContext } from '@phalanx-engine/ecs';
+import type { AbilitySystem } from '@phalanx-engine/abilities';
+import { FP } from '@phalanx-engine/math';
+import { PhysicsSoASchema } from '@phalanx-engine/physics';
 import {
   ComponentType,
   SimulationStateComponent,

@@ -1,7 +1,7 @@
-import { SoAComponent, defineSoASchema } from 'phalanx-ecs';
+import { SoAComponent, defineSoASchema } from '@phalanx-engine/ecs';
 import { ComponentType } from './Component.ts';
-import { FP, FPVector3 } from 'phalanx-math';
-import type { FPVector3 as FPVector3Type } from 'phalanx-math';
+import { FP, FPVector3 } from '@phalanx-engine/math';
+import type { FPVector3 as FPVector3Type } from '@phalanx-engine/math';
 
 /**
  * Transform SoA Schema

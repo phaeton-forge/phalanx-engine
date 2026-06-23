@@ -1,5 +1,5 @@
 import { Scene, PointerEventTypes, PickingInfo } from '@babylonjs/core';
-import { EventBus } from 'phalanx-ecs';
+import { EventBus } from '@phalanx-engine/ecs';
 import { GameEvents, createEvent } from '../../events';
 import { FormationGridData } from './FormationGridData';
 import { FormationGridRenderer } from './FormationGridRenderer';

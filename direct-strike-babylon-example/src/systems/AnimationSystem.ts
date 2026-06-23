@@ -1,8 +1,8 @@
 import { Vector3 } from '@babylonjs/core';
 import type { Scene } from '@babylonjs/core';
 import type { Unit } from '../entities/Unit';
-import type { SystemContext } from 'phalanx-ecs';
-import { GameSystem } from 'phalanx-ecs';
+import type { SystemContext } from '@phalanx-engine/ecs';
+import { GameSystem } from '@phalanx-engine/ecs';
 import {
   ComponentType,
   AnimationComponent,

@@ -1,6 +1,6 @@
-import type { GameSystem, GameWorld, IAbilitySystem } from 'phalanx-ecs';
-import { FP } from 'phalanx-math';
-import type { FixedPoint } from 'phalanx-math';
+import type { GameSystem, GameWorld, IAbilitySystem } from '@phalanx-engine/ecs';
+import { FP } from '@phalanx-engine/math';
+import type { FixedPoint } from '@phalanx-engine/math';
 import {
   AbilitiesComponentType,
   AbilitySystemComponent,

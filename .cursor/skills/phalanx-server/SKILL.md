@@ -34,7 +34,7 @@ phalanx-engine/
 ├── phalanx-ecs/       ← ECS library (renderer-agnostic, GameWorld facade)
 ├── phalanx-physics/   ← Deterministic FP physics (spatial hash, collisions)
 ├── phalanx-math/      ← Fixed-point math
-└── game-test-server/  ← Reference server implementation
+└── chapaev/server/    ← Example game server implementation
 ```
 
 ## Step-by-Step Instructions
@@ -55,7 +55,7 @@ If inside the monorepo, add a reference to `phalanx-server` in your `package.jso
 ```json
 {
   "dependencies": {
-    "phalanx-server": "workspace:*"
+    "@phalanx-engine/server": "workspace:*"
   }
 }
 ```
@@ -63,7 +63,7 @@ If inside the monorepo, add a reference to `phalanx-server` in your `package.jso
 If standalone (once published to npm):
 
 ```bash
-pnpm add phalanx-server
+pnpm add @phalanx-engine/server
 ```
 
 Create `tsconfig.json`:
@@ -92,7 +92,7 @@ Create `src/main.ts`:
 
 ```typescript
 import 'dotenv/config';
-import { Phalanx } from 'phalanx-server';
+import { Phalanx } from '@phalanx-engine/server';
 
 const PORT = parseInt(process.env.PORT || '3000', 10);
 
@@ -464,17 +464,17 @@ await phalanx.start();
 
 ```typescript
 // Main class
-import { Phalanx } from 'phalanx-server';
+import { Phalanx } from '@phalanx-engine/server';
 
 // Auth utilities
-import { TokenValidatorService, createDevValidator, createEndpointValidator } from 'phalanx-server';
+import { TokenValidatorService, createDevValidator, createEndpointValidator } from '@phalanx-engine/server';
 
 // Math utilities (re-exported from phalanx-math)
-import { DeterministicRandom, FP, FPVector2, FPVector3, FixedPoint } from 'phalanx-server';
-import type { FPVector2Interface, FPVector3Interface } from 'phalanx-server';
+import { DeterministicRandom, FP, FPVector2, FPVector3, FixedPoint } from '@phalanx-engine/server';
+import type { FPVector2Interface, FPVector3Interface } from '@phalanx-engine/server';
 
 // Game mode presets
-import { GAME_MODES } from 'phalanx-server';
+import { GAME_MODES } from '@phalanx-engine/server';
 
 // Types — Configuration
 import type {
@@ -484,7 +484,7 @@ import type {
   PauseConfig,
   GameMode, GameModePreset, CustomGameMode,
   TokenValidator, TokenValidationResult,
-} from 'phalanx-server';
+} from '@phalanx-engine/server';
 
 // Types — Events & Data
 import type {
@@ -494,7 +494,7 @@ import type {
   GameStartEvent, TickSyncEvent, CommandsBatchEvent,
   QueuedPlayer, QueueStatusEvent,
   StateHashEvent, DesyncDetectedEvent,
-} from 'phalanx-server';
+} from '@phalanx-engine/server';
 ```
 
 ## Troubleshooting

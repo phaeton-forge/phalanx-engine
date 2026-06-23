@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as THREE from 'three';
-import { Entity, EntityManager, EventBus, SystemContext } from 'phalanx-ecs';
-import type { IPhysicsWorld } from 'phalanx-ecs';
-import { INTERPOLATION_COMPONENT_TYPE } from 'phalanx-physics';
+import { Entity, EntityManager, EventBus, SystemContext } from '@phalanx-engine/ecs';
+import type { IPhysicsWorld } from '@phalanx-engine/ecs';
+import { INTERPOLATION_COMPONENT_TYPE } from '@phalanx-engine/physics';
 import { ComponentType, InterpolationComponent, MeshComponent } from '../src/components';
 import { RenderSyncSystem } from '../src/systems/RenderSyncSystem';
 

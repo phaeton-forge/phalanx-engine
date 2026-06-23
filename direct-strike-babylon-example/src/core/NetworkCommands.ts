@@ -1,4 +1,4 @@
-import type { PlayerCommand } from 'phalanx-ecs';
+import type { PlayerCommand } from '@phalanx-engine/ecs';
 
 /**
  * Network command types for the lockstep synchronization system

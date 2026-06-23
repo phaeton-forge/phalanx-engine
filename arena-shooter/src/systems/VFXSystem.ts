@@ -1,4 +1,4 @@
-import { GameSystem, type SystemContext } from 'phalanx-ecs';
+import { GameSystem, type SystemContext } from '@phalanx-engine/ecs';
 import { Color3, Vector3, type Scene } from '@babylonjs/core';
 import { ParticlePool } from '../effects/ParticlePool.ts';
 import { DeathEffect } from '../effects/DeathEffect.ts';

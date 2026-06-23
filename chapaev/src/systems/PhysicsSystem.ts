@@ -1,7 +1,7 @@
-import { GameSystem } from 'phalanx-ecs';
-import type { SystemContext, SoAComponentStore } from 'phalanx-ecs';
-import { FP } from 'phalanx-math';
-import type { FixedPoint } from 'phalanx-math';
+import { GameSystem } from '@phalanx-engine/ecs';
+import type { SystemContext, SoAComponentStore } from '@phalanx-engine/ecs';
+import { FP } from '@phalanx-engine/math';
+import type { FixedPoint } from '@phalanx-engine/math';
 import { TransformSoASchema } from '../components';
 import { PhysicsBodySoASchema } from '../components';
 import { ComponentType } from '../components';

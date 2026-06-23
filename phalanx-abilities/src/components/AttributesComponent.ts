@@ -1,4 +1,4 @@
-import type { IComponent } from 'phalanx-ecs';
+import type { IComponent } from '@phalanx-engine/ecs';
 import { AbilitiesComponentType } from './AbilitiesComponentType';
 
 export class AttributesComponent implements IComponent {

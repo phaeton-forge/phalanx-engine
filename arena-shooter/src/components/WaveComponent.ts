@@ -1,4 +1,4 @@
-import type { IComponent } from 'phalanx-ecs';
+import type { IComponent } from '@phalanx-engine/ecs';
 import { ComponentType } from './ComponentType.ts';
 import { TOTAL_WAVES } from '../config/constants.ts';
 

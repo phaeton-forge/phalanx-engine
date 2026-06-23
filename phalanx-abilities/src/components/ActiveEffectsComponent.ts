@@ -1,4 +1,4 @@
-import type { IComponent } from 'phalanx-ecs';
+import type { IComponent } from '@phalanx-engine/ecs';
 import type { ActiveEffectInstance } from '../types';
 import { AbilitiesComponentType } from './AbilitiesComponentType';
 

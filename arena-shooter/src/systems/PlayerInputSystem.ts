@@ -1,8 +1,8 @@
-import { GameSystem, type SystemContext } from 'phalanx-ecs';
+import { GameSystem, type SystemContext } from '@phalanx-engine/ecs';
 import type { InputManager } from '../core/InputManager.ts';
 import { ComponentType } from '../components/ComponentType.ts';
 import type { PlayerInputComponent } from '../components/PlayerInputComponent.ts';
-import { FP } from 'phalanx-math';
+import { FP } from '@phalanx-engine/math';
 
 export class PlayerInputSystem extends GameSystem {
   private inputManager: InputManager;

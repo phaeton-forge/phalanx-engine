@@ -37,7 +37,7 @@ Inside the monorepo:
 ```json
 {
   "dependencies": {
-    "phalanx-client": "workspace:*"
+    "@phalanx-engine/client": "workspace:*"
   }
 }
 ```
@@ -45,7 +45,7 @@ Inside the monorepo:
 Once published to npm:
 
 ```bash
-npm install phalanx-client
+npm install @phalanx-engine/client
 ```
 
 ### 2. Create and Connect a Client
@@ -57,7 +57,7 @@ There are two ways to create a client:
 Creates the client and connects in one step:
 
 ```typescript
-import { PhalanxClient } from 'phalanx-client';
+import { PhalanxClient } from '@phalanx-engine/client';
 
 const client = await PhalanxClient.create({
   serverUrl: 'http://localhost:3000',
@@ -230,8 +230,8 @@ const ack = await client.submitCommands(tick, [
 PhalanxClient implements the `ITickFrameProvider` interface, so it plugs directly into GameWorld:
 
 ```typescript
-import { PhalanxClient } from 'phalanx-client';
-import { GameWorld } from 'phalanx-ecs';
+import { PhalanxClient } from '@phalanx-engine/client';
+import { GameWorld } from '@phalanx-engine/ecs';
 
 // Create client
 const client = await PhalanxClient.create({
@@ -294,7 +294,7 @@ Key points about GameWorld integration:
 Use `StateHasher` to compute deterministic hashes of game state:
 
 ```typescript
-import { PhalanxClient, StateHasher } from 'phalanx-client';
+import { PhalanxClient, StateHasher } from '@phalanx-engine/client';
 
 // In your tick handler (or afterTick hook)
 client.onTick((tick, commands) => {
@@ -434,7 +434,7 @@ world.resume();  // Calls client.requestResume() → client.resumeGame()
 ### 11. Authentication
 
 ```typescript
-import { PhalanxClient, AuthManager, GoogleOAuthAdapter } from 'phalanx-client';
+import { PhalanxClient, AuthManager, GoogleOAuthAdapter } from '@phalanx-engine/client';
 
 // Option A: Pre-existing token
 const client = new PhalanxClient({
@@ -547,7 +547,7 @@ idle → in-queue → match-found → countdown → playing → finished
 
 ```typescript
 // Main client
-import { PhalanxClient } from 'phalanx-client';
+import { PhalanxClient } from '@phalanx-engine/client';
 
 // Utilities
 import {
@@ -557,14 +557,14 @@ import {
   DeterministicRandom,
   StateHasher,
   DesyncDetector,
-} from 'phalanx-client';
+} from '@phalanx-engine/client';
 
 // Fixed-point math (re-exported from phalanx-math)
-import { FP, FPVector2, FPVector3, FixedPoint } from 'phalanx-client';
-import type { FPVector2Interface, FPVector3Interface } from 'phalanx-client';
+import { FP, FPVector2, FPVector3, FixedPoint } from '@phalanx-engine/client';
+import type { FPVector2Interface, FPVector3Interface } from '@phalanx-engine/client';
 
 // Authentication
-import { AuthManager, GoogleOAuthAdapter, LocalStorageAdapter, MemoryStorageAdapter } from 'phalanx-client';
+import { AuthManager, GoogleOAuthAdapter, LocalStorageAdapter, MemoryStorageAdapter } from '@phalanx-engine/client';
 
 // Types — Configuration
 import type {
@@ -572,7 +572,7 @@ import type {
   RenderLoopConfig, CommandFlushCallback,
   SocketManagerConfig, SocketManagerCallbacks,
   AuthManagerConfig, AuthStorage,
-} from 'phalanx-client';
+} from '@phalanx-engine/client';
 
 // Types — Auth
 import type {
@@ -580,13 +580,13 @@ import type {
   CallbackParams, LoginOptions,
   GoogleOAuthConfig, DiscordOAuthConfig, SteamAuthConfig, StoredAuthData,
   PhalanxAuthState, PhalanxAuthUser,
-} from 'phalanx-client';
+} from '@phalanx-engine/client';
 
 // Types — Commands & Handlers
 import type {
   PlayerCommand, CommandsBatch,
   TickHandler, FrameHandler, PauseHandler, Unsubscribe,
-} from 'phalanx-client';
+} from '@phalanx-engine/client';
 
 // Types — Events
 import type {
@@ -598,14 +598,14 @@ import type {
   ReconnectStateEvent, TickCommandsHistory, ReconnectStatusEvent,
   SubmitCommandsAck, HashComparisonEvent,
   PhalanxError,
-} from 'phalanx-client';
+} from '@phalanx-engine/client';
 
 // Types — State & Desync
 import type {
   ConnectionState, ClientState,
   DesyncConfig, DesyncEvent,
   PhalanxClientEvents,
-} from 'phalanx-client';
+} from '@phalanx-engine/client';
 ```
 
 ## Common Patterns

@@ -1,11 +1,11 @@
 import * as THREE from 'three';
-import { FP } from 'phalanx-math';
-import type { FixedPoint } from 'phalanx-math';
+import { FP } from '@phalanx-engine/math';
+import type { FixedPoint } from '@phalanx-engine/math';
 import type { IComponent } from './Component';
 import { ComponentType } from './Component';
 import type { UnitKind } from '../config/unitRoster';
 import { DEFAULT_UNIT_DETECTION_RANGE } from '../config/unitRoster';
-import type { IPoolableComponent } from 'phalanx-ecs';
+import type { IPoolableComponent } from '@phalanx-engine/ecs';
 
 export type TeamId = 0 | 1;
 

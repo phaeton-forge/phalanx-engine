@@ -1,11 +1,11 @@
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
-import { FP } from 'phalanx-math';
+import { FP } from '@phalanx-engine/math';
 import {
   EntityManager,
   EventBus,
   SystemContext,
   SoAComponent,
-} from 'phalanx-ecs';
+} from '@phalanx-engine/ecs';
 import { PhysicsSystem } from '../src/systems/PhysicsSystem';
 import { PhysicsSoASchema } from '../src/components/PhysicsBodyComponent';
 import { TransformSoASchema } from '../src/components/TransformComponent';

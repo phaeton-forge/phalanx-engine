@@ -25,21 +25,21 @@ Planned for v2: execution calculations, granted abilities, stacking rules, line-
 > Not on npm yet — clone the monorepo and build via pnpm.
 
 ```bash
-git clone https://github.com/phaeton2040-AI/phalanx-engine.git
+git clone https://github.com/phaeton-forge/phalanx-engine.git
 cd phalanx-engine
 pnpm install
-pnpm --filter phalanx-abilities build
+pnpm --filter @phalanx-engine/abilities build
 ```
 
-**Peer dependencies:** `phalanx-ecs` ^0.1.0, `phalanx-math` ^0.1.0
+**Peer dependencies:** `@phalanx-engine/ecs` ^0.1.0, `@phalanx-engine/math` ^0.1.0
 
 ## Quick start
 
-This example wires **phalanx-ecs** (`GameWorld`) and **phalanx-math** (`FP`) into one abilities pipeline.
+This example wires **@phalanx-engine/ecs** (`GameWorld`) and **@phalanx-engine/math** (`FP`) into one abilities pipeline.
 
 ```typescript
-import { Entity, GameWorld, resetEntityIdCounter } from 'phalanx-ecs';
-import { FP } from 'phalanx-math';
+import { Entity, GameWorld, resetEntityIdCounter } from '@phalanx-engine/ecs';
+import { FP } from '@phalanx-engine/math';
 import {
   createAbilitySystem,
   Cue,
@@ -49,7 +49,7 @@ import {
   defineEffect,
   type CueContext,
   type GameplayCueDispatchedEvent,
-} from 'phalanx-abilities';
+} from '@phalanx-engine/abilities';
 
 /** Presentation cue — spawned per dispatch, animated in afterFrame. */
 class FireballHitCue extends Cue {
@@ -235,7 +235,7 @@ type TargetOrigin =
 Register in `createAbilitySystem({ hooks: { ... } })` or `facade.registerHook`. Hooks run **after** cost/cooldown/self effects on the activation tick. Use for spawning projectiles/rockets (entities live in **your** game code, not in this package).
 
 ```typescript
-import type { AbilityHook } from 'phalanx-abilities';
+import type { AbilityHook } from '@phalanx-engine/abilities';
 
 const spawnProjectile: AbilityHook = (ctx) => {
   // ctx.abilityId, ctx.casterEntityId, ctx.resolvedTargets, ctx.providedTarget, ctx.tick
@@ -401,7 +401,7 @@ defineEffect({
 **One dispatched cue event = one short-lived `Cue` instance.** Register factories in `createAbilitySystem`:
 
 ```typescript
-import { Cue, type CueConfig, type CueContext, type GameplayCueDispatchedEvent } from 'phalanx-abilities';
+import { Cue, type CueConfig, type CueContext, type GameplayCueDispatchedEvent } from '@phalanx-engine/abilities';
 
 const cues: CueConfig = {
   'Cue.Damage.Sphere': () => new DamageSphereCue(scene),
@@ -527,7 +527,7 @@ import {
   type CueContext,
   type CueFactory,
   type GameplayCueDispatchedEvent,
-} from 'phalanx-abilities';
+} from '@phalanx-engine/abilities';
 ```
 
 ### Components and types
@@ -546,7 +546,7 @@ See `src/index.ts` for the full public surface.
 ## Testing
 
 ```bash
-pnpm --filter phalanx-abilities test
+pnpm --filter @phalanx-engine/abilities test
 ```
 
 Tests use `GameWorld.processAllTicks()` with pipeline subsets (`activation`, `effects`, …). See `tests/helpers.ts` for patterns.

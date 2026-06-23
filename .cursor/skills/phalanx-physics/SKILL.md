@@ -86,8 +86,8 @@ RenderSystem reads this.physics.getInterpolatedTransform(entityId)
 ### 1. Install and Set Up PhysicsWorld
 
 ```typescript
-import { PhysicsWorld } from 'phalanx-physics';
-import { FP } from 'phalanx-math';
+import { PhysicsWorld } from '@phalanx-engine/physics';
+import { FP } from '@phalanx-engine/math';
 
 const physicsWorld = new PhysicsWorld({
   gridCellSize: FP.FromFloat(8),    // Spatial hash cell size (>= 2 * maxRadius)
@@ -109,7 +109,7 @@ const physicsWorld = new PhysicsWorld({
 ### 2. Wire PhysicsWorld into SystemContext
 
 ```typescript
-import { GameWorld } from 'phalanx-ecs';
+import { GameWorld } from '@phalanx-engine/ecs';
 
 const world = new GameWorld({ /* ... */ });
 world.context.physics = physicsWorld;
@@ -159,12 +159,12 @@ world.registerSystems(tickSystems, frameSystems);
 Import canonical symbols from phalanx-physics and override your registry:
 
 ```typescript
-import { createComponentTypeRegistry } from 'phalanx-ecs';
+import { createComponentTypeRegistry } from '@phalanx-engine/ecs';
 import {
   PHYSICS_BODY_COMPONENT_TYPE,
   TRANSFORM_COMPONENT_TYPE,
   INTERPOLATION_COMPONENT_TYPE,
-} from 'phalanx-physics';
+} from '@phalanx-engine/physics';
 
 export const ComponentType = createComponentTypeRegistry({
   Transform: 'Transform',
@@ -187,8 +187,8 @@ import {
   TransformComponent,
   InterpolationComponent,
   PhysicsBodyComponent,
-} from 'phalanx-physics';
-import { FP, FPVector3 } from 'phalanx-math';
+} from '@phalanx-engine/physics';
+import { FP, FPVector3 } from '@phalanx-engine/math';
 
 const fpPosition = FPVector3.FromFloat(10, 0, 20);
 const fpRotation = FPVector3.FromFloat(0, 0, 0);
@@ -209,9 +209,9 @@ entity.addComponent(new PhysicsBodyComponent(entity.id, {
 Physics does NOT set velocities — that's the game's responsibility. Your movement system runs BEFORE PhysicsSystem and writes velocities to the PhysicsBody SoA store:
 
 ```typescript
-import { GameSystem, type SoAComponentStore, type SystemContext } from 'phalanx-ecs';
-import { PhysicsSoASchema } from 'phalanx-physics';
-import { FP } from 'phalanx-math';
+import { GameSystem, type SoAComponentStore, type SystemContext } from '@phalanx-engine/ecs';
+import { PhysicsSoASchema } from '@phalanx-engine/physics';
+import { FP } from '@phalanx-engine/math';
 
 class MovementSystem extends GameSystem {
   private physicsStore!: SoAComponentStore<typeof PhysicsSoASchema.definition>;
@@ -268,7 +268,7 @@ physicsWorld.onCollision((event) => {
 });
 
 // Or directly via EventBus
-import { PhysicsEvents } from 'phalanx-physics';
+import { PhysicsEvents } from '@phalanx-engine/physics';
 eventBus.on(PhysicsEvents.COLLISION, (event) => { /* ... */ });
 ```
 
@@ -301,7 +301,7 @@ Built-in SoA component for authoritative fixed-point spatial state:
 | `fpRotationX/Y/Z` | `i64` | Fixed-point rotation (radians, raw FP) |
 
 ```typescript
-import { TransformComponent, TransformSoASchema, TRANSFORM_COMPONENT_TYPE } from 'phalanx-physics';
+import { TransformComponent, TransformSoASchema, TRANSFORM_COMPONENT_TYPE } from '@phalanx-engine/physics';
 
 const transform = new TransformComponent(entity.id, fpPosition, fpRotation);
 transform.fpPosition = newPosition;  // get/set FPVector3
@@ -399,36 +399,36 @@ import {
   TRANSFORM_COMPONENT_TYPE,
   InterpolationComponent,
   INTERPOLATION_COMPONENT_TYPE,
-} from 'phalanx-physics';
-import type { PhysicsBodyConfig } from 'phalanx-physics';
+} from '@phalanx-engine/physics';
+import type { PhysicsBodyConfig } from '@phalanx-engine/physics';
 
 // Collision primitives
-import { SpatialHashGrid, NarrowPhase } from 'phalanx-physics';
-import type { CollisionManifold } from 'phalanx-physics';
+import { SpatialHashGrid, NarrowPhase } from '@phalanx-engine/physics';
+import type { CollisionManifold } from '@phalanx-engine/physics';
 
 // Systems
-import { PhysicsSystem, InterpolationSystem } from 'phalanx-physics';
-import type { InterpolatedTransformSample } from 'phalanx-physics';
+import { PhysicsSystem, InterpolationSystem } from '@phalanx-engine/physics';
+import type { InterpolatedTransformSample } from '@phalanx-engine/physics';
 
 // Facade
-import { PhysicsWorld } from 'phalanx-physics';
+import { PhysicsWorld } from '@phalanx-engine/physics';
 
 // Tick providers
 import {
   AutonomousPhysicsTickProvider,
   ExternalPhysicsTickProvider,
-} from 'phalanx-physics';
-import type { IPhysicsTickProvider, AutonomousProviderOptions } from 'phalanx-physics';
+} from '@phalanx-engine/physics';
+import type { IPhysicsTickProvider, AutonomousProviderOptions } from '@phalanx-engine/physics';
 
 // Events & types
-import { PhysicsEvents } from 'phalanx-physics';
+import { PhysicsEvents } from '@phalanx-engine/physics';
 import type {
   PhysicsWorldConfig,
   CollisionFilter,
   CollisionEvent,
   BoundsExitEvent,
   PhysicsConfig,
-} from 'phalanx-physics';
+} from '@phalanx-engine/physics';
 ```
 
 > Note: `TransformFieldMapping` and `setTransformStore()` have been removed. Use the built-in `TransformComponent` instead.

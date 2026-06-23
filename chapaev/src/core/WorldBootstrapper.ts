@@ -1,4 +1,4 @@
-import { GameWorld, Entity } from 'phalanx-ecs';
+import { GameWorld, Entity } from '@phalanx-engine/ecs';
 import type { SceneContext } from '../rendering';
 import {
   ThreeRenderSystem,

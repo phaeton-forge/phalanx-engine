@@ -11,20 +11,20 @@
     "dev:all": "concurrently \"npm run server\" \"npm run dev\""
   },
   "dependencies": {
-    "phalanx-abilities": "workspace:*",
-    "phalanx-client": "workspace:*",
-    "phalanx-ecs": "workspace:*",
-    "phalanx-math": "workspace:*",
-    "phalanx-physics": "workspace:*",
-    "phalanx-server": "workspace:*",
+    "@phalanx-engine/abilities": "workspace:*",
+    "@phalanx-engine/client": "workspace:*",
+    "@phalanx-engine/ecs": "workspace:*",
+    "@phalanx-engine/math": "workspace:*",
+    "@phalanx-engine/physics": "workspace:*",
+    "@phalanx-engine/server": "workspace:*",
     "three": "^0.175.0"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/three": "^0.175.0",
     "concurrently": "^9.1.2",
-    "phalanx-ecs": "workspace:*",
-    "phalanx-math": "workspace:*",
+    "@phalanx-engine/ecs": "workspace:*",
+    "@phalanx-engine/math": "workspace:*",
     "tsx": "^4.0.0",
     "typescript": "~5.9.3",
     "vite": "8.0.5",

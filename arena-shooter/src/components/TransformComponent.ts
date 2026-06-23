@@ -1,9 +1,9 @@
 import {
   TransformComponent as PhysicsTransformComponent,
   TransformSoASchema,
-} from 'phalanx-physics';
+} from '@phalanx-engine/physics';
 import { ComponentType } from './ComponentType.ts';
-import { FP, type FPVector3 as FPVector3Type } from 'phalanx-math';
+import { FP, type FPVector3 as FPVector3Type } from '@phalanx-engine/math';
 import { Vector3 } from '@babylonjs/core';
 
 export { TransformSoASchema };

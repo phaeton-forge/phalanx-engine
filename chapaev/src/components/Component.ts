@@ -1,4 +1,4 @@
-import { createComponentTypeRegistry } from 'phalanx-ecs';
+import { createComponentTypeRegistry } from '@phalanx-engine/ecs';
 
 /**
  * Component type symbols for type-safe component queries.

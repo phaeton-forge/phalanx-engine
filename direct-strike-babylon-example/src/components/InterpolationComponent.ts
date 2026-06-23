@@ -1,7 +1,7 @@
 import { Vector3 } from '@babylonjs/core';
-import type { IResettableComponent } from 'phalanx-ecs';
+import type { IResettableComponent } from '@phalanx-engine/ecs';
 import { ComponentType } from './Component';
-import { FP, type FPVector3 as FPVector3Type } from 'phalanx-math';
+import { FP, type FPVector3 as FPVector3Type } from '@phalanx-engine/math';
 
 /**
  * InterpolationComponent - Stores interpolation state for an entity

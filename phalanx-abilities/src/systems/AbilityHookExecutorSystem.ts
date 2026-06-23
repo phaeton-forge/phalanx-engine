@@ -1,4 +1,4 @@
-import { GameSystem } from 'phalanx-ecs';
+import { GameSystem } from '@phalanx-engine/ecs';
 import type { AbilitySystemRegistries } from '../registry';
 import type { AbilitySystemRuntime } from '../runtime';
 import type { AbilityActivationContext } from '../types';

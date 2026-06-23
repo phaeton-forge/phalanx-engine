@@ -1,4 +1,4 @@
-import type { FixedPoint } from 'phalanx-math';
+import type { FixedPoint } from '@phalanx-engine/math';
 
 export type AttributeClampMode = 'both' | 'min' | 'max' | 'none';
 

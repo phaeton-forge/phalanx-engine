@@ -1,7 +1,7 @@
-import { GameSystem } from 'phalanx-ecs';
-import type { SystemContext } from 'phalanx-ecs';
-import { DeterministicRandom } from 'phalanx-client';
-import { FP } from 'phalanx-math';
+import { GameSystem } from '@phalanx-engine/ecs';
+import type { SystemContext } from '@phalanx-engine/ecs';
+import { DeterministicRandom } from '@phalanx-engine/client';
+import { FP } from '@phalanx-engine/math';
 import {
   FLICK_EXECUTED,
   CHECKER_COLLISION,

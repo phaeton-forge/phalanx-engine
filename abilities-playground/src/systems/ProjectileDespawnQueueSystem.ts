@@ -1,4 +1,4 @@
-import { GameSystem, type SystemContext } from 'phalanx-ecs';
+import { GameSystem, type SystemContext } from '@phalanx-engine/ecs';
 import type { ProjectileEntity } from '../entities/Projectile';
 import { GameEvents, type ProjectileDespawnRequestedEvent } from '../events/GameEvents';
 import { despawnProjectile } from './projectileDespawn';

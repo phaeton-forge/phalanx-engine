@@ -2,12 +2,12 @@
  * Lobby Scene - connection and matchmaking UI for 1v1
  */
 
-import { PhalanxClient } from 'phalanx-client';
+import { PhalanxClient } from '@phalanx-engine/client';
 import type {
   MatchFoundEvent,
   CountdownEvent,
   PhalanxAuthState,
-} from 'phalanx-client';
+} from '@phalanx-engine/client';
 import { SERVER_URL, authConfig, pauseConfig } from '../config/constants';
 import { GameRandom } from '../core/GameRandom';
 

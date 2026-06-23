@@ -1,10 +1,10 @@
 import * as THREE from 'three';
-import type { TransformComponent } from 'phalanx-physics';
+import type { TransformComponent } from '@phalanx-engine/physics';
 import { ComponentType, MeshComponent, SpawnPointComponent, TeamComponent } from '../components';
 import { ProjectileEntity } from '../entities/Projectile.ts';
-import { FP, FPVector2, FPVector3 } from 'phalanx-math';
-import type { AbilityActivationContext } from 'phalanx-abilities';
-import { GameWorld } from 'phalanx-ecs';
+import { FP, FPVector2, FPVector3 } from '@phalanx-engine/math';
+import type { AbilityActivationContext } from '@phalanx-engine/abilities';
+import { GameWorld } from '@phalanx-engine/ecs';
 
 const _worldPos = new THREE.Vector3();
 

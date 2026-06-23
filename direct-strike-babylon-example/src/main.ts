@@ -1,6 +1,6 @@
 import { LobbyScene } from './scenes/LobbyScene';
 import { Game } from './core/Game';
-import type { PhalanxClient, MatchFoundEvent } from 'phalanx-client';
+import type { PhalanxClient, MatchFoundEvent } from '@phalanx-engine/client';
 import './style.css';
 
 /**

@@ -1,6 +1,6 @@
-import { Entity, type EntityManager } from 'phalanx-ecs';
-import { FP } from 'phalanx-math';
-import type { FixedPoint } from 'phalanx-math';
+import { Entity, type EntityManager } from '@phalanx-engine/ecs';
+import { FP } from '@phalanx-engine/math';
+import type { FixedPoint } from '@phalanx-engine/math';
 import {
   ActiveEffectsComponent,
   AttributesComponent,

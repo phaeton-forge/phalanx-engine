@@ -1,5 +1,5 @@
 import { Scene, Vector3, Mesh } from '@babylonjs/core';
-import { Entity } from 'phalanx-ecs';
+import { Entity } from '@phalanx-engine/ecs';
 import type { IMeshEntity } from '../interfaces/IMeshEntity';
 
 /**

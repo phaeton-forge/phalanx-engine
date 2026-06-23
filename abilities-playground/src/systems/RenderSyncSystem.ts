@@ -1,6 +1,6 @@
-import { GameSystem } from 'phalanx-ecs';
-import type { AbilitySystem } from 'phalanx-abilities';
-import { FP } from 'phalanx-math';
+import { GameSystem } from '@phalanx-engine/ecs';
+import type { AbilitySystem } from '@phalanx-engine/abilities';
+import { FP } from '@phalanx-engine/math';
 import {
   ComponentType,
   DetectionRingComponent,

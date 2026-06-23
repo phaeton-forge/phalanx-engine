@@ -58,13 +58,13 @@ A deterministic, fixed-point physics engine for the [Phalanx Engine](../README.m
 > ⚠️ **Not on npm yet** — clone the monorepo and install via pnpm.
 
 ```bash
-git clone https://github.com/phaeton2040-AI/phalanx-engine.git
+git clone https://github.com/phaeton-forge/phalanx-engine.git
 cd phalanx-engine
 pnpm install
-pnpm --filter phalanx-physics build
+pnpm --filter @phalanx-engine/physics build
 ```
 
-Peer dependencies: `phalanx-ecs` ^0.1.0, `phalanx-math` ^0.1.0
+Peer dependencies: `@phalanx-engine/ecs` ^0.1.0, `@phalanx-engine/math` ^0.1.0
 
 ## Imports
 
@@ -109,13 +109,13 @@ import {
   // Misc types
   type CollisionFilter,
   type PhysicsConfig,
-} from 'phalanx-physics';
+} from '@phalanx-engine/physics';
 ```
 
 ## Quick Start
 
 ```typescript
-import { GameWorld, GameSystem, createComponentTypeRegistry } from 'phalanx-ecs';
+import { GameWorld, GameSystem, createComponentTypeRegistry } from '@phalanx-engine/ecs';
 import {
   PhysicsWorld,
   PhysicsBodyComponent,
@@ -124,8 +124,8 @@ import {
   PHYSICS_BODY_COMPONENT_TYPE,
   TRANSFORM_COMPONENT_TYPE,
   INTERPOLATION_COMPONENT_TYPE,
-} from 'phalanx-physics';
-import { FP, FPVector3 } from 'phalanx-math';
+} from '@phalanx-engine/physics';
+import { FP, FPVector3 } from '@phalanx-engine/math';
 
 // Register canonical component type symbols from phalanx-physics
 export const ComponentType = createComponentTypeRegistry({
@@ -197,8 +197,8 @@ For turn-based games like Chapayev checkers, use a tick provider to decouple sim
 import {
   PhysicsWorld,
   AutonomousPhysicsTickProvider,
-} from 'phalanx-physics';
-import { FP } from 'phalanx-math';
+} from '@phalanx-engine/physics';
+import { FP } from '@phalanx-engine/math';
 
 // Game defines what "settled" means and what happens when it occurs
 let physicsWorld: PhysicsWorld;

@@ -1,7 +1,7 @@
 import { Vector3 } from '@babylonjs/core';
-import type { IComponent } from 'phalanx-ecs';
+import type { IComponent } from '@phalanx-engine/ecs';
 import { ComponentType } from './ComponentType.ts';
-import { FP, type FPVector3 as FPVector3Type } from 'phalanx-math';
+import { FP, type FPVector3 as FPVector3Type } from '@phalanx-engine/math';
 
 export class InterpolationComponent implements IComponent {
   public readonly type = ComponentType.Interpolation;

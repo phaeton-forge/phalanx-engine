@@ -7,7 +7,7 @@
  * ## Quick Start
  *
  * ```typescript
- * import { AuthManager } from 'phalanx-client/auth';
+ * import { AuthManager } from '@phalanx-engine/client/auth';
  *
  * const auth = new AuthManager({
  *   provider: 'google',

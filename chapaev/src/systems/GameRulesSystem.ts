@@ -1,6 +1,6 @@
-import { GameSystem } from 'phalanx-ecs';
-import type { SystemContext } from 'phalanx-ecs';
-import { FPVector3 } from 'phalanx-math';
+import { GameSystem } from '@phalanx-engine/ecs';
+import type { SystemContext } from '@phalanx-engine/ecs';
+import { FPVector3 } from '@phalanx-engine/math';
 import { ComponentType } from '../components';
 import type { GameStateComponent } from '../components';
 import type { CheckerComponent } from '../components';

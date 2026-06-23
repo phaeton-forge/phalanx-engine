@@ -1,6 +1,6 @@
 import { ComponentType } from './Component';
 import { TeamTag } from '../enums/TeamTag';
-import type { IResettableComponent } from 'phalanx-ecs';
+import type { IResettableComponent } from '@phalanx-engine/ecs';
 
 /**
  * TeamComponent - Defines team affiliation for an entity

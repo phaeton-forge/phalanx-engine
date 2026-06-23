@@ -1,4 +1,4 @@
-import { FP, type FixedPoint } from 'phalanx-math';
+import { FP, type FixedPoint } from '@phalanx-engine/math';
 
 /**
  * Deterministic spatial hash grid for broad-phase collision detection.

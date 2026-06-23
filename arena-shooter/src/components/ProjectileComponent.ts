@@ -1,6 +1,6 @@
-import type { IComponent } from 'phalanx-ecs';
+import type { IComponent } from '@phalanx-engine/ecs';
 import { ComponentType } from './ComponentType.ts';
-import { type FixedPoint, FP } from 'phalanx-math';
+import { type FixedPoint, FP } from '@phalanx-engine/math';
 
 export class ProjectileComponent implements IComponent {
   public readonly type = ComponentType.Projectile;

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { FP, FPVector3 } from 'phalanx-math';
+import { FP, FPVector3 } from '@phalanx-engine/math';
 import {
   InterpolationComponent,
   INTERPOLATION_COMPONENT_TYPE,

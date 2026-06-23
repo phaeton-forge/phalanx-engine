@@ -1,6 +1,6 @@
-import { GameSystem, type SoAComponentStore, type SystemContext } from 'phalanx-ecs';
-import { PhysicsSoASchema, TransformSoASchema } from 'phalanx-physics';
-import { FP } from 'phalanx-math';
+import { GameSystem, type SoAComponentStore, type SystemContext } from '@phalanx-engine/ecs';
+import { PhysicsSoASchema, TransformSoASchema } from '@phalanx-engine/physics';
+import { FP } from '@phalanx-engine/math';
 import { networkConfig, PROJECTILE_SPEED } from '../config/constants';
 import { ComponentType } from '../components';
 import { ProjectileComponent } from '../components/ProjectileComponent';

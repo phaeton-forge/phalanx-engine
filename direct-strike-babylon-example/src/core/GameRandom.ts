@@ -1,4 +1,4 @@
-import { DeterministicRandom } from 'phalanx-client';
+import { DeterministicRandom } from '@phalanx-engine/client';
 
 /**
  * Global game random number generator

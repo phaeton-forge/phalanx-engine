@@ -1,4 +1,4 @@
-import { GameSystem, type SystemContext } from 'phalanx-ecs';
+import { GameSystem, type SystemContext } from '@phalanx-engine/ecs';
 import { ComponentType } from '../components/ComponentType.ts';
 import type { WaveComponent } from '../components/WaveComponent.ts';
 import type { EntityTypeComponent } from '../components/EntityTypeComponent.ts';

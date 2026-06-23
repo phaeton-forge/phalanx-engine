@@ -1,10 +1,10 @@
-import { createComponentTypeRegistry } from 'phalanx-ecs';
-import type { IComponent } from 'phalanx-ecs';
+import { createComponentTypeRegistry } from '@phalanx-engine/ecs';
+import type { IComponent } from '@phalanx-engine/ecs';
 import {
   INTERPOLATION_COMPONENT_TYPE,
   PHYSICS_BODY_COMPONENT_TYPE,
   TRANSFORM_COMPONENT_TYPE,
-} from 'phalanx-physics';
+} from '@phalanx-engine/physics';
 
 export type { IComponent };
 

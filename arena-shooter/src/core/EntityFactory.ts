@@ -1,6 +1,6 @@
-import { Entity, type EntityManager } from 'phalanx-ecs';
-import { FP, FPVector3, type FixedPoint } from 'phalanx-math';
-import { PhysicsBodyComponent } from 'phalanx-physics';
+import { Entity, type EntityManager } from '@phalanx-engine/ecs';
+import { FP, FPVector3, type FixedPoint } from '@phalanx-engine/math';
+import { PhysicsBodyComponent } from '@phalanx-engine/physics';
 import {
   MeshBuilder,
   StandardMaterial,

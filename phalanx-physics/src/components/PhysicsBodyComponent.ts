@@ -1,5 +1,5 @@
-import { SoAComponent, defineSoASchema } from 'phalanx-ecs';
-import { FP, type FixedPoint, type FPVector3 as FPVector3Type } from 'phalanx-math';
+import { SoAComponent, defineSoASchema } from '@phalanx-engine/ecs';
+import { FP, type FixedPoint, type FPVector3 as FPVector3Type } from '@phalanx-engine/math';
 import type { PhysicsBodyConfig } from '../types';
 
 /**

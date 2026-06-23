@@ -1,5 +1,5 @@
-import type { SystemContext } from 'phalanx-ecs';
-import { GameSystem } from 'phalanx-ecs';
+import type { SystemContext } from '@phalanx-engine/ecs';
+import { GameSystem } from '@phalanx-engine/ecs';
 import type { IMeshEntity } from '../interfaces/IMeshEntity';
 import {
   fpToVector3Ref,

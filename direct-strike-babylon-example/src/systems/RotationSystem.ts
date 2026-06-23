@@ -1,7 +1,7 @@
-import type { SystemContext } from 'phalanx-ecs';
-import { GameSystem } from 'phalanx-ecs';
+import type { SystemContext } from '@phalanx-engine/ecs';
+import { GameSystem } from '@phalanx-engine/ecs';
 import { ComponentType, RotationComponent } from '../components';
-import { FP } from 'phalanx-math';
+import { FP } from '@phalanx-engine/math';
 
 // Pre-computed fixed-point constants for rotation calculations
 const FP_PI = FP.Pi;

@@ -1,4 +1,4 @@
-import { FP, type FixedPoint } from 'phalanx-math';
+import { FP, type FixedPoint } from '@phalanx-engine/math';
 import type { CollisionManifold } from './CollisionManifold';
 
 /** Small epsilon to avoid division by zero in collision normals */

@@ -1,5 +1,5 @@
-import { FP } from 'phalanx-math';
-import { defineAbility, defineAbilitySystem, defineAttribute, defineEffect } from 'phalanx-abilities';
+import { FP } from '@phalanx-engine/math';
+import { defineAbility, defineAbilitySystem, defineAttribute, defineEffect } from '@phalanx-engine/abilities';
 
 /** Uniform move speed for all units (world units per second). */
 export const UNIT_MOVE_SPEED = 13;

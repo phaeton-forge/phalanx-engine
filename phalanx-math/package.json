@@ -1,5 +1,5 @@
 {
-  "name": "phalanx-math",
+  "name": "@phalanx-engine/math",
   "version": "0.1.0",
   "description": "Deterministic fixed-point math library for Phalanx Engine - ensures identical calculations across all platforms",
   "main": "./dist/index.js",
@@ -15,7 +15,7 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "clean": "rimraf dist",
-    "test": "vitest run",
+    "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
     "prepublishOnly": "npm run build"
   },
@@ -29,6 +29,16 @@
   ],
   "author": "",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/phaeton-forge/phalanx-engine.git",
+    "directory": "phalanx-math"
+  },
+  "bugs": "https://github.com/phaeton-forge/phalanx-engine/issues",
+  "homepage": "https://github.com/phaeton-forge/phalanx-engine/tree/main/phalanx-math#readme",
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
     "node": ">=24.0.0 <25.0.0"
   },
@@ -46,4 +56,3 @@
     "vitest": "^1.0.0"
   }
 }
-

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { FPVector3 } from 'phalanx-math';
-import { Cue } from 'phalanx-abilities';
-import type { CueContext, GameplayCueDispatchedEvent } from 'phalanx-abilities';
+import { FPVector3 } from '@phalanx-engine/math';
+import { Cue } from '@phalanx-engine/abilities';
+import type { CueContext, GameplayCueDispatchedEvent } from '@phalanx-engine/abilities';
 import { ComponentType, TransformComponent } from '../components';
 import { clamp01, easeOutCubic } from './vfxHelpers';
 

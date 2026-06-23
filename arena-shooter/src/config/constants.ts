@@ -1,4 +1,4 @@
-import { FP } from 'phalanx-math';
+import { FP } from '@phalanx-engine/math';
 
 export const ARENA_SIZE = 50;
 export const TICK_RATE = 30;

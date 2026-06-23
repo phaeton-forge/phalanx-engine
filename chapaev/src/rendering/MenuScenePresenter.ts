@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { FPVector3 } from 'phalanx-math';
+import { FPVector3 } from '@phalanx-engine/math';
 import type { SceneContext } from './SceneSetup.ts';
 import { createBoardMesh } from './BoardMesh.ts';
 import { createCheckerMesh } from './CheckerMesh.ts';

@@ -1,4 +1,4 @@
-import { DeterministicRandom } from 'phalanx-client';
+import { DeterministicRandom } from '@phalanx-engine/client';
 
 class GameRandomInstance {
   private instance: DeterministicRandom | null = null;

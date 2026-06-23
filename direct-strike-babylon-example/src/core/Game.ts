@@ -1,6 +1,6 @@
 import { Engine, Scene } from '@babylonjs/core';
-import { GameWorld } from 'phalanx-ecs';
-import type { SoASchemaDefinition, SoAComponentStore, CommandsBatch } from 'phalanx-ecs';
+import { GameWorld } from '@phalanx-engine/ecs';
+import type { SoASchemaDefinition, SoAComponentStore, CommandsBatch } from '@phalanx-engine/ecs';
 import { ProjectileEntity } from '../entities/ProjectileEntity';
 import { ProjectileComponent, TeamComponent, InterpolationComponent, TransformSoASchema } from '../components';
 import { LockstepManager } from './LockstepManager';
@@ -12,8 +12,8 @@ import { GameInitializer } from './GameInitializer';
 import { EntityCleanupService } from './EntityCleanupService';
 import { SceneManager } from './SceneManager';
 import { MovementSystem } from '../systems/MovementSystem';
-import { PhysicsWorld } from 'phalanx-physics';
-import { FP } from 'phalanx-math';
+import { PhysicsWorld } from '@phalanx-engine/physics';
+import { FP } from '@phalanx-engine/math';
 import { HealthSystem } from '../systems/HealthSystem';
 import { ProjectileSystem } from '../systems/ProjectileSystem';
 import { CombatSystem } from '../systems/CombatSystem';
@@ -30,7 +30,7 @@ import { CameraController } from '../systems/CameraController';
 import { TeamTag } from '../enums/TeamTag';
 import { ComponentType } from '../components';
 import { networkConfig } from '../config/constants';
-import type { PhalanxClient, MatchFoundEvent } from 'phalanx-client';
+import type { PhalanxClient, MatchFoundEvent } from '@phalanx-engine/client';
 
 /**
  * Game - Main game orchestrator using component-based architecture
@@ -171,8 +171,8 @@ export class Game {
       const eB = entityManager.getEntity(entityIdB);
       if (!eA || !eB) return false;
 
-      const bodyA = eA.getComponent<import('phalanx-physics').PhysicsBodyComponent>(ComponentType.PhysicsBody);
-      const bodyB = eB.getComponent<import('phalanx-physics').PhysicsBodyComponent>(ComponentType.PhysicsBody);
+      const bodyA = eA.getComponent<import('@phalanx-engine/physics').PhysicsBodyComponent>(ComponentType.PhysicsBody);
+      const bodyB = eB.getComponent<import('@phalanx-engine/physics').PhysicsBodyComponent>(ComponentType.PhysicsBody);
 
       if ((bodyA?.isStatic || bodyB?.isStatic)) {
         const teamA = eA.getComponent<TeamComponent>(ComponentType.Team);

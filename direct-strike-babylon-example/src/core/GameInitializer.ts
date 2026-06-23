@@ -1,7 +1,7 @@
 import { Vector3, Color3 } from '@babylonjs/core';
 import type { EntityFactory } from './EntityFactory';
 import type { UIManager } from './UIManager';
-import type { SystemContext } from 'phalanx-ecs';
+import type { SystemContext } from '@phalanx-engine/ecs';
 import type { SceneManager } from './SceneManager';
 import { ResourceSystem } from '../systems/ResourceSystem';
 import { FormationGridSystem } from '../systems/FormationGridSystem';
@@ -9,7 +9,7 @@ import { VictorySystem } from '../systems/VictorySystem';
 import { WaveSystem } from '../systems/WaveSystem';
 import type { CameraController } from '../systems/CameraController';
 import type { AssetManager } from './AssetManager';
-import type { PhalanxClient, MatchFoundEvent } from 'phalanx-client';
+import type { PhalanxClient, MatchFoundEvent } from '@phalanx-engine/client';
 import { TeamTag } from '../enums/TeamTag';
 import { arenaParams } from '../config/constants';
 

@@ -1,4 +1,4 @@
-import { createComponentTypeRegistry } from 'phalanx-ecs';
+import { createComponentTypeRegistry } from '@phalanx-engine/ecs';
 
 export const AbilitiesComponentType = createComponentTypeRegistry({
   AbilitySystem: 'phalanx-abilities:AbilitySystem',

@@ -1,4 +1,4 @@
-import { GameSystem, type SystemContext } from 'phalanx-ecs';
+import { GameSystem, type SystemContext } from '@phalanx-engine/ecs';
 import type { ArcRotateCamera } from '@babylonjs/core';
 import { GameEvents, type ScreenShakeEvent } from '../events/GameEvents.ts';
 import { vfxConfig } from '../config/vfxConfig.ts';

@@ -1,4 +1,4 @@
-import type { EntityManager, PoolManager } from 'phalanx-ecs';
+import type { EntityManager, PoolManager } from '@phalanx-engine/ecs';
 import type { EntityFactory } from './EntityFactory';
 
 /**

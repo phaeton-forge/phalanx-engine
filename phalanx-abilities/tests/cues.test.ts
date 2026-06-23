@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FP } from 'phalanx-math';
+import { FP } from '@phalanx-engine/math';
 import { defineEffect, gameplayCueKey } from '../src';
 import { GAMEPLAY_CUE_EVENT } from '../src/events';
 import type { CueEvent } from '../src';

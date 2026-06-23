@@ -1,8 +1,8 @@
-import { GameSystem } from 'phalanx-ecs';
-import type { SoAComponentStore, SystemContext } from 'phalanx-ecs';
-import { FP } from 'phalanx-math';
-import type { FixedPoint } from 'phalanx-math';
-import { TransformSoASchema } from 'phalanx-physics';
+import { GameSystem } from '@phalanx-engine/ecs';
+import type { SoAComponentStore, SystemContext } from '@phalanx-engine/ecs';
+import { FP } from '@phalanx-engine/math';
+import type { FixedPoint } from '@phalanx-engine/math';
+import { TransformSoASchema } from '@phalanx-engine/physics';
 import { UNIT_TURN_SPEED_RADIANS_PER_TICK } from '../config/constants';
 import {
   ComponentType,

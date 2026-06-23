@@ -1,4 +1,4 @@
-import { Phalanx } from 'phalanx-server';
+import { Phalanx } from '@phalanx-engine/server';
 
 const PORT = parseInt(process.env.PORT ?? '3001', 10);
 

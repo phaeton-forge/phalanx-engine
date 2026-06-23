@@ -1,6 +1,6 @@
-import type { IComponent } from 'phalanx-ecs';
-import { createComponentTypeRegistry } from 'phalanx-ecs';
-import { PHYSICS_BODY_COMPONENT_TYPE } from 'phalanx-physics';
+import type { IComponent } from '@phalanx-engine/ecs';
+import { createComponentTypeRegistry } from '@phalanx-engine/ecs';
+import { PHYSICS_BODY_COMPONENT_TYPE } from '@phalanx-engine/physics';
 
 // Re-export IComponent for convenience
 export type { IComponent };

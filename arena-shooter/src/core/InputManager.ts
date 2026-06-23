@@ -1,4 +1,4 @@
-import { FP, type FixedPoint } from 'phalanx-math';
+import { FP, type FixedPoint } from '@phalanx-engine/math';
 import { TouchControls } from '../ui/TouchControls.ts';
 
 export class InputManager {

@@ -1,6 +1,6 @@
-import type { EntityManager, PoolManager } from 'phalanx-ecs';
-import { FP } from 'phalanx-math';
-import { PhysicsSoASchema, TransformSoASchema } from 'phalanx-physics';
+import type { EntityManager, PoolManager } from '@phalanx-engine/ecs';
+import { FP } from '@phalanx-engine/math';
+import { PhysicsSoASchema, TransformSoASchema } from '@phalanx-engine/physics';
 import { ComponentType, MeshComponent } from '../components';
 import type { ProjectileEntity } from '../entities/Projectile.ts';
 

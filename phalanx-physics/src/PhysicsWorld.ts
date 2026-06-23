@@ -1,12 +1,12 @@
-import { type EventBus } from 'phalanx-ecs';
-import { FP } from 'phalanx-math';
+import { type EventBus } from '@phalanx-engine/ecs';
+import { FP } from '@phalanx-engine/math';
 import { PhysicsSystem } from './systems/PhysicsSystem';
 import { InterpolationSystem } from './systems/InterpolationSystem';
 import type { InterpolatedTransformSample } from './systems/InterpolationSystem';
 import { SpatialHashGrid } from './collision/SpatialHashGrid';
 import { PhysicsEvents } from './events';
 import type { PhysicsWorldConfig } from './PhysicsWorldConfig';
-import type { FixedPoint } from 'phalanx-math';
+import type { FixedPoint } from '@phalanx-engine/math';
 import type { CollisionEvent, PhysicsConfig, BoundsExitEvent } from './types';
 
 /**

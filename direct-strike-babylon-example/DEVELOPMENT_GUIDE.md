@@ -144,7 +144,7 @@ This ensures all clients see the exact same game state at all times.
 The `GameWorld` manages the tick/frame loop and automatically runs all registered systems. You can inject custom logic via **lifecycle hooks**:
 
 ```typescript
-import { GameWorld } from 'phalanx-ecs';
+import { GameWorld } from '@phalanx-engine/ecs';
 
 // Create GameWorld with PhalanxClient as the tick/frame provider
 const world = new GameWorld({
@@ -264,8 +264,8 @@ Position is stored in `TransformComponent` (a SoA component), NOT on the entity 
 
 ```typescript
 // TransformComponent.ts - SoA-backed position (authoritative + visual)
-import { SoAComponent, defineSoASchema } from 'phalanx-ecs';
-import { FP, FPVector3, type FPVector3 as FPVector3Type } from 'phalanx-math';
+import { SoAComponent, defineSoASchema } from '@phalanx-engine/ecs';
+import { FP, FPVector3, type FPVector3 as FPVector3Type } from '@phalanx-engine/math';
 
 export const TransformSoASchema = defineSoASchema({
   fpPositionX: 'i64',       // BigInt64Array — deterministic fixed-point
@@ -300,7 +300,7 @@ export class TransformComponent extends SoAComponent<typeof TransformSoASchema.d
 }
 
 // Unit.ts - Thin entity class with mesh support (no position properties)
-import { Entity } from 'phalanx-ecs';
+import { Entity } from '@phalanx-engine/ecs';
 import type { IMeshEntity } from '../interfaces/IMeshEntity';
 
 export class Unit extends Entity implements IMeshEntity {
@@ -507,7 +507,7 @@ Desync detection ensures all clients maintain identical game state. When a desyn
 Add hash computation and submission to your `LockstepManager`:
 
 ```typescript
-import { StateHasher } from 'phalanx-client';
+import { StateHasher } from '@phalanx-engine/client';
 
 export class LockstepManager {
   private hashInterval = 20; // Hash every 20 ticks (once per second)
@@ -770,7 +770,7 @@ The following tasks need to be completed to fully integrate desync detection int
   - Default: `20` (once per second at 20 TPS)
 
 - [ ] **Enable state hashing on server**
-  - Update `game-test-server` configuration
+  - Update your Phalanx server configuration
   - Set `enableStateHashing: true`
   - Configure `desync.action` based on environment
 
@@ -886,7 +886,7 @@ export class Entity {
 **Unit Game Class** (`src/entities/Unit.ts`):
 
 ```typescript
-import { Entity } from 'phalanx-ecs';
+import { Entity } from '@phalanx-engine/ecs';
 import type { IMeshEntity } from '../interfaces/IMeshEntity';
 
 export class Unit extends Entity implements IMeshEntity {
@@ -980,8 +980,8 @@ Components backed by contiguous typed arrays for cache-friendly hot-path iterati
 **Example (custom SoA component):**
 
 ```typescript
-import { SoAComponent, defineSoASchema } from 'phalanx-ecs';
-import { FP } from 'phalanx-math';
+import { SoAComponent, defineSoASchema } from '@phalanx-engine/ecs';
+import { FP } from '@phalanx-engine/math';
 
 // Define a schema — each field maps to a typed array
 const TransformSoASchema = defineSoASchema({
@@ -1005,7 +1005,7 @@ in hot loops the repeated `Map.get()` + index validation per field access negate
 **Pattern: cache store references in `init()`, iterate `entityIds()` in hot methods:**
 
 ```typescript
-import { GameSystem, SoAComponentStore } from 'phalanx-ecs';
+import { GameSystem, SoAComponentStore } from '@phalanx-engine/ecs';
 import { PhysicsSoASchema, TransformSoASchema } from '../components';
 
 class MovementSystem extends GameSystem {
@@ -1308,9 +1308,9 @@ Use this for hot-path numeric data iterated every tick with many instances.
 
 ```typescript
 // src/components/SteeringComponent.ts
-import { SoAComponent, defineSoASchema } from 'phalanx-ecs';
+import { SoAComponent, defineSoASchema } from '@phalanx-engine/ecs';
 import { ComponentType } from './Component';
-import { FP, type FixedPoint } from 'phalanx-math';
+import { FP, type FixedPoint } from '@phalanx-engine/math';
 
 export const SteeringSoASchema = defineSoASchema({
   desiredVelocityX: 'i64', // BigInt64Array for deterministic fixed-point
@@ -1455,8 +1455,8 @@ Systems should extend the `GameSystem` base class for consistent lifecycle manag
 
 ```typescript
 // src/systems/BuffSystem.ts
-import { GameSystem } from 'phalanx-ecs';
-import type { SystemContext } from 'phalanx-ecs';
+import { GameSystem } from '@phalanx-engine/ecs';
+import type { SystemContext } from '@phalanx-engine/ecs';
 import { ComponentType } from '../components';
 import { GameEvents, createEvent } from '../events';
 import type { EntityDestroyedEvent } from '../events';

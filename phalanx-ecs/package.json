@@ -1,5 +1,5 @@
 {
-  "name": "phalanx-ecs",
+  "name": "@phalanx-engine/ecs",
   "version": "0.1.0",
   "description": "Lightweight, renderer-agnostic Entity-Component-System library with optional multiplayer support via Phalanx Engine",
   "type": "module",
@@ -7,24 +7,41 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
     }
   },
   "scripts": {
     "build": "tsc",
     "clean": "rm -rf dist",
     "rebuild": "npm run clean && npm run build",
-    "test": "vitest run"
-  },
-  "devDependencies": {
-    "happy-dom": "^20.8.4",
-    "typescript": "~5.9.3"
+    "test": "vitest run",
+    "prepublishOnly": "npm run build"
   },
   "keywords": [
     "ecs",
     "entity-component-system",
     "game-engine",
     "phalanx"
-  ]
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/phaeton-forge/phalanx-engine.git",
+    "directory": "phalanx-ecs"
+  },
+  "bugs": "https://github.com/phaeton-forge/phalanx-engine/issues",
+  "homepage": "https://github.com/phaeton-forge/phalanx-engine/tree/main/phalanx-ecs#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "devDependencies": {
+    "happy-dom": "^20.8.4",
+    "typescript": "~5.9.3"
+  }
 }

@@ -1,4 +1,4 @@
-import type { FPVector3 as FPVector3Type } from 'phalanx-math';
+import type { FPVector3 as FPVector3Type } from '@phalanx-engine/math';
 
 /** Entity ID → Three.js mesh binding */
 export interface MeshBinding {

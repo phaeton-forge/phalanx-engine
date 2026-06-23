@@ -4,7 +4,7 @@ export {
   InterpolationComponent,
   TransformComponent,
   TransformSoASchema,
-} from 'phalanx-physics';
+} from '@phalanx-engine/physics';
 export {
   TeamComponent,
   UnitTypeComponent,

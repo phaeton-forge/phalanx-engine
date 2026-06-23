@@ -1,4 +1,4 @@
-import type { EventBus } from 'phalanx-ecs';
+import type { EventBus } from '@phalanx-engine/ecs';
 import type { UIManager } from './UIManager';
 import type { LockstepManager } from './LockstepManager';
 import { TeamTag } from '../enums/TeamTag';
@@ -16,7 +16,7 @@ import type {
   FormationUnitMoveRequestedEvent,
   MoveRequestedEvent,
 } from '../events';
-import type { EntityManager } from 'phalanx-ecs';
+import type { EntityManager } from '@phalanx-engine/ecs';
 import type { EntityFactory } from './EntityFactory';
 import type {
   NetworkMoveCommand,

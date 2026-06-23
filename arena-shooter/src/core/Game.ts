@@ -1,7 +1,7 @@
 import { Engine, Scene, type Mesh } from '@babylonjs/core';
-import { GameWorld, Entity } from 'phalanx-ecs';
-import { FP } from 'phalanx-math';
-import { PhysicsWorld } from 'phalanx-physics';
+import { GameWorld, Entity } from '@phalanx-engine/ecs';
+import { FP } from '@phalanx-engine/math';
+import { PhysicsWorld } from '@phalanx-engine/physics';
 import { ComponentType } from '../components/index.ts';
 import { WaveComponent } from '../components/WaveComponent.ts';
 import type { WeaponComponent } from '../components/WeaponComponent.ts';

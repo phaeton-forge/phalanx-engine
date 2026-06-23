@@ -1,11 +1,11 @@
-import { PhalanxClient } from 'phalanx-client';
+import { PhalanxClient } from '@phalanx-engine/client';
 import type {
   MatchFoundEvent,
   CountdownEvent,
   GameStartEvent,
   CommandsBatchEvent,
   RoomCreatedEvent,
-} from 'phalanx-client';
+} from '@phalanx-engine/client';
 import { SERVER_URL } from '../config/constants.ts';
 
 export interface NetworkManagerOptions {

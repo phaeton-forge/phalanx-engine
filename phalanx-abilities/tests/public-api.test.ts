@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { Entity, GameWorld } from 'phalanx-ecs';
-import { FP } from 'phalanx-math';
+import { Entity, GameWorld } from '@phalanx-engine/ecs';
+import { FP } from '@phalanx-engine/math';
 import {
   createAbilitySystem,
   defineAbility,

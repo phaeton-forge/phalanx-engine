@@ -1,5 +1,5 @@
 import {Color3, Mesh, MeshBuilder, Scene, StandardMaterial, Vector3,} from '@babylonjs/core';
-import {Entity} from 'phalanx-ecs';
+import {Entity} from '@phalanx-engine/ecs';
 import {TeamTag} from '../enums/TeamTag';
 import type {IMeshEntity} from '../interfaces';
 

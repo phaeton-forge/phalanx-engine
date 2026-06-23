@@ -1,5 +1,5 @@
-import { GameSystem } from 'phalanx-ecs';
-import type { IAfterFrame, SystemContext } from 'phalanx-ecs';
+import { GameSystem } from '@phalanx-engine/ecs';
+import type { IAfterFrame, SystemContext } from '@phalanx-engine/ecs';
 import { gameplayCueKey } from '../events';
 import type { GameplayCueDispatchedEvent } from '../events';
 import type { Cue, CueConfig, CueContext } from '../cues';

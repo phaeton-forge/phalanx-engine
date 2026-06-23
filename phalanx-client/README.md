@@ -5,13 +5,13 @@ Client library for [Phalanx Engine](../README.md) - a game-agnostic deterministi
 ## Installation
 
 ```bash
-npm install phalanx-client
+npm install @phalanx-engine/client
 ```
 
 ## Quick Start
 
 ```typescript
-import { PhalanxClient } from 'phalanx-client';
+import { PhalanxClient } from '@phalanx-engine/client';
 
 // Create and connect client
 const client = await PhalanxClient.create({
@@ -461,7 +461,7 @@ Accessed via `client.roomRecovery` (null when not configured):
 React Native / Capacitor / Electron apps that cannot use `localStorage` synchronously:
 
 ```typescript
-import type { KeyValueStorage } from 'phalanx-client';
+import type { KeyValueStorage } from '@phalanx-engine/client';
 
 // Synchronous wrapper around any native key-value store:
 class CapacitorStorageAdapter implements KeyValueStorage {
@@ -505,7 +505,7 @@ Desync detection helps identify when game state diverges between clients. This i
 #### Submitting State Hashes
 
 ```typescript
-import { PhalanxClient, StateHasher } from 'phalanx-client';
+import { PhalanxClient, StateHasher } from '@phalanx-engine/client';
 
 // In your tick handler
 client.onTick((tick, commands) => {
@@ -525,7 +525,7 @@ client.onTick((tick, commands) => {
 The `StateHasher` utility provides a deterministic FNV-1a hash implementation:
 
 ```typescript
-import { StateHasher } from 'phalanx-client';
+import { StateHasher } from '@phalanx-engine/client';
 
 function computeStateHash(tick: number): string {
   const hasher = new StateHasher();
@@ -806,7 +806,7 @@ The client tracks its lifecycle state:
 ## Example: Complete Game Loop (Simplified API)
 
 ```typescript
-import { PhalanxClient, type CommandsBatch } from 'phalanx-client';
+import { PhalanxClient, type CommandsBatch } from '@phalanx-engine/client';
 
 class GameClient {
   private client: PhalanxClient | null = null;
@@ -953,7 +953,7 @@ canvas.addEventListener('click', (e) => {
 For more control or backward compatibility, you can use the event-based API:
 
 ```typescript
-import { PhalanxClient, TickSyncEvent, PlayerCommand } from 'phalanx-client';
+import { PhalanxClient, TickSyncEvent, PlayerCommand } from '@phalanx-engine/client';
 
 class LegacyGameClient {
   private client: PhalanxClient;

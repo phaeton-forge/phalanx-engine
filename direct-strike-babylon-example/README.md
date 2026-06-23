@@ -102,7 +102,7 @@ To enable Google Sign-In authentication:
      VITE_SERVER_URL=http://localhost:3000
      ```
 
-3. **Configure the server** (game-test-server):
+3. **Configure the server** (e.g. `chapaev/server` or your own Phalanx server):
    - Create `.env` with:
      ```bash
      GOOGLE_CLIENT_ID=your-client-id.apps.googleusercontent.com

@@ -1,4 +1,4 @@
-import type { IComponent } from 'phalanx-ecs';
+import type { IComponent } from '@phalanx-engine/ecs';
 import { ComponentType } from './ComponentType.ts';
 import { WEAPON_MAX_AMMO, WEAPON_RELOAD_TICKS } from '../config/constants.ts';
 

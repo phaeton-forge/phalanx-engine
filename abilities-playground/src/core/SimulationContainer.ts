@@ -1,13 +1,13 @@
 import * as THREE from 'three';
-import type { PhalanxClient } from 'phalanx-client';
-import { Entity, GameWorld, resetEntityIdCounter } from 'phalanx-ecs';
-import { FP } from 'phalanx-math';
-import { PhysicsWorld } from 'phalanx-physics';
+import type { PhalanxClient } from '@phalanx-engine/client';
+import { Entity, GameWorld, resetEntityIdCounter } from '@phalanx-engine/ecs';
+import { FP } from '@phalanx-engine/math';
+import { PhysicsWorld } from '@phalanx-engine/physics';
 import {
   type AbilityActivationContext,
   createAbilitySystem,
-} from 'phalanx-abilities';
-import type { AbilitySystem } from 'phalanx-abilities';
+} from '@phalanx-engine/abilities';
+import type { AbilitySystem } from '@phalanx-engine/abilities';
 import { arenaParams, networkConfig, physicsConfig } from '../config/constants';
 import { combatDefs, CUBE_SLOW_TAG, CUBE_SPEED_BUFF_TAG } from '../config/abilityDefinitions';
 import { DEFAULT_UNIT_DETECTION_RANGE, UNIT_ROSTER } from '../config/unitRoster';

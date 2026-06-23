@@ -1,7 +1,7 @@
-import type { PlayerCommand, EventBus, EntityManager } from 'phalanx-ecs';
-import { FP } from 'phalanx-math';
-import { StateHasher } from 'phalanx-client';
-import type { PhalanxClient, CommandsBatchEvent } from 'phalanx-client';
+import type { PlayerCommand, EventBus, EntityManager } from '@phalanx-engine/ecs';
+import { FP } from '@phalanx-engine/math';
+import { StateHasher } from '@phalanx-engine/client';
+import type { PhalanxClient, CommandsBatchEvent } from '@phalanx-engine/client';
 import { FLICK_EXECUTED } from '../events/GameEvents.ts';
 import type { FlickExecutedEvent } from '../events/GameEvents.ts';
 import { ComponentType } from '../components/Component.ts';

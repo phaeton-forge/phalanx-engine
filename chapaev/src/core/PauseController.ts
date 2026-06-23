@@ -1,4 +1,4 @@
-import type { GamePausedEvent, GameResumedEvent } from 'phalanx-client';
+import type { GamePausedEvent, GameResumedEvent } from '@phalanx-engine/client';
 import type { NetworkContext } from '../network/NetworkContext.ts';
 import type { UIManager } from '../ui/UIManager.ts';
 import type { PauseOverlay } from '../ui/screens/PauseOverlay.ts';

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { GameSystem } from 'phalanx-ecs';
-import type { SystemContext } from 'phalanx-ecs';
+import { GameSystem } from '@phalanx-engine/ecs';
+import type { SystemContext } from '@phalanx-engine/ecs';
 import { ComponentType } from '../components/Component.ts';
 import type { TransformComponent } from '../components/TransformComponent.ts';
 import type { CheckerComponent } from '../components/CheckerComponent.ts';

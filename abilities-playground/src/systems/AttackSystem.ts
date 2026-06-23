@@ -1,8 +1,8 @@
-import { GameSystem } from 'phalanx-ecs';
-import type { SoAComponentStore, SystemContext } from 'phalanx-ecs';
-import type { AbilitySystem } from 'phalanx-abilities';
-import { FP } from 'phalanx-math';
-import { TransformSoASchema } from 'phalanx-physics';
+import { GameSystem } from '@phalanx-engine/ecs';
+import type { SoAComponentStore, SystemContext } from '@phalanx-engine/ecs';
+import type { AbilitySystem } from '@phalanx-engine/abilities';
+import { FP } from '@phalanx-engine/math';
+import { TransformSoASchema } from '@phalanx-engine/physics';
 import { ATTACK_COOLDOWN_TICKS } from '../config/abilityDefinitions';
 import {
   AutoAttackTimerComponent,

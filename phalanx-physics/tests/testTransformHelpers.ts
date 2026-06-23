@@ -1,5 +1,5 @@
-import { FP } from 'phalanx-math';
-import type { SoAComponentStore } from 'phalanx-ecs';
+import { FP } from '@phalanx-engine/math';
+import type { SoAComponentStore } from '@phalanx-engine/ecs';
 import { TransformSoASchema } from '../src/components/TransformComponent';
 
 /** Add a transform row with zero rotation for physics test fixtures. */

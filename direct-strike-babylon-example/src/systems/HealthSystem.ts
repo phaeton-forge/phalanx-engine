@@ -1,6 +1,6 @@
 import { Vector3 } from '@babylonjs/core';
-import type { SystemContext } from 'phalanx-ecs';
-import { GameSystem } from 'phalanx-ecs';
+import type { SystemContext } from '@phalanx-engine/ecs';
+import { GameSystem } from '@phalanx-engine/ecs';
 import {
   ComponentType,
   HealthComponent,

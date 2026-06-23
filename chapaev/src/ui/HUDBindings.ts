@@ -1,4 +1,4 @@
-import type { GameWorld } from 'phalanx-ecs';
+import type { GameWorld } from '@phalanx-engine/ecs';
 import { ComponentType, GameStateComponent } from '../components';
 import { TeamTag } from '../enums/TeamTag.ts';
 import {

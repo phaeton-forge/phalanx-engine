@@ -2,8 +2,8 @@ import { Vector3 } from '@babylonjs/core';
 import type { Scene } from '@babylonjs/core';
 import { ProjectileEntity } from '../entities/ProjectileEntity';
 import { ExplosionEffect } from '../effects/ExplosionEffect';
-import type { SystemContext, Entity, PoolManager } from 'phalanx-ecs';
-import { GameSystem } from 'phalanx-ecs';
+import type { SystemContext, Entity, PoolManager } from '@phalanx-engine/ecs';
+import { GameSystem } from '@phalanx-engine/ecs';
 import {
   ComponentType,
   TeamComponent,
@@ -19,7 +19,7 @@ import type {
 } from '../events';
 import type { TeamTag } from '../enums/TeamTag';
 import { networkConfig } from '../config/constants';
-import { FP, FPVector3 } from 'phalanx-math';
+import { FP, FPVector3 } from '@phalanx-engine/math';
 
 // Pre-computed fixed-point constants for projectile collision
 const FP_HIT_RADIUS_SQ = FP.FromFloat(1.5 * 1.5); // hitRadius^2 = 2.25

@@ -1,7 +1,7 @@
-import { SoAComponent, defineSoASchema } from 'phalanx-ecs';
+import { SoAComponent, defineSoASchema } from '@phalanx-engine/ecs';
 import { ComponentType } from './Component.ts';
-import { FP } from 'phalanx-math';
-import type { FixedPoint } from 'phalanx-math';
+import { FP } from '@phalanx-engine/math';
+import type { FixedPoint } from '@phalanx-engine/math';
 
 /**
  * PhysicsBody SoA Schema

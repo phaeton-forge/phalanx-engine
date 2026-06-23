@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import type { MatchFoundEvent, PhalanxClient } from 'phalanx-client';
-import type { CommandsBatch } from 'phalanx-ecs';
+import type { MatchFoundEvent, PhalanxClient } from '@phalanx-engine/client';
+import type { CommandsBatch } from '@phalanx-engine/ecs';
 import { ArenaScene } from './ArenaScene';
 import { CameraController } from './CameraController';
 import { GameUI } from './GameUI';

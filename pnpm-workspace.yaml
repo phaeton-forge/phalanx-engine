@@ -6,8 +6,6 @@ packages:
   - 'phalanx-physics'
   - 'phalanx-abilities'
   - 'abilities-playground'
-  - 'game-test'
-  - 'game-test-server'
   - 'direct-strike-babylon-example'
   - 'arena-shooter'
   - 'chapaev'

@@ -1,5 +1,5 @@
-import { GameSystem, type SystemContext } from 'phalanx-ecs';
-import { PhysicsEvents, type CollisionEvent } from 'phalanx-physics';
+import { GameSystem, type SystemContext } from '@phalanx-engine/ecs';
+import { PhysicsEvents, type CollisionEvent } from '@phalanx-engine/physics';
 import { ComponentType } from '../components/ComponentType.ts';
 import type { EntityTypeComponent } from '../components/EntityTypeComponent.ts';
 import type { HealthComponent } from '../components/HealthComponent.ts';
@@ -9,7 +9,7 @@ import { GameEvents, type EnemyKilledEvent } from '../events/GameEvents.ts';
 import { GameRandom } from '../core/GameRandom.ts';
 import type { EntityFactory } from '../core/EntityFactory.ts';
 import type { TransformComponent } from '../components/TransformComponent.ts';
-import { FP } from 'phalanx-math';
+import { FP } from '@phalanx-engine/math';
 
 export class CombatSystem extends GameSystem {
   private entityFactory: EntityFactory;

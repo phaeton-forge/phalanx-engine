@@ -6,8 +6,8 @@ import {
   type IBeforeTick,
   type SoAComponentStore,
   type SystemContext,
-} from 'phalanx-ecs';
-import { FP, FPVector3, type FPVector3 as FPVector3Type } from 'phalanx-math';
+} from '@phalanx-engine/ecs';
+import { FP, FPVector3, type FPVector3 as FPVector3Type } from '@phalanx-engine/math';
 import {
   INTERPOLATION_COMPONENT_TYPE,
   InterpolationComponent,

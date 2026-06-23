@@ -1,9 +1,9 @@
 import * as THREE from 'three';
-import { FPVector3, FP } from 'phalanx-math';
-import { PhysicsSoASchema } from 'phalanx-physics';
-import type { EntityManager } from 'phalanx-ecs';
-import { Cue } from 'phalanx-abilities';
-import type { CueContext, GameplayCueDispatchedEvent } from 'phalanx-abilities';
+import { FPVector3, FP } from '@phalanx-engine/math';
+import { PhysicsSoASchema } from '@phalanx-engine/physics';
+import type { EntityManager } from '@phalanx-engine/ecs';
+import { Cue } from '@phalanx-engine/abilities';
+import type { CueContext, GameplayCueDispatchedEvent } from '@phalanx-engine/abilities';
 import { ComponentType, TransformComponent } from '../components';
 import { easeOutCubic } from './vfxHelpers';
 

@@ -1,5 +1,5 @@
 {
-  "name": "phalanx-abilities",
+  "name": "@phalanx-engine/abilities",
   "version": "0.1.0",
   "description": "Deterministic gameplay ability system for Phalanx Engine",
   "type": "module",
@@ -7,23 +7,24 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
     }
   },
   "scripts": {
     "build": "tsc",
     "clean": "rm -rf dist",
     "rebuild": "npm run clean && npm run build",
-    "test": "vitest run"
+    "test": "vitest run",
+    "prepublishOnly": "npm run build"
   },
   "peerDependencies": {
-    "phalanx-ecs": "^0.1.0",
-    "phalanx-math": "^0.1.0"
+    "@phalanx-engine/ecs": "^0.1.0",
+    "@phalanx-engine/math": "^0.1.0"
   },
   "devDependencies": {
-    "phalanx-ecs": "workspace:*",
-    "phalanx-math": "workspace:*",
+    "@phalanx-engine/ecs": "workspace:*",
+    "@phalanx-engine/math": "workspace:*",
     "typescript": "~5.9.3",
     "vitest": "^1.0.0"
   },
@@ -34,5 +35,21 @@
     "fixed-point",
     "ecs",
     "phalanx"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/phaeton-forge/phalanx-engine.git",
+    "directory": "phalanx-abilities"
+  },
+  "bugs": "https://github.com/phaeton-forge/phalanx-engine/issues",
+  "homepage": "https://github.com/phaeton-forge/phalanx-engine/tree/main/phalanx-abilities#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "README.md"
   ]
 }

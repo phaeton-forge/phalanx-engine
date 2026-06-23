@@ -1,6 +1,6 @@
-import { GameSystem, type SystemContext } from 'phalanx-ecs';
-import { FP, FPVector3 } from 'phalanx-math';
-import { PhysicsBodyComponent } from 'phalanx-physics';
+import { GameSystem, type SystemContext } from '@phalanx-engine/ecs';
+import { FP, FPVector3 } from '@phalanx-engine/math';
+import { PhysicsBodyComponent } from '@phalanx-engine/physics';
 import { ComponentType } from '../components/ComponentType.ts';
 import type { EnemyAIComponent } from '../components/EnemyAIComponent.ts';
 import type { TransformComponent } from '../components/TransformComponent.ts';

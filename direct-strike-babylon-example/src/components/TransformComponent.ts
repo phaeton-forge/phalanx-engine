@@ -1,6 +1,6 @@
-import { SoAComponent, defineSoASchema } from 'phalanx-ecs';
+import { SoAComponent, defineSoASchema } from '@phalanx-engine/ecs';
 import { ComponentType } from './Component';
-import { FP, type FixedPoint, FPVector3, type FPVector3 as FPVector3Type } from 'phalanx-math';
+import { FP, type FixedPoint, FPVector3, type FPVector3 as FPVector3Type } from '@phalanx-engine/math';
 import { Vector3 } from '@babylonjs/core';
 
 /**

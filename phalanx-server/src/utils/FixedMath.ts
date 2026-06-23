@@ -6,7 +6,7 @@
  *
  * @example
  * ```typescript
- * import { FP, FPVector3 } from 'phalanx-server';
+ * import { FP, FPVector3 } from '@phalanx-engine/server';
  *
  * const position = FPVector3.FromFloat(10.5, 0, 20.3);
  * const target = FPVector3.FromFloat(5.0, 0, 10.0);
@@ -26,6 +26,6 @@ export {
   FP,
   FPVector2,
   FPVector3,
-} from 'phalanx-math';
+} from '@phalanx-engine/math';
 
-export type { FPVector2 as FPVector2Interface, FPVector3 as FPVector3Interface } from 'phalanx-math';
+export type { FPVector2 as FPVector2Interface, FPVector3 as FPVector3Interface } from '@phalanx-engine/math';

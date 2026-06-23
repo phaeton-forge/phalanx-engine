@@ -28,7 +28,7 @@ import {
   FPVector3,
   type FPVector2 as FPVector2Type,
   type FPVector3 as FPVector3Type,
-} from 'phalanx-math';
+} from '@phalanx-engine/math';
 
 // ============ FPVector3 ↔ Vector3 Conversions ============
 

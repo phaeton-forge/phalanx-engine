@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { FP } from 'phalanx-math';
+import { FP } from '@phalanx-engine/math';
 import { NarrowPhase } from '../src/collision/NarrowPhase';
 
 describe('NarrowPhase', () => {

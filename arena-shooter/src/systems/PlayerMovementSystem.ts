@@ -1,6 +1,6 @@
-import { GameSystem, type SystemContext } from 'phalanx-ecs';
-import { PhysicsBodyComponent } from 'phalanx-physics';
-import { FP, FPVector3 } from 'phalanx-math';
+import { GameSystem, type SystemContext } from '@phalanx-engine/ecs';
+import { PhysicsBodyComponent } from '@phalanx-engine/physics';
+import { FP, FPVector3 } from '@phalanx-engine/math';
 import { ComponentType } from '../components/ComponentType.ts';
 import type { PlayerInputComponent } from '../components/PlayerInputComponent.ts';
 import { PLAYER_SPEED } from '../config/constants.ts';

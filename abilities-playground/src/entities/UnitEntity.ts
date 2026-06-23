@@ -1,10 +1,10 @@
-import { Entity } from 'phalanx-ecs';
-import { FP, FPVector3 } from 'phalanx-math';
+import { Entity } from '@phalanx-engine/ecs';
+import { FP, FPVector3 } from '@phalanx-engine/math';
 import {
   InterpolationComponent,
   PhysicsBodyComponent,
   TransformComponent,
-} from 'phalanx-physics';
+} from '@phalanx-engine/physics';
 import {
   HealthBarComponent,
   MeshComponent,

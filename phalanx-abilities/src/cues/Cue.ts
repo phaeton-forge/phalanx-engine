@@ -1,4 +1,4 @@
-import type { EntityManager, EventBus } from 'phalanx-ecs';
+import type { EntityManager, EventBus } from '@phalanx-engine/ecs';
 import type { GameplayCueDispatchedEvent } from '../events';
 
 /**

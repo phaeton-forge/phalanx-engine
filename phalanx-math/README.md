@@ -9,13 +9,13 @@ This library wraps `@hastom/fixed-point` to provide a Unity/Quantum-style API fo
 ## Installation
 
 ```bash
-pnpm add phalanx-math
+pnpm add @phalanx-engine/math
 ```
 
 ## Usage
 
 ```typescript
-import { FP, FPVector2, FPVector3 } from 'phalanx-math';
+import { FP, FPVector2, FPVector3 } from '@phalanx-engine/math';
 
 // Create fixed-point numbers
 const speed = FP.FromFloat(5.5);

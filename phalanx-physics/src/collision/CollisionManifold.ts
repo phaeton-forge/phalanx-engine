@@ -1,4 +1,4 @@
-import type { FixedPoint } from 'phalanx-math';
+import type { FixedPoint } from '@phalanx-engine/math';
 
 /**
  * Result of a narrow-phase collision test between two entities.

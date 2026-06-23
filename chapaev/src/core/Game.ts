@@ -1,4 +1,4 @@
-import type { GameWorld } from 'phalanx-ecs';
+import type { GameWorld } from '@phalanx-engine/ecs';
 import type { SceneContext } from '../rendering';
 import { setupScene, MenuScenePresenter } from '../rendering';
 import type { FlickInputSystem } from '../systems';
@@ -15,7 +15,7 @@ import { GameHUDScreen } from '../ui/screens/GameHUD.ts';
 import { bindHUDToWorld } from '../ui/HUDBindings.ts';
 import { bootstrapWorld } from './WorldBootstrapper.ts';
 import { PauseController } from './PauseController.ts';
-import type { MatchFoundEvent, ReconnectStateEvent } from 'phalanx-client';
+import type { MatchFoundEvent, ReconnectStateEvent } from '@phalanx-engine/client';
 import type { PlatformAdapter } from '../platform/PlatformAdapter.ts';
 import { t } from '../i18n/i18n.ts';
 import { generateBotOpponentDisplayName } from '../util/botOpponentName.ts';

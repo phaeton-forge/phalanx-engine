@@ -1,5 +1,5 @@
-import { GameSystem, type SystemContext } from 'phalanx-ecs';
-import { PhysicsEvents, type CollisionEvent } from 'phalanx-physics';
+import { GameSystem, type SystemContext } from '@phalanx-engine/ecs';
+import { PhysicsEvents, type CollisionEvent } from '@phalanx-engine/physics';
 import {
   ComponentType,
   StatsComponent,

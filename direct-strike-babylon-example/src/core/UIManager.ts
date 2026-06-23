@@ -1,4 +1,4 @@
-import type { EventBus } from 'phalanx-ecs';
+import type { EventBus } from '@phalanx-engine/ecs';
 import { GameEvents } from '../events';
 import type { UIResourcesUpdatedEvent, UIFormationUpdatedEvent } from '../events';
 import { pauseConfig } from '../config/constants';

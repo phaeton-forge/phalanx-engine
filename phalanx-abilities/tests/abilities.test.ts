@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { FP } from 'phalanx-math';
+import { FP } from '@phalanx-engine/math';
 import { ABILITY_ACTIVATED_EVENT, defineAbility, defineEffect } from '../src';
 import type { AbilityActivatedEvent } from '../src';
 import {

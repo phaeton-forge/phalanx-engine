@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { Phalanx } from 'phalanx-server';
+import { Phalanx } from '@phalanx-engine/server';
 import { PhalanxClient } from '../src/index.js';
 import type {
   MatchFoundEvent,

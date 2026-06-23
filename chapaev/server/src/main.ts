@@ -9,7 +9,7 @@ import { config as loadDotenv } from 'dotenv';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { Phalanx } from 'phalanx-server';
+import { Phalanx } from '@phalanx-engine/server';
 import { parseConfig } from './config.js';
 import { log } from './log.js';
 import { openDb, closeDb } from './db/connection.js';

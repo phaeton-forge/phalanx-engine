@@ -1,6 +1,6 @@
-import type { IComponent } from 'phalanx-ecs';
-import { FP } from 'phalanx-math';
-import type { FPVector3 as FPVector3Type } from 'phalanx-math';
+import type { IComponent } from '@phalanx-engine/ecs';
+import { FP } from '@phalanx-engine/math';
+import type { FPVector3 as FPVector3Type } from '@phalanx-engine/math';
 import { ComponentType } from './Component.ts';
 
 /**

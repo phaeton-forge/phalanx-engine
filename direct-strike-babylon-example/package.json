@@ -15,10 +15,10 @@
     "@babylonjs/core": "8.53.0",
     "@babylonjs/gui": "8.53.0",
     "@babylonjs/loaders": "8.53.0",
-    "phalanx-client": "workspace:*",
-    "phalanx-ecs": "workspace:*",
-    "phalanx-math": "workspace:*",
-    "phalanx-physics": "workspace:*"
+    "@phalanx-engine/client": "workspace:*",
+    "@phalanx-engine/ecs": "workspace:*",
+    "@phalanx-engine/math": "workspace:*",
+    "@phalanx-engine/physics": "workspace:*"
   },
   "devDependencies": {
     "@aws-sdk/client-s3": "^3.705.0",

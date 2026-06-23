@@ -1,4 +1,4 @@
-import { GameSystem } from 'phalanx-ecs';
+import { GameSystem } from '@phalanx-engine/ecs';
 import { GAMEPLAY_CUE_EVENT, gameplayCueKey } from '../events';
 import type { AbilitySystemRuntime } from '../runtime';
 

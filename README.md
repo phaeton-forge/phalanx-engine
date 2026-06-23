@@ -2,7 +2,7 @@
 
 A game-agnostic deterministic lockstep multiplayer engine with authentication, matchmaking, and command synchronization.
 
-> ⚠️ **NOT IN PRODUCTION** - This project is currently in active development and not yet published to npm. Please clone the repository to use it.
+> Packages are published to npm under the `@phalanx-engine` scope. You can install from npm or clone this monorepo and use `workspace:*` links.
 
 ## Quick Links
 
@@ -19,7 +19,7 @@ A game-agnostic deterministic lockstep multiplayer engine with authentication, m
 **Clone the repository:**
 
 ```bash
-git clone https://github.com/phaeton2040-AI/phalanx-engine.git
+git clone https://github.com/phaeton-forge/phalanx-engine.git
 cd phalanx-engine
 pnpm install
 ```
@@ -30,33 +30,33 @@ This repository is a pnpm workspace containing the following publishable package
 
 | Package                              | Description                                                                  |
 | ------------------------------------ | ---------------------------------------------------------------------------- |
-| [phalanx-server](./phalanx-server)   | Server library for hosting multiplayer games (matchmaking, lockstep, rooms)  |
-| [phalanx-client](./phalanx-client)   | Browser/Node client for connecting to Phalanx servers                        |
-| [phalanx-ecs](./phalanx-ecs)         | Renderer-agnostic ECS library with `GameWorld` facade and SoA storage        |
-| [phalanx-physics](./phalanx-physics) | Deterministic fixed-point physics (spatial hash, narrow phase, impulses)     |
-| [phalanx-abilities](./phalanx-abilities) | Deterministic gameplay ability system (attributes, effects, tags) |
-| [phalanx-math](./phalanx-math)       | Deterministic fixed-point math library for lockstep games                    |
+| [@phalanx-engine/server](./phalanx-server)   | Server library for hosting multiplayer games (matchmaking, lockstep, rooms)  |
+| [@phalanx-engine/client](./phalanx-client)   | Browser/Node client for connecting to Phalanx servers                        |
+| [@phalanx-engine/ecs](./phalanx-ecs)         | Renderer-agnostic ECS library with `GameWorld` facade and SoA storage        |
+| [@phalanx-engine/physics](./phalanx-physics) | Deterministic fixed-point physics (spatial hash, narrow phase, impulses)     |
+| [@phalanx-engine/abilities](./phalanx-abilities) | Deterministic gameplay ability system (attributes, effects, tags) |
+| [@phalanx-engine/math](./phalanx-math)       | Deterministic fixed-point math library for lockstep games                    |
 
-In addition to the libraries, the workspace contains reference applications under `direct-strike-babylon-example/`, `chapaev/`, `arena-shooter/`, `game-test/`, and `game-test-server/`.
+In addition to the libraries, the workspace contains reference applications under `direct-strike-babylon-example/`, `chapaev/`, and `arena-shooter/`.
 
 ## Architecture
 
 ```
                         ┌─────────────────────────────┐
-                        │       phalanx-server        │
+                        │   @phalanx-engine/server    │
                         │ matchmaking · rooms · ticks │
                         └──────────────┬──────────────┘
                                        │ Socket.IO (commands & events)
                                        ▼
    ┌────────────────────────────┐  ┌──────────────────────────────┐
-   │      phalanx-client        │  │      phalanx-ecs (optional)  │
+   │  @phalanx-engine/client     │  │ @phalanx-engine/ecs (opt) │
    │ connection · matchmaking · │──▶│  EntityManager · GameWorld · │
    │ command batching · auth ·  │  │  SoA storage · pooling       │
    │ room recovery · render     │  └────────────────┬─────────────┘
    │ loop (ITickFrameProvider)  │                   │
    └────────────────────────────┘                   ▼
                                        ┌────────────────────────────┐
-                                       │     phalanx-physics        │
+                                       │ @phalanx-engine/physics   │
                                        │ deterministic FP physics · │
                                        │ spatial hash · collisions  │
                                        └──────────────┬─────────────┘
@@ -64,18 +64,18 @@ In addition to the libraries, the workspace contains reference applications unde
                         ┌─────────────────────────────┴─────────────────────────────┐
                         ▼                                                           ▼
            ┌────────────────────────────┐                         ┌────────────────────────────┐
-           │    phalanx-abilities       │                         │       phalanx-math         │
+           │ @phalanx-engine/abilities │                         │   @phalanx-engine/math    │
            │ GAS-style attributes ·     │                         │ FP fixed-point arithmetic  │
            │ effects · tags             │                         └────────────────────────────┘
            └────────────────────────────┘
 ```
 
-`phalanx-client` and `phalanx-ecs` both implement the `ITickFrameProvider` interface, so a `GameWorld` can be driven by either an internal `TickFrameManager` (single-player) or by the multiplayer client (`PhalanxClient` is fed the server's authoritative ticks).
+`@phalanx-engine/client` and `@phalanx-engine/ecs` both implement the `ITickFrameProvider` interface, so a `GameWorld` can be driven by either an internal `TickFrameManager` (single-player) or by the multiplayer client (`PhalanxClient` is fed the server's authoritative ticks).
 
 ## Features
 
 - **Deterministic Lockstep**: Synchronizes only player commands, game logic runs deterministically on each client
-- **Fixed-Point Math**: Platform-independent fixed-point arithmetic via `phalanx-math` ensures identical calculations across all clients
+- **Fixed-Point Math**: Platform-independent fixed-point arithmetic via `@phalanx-engine/math` ensures identical calculations across all clients
 - **Matchmaking**: Built-in support for various game modes (1v1, 2v2, 3v3, 4v4, FFA)
 - **Private Rooms**: Invite-code rooms with host recovery so mobile players can share links without losing their room
 - **Tick System**: Configurable tick rate with command batching
@@ -173,12 +173,12 @@ See the [Client Documentation](./phalanx-client/README.md#mobile-friendly-room-r
 
 ## Quick Start
 
-> **Note**: Packages are not yet published to npm. Work from the cloned monorepo and consume packages via `workspace:*`.
+> **Note**: From npm, install packages like `@phalanx-engine/server`. In this monorepo, consume libraries via `workspace:*`.
 
 ### Server
 
 ```typescript
-import { Phalanx } from 'phalanx-server';
+import { Phalanx } from '@phalanx-engine/server';
 
 const server = new Phalanx({
   port: 3000,
@@ -193,7 +193,7 @@ console.log('Phalanx server running on port 3000');
 ### Client
 
 ```typescript
-import { PhalanxClient } from 'phalanx-client';
+import { PhalanxClient } from '@phalanx-engine/client';
 
 const client = await PhalanxClient.create({
   serverUrl: 'http://localhost:3000',
@@ -219,9 +219,9 @@ client.onFrame((alpha, dt) => {
 ### Single-player ECS + Physics
 
 ```typescript
-import { GameWorld } from 'phalanx-ecs';
-import { PhysicsWorld, PhysicsBodyComponent } from 'phalanx-physics';
-import { FP } from 'phalanx-math';
+import { GameWorld } from '@phalanx-engine/ecs';
+import { PhysicsWorld, PhysicsBodyComponent } from '@phalanx-engine/physics';
+import { FP } from '@phalanx-engine/math';
 
 const world = new GameWorld({ tickRate: 20 });
 
@@ -267,14 +267,11 @@ All commands are run from the repository root.
 | `pnpm build:direct-strike`| Build `direct-strike-babylon-example` via `build:local`            |
 | `pnpm clean`              | Run each package's `clean` script                                  |
 | `pnpm test`               | Run all package test suites (Vitest)                               |
-| `pnpm test:server`        | Run only `phalanx-server` tests                                    |
-| `pnpm test:client`        | Run only `phalanx-client` tests                                    |
+| `pnpm test:server`        | Run only `@phalanx-engine/server` tests                                    |
+| `pnpm test:client`        | Run only `@phalanx-engine/client` tests                                    |
 | `pnpm test:watch`         | Run package test suites in watch mode                              |
-| `pnpm dev:server`         | `tsc --watch` for `phalanx-server`                                 |
-| `pnpm dev:client`         | `tsc --watch` for `phalanx-client`                                 |
-| `pnpm dev:game`           | Dev-mode reference game (`game-test`)                              |
-| `pnpm dev:game-server`    | Dev-mode reference game server (`game-test-server`)                |
-| `pnpm build:game-server`  | Build the reference game server                                    |
+| `pnpm dev:server`         | `tsc --watch` for `@phalanx-engine/server`                                 |
+| `pnpm dev:client`         | `tsc --watch` for `@phalanx-engine/client`                                 |
 | `pnpm lint` / `lint:fix`  | ESLint over the workspace                                          |
 | `pnpm format` / `format:check` | Prettier over the workspace                                   |
 

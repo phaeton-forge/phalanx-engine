@@ -1,8 +1,8 @@
 import { Vector3 } from '@babylonjs/core';
 import type { Unit } from '../entities/Unit';
 import { Tower } from '../entities/Tower';
-import type { SystemContext } from 'phalanx-ecs';
-import { GameSystem } from 'phalanx-ecs';
+import type { SystemContext } from '@phalanx-engine/ecs';
+import { GameSystem } from '@phalanx-engine/ecs';
 import { GameRandom } from '../core/GameRandom';
 import { MovementSystem } from './MovementSystem';
 import {
@@ -33,7 +33,7 @@ import {
   FP,
   FPVector3,
   type FixedPoint,
-} from 'phalanx-math';
+} from '@phalanx-engine/math';
 
 /**
  * Combat system configuration for deterministic simulation

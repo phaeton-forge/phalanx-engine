@@ -1,4 +1,4 @@
-import type { FixedPoint } from 'phalanx-math';
+import type { FixedPoint } from '@phalanx-engine/math';
 import type { CollisionManifold } from './collision/CollisionManifold';
 
 /**

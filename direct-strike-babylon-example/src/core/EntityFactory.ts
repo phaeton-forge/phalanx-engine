@@ -1,14 +1,14 @@
 import { Vector3, Color3 } from '@babylonjs/core';
 import type { SceneManager } from './SceneManager';
-import type { EntityManager } from 'phalanx-ecs';
+import type { EntityManager } from '@phalanx-engine/ecs';
 import type { PrismaUnit, PrismaUnitConfig } from '../entities/PrismaUnit';
 import type { LanceUnit, LanceUnitConfig } from '../entities/LanceUnit';
 import type { MutantUnit, MutantUnitConfig } from '../entities/MutantUnit';
 import type { Tower, TowerConfig } from '../entities/Tower';
 import type { Base, BaseConfig } from '../entities/Base';
-import { PhysicsBodyComponent } from 'phalanx-physics';
+import { PhysicsBodyComponent } from '@phalanx-engine/physics';
 import { HealthBarComponent, InterpolationComponent, TransformComponent } from '../components';
-import { FP, FPVector3 } from 'phalanx-math';
+import { FP, FPVector3 } from '@phalanx-engine/math';
 import { TeamTag } from '../enums/TeamTag';
 import { arenaParams, unitConfig } from '../config/constants';
 

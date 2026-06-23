@@ -3,7 +3,7 @@ import type {
   RoomRecoveryStatusEvent,
   RoomTerminatedEvent,
   Unsubscribe,
-} from 'phalanx-client';
+} from '@phalanx-engine/client';
 import type { NetworkContext } from './NetworkContext.ts';
 import { t } from '../i18n/i18n.ts';
 

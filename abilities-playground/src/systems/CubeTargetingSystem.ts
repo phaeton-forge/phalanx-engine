@@ -1,8 +1,8 @@
-import { GameSystem } from 'phalanx-ecs';
-import type { SoAComponentStore, SystemContext } from 'phalanx-ecs';
-import type { AbilitySystem } from 'phalanx-abilities';
-import { FP } from 'phalanx-math';
-import { PhysicsWorld, TransformSoASchema } from 'phalanx-physics';
+import { GameSystem } from '@phalanx-engine/ecs';
+import type { SoAComponentStore, SystemContext } from '@phalanx-engine/ecs';
+import type { AbilitySystem } from '@phalanx-engine/abilities';
+import { FP } from '@phalanx-engine/math';
+import { PhysicsWorld, TransformSoASchema } from '@phalanx-engine/physics';
 import {
   CUBE_MAX_BEAM_TARGETS,
   CUBE_SLOW_TAG,

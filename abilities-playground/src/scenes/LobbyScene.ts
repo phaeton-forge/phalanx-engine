@@ -1,5 +1,5 @@
-import { PhalanxClient } from 'phalanx-client';
-import type { CountdownEvent, MatchFoundEvent } from 'phalanx-client';
+import { PhalanxClient } from '@phalanx-engine/client';
+import type { CountdownEvent, MatchFoundEvent } from '@phalanx-engine/client';
 import { SERVER_URL, networkConfig, pauseConfig } from '../config/constants';
 import { GameRandom } from '../core/GameRandom';
 

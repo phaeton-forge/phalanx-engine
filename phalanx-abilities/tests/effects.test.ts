@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FP } from 'phalanx-math';
+import { FP } from '@phalanx-engine/math';
 import { getActiveEffectsComponent, NO_SOURCE_ENTITY_ID, defineEffect } from '../src';
 import {
   ArmorAttribute,

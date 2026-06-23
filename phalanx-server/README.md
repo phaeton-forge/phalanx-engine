@@ -13,13 +13,13 @@ Server component of [Phalanx Engine](../README.md) - a game-agnostic determinist
 ## Installation
 
 ```bash
-npm install phalanx-server
+npm install @phalanx-engine/server
 ```
 
 ## Quick Start
 
 ```typescript
-import { Phalanx } from 'phalanx-server';
+import { Phalanx } from '@phalanx-engine/server';
 
 const app = new Phalanx({
   port: 3000,
@@ -35,7 +35,7 @@ app.start().then(() => {
 ## Configuration
 
 ```typescript
-import { Phalanx, PhalanxConfig } from 'phalanx-server';
+import { Phalanx, PhalanxConfig } from '@phalanx-engine/server';
 
 const config: Partial<PhalanxConfig> = {
   // === Server ===
@@ -111,14 +111,14 @@ const config: Partial<PhalanxConfig> = {
   turnTimeoutMs: 60000, // Turn timeout for event mode (default: 60000)
   gameTypes: [
     {
-      gameType: 'direct-strike',
+      gameType: 'moba',
       tickMode: 'continuous',
       tickRate: 20,
       gameMode: '1v1',
       countdownSeconds: 3,
     },
     {
-      gameType: 'chapayev',
+      gameType: 'tactics',
       tickMode: 'event',
       gameMode: '1v1',
       countdownSeconds: 3,
@@ -164,7 +164,7 @@ app.on('player-reconnected', (playerId, matchId) => {
 Use `extraRequestHandler` when an embedding server needs a small HTTP surface on the same port as Phalanx, such as a Telegram webhook, an internal health probe, or a signed partner callback.
 
 ```typescript
-import { Phalanx } from 'phalanx-server';
+import { Phalanx } from '@phalanx-engine/server';
 
 const app = new Phalanx({
   port: 3000,
@@ -391,7 +391,7 @@ Maximum time (in milliseconds) allowed between command batches in event mode. If
 ## Game Modes
 
 ```typescript
-import { GAME_MODES } from 'phalanx-server';
+import { GAME_MODES } from '@phalanx-engine/server';
 
 // Available presets:
 // '1v1'  - 2 players, 2 teams
@@ -408,7 +408,7 @@ Phalanx supports secure WebSocket connections (WSS) for production environments.
 ### Basic TLS Setup
 
 ```typescript
-import { Phalanx } from 'phalanx-server';
+import { Phalanx } from '@phalanx-engine/server';
 
 const app = new Phalanx({
   port: 443,
@@ -485,7 +485,7 @@ const app = new Phalanx({
 When connecting to a TLS-enabled server from the client:
 
 ```typescript
-import { PhalanxClient } from 'phalanx-client';
+import { PhalanxClient } from '@phalanx-engine/client';
 
 const client = await PhalanxClient.create({
   serverUrl: 'https://game.example.com', // Use https:// for TLS
@@ -496,7 +496,7 @@ const client = await PhalanxClient.create({
 
 ## Related Packages
 
-- [phalanx-client](../phalanx-client) - Client library for connecting to Phalanx servers
+- [@phalanx-engine/client](../phalanx-client) - Client library for connecting to Phalanx servers
 
 ## Requirements
 

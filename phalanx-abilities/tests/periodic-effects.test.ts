@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FP } from 'phalanx-math';
+import { FP } from '@phalanx-engine/math';
 import { AbilitiesComponentType, defineEffect } from '../src';
 import type { AbilitySystemComponent } from '../src';
 import {
@@ -8,7 +8,7 @@ import {
   createTestWorld,
   spawnEntity,
 } from './helpers';
-import {GameWorld} from "phalanx-ecs";
+import {GameWorld} from "@phalanx-engine/ecs";
 
 // ---------------------------------------------------------------------------
 // Stage 4 — Periodic effects.
