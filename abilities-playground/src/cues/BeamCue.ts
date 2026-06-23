@@ -48,7 +48,8 @@ export class BeamCue extends Cue {
     });
 
     const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(6, 3));
+    // Two vertices (source + target), xyz each.
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(6), 3));
     this.beamLine = new THREE.Line(geometry, this.beamMaterial);
     this.beamLine.renderOrder = 9000;
     this.scene.add(this.beamLine);
