@@ -31,6 +31,7 @@ export class ProjectileMovementSystem extends GameSystem {
 
     for (const projectile of projectiles) {
       if (!projectile.active) continue;
+      if (projectile.hasComponent(ComponentType.Missile)) continue;
 
       const projectileComponent = projectile.getComponent<ProjectileComponent>(
         ComponentType.Projectile,

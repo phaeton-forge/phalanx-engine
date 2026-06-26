@@ -9,12 +9,20 @@ import {
 } from '@phalanx-engine/abilities';
 import type { AbilitySystem } from '@phalanx-engine/abilities';
 import { arenaParams, networkConfig, physicsConfig } from '../config/constants';
-import { combatDefs, CUBE_SLOW_TAG, CUBE_SPEED_BUFF_TAG } from '../config/abilityDefinitions';
-import { DEFAULT_UNIT_DETECTION_RANGE, UNIT_ROSTER } from '../config/unitRoster';
+import {
+  combatDefs,
+  CUBE_SLOW_TAG,
+  CUBE_SPEED_BUFF_TAG,
+} from '../config/abilityDefinitions';
+import {
+  DEFAULT_UNIT_DETECTION_RANGE,
+  UNIT_ROSTER,
+} from '../config/unitRoster';
 import {
   ComponentType,
   StatsComponent,
   SimulationStateComponent,
+  TeamComponent,
 } from '../components';
 import { UnitEntity } from '../entities/UnitEntity';
 import {
@@ -22,6 +30,9 @@ import {
   CubeTargetingSystem,
   DeathSystem,
   HealingAuraSystem,
+  MissileLauncherSystem,
+  MissileMovementSystem,
+  MissileTargetingSystem,
   MovementSystem,
   RenderSyncSystem,
   RotationSystem,
@@ -29,10 +40,22 @@ import {
   TargetingSystem,
 } from '../systems';
 import type { UnitFactory } from './UnitFactory';
-import {ProjectileEntity} from "../entities/Projectile.ts";
-import { autoAttack } from "../hooks/AutoAttack.ts";
-import { ProjectileDespawnQueueSystem, ProjectileCollisionSystem, ProjectileMovementSystem } from '../systems';
-import { DamageSphereCue, DeathCue, HealCrossCue, BeamCue } from '../cues';
+import { ProjectileEntity } from '../entities/Projectile.ts';
+import { MissileEntity } from '../entities/Missile';
+import { autoAttack } from '../hooks/AutoAttack.ts';
+import { missileVolley } from '../hooks/MissileVolley';
+import {
+  ProjectileDespawnQueueSystem,
+  ProjectileCollisionSystem,
+  ProjectileMovementSystem,
+} from '../systems';
+import {
+  DamageSphereCue,
+  DeathCue,
+  HealCrossCue,
+  BeamCue,
+  MissileImpactCue,
+} from '../cues';
 
 export class SimulationContainer {
   readonly world: GameWorld;
@@ -42,7 +65,11 @@ export class SimulationContainer {
   private readonly abilities: AbilitySystem;
   private readonly scene: THREE.Scene;
 
-  constructor(client: PhalanxClient, unitFactory: UnitFactory, scene: THREE.Scene) {
+  constructor(
+    client: PhalanxClient,
+    unitFactory: UnitFactory,
+    scene: THREE.Scene
+  ) {
     resetEntityIdCounter();
 
     this.scene = scene;
@@ -54,9 +81,13 @@ export class SimulationContainer {
       pooling: {
         autoPrewarm: true,
         entityTypes: {
-          'projectile': {
+          projectile: {
             factory: () => new ProjectileEntity(),
             pool: { initialSize: 50, maxSize: 200 },
+          },
+          missile: {
+            factory: () => new MissileEntity(),
+            pool: { initialSize: 30, maxSize: 120 },
           },
         },
       },
@@ -84,10 +115,15 @@ export class SimulationContainer {
         'Cue.Death': () => new DeathCue(this.scene),
         'Cue.Heal.Cross': () => new HealCrossCue(this.scene),
         'Cue.Beam.Red': () => new BeamCue(this.scene, 0xff3344, CUBE_SLOW_TAG),
-        'Cue.Beam.Yellow': () => new BeamCue(this.scene, 0xffdd33, CUBE_SPEED_BUFF_TAG),
+        'Cue.Beam.Yellow': () =>
+          new BeamCue(this.scene, 0xffdd33, CUBE_SPEED_BUFF_TAG),
+        'Cue.Missile.Impact': () => new MissileImpactCue(this.scene),
       },
       hooks: {
-        'Hook.AutoAttack': (ctx: AbilityActivationContext) => autoAttack(ctx, this.world),
+        'Hook.AutoAttack': (ctx: AbilityActivationContext) =>
+          autoAttack(ctx, this.world),
+        'Hook.MissileVolley': (ctx: AbilityActivationContext) =>
+          missileVolley(ctx, this.world),
       },
     });
 
@@ -106,17 +142,39 @@ export class SimulationContainer {
       const bProjectile = eB.hasComponent(ComponentType.Projectile);
       if (aProjectile && bProjectile) return false;
 
+      // Projectiles only ever damage hostiles (ProjectileCollisionSystem ignores
+      // same-team hits), so skip projectile↔ally pairs entirely. Without this,
+      // homing missiles physically push and "rub against" allied units they fly
+      // over — the physics engine is 2D/XZ, so flying at altitude alone does
+      // not prevent the positional push between overlapping bodies.
+      if (aProjectile !== bProjectile) {
+        const projectile = aProjectile ? eA : eB;
+        const other = aProjectile ? eB : eA;
+        if ((projectile as { active?: boolean }).active === false) return false;
+        const projTeam = projectile.getComponent<TeamComponent>(
+          ComponentType.Team
+        );
+        const otherTeam = other.getComponent<TeamComponent>(ComponentType.Team);
+        if (projTeam && otherTeam && projTeam.teamId === otherTeam.teamId) {
+          return false;
+        }
+      }
+
       return true;
     });
 
-    const { physicsSystem, interpolationSystem } = this.physicsWorld.getSystems();
+    const { physicsSystem, interpolationSystem } =
+      this.physicsWorld.getSystems();
     this.world.registerSystems(
       [
         this.startSimulationSystem,
         new TargetingSystem(),
         new AttackSystem(),
+        new MissileLauncherSystem(),
         new MovementSystem(),
         new ProjectileMovementSystem(),
+        new MissileTargetingSystem(),
+        new MissileMovementSystem(),
         physicsSystem,
         new HealingAuraSystem(),
         new ProjectileCollisionSystem(),
@@ -125,7 +183,7 @@ export class SimulationContainer {
         new CubeTargetingSystem(),
         new ProjectileDespawnQueueSystem(),
       ],
-      [interpolationSystem, new RenderSyncSystem()],
+      [interpolationSystem, new RenderSyncSystem()]
     );
 
     this.spawnSimulationState();
@@ -134,8 +192,12 @@ export class SimulationContainer {
 
   /** Returns the result title if game is over, otherwise null. */
   getGameOverTitle(localTeamId: 0 | 1): string | null {
-    const [stateEntity] = this.world.entityManager.queryEntities(ComponentType.SimulationState);
-    const state = stateEntity?.getComponent<SimulationStateComponent>(ComponentType.SimulationState);
+    const [stateEntity] = this.world.entityManager.queryEntities(
+      ComponentType.SimulationState
+    );
+    const state = stateEntity?.getComponent<SimulationStateComponent>(
+      ComponentType.SimulationState
+    );
     if (!state?.gameOver) return null;
     if (state.winner === null) return 'Draw';
     return state.winner === localTeamId ? 'Victory!' : 'Defeat';
@@ -154,7 +216,8 @@ export class SimulationContainer {
 
   private spawnUnits(unitFactory: UnitFactory): void {
     for (const teamId of [0, 1] as const) {
-      const spawnZ = teamId === 0 ? arenaParams.team1SpawnZ : arenaParams.team2SpawnZ;
+      const spawnZ =
+        teamId === 0 ? arenaParams.team1SpawnZ : arenaParams.team2SpawnZ;
       const forwardZ = teamId === 0 ? 1 : -1;
       for (const rosterEntry of UNIT_ROSTER) {
         const spawn = rosterEntry.spawns[teamId];
@@ -169,7 +232,7 @@ export class SimulationContainer {
           rosterEntry.kind,
           teamId,
           detectionRange,
-          rosterEntry.auraRadius,
+          rosterEntry.auraRadius
         );
 
         renderRefs.root.position.set(x, y, z);
@@ -179,21 +242,29 @@ export class SimulationContainer {
 
         const isSupport = rosterEntry.kind === 'support';
         const isCube = rosterEntry.kind === 'cube';
-        const unitEntity = new UnitEntity(rosterEntry, teamId, { x, y, z }, renderRefs);
+        const isRocket = rosterEntry.kind === 'rocket';
+        const unitEntity = new UnitEntity(
+          rosterEntry,
+          teamId,
+          { x, y, z },
+          renderRefs
+        );
 
         unitEntity.addComponent(
           this.abilities.initComponent({
             attributes: {
               Health: FP.FromFloat(rosterEntry.maxHealth),
-              MaxHealth: FP.FromFloat(rosterEntry.maxHealth)
+              MaxHealth: FP.FromFloat(rosterEntry.maxHealth),
             },
             abilities: isSupport
               ? ['Ability.HealAura']
-              : isCube
-                ? []
-                : ['Ability.AutoAttack'],
+              : isRocket
+                ? ['Ability.MissileVolley']
+                : isCube
+                  ? []
+                  : ['Ability.AutoAttack'],
             tags: [`Team.${teamId}`],
-          }),
+          })
         );
         this.world.entityManager.addEntity(unitEntity);
 

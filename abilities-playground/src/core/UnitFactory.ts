@@ -149,6 +149,7 @@ export class UnitFactory {
       case 'cube': return 2.5;
       case 'sphere': return 2;
       case 'support': return 2;
+      case 'rocket': return 3;
     }
   }
 
@@ -176,6 +177,11 @@ export class UnitFactory {
         // height offset returned by getHeightOffset('support').
         return new THREE.Mesh(
           this.arenaScene.trackGeometry(new THREE.ConeGeometry(2, 4, 24)),
+          material,
+        );
+      case 'rocket':
+        return new THREE.Mesh(
+          this.arenaScene.trackGeometry(new THREE.OctahedronGeometry(3)),
           material,
         );
     }

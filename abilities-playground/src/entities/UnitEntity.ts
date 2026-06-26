@@ -28,7 +28,7 @@ export class UnitEntity extends Entity {
     rosterEntry: UnitRosterEntry,
     teamId: TeamId,
     position: { x: number; y: number; z: number },
-    renderRefs: UnitRenderRefs,
+    renderRefs: UnitRenderRefs
   ) {
     super();
 
@@ -42,7 +42,7 @@ export class UnitEntity extends Entity {
     this.addComponent(new TransformComponent(this.id, fpPosition, fpRotation));
     this.addComponent(new TeamComponent(teamId));
     this.addComponent(
-      new UnitTypeComponent(rosterEntry.kind, FP.FromFloat(detectionRange)),
+      new UnitTypeComponent(rosterEntry.kind, FP.FromFloat(detectionRange))
     );
     this.addComponent(new StatsComponent({ stopRange: rosterEntry.stopRange }));
     this.addComponent(new TargetStateComponent());
@@ -52,8 +52,8 @@ export class UnitEntity extends Entity {
       new HealthBarComponent(
         renderRefs.healthBarRoot,
         renderRefs.healthBarFill,
-        renderRefs.healthBarFullWidth,
-      ),
+        renderRefs.healthBarFullWidth
+      )
     );
     this.addComponent(new InterpolationComponent(fpPosition, fpRotation));
     this.addComponent(
@@ -62,7 +62,7 @@ export class UnitEntity extends Entity {
         mass: FP.FromFloat(rosterEntry.mass),
         friction: FP.FromFloat(0.15),
         restitution: FP.FromFloat(0.05),
-      }),
+      })
     );
 
     if (renderRefs.spawnPoint) {
@@ -76,9 +76,12 @@ export class UnitEntity extends Entity {
     ) {
       this.addComponent(
         new HealAuraComponent(
-          { radius: rosterEntry.auraRadius, pulseTicks: rosterEntry.healPulseTicks },
-          renderRefs.auraRing ?? null,
-        ),
+          {
+            radius: rosterEntry.auraRadius,
+            pulseTicks: rosterEntry.healPulseTicks,
+          },
+          renderRefs.auraRing ?? null
+        )
       );
     }
 

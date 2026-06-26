@@ -3,32 +3,41 @@ import { FP } from '@phalanx-engine/math';
 import { PhysicsSoASchema, TransformSoASchema } from '@phalanx-engine/physics';
 import { ComponentType, MeshComponent } from '../components';
 import type { ProjectileEntity } from '../entities/Projectile.ts';
+import type { MissileEntity } from '../entities/Missile';
 
 const PARKED_POSITION = FP.FromFloat(1e9);
 
 export function despawnProjectile(
   pools: PoolManager | null,
-  projectile: ProjectileEntity,
+  projectile: ProjectileEntity | MissileEntity,
 ): void {
   pools?.despawn(projectile);
 }
 
+export interface SoftDeactivateProjectileOptions {
+  /** Keep world transform so cue handlers can read the impact point this tick. */
+  keepTransform?: boolean;
+}
+
 export function softDeactivateProjectile(
   entityManager: EntityManager,
-  projectile: ProjectileEntity,
+  projectile: ProjectileEntity | MissileEntity,
+  options?: SoftDeactivateProjectileOptions,
 ): void {
   projectile.active = false;
 
   const mesh = projectile.getComponent<MeshComponent>(ComponentType.Mesh);
   if (mesh) mesh.root.visible = false;
 
-  const transformStore = entityManager.getOrCreateSoAStore(TransformSoASchema);
-  const tIdx = transformStore.indexOf(projectile.id);
-  if (tIdx !== -1) {
-    const parked = FP.ToRaw(PARKED_POSITION);
-    transformStore.arrays.fpPositionX[tIdx] = parked;
-    transformStore.arrays.fpPositionY[tIdx] = parked;
-    transformStore.arrays.fpPositionZ[tIdx] = parked;
+  if (!options?.keepTransform) {
+    const transformStore = entityManager.getOrCreateSoAStore(TransformSoASchema);
+    const tIdx = transformStore.indexOf(projectile.id);
+    if (tIdx !== -1) {
+      const parked = FP.ToRaw(PARKED_POSITION);
+      transformStore.arrays.fpPositionX[tIdx] = parked;
+      transformStore.arrays.fpPositionY[tIdx] = parked;
+      transformStore.arrays.fpPositionZ[tIdx] = parked;
+    }
   }
 
   const physStore = entityManager.getOrCreateSoAStore(PhysicsSoASchema);

@@ -10,6 +10,7 @@ import {
   StatsComponent,
   UnitTypeComponent,
 } from '../components';
+import type { MissileComponent } from '../components/MissileComponent';
 
 export class RenderSyncSystem extends GameSystem {
   private get _abilities(): AbilitySystem { return this.abilities as AbilitySystem; }
@@ -26,6 +27,18 @@ export class RenderSyncSystem extends GameSystem {
 
       const interpolated = this.physics?.getInterpolatedTransform(entity.id);
       if (interpolated) {
+        if (entity.hasComponent(ComponentType.Missile)) {
+          const mc = entity.getComponent<MissileComponent>(ComponentType.Missile);
+          if (mc) {
+            entityMesh.root.position.set(
+              interpolated.position.x,
+              interpolated.position.y,
+              interpolated.position.z,
+            );
+            entityMesh.root.quaternion.set(mc.qx, mc.qy, mc.qz, mc.qw);
+            continue;
+          }
+        }
         entityMesh.root.position.set(
           interpolated.position.x,
           interpolated.position.y,

@@ -1,5 +1,10 @@
 import { FP } from '@phalanx-engine/math';
-import { defineAbility, defineAbilitySystem, defineAttribute, defineEffect } from '@phalanx-engine/abilities';
+import {
+  defineAbility,
+  defineAbilitySystem,
+  defineAttribute,
+  defineEffect,
+} from '@phalanx-engine/abilities';
 
 /** Uniform move speed for all units (world units per second). */
 export const UNIT_MOVE_SPEED = 13;
@@ -46,6 +51,20 @@ export const CUBE_BEAM_EFFECT_DURATION_TICKS = HEAL_AURA_DURATION_TICKS;
 export const CUBE_SLOW_TAG = 'State.Debuff.CubeSlow';
 export const CUBE_SPEED_BUFF_TAG = 'State.Buff.CubeSpeed';
 
+export const ROCKET_MAX_HEALTH = 100;
+export const ROCKET_ATTACK_DAMAGE = 45;
+export const ROCKET_COOLDOWN_TICKS = 40;
+export const ROCKET_MAX_TARGETS = 3;
+export const ROCKET_DETECTION_RANGE = 70;
+export const ROCKET_STOP_RANGE = 60;
+
+/**
+ * Tag granted to a rocket while its volley ability is on cooldown. The ability
+ * is `Self`-targeted and fires a multi-target hook; the cooldown (and its tag)
+ * are owned entirely by phalanx-abilities — no per-rocket timer component.
+ */
+export const MISSILE_VOLLEY_COOLDOWN_TAG = 'Cooldown.Ability.MissileVolley';
+
 export const combatDefs = defineAbilitySystem({
   attributes: [
     defineAttribute({
@@ -88,13 +107,40 @@ export const combatDefs = defineAbilitySystem({
     defineEffect({
       id: 'Effect.Damage.Sphere',
       type: 'Instant',
-      modifiers: [{ attributeId: 'Health', op: 'Add', magnitude: FP.FromFloat(-18) }],
+      modifiers: [
+        { attributeId: 'Health', op: 'Add', magnitude: FP.FromFloat(-18) },
+      ],
       cues: ['Cue.Damage.Sphere'],
+    }),
+    defineEffect({
+      id: 'Effect.Damage.Missile',
+      type: 'Instant',
+      modifiers: [
+        {
+          attributeId: 'Health',
+          op: 'Add',
+          magnitude: FP.FromFloat(-ROCKET_ATTACK_DAMAGE),
+        },
+      ],
+      cues: ['Cue.Missile.Impact'],
+    }),
+    defineEffect({
+      id: 'Effect.MissileVolley.Cooldown',
+      type: 'Duration',
+      durationTicks: ROCKET_COOLDOWN_TICKS,
+      modifiers: [],
+      tagsGranted: [MISSILE_VOLLEY_COOLDOWN_TAG],
     }),
     defineEffect({
       id: 'Effect.Heal.Tick',
       type: 'Instant',
-      modifiers: [{ attributeId: 'Health', op: 'Add', magnitude: FP.FromFloat(HEAL_PER_PULSE) }],
+      modifiers: [
+        {
+          attributeId: 'Health',
+          op: 'Add',
+          magnitude: FP.FromFloat(HEAL_PER_PULSE),
+        },
+      ],
       cues: { onApplied: ['Cue.Heal.Cross'] },
     }),
     defineEffect({
@@ -143,6 +189,13 @@ export const combatDefs = defineAbilitySystem({
       id: 'Ability.HealAura',
       target: { kind: 'Self' },
       selfEffectIds: ['Effect.HealAura.Active'],
+    }),
+    defineAbility({
+      id: 'Ability.MissileVolley',
+      target: { kind: 'Self' },
+      hookId: 'Hook.MissileVolley',
+      cooldownEffectId: 'Effect.MissileVolley.Cooldown',
+      activationBlockedTags: [MISSILE_VOLLEY_COOLDOWN_TAG],
     }),
   ],
 });
