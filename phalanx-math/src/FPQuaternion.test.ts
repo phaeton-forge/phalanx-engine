@@ -1,0 +1,86 @@
+import { describe, it, expect } from 'vitest';
+import { FP, FPVector3, FPQuaternion } from './FixedMath.js';
+
+describe('FPQuaternion', () => {
+  it('Identity() returns { 0, 0, 0, 1 }', () => {
+    const q = FPQuaternion.Identity();
+    expect(FP.ToFloat(q.x)).toBeCloseTo(0);
+    expect(FP.ToFloat(q.y)).toBeCloseTo(0);
+    expect(FP.ToFloat(q.z)).toBeCloseTo(0);
+    expect(FP.ToFloat(q.w)).toBeCloseTo(1);
+  });
+
+  it('Mul(Identity(), q) equals q', () => {
+    const q = FPQuaternion.FromFloat(0.1, 0.2, 0.3, 0.4);
+    const result = FPQuaternion.Mul(FPQuaternion.Identity(), q);
+    expect(FP.ToFloat(result.x)).toBeCloseTo(0.1, 4);
+    expect(FP.ToFloat(result.y)).toBeCloseTo(0.2, 4);
+    expect(FP.ToFloat(result.z)).toBeCloseTo(0.3, 4);
+    expect(FP.ToFloat(result.w)).toBeCloseTo(0.4, 4);
+  });
+
+  it('Normalize of a non-unit quaternion gives magnitude ~ 1', () => {
+    const q = FPQuaternion.FromFloat(1, 2, 3, 4);
+    const n = FPQuaternion.Normalize(q);
+    const mag = FP.ToFloat(FPQuaternion.Magnitude(n));
+    expect(mag).toBeCloseTo(1, 4);
+  });
+
+  it('Normalize of a zero quaternion returns Identity', () => {
+    const q = FPQuaternion.FromFloat(0, 0, 0, 0);
+    const n = FPQuaternion.Normalize(q);
+    expect(FP.ToFloat(n.w)).toBeCloseTo(1);
+  });
+
+  it('Slerp at t=0 returns a, at t=1 returns Identity', () => {
+    const a = FPQuaternion.FromAxisAngle(FPVector3.Up, FP.FromFloat(1.0));
+    const atZero = FPQuaternion.Slerp(a, FPQuaternion.Identity(), FP._0);
+    const atOne = FPQuaternion.Slerp(a, FPQuaternion.Identity(), FP._1);
+
+    expect(FP.ToFloat(atZero.y)).toBeCloseTo(FP.ToFloat(a.y), 3);
+    expect(FP.ToFloat(atZero.w)).toBeCloseTo(FP.ToFloat(a.w), 3);
+
+    expect(FP.ToFloat(atOne.y)).toBeCloseTo(0, 3);
+    expect(FP.ToFloat(atOne.w)).toBeCloseTo(1, 3);
+  });
+
+  it('Slerp takes the shortest arc when dot < 0', () => {
+    const a = FPQuaternion.FromAxisAngle(FPVector3.Up, FP.FromFloat(0.2));
+    // b is the same rotation expressed with negated components -> dot(a, b) < 0.
+    const b = FPQuaternion.Create(FP.Neg(a.x), FP.Neg(a.y), FP.Neg(a.z), FP.Neg(a.w));
+
+    const mid = FPQuaternion.Slerp(a, b, FP.FromFloat(0.5));
+    // Shortest arc between a and -a is a itself (no large detour through 180°).
+    expect(FP.ToFloat(mid.y)).toBeCloseTo(FP.ToFloat(a.y), 2);
+    expect(FP.ToFloat(mid.w)).toBeCloseTo(FP.ToFloat(a.w), 2);
+  });
+
+  it('FromAxisAngle + RotateVector rotates Forward +90° about Y to Right', () => {
+    const q = FPQuaternion.FromAxisAngle(FPVector3.Up, FP.FromFloat(Math.PI / 2));
+    const rotated = FPQuaternion.RotateVector(q, FPVector3.Forward);
+
+    // Tolerance reflects the engine's Taylor-series trig precision.
+    expect(FP.ToFloat(rotated.x)).toBeCloseTo(1, 1);
+    expect(FP.ToFloat(rotated.y)).toBeCloseTo(0, 1);
+    expect(FP.ToFloat(rotated.z)).toBeCloseTo(0, 1);
+  });
+
+  it('FromEulerXYZ -> ToEulerXYZ round-trips (0, PI/2, 0)', () => {
+    const euler = FPVector3.FromFloat(0, Math.PI / 2, 0);
+    const q = FPQuaternion.FromEulerXYZ(euler);
+    const back = FPQuaternion.ToEulerXYZ(q);
+
+    expect(FP.ToFloat(back.x)).toBeCloseTo(0, 2);
+    // Pitch tolerance reflects the engine's Taylor-series trig precision at the pole.
+    expect(FP.ToFloat(back.y)).toBeCloseTo(Math.PI / 2, 1);
+    expect(FP.ToFloat(back.z)).toBeCloseTo(0, 2);
+  });
+
+  it('LookRotation(Forward) is approximately Identity', () => {
+    const q = FPQuaternion.LookRotation(FPVector3.Forward);
+    expect(FP.ToFloat(q.x)).toBeCloseTo(0, 3);
+    expect(FP.ToFloat(q.y)).toBeCloseTo(0, 3);
+    expect(FP.ToFloat(q.z)).toBeCloseTo(0, 3);
+    expect(FP.ToFloat(q.w)).toBeCloseTo(1, 3);
+  });
+});

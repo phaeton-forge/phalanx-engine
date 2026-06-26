@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {CommandsBatch, Entity, EntityManager, EventBus, SoAComponent, SystemContext} from '@phalanx-engine/ecs';
-import { FP, FPVector3 } from '@phalanx-engine/math';
+import { FP, FPVector3, FPQuaternion } from '@phalanx-engine/math';
 import { TransformComponent, TRANSFORM_COMPONENT_TYPE } from '../src/components/TransformComponent';
 import {
   InterpolationComponent,
@@ -38,7 +38,7 @@ describe('InterpolationSystem', () => {
     const transform = new TransformComponent(
       entity.id,
       FPVector3.FromFloat(position.x, position.y, position.z),
-      FPVector3.FromFloat(0, rotationY, 0),
+      FPQuaternion.FromAxisAngle(FPVector3.Up, FP.FromFloat(rotationY)),
     );
     const interpolation = new InterpolationComponent(transform.fpPosition, transform.fpRotation);
 
@@ -68,19 +68,29 @@ describe('InterpolationSystem', () => {
     expect(sample?.position.z).toBeCloseTo(0);
   });
 
-  it('interpolates Y rotation with shortest-path wraparound near +PI and -PI', () => {
-    const entity = addInterpolatedEntity({ x: 0, y: 0, z: 0 }, Math.PI - 0.1);
+  it('slerps rotation and yields a normalized quaternion at t = 0.5', () => {
+    const entity = addInterpolatedEntity({ x: 0, y: 0, z: 0 }, 0);
 
     system.capture();
     const transform = entity.getComponent<TransformComponent>(TRANSFORM_COMPONENT_TYPE)!;
-    transform.fpRotationY = FP.FromFloat(-Math.PI + 0.1);
+    transform.fpRotationY = FP.FromFloat(Math.PI / 2);
 
     system.snapshot();
     system.capture();
     system.interpolate(0.5);
 
     const sample = system.getInterpolatedTransform(entity.id);
-    expect(sample?.rotation.y).toBeCloseTo(Math.PI, 1);
+    const r = sample!.rotation;
+    const magnitude = Math.sqrt(r.x * r.x + r.y * r.y + r.z * r.z + r.w * r.w);
+    // Tolerance reflects the engine's Taylor-series trig precision.
+    expect(magnitude).toBeCloseTo(1, 1);
+
+    // Halfway between identity and a +90° yaw is a +45° yaw quaternion.
+    const expected = FPQuaternion.ToFloat(
+      FPQuaternion.FromAxisAngle(FPVector3.Up, FP.FromFloat(Math.PI / 4)),
+    );
+    expect(r.y).toBeCloseTo(expected.y, 1);
+    expect(r.w).toBeCloseTo(expected.w, 1);
   });
 
   it('snaps newly seen entities on first capture instead of lerping from defaults', () => {
