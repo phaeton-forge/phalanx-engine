@@ -17,5 +17,6 @@ export function addTransformRow(
     fpRotationX: FP.ToRaw(FP._0),
     fpRotationY: FP.ToRaw(FP._0),
     fpRotationZ: FP.ToRaw(FP._0),
+    fpRotationW: FP.ToRaw(FP._1),
   });
 }

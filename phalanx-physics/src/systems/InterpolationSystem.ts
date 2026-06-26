@@ -7,7 +7,13 @@ import {
   type SoAComponentStore,
   type SystemContext,
 } from '@phalanx-engine/ecs';
-import { FP, FPVector3, type FPVector3 as FPVector3Type } from '@phalanx-engine/math';
+import {
+  FP,
+  FPVector3,
+  FPQuaternion,
+  type FPVector3 as FPVector3Type,
+  type FPQuaternion as FPQuaternionType,
+} from '@phalanx-engine/math';
 import {
   INTERPOLATION_COMPONENT_TYPE,
   InterpolationComponent,
@@ -16,16 +22,8 @@ import { TRANSFORM_COMPONENT_TYPE, TransformSoASchema } from '../components';
 
 export interface InterpolatedTransformSample {
   position: { x: number; y: number; z: number };
-  rotation: { x: number; y: number; z: number };
-}
-
-/** Shortest-path angle interpolation (radians). */
-function lerpAngle(from: number, to: number, t: number): number {
-  const clamped = Math.max(0, Math.min(1, t));
-  let delta = to - from;
-  if (delta > Math.PI) delta -= 2 * Math.PI;
-  if (delta < -Math.PI) delta += 2 * Math.PI;
-  return from + delta * clamped;
+  /** Interpolated rotation as a float quaternion. */
+  rotation: { x: number; y: number; z: number; w: number };
 }
 
 function lerpScalar(from: number, to: number, t: number): number {
@@ -84,18 +82,8 @@ export class InterpolationSystem
       const transformIndex = this.transformStore.indexOf(entity.id);
       if (!interpolation || transformIndex === -1) continue;
 
-      const fpPosition = this.readFpVector3(
-        transformIndex,
-        'fpPositionX',
-        'fpPositionY',
-        'fpPositionZ',
-      );
-      const fpRotation = this.readFpVector3(
-        transformIndex,
-        'fpRotationX',
-        'fpRotationY',
-        'fpRotationZ',
-      );
+      const fpPosition = this.readFpPosition(transformIndex);
+      const fpRotation = this.readFpRotation(transformIndex);
 
       if (!this.capturedEntities.has(entity.id)) {
         interpolation.capture(fpPosition, fpRotation);
@@ -117,6 +105,7 @@ export class InterpolationSystem
 
   public interpolate(alpha: number): void {
     const clampedAlpha = Math.max(0, Math.min(1, alpha));
+    const fpAlpha = FP.FromFloat(clampedAlpha);
     this.interpolatedSamples.clear();
 
     const entities = this.entityManager.queryEntities(
@@ -130,8 +119,12 @@ export class InterpolationSystem
 
       const previousPosition = FPVector3.ToFloat(interpolation.previousFpPosition);
       const currentPosition = FPVector3.ToFloat(interpolation.currentFpPosition);
-      const previousRotation = FPVector3.ToFloat(interpolation.previousFpRotation);
-      const currentRotation = FPVector3.ToFloat(interpolation.currentFpRotation);
+
+      const interpolatedRotation = FPQuaternion.Slerp(
+        interpolation.previousFpRotation,
+        interpolation.currentFpRotation,
+        fpAlpha,
+      );
 
       this.interpolatedSamples.set(entity.id, {
         position: {
@@ -139,11 +132,7 @@ export class InterpolationSystem
           y: lerpScalar(previousPosition.y, currentPosition.y, clampedAlpha),
           z: lerpScalar(previousPosition.z, currentPosition.z, clampedAlpha),
         },
-        rotation: {
-          x: lerpAngle(previousRotation.x, currentRotation.x, clampedAlpha),
-          y: lerpAngle(previousRotation.y, currentRotation.y, clampedAlpha),
-          z: lerpAngle(previousRotation.z, currentRotation.z, clampedAlpha),
-        },
+        rotation: FPQuaternion.ToFloat(interpolatedRotation),
       });
     }
   }
@@ -152,17 +141,22 @@ export class InterpolationSystem
     return this.interpolatedSamples.get(entityId);
   }
 
-  private readFpVector3(
-    index: number,
-    xKey: 'fpPositionX' | 'fpRotationX',
-    yKey: 'fpPositionY' | 'fpRotationY',
-    zKey: 'fpPositionZ' | 'fpRotationZ',
-  ): FPVector3Type {
+  private readFpPosition(index: number): FPVector3Type {
     const arrays = this.transformStore.arrays;
     return {
-      x: FP.FromRaw(arrays[xKey][index]),
-      y: FP.FromRaw(arrays[yKey][index]),
-      z: FP.FromRaw(arrays[zKey][index]),
+      x: FP.FromRaw(arrays.fpPositionX[index]),
+      y: FP.FromRaw(arrays.fpPositionY[index]),
+      z: FP.FromRaw(arrays.fpPositionZ[index]),
+    };
+  }
+
+  private readFpRotation(index: number): FPQuaternionType {
+    const arrays = this.transformStore.arrays;
+    return {
+      x: FP.FromRaw(arrays.fpRotationX[index]),
+      y: FP.FromRaw(arrays.fpRotationY[index]),
+      z: FP.FromRaw(arrays.fpRotationZ[index]),
+      w: FP.FromRaw(arrays.fpRotationW[index]),
     };
   }
 }

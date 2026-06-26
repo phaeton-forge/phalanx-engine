@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Entity, EntityManager, EventBus, SoAComponent, SystemContext } from '@phalanx-engine/ecs';
-import { FPVector3 } from '@phalanx-engine/math';
+import { FPVector3, FPQuaternion } from '@phalanx-engine/math';
 import { PhysicsWorld } from '../src/PhysicsWorld';
 import { PhysicsSystem } from '../src/systems/PhysicsSystem';
 import { InterpolationSystem } from '../src/systems/InterpolationSystem';
@@ -45,7 +45,7 @@ describe('PhysicsWorld', () => {
     const transform = new TransformComponent(
       entity.id,
       FPVector3.FromFloat(0, 0, 0),
-      FPVector3.FromFloat(0, 0, 0),
+      FPQuaternion.Identity(),
     );
     const interpolation = new InterpolationComponent(transform.fpPosition, transform.fpRotation);
     entity.addComponent(transform);

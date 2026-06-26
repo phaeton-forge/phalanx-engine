@@ -1,11 +1,20 @@
 import { SoAComponent, defineSoASchema } from '@phalanx-engine/ecs';
-import { FP, FPVector3, type FixedPoint, type FPVector3 as FPVector3Type } from '@phalanx-engine/math';
+import {
+  FP,
+  FPVector3,
+  FPQuaternion,
+  type FixedPoint,
+  type FPVector3 as FPVector3Type,
+  type FPQuaternion as FPQuaternionType,
+} from '@phalanx-engine/math';
 
 /**
  * Transform SoA Schema
  *
  * Stores authoritative spatial state using fixed-point math for determinism.
- * All i64 fields store raw FixedPoint base values (BigInt64Array).
+ * Rotation is stored as a quaternion (qx/qy/qz/qw); the identity rotation has
+ * qw = FP._1 and the other components zero. All i64 fields store raw FixedPoint
+ * base values (BigInt64Array).
  */
 export const TransformSoASchema = defineSoASchema(
   {
@@ -15,6 +24,7 @@ export const TransformSoASchema = defineSoASchema(
     fpRotationX: 'i64',
     fpRotationY: 'i64',
     fpRotationZ: 'i64',
+    fpRotationW: 'i64',
   },
   'Transform',
 );
@@ -28,7 +38,11 @@ export const TRANSFORM_COMPONENT_TYPE: symbol = Symbol('Transform');
 /**
  * TransformComponent — SoA-backed deterministic spatial state for an entity.
  *
- * Renderer-neutral: exposes only fixed-point position and rotation.
+ * Renderer-neutral: exposes only fixed-point position and rotation. Rotation is
+ * authoritatively a quaternion (`fpRotation`); Euler angles (`fpRotationEuler`)
+ * and yaw (`fpRotationY`) are computed views over it, mirroring Unity's
+ * `Transform.rotation` / `Transform.eulerAngles`.
+ *
  * For hot-path access in systems, use the SoA store directly:
  * ```typescript
  * const store = entityManager.getOrCreateSoAStore(TransformSoASchema);
@@ -41,15 +55,15 @@ export class TransformComponent extends SoAComponent<typeof TransformSoASchema.d
   public static readonly soaSchema = TransformSoASchema;
 
   private readonly _fpPosition: FPVector3Type = { x: FP._0, y: FP._0, z: FP._0 };
-  private readonly _fpRotation: FPVector3Type = { x: FP._0, y: FP._0, z: FP._0 };
+  private readonly _fpRotation: FPQuaternionType = { x: FP._0, y: FP._0, z: FP._0, w: FP._1 };
 
   constructor(
     entityId: number,
     initialPosition?: FPVector3Type,
-    initialRotation?: FPVector3Type,
+    initialRotation?: FPQuaternionType,
   ) {
     const position = initialPosition ?? FPVector3.Zero;
-    const rotation = initialRotation ?? FPVector3.Zero;
+    const rotation = initialRotation ?? FPQuaternion.Identity();
 
     super(TransformSoASchema, entityId, {
       fpPositionX: FP.ToRaw(position.x),
@@ -58,6 +72,7 @@ export class TransformComponent extends SoAComponent<typeof TransformSoASchema.d
       fpRotationX: FP.ToRaw(rotation.x),
       fpRotationY: FP.ToRaw(rotation.y),
       fpRotationZ: FP.ToRaw(rotation.z),
+      fpRotationW: FP.ToRaw(rotation.w),
     });
   }
 
@@ -82,34 +97,47 @@ export class TransformComponent extends SoAComponent<typeof TransformSoASchema.d
     this.store.arrays.fpPositionZ[idx] = FP.ToRaw(value.z);
   }
 
-  public get fpRotation(): FPVector3Type {
+  /** Authoritative rotation quaternion, read/written directly to SoA storage. */
+  public get fpRotation(): FPQuaternionType {
     const idx = this.getIndex();
     if (idx === -1) return this._fpRotation;
 
     this._fpRotation.x = FP.FromRaw(this.store.arrays.fpRotationX[idx]);
     this._fpRotation.y = FP.FromRaw(this.store.arrays.fpRotationY[idx]);
     this._fpRotation.z = FP.FromRaw(this.store.arrays.fpRotationZ[idx]);
+    this._fpRotation.w = FP.FromRaw(this.store.arrays.fpRotationW[idx]);
     return this._fpRotation;
   }
 
-  public set fpRotation(value: FPVector3Type) {
+  public set fpRotation(value: FPQuaternionType) {
     const idx = this.getIndex();
     if (idx === -1) return;
 
     this.store.arrays.fpRotationX[idx] = FP.ToRaw(value.x);
     this.store.arrays.fpRotationY[idx] = FP.ToRaw(value.y);
     this.store.arrays.fpRotationZ[idx] = FP.ToRaw(value.z);
+    this.store.arrays.fpRotationW[idx] = FP.ToRaw(value.w);
   }
 
+  /**
+   * Computed Euler-angle view (radians, XYZ order) of the authoritative
+   * quaternion. Not cached — recomputed on every access, like Unity's
+   * `Transform.eulerAngles`.
+   */
+  public get fpRotationEuler(): FPVector3Type {
+    return FPQuaternion.ToEulerXYZ(this.fpRotation);
+  }
+
+  public set fpRotationEuler(value: FPVector3Type) {
+    this.fpRotation = FPQuaternion.FromEulerXYZ(value);
+  }
+
+  /** Convenience yaw (rotation around the Y/up axis), in radians. */
   public get fpRotationY(): FixedPoint {
-    const idx = this.getIndex();
-    if (idx === -1) return FP._0;
-    return FP.FromRaw(this.store.arrays.fpRotationY[idx]);
+    return this.fpRotationEuler.y;
   }
 
   public set fpRotationY(value: FixedPoint) {
-    const idx = this.getIndex();
-    if (idx === -1) return;
-    this.store.arrays.fpRotationY[idx] = FP.ToRaw(value);
+    this.fpRotation = FPQuaternion.FromAxisAngle(FPVector3.Up, value);
   }
 }

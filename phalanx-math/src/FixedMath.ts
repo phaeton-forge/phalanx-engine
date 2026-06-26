@@ -291,6 +291,17 @@ export const FP = {
 
     return angle;
   },
+
+  /**
+   * Arccosine via the atan2 identity: acos(x) = atan2(sqrt(1 - x*x), x).
+   * Input is clamped to [-1, 1] to avoid NaN from rounding error.
+   * Returns angle in radians within [0, PI].
+   */
+  Acos: (x: FixedPoint): FixedPoint => {
+    const clamped = FP.Clamp(x, FP.FromFloat(-1), FP._1);
+    const sinVal = FP.Sqrt(FP.Sub(FP._1, FP.Mul(clamped, clamped)));
+    return FP.Atan2(sinVal, clamped);
+  },
 };
 
 /**
@@ -541,6 +552,359 @@ export const FPVector3 = {
     x: v.x.toDecimal(),
     y: v.y.toDecimal(),
     z: v.z.toDecimal(),
+  }),
+};
+
+/**
+ * Fixed-point quaternion interface.
+ * Stored in (x, y, z, w) order where w is the scalar component.
+ */
+export interface FPQuaternion {
+  x: FixedPoint;
+  y: FixedPoint;
+  z: FixedPoint;
+  w: FixedPoint;
+}
+
+/**
+ * FPQuaternion - Deterministic fixed-point quaternion utilities (Unity/Quantum style).
+ *
+ * All rotations are represented as unit quaternions. Conversions use the XYZ
+ * Euler order (matching Unity's Transform), with all intermediate math kept in
+ * FixedPoint for lockstep determinism.
+ */
+export const FPQuaternion = {
+  // ============ Creation ============
+
+  /** Identity rotation (no rotation): { 0, 0, 0, 1 } */
+  Identity: (): FPQuaternion => ({ x: FP._0, y: FP._0, z: FP._0, w: FP._1 }),
+
+  /** Create a quaternion from FixedPoint components */
+  Create: (
+    x: FixedPoint,
+    y: FixedPoint,
+    z: FixedPoint,
+    w: FixedPoint,
+  ): FPQuaternion => ({ x, y, z, w }),
+
+  /** Create a quaternion from float components */
+  FromFloat: (x: number, y: number, z: number, w: number): FPQuaternion => ({
+    x: FP.FromFloat(x),
+    y: FP.FromFloat(y),
+    z: FP.FromFloat(z),
+    w: FP.FromFloat(w),
+  }),
+
+  // ============ Rotation constructors ============
+
+  /**
+   * Build a rotation of `angle` radians around `axis`.
+   * `axis` is assumed to be unit length (caller's responsibility).
+   */
+  FromAxisAngle: (axis: FPVector3, angle: FixedPoint): FPQuaternion => {
+    const half = FP.Mul(angle, FP.FromFloat(0.5));
+    const s = FP.Sin(half);
+    const c = FP.Cos(half);
+    return {
+      x: FP.Mul(axis.x, s),
+      y: FP.Mul(axis.y, s),
+      z: FP.Mul(axis.z, s),
+      w: c,
+    };
+  },
+
+  /**
+   * Build a rotation that aligns the +Z axis with `forwardDir`, using `upDir`
+   * (default FPVector3.Up) as the reference up direction.
+   */
+  LookRotation: (
+    forwardDir: FPVector3,
+    upDir: FPVector3 = FPVector3.Up,
+  ): FPQuaternion => {
+    const forward = FPVector3.Normalize(forwardDir);
+    // Degenerate forward (zero-length): Normalize yields the zero vector, so no
+    // orthonormal basis exists. Fall back to a well-defined unit quaternion.
+    if (FP.Eq(FPVector3.SqrMagnitude(forward), FP._0)) {
+      return FPQuaternion.Identity();
+    }
+
+    let rightRaw = FPVector3.Cross(upDir, forward);
+    // up parallel to forward => cross product is ~zero. Retry with an alternate
+    // reference up axis guaranteed not to be parallel to a unit forward.
+    if (FP.Eq(FPVector3.SqrMagnitude(rightRaw), FP._0)) {
+      rightRaw = FPVector3.Cross(FPVector3.Forward, forward);
+      if (FP.Eq(FPVector3.SqrMagnitude(rightRaw), FP._0)) {
+        rightRaw = FPVector3.Cross(FPVector3.Right, forward);
+      }
+      if (FP.Eq(FPVector3.SqrMagnitude(rightRaw), FP._0)) {
+        return FPQuaternion.Identity();
+      }
+    }
+    const right = FPVector3.Normalize(rightRaw);
+    const up = FPVector3.Cross(forward, right);
+
+    // Rotation matrix columns: right (m*0), up (m*1), forward (m*2)
+    const m00 = right.x;
+    const m10 = right.y;
+    const m20 = right.z;
+    const m01 = up.x;
+    const m11 = up.y;
+    const m21 = up.z;
+    const m02 = forward.x;
+    const m12 = forward.y;
+    const m22 = forward.z;
+
+    const quarter = FP.FromFloat(0.25);
+    const trace = FP.Add(FP.Add(m00, m11), m22);
+
+    if (FP.Gt(trace, FP._0)) {
+      const s = FP.Mul(FP.Sqrt(FP.Add(trace, FP._1)), FP.FromInt(2));
+      return {
+        w: FP.Mul(quarter, s),
+        x: FP.Div(FP.Sub(m21, m12), s),
+        y: FP.Div(FP.Sub(m02, m20), s),
+        z: FP.Div(FP.Sub(m10, m01), s),
+      };
+    }
+
+    if (FP.Gt(m00, m11) && FP.Gt(m00, m22)) {
+      const s = FP.Mul(
+        FP.Sqrt(FP.Add(FP.Sub(FP.Sub(FP._1, m11), m22), m00)),
+        FP.FromInt(2),
+      );
+      return {
+        w: FP.Div(FP.Sub(m21, m12), s),
+        x: FP.Mul(quarter, s),
+        y: FP.Div(FP.Add(m01, m10), s),
+        z: FP.Div(FP.Add(m02, m20), s),
+      };
+    }
+
+    if (FP.Gt(m11, m22)) {
+      const s = FP.Mul(
+        FP.Sqrt(FP.Add(FP.Sub(FP.Sub(FP._1, m00), m22), m11)),
+        FP.FromInt(2),
+      );
+      return {
+        w: FP.Div(FP.Sub(m02, m20), s),
+        x: FP.Div(FP.Add(m01, m10), s),
+        y: FP.Mul(quarter, s),
+        z: FP.Div(FP.Add(m12, m21), s),
+      };
+    }
+
+    const s = FP.Mul(
+      FP.Sqrt(FP.Add(FP.Sub(FP.Sub(FP._1, m00), m11), m22)),
+      FP.FromInt(2),
+    );
+    return {
+      w: FP.Div(FP.Sub(m10, m01), s),
+      x: FP.Div(FP.Add(m02, m20), s),
+      y: FP.Div(FP.Add(m12, m21), s),
+      z: FP.Mul(quarter, s),
+    };
+  },
+
+  /**
+   * Build a quaternion from Euler angles (radians) applied in XYZ order.
+   */
+  FromEulerXYZ: (euler: FPVector3): FPQuaternion => {
+    const half = FP.FromFloat(0.5);
+    const c1 = FP.Cos(FP.Mul(euler.x, half));
+    const s1 = FP.Sin(FP.Mul(euler.x, half));
+    const c2 = FP.Cos(FP.Mul(euler.y, half));
+    const s2 = FP.Sin(FP.Mul(euler.y, half));
+    const c3 = FP.Cos(FP.Mul(euler.z, half));
+    const s3 = FP.Sin(FP.Mul(euler.z, half));
+
+    return {
+      x: FP.Add(FP.Mul(FP.Mul(s1, c2), c3), FP.Mul(FP.Mul(c1, s2), s3)),
+      y: FP.Sub(FP.Mul(FP.Mul(c1, s2), c3), FP.Mul(FP.Mul(s1, c2), s3)),
+      z: FP.Add(FP.Mul(FP.Mul(c1, c2), s3), FP.Mul(FP.Mul(s1, s2), c3)),
+      w: FP.Sub(FP.Mul(FP.Mul(c1, c2), c3), FP.Mul(FP.Mul(s1, s2), s3)),
+    };
+  },
+
+  /**
+   * Extract Euler angles (radians, XYZ order) from a quaternion.
+   * The pitch sine is clamped to [-1, 1] to avoid NaN at the gimbal poles.
+   */
+  ToEulerXYZ: (q: FPQuaternion): FPVector3 => {
+    const two = FP.FromInt(2);
+    // The matrix-extraction formulas below assume a unit quaternion.
+    const { x, y, z, w } = FPQuaternion.Normalize(q);
+
+    const m13 = FP.Mul(two, FP.Add(FP.Mul(x, z), FP.Mul(w, y)));
+    const sinY = FP.Clamp(m13, FP.FromFloat(-1), FP._1);
+    const cosY = FP.Sqrt(FP.Sub(FP._1, FP.Mul(sinY, sinY)));
+    const yAngle = FP.Atan2(sinY, cosY);
+
+    // Gimbal-lock epsilon: when cos(pitch) is this small the X/Z extraction
+    // denominators collapse to ~0, so fall back to the stable lock branch.
+    const threshold = FP.FromFloat(0.01);
+    let xAngle: FixedPoint;
+    let zAngle: FixedPoint;
+
+    if (FP.Gt(cosY, threshold)) {
+      const m23 = FP.Mul(two, FP.Sub(FP.Mul(y, z), FP.Mul(w, x)));
+      const m33 = FP.Sub(FP._1, FP.Mul(two, FP.Add(FP.Mul(x, x), FP.Mul(y, y))));
+      const m12 = FP.Mul(two, FP.Sub(FP.Mul(x, y), FP.Mul(w, z)));
+      const m11 = FP.Sub(FP._1, FP.Mul(two, FP.Add(FP.Mul(y, y), FP.Mul(z, z))));
+      xAngle = FP.Atan2(FP.Neg(m23), m33);
+      zAngle = FP.Atan2(FP.Neg(m12), m11);
+    } else {
+      // Gimbal lock: fix roll at zero and derive pitch from the remaining terms.
+      const m32 = FP.Mul(two, FP.Add(FP.Mul(y, z), FP.Mul(w, x)));
+      const m22 = FP.Sub(FP._1, FP.Mul(two, FP.Add(FP.Mul(x, x), FP.Mul(z, z))));
+      xAngle = FP.Atan2(m32, m22);
+      zAngle = FP._0;
+    }
+
+    return { x: xAngle, y: yAngle, z: zAngle };
+  },
+
+  // ============ Operations ============
+
+  /** Hamilton product a * b (applies rotation b first, then a). */
+  Mul: (a: FPQuaternion, b: FPQuaternion): FPQuaternion => ({
+    x: FP.Add(
+      FP.Add(FP.Mul(a.w, b.x), FP.Mul(a.x, b.w)),
+      FP.Sub(FP.Mul(a.y, b.z), FP.Mul(a.z, b.y)),
+    ),
+    y: FP.Add(
+      FP.Sub(FP.Mul(a.w, b.y), FP.Mul(a.x, b.z)),
+      FP.Add(FP.Mul(a.y, b.w), FP.Mul(a.z, b.x)),
+    ),
+    z: FP.Add(
+      FP.Add(FP.Mul(a.w, b.z), FP.Mul(a.x, b.y)),
+      FP.Sub(FP.Mul(a.z, b.w), FP.Mul(a.y, b.x)),
+    ),
+    w: FP.Sub(
+      FP.Sub(FP.Mul(a.w, b.w), FP.Mul(a.x, b.x)),
+      FP.Add(FP.Mul(a.y, b.y), FP.Mul(a.z, b.z)),
+    ),
+  }),
+
+  /** Dot product of two quaternions. */
+  Dot: (a: FPQuaternion, b: FPQuaternion): FixedPoint =>
+    FP.Add(
+      FP.Add(FP.Mul(a.x, b.x), FP.Mul(a.y, b.y)),
+      FP.Add(FP.Mul(a.z, b.z), FP.Mul(a.w, b.w)),
+    ),
+
+  /** Magnitude (length) of a quaternion. */
+  Magnitude: (q: FPQuaternion): FixedPoint =>
+    FP.Sqrt(FPQuaternion.SqrMagnitude(q)),
+
+  /** Squared magnitude of a quaternion (faster than Magnitude). */
+  SqrMagnitude: (q: FPQuaternion): FixedPoint =>
+    FP.Add(
+      FP.Add(FP.Mul(q.x, q.x), FP.Mul(q.y, q.y)),
+      FP.Add(FP.Mul(q.z, q.z), FP.Mul(q.w, q.w)),
+    ),
+
+  /** Normalize a quaternion. Returns Identity() if magnitude is zero. */
+  Normalize: (q: FPQuaternion): FPQuaternion => {
+    const mag = FPQuaternion.Magnitude(q);
+    if (mag.isZero()) {
+      return FPQuaternion.Identity();
+    }
+    return {
+      x: FP.Div(q.x, mag),
+      y: FP.Div(q.y, mag),
+      z: FP.Div(q.z, mag),
+      w: FP.Div(q.w, mag),
+    };
+  },
+
+  /** Conjugate of a quaternion: { -x, -y, -z, w }. */
+  Conjugate: (q: FPQuaternion): FPQuaternion => ({
+    x: FP.Neg(q.x),
+    y: FP.Neg(q.y),
+    z: FP.Neg(q.z),
+    w: q.w,
+  }),
+
+  /** Inverse of a quaternion: Conjugate(q) / sqrMagnitude. */
+  Inverse: (q: FPQuaternion): FPQuaternion => {
+    const sqrMag = FPQuaternion.SqrMagnitude(q);
+    if (sqrMag.isZero()) {
+      return FPQuaternion.Identity();
+    }
+    const conj = FPQuaternion.Conjugate(q);
+    return {
+      x: FP.Div(conj.x, sqrMag),
+      y: FP.Div(conj.y, sqrMag),
+      z: FP.Div(conj.z, sqrMag),
+      w: FP.Div(conj.w, sqrMag),
+    };
+  },
+
+  // ============ Interpolation ============
+
+  /**
+   * Spherical linear interpolation between two rotations.
+   * Takes the shortest arc and falls back to normalized LERP for near-parallel
+   * inputs to avoid division by a near-zero sine.
+   */
+  Slerp: (a: FPQuaternion, b: FPQuaternion, t: FixedPoint): FPQuaternion => {
+    let dot = FPQuaternion.Dot(a, b);
+    let bx = b.x;
+    let by = b.y;
+    let bz = b.z;
+    let bw = b.w;
+
+    // Take the shortest path by flipping b when the dot product is negative.
+    if (FP.Lt(dot, FP._0)) {
+      bx = FP.Neg(bx);
+      by = FP.Neg(by);
+      bz = FP.Neg(bz);
+      bw = FP.Neg(bw);
+      dot = FP.Neg(dot);
+    }
+
+    // Near-parallel: normalized LERP avoids precision loss near sin(0).
+    if (FP.Gte(dot, FP.FromFloat(0.9995))) {
+      return FPQuaternion.Normalize({
+        x: FP.Add(a.x, FP.Mul(t, FP.Sub(bx, a.x))),
+        y: FP.Add(a.y, FP.Mul(t, FP.Sub(by, a.y))),
+        z: FP.Add(a.z, FP.Mul(t, FP.Sub(bz, a.z))),
+        w: FP.Add(a.w, FP.Mul(t, FP.Sub(bw, a.w))),
+      });
+    }
+
+    const theta0 = FP.Acos(dot);
+    const theta = FP.Mul(theta0, t);
+    const sinTheta0 = FP.Sin(theta0);
+    const s0 = FP.Div(FP.Sin(FP.Sub(theta0, theta)), sinTheta0);
+    const s1 = FP.Div(FP.Sin(theta), sinTheta0);
+
+    return {
+      x: FP.Add(FP.Mul(s0, a.x), FP.Mul(s1, bx)),
+      y: FP.Add(FP.Mul(s0, a.y), FP.Mul(s1, by)),
+      z: FP.Add(FP.Mul(s0, a.z), FP.Mul(s1, bz)),
+      w: FP.Add(FP.Mul(s0, a.w), FP.Mul(s1, bw)),
+    };
+  },
+
+  /** Rotate a vector by a quaternion: q * [v, 0] * Conjugate(q). */
+  RotateVector: (q: FPQuaternion, v: FPVector3): FPVector3 => {
+    const vQuat: FPQuaternion = { x: v.x, y: v.y, z: v.z, w: FP._0 };
+    const result = FPQuaternion.Mul(
+      FPQuaternion.Mul(q, vQuat),
+      FPQuaternion.Conjugate(q),
+    );
+    return { x: result.x, y: result.y, z: result.z };
+  },
+
+  // ============ Conversion ============
+
+  /** Convert to a plain object with float values (for display/serialization). */
+  ToFloat: (q: FPQuaternion): { x: number; y: number; z: number; w: number } => ({
+    x: q.x.toDecimal(),
+    y: q.y.toDecimal(),
+    z: q.z.toDecimal(),
+    w: q.w.toDecimal(),
   }),
 };
 

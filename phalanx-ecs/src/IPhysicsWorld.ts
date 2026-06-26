@@ -5,7 +5,8 @@
  */
 export interface InterpolatedTransformSample {
   position: { x: number; y: number; z: number };
-  rotation: { x: number; y: number; z: number };
+  /** Interpolated rotation as a float quaternion (x, y, z, w). */
+  rotation: { x: number; y: number; z: number; w: number };
 }
 
 /**
