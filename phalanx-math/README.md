@@ -15,7 +15,7 @@ pnpm add @phalanx-engine/math
 ## Usage
 
 ```typescript
-import { FP, FPVector2, FPVector3 } from '@phalanx-engine/math';
+import { FP, FPVector2, FPVector3, FPQuaternion } from '@phalanx-engine/math';
 
 // Create fixed-point numbers
 const speed = FP.FromFloat(5.5);
@@ -33,8 +33,14 @@ const position = FPVector3.FromFloat(10, 0, 20);
 const target = FPVector3.FromFloat(15, 0, 25);
 const dist = FPVector3.Distance(position, target);
 
+// Quaternion rotations (deterministic, XYZ Euler order)
+const yaw = FPQuaternion.FromAxisAngle(FPVector3.Up, FP.PiOver2); // 90° around +Y
+const facing = FPQuaternion.RotateVector(yaw, FPVector3.Forward); // rotate a direction
+const blended = FPQuaternion.Slerp(FPQuaternion.Identity(), yaw, FP.FromFloat(0.5));
+
 // Convert back to numbers for rendering
 console.log(FP.ToFloat(dist));
+console.log(FPQuaternion.ToFloat(blended)); // { x, y, z, w }
 ```
 
 ## API
@@ -67,6 +73,7 @@ Unified namespace for fixed-point operations (Unity/Quantum style):
 
 #### Trigonometry
 - `FP.Sin`, `FP.Cos`, `FP.Atan2` - Deterministic approximations
+- `FP.Acos` - Arccosine via the `atan2` identity; input clamped to `[-1, 1]`, returns radians in `[0, PI]`
 
 ### FPVector2
 
@@ -107,6 +114,36 @@ Unified namespace for fixed-point operations (Unity/Quantum style):
 - `FPVector3.Distance`, `FPVector3.SqrDistance` - Distance calculations
 - `FPVector3.Lerp` - Interpolation
 - `FPVector3.ToFloat` - Convert for rendering
+
+### FPQuaternion
+
+Deterministic fixed-point quaternion for entity rotations. Stored in `(x, y, z, w)` order where `w` is the scalar component. All conversions use the XYZ Euler order (matching Unity's `Transform`), with intermediate math kept in `FixedPoint` for lockstep determinism. The `FPQuaternion` type/interface is also exported as `FPQuaternionInterface`.
+
+#### Creation
+- `FPQuaternion.Identity()` - Identity rotation `{ 0, 0, 0, 1 }`
+- `FPQuaternion.Create(x, y, z, w)` - Create from FixedPoint components
+- `FPQuaternion.FromFloat(x, y, z, w)` - Create from numbers
+
+#### Rotation constructors
+- `FPQuaternion.FromAxisAngle(axis: FPVector3, angle: FixedPoint)` - Rotation of `angle` radians around `axis`. The `axis` is assumed to be unit length (the caller's responsibility).
+- `FPQuaternion.LookRotation(forwardDir: FPVector3, upDir?: FPVector3)` - Rotation aligning +Z with `forwardDir`, using `upDir` (default `FPVector3.Up`) as the reference up. Falls back to `Identity()` for degenerate inputs (zero-length forward, or up parallel to forward).
+- `FPQuaternion.FromEulerXYZ(euler: FPVector3)` - Build from Euler angles (radians) applied in XYZ order
+- `FPQuaternion.ToEulerXYZ(q: FPQuaternion)` - Extract Euler angles (radians, XYZ order); pitch sine is clamped to `[-1, 1]` to avoid NaN at the gimbal poles
+
+#### Base operations
+- `FPQuaternion.Mul(a, b)` - Hamilton product `a * b` (applies rotation `b` first, then `a`)
+- `FPQuaternion.Dot(a, b)` - Dot product
+- `FPQuaternion.Magnitude`, `FPQuaternion.SqrMagnitude` - Length (Unity naming)
+- `FPQuaternion.Normalize(q)` - Normalize; returns `Identity()` if magnitude is zero
+- `FPQuaternion.Conjugate(q)` - Conjugate `{ -x, -y, -z, w }`
+- `FPQuaternion.Inverse(q)` - Inverse `Conjugate(q) / sqrMagnitude`; returns `Identity()` if magnitude is zero
+
+#### Interpolation
+- `FPQuaternion.Slerp(a, b, t: FixedPoint)` - Spherical linear interpolation along the shortest arc; falls back to normalized LERP for near-parallel inputs
+- `FPQuaternion.RotateVector(q, v: FPVector3)` - Rotate a vector by a quaternion (`q * [v, 0] * Conjugate(q)`)
+
+#### Conversion
+- `FPQuaternion.ToFloat(q)` - Convert to `{ x, y, z, w }` floats for display/serialization
 
 ## Why Fixed-Point?
 

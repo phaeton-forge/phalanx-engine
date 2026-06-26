@@ -125,7 +125,7 @@ import {
   TRANSFORM_COMPONENT_TYPE,
   INTERPOLATION_COMPONENT_TYPE,
 } from '@phalanx-engine/physics';
-import { FP, FPVector3 } from '@phalanx-engine/math';
+import { FP, FPVector3, FPQuaternion } from '@phalanx-engine/math';
 
 // Register canonical component type symbols from phalanx-physics
 export const ComponentType = createComponentTypeRegistry({
@@ -144,7 +144,11 @@ class MovementSystem extends GameSystem {
 class RenderSystem extends GameSystem {
   public override update(_dt: number): void {
     const sample = this.physics?.getInterpolatedTransform(entityId);
-    if (sample) mesh.position.set(sample.position.x, sample.position.y, sample.position.z);
+    if (sample) {
+      mesh.position.set(sample.position.x, sample.position.y, sample.position.z);
+      // sample.rotation is a float quaternion { x, y, z, w } — apply it as-is.
+      mesh.quaternion.set(sample.rotation.x, sample.rotation.y, sample.rotation.z, sample.rotation.w);
+    }
   }
 }
 const movementSystem = new MovementSystem();
@@ -176,8 +180,9 @@ world.start();
 // 4. Add transform, interpolation, and physics body to entities
 declare const entity: { id: number; addComponent(c: unknown): void };
 const fpPosition = FPVector3.FromFloat(0, 0, 0);
-entity.addComponent(new TransformComponent(entity.id, fpPosition));
-entity.addComponent(new InterpolationComponent(fpPosition));
+const fpRotation = FPQuaternion.Identity();
+entity.addComponent(new TransformComponent(entity.id, fpPosition, fpRotation));
+entity.addComponent(new InterpolationComponent(fpPosition, fpRotation));
 entity.addComponent(new PhysicsBodyComponent(entity.id, { radius: FP.FromFloat(1.0) }));
 world.entityManager.addEntity(entity as any);
 
@@ -282,7 +287,7 @@ class PhysicsWorld {
 
 - **`getSystems()`** — Returns both `physicsSystem` (register as tick system) and `interpolationSystem` (register as frame system).
 - **`getEntityPosition(entityId)`** — Fixed-point position for gameplay queries (e.g. ability targeting).
-- **`getInterpolatedTransform(entityId)`** — Interpolated float position/rotation for rendering, populated after `InterpolationSystem` runs.
+- **`getInterpolatedTransform(entityId)`** — Interpolated float transform for rendering, populated after `InterpolationSystem` runs. Returns an `InterpolatedTransformSample` with `position: { x, y, z }` and `rotation: { x, y, z, w }` — rotation is a float quaternion (slerped between tick samples), apply it directly to a mesh quaternion.
 
 - **`applyImpulse(entityId, vx, vz)`** — Set body velocity (replaces, does not accumulate). Re-enables previously ejected bodies.
 - **`isSettled(threshold?)`** — Pure query: `true` when all non-static, non-ignored bodies are below velocity threshold (default from config, falling back to `FP.FromFloat(0.01)`).
@@ -314,15 +319,18 @@ class TransformComponent extends SoAComponent<typeof TransformSoASchema.definiti
   static readonly soaSchema: typeof TransformSoASchema;
   readonly type: symbol; // TRANSFORM_COMPONENT_TYPE
 
-  constructor(entityId: number, initialPosition?: FPVector3, initialRotation?: FPVector3);
+  constructor(entityId: number, initialPosition?: FPVector3, initialRotation?: FPQuaternion);
 
-  fpPosition: FPVector3;   // get/set — authoritative fixed-point position
-  fpRotation: FPVector3;   // get/set — authoritative fixed-point rotation (radians)
-  fpRotationY: FixedPoint; // get/set — convenience for Y-axis rotation
+  fpPosition: FPVector3;        // get/set — authoritative fixed-point position
+  fpRotation: FPQuaternion;     // get/set — authoritative rotation quaternion
+  fpRotationEuler: FPVector3;   // get/set — computed Euler view (radians, XYZ order)
+  fpRotationY: FixedPoint;      // get/set — convenience Y-yaw (radians)
 }
 ```
 
-`TransformSoASchema` fields: `fpPositionX/Y/Z`, `fpRotationX/Y/Z` (all `i64`).
+Rotation is authoritatively a quaternion (`fpRotation`). `fpRotationEuler` (XYZ Euler radians) and `fpRotationY` (yaw) are computed views over it — recomputed on each access, mirroring Unity's `Transform.rotation` / `Transform.eulerAngles`. Setting `fpRotationEuler` calls `FPQuaternion.FromEulerXYZ`; setting `fpRotationY` builds a yaw rotation around `FPVector3.Up`.
+
+`TransformSoASchema` fields: `fpPositionX/Y/Z`, `fpRotationX/Y/Z/W` (all `i64`). Rotation defaults to the identity quaternion (`w = 1`).
 
 ### `InterpolationComponent`
 
@@ -330,10 +338,10 @@ class TransformComponent extends SoAComponent<typeof TransformSoASchema.definiti
 class InterpolationComponent implements IComponent {
   readonly type: symbol; // INTERPOLATION_COMPONENT_TYPE
 
-  constructor(initialPosition?: FPVector3, initialRotation?: FPVector3);
+  constructor(initialPosition?: FPVector3, initialRotation?: FPQuaternion);
 
   snapshot(): void;  // copy current → previous (called by InterpolationSystem before tick)
-  capture(fpPosition: FPVector3, fpRotation: FPVector3): void; // capture authoritative state after tick
+  capture(fpPosition: FPVector3, fpRotation: FPQuaternion): void; // capture authoritative state after tick
 }
 ```
 
