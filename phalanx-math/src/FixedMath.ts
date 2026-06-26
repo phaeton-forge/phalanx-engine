@@ -622,7 +622,25 @@ export const FPQuaternion = {
     upDir: FPVector3 = FPVector3.Up,
   ): FPQuaternion => {
     const forward = FPVector3.Normalize(forwardDir);
-    const right = FPVector3.Normalize(FPVector3.Cross(upDir, forward));
+    // Degenerate forward (zero-length): Normalize yields the zero vector, so no
+    // orthonormal basis exists. Fall back to a well-defined unit quaternion.
+    if (FP.Eq(FPVector3.SqrMagnitude(forward), FP._0)) {
+      return FPQuaternion.Identity();
+    }
+
+    let rightRaw = FPVector3.Cross(upDir, forward);
+    // up parallel to forward => cross product is ~zero. Retry with an alternate
+    // reference up axis guaranteed not to be parallel to a unit forward.
+    if (FP.Eq(FPVector3.SqrMagnitude(rightRaw), FP._0)) {
+      rightRaw = FPVector3.Cross(FPVector3.Forward, forward);
+      if (FP.Eq(FPVector3.SqrMagnitude(rightRaw), FP._0)) {
+        rightRaw = FPVector3.Cross(FPVector3.Right, forward);
+      }
+      if (FP.Eq(FPVector3.SqrMagnitude(rightRaw), FP._0)) {
+        return FPQuaternion.Identity();
+      }
+    }
+    const right = FPVector3.Normalize(rightRaw);
     const up = FPVector3.Cross(forward, right);
 
     // Rotation matrix columns: right (m*0), up (m*1), forward (m*2)

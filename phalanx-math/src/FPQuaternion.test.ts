@@ -83,4 +83,29 @@ describe('FPQuaternion', () => {
     expect(FP.ToFloat(q.z)).toBeCloseTo(0, 3);
     expect(FP.ToFloat(q.w)).toBeCloseTo(1, 3);
   });
+
+  it('LookRotation(zero forward) returns the Identity unit quaternion', () => {
+    const q = FPQuaternion.LookRotation(FPVector3.Zero);
+    // Must be a valid unit quaternion, not NaN/zero.
+    expect(FP.ToFloat(FPQuaternion.Magnitude(q))).toBeCloseTo(1, 4);
+    expect(FP.ToFloat(q.x)).toBeCloseTo(0, 4);
+    expect(FP.ToFloat(q.y)).toBeCloseTo(0, 4);
+    expect(FP.ToFloat(q.z)).toBeCloseTo(0, 4);
+    expect(FP.ToFloat(q.w)).toBeCloseTo(1, 4);
+  });
+
+  it('LookRotation with up parallel to forward returns a valid unit quaternion', () => {
+    // forward == default up (0,1,0): cross(up, forward) is zero, exercising the fallback.
+    const q = FPQuaternion.LookRotation(FPVector3.Up);
+    expect(FP.ToFloat(FPQuaternion.Magnitude(q))).toBeCloseTo(1, 4);
+    expect(Number.isNaN(FP.ToFloat(q.x))).toBe(false);
+    expect(Number.isNaN(FP.ToFloat(q.y))).toBe(false);
+    expect(Number.isNaN(FP.ToFloat(q.z))).toBe(false);
+    expect(Number.isNaN(FP.ToFloat(q.w))).toBe(false);
+  });
+
+  it('LookRotation with explicit up parallel to forward stays unit length', () => {
+    const q = FPQuaternion.LookRotation(FPVector3.Forward, FPVector3.Forward);
+    expect(FP.ToFloat(FPQuaternion.Magnitude(q))).toBeCloseTo(1, 4);
+  });
 });
