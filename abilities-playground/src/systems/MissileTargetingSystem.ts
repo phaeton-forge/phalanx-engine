@@ -4,8 +4,13 @@ import {
   type SystemContext,
 } from '@phalanx-engine/ecs';
 import { TransformSoASchema } from '@phalanx-engine/physics';
-import { FP } from '@phalanx-engine/math';
-import * as THREE from 'three';
+import {
+  FP,
+  FPVector3,
+  FPQuaternion,
+  type FixedPoint,
+  type FPQuaternion as FPQuaternionType,
+} from '@phalanx-engine/math';
 import {
   MISSILE_TARGETING_TURN,
   MISSILE_CRUISE_TURN,
@@ -13,10 +18,9 @@ import {
 import { ComponentType } from '../components';
 import type { MissileComponent } from '../components/MissileComponent';
 
-const FORWARD = new THREE.Vector3(0, 0, 1);
-const _dir = new THREE.Vector3();
-const _cur = new THREE.Quaternion();
-const _target = new THREE.Quaternion();
+const FP_MISSILE_TARGETING_TURN = FP.FromFloat(MISSILE_TARGETING_TURN);
+const FP_MISSILE_CRUISE_TURN = FP.FromFloat(MISSILE_CRUISE_TURN);
+
 type AimMode = 'level' | 'direct';
 
 export class MissileTargetingSystem extends GameSystem {
@@ -40,76 +44,89 @@ export class MissileTargetingSystem extends GameSystem {
       const mc = missile.getComponent<MissileComponent>(ComponentType.Missile);
       if (!mc) continue;
 
-      if (mc.phase === 'targeting') {
-        this.slerpTowardTarget(missile.id, mc, MISSILE_TARGETING_TURN, 'level');
-        mc.targetingTicksRemaining -= 1;
-        if (mc.targetingTicksRemaining <= 0) {
-          this.faceTarget(missile.id, mc, 'level');
-          mc.phase = 'cruise';
+      if (mc.phase === 'approach') {
+        const turn =
+          mc.approachTicksRemaining > 0
+            ? FP_MISSILE_TARGETING_TURN
+            : FP_MISSILE_CRUISE_TURN;
+        this.slerpTowardTarget(missile.id, mc, turn, 'level');
+        if (mc.approachTicksRemaining > 0) {
+          mc.approachTicksRemaining -= 1;
         }
-      } else if (mc.phase === 'cruise') {
-        this.slerpTowardTarget(missile.id, mc, MISSILE_CRUISE_TURN, 'level');
       } else if (mc.phase === 'attack') {
-        this.slerpTowardTarget(missile.id, mc, MISSILE_CRUISE_TURN, 'direct');
+        this.slerpTowardTarget(
+          missile.id,
+          mc,
+          FP_MISSILE_CRUISE_TURN,
+          'direct',
+        );
       }
     }
+  }
+
+  private readRotation(tIdx: number): FPQuaternionType {
+    const ax = this.transformStore.arrays;
+    return {
+      x: FP.FromRaw(ax.fpRotationX[tIdx]),
+      y: FP.FromRaw(ax.fpRotationY[tIdx]),
+      z: FP.FromRaw(ax.fpRotationZ[tIdx]),
+      w: FP.FromRaw(ax.fpRotationW[tIdx]),
+    };
+  }
+
+  private writeRotation(tIdx: number, q: FPQuaternionType): void {
+    const ax = this.transformStore.arrays;
+    ax.fpRotationX[tIdx] = FP.ToRaw(q.x);
+    ax.fpRotationY[tIdx] = FP.ToRaw(q.y);
+    ax.fpRotationZ[tIdx] = FP.ToRaw(q.z);
+    ax.fpRotationW[tIdx] = FP.ToRaw(q.w);
   }
 
   private slerpTowardTarget(
     missileId: number,
     mc: MissileComponent,
-    turn: number,
-    aimMode: AimMode
+    turn: FixedPoint,
+    aimMode: AimMode,
   ): void {
-    if (!this.buildTargetQuaternion(missileId, mc, aimMode)) return;
+    const target = this.buildTargetQuaternion(missileId, mc, aimMode);
+    if (!target) return;
 
-    _cur.set(mc.qx, mc.qy, mc.qz, mc.qw);
-    _cur.slerp(_target, turn);
-    mc.qx = _cur.x;
-    mc.qy = _cur.y;
-    mc.qz = _cur.z;
-    mc.qw = _cur.w;
-  }
+    const tIdx = this.transformStore.indexOf(missileId);
+    if (tIdx === -1) return;
 
-  private faceTarget(
-    missileId: number,
-    mc: MissileComponent,
-    aimMode: AimMode
-  ): void {
-    if (!this.buildTargetQuaternion(missileId, mc, aimMode)) return;
-
-    mc.qx = _target.x;
-    mc.qy = _target.y;
-    mc.qz = _target.z;
-    mc.qw = _target.w;
+    const next = FPQuaternion.Slerp(this.readRotation(tIdx), target, turn);
+    this.writeRotation(tIdx, next);
   }
 
   private buildTargetQuaternion(
     missileId: number,
     mc: MissileComponent,
-    aimMode: AimMode
-  ): boolean {
+    aimMode: AimMode,
+  ): FPQuaternionType | null {
     const tIdx = this.transformStore.indexOf(missileId);
     const ttIdx = this.entityManager.getEntity(mc.targetEntityId)
       ? this.transformStore.indexOf(mc.targetEntityId)
       : -1;
-    if (tIdx === -1 || ttIdx === -1) return false;
+    if (tIdx === -1 || ttIdx === -1) return null;
 
     const ax = this.transformStore.arrays;
-    _dir.set(
-      FP.ToFloat(FP.FromRaw(ax.fpPositionX[ttIdx])) -
-        FP.ToFloat(FP.FromRaw(ax.fpPositionX[tIdx])),
-      aimMode === 'direct'
-        ? FP.ToFloat(FP.FromRaw(ax.fpPositionY[ttIdx])) -
-            FP.ToFloat(FP.FromRaw(ax.fpPositionY[tIdx]))
-        : 0,
-      FP.ToFloat(FP.FromRaw(ax.fpPositionZ[ttIdx])) -
-        FP.ToFloat(FP.FromRaw(ax.fpPositionZ[tIdx]))
-    );
-    if (_dir.lengthSq() < 1e-8) return false;
-    _dir.normalize();
+    const missilePos = {
+      x: FP.FromRaw(ax.fpPositionX[tIdx]),
+      y: FP.FromRaw(ax.fpPositionY[tIdx]),
+      z: FP.FromRaw(ax.fpPositionZ[tIdx]),
+    };
+    const targetPos = {
+      x: FP.FromRaw(ax.fpPositionX[ttIdx]),
+      y: FP.FromRaw(ax.fpPositionY[ttIdx]),
+      z: FP.FromRaw(ax.fpPositionZ[ttIdx]),
+    };
 
-    _target.setFromUnitVectors(FORWARD, _dir);
-    return true;
+    let dir = FPVector3.Sub(targetPos, missilePos);
+    if (aimMode === 'level') {
+      dir = { x: dir.x, y: FP._0, z: dir.z };
+    }
+    if (FP.Eq(FPVector3.SqrMagnitude(dir), FP._0)) return null;
+
+    return FPQuaternion.LookRotation(dir);
   }
 }

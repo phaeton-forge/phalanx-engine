@@ -1,6 +1,6 @@
 import { GameSystem } from '@phalanx-engine/ecs';
 import type { SoAComponentStore, SystemContext } from '@phalanx-engine/ecs';
-import { FP } from '@phalanx-engine/math';
+import { FP, FPQuaternion } from '@phalanx-engine/math';
 import type { FixedPoint } from '@phalanx-engine/math';
 import { TransformSoASchema } from '@phalanx-engine/physics';
 import { UNIT_TURN_SPEED_RADIANS_PER_TICK } from '../config/constants';
@@ -39,6 +39,27 @@ export class RotationSystem extends GameSystem {
     this.transformStore = this.entityManager.getOrCreateSoAStore(TransformSoASchema);
   }
 
+  private readRotationY(unitIndex: number): FixedPoint {
+    const ax = this.transformStore.arrays;
+    const x = FP.FromRaw(ax.fpRotationX[unitIndex]);
+    const y = FP.FromRaw(ax.fpRotationY[unitIndex]);
+    const z = FP.FromRaw(ax.fpRotationZ[unitIndex]);
+    const w = FP.FromRaw(ax.fpRotationW[unitIndex]);
+    const two = FP.FromInt(2);
+    const sinY = FP.Mul(two, FP.Add(FP.Mul(w, y), FP.Mul(x, z)));
+    const cosY = FP.Sub(FP._1, FP.Mul(two, FP.Add(FP.Mul(y, y), FP.Mul(z, z))));
+    return FP.Atan2(sinY, cosY);
+  }
+
+  private writeRotationY(unitIndex: number, yaw: FixedPoint): void {
+    const q = FPQuaternion.FromYaw(yaw);
+    const ax = this.transformStore.arrays;
+    ax.fpRotationX[unitIndex] = FP.ToRaw(q.x);
+    ax.fpRotationY[unitIndex] = FP.ToRaw(q.y);
+    ax.fpRotationZ[unitIndex] = FP.ToRaw(q.z);
+    ax.fpRotationW[unitIndex] = FP.ToRaw(q.w);
+  }
+
   public override processTick(): void {
     const units = this.entityManager.queryEntities(
       ComponentType.Team,
@@ -56,9 +77,10 @@ export class RotationSystem extends GameSystem {
       const unitIndex = this.transformStore.indexOf(unit.id);
       if (unitIndex === -1) continue;
 
-      const currentY = FP.FromRaw(this.transformStore.arrays.fpRotationY[unitIndex]);
+      const currentY = this.readRotationY(unitIndex);
       const desiredY = this.computeFacingAngle(targetState, team, unitIndex);
-      this.transformStore.arrays.fpRotationY[unitIndex] = FP.ToRaw(
+      this.writeRotationY(
+        unitIndex,
         rotateTowardY(currentY, desiredY, MAX_TURN_PER_TICK),
       );
     }

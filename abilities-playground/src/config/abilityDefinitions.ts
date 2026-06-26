@@ -10,7 +10,7 @@ import {
 export const UNIT_MOVE_SPEED = 13;
 
 /**
- * Highest max-health value among all unit types in the roster (spheres: 90,
+ * Highest max-health value among all unit types in the roster (spheres: 100,
  * cube: 120, support: 70). Used as the static upper bound for the Health attribute so the
  * aggregation-system clamp acts as a second safety net against overheal.
  */
@@ -30,9 +30,9 @@ export const SPHERE_ATTACK_DAMAGE = 18;
  * where one pulse spans {@link ATTACK_COOLDOWN_TICKS} (40 ticks = 2s @ 20 TPS).
  */
 export const HEAL_PULSE_TICKS = 20;
-export const HEAL_PER_PULSE = SPHERE_ATTACK_DAMAGE * 0.4;
+export const HEAL_PER_PULSE = SPHERE_ATTACK_DAMAGE * 0.5;
 /** Healing aura radius (world units); allies inside are healed each pulse. */
-export const HEAL_AURA_RADIUS = 16;
+export const HEAL_AURA_RADIUS = 18;
 /**
  * Duration of the aura "active" marker effect. Effectively the whole match —
  * re-applying is unnecessary because a support unit auras for its entire life.
@@ -52,9 +52,10 @@ export const CUBE_SLOW_TAG = 'State.Debuff.CubeSlow';
 export const CUBE_SPEED_BUFF_TAG = 'State.Buff.CubeSpeed';
 
 export const ROCKET_MAX_HEALTH = 100;
-export const ROCKET_ATTACK_DAMAGE = 45;
-export const ROCKET_COOLDOWN_TICKS = 40;
-export const ROCKET_MAX_TARGETS = 3;
+/** Missile impact damage per hit — three hits to destroy a sphere (100 HP). */
+export const ROCKET_ATTACK_DAMAGE = 32;
+export const ROCKET_COOLDOWN_TICKS = 50;
+export const ROCKET_MAX_TARGETS = 2;
 export const ROCKET_DETECTION_RANGE = 70;
 export const ROCKET_STOP_RANGE = 60;
 

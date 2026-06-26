@@ -5,7 +5,7 @@ import { MISSILE_LIFETIME_SECONDS } from '../config/constants';
 
 export const MISSILE_DEFAULT_LIFETIME = FP.FromFloat(MISSILE_LIFETIME_SECONDS);
 
-export type MissilePhase = 'launch' | 'targeting' | 'cruise' | 'attack';
+export type MissilePhase = 'launch' | 'approach' | 'attack';
 
 /** Homing data for a missile entity (paired with ProjectileComponent). */
 export class MissileComponent implements IComponent {
@@ -17,7 +17,8 @@ export class MissileComponent implements IComponent {
 
   /** Ticks remaining in each phase. */
   public launchTicksRemaining = 0;
-  public targetingTicksRemaining = 0;
+  /** Fast-turn window at the start of approach; then cruise turn rate applies. */
+  public approachTicksRemaining = 0;
 
   /** Spawn position — base of the launch arc. */
   public spawnX: FixedPoint = FP._0;
@@ -31,13 +32,4 @@ export class MissileComponent implements IComponent {
   public launchHeightScale: FixedPoint = FP._1;
 
   public lifeTime: FixedPoint = MISSILE_DEFAULT_LIFETIME;
-
-  /**
-   * Current orientation as a unit quaternion (nose = local +Z).
-   * Stored as plain numbers; slerp is float-based (see plan §2.3). Identity = (0,0,0,1).
-   */
-  public qx = 0;
-  public qy = 0;
-  public qz = 0;
-  public qw = 1;
 }

@@ -109,6 +109,20 @@ describe('TransformComponent', () => {
     expect(FP.ToFloat(euler.y)).toBeCloseTo(1.0, 2);
   });
 
+  it('fpRotationY matches forward derived from a PI quaternion', () => {
+    const entity = new Entity();
+    entityManager.addEntity(entity);
+    const rotation = FPQuaternion.FromYaw(FP.Pi);
+    const transform = new TransformComponent(entity.id, undefined, rotation);
+    entity.addComponent(transform);
+
+    const forward = FPQuaternion.RotateVector(rotation, FPVector3.Forward);
+    expect(FP.Eq(forward.z, FP.Neg(FP._1))).toBe(true);
+
+    const yaw = FP.ToFloat(transform.fpRotationY);
+    expect(Math.atan2(FP.ToFloat(forward.x), FP.ToFloat(forward.z))).toBeCloseTo(yaw, 2);
+  });
+
   it('does not expose visual position or rotation APIs', () => {
     const transform = new TransformComponent(1);
     expect('visualPosition' in transform).toBe(false);

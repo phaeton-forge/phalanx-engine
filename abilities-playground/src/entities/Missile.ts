@@ -1,6 +1,9 @@
 import { Entity, type IPoolableEntity } from '@phalanx-engine/ecs';
-import { FP, FPVector3 } from '@phalanx-engine/math';
-import type { FPVector3 as FPVector3Type } from '@phalanx-engine/math';
+import { FP, FPVector3, FPQuaternion } from '@phalanx-engine/math';
+import type {
+  FPVector3 as FPVector3Type,
+  FPQuaternion as FPQuaternionType,
+} from '@phalanx-engine/math';
 import {
   InterpolationComponent,
   PhysicsBodyComponent,
@@ -13,7 +16,6 @@ import {
   MissileComponent,
   MISSILE_DEFAULT_LIFETIME,
 } from '../components/MissileComponent';
-import * as THREE from 'three';
 import {
   MISSILE_LAUNCH_TICKS,
   MISSILE_TARGETING_TICKS,
@@ -22,13 +24,14 @@ import {
   MISSILE_LAUNCH_SPREAD_MAX,
 } from '../config/constants';
 
-const _forward = new THREE.Vector3(0, 0, 1);
-const _launchDir = new THREE.Vector3();
-const _launchQuat = new THREE.Quaternion();
-
 function lcg01(seed: number): number {
   seed = (seed * 1664525 + 1013904223) >>> 0;
   return seed / 0xffffffff;
+}
+
+/** Forward hemisphere in local space: angles in [0, π] keep +Z (forward) ≥ 0. */
+function clampForwardHemisphereAngle(angle: number): number {
+  return Math.max(0, Math.min(Math.PI, angle));
 }
 
 /** Deterministic launch spread so volley missiles fan out instead of stacking. */
@@ -45,11 +48,12 @@ function computeLaunchTrajectory(
 
   let angle: number;
   if (volleyCount > 1) {
-    angle = (2 * Math.PI * volleyIndex) / volleyCount - Math.PI / 2;
+    angle = (Math.PI * volleyIndex) / (volleyCount - 1);
     angle += (lcg01(entityId ^ 0x9e3779b9) - 0.5) * 0.35;
   } else {
-    angle = lcg01(entityId ^ 0xdeadbeef) * Math.PI * 2;
+    angle = lcg01(entityId ^ 0xdeadbeef) * Math.PI;
   }
+  angle = clampForwardHemisphereAngle(angle);
 
   const spreadMag = FP.Mul(
     maxSpread,
@@ -70,6 +74,8 @@ export interface MissileSpawnArgs {
   volleyIndex?: number;
   /** Total missiles fired in this volley. */
   volleyCount?: number;
+  /** Caster rotation; spread is rotated into world space before launch. */
+  launcherRotation?: FPQuaternionType;
 }
 
 export class MissileEntity
@@ -118,7 +124,7 @@ export class MissileEntity
     this.missile.targetEntityId = args.targetEntityId;
     this.missile.phase = 'launch';
     this.missile.launchTicksRemaining = MISSILE_LAUNCH_TICKS;
-    this.missile.targetingTicksRemaining = MISSILE_TARGETING_TICKS;
+    this.missile.approachTicksRemaining = MISSILE_TARGETING_TICKS;
     this.missile.spawnX = args.fpPosition.x;
     this.missile.spawnY = args.fpPosition.y;
     this.missile.spawnZ = args.fpPosition.z;
@@ -131,33 +137,25 @@ export class MissileEntity
       volleyIndex,
       volleyCount
     );
-    this.missile.launchSpreadX = spreadX;
-    this.missile.launchSpreadZ = spreadZ;
     this.missile.launchHeightScale = heightScale;
 
-    // Point the nose along the launch arc tangent (up + horizontal spread).
-    const peakH = FP.ToFloat(
-      FP.Mul(FP.FromFloat(MISSILE_LAUNCH_HEIGHT), heightScale)
-    );
-    const sx = FP.ToFloat(spreadX);
-    const sz = FP.ToFloat(spreadZ);
-    _launchDir.set(sx, peakH, sz);
-    if (_launchDir.lengthSq() > 1e-8) {
-      _launchDir.normalize();
-      _launchQuat.setFromUnitVectors(_forward, _launchDir);
-      this.missile.qx = _launchQuat.x;
-      this.missile.qy = _launchQuat.y;
-      this.missile.qz = _launchQuat.z;
-      this.missile.qw = _launchQuat.w;
-    } else {
-      this.missile.qx = -Math.SQRT1_2;
-      this.missile.qy = 0;
-      this.missile.qz = 0;
-      this.missile.qw = Math.SQRT1_2;
-    }
+    const localSpread = { x: spreadX, y: FP._0, z: spreadZ };
+    const worldSpread = args.launcherRotation
+      ? FPQuaternion.RotateVector(args.launcherRotation, localSpread)
+      : localSpread;
+    this.missile.launchSpreadX = worldSpread.x;
+    this.missile.launchSpreadZ = worldSpread.z;
+
+    const peakH = FP.Mul(FP.FromFloat(MISSILE_LAUNCH_HEIGHT), heightScale);
+    const launchDir = { x: worldSpread.x, y: peakH, z: worldSpread.z };
+    const launchQuat = FP.Eq(FPVector3.SqrMagnitude(launchDir), FP._0)
+      ? FPQuaternion.FromAxisAngle(FPVector3.Right, FP.Neg(FP.PiOver2))
+      : FPQuaternion.LookRotation(launchDir);
+
+    this.transform.fpRotation = launchQuat;
     this.team.teamId = args.teamId;
 
-    this.interpolation.capture(args.fpPosition, FPVector3.Zero);
+    this.interpolation.capture(args.fpPosition, launchQuat);
     this.interpolation.snapshot();
   }
 

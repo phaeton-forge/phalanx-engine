@@ -1,5 +1,5 @@
 import { Entity } from '@phalanx-engine/ecs';
-import { FP, FPVector3 } from '@phalanx-engine/math';
+import { FP, FPVector3, FPQuaternion } from '@phalanx-engine/math';
 import {
   InterpolationComponent,
   PhysicsBodyComponent,
@@ -36,8 +36,10 @@ export class UnitEntity extends Entity {
     const detectionRange =
       rosterEntry.detectionRange ?? DEFAULT_UNIT_DETECTION_RANGE;
 
-    const initialRotationY = teamId === 0 ? 0 : Math.PI;
-    const fpRotation = FPVector3.FromFloat(0, initialRotationY, 0);
+    const fpRotation =
+      teamId === 0
+        ? FPQuaternion.Identity()
+        : FPQuaternion.FromYaw(FP.Pi);
 
     this.addComponent(new TransformComponent(this.id, fpPosition, fpRotation));
     this.addComponent(new TeamComponent(teamId));

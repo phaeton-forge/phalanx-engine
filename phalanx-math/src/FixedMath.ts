@@ -207,17 +207,13 @@ export const FP = {
    * Note: Input should be in radians
    */
   Sin: (x: FixedPoint): FixedPoint => {
-    // Normalize to [-PI, PI] range
-    const twoPi = FP.Pi2;
-    const pi = FP.Pi;
+    const normalized = normalizeAngleRad(x);
 
-    // Simple modulo approximation
-    let normalized = x;
-    while (normalized.gt(pi)) {
-      normalized = normalized.sub(twoPi);
-    }
-    while (normalized.lt(pi.neg())) {
-      normalized = normalized.add(twoPi);
+    if (FP.Eq(normalized, FP._0)) return FP._0;
+    if (FP.Eq(normalized, FP.PiOver2)) return FP._1;
+    if (FP.Eq(normalized, FP.Neg(FP.PiOver2))) return FP.Neg(FP._1);
+    if (FP.Eq(normalized, FP.Pi) || FP.Eq(normalized, FP.Neg(FP.Pi))) {
+      return FP._0;
     }
 
     // Taylor series: sin(x) ≈ x - x³/3! + x⁵/5! - x⁷/7!
@@ -238,8 +234,18 @@ export const FP = {
    * Note: Input should be in radians
    */
   Cos: (x: FixedPoint): FixedPoint => {
+    const normalized = normalizeAngleRad(x);
+
+    if (FP.Eq(normalized, FP._0)) return FP._1;
+    if (FP.Eq(normalized, FP.PiOver2) || FP.Eq(normalized, FP.Neg(FP.PiOver2))) {
+      return FP._0;
+    }
+    if (FP.Eq(normalized, FP.Pi) || FP.Eq(normalized, FP.Neg(FP.Pi))) {
+      return FP.Neg(FP._1);
+    }
+
     // cos(x) = sin(x + PI/2)
-    return FP.Sin(x.add(FP.PiOver2));
+    return FP.Sin(normalized.add(FP.PiOver2));
   },
 
   /**
@@ -303,6 +309,38 @@ export const FP = {
     return FP.Atan2(sinVal, clamped);
   },
 };
+
+/** Normalize radians to [-PI, PI] for deterministic trig. */
+function normalizeAngleRad(x: FixedPoint): FixedPoint {
+  const twoPi = FP.Pi2;
+  const pi = FP.Pi;
+  let normalized = x;
+  while (normalized.gt(pi)) {
+    normalized = normalized.sub(twoPi);
+  }
+  while (normalized.lt(pi.neg())) {
+    normalized = normalized.add(twoPi);
+  }
+  return normalized;
+}
+
+/** Snap yaw values that are within epsilon of a cardinal angle. */
+function snapYawToCardinal(yaw: FixedPoint): FixedPoint {
+  const eps = FP.FromFloat(0.002);
+  const cardinals = [
+    FP._0,
+    FP.PiOver2,
+    FP.Neg(FP.PiOver2),
+    FP.Pi,
+    FP.Neg(FP.Pi),
+  ];
+  for (const cardinal of cardinals) {
+    if (FP.Lte(yaw.sub(cardinal).abs(), eps)) {
+      return cardinal;
+    }
+  }
+  return yaw;
+}
 
 /**
  * Fixed-point 2D vector interface
@@ -598,10 +636,51 @@ export const FPQuaternion = {
   // ============ Rotation constructors ============
 
   /**
+   * Build a yaw-only rotation (rotation about the Y axis).
+   * Cardinal angles use exact quaternion components; other angles use half-angle
+   * Sin/Cos (with exact trig at PI/2 half-angle for 180° yaw).
+   */
+  FromYaw: (yaw: FixedPoint): FPQuaternion => {
+    const snapped = snapYawToCardinal(normalizeAngleRad(yaw));
+
+    if (FP.Eq(snapped, FP._0)) {
+      return FPQuaternion.Identity();
+    }
+    if (FP.Eq(snapped, FP.PiOver2)) {
+      return FPQuaternion.LookRotation(FPVector3.Right);
+    }
+    if (FP.Eq(snapped, FP.Neg(FP.PiOver2))) {
+      return FPQuaternion.LookRotation(
+        FPVector3.Create(FP.Neg(FP._1), FP._0, FP._0),
+      );
+    }
+    if (FP.Eq(snapped, FP.Pi) || FP.Eq(snapped, FP.Neg(FP.Pi))) {
+      return { x: FP._0, y: FP._1, z: FP._0, w: FP._0 };
+    }
+
+    const half = FP.Mul(snapped, FP.FromFloat(0.5));
+    return {
+      x: FP._0,
+      y: FP.Sin(half),
+      z: FP._0,
+      w: FP.Cos(half),
+    };
+  },
+
+  /**
    * Build a rotation of `angle` radians around `axis`.
    * `axis` is assumed to be unit length (caller's responsibility).
    */
   FromAxisAngle: (axis: FPVector3, angle: FixedPoint): FPQuaternion => {
+    if (
+      FP.Eq(axis.x, FP._0) &&
+      FP.Eq(axis.z, FP._0) &&
+      !FP.Eq(axis.y, FP._0)
+    ) {
+      const yaw = FP.Gt(axis.y, FP._0) ? angle : FP.Neg(angle);
+      return FPQuaternion.FromYaw(yaw);
+    }
+
     const half = FP.Mul(angle, FP.FromFloat(0.5));
     const s = FP.Sin(half);
     const c = FP.Cos(half);
@@ -709,6 +788,10 @@ export const FPQuaternion = {
    * Build a quaternion from Euler angles (radians) applied in XYZ order.
    */
   FromEulerXYZ: (euler: FPVector3): FPQuaternion => {
+    if (FP.Eq(euler.x, FP._0) && FP.Eq(euler.z, FP._0)) {
+      return FPQuaternion.FromYaw(euler.y);
+    }
+
     const half = FP.FromFloat(0.5);
     const c1 = FP.Cos(FP.Mul(euler.x, half));
     const s1 = FP.Sin(FP.Mul(euler.x, half));

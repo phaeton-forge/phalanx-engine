@@ -73,6 +73,7 @@ export const missileVolley = (
       teamId: team.teamId,
       volleyIndex: i,
       volleyCount: targets.length,
+      launcherRotation: transform.fpRotation,
     });
   }
 };

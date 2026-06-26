@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import type { PhalanxClient } from '@phalanx-engine/client';
 import { Entity, GameWorld, resetEntityIdCounter } from '@phalanx-engine/ecs';
-import { FP } from '@phalanx-engine/math';
-import { PhysicsWorld } from '@phalanx-engine/physics';
+import { FP, FPQuaternion } from '@phalanx-engine/math';
+import { PhysicsWorld, TransformComponent, TRANSFORM_COMPONENT_TYPE } from '@phalanx-engine/physics';
 import {
   type AbilityActivationContext,
   createAbilitySystem,
@@ -236,7 +236,6 @@ export class SimulationContainer {
         );
 
         renderRefs.root.position.set(x, y, z);
-        renderRefs.root.rotation.y = teamId === 0 ? 0 : Math.PI;
 
         this.scene.add(renderRefs.healthBarRoot);
 
@@ -248,6 +247,17 @@ export class SimulationContainer {
           teamId,
           { x, y, z },
           renderRefs
+        );
+
+        const transform = unitEntity.getComponent<TransformComponent>(
+          TRANSFORM_COMPONENT_TYPE,
+        )!;
+        const spawnRotation = FPQuaternion.ToFloat(transform.fpRotation);
+        renderRefs.root.quaternion.set(
+          spawnRotation.x,
+          spawnRotation.y,
+          spawnRotation.z,
+          spawnRotation.w,
         );
 
         unitEntity.addComponent(

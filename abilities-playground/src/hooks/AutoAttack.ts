@@ -1,12 +1,12 @@
-import * as THREE from 'three';
 import type { TransformComponent } from '@phalanx-engine/physics';
-import { ComponentType, MeshComponent, SpawnPointComponent, TeamComponent } from '../components';
+import { ComponentType, SpawnPointComponent, TeamComponent } from '../components';
 import { ProjectileEntity } from '../entities/Projectile.ts';
-import { FP, FPVector2, FPVector3 } from '@phalanx-engine/math';
+import { FP, FPVector2, FPVector3, FPQuaternion } from '@phalanx-engine/math';
 import type { AbilityActivationContext } from '@phalanx-engine/abilities';
 import { GameWorld } from '@phalanx-engine/ecs';
 
-const _worldPos = new THREE.Vector3();
+/** Local +Z offset of the sphere forward marker; keep in sync with UnitFactory. */
+const SPHERE_MARKER_OFFSET_Z = 3;
 
 export const autoAttack = (ctx: AbilityActivationContext, world: GameWorld) => {
     const target = world.entityManager.getEntity(ctx.resolvedTargets[0]);
@@ -24,12 +24,11 @@ export const autoAttack = (ctx: AbilityActivationContext, world: GameWorld) => {
 
     const targetTransform = target.getComponent<TransformComponent>(ComponentType.Transform)!;
     const casterTransform = caster.getComponent<TransformComponent>(ComponentType.Transform)!;
-    const casterMesh = caster.getComponent<MeshComponent>(ComponentType.Mesh)!;
     const casterTeamComponent = caster.getComponent<TeamComponent>(ComponentType.Team)!;
     const spawnPoint = caster.getComponent<SpawnPointComponent>(ComponentType.SpawnPoint);
 
     const spawnPosition = spawnPoint
-        ? markerWorldPosition(casterTransform, casterMesh, spawnPoint)
+        ? markerWorldPosition(casterTransform)
         : casterTransform.fpPosition;
 
     const targetPos = targetTransform.fpPosition as FPVector3;
@@ -45,15 +44,8 @@ export const autoAttack = (ctx: AbilityActivationContext, world: GameWorld) => {
     });
 };
 
-function markerWorldPosition(
-    transform: TransformComponent,
-    mesh: MeshComponent,
-    spawnPoint: SpawnPointComponent,
-): FPVector3 {
-    const pos = transform.fpPosition;
-    mesh.root.position.set(FP.ToFloat(pos.x), FP.ToFloat(pos.y), FP.ToFloat(pos.z));
-    mesh.root.rotation.y = FP.ToFloat(transform.fpRotationY);
-    mesh.root.updateWorldMatrix(false, true);
-    spawnPoint.marker.getWorldPosition(_worldPos);
-    return FPVector3.FromFloat(_worldPos.x, _worldPos.y, _worldPos.z);
+function markerWorldPosition(transform: TransformComponent): FPVector3 {
+    const localOffset = FPVector3.FromFloat(0, 0, SPHERE_MARKER_OFFSET_Z);
+    const worldOffset = FPQuaternion.RotateVector(transform.fpRotation, localOffset);
+    return FPVector3.Add(transform.fpPosition, worldOffset);
 }

@@ -56,13 +56,37 @@ describe('FPQuaternion', () => {
   });
 
   it('FromAxisAngle + RotateVector rotates Forward +90° about Y to Right', () => {
-    const q = FPQuaternion.FromAxisAngle(FPVector3.Up, FP.FromFloat(Math.PI / 2));
+    const q = FPQuaternion.FromAxisAngle(FPVector3.Up, FP.PiOver2);
     const rotated = FPQuaternion.RotateVector(q, FPVector3.Forward);
 
-    // Tolerance reflects the engine's Taylor-series trig precision.
-    expect(FP.ToFloat(rotated.x)).toBeCloseTo(1, 1);
-    expect(FP.ToFloat(rotated.y)).toBeCloseTo(0, 1);
-    expect(FP.ToFloat(rotated.z)).toBeCloseTo(0, 1);
+    expect(FP.ToFloat(rotated.x)).toBeCloseTo(1, 3);
+    expect(FP.ToFloat(rotated.y)).toBeCloseTo(0, 3);
+    expect(FP.ToFloat(rotated.z)).toBeCloseTo(0, 3);
+  });
+
+  it('FromAxisAngle + RotateVector rotates Forward 180° about Y to -Forward', () => {
+    const q = FPQuaternion.FromAxisAngle(FPVector3.Up, FP.Pi);
+    const rotated = FPQuaternion.RotateVector(q, FPVector3.Forward);
+
+    expect(FP.ToFloat(rotated.x)).toBeCloseTo(0, 3);
+    expect(FP.ToFloat(rotated.y)).toBeCloseTo(0, 3);
+    expect(FP.ToFloat(rotated.z)).toBeCloseTo(-1, 3);
+  });
+
+  it('FromYaw(PI) rotates Forward to -Forward exactly', () => {
+    const q = FPQuaternion.FromYaw(FP.Pi);
+    const rotated = FPQuaternion.RotateVector(q, FPVector3.Forward);
+
+    expect(FP.Eq(rotated.x, FP._0)).toBe(true);
+    expect(FP.Eq(rotated.y, FP._0)).toBe(true);
+    expect(FP.Eq(rotated.z, FP.Neg(FP._1))).toBe(true);
+  });
+
+  it('Sin/Cos return exact values at cardinal angles', () => {
+    expect(FP.Eq(FP.Sin(FP.PiOver2), FP._1)).toBe(true);
+    expect(FP.Eq(FP.Cos(FP.PiOver2), FP._0)).toBe(true);
+    expect(FP.Eq(FP.Sin(FP.Pi), FP._0)).toBe(true);
+    expect(FP.Eq(FP.Cos(FP.Pi), FP.Neg(FP._1))).toBe(true);
   });
 
   it('FromEulerXYZ -> ToEulerXYZ round-trips (0, PI/2, 0)', () => {

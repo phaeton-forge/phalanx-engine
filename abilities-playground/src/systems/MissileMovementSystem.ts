@@ -9,12 +9,13 @@ import {
   PhysicsSoASchema,
   TransformSoASchema,
 } from '@phalanx-engine/physics';
-import { FP, type FixedPoint } from '@phalanx-engine/math';
+import { FP, FPVector3, FPQuaternion, type FixedPoint } from '@phalanx-engine/math';
 import {
   networkConfig,
   MISSILE_SPEED,
   MISSILE_LAUNCH_HEIGHT,
   MISSILE_ATTACK_RANGE,
+  MISSILE_LAUNCH_ARC_FALLOFF,
   PROJECTILE_DESPAWN_DELAY_TICKS,
   MISSILE_RETARGET_RANGE,
 } from '../config/constants';
@@ -36,7 +37,11 @@ const FP_SPEED = FP.FromFloat(MISSILE_SPEED);
 const FP_STEP = FP.Mul(FP_SPEED, FP_TICK);
 const FP_ATTACK_RANGE = FP.FromFloat(MISSILE_ATTACK_RANGE);
 const FP_ATTACK_RANGE_SQ = FP.Mul(FP_ATTACK_RANGE, FP_ATTACK_RANGE);
+const FP_ARC_FALLOFF = FP.FromFloat(MISSILE_LAUNCH_ARC_FALLOFF);
+const FP_ARC_FALLOFF_SQ = FP.Mul(FP_ARC_FALLOFF, FP_ARC_FALLOFF);
 const FP_RETARGET_RANGE = FP.FromFloat(MISSILE_RETARGET_RANGE);
+
+type FlatOffset = { dx: FixedPoint; dz: FixedPoint; distSq: FixedPoint };
 
 export class MissileMovementSystem extends GameSystem {
   private physicsStore!: SoAComponentStore<typeof PhysicsSoASchema.definition>;
@@ -75,13 +80,10 @@ export class MissileMovementSystem extends GameSystem {
 
       switch (mc.phase) {
         case 'launch':
-          this.tickLaunch(mc, tIdx, pIdx);
+          this.tickLaunch(missile, mc, tIdx, pIdx, tick);
           break;
-        case 'targeting':
-          this.tickTargeting(mc, tIdx, pIdx);
-          break;
-        case 'cruise':
-          this.tickCruise(missile, mc, tIdx, pIdx, tick);
+        case 'approach':
+          this.tickApproach(missile, mc, tIdx, pIdx, tick);
           break;
         case 'attack':
           this.tickAttack(missile, mc, tIdx, pIdx, tick);
@@ -90,97 +92,39 @@ export class MissileMovementSystem extends GameSystem {
     }
   }
 
-  private launchPeakHeight(mc: MissileComponent) {
-    return FP.Mul(FP.FromFloat(MISSILE_LAUNCH_HEIGHT), mc.launchHeightScale);
+  private disablePhysics(pIdx: number): void {
+    this.physicsStore.arrays.ignorePhysics[pIdx] = 1;
+    this.physicsStore.arrays.velocityX[pIdx] = 0n;
+    this.physicsStore.arrays.velocityY[pIdx] = 0n;
+    this.physicsStore.arrays.velocityZ[pIdx] = 0n;
   }
 
-  /** Nose (+Z local) in world space from the missile quaternion (float, matches targeting slerp). */
-  private missileForward(mc: MissileComponent): { x: number; y: number; z: number } {
-    const { qx, qy, qz, qw } = mc;
-    return {
-      x: 2 * (qx * qz + qw * qy),
-      y: 2 * (qy * qz - qw * qx),
-      z: 1 - 2 * (qx * qx + qy * qy),
-    };
-  }
-
-  private moveAlongForward(
+  /** Scales launch/cruise altitude down as the target gets closer. */
+  private cruiseAltitude(
     mc: MissileComponent,
-    tIdx: number,
-    stepMag: FixedPoint
-  ): void {
-    const forward = this.missileForward(mc);
-    const fLen = Math.hypot(forward.x, forward.y, forward.z);
-    if (fLen < 1e-8) return;
-
-    const scale = FP.ToFloat(stepMag) / fLen;
-    const mx = FP.FromRaw(this.transformStore.arrays.fpPositionX[tIdx]);
-    const my = FP.FromRaw(this.transformStore.arrays.fpPositionY[tIdx]);
-    const mz = FP.FromRaw(this.transformStore.arrays.fpPositionZ[tIdx]);
-
-    this.transformStore.arrays.fpPositionX[tIdx] = FP.ToRaw(
-      FP.Add(mx, FP.FromFloat(forward.x * scale))
+    flatDistSq: FixedPoint | null
+  ): FixedPoint {
+    let height = FP.Mul(
+      FP.FromFloat(MISSILE_LAUNCH_HEIGHT),
+      mc.launchHeightScale
     );
-    this.transformStore.arrays.fpPositionY[tIdx] = FP.ToRaw(
-      FP.Add(my, FP.FromFloat(forward.y * scale))
-    );
-    this.transformStore.arrays.fpPositionZ[tIdx] = FP.ToRaw(
-      FP.Add(mz, FP.FromFloat(forward.z * scale))
-    );
+    if (
+      flatDistSq !== null &&
+      FP.Lt(flatDistSq, FP_ARC_FALLOFF_SQ) &&
+      FP.Gt(flatDistSq, FP._0)
+    ) {
+      const ratio = FP.Div(FP.Sqrt(flatDistSq), FP_ARC_FALLOFF);
+      height = FP.Mul(height, ratio);
+    }
+    return FP.Add(mc.spawnY, height);
   }
 
-  private tickLaunch(mc: MissileComponent, tIdx: number, pIdx: number): void {
-    this.physicsStore.arrays.ignorePhysics[pIdx] = 1;
-    this.physicsStore.arrays.velocityX[pIdx] = 0n;
-    this.physicsStore.arrays.velocityY[pIdx] = 0n;
-    this.physicsStore.arrays.velocityZ[pIdx] = 0n;
-
-    this.moveAlongForward(mc, tIdx, FP_STEP);
-
-    mc.launchTicksRemaining -= 1;
-    if (mc.launchTicksRemaining <= 0) mc.phase = 'targeting';
-  }
-
-  /** Coast at cruise speed while the targeting system turns the nose toward the target. */
-  private tickTargeting(mc: MissileComponent, tIdx: number, pIdx: number): void {
-    this.physicsStore.arrays.ignorePhysics[pIdx] = 1;
-    this.physicsStore.arrays.velocityX[pIdx] = 0n;
-    this.physicsStore.arrays.velocityY[pIdx] = 0n;
-    this.physicsStore.arrays.velocityZ[pIdx] = 0n;
-
-    this.moveAlongForward(mc, tIdx, FP_STEP);
-  }
-
-  private tickCruise(
-    missile: MissileEntity,
+  private flatOffsetToTarget(
     mc: MissileComponent,
-    tIdx: number,
-    pIdx: number,
-    tick: number
-  ): void {
-    this.physicsStore.arrays.ignorePhysics[pIdx] = 1;
-    this.physicsStore.arrays.velocityX[pIdx] = 0n;
-    this.physicsStore.arrays.velocityY[pIdx] = 0n;
-    this.physicsStore.arrays.velocityZ[pIdx] = 0n;
-
-    // Keep cruise altitude at or above the launch peak (targeting may coast higher).
-    const cruiseY = FP.Add(mc.spawnY, this.launchPeakHeight(mc));
-    const currentY = FP.FromRaw(this.transformStore.arrays.fpPositionY[tIdx]);
-    if (FP.Lt(currentY, cruiseY)) {
-      this.transformStore.arrays.fpPositionY[tIdx] = FP.ToRaw(cruiseY);
-    }
-
-    // Re-acquire a target if the original was destroyed mid-flight by someone
-    // else — the missile retargets the nearest hostile instead of gliding.
-    if (!this.isTargetValid(mc)) {
-      mc.targetEntityId = this.findNearestHostile(missile, tIdx);
-    }
-
+    tIdx: number
+  ): FlatOffset | null {
     const ttIdx = this.transformStore.indexOf(mc.targetEntityId);
-    if (ttIdx === -1) {
-      this.handleSelfDestruct(missile, tick);
-      return;
-    }
+    if (ttIdx === -1) return null;
 
     const mx = FP.FromRaw(this.transformStore.arrays.fpPositionX[tIdx]);
     const mz = FP.FromRaw(this.transformStore.arrays.fpPositionZ[tIdx]);
@@ -188,25 +132,131 @@ export class MissileMovementSystem extends GameSystem {
     const tz = FP.FromRaw(this.transformStore.arrays.fpPositionZ[ttIdx]);
     const dx = FP.Sub(tx, mx);
     const dz = FP.Sub(tz, mz);
-    const distSq = FP.Add(FP.Mul(dx, dx), FP.Mul(dz, dz));
-    if (FP.Lte(distSq, FP._0)) {
-      mc.phase = 'attack';
-      this.tickAttack(missile, mc, tIdx, pIdx, tick);
-      return;
+    return { dx, dz, distSq: FP.Add(FP.Mul(dx, dx), FP.Mul(dz, dz)) };
+  }
+
+  private stepFlatTowardTarget(offset: FlatOffset, tIdx: number): void {
+    if (FP.Lte(offset.distSq, FP._0)) return;
+
+    const dist = FP.Sqrt(offset.distSq);
+    const mx = FP.FromRaw(this.transformStore.arrays.fpPositionX[tIdx]);
+    const mz = FP.FromRaw(this.transformStore.arrays.fpPositionZ[tIdx]);
+    this.transformStore.arrays.fpPositionX[tIdx] = FP.ToRaw(
+      FP.Add(mx, FP.Mul(FP.Div(offset.dx, dist), FP_STEP))
+    );
+    this.transformStore.arrays.fpPositionZ[tIdx] = FP.ToRaw(
+      FP.Add(mz, FP.Mul(FP.Div(offset.dz, dist), FP_STEP))
+    );
+  }
+
+  private clampMinAltitude(
+    mc: MissileComponent,
+    tIdx: number,
+    flatDistSq: FixedPoint | null
+  ): void {
+    const minY = this.cruiseAltitude(mc, flatDistSq);
+    const currentY = FP.FromRaw(this.transformStore.arrays.fpPositionY[tIdx]);
+    if (FP.Lt(currentY, minY)) {
+      this.transformStore.arrays.fpPositionY[tIdx] = FP.ToRaw(minY);
     }
-    const dist = FP.Sqrt(distSq);
-    if (FP.Lte(distSq, FP_ATTACK_RANGE_SQ)) {
-      mc.phase = 'attack';
-      this.tickAttack(missile, mc, tIdx, pIdx, tick);
+  }
+
+  private tryEnterAttack(
+    missile: MissileEntity,
+    mc: MissileComponent,
+    tIdx: number,
+    pIdx: number,
+    tick: number,
+    flatDistSq: FixedPoint | null
+  ): boolean {
+    if (flatDistSq === null || FP.Gt(flatDistSq, FP_ATTACK_RANGE_SQ)) {
+      return false;
+    }
+
+    mc.phase = 'attack';
+    this.tickAttack(missile, mc, tIdx, pIdx, tick);
+    return true;
+  }
+
+  private readForward(tIdx: number): FPVector3 {
+    const ax = this.transformStore.arrays;
+    const q = {
+      x: FP.FromRaw(ax.fpRotationX[tIdx]),
+      y: FP.FromRaw(ax.fpRotationY[tIdx]),
+      z: FP.FromRaw(ax.fpRotationZ[tIdx]),
+      w: FP.FromRaw(ax.fpRotationW[tIdx]),
+    };
+    return FPQuaternion.RotateVector(q, FPVector3.Forward);
+  }
+
+  private moveAlongForward(tIdx: number, stepMag: FixedPoint): void {
+    const forward = this.readForward(tIdx);
+    if (FP.Eq(FPVector3.SqrMagnitude(forward), FP._0)) return;
+
+    const delta = FPVector3.Scale(forward, stepMag);
+    const mx = FP.FromRaw(this.transformStore.arrays.fpPositionX[tIdx]);
+    const my = FP.FromRaw(this.transformStore.arrays.fpPositionY[tIdx]);
+    const mz = FP.FromRaw(this.transformStore.arrays.fpPositionZ[tIdx]);
+
+    this.transformStore.arrays.fpPositionX[tIdx] = FP.ToRaw(FP.Add(mx, delta.x));
+    this.transformStore.arrays.fpPositionY[tIdx] = FP.ToRaw(FP.Add(my, delta.y));
+    this.transformStore.arrays.fpPositionZ[tIdx] = FP.ToRaw(FP.Add(mz, delta.z));
+  }
+
+  private tickLaunch(
+    missile: MissileEntity,
+    mc: MissileComponent,
+    tIdx: number,
+    pIdx: number,
+    tick: number
+  ): void {
+    this.disablePhysics(pIdx);
+
+    const flat = this.flatOffsetToTarget(mc, tIdx);
+    if (flat !== null) {
+      if (this.tryEnterAttack(missile, mc, tIdx, pIdx, tick, flat.distSq)) {
+        return;
+      }
+      if (FP.Lte(flat.distSq, FP_ARC_FALLOFF_SQ)) {
+        mc.phase = 'approach';
+        this.tickApproach(missile, mc, tIdx, pIdx, tick);
+        return;
+      }
+    }
+
+    this.moveAlongForward(tIdx, FP_STEP);
+
+    mc.launchTicksRemaining -= 1;
+    if (mc.launchTicksRemaining <= 0) {
+      mc.phase = 'approach';
+    }
+  }
+
+  private tickApproach(
+    missile: MissileEntity,
+    mc: MissileComponent,
+    tIdx: number,
+    pIdx: number,
+    tick: number
+  ): void {
+    this.disablePhysics(pIdx);
+
+    if (!this.isTargetValid(mc)) {
+      mc.targetEntityId = this.findNearestHostile(missile, tIdx);
+    }
+
+    const flat = this.flatOffsetToTarget(mc, tIdx);
+    if (flat === null) {
+      this.handleSelfDestruct(missile, tick);
       return;
     }
 
-    this.transformStore.arrays.fpPositionX[tIdx] = FP.ToRaw(
-      FP.Add(mx, FP.Mul(FP.Div(dx, dist), FP_STEP))
-    );
-    this.transformStore.arrays.fpPositionZ[tIdx] = FP.ToRaw(
-      FP.Add(mz, FP.Mul(FP.Div(dz, dist), FP_STEP))
-    );
+    if (this.tryEnterAttack(missile, mc, tIdx, pIdx, tick, flat.distSq)) {
+      return;
+    }
+
+    this.clampMinAltitude(mc, tIdx, flat.distSq);
+    this.stepFlatTowardTarget(flat, tIdx);
   }
 
   private tickAttack(
@@ -216,10 +266,7 @@ export class MissileMovementSystem extends GameSystem {
     pIdx: number,
     tick: number
   ): void {
-    this.physicsStore.arrays.ignorePhysics[pIdx] = 1;
-    this.physicsStore.arrays.velocityX[pIdx] = 0n;
-    this.physicsStore.arrays.velocityY[pIdx] = 0n;
-    this.physicsStore.arrays.velocityZ[pIdx] = 0n;
+    this.disablePhysics(pIdx);
 
     if (!this.isTargetValid(mc)) {
       mc.targetEntityId = this.findNearestHostile(missile, tIdx);
