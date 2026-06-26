@@ -5,8 +5,10 @@ import {
   StatsComponent,
   TeamComponent,
 } from '../components';
+import { ProjectileComponent } from '../components/ProjectileComponent';
 import { PROJECTILE_DESPAWN_DELAY_TICKS } from '../config/constants';
 import type { ProjectileEntity } from '../entities/Projectile.ts';
+import type { MissileEntity } from '../entities/Missile';
 import { GameEvents, type ProjectileDespawnRequestedEvent } from '../events/GameEvents';
 import { softDeactivateProjectile } from './projectileDespawn';
 
@@ -40,7 +42,7 @@ export class ProjectileCollisionSystem extends GameSystem {
 
     const projectile = (
       aProjectile ? entityA : entityB
-    ) as ProjectileEntity;
+    ) as ProjectileEntity | MissileEntity;
     const other = aProjectile ? entityB : entityA;
 
     if (!projectile.active) return;
@@ -60,9 +62,9 @@ export class ProjectileCollisionSystem extends GameSystem {
       return;
     }
 
-    // Hostile projectile hit: apply sphere damage effect to the unit.
-    // Ability tick systems will apply + aggregate deterministically this tick.
-    this.abilities?.applyEffect(other.id, 'Effect.Damage.Sphere', projectile.id);
+    const projectileComp = projectile.getComponent<ProjectileComponent>(ComponentType.Projectile);
+    const effectId = projectileComp?.damageEffectId ?? 'Effect.Damage.Sphere';
+    this.abilities?.applyEffect(other.id, effectId, projectile.id);
 
     // Keep projectile entity around briefly so cue handlers can still read its transform.
     // (Cue event only carries ids; removing immediately makes impact point computation null.)

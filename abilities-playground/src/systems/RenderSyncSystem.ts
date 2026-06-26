@@ -31,10 +31,11 @@ export class RenderSyncSystem extends GameSystem {
           interpolated.position.y,
           interpolated.position.z,
         );
-        entityMesh.root.rotation.set(
+        entityMesh.root.quaternion.set(
           interpolated.rotation.x,
           interpolated.rotation.y,
           interpolated.rotation.z,
+          interpolated.rotation.w,
         );
       }
     }

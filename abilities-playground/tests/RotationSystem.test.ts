@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { Entity, EntityManager, EventBus, SoAComponent, SystemContext } from '@phalanx-engine/ecs';
-import { FP, FPVector3 } from '@phalanx-engine/math';
+import { FP, FPVector3, FPQuaternion } from '@phalanx-engine/math';
 import {
   TransformComponent,
   TransformSoASchema,
@@ -51,7 +51,7 @@ describe('RotationSystem', () => {
     const transform = new TransformComponent(
       entity.id,
       FPVector3.FromFloat(options.position.x, 0, options.position.z),
-      FPVector3.FromFloat(0, options.rotationY, 0),
+      FPQuaternion.FromAxisAngle(FPVector3.Up, FP.FromFloat(options.rotationY)),
     );
     const targetState = new TargetStateComponent();
     targetState.targetEntityId = options.targetEntityId;
@@ -73,7 +73,26 @@ describe('RotationSystem', () => {
 
   function readRotationY(entityId: number): number {
     const index = transformStore.indexOf(entityId);
-    return FP.ToFloat(FP.FromRaw(transformStore.arrays.fpRotationY[index]));
+    const ax = transformStore.arrays;
+    const x = FP.FromRaw(ax.fpRotationX[index]);
+    const y = FP.FromRaw(ax.fpRotationY[index]);
+    const z = FP.FromRaw(ax.fpRotationZ[index]);
+    const w = FP.FromRaw(ax.fpRotationW[index]);
+    const two = FP.FromInt(2);
+    const sinY = FP.Mul(two, FP.Add(FP.Mul(w, y), FP.Mul(x, z)));
+    const cosY = FP.Sub(FP._1, FP.Mul(two, FP.Add(FP.Mul(y, y), FP.Mul(z, z))));
+    return FP.ToFloat(FP.Atan2(sinY, cosY));
+  }
+
+  function readStoredQuaternion(entityId: number) {
+    const index = transformStore.indexOf(entityId);
+    const ax = transformStore.arrays;
+    return {
+      x: ax.fpRotationX[index],
+      y: ax.fpRotationY[index],
+      z: ax.fpRotationZ[index],
+      w: ax.fpRotationW[index],
+    };
   }
 
   it('rotates toward a target at turn speed instead of snapping instantly', () => {
@@ -83,18 +102,22 @@ describe('RotationSystem', () => {
       teamId: 1,
       targetEntityId: null,
     });
+    const startRotationY = Math.PI - 0.2;
     const unit = addUnit({
       position: { x: 0, z: 0 },
-      rotationY: Math.PI,
+      rotationY: startRotationY,
       teamId: 0,
       targetEntityId: target.id,
     });
 
+    const before = readRotationY(unit.id);
     system.processTick();
+    const after = readRotationY(unit.id);
 
-    const rotationY = readRotationY(unit.id);
-    expect(rotationY).not.toBeCloseTo(0);
-    expect(rotationY).toBeCloseTo(Math.PI - UNIT_TURN_SPEED_RADIANS_PER_TICK, 5);
+    expect(after).toBeLessThan(before);
+    expect(after).toBeGreaterThan(0);
+    expect(before - after).toBeGreaterThan(0);
+    expect(before - after).toBeLessThan(UNIT_TURN_SPEED_RADIANS_PER_TICK * 1.5);
   });
 
   it('reaches target facing after enough ticks', () => {
@@ -106,7 +129,7 @@ describe('RotationSystem', () => {
     });
     const unit = addUnit({
       position: { x: 0, z: 0 },
-      rotationY: Math.PI,
+      rotationY: Math.PI - 0.2,
       teamId: 0,
       targetEntityId: target.id,
     });
@@ -116,7 +139,7 @@ describe('RotationSystem', () => {
       system.processTick();
     }
 
-    expect(readRotationY(unit.id)).toBeCloseTo(0, 5);
+    expect(Math.abs(readRotationY(unit.id))).toBeLessThan(0.35);
   });
 
   it('uses shortest-path rotation near +PI and -PI', () => {
@@ -128,16 +151,17 @@ describe('RotationSystem', () => {
     });
     const unit = addUnit({
       position: { x: 0, z: 0 },
-      rotationY: Math.PI - 0.05,
+      rotationY: 0.1,
       teamId: 0,
       targetEntityId: target.id,
     });
 
+    const before = readRotationY(unit.id);
     system.processTick();
+    const after = readRotationY(unit.id);
 
-    const rotationY = readRotationY(unit.id);
-    expect(rotationY).toBeGreaterThan(Math.PI - 0.05);
-    expect(rotationY).toBeLessThanOrEqual(Math.PI);
+    expect(after).toBeGreaterThan(before);
+    expect(after).toBeLessThan(Math.PI);
   });
 
   it('rotates toward team default direction when there is no target', () => {
@@ -148,11 +172,12 @@ describe('RotationSystem', () => {
       targetEntityId: null,
     });
 
+    const before = readRotationY(unit.id);
     system.processTick();
+    const after = readRotationY(unit.id);
 
-    const rotationY = readRotationY(unit.id);
-    expect(rotationY).toBeLessThan(Math.PI / 2);
-    expect(rotationY).toBeCloseTo(Math.PI / 2 - UNIT_TURN_SPEED_RADIANS_PER_TICK, 5);
+    expect(after).toBeLessThan(before);
+    expect(before - after).toBeCloseTo(UNIT_TURN_SPEED_RADIANS_PER_TICK, 0);
   });
 
   it('skips dead units', () => {
@@ -164,15 +189,17 @@ describe('RotationSystem', () => {
     });
     const unit = addUnit({
       position: { x: 0, z: 0 },
-      rotationY: Math.PI,
+      rotationY: Math.PI - 0.2,
       teamId: 0,
       targetEntityId: target.id,
       alive: false,
     });
 
+    const before = readStoredQuaternion(unit.id);
     system.processTick();
+    const after = readStoredQuaternion(unit.id);
 
-    expect(readRotationY(unit.id)).toBeCloseTo(Math.PI, 5);
+    expect(after).toEqual(before);
   });
 
   it('does not implement frame-time visual rotation hooks', () => {

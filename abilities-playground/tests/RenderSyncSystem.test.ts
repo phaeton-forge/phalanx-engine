@@ -38,7 +38,7 @@ describe('RenderSyncSystem', () => {
 
     const getInterpolatedTransform = vi.fn(() => ({
       position: { x: 1, y: 2, z: 3 },
-      rotation: { x: 0.1, y: 1.5, z: 0.2 },
+      rotation: { x: 0.1, y: 0.2, z: 0.3, w: 0.9 },
     }));
     context.physics = { getInterpolatedTransform } as unknown as IPhysicsWorld;
 
@@ -48,16 +48,17 @@ describe('RenderSyncSystem', () => {
     expect(meshRoot.position.x).toBeCloseTo(1);
     expect(meshRoot.position.y).toBeCloseTo(2);
     expect(meshRoot.position.z).toBeCloseTo(3);
-    expect(meshRoot.rotation.x).toBeCloseTo(0.1);
-    expect(meshRoot.rotation.y).toBeCloseTo(1.5);
-    expect(meshRoot.rotation.z).toBeCloseTo(0.2);
+    expect(meshRoot.quaternion.x).toBeCloseTo(0.1);
+    expect(meshRoot.quaternion.y).toBeCloseTo(0.2);
+    expect(meshRoot.quaternion.z).toBeCloseTo(0.3);
+    expect(meshRoot.quaternion.w).toBeCloseTo(0.9);
   });
 
   it('leaves mesh unchanged when physics returns no sample', () => {
     const entity = new Entity();
     const meshRoot = new THREE.Object3D();
     meshRoot.position.set(5, 6, 7);
-    meshRoot.rotation.set(0.3, 0.4, 0.5);
+    meshRoot.quaternion.set(0.1, 0.2, 0.3, 0.9);
     entity.addComponent(new MeshComponent(meshRoot));
     entity.addComponent(new InterpolationComponent());
     entityManager.addEntity(entity);
@@ -73,8 +74,9 @@ describe('RenderSyncSystem', () => {
     expect(meshRoot.position.x).toBeCloseTo(5);
     expect(meshRoot.position.y).toBeCloseTo(6);
     expect(meshRoot.position.z).toBeCloseTo(7);
-    expect(meshRoot.rotation.x).toBeCloseTo(0.3);
-    expect(meshRoot.rotation.y).toBeCloseTo(0.4);
-    expect(meshRoot.rotation.z).toBeCloseTo(0.5);
+    expect(meshRoot.quaternion.x).toBeCloseTo(0.1);
+    expect(meshRoot.quaternion.y).toBeCloseTo(0.2);
+    expect(meshRoot.quaternion.z).toBeCloseTo(0.3);
+    expect(meshRoot.quaternion.w).toBeCloseTo(0.9);
   });
 });

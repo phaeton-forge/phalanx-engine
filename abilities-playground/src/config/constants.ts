@@ -31,6 +31,36 @@ export const PROJECTILE_LIFETIME_SECONDS = 3;
 /** Delay after impact before projectile entity is removed (keeps transform readable for cues). */
 export const PROJECTILE_DESPAWN_DELAY_TICKS = 20;
 
+export const MISSILE_SPEED = 70;
+export const MISSILE_LIFETIME_SECONDS = 4;
+export const MISSILE_LAUNCH_TICKS = 10;
+/**
+ * Altitude (world units) the missile gains above its spawn Y during launch and
+ * then holds for the rest of its flight. Kept well above unit height (tallest
+ * unit tops out at ~6) so missiles visibly cruise over the formation instead of
+ * scraping allied units.
+ */
+export const MISSILE_LAUNCH_HEIGHT = 10;
+/** Max horizontal offset (world units) reached at the end of the launch arc. */
+export const MISSILE_LAUNCH_SPREAD_MAX = 6;
+export const MISSILE_TARGETING_TICKS = 14;
+export const MISSILE_TARGETING_TURN = 0.7;
+export const MISSILE_CRUISE_TURN = 0.4;
+/** XZ distance from the target where a cruising missile starts its 3D dive. */
+export const MISSILE_ATTACK_RANGE = 25;
+/**
+ * XZ distance below which the launch arc is skipped and cruise altitude scales
+ * down linearly to zero (close-range shots home flat instead of looping).
+ */
+export const MISSILE_LAUNCH_ARC_FALLOFF = 40;
+export const MISSILE_RADIUS = 0.6;
+/**
+ * Radius (world units) around a missile used to search for a new hostile target
+ * when its current target is destroyed mid-flight. Matches the rocket's sensor
+ * range so a missile that loses its lock can reliably re-acquire a nearby enemy.
+ */
+export const MISSILE_RETARGET_RANGE = 70;
+
 export const pauseConfig = {
   maxPausesPerPlayer: 3,
   requireSamePlayerToResume: true,
@@ -51,9 +81,11 @@ export const cameraConfig = {
 export const arenaSpawnInset = 20;
 
 const arenaLength = 200;
+/** Playable width along X (was 60; ×1.5 for wider formations). */
+const arenaWidth = 90;
 
 export const arenaParams = {
-  width: 60,
+  width: arenaWidth,
   length: arenaLength,
   team1SpawnZ: -arenaLength / 2 + arenaSpawnInset,
   team2SpawnZ: arenaLength / 2 - arenaSpawnInset,

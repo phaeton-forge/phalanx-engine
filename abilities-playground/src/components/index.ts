@@ -21,3 +21,4 @@ export {
 } from './UnitComponents';
 export type { TeamId } from './UnitComponents';
 export { SpawnPointComponent } from './SpawnPointComponent';
+export { MissileComponent } from './MissileComponent';

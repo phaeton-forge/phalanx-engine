@@ -112,6 +112,34 @@ export class MeshComponent implements IPoolableComponent {
     return new MeshComponent(root);
   }
 
+  public static createMissile(): MeshComponent {
+    const group = new THREE.Group();
+
+    const body = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.25, 0.6, 2.0, 12),
+      new THREE.MeshStandardMaterial({ color: 0xdddddd, metalness: 0.3, roughness: 0.5 }),
+    );
+    body.rotation.x = Math.PI / 2;
+
+    const flame = new THREE.Mesh(
+      new THREE.ConeGeometry(0.5, 1.2, 12),
+      new THREE.MeshBasicMaterial({
+        color: 0xffaa33,
+        transparent: true,
+        opacity: 0.85,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      }),
+    );
+    flame.rotation.x = -Math.PI / 2;
+    flame.position.z = -(2.0 / 2 + 1.2 / 2);
+
+    group.add(body);
+    group.add(flame);
+    group.visible = false;
+    return new MeshComponent(group);
+  }
+
   constructor(root: THREE.Object3D) {
     this.root = root;
 

@@ -9,4 +9,5 @@ export class ProjectileComponent implements IComponent {
   public readonly type = ComponentType.Projectile;
   public fpDirection2: FPVector2Type = { x: FP._0, y: FP._0 };
   public lifeTime = PROJECTILE_DEFAULT_LIFETIME;
+  public damageEffectId = 'Effect.Damage.Sphere';
 }

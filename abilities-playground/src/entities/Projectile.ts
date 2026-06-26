@@ -1,5 +1,5 @@
 import { Entity, type IPoolableEntity } from '@phalanx-engine/ecs';
-import { FP, FPVector3 } from '@phalanx-engine/math';
+import { FP, FPQuaternion } from '@phalanx-engine/math';
 import type { FPVector3 as FPVector3Type, FPVector2 as FPVector2Type } from '@phalanx-engine/math';
 import {
   InterpolationComponent,
@@ -70,7 +70,7 @@ export class ProjectileEntity extends Entity implements IPoolableEntity<Projecti
     this.team.teamId = args.teamId;
 
     // Snap interpolation so the first frame doesn't blend from a stale position.
-    this.interpolation.capture(args.fpPosition, FPVector3.Zero);
+    this.interpolation.capture(args.fpPosition, FPQuaternion.Identity());
     this.interpolation.snapshot();
   }
 

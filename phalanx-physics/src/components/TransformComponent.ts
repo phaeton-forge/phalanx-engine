@@ -134,10 +134,14 @@ export class TransformComponent extends SoAComponent<typeof TransformSoASchema.d
 
   /** Convenience yaw (rotation around the Y/up axis), in radians. */
   public get fpRotationY(): FixedPoint {
-    return this.fpRotationEuler.y;
+    const q = this.fpRotation;
+    const two = FP.FromInt(2);
+    const sinY = FP.Mul(two, FP.Add(FP.Mul(q.w, q.y), FP.Mul(q.x, q.z)));
+    const cosY = FP.Sub(FP._1, FP.Mul(two, FP.Add(FP.Mul(q.y, q.y), FP.Mul(q.z, q.z))));
+    return FP.Atan2(sinY, cosY);
   }
 
   public set fpRotationY(value: FixedPoint) {
-    this.fpRotation = FPQuaternion.FromAxisAngle(FPVector3.Up, value);
+    this.fpRotation = FPQuaternion.FromYaw(value);
   }
 }
