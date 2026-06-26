@@ -3,7 +3,7 @@ name: phalanx-physics
 description: Add deterministic fixed-point physics to a game using the phalanx-physics library from the phalanx-engine repository. Use when the user wants to set up collision detection, velocity integration, spatial hashing, or physics bodies. Covers PhysicsWorld facade, TransformComponent, InterpolationSystem, PhysicsBodyComponent, SpatialHashGrid, NarrowPhase, PhysicsSystem, and collision filtering patterns.
 metadata:
   author: phaeton2040-AI
-  version: '1.1'
+  version: '1.2'
 ---
 
 # Phalanx Physics Skill
@@ -26,7 +26,7 @@ Use this skill when the user asks to:
 
 - TypeScript project with strict mode
 - `phalanx-ecs` package (peer dependency — GameSystem, SoAComponent, EntityManager, EventBus, lifecycle hooks)
-- `phalanx-math` package (peer dependency — FP.*, FixedPoint, FPVector3)
+- `phalanx-math` package (peer dependency — FP.*, FixedPoint, FPVector3, FPQuaternion)
 
 ## Architecture Overview
 
@@ -123,7 +123,8 @@ class RenderSystem extends GameSystem {
     const sample = this.physics?.getInterpolatedTransform(entityId);
     if (sample) {
       mesh.position.set(sample.position.x, sample.position.y, sample.position.z);
-      mesh.rotation.set(sample.rotation.x, sample.rotation.y, sample.rotation.z);
+      // sample.rotation is a float quaternion { x, y, z, w } — apply it directly.
+      mesh.quaternion.set(sample.rotation.x, sample.rotation.y, sample.rotation.z, sample.rotation.w);
     }
   }
 }
@@ -188,10 +189,10 @@ import {
   InterpolationComponent,
   PhysicsBodyComponent,
 } from '@phalanx-engine/physics';
-import { FP, FPVector3 } from '@phalanx-engine/math';
+import { FP, FPVector3, FPQuaternion } from '@phalanx-engine/math';
 
 const fpPosition = FPVector3.FromFloat(10, 0, 20);
-const fpRotation = FPVector3.FromFloat(0, 0, 0);
+const fpRotation = FPQuaternion.Identity();
 
 entity.addComponent(new TransformComponent(entity.id, fpPosition, fpRotation));
 entity.addComponent(new InterpolationComponent(fpPosition, fpRotation));
@@ -288,6 +289,8 @@ if (pos) { /* pos.x, pos.z are FixedPoint */ }
 const sample = physicsWorld.getInterpolatedTransform(entityId);
 if (sample) {
   mesh.position.set(sample.position.x, sample.position.y, sample.position.z);
+  // sample.rotation is a float quaternion { x, y, z, w }
+  mesh.quaternion.set(sample.rotation.x, sample.rotation.y, sample.rotation.z, sample.rotation.w);
 }
 ```
 
@@ -295,17 +298,21 @@ if (sample) {
 
 Built-in SoA component for authoritative fixed-point spatial state:
 
-| Field           | Type  | Description                    |
-| --------------- | ----- | ------------------------------ |
-| `fpPositionX/Y/Z` | `i64` | Fixed-point position (raw FP) |
-| `fpRotationX/Y/Z` | `i64` | Fixed-point rotation (radians, raw FP) |
+| Field              | Type  | Description                                         |
+| ------------------ | ----- | --------------------------------------------------- |
+| `fpPositionX/Y/Z`  | `i64` | Fixed-point position (raw FP)                       |
+| `fpRotationX/Y/Z/W`| `i64` | Fixed-point rotation **quaternion** (raw FP); identity default has `w = 1` |
+
+Rotation is stored as a quaternion, not Euler radians. The authoritative value is `fpRotation` (`FPQuaternion`); `fpRotationEuler` (XYZ Euler radians) and `fpRotationY` (yaw) are computed views over it.
 
 ```typescript
 import { TransformComponent, TransformSoASchema, TRANSFORM_COMPONENT_TYPE } from '@phalanx-engine/physics';
+import { FPQuaternion } from '@phalanx-engine/math';
 
-const transform = new TransformComponent(entity.id, fpPosition, fpRotation);
-transform.fpPosition = newPosition;  // get/set FPVector3
-transform.fpRotationY = FP.FromFloat(Math.PI); // convenience for Y-axis
+const transform = new TransformComponent(entity.id, fpPosition, FPQuaternion.Identity());
+transform.fpPosition = newPosition;            // get/set FPVector3
+transform.fpRotation = FPQuaternion.Identity(); // get/set FPQuaternion (authoritative)
+transform.fpRotationY = FP.FromFloat(Math.PI);  // convenience yaw around FPVector3.Up
 ```
 
 Hot-path access:
