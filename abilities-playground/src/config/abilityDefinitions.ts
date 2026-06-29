@@ -60,7 +60,7 @@ export const ROCKET_MAX_TARGETS = 2;
 export const ROCKET_DETECTION_RANGE = 70;
 export const ROCKET_STOP_RANGE = 60;
 
-/** Volt attack cooldown in ticks (45 ticks = 2.25 s @ 20 TPS). */
+/** Volt attack cooldown in ticks (40 ticks = 2 s @ 20 TPS). */
 export const VOLT_ATTACK_COOLDOWN_TICKS = 40;
 /** Volt hostile detection radius (world units). */
 export const VOLT_DETECTION_RANGE = 45;
