@@ -86,7 +86,7 @@ export const CHAIN_LIGHTNING_DAMAGE_FALLOFF = FP.FromFloat(0.75);
 /** How long each lightning bolt remains visible (seconds). */
 export const CHAIN_LIGHTNING_LIFETIME_SECONDS = 0.9;
 
-/** Ticks between successive chain-lightning jumps (3 ticks = 0.15 s @ 20 TPS). */
+/** Ticks between successive chain-lightning jumps (4 ticks = 0.2 s @ 20 TPS). */
 export const CHAIN_LIGHTNING_JUMP_DELAY_TICKS = 4;
 
 /** Width of each lightning bolt in pixels. */
