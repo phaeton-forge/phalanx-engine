@@ -93,4 +93,16 @@ export const arenaParams = {
   team2Color: '#FF3333',
   groundColor: '#2d3436',
   centerLineColor: '#f5f6fa',
+  /**
+   * Local formation grid dimensions. The grid is centered on each team's spawn line
+   * (x = 0, z = team1SpawnZ / team2SpawnZ), with the depth axis pointing toward the enemy.
+   * 12 × 6 cells at 6 world units each fits comfortably inside the 90-unit arena width.
+   */
+  formationGrid: {
+    gridWidth: 12,
+    gridHeight: 6,
+    cellSize: 6,
+    /** World units between the front edge of the formation grid and the deployed army. */
+    deployGap: 10,
+  },
 };

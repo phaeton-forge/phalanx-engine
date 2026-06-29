@@ -3,8 +3,7 @@ import { FP } from '@phalanx-engine/math';
 import type { FixedPoint } from '@phalanx-engine/math';
 import type { IComponent } from './Component';
 import { ComponentType } from './Component';
-import type { UnitKind } from '../config/unitRoster';
-import { DEFAULT_UNIT_DETECTION_RANGE } from '../config/unitRoster';
+import { DEFAULT_UNIT_DETECTION_RANGE, type UnitType } from '../units/UnitType';
 import type { IPoolableComponent } from '@phalanx-engine/ecs';
 
 export type TeamId = 0 | 1;
@@ -20,12 +19,12 @@ export class TeamComponent {
 
 export class UnitTypeComponent implements IComponent {
   public readonly type = ComponentType.UnitType;
-  public readonly kind: UnitKind;
+  public readonly kind: UnitType;
   public readonly detectionRadius: FixedPoint;
 
   constructor(
-    kind: UnitKind,
-    detectionRadius: FixedPoint = FP.FromFloat(DEFAULT_UNIT_DETECTION_RANGE),
+    kind: UnitType,
+    detectionRadius: FixedPoint = FP.FromFloat(DEFAULT_UNIT_DETECTION_RANGE)
   ) {
     this.kind = kind;
     this.detectionRadius = detectionRadius;
@@ -47,8 +46,8 @@ export class DetectionRingComponent implements IComponent {
  * is performed by the HealingAuraSystem: every {@link pulseTicks} ticks it
  * queries allies within {@link radius} and applies a heal pulse.
  *
- * `auraRing` is the permanent green indicator mesh (child of the unit root),
- * sized to {@link radius}.
+ * `auraRing` is the permanent green indicator mesh, a flat world-space ground
+ * decal sized to {@link radius} (positioned each frame by RenderSyncSystem).
  */
 export class HealAuraComponent implements IComponent {
   public readonly type = ComponentType.HealAura;
@@ -60,7 +59,7 @@ export class HealAuraComponent implements IComponent {
 
   constructor(
     config: { radius: number; pulseTicks: number },
-    auraRing: THREE.Object3D | null = null,
+    auraRing: THREE.Object3D | null = null
   ) {
     this.radius = FP.FromFloat(config.radius);
     this.pulseTicks = config.pulseTicks;
@@ -117,7 +116,11 @@ export class MeshComponent implements IPoolableComponent {
 
     const body = new THREE.Mesh(
       new THREE.CylinderGeometry(0.25, 0.6, 2.0, 12),
-      new THREE.MeshStandardMaterial({ color: 0xdddddd, metalness: 0.3, roughness: 0.5 }),
+      new THREE.MeshStandardMaterial({
+        color: 0xdddddd,
+        metalness: 0.3,
+        roughness: 0.5,
+      })
     );
     body.rotation.x = Math.PI / 2;
 
@@ -129,7 +132,7 @@ export class MeshComponent implements IPoolableComponent {
         opacity: 0.85,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
-      }),
+      })
     );
     flame.rotation.x = -Math.PI / 2;
     flame.position.z = -(2.0 / 2 + 1.2 / 2);
@@ -144,7 +147,9 @@ export class MeshComponent implements IPoolableComponent {
     this.root = root;
 
     if (!MeshComponent.scene) {
-      throw new Error('MeshComponent.initScene must be called before creating MeshComponent');
+      throw new Error(
+        'MeshComponent.initScene must be called before creating MeshComponent'
+      );
     }
 
     if (root.parent !== MeshComponent.scene) {
@@ -167,11 +172,7 @@ export class HealthBarComponent implements IComponent {
   public readonly fill: THREE.Object3D;
   public readonly fullWidth: number;
 
-  constructor(
-    root: THREE.Object3D,
-    fill: THREE.Object3D,
-    fullWidth: number,
-  ) {
+  constructor(root: THREE.Object3D, fill: THREE.Object3D, fullWidth: number) {
     this.root = root;
     this.fill = fill;
     this.fullWidth = fullWidth;
@@ -188,11 +189,19 @@ export class DeathFadeComponent implements IComponent {
   }
 }
 
-
 export class SimulationStateComponent implements IComponent {
   public readonly type = ComponentType.SimulationState;
   public active = false;
-  public startedByPlayerId: string | null = null;
   public gameOver = false;
   public winner: 0 | 1 | null = null;
+}
+
+/**
+ * Support-only flag: set to true when hostile units are within detection range.
+ * MovementSystem uses this to keep support units stationary until enemies are
+ * nearby, preventing them from pushing into allied collision at spawn.
+ */
+export class SupportUnitTargetingComponent implements IComponent {
+  public readonly type = ComponentType.SupportUnitTargeting;
+  public enemiesDetected = false;
 }

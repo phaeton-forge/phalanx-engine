@@ -8,7 +8,9 @@ import {
   HealAuraComponent,
   SimulationStateComponent,
   StatsComponent,
+  SupportUnitTargetingComponent,
   TeamComponent,
+  UnitTypeComponent,
 } from '../components';
 
 const HEAL_AURA_ACTIVE_TAG = 'State.HealAura.Active';
@@ -30,11 +32,14 @@ export class HealingAuraSystem extends GameSystem {
     return this.abilities as AbilitySystem;
   }
 
-  private transformStore!: SoAComponentStore<typeof TransformSoASchema.definition>;
+  private transformStore!: SoAComponentStore<
+    typeof TransformSoASchema.definition
+  >;
 
   public override init(context: SystemContext): void {
     super.init(context);
-    this.transformStore = this.entityManager.getOrCreateSoAStore(TransformSoASchema);
+    this.transformStore =
+      this.entityManager.getOrCreateSoAStore(TransformSoASchema);
   }
 
   public override processTick(): void {
@@ -47,16 +52,31 @@ export class HealingAuraSystem extends GameSystem {
       ComponentType.HealAura,
       ComponentType.Team,
       ComponentType.UnitStats,
+      ComponentType.UnitType
     );
 
     for (const caster of auras) {
-      const aura = caster.getComponent<HealAuraComponent>(ComponentType.HealAura);
-      const stats = caster.getComponent<StatsComponent>(ComponentType.UnitStats);
+      const aura = caster.getComponent<HealAuraComponent>(
+        ComponentType.HealAura
+      );
+      const stats = caster.getComponent<StatsComponent>(
+        ComponentType.UnitStats
+      );
       const team = caster.getComponent<TeamComponent>(ComponentType.Team);
-      if (!aura || !stats?.alive || !team) continue;
+      const unitType = caster.getComponent<UnitTypeComponent>(
+        ComponentType.UnitType
+      );
+      if (!aura || !stats?.alive || !team || !unitType) continue;
 
       // Only pulse while the aura marker (granted at spawn) is active.
       if (!this._abilities.hasTag(caster.id, HEAL_AURA_ACTIVE_TAG)) continue;
+
+      this.updateEnemyDetection(
+        physics,
+        caster,
+        team.teamId,
+        unitType.detectionRadius
+      );
 
       if (--aura.ticksUntilPulse > 0) continue;
       aura.ticksUntilPulse = aura.pulseTicks;
@@ -69,17 +89,25 @@ export class HealingAuraSystem extends GameSystem {
     physics: PhysicsWorld,
     casterId: number,
     casterTeam: number,
-    radius: ReturnType<typeof FP.FromFloat>,
+    radius: ReturnType<typeof FP.FromFloat>
   ): void {
     const casterIdx = this.transformStore.indexOf(casterId);
     if (casterIdx === -1) return;
 
-    const casterX = FP.FromRaw(this.transformStore.arrays.fpPositionX[casterIdx]);
-    const casterZ = FP.FromRaw(this.transformStore.arrays.fpPositionZ[casterIdx]);
+    const casterX = FP.FromRaw(
+      this.transformStore.arrays.fpPositionX[casterIdx]
+    );
+    const casterZ = FP.FromRaw(
+      this.transformStore.arrays.fpPositionZ[casterIdx]
+    );
 
     // queryRadius already filters by exact distance — game code only applies
     // gameplay filters (team, alive). Candidates are sorted by id (deterministic).
-    const candidates = physics.spatialGrid.queryRadius(casterX, casterZ, radius);
+    const candidates = physics.spatialGrid.queryRadius(
+      casterX,
+      casterZ,
+      radius
+    );
 
     for (const candidateId of candidates) {
       if (candidateId === casterId) continue;
@@ -88,25 +116,82 @@ export class HealingAuraSystem extends GameSystem {
       if (!candidate) continue;
 
       // Allies only: same team, living units (excludes projectiles — no UnitStats).
-      const candidateStats = candidate.getComponent<StatsComponent>(ComponentType.UnitStats);
-      const candidateTeam = candidate.getComponent<TeamComponent>(ComponentType.Team);
-      if (!candidateStats?.alive || candidateTeam?.teamId !== casterTeam) continue;
+      const candidateStats = candidate.getComponent<StatsComponent>(
+        ComponentType.UnitStats
+      );
+      const candidateTeam = candidate.getComponent<TeamComponent>(
+        ComponentType.Team
+      );
+      if (!candidateStats?.alive || candidateTeam?.teamId !== casterTeam)
+        continue;
 
       // Skip allies already at full health to prevent overheal.
-      const health = this._abilities.tryGetAttribute(candidateId, 'Health')?.current;
-      const maxHealth = this._abilities.tryGetAttribute(candidateId, 'MaxHealth')?.base;
+      const health = this._abilities.tryGetAttribute(
+        candidateId,
+        'Health'
+      )?.current;
+      const maxHealth = this._abilities.tryGetAttribute(
+        candidateId,
+        'MaxHealth'
+      )?.base;
       if (health && maxHealth && FP.Gte(health, maxHealth)) continue;
 
       this._abilities.applyEffect(candidateId, 'Effect.Heal.Tick', casterId);
     }
   }
 
+  private updateEnemyDetection(
+    physics: PhysicsWorld,
+    caster: import('@phalanx-engine/ecs').Entity,
+    casterTeam: number,
+    detectionRadius: ReturnType<typeof FP.FromFloat>
+  ): void {
+    const supportTargeting = caster.getComponent<SupportUnitTargetingComponent>(
+      ComponentType.SupportUnitTargeting
+    );
+    if (!supportTargeting) return;
+
+    const casterPos = physics.getEntityPosition(caster.id);
+    if (!casterPos) {
+      supportTargeting.enemiesDetected = false;
+      return;
+    }
+
+    const nearbyIds = physics.spatialGrid.queryRadius(
+      casterPos.x,
+      casterPos.z,
+      detectionRadius
+    );
+
+    let enemiesDetected = false;
+    for (const candidateId of nearbyIds) {
+      if (candidateId === caster.id) continue;
+
+      const candidate = this.entityManager.getEntity(candidateId);
+      if (!candidate) continue;
+
+      const candidateStats = candidate.getComponent<StatsComponent>(
+        ComponentType.UnitStats
+      );
+      const candidateTeam = candidate.getComponent<TeamComponent>(
+        ComponentType.Team
+      );
+      if (!candidateStats?.alive || candidateTeam?.teamId === casterTeam)
+        continue;
+
+      enemiesDetected = true;
+      break;
+    }
+
+    supportTargeting.enemiesDetected = enemiesDetected;
+  }
+
   private getSimulationState(): SimulationStateComponent | undefined {
-    const [entity] = this.entityManager.queryEntities(ComponentType.SimulationState);
-    return entity?.getComponent<SimulationStateComponent>(ComponentType.SimulationState);
+    const [entity] = this.entityManager.queryEntities(
+      ComponentType.SimulationState
+    );
+    return entity?.getComponent<SimulationStateComponent>(
+      ComponentType.SimulationState
+    );
   }
 }
-
-
-
-

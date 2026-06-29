@@ -3,13 +3,15 @@ import type { AbilitySystem } from '@phalanx-engine/abilities';
 import { FP } from '@phalanx-engine/math';
 import {
   ComponentType,
-  DetectionRingComponent,
+  HealAuraComponent,
   HealthBarComponent,
   MeshComponent,
   TeamComponent,
   StatsComponent,
-  UnitTypeComponent,
 } from '../components';
+
+/** World height of the aura ring — sits just above the ground to read as a decal. */
+const AURA_RING_GROUND_Y = 0.05;
 
 export class RenderSyncSystem extends GameSystem {
   private get _abilities(): AbilitySystem { return this.abilities as AbilitySystem; }
@@ -50,20 +52,9 @@ export class RenderSyncSystem extends GameSystem {
     for (const entity of units) {
       const healthBar = entity.getComponent<HealthBarComponent>(ComponentType.HealthBar);
       const entityMesh = entity.getComponent<MeshComponent>(ComponentType.Mesh);
-      const detectionRing = entity.getComponent<DetectionRingComponent>(
-        ComponentType.DetectionRing,
-      );
-      const unitType = entity.getComponent<UnitTypeComponent>(ComponentType.UnitType);
       const stats = entity.getComponent<StatsComponent>(ComponentType.UnitStats);
       const team = entity.getComponent<TeamComponent>(ComponentType.Team);
       if (!healthBar || !entityMesh || !stats || !team) continue;
-
-      if (detectionRing && unitType) {
-        const radius = FP.ToFloat(unitType.detectionRadius);
-        detectionRing.root.scale.set(radius, radius, 1);
-        // detectionRing.root.visible = stats.alive;
-        detectionRing.root.visible = false;
-      }
 
       const health = this._abilities.tryGetAttribute(entity.id, 'Health')?.current;
       const maxHealth = this._abilities.tryGetAttribute(entity.id, 'MaxHealth')?.base;
@@ -82,6 +73,17 @@ export class RenderSyncSystem extends GameSystem {
       healthBar.fill.position.x = ((healthRatio - 1) * healthBar.fullWidth) / 2;
       entityMesh.root.visible = stats.alive;
       healthBar.root.visible = stats.alive;
+
+      const aura = entity.getComponent<HealAuraComponent>(ComponentType.HealAura);
+
+      if (aura?.auraRing) {
+        aura.auraRing.position.set(
+          entityMesh.root.position.x,
+          AURA_RING_GROUND_Y,
+          entityMesh.root.position.z,
+        );
+        aura.auraRing.visible = stats.alive;
+      }
     }
   }
 }

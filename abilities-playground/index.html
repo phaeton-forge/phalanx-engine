@@ -123,19 +123,6 @@
         text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
       }
 
-      #start-overlay #start-btn {
-        padding: 1rem 2.5rem;
-        font-size: 1.25rem;
-        font-weight: bold;
-        border: none;
-        border-radius: 10px;
-        background: #4ecca3;
-        color: #1a1a2e;
-        cursor: pointer;
-        min-height: 48px;
-        min-width: 48px;
-      }
-
       #result-overlay.victory h2 {
         color: #4ecca3;
       }
@@ -159,9 +146,107 @@
         background: rgba(255, 255, 255, 0.16);
       }
 
+      #deployment-controls {
+        display: none;
+        position: absolute;
+        left: 50%;
+        bottom: 16px;
+        transform: translateX(-50%);
+        z-index: 30;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        padding: 12px;
+        border-radius: 12px;
+        background: rgba(0, 0, 0, 0.55);
+        backdrop-filter: blur(4px);
+      }
+
+      #deployment-controls.visible {
+        display: flex;
+      }
+
+      #ready-btn {
+        padding: 0.75rem 2rem;
+        font-size: 1rem;
+        font-weight: bold;
+        border: none;
+        border-radius: 8px;
+        background: #4ecca3;
+        color: #1a1a2e;
+        cursor: pointer;
+        min-height: 44px;
+        min-width: 140px;
+      }
+
+      #ready-btn:hover:not(:disabled) {
+        background: #3ba882;
+      }
+
+      #ready-btn:disabled {
+        background: #555;
+        cursor: not-allowed;
+      }
+
+      #deployment-status {
+        font-size: 0.9rem;
+        color: #ccc;
+        min-height: 1.5em;
+        text-align: center;
+      }
+
+      #unit-palette {
+        display: flex;
+        gap: 10px;
+      }
+
+      #unit-palette button {
+        padding: 0.625rem 1rem;
+        font-size: 0.9rem;
+        font-weight: 600;
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        border-radius: 8px;
+        background: rgba(255, 255, 255, 0.1);
+        color: white;
+        cursor: pointer;
+        min-height: 44px;
+        min-width: 72px;
+        touch-action: none;
+      }
+
+      #unit-palette button:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+      }
+
+      #unit-palette button:active:not(:disabled) {
+        background: rgba(255, 255, 255, 0.2);
+      }
+
       @media (max-width: 768px) {
         #find-match-btn {
           font-size: 16px;
+        }
+
+        #deployment-controls {
+          bottom: 8px;
+          gap: 6px;
+          padding: 8px;
+        }
+
+        #ready-btn {
+          min-width: 120px;
+          padding: 0.625rem 1.5rem;
+        }
+
+        #unit-palette {
+          gap: 6px;
+        }
+
+        #unit-palette button {
+          padding: 0.5rem 0.75rem;
+          font-size: 0.8rem;
+          min-width: 60px;
         }
       }
     </style>
@@ -177,9 +262,15 @@
     <div id="game-container">
       <canvas id="app"></canvas>
 
-      <div id="start-overlay" class="overlay">
-        <h2>Ready</h2>
-        <button id="start-btn" type="button">START</button>
+      <div id="deployment-controls" class="visible">
+        <button id="ready-btn" type="button">READY</button>
+        <p id="deployment-status"></p>
+        <div id="unit-palette">
+          <button id="unit-btn-sphere" type="button" data-unit-type="sphere">Sphere</button>
+          <button id="unit-btn-cube" type="button" data-unit-type="cube">Cube</button>
+          <button id="unit-btn-support" type="button" data-unit-type="support">Support</button>
+          <button id="unit-btn-rocket" type="button" data-unit-type="rocket">Rocket</button>
+        </div>
       </div>
 
       <div id="result-overlay" class="overlay">

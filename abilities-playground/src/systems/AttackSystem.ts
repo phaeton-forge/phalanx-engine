@@ -10,7 +10,6 @@ import {
   SimulationStateComponent,
   TargetStateComponent,
   StatsComponent,
-  UnitTypeComponent,
 } from '../components';
 
 export class AttackSystem extends GameSystem {
@@ -33,9 +32,6 @@ export class AttackSystem extends GameSystem {
     );
 
     for (const unit of units) {
-      const type = unit.getComponent<UnitTypeComponent>(ComponentType.UnitType);
-      if (type?.kind !== 'sphere') continue;
-
       const stats = unit.getComponent<StatsComponent>(ComponentType.UnitStats);
       const targetState = unit.getComponent<TargetStateComponent>(ComponentType.TargetState);
       const timer = unit.getComponent<AutoAttackTimerComponent>(ComponentType.AutoAttackTimer);

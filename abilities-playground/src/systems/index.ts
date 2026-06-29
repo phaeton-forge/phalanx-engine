@@ -1,6 +1,7 @@
 export { AttackSystem } from './AttackSystem';
 export { CubeTargetingSystem } from './CubeTargetingSystem';
 export { DeathSystem } from './DeathSystem';
+export { FormationSystem } from './FormationSystem';
 export { HealingAuraSystem } from './HealingAuraSystem';
 export { MissileLauncherSystem } from './MissileLauncherSystem';
 export { MissileMovementSystem } from './MissileMovementSystem';
@@ -11,5 +12,4 @@ export { ProjectileMovementSystem } from './ProjectileMovementSystem';
 export { ProjectileDespawnQueueSystem } from './ProjectileDespawnQueueSystem';
 export { RenderSyncSystem } from './RenderSyncSystem';
 export { RotationSystem } from './RotationSystem';
-export { StartSimulationSystem } from './StartSimulationSystem';
 export { TargetingSystem } from './TargetingSystem';
