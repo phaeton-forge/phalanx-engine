@@ -11,11 +11,11 @@ export const UNIT_MOVE_SPEED = 13;
 
 /**
  * Highest max-health value among all unit types in the roster (spheres: 100,
- * cube: 120, support: 70, volt: 800). Used as the static upper bound for the
+ * cube: 120, support: 70, volt: 200). Used as the static upper bound for the
  * Health attribute so the aggregation-system clamp acts as a second safety net
  * against overheal.
  */
-export const MAX_UNIT_HEALTH = 800;
+export const MAX_UNIT_HEALTH = 200;
 
 /** Attack cooldown: 40 ticks = 2 s at 20 TPS */
 export const ATTACK_COOLDOWN_TICKS = 40;
