@@ -5,8 +5,16 @@ import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import type { Entity } from '@phalanx-engine/ecs';
 import { FPVector3 } from '@phalanx-engine/math';
 import { Cue } from '@phalanx-engine/abilities';
-import type { CueContext, GameplayCueDispatchedEvent } from '@phalanx-engine/abilities';
-import { ComponentType, MeshComponent, StatsComponent, TransformComponent } from '../components';
+import type {
+  CueContext,
+  GameplayCueDispatchedEvent,
+} from '@phalanx-engine/abilities';
+import {
+  ComponentType,
+  MeshComponent,
+  StatsComponent,
+  TransformComponent,
+} from '../components';
 import {
   CHAIN_LIGHTNING_LIFETIME_SECONDS,
   CHAIN_LIGHTNING_LINE_WIDTH,
@@ -18,7 +26,9 @@ const SEGMENT_COUNT = 10;
 const JITTER_AMOUNT = 0.35;
 
 /** Deterministic visual jitter so every client sees the same bolt shape. */
-const JITTER_TABLE = [0.12, -0.08, 0.22, -0.15, 0.05, -0.21, 0.18, -0.04, 0.11, -0.17];
+const JITTER_TABLE = [
+  0.12, -0.08, 0.22, -0.15, 0.05, -0.21, 0.18, -0.04, 0.11, -0.17,
+];
 
 /**
  * Short-lived jagged lightning beam between two entities.
@@ -30,6 +40,12 @@ export class ChainLightningCue extends Cue {
   private readonly scene: THREE.Scene;
   private readonly color: number;
   private readonly isPrimary: boolean;
+  private readonly initialPositions = new Float32Array(SEGMENT_COUNT * 2 * 3);
+  private readonly direction = new THREE.Vector3();
+  private readonly side = new THREE.Vector3();
+  private readonly base = new THREE.Vector3();
+  private readonly point = new THREE.Vector3();
+  private readonly up = new THREE.Vector3(0, 1, 0);
 
   private sourceEntityId = -1;
   private targetEntityId = -1;
@@ -68,7 +84,7 @@ export class ChainLightningCue extends Cue {
 
     const geometry = new LineSegmentsGeometry();
     // SEGMENT_COUNT segments, 2 vertices per segment, 3 floats per vertex.
-    geometry.setPositions(new Float32Array(SEGMENT_COUNT * 2 * 3));
+    geometry.setPositions(this.initialPositions);
 
     this.line = new LineSegments2(geometry, this.material);
     this.line.renderOrder = 9500;
@@ -91,8 +107,12 @@ export class ChainLightningCue extends Cue {
       return;
     }
 
-    const sourceStats = source.getComponent<StatsComponent>(ComponentType.UnitStats);
-    const targetStats = target.getComponent<StatsComponent>(ComponentType.UnitStats);
+    const sourceStats = source.getComponent<StatsComponent>(
+      ComponentType.UnitStats
+    );
+    const targetStats = target.getComponent<StatsComponent>(
+      ComponentType.UnitStats
+    );
     if (!sourceStats?.alive || !targetStats?.alive) {
       this.done = true;
       return;
@@ -132,7 +152,9 @@ export class ChainLightningCue extends Cue {
   }
 
   private getAnchor(entity: Entity): THREE.Vector3 | null {
-    const transform = entity.getComponent<TransformComponent>(ComponentType.Transform);
+    const transform = entity.getComponent<TransformComponent>(
+      ComponentType.Transform
+    );
     if (transform) {
       const p = FPVector3.ToFloat(transform.fpPosition);
       return new THREE.Vector3(p.x, p.y + BEAM_HEIGHT_OFFSET, p.z);
@@ -148,45 +170,48 @@ export class ChainLightningCue extends Cue {
   }
 
   private updateGeometry(from: THREE.Vector3, to: THREE.Vector3): void {
-    const geometry = this.line!.geometry as LineSegmentsGeometry;
-    const dir = new THREE.Vector3().subVectors(to, from);
+    const geometry = this.line!.geometry;
+    const dir = this.direction.subVectors(to, from);
     const len = dir.length();
     dir.normalize();
 
-    const up = new THREE.Vector3(0, 1, 0);
-    const side = new THREE.Vector3().crossVectors(dir, up);
+    const side = this.side.crossVectors(dir, this.up);
     if (side.lengthSq() < 0.001) {
       side.set(1, 0, 0);
     }
     side.normalize();
 
-    const positions = new Float32Array(SEGMENT_COUNT * 2 * 3);
+    const starts = geometry.getAttribute(
+      'instanceStart'
+    ) as THREE.InterleavedBufferAttribute;
+    const ends = geometry.getAttribute(
+      'instanceEnd'
+    ) as THREE.InterleavedBufferAttribute;
+    let prevX = from.x;
+    let prevY = from.y;
+    let prevZ = from.z;
 
-    for (let i = 0; i <= SEGMENT_COUNT; i++) {
+    for (let i = 1; i <= SEGMENT_COUNT; i++) {
       const t = i / SEGMENT_COUNT;
-      const base = new THREE.Vector3().lerpVectors(from, to, t);
+      const base = this.base.lerpVectors(from, to, t);
 
       let jitter = 0;
-      if (i > 0 && i < SEGMENT_COUNT) {
+      if (i < SEGMENT_COUNT) {
         jitter = JITTER_TABLE[i - 1] * JITTER_AMOUNT * len;
       }
 
-      const p = base.add(side.clone().multiplyScalar(jitter));
-
-      if (i < SEGMENT_COUNT) {
-        const idx = i * 2 * 3;
-        positions[idx] = p.x;
-        positions[idx + 1] = p.y;
-        positions[idx + 2] = p.z;
-      }
-      if (i > 0) {
-        const idx = (i * 2 - 1) * 3;
-        positions[idx] = p.x;
-        positions[idx + 1] = p.y;
-        positions[idx + 2] = p.z;
-      }
+      const p = this.point.copy(base).addScaledVector(side, jitter);
+      const segmentIndex = i - 1;
+      starts.setXYZ(segmentIndex, prevX, prevY, prevZ);
+      ends.setXYZ(segmentIndex, p.x, p.y, p.z);
+      prevX = p.x;
+      prevY = p.y;
+      prevZ = p.z;
     }
 
-    geometry.setPositions(positions);
+    starts.data.needsUpdate = true;
+    ends.data.needsUpdate = true;
+    geometry.computeBoundingBox();
+    geometry.computeBoundingSphere();
   }
 }
