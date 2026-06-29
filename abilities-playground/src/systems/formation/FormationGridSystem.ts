@@ -218,6 +218,19 @@ export class FormationGridSystem {
   }
 
   /**
+   * Reset the local grid state back to empty formations for the given players.
+   */
+  reset(players: Array<{ playerId: string; team: TeamId }>): void {
+    for (const playerId of this.gridData.getAllGrids().keys()) {
+      this.renderer.clearPlayer(playerId);
+    }
+    this.gridData.dispose();
+    for (const { playerId, team } of players) {
+      this.initializeGrid(playerId, team);
+    }
+  }
+
+  /**
    * Dispose all local Three.js and data resources.
    */
   dispose(): void {

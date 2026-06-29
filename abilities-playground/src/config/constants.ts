@@ -102,5 +102,7 @@ export const arenaParams = {
     gridWidth: 12,
     gridHeight: 6,
     cellSize: 6,
+    /** World units between the front edge of the formation grid and the deployed army. */
+    deployGap: 10,
   },
 };

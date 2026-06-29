@@ -17,6 +17,9 @@ import {
 
 import {
   ComponentType,
+  DetectionRingComponent,
+  HealthBarComponent,
+  MeshComponent,
   StatsComponent,
   SimulationStateComponent,
   TeamComponent,
@@ -26,6 +29,7 @@ import {
   AttackSystem,
   CubeTargetingSystem,
   DeathSystem,
+  FormationSystem,
   HealingAuraSystem,
   MissileLauncherSystem,
   MissileMovementSystem,
@@ -33,10 +37,9 @@ import {
   MovementSystem,
   RenderSyncSystem,
   RotationSystem,
-  StartSimulationSystem,
   TargetingSystem,
 } from '../systems';
-import { UnitFactory, UnitType } from '../units';
+import { UnitFactory } from '../units';
 import { ProjectileEntity } from '../entities/Projectile.ts';
 import { MissileEntity } from '../entities/Missile';
 import { autoAttack } from '../hooks/AutoAttack.ts';
@@ -56,7 +59,8 @@ import {
 
 export class SimulationContainer {
   readonly world: GameWorld;
-  readonly startSimulationSystem = new StartSimulationSystem();
+  readonly formationSystem: FormationSystem;
+  readonly unitFactory: UnitFactory;
 
   private readonly physicsWorld: PhysicsWorld;
   private readonly abilities: AbilitySystem;
@@ -159,11 +163,14 @@ export class SimulationContainer {
       return true;
     });
 
+    this.unitFactory = new UnitFactory(this.scene, this.abilities);
+    this.formationSystem = new FormationSystem(this.unitFactory);
+
     const { physicsSystem, interpolationSystem } =
       this.physicsWorld.getSystems();
     this.world.registerSystems(
       [
-        this.startSimulationSystem,
+        this.formationSystem,
         new TargetingSystem(),
         new AttackSystem(),
         new MissileLauncherSystem(),
@@ -183,8 +190,6 @@ export class SimulationContainer {
     );
 
     this.spawnSimulationState();
-    const unitFactory = new UnitFactory(this.scene, this.abilities);
-    this.spawnUnits(unitFactory);
   }
 
   /** Returns the result title if game is over, otherwise null. */
@@ -200,6 +205,73 @@ export class SimulationContainer {
     return state.winner === localTeamId ? 'Victory!' : 'Defeat';
   }
 
+  isSimulationActive(): boolean {
+    const [stateEntity] = this.world.entityManager.queryEntities(
+      ComponentType.SimulationState,
+    );
+    const state = stateEntity?.getComponent<SimulationStateComponent>(
+      ComponentType.SimulationState,
+    );
+    return state?.active ?? false;
+  }
+
+  /**
+   * Reset the battle back to the deployment phase.
+   * Clears simulation state, removes every battle entity (units, projectiles,
+   * missiles), detaches their meshes from the scene, and resets the formation
+   * authority so players can redeploy.
+   */
+  resetBattle(): void {
+    const entityManager = this.world.entityManager;
+
+    const [stateEntity] = entityManager.queryEntities(ComponentType.SimulationState);
+    const state = stateEntity?.getComponent<SimulationStateComponent>(
+      ComponentType.SimulationState,
+    );
+    if (state) {
+      state.active = false;
+      state.gameOver = false;
+      state.winner = null;
+    }
+
+    const pools = this.world.pools;
+    const entities = entityManager.getAllEntities();
+
+    for (const entity of entities) {
+      if (entity.hasComponent(ComponentType.SimulationState)) continue;
+
+      const isPooled =
+        entity.hasComponent(ComponentType.Projectile) ||
+        entity.hasComponent(ComponentType.Missile);
+
+      if (pools && isPooled) {
+        pools.despawn(entity);
+      } else {
+        this.removeEntityVisuals(entity);
+        entityManager.removeEntity(entity);
+      }
+    }
+
+    this.formationSystem.reset();
+  }
+
+  private removeEntityVisuals(entity: Entity): void {
+    const mesh = entity.getComponent<MeshComponent>(ComponentType.Mesh);
+    if (mesh) {
+      this.scene.remove(mesh.root);
+    }
+
+    const healthBar = entity.getComponent<HealthBarComponent>(ComponentType.HealthBar);
+    if (healthBar) {
+      this.scene.remove(healthBar.root);
+    }
+
+    const detectionRing = entity.getComponent<DetectionRingComponent>(ComponentType.DetectionRing);
+    if (detectionRing) {
+      this.scene.remove(detectionRing.root);
+    }
+  }
+
   dispose(): void {
     this.world.dispose();
     this.physicsWorld.dispose();
@@ -209,43 +281,5 @@ export class SimulationContainer {
     const stateEntity = new Entity();
     stateEntity.addComponent(new SimulationStateComponent());
     this.world.entityManager.addEntity(stateEntity);
-  }
-
-  private spawnUnits(unitFactory: UnitFactory): void {
-    // Phase 1 temporary hard-coded spawn to validate the new data-driven unit API.
-    // This will be replaced by deterministic FormationSystem deployment in Phase 4.
-    for (const teamId of [0, 1] as const) {
-      const spawnZ = teamId === 0 ? arenaParams.team1SpawnZ : arenaParams.team2SpawnZ;
-      const forwardZ = teamId === 0 ? 1 : -1;
-
-      const unitPlacements: Array<{ type: UnitType; x: number; zOffset: number }> = [
-        { type: 'sphere', x: -12, zOffset: 5 },
-        { type: 'sphere', x: -6, zOffset: 5 },
-        { type: 'sphere', x: 0, zOffset: 5 },
-        { type: 'sphere', x: 6, zOffset: 5 },
-        { type: 'sphere', x: 12, zOffset: 5 },
-        { type: 'sphere', x: -6, zOffset: 10 },
-        { type: 'sphere', x: 0, zOffset: 10 },
-        { type: 'sphere', x: 6, zOffset: 10 },
-        { type: 'cube', x: -8, zOffset: 14 },
-        { type: 'cube', x: 8, zOffset: 14 },
-        { type: 'support', x: 0, zOffset: 0 },
-        { type: 'rocket', x: -16, zOffset: 8 },
-        { type: 'rocket', x: 16, zOffset: 8 },
-      ];
-
-      for (const placement of unitPlacements) {
-        const def = unitFactory.getDefinition(placement.type);
-        const x = placement.x;
-        const z = spawnZ + placement.zOffset * forwardZ;
-        const y = def.heightOffset;
-        const entity = unitFactory.spawnBattleUnit(placement.type, teamId, { x, y, z });
-        this.world.entityManager.addEntity(entity);
-
-        if (def.aura) {
-          this.abilities.activateAbility(entity.id, 'Ability.HealAura');
-        }
-      }
-    }
   }
 }

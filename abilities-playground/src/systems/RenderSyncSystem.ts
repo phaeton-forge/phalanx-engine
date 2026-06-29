@@ -3,12 +3,10 @@ import type { AbilitySystem } from '@phalanx-engine/abilities';
 import { FP } from '@phalanx-engine/math';
 import {
   ComponentType,
-  DetectionRingComponent,
   HealthBarComponent,
   MeshComponent,
   TeamComponent,
   StatsComponent,
-  UnitTypeComponent,
 } from '../components';
 
 export class RenderSyncSystem extends GameSystem {
@@ -50,20 +48,9 @@ export class RenderSyncSystem extends GameSystem {
     for (const entity of units) {
       const healthBar = entity.getComponent<HealthBarComponent>(ComponentType.HealthBar);
       const entityMesh = entity.getComponent<MeshComponent>(ComponentType.Mesh);
-      const detectionRing = entity.getComponent<DetectionRingComponent>(
-        ComponentType.DetectionRing,
-      );
-      const unitType = entity.getComponent<UnitTypeComponent>(ComponentType.UnitType);
       const stats = entity.getComponent<StatsComponent>(ComponentType.UnitStats);
       const team = entity.getComponent<TeamComponent>(ComponentType.Team);
       if (!healthBar || !entityMesh || !stats || !team) continue;
-
-      if (detectionRing && unitType) {
-        const radius = FP.ToFloat(unitType.detectionRadius);
-        detectionRing.root.scale.set(radius, radius, 1);
-        // detectionRing.root.visible = stats.alive;
-        detectionRing.root.visible = false;
-      }
 
       const health = this._abilities.tryGetAttribute(entity.id, 'Health')?.current;
       const maxHealth = this._abilities.tryGetAttribute(entity.id, 'MaxHealth')?.base;

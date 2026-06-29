@@ -37,7 +37,7 @@ export function assembleUnit(
   entity.addComponent(new StatsComponent({ stopRange: def.stopRange }));
   entity.addComponent(new TargetStateComponent());
   entity.addComponent(new MeshComponent(refs.root));
-  entity.addComponent(new DetectionRingComponent(refs.detectionRing));
+  if (refs.detectionRing) entity.addComponent(new DetectionRingComponent(refs.detectionRing));
   entity.addComponent(new HealthBarComponent(refs.healthBarRoot, refs.healthBarFill, refs.healthBarFullWidth));
   entity.addComponent(new InterpolationComponent(fpPosition, fpRotation));
   entity.addComponent(

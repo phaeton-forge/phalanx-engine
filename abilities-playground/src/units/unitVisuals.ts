@@ -8,7 +8,7 @@ export interface UnitRenderRefs {
   healthBarRoot: THREE.Object3D;
   healthBarFill: THREE.Object3D;
   healthBarFullWidth: number;
-  detectionRing: THREE.Mesh;
+  detectionRing?: THREE.Mesh;
   spawnPoint?: { marker: THREE.Object3D };
   auraRing?: THREE.Mesh;
 }
@@ -20,8 +20,6 @@ export function createUnitRenderRefs(
   teamId: TeamId,
 ): UnitRenderRefs {
   const root = createBody(def.visual, teamId);
-  const detectionRing = createDetectionRing(teamId, def.detectionRange);
-  root.add(detectionRing);
 
   const { root: healthBarRoot, fill: healthBarFill, fullWidth: healthBarFullWidth } =
     createHealthBar(teamId);
@@ -43,7 +41,6 @@ export function createUnitRenderRefs(
     healthBarRoot,
     healthBarFill,
     healthBarFullWidth,
-    detectionRing,
     spawnPoint,
     auraRing,
   };
@@ -85,26 +82,6 @@ function createAuraRing(radius: number): THREE.Mesh {
   ring.rotation.x = -Math.PI / 2;
   ring.position.y = 0.06;
   ring.renderOrder = 2;
-  ring.scale.set(radius, radius, 1);
-  return ring;
-}
-
-/** Unit-radius ring; scale X/Z in RenderSyncSystem to match detectionRange. */
-function createDetectionRing(teamId: TeamId, radius: number): THREE.Mesh {
-  const teamColor = teamId === 0 ? arenaParams.team1Color : arenaParams.team2Color;
-  const ring = new THREE.Mesh(
-    new THREE.RingGeometry(0.97, 1, 64),
-    new THREE.MeshBasicMaterial({
-      color: teamColor,
-      transparent: true,
-      opacity: 0.45,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-    }),
-  );
-  ring.rotation.x = -Math.PI / 2;
-  ring.position.y = 0.05;
-  ring.renderOrder = 1;
   ring.scale.set(radius, radius, 1);
   return ring;
 }
