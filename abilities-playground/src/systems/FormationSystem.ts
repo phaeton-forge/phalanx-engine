@@ -102,17 +102,49 @@ export class FormationSystem extends GameSystem {
 
     switch (type) {
       case 'formation-place': {
-        const cmd = data as FormationPlaceCommand;
+        const cmd = data as Partial<FormationPlaceCommand>;
+        if (
+          (cmd.type !== 'sphere' &&
+            cmd.type !== 'cube' &&
+            cmd.type !== 'support' &&
+            cmd.type !== 'rocket') ||
+          typeof cmd.gridX !== 'number' ||
+          !Number.isInteger(cmd.gridX) ||
+          typeof cmd.gridZ !== 'number' ||
+          !Number.isInteger(cmd.gridZ)
+        ) {
+          break;
+        }
         this.gridData.placeUnit(playerId, cmd.gridX, cmd.gridZ, cmd.type);
         break;
       }
       case 'formation-move': {
-        const cmd = data as FormationMoveCommand;
+        const cmd = data as Partial<FormationMoveCommand>;
+        if (
+          typeof cmd.fromX !== 'number' ||
+          !Number.isInteger(cmd.fromX) ||
+          typeof cmd.fromZ !== 'number' ||
+          !Number.isInteger(cmd.fromZ) ||
+          typeof cmd.toX !== 'number' ||
+          !Number.isInteger(cmd.toX) ||
+          typeof cmd.toZ !== 'number' ||
+          !Number.isInteger(cmd.toZ)
+        ) {
+          break;
+        }
         this.gridData.moveUnit(playerId, cmd.fromX, cmd.fromZ, cmd.toX, cmd.toZ);
         break;
       }
       case 'formation-remove': {
-        const cmd = data as FormationRemoveCommand;
+        const cmd = data as Partial<FormationRemoveCommand>;
+        if (
+          typeof cmd.gridX !== 'number' ||
+          !Number.isInteger(cmd.gridX) ||
+          typeof cmd.gridZ !== 'number' ||
+          !Number.isInteger(cmd.gridZ)
+        ) {
+          break;
+        }
         this.gridData.removeUnit(playerId, cmd.gridX, cmd.gridZ);
         break;
       }
