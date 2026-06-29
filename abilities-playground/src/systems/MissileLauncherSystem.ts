@@ -4,6 +4,7 @@ import type { AbilitySystem } from '@phalanx-engine/abilities';
 import { FP } from '@phalanx-engine/math';
 import { PhysicsWorld, TransformSoASchema } from '@phalanx-engine/physics';
 import { MISSILE_VOLLEY_COOLDOWN_TAG } from '../config/abilityDefinitions';
+import { UnitType } from '../units';
 import {
   ComponentType,
   SimulationStateComponent,
@@ -64,7 +65,7 @@ export class MissileLauncherSystem extends GameSystem {
       const type = rocket.getComponent<UnitTypeComponent>(
         ComponentType.UnitType
       );
-      if (!stats?.alive || !team || !type || type.kind !== 'rocket') continue;
+      if (!stats?.alive || !team || !type || type.kind !== UnitType.Rocket) continue;
 
       // Cooldown is owned by the ability system; skip while the cooldown tag
       // is present so we neither enqueue nor re-check targets uselessly.

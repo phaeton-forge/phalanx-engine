@@ -3,8 +3,7 @@ import { FP } from '@phalanx-engine/math';
 import type { FixedPoint } from '@phalanx-engine/math';
 import type { IComponent } from './Component';
 import { ComponentType } from './Component';
-import type { UnitKind } from '../config/unitRoster';
-import { DEFAULT_UNIT_DETECTION_RANGE } from '../config/unitRoster';
+import { DEFAULT_UNIT_DETECTION_RANGE, type UnitType } from '../units/UnitType';
 import type { IPoolableComponent } from '@phalanx-engine/ecs';
 
 export type TeamId = 0 | 1;
@@ -20,11 +19,11 @@ export class TeamComponent {
 
 export class UnitTypeComponent implements IComponent {
   public readonly type = ComponentType.UnitType;
-  public readonly kind: UnitKind;
+  public readonly kind: UnitType;
   public readonly detectionRadius: FixedPoint;
 
   constructor(
-    kind: UnitKind,
+    kind: UnitType,
     detectionRadius: FixedPoint = FP.FromFloat(DEFAULT_UNIT_DETECTION_RANGE),
   ) {
     this.kind = kind;

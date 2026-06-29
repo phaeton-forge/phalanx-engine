@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import type { PhalanxClient } from '@phalanx-engine/client';
 import { Entity, GameWorld, resetEntityIdCounter } from '@phalanx-engine/ecs';
-import { FP, FPQuaternion } from '@phalanx-engine/math';
-import { PhysicsWorld, TransformComponent, TRANSFORM_COMPONENT_TYPE } from '@phalanx-engine/physics';
+import { FP } from '@phalanx-engine/math';
+import { PhysicsWorld } from '@phalanx-engine/physics';
 import {
   type AbilityActivationContext,
   createAbilitySystem,
@@ -14,17 +14,14 @@ import {
   CUBE_SLOW_TAG,
   CUBE_SPEED_BUFF_TAG,
 } from '../config/abilityDefinitions';
-import {
-  DEFAULT_UNIT_DETECTION_RANGE,
-  UNIT_ROSTER,
-} from '../config/unitRoster';
+
 import {
   ComponentType,
   StatsComponent,
   SimulationStateComponent,
   TeamComponent,
 } from '../components';
-import { UnitEntity } from '../entities/UnitEntity';
+
 import {
   AttackSystem,
   CubeTargetingSystem,
@@ -39,7 +36,7 @@ import {
   StartSimulationSystem,
   TargetingSystem,
 } from '../systems';
-import type { UnitFactory } from './UnitFactory';
+import { UnitFactory, UnitType } from '../units';
 import { ProjectileEntity } from '../entities/Projectile.ts';
 import { MissileEntity } from '../entities/Missile';
 import { autoAttack } from '../hooks/AutoAttack.ts';
@@ -67,7 +64,6 @@ export class SimulationContainer {
 
   constructor(
     client: PhalanxClient,
-    unitFactory: UnitFactory,
     scene: THREE.Scene
   ) {
     resetEntityIdCounter();
@@ -187,6 +183,7 @@ export class SimulationContainer {
     );
 
     this.spawnSimulationState();
+    const unitFactory = new UnitFactory(this.scene, this.abilities);
     this.spawnUnits(unitFactory);
   }
 
@@ -215,73 +212,38 @@ export class SimulationContainer {
   }
 
   private spawnUnits(unitFactory: UnitFactory): void {
+    // Phase 1 temporary hard-coded spawn to validate the new data-driven unit API.
+    // This will be replaced by deterministic FormationSystem deployment in Phase 4.
     for (const teamId of [0, 1] as const) {
-      const spawnZ =
-        teamId === 0 ? arenaParams.team1SpawnZ : arenaParams.team2SpawnZ;
+      const spawnZ = teamId === 0 ? arenaParams.team1SpawnZ : arenaParams.team2SpawnZ;
       const forwardZ = teamId === 0 ? 1 : -1;
-      for (const rosterEntry of UNIT_ROSTER) {
-        const spawn = rosterEntry.spawns[teamId];
-        if (!spawn) continue;
-        const { offsetX, offsetZ } = spawn;
-        const x = offsetX;
-        const z = spawnZ + offsetZ * forwardZ;
-        const y = unitFactory.getHeightOffset(rosterEntry.kind);
-        const detectionRange =
-          rosterEntry.detectionRange ?? DEFAULT_UNIT_DETECTION_RANGE;
-        const renderRefs = unitFactory.createRenderRefs(
-          rosterEntry.kind,
-          teamId,
-          detectionRange,
-          rosterEntry.auraRadius
-        );
 
-        renderRefs.root.position.set(x, y, z);
+      const unitPlacements: Array<{ type: UnitType; x: number; zOffset: number }> = [
+        { type: 'sphere', x: -12, zOffset: 5 },
+        { type: 'sphere', x: -6, zOffset: 5 },
+        { type: 'sphere', x: 0, zOffset: 5 },
+        { type: 'sphere', x: 6, zOffset: 5 },
+        { type: 'sphere', x: 12, zOffset: 5 },
+        { type: 'sphere', x: -6, zOffset: 10 },
+        { type: 'sphere', x: 0, zOffset: 10 },
+        { type: 'sphere', x: 6, zOffset: 10 },
+        { type: 'cube', x: -8, zOffset: 14 },
+        { type: 'cube', x: 8, zOffset: 14 },
+        { type: 'support', x: 0, zOffset: 0 },
+        { type: 'rocket', x: -16, zOffset: 8 },
+        { type: 'rocket', x: 16, zOffset: 8 },
+      ];
 
-        this.scene.add(renderRefs.healthBarRoot);
+      for (const placement of unitPlacements) {
+        const def = unitFactory.getDefinition(placement.type);
+        const x = placement.x;
+        const z = spawnZ + placement.zOffset * forwardZ;
+        const y = def.heightOffset;
+        const entity = unitFactory.spawnBattleUnit(placement.type, teamId, { x, y, z });
+        this.world.entityManager.addEntity(entity);
 
-        const isSupport = rosterEntry.kind === 'support';
-        const isCube = rosterEntry.kind === 'cube';
-        const isRocket = rosterEntry.kind === 'rocket';
-        const unitEntity = new UnitEntity(
-          rosterEntry,
-          teamId,
-          { x, y, z },
-          renderRefs
-        );
-
-        const transform = unitEntity.getComponent<TransformComponent>(
-          TRANSFORM_COMPONENT_TYPE,
-        )!;
-        const spawnRotation = FPQuaternion.ToFloat(transform.fpRotation);
-        renderRefs.root.quaternion.set(
-          spawnRotation.x,
-          spawnRotation.y,
-          spawnRotation.z,
-          spawnRotation.w,
-        );
-
-        unitEntity.addComponent(
-          this.abilities.initComponent({
-            attributes: {
-              Health: FP.FromFloat(rosterEntry.maxHealth),
-              MaxHealth: FP.FromFloat(rosterEntry.maxHealth),
-            },
-            abilities: isSupport
-              ? ['Ability.HealAura']
-              : isRocket
-                ? ['Ability.MissileVolley']
-                : isCube
-                  ? []
-                  : ['Ability.AutoAttack'],
-            tags: [`Team.${teamId}`],
-          })
-        );
-        this.world.entityManager.addEntity(unitEntity);
-
-        // Activate the aura at spawn: grants the "aura active" marker so the
-        // HealingAuraSystem starts pulsing and the indicator ring represents it.
-        if (isSupport) {
-          this.abilities.activateAbility(unitEntity.id, 'Ability.HealAura');
+        if (def.aura) {
+          this.abilities.activateAbility(entity.id, 'Ability.HealAura');
         }
       }
     }

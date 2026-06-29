@@ -5,7 +5,7 @@ import { ArenaScene } from './ArenaScene';
 import { CameraController } from './CameraController';
 import { GameUI } from './GameUI';
 import { SimulationContainer } from './SimulationContainer';
-import { UnitFactory } from './UnitFactory';
+
 import {MeshComponent} from "../components";
 
 export class Game {
@@ -36,8 +36,7 @@ export class Game {
     this.cameraController = new CameraController(this.localTeamId);
     this.cameraController.addListeners(canvas);
 
-    const unitFactory = new UnitFactory(this.arenaScene);
-    this.simulation = new SimulationContainer(client, unitFactory, this.arenaScene.scene);
+    this.simulation = new SimulationContainer(client, this.arenaScene.scene);
 
     this.ui = new GameUI(
       () => this.client.sendCommand('start-simulation', {}),
