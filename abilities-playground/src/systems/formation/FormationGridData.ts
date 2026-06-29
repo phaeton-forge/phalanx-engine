@@ -246,6 +246,7 @@ export class FormationGridData {
     switch (unitType) {
       case 'sphere':
       case 'support':
+      case 'volt':
         return { x: gridX, z: gridZ };
       case 'rocket':
         return this.findRocketOrigin(grid, gridX, gridZ);

@@ -24,8 +24,12 @@ export class GameUI {
 
     this.deploymentControls = document.getElementById('deployment-controls')!;
     this.resultOverlay = document.getElementById('result-overlay')!;
-    this.readyButton = document.getElementById('ready-btn') as HTMLButtonElement;
-    this.returnLobbyButton = document.getElementById('return-lobby-btn') as HTMLButtonElement;
+    this.readyButton = document.getElementById(
+      'ready-btn'
+    ) as HTMLButtonElement;
+    this.returnLobbyButton = document.getElementById(
+      'return-lobby-btn'
+    ) as HTMLButtonElement;
     this.deploymentStatus = document.getElementById('deployment-status')!;
 
     const unitButtonIds: { id: string; type: UnitType; label: string }[] = [
@@ -33,6 +37,7 @@ export class GameUI {
       { id: 'unit-btn-cube', type: 'cube', label: 'Cube' },
       { id: 'unit-btn-support', type: 'support', label: 'Support' },
       { id: 'unit-btn-rocket', type: 'rocket', label: 'Rocket' },
+      { id: 'unit-btn-volt', type: 'volt', label: 'Volt' },
     ];
 
     for (const { id, type, label } of unitButtonIds) {

@@ -6,6 +6,7 @@ import {
   ROCKET_DETECTION_RANGE,
   ROCKET_MAX_HEALTH,
   ROCKET_STOP_RANGE,
+  VOLT_DETECTION_RANGE,
 } from '../config/abilityDefinitions';
 
 export const UNIT_DEFINITIONS: Readonly<Record<UnitType, UnitDefinition>> = {
@@ -65,5 +66,19 @@ export const UNIT_DEFINITIONS: Readonly<Record<UnitType, UnitDefinition>> = {
     hasAutoAttackTimer: false,
     hasCubeState: false,
     visual: { shape: 'octahedron', size: 3, hasSpawnArrow: false, hasAuraRing: false },
+  },
+  [UnitType.Volt]: {
+    type: UnitType.Volt,
+    radius: 1.2,
+    mass: 2,
+    stopRange: 16,
+    maxHealth: 200,
+    detectionRange: VOLT_DETECTION_RANGE,
+    heightOffset: 2.8,
+    gridSize: { width: 1, depth: 1 },
+    abilities: ['Ability.Volt.ChainLightning'],
+    hasAutoAttackTimer: false,
+    hasCubeState: false,
+    visual: { shape: 'volt', size: 2.2, hasSpawnArrow: false, hasAuraRing: false },
   },
 } as const;

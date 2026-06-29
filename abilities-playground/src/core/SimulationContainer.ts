@@ -28,6 +28,7 @@ import {
 
 import {
   AttackSystem,
+  ChainLightningJumpSystem,
   CubeTargetingSystem,
   DeathSystem,
   FormationSystem,
@@ -39,12 +40,14 @@ import {
   RenderSyncSystem,
   RotationSystem,
   TargetingSystem,
+  VoltAttackSystem,
 } from '../systems';
 import { UnitFactory } from '../units';
 import { ProjectileEntity } from '../entities/Projectile.ts';
 import { MissileEntity } from '../entities/Missile';
 import { autoAttack } from '../hooks/AutoAttack.ts';
 import { missileVolley } from '../hooks/MissileVolley';
+import { voltChainLightning } from '../hooks/VoltChainLightning';
 import {
   ProjectileDespawnQueueSystem,
   ProjectileCollisionSystem,
@@ -56,6 +59,7 @@ import {
   HealCrossCue,
   BeamCue,
   MissileImpactCue,
+  ChainLightningCue,
 } from '../cues';
 
 export class SimulationContainer {
@@ -67,10 +71,7 @@ export class SimulationContainer {
   private readonly abilities: AbilitySystem;
   private readonly scene: THREE.Scene;
 
-  constructor(
-    client: PhalanxClient,
-    scene: THREE.Scene
-  ) {
+  constructor(client: PhalanxClient, scene: THREE.Scene) {
     resetEntityIdCounter();
 
     this.scene = scene;
@@ -119,12 +120,18 @@ export class SimulationContainer {
         'Cue.Beam.Yellow': () =>
           new BeamCue(this.scene, 0xffdd33, CUBE_SPEED_BUFF_TAG),
         'Cue.Missile.Impact': () => new MissileImpactCue(this.scene),
+        'Cue.ChainLightning.Primary': () =>
+          new ChainLightningCue(this.scene, 0x00ffff, true),
+        'Cue.ChainLightning.Jump': () =>
+          new ChainLightningCue(this.scene, 0x55ffff, false),
       },
       hooks: {
         'Hook.AutoAttack': (ctx: AbilityActivationContext) =>
           autoAttack(ctx, this.world),
         'Hook.MissileVolley': (ctx: AbilityActivationContext) =>
           missileVolley(ctx, this.world),
+        'Hook.Volt.ChainLightning': (ctx: AbilityActivationContext) =>
+          voltChainLightning(ctx, this.world, this.abilities),
       },
     });
 
@@ -175,6 +182,8 @@ export class SimulationContainer {
         new TargetingSystem(),
         new AttackSystem(),
         new MissileLauncherSystem(),
+        new VoltAttackSystem(),
+        new ChainLightningJumpSystem(),
         new MovementSystem(),
         new ProjectileMovementSystem(),
         new MissileTargetingSystem(),
@@ -208,10 +217,10 @@ export class SimulationContainer {
 
   isSimulationActive(): boolean {
     const [stateEntity] = this.world.entityManager.queryEntities(
-      ComponentType.SimulationState,
+      ComponentType.SimulationState
     );
     const state = stateEntity?.getComponent<SimulationStateComponent>(
-      ComponentType.SimulationState,
+      ComponentType.SimulationState
     );
     return state?.active ?? false;
   }
@@ -225,9 +234,11 @@ export class SimulationContainer {
   resetBattle(): void {
     const entityManager = this.world.entityManager;
 
-    const [stateEntity] = entityManager.queryEntities(ComponentType.SimulationState);
+    const [stateEntity] = entityManager.queryEntities(
+      ComponentType.SimulationState
+    );
     const state = stateEntity?.getComponent<SimulationStateComponent>(
-      ComponentType.SimulationState,
+      ComponentType.SimulationState
     );
     if (state) {
       state.active = false;
@@ -275,13 +286,17 @@ export class SimulationContainer {
       disposeObject3D(mesh.root);
     }
 
-    const healthBar = entity.getComponent<HealthBarComponent>(ComponentType.HealthBar);
+    const healthBar = entity.getComponent<HealthBarComponent>(
+      ComponentType.HealthBar
+    );
     if (healthBar) {
       this.scene.remove(healthBar.root);
       disposeObject3D(healthBar.root);
     }
 
-    const detectionRing = entity.getComponent<DetectionRingComponent>(ComponentType.DetectionRing);
+    const detectionRing = entity.getComponent<DetectionRingComponent>(
+      ComponentType.DetectionRing
+    );
     if (detectionRing) {
       this.scene.remove(detectionRing.root);
       disposeObject3D(detectionRing.root);

@@ -11,10 +11,11 @@ export const UNIT_MOVE_SPEED = 13;
 
 /**
  * Highest max-health value among all unit types in the roster (spheres: 100,
- * cube: 120, support: 70). Used as the static upper bound for the Health attribute so the
- * aggregation-system clamp acts as a second safety net against overheal.
+ * cube: 120, support: 70, volt: 800). Used as the static upper bound for the
+ * Health attribute so the aggregation-system clamp acts as a second safety net
+ * against overheal.
  */
-export const MAX_UNIT_HEALTH = 120;
+export const MAX_UNIT_HEALTH = 800;
 
 /** Attack cooldown: 40 ticks = 2 s at 20 TPS */
 export const ATTACK_COOLDOWN_TICKS = 40;
@@ -58,6 +59,41 @@ export const ROCKET_COOLDOWN_TICKS = 50;
 export const ROCKET_MAX_TARGETS = 2;
 export const ROCKET_DETECTION_RANGE = 70;
 export const ROCKET_STOP_RANGE = 60;
+
+/** Volt attack cooldown in ticks (45 ticks = 2.25 s @ 20 TPS). */
+export const VOLT_ATTACK_COOLDOWN_TICKS = 40;
+/** Volt hostile detection radius (world units). */
+export const VOLT_DETECTION_RANGE = 45;
+
+/**
+ * Number of times the random jump process repeats after the first target is hit.
+ * Total targets struck = 1 (closest initial) + CHAIN_LIGHTNING_RANDOM_JUMPS.
+ */
+export const CHAIN_LIGHTNING_RANDOM_JUMPS = 3;
+
+/** Total number of targets that can be hit by one cast. */
+export const CHAIN_LIGHTNING_MAX_TARGETS = 1 + CHAIN_LIGHTNING_RANDOM_JUMPS;
+
+/** Max distance between two chain links in fixed-point units. */
+export const CHAIN_LIGHTNING_JUMP_RADIUS = FP.FromFloat(20);
+
+/** Damage dealt on the first hit. */
+export const CHAIN_LIGHTNING_BASE_DAMAGE = 40;
+
+/** Damage multiplier applied per successive jump. */
+export const CHAIN_LIGHTNING_DAMAGE_FALLOFF = FP.FromFloat(0.75);
+
+/** How long each lightning bolt remains visible (seconds). */
+export const CHAIN_LIGHTNING_LIFETIME_SECONDS = 0.9;
+
+/** Ticks between successive chain-lightning jumps (3 ticks = 0.15 s @ 20 TPS). */
+export const CHAIN_LIGHTNING_JUMP_DELAY_TICKS = 4;
+
+/** Width of each lightning bolt in pixels. */
+export const CHAIN_LIGHTNING_LINE_WIDTH = 3;
+
+/** Tag applied while the unit is on cooldown. */
+export const VOLT_COOLDOWN_TAG = 'Cooldown.Ability.VoltAttack';
 
 /**
  * Tag granted to a rocket while its volley ability is on cooldown. The ability
@@ -133,6 +169,63 @@ export const combatDefs = defineAbilitySystem({
       tagsGranted: [MISSILE_VOLLEY_COOLDOWN_TAG],
     }),
     defineEffect({
+      id: 'Effect.Volt.Cooldown',
+      type: 'Duration',
+      durationTicks: VOLT_ATTACK_COOLDOWN_TICKS,
+      modifiers: [],
+      tagsGranted: [VOLT_COOLDOWN_TAG],
+    }),
+    defineEffect({
+      id: 'Effect.Damage.Volt.Primary',
+      type: 'Instant',
+      modifiers: [
+        {
+          attributeId: 'Health',
+          op: 'Add',
+          magnitude: FP.FromFloat(-CHAIN_LIGHTNING_BASE_DAMAGE),
+        },
+      ],
+      cues: ['Cue.ChainLightning.Primary'],
+    }),
+    defineEffect({
+      id: 'Effect.Damage.Volt.Jump1',
+      type: 'Instant',
+      modifiers: [
+        {
+          attributeId: 'Health',
+          op: 'Add',
+          magnitude: FP.FromFloat(-CHAIN_LIGHTNING_BASE_DAMAGE * 0.75),
+        },
+      ],
+      cues: ['Cue.ChainLightning.Jump'],
+    }),
+    defineEffect({
+      id: 'Effect.Damage.Volt.Jump2',
+      type: 'Instant',
+      modifiers: [
+        {
+          attributeId: 'Health',
+          op: 'Add',
+          magnitude: FP.FromFloat(-CHAIN_LIGHTNING_BASE_DAMAGE * 0.75 * 0.75),
+        },
+      ],
+      cues: ['Cue.ChainLightning.Jump'],
+    }),
+    defineEffect({
+      id: 'Effect.Damage.Volt.Jump3',
+      type: 'Instant',
+      modifiers: [
+        {
+          attributeId: 'Health',
+          op: 'Add',
+          magnitude: FP.FromFloat(
+            -CHAIN_LIGHTNING_BASE_DAMAGE * 0.75 * 0.75 * 0.75
+          ),
+        },
+      ],
+      cues: ['Cue.ChainLightning.Jump'],
+    }),
+    defineEffect({
       id: 'Effect.Heal.Tick',
       type: 'Instant',
       modifiers: [
@@ -197,6 +290,13 @@ export const combatDefs = defineAbilitySystem({
       hookId: 'Hook.MissileVolley',
       cooldownEffectId: 'Effect.MissileVolley.Cooldown',
       activationBlockedTags: [MISSILE_VOLLEY_COOLDOWN_TAG],
+    }),
+    defineAbility({
+      id: 'Ability.Volt.ChainLightning',
+      target: { kind: 'Self' },
+      hookId: 'Hook.Volt.ChainLightning',
+      cooldownEffectId: 'Effect.Volt.Cooldown',
+      activationBlockedTags: [VOLT_COOLDOWN_TAG],
     }),
   ],
 });
