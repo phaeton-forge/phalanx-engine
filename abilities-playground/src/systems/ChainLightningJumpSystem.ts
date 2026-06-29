@@ -53,7 +53,8 @@ export class ChainLightningJumpSystem extends GameSystem {
     }
   }
 
-private isAlive(target: Entity): boolean {
-  const stats = target.getComponent<StatsComponent>(ComponentType.UnitStats);
-  return stats?.alive ?? false;
+  private isAlive(target: Entity): boolean {
+    const stats = target.getComponent<StatsComponent>(ComponentType.UnitStats);
+    return stats?.alive ?? false;
+  }
 }
