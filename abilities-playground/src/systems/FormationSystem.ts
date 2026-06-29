@@ -1,7 +1,11 @@
 import { GameSystem } from '@phalanx-engine/ecs';
 import type { CommandsBatch } from '@phalanx-engine/ecs';
 import { arenaParams } from '../config/constants';
-import { ComponentType, SimulationStateComponent, type TeamId } from '../components';
+import {
+  ComponentType,
+  SimulationStateComponent,
+  type TeamId,
+} from '../components';
 import { FormationGridData } from './formation/FormationGridData';
 import type { UnitFactory } from '../units/UnitFactory';
 import type { UnitType } from '../units/UnitType';
@@ -88,7 +92,11 @@ export class FormationSystem extends GameSystem {
     for (const playerId of sortedPlayerIds) {
       const commands = commandsBatch.commands[playerId] ?? [];
       for (const command of commands) {
-        this.processCommand(command.type, command.data, command.playerId ?? playerId);
+        this.processCommand(
+          command.type,
+          command.data,
+          command.playerId ?? playerId
+        );
       }
     }
 
@@ -107,7 +115,8 @@ export class FormationSystem extends GameSystem {
           (cmd.type !== 'sphere' &&
             cmd.type !== 'cube' &&
             cmd.type !== 'support' &&
-            cmd.type !== 'rocket') ||
+            cmd.type !== 'rocket' &&
+            cmd.type !== 'volt') ||
           typeof cmd.gridX !== 'number' ||
           !Number.isInteger(cmd.gridX) ||
           typeof cmd.gridZ !== 'number' ||
@@ -132,7 +141,13 @@ export class FormationSystem extends GameSystem {
         ) {
           break;
         }
-        this.gridData.moveUnit(playerId, cmd.fromX, cmd.fromZ, cmd.toX, cmd.toZ);
+        this.gridData.moveUnit(
+          playerId,
+          cmd.fromX,
+          cmd.fromZ,
+          cmd.toX,
+          cmd.toZ
+        );
         break;
       }
       case 'formation-remove': {
@@ -179,7 +194,7 @@ export class FormationSystem extends GameSystem {
           playerId,
           unit.gridX,
           unit.gridZ,
-          unit.unitType,
+          unit.unitType
         );
         if (!worldPos) continue;
 
@@ -190,7 +205,11 @@ export class FormationSystem extends GameSystem {
           z: worldPos.z + zOffset,
         };
 
-        const entity = this.unitFactory.spawnBattleUnit(unit.unitType, team, pos);
+        const entity = this.unitFactory.spawnBattleUnit(
+          unit.unitType,
+          team,
+          pos
+        );
         this.entityManager.addEntity(entity);
 
         if (def.aura && this.abilities) {
@@ -203,7 +222,11 @@ export class FormationSystem extends GameSystem {
   }
 
   private getSimulationState(): SimulationStateComponent | undefined {
-    const [stateEntity] = this.entityManager.queryEntities(ComponentType.SimulationState);
-    return stateEntity?.getComponent<SimulationStateComponent>(ComponentType.SimulationState);
+    const [stateEntity] = this.entityManager.queryEntities(
+      ComponentType.SimulationState
+    );
+    return stateEntity?.getComponent<SimulationStateComponent>(
+      ComponentType.SimulationState
+    );
   }
 }

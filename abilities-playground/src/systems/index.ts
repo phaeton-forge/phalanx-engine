@@ -1,4 +1,5 @@
 export { AttackSystem } from './AttackSystem';
+export { ChainLightningJumpSystem } from './ChainLightningJumpSystem';
 export { CubeTargetingSystem } from './CubeTargetingSystem';
 export { DeathSystem } from './DeathSystem';
 export { FormationSystem } from './FormationSystem';
@@ -13,3 +14,4 @@ export { ProjectileDespawnQueueSystem } from './ProjectileDespawnQueueSystem';
 export { RenderSyncSystem } from './RenderSyncSystem';
 export { RotationSystem } from './RotationSystem';
 export { TargetingSystem } from './TargetingSystem';
+export { VoltAttackSystem } from './VoltAttackSystem';
