@@ -43,7 +43,7 @@ export const UNIT_DEFINITIONS: Readonly<Record<UnitType, UnitDefinition>> = {
     mass: 3,
     stopRange: 22,
     maxHealth: 70,
-    detectionRange: 25,
+    detectionRange: 30,
     heightOffset: 2,
     gridSize: { width: 1, depth: 1 },
     abilities: ['Ability.HealAura'],

@@ -35,6 +35,14 @@ export class FormationGridRenderer {
   }
 
   /**
+   * All placed unit preview roots currently in the scene. Used by the input
+   * handler's raycaster to detect pointer-down on an existing unit.
+   */
+  get unitPreviewTargets(): THREE.Object3D[] {
+    return Array.from(this.unitPreviews.values());
+  }
+
+  /**
    * Create the visual grid lines and the invisible pick plane for a player.
    */
   initializeGrid(playerId: string, grid: FormationGrid): void {
@@ -134,6 +142,7 @@ export class FormationGridRenderer {
     preview.position.y = def.heightOffset;
 
     preview.rotation.y = grid.team === 0 ? 0 : Math.PI;
+    preview.userData = { playerId, gridX, gridZ, isUnitPreview: true };
 
     this.scene.add(preview);
     this.unitPreviews.set(key, preview);
@@ -160,6 +169,12 @@ export class FormationGridRenderer {
     this.removeUnitPreviewByKey(newKey);
 
     preview.position.copy(worldPos);
+    preview.userData = {
+      playerId,
+      gridX: toGridX,
+      gridZ: toGridZ,
+      isUnitPreview: true,
+    };
     this.unitPreviews.set(newKey, preview);
   }
 

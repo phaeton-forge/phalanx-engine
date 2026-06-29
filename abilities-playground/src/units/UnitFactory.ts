@@ -28,6 +28,10 @@ export class UnitFactory {
     const refs = createUnitRenderRefs(this.scene, def, teamId);
     this.scene.add(refs.healthBarRoot);
 
+    // Aura ring lives in world space (RenderSyncSystem positions it each frame)
+    // so it never inherits the body's combat re-orientation.
+    if (refs.auraRing) this.scene.add(refs.auraRing);
+
     const entity = new Entity();
     assembleUnit(entity, def, teamId, pos, refs);
 
@@ -60,6 +64,9 @@ export class UnitFactory {
   /** Cosmetic transparent preview for the formation grid (no components). */
   createFormationPreview(type: UnitType, teamId: TeamId): THREE.Object3D {
     const refs = createUnitRenderRefs(this.scene, UNIT_DEFINITIONS[type], teamId);
+    // A static preview never rotates, so parenting the ring to the root is safe
+    // and lets it move with (and be dimmed alongside) the preview.
+    if (refs.auraRing) refs.root.add(refs.auraRing);
     dimObject(refs.root);
     return refs.root;
   }

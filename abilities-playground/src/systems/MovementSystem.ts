@@ -1,28 +1,37 @@
 import { GameSystem } from '@phalanx-engine/ecs';
-import type { Entity, SoAComponentStore, SystemContext } from '@phalanx-engine/ecs';
+import type {
+  Entity,
+  SoAComponentStore,
+  SystemContext,
+} from '@phalanx-engine/ecs';
 import { PhysicsSoASchema, TransformSoASchema } from '@phalanx-engine/physics';
 import { FP } from '@phalanx-engine/math';
 import type { FixedPoint } from '@phalanx-engine/math';
 import {
   ComponentType,
   SimulationStateComponent,
+  SupportUnitTargetingComponent,
   TargetStateComponent,
   TeamComponent,
   StatsComponent,
 } from '../components';
-import {UNIT_MOVE_SPEED} from "../config/abilityDefinitions.ts";
+import { UNIT_MOVE_SPEED } from '../config/abilityDefinitions.ts';
 
 export class MovementSystem extends GameSystem {
   private physicsStore!: SoAComponentStore<typeof PhysicsSoASchema.definition>;
-  private transformStore!: SoAComponentStore<typeof TransformSoASchema.definition>;
+  private transformStore!: SoAComponentStore<
+    typeof TransformSoASchema.definition
+  >;
 
   /** Cached singleton simulation-state entity (re-resolved if it disappears). */
   private simStateEntity?: Entity;
 
   public override init(context: SystemContext): void {
     super.init(context);
-    this.physicsStore = this.entityManager.getOrCreateSoAStore(PhysicsSoASchema);
-    this.transformStore = this.entityManager.getOrCreateSoAStore(TransformSoASchema);
+    this.physicsStore =
+      this.entityManager.getOrCreateSoAStore(PhysicsSoASchema);
+    this.transformStore =
+      this.entityManager.getOrCreateSoAStore(TransformSoASchema);
   }
 
   public override processTick(): void {
@@ -46,7 +55,9 @@ export class MovementSystem extends GameSystem {
         continue;
       }
 
-      const stats = entity?.getComponent<StatsComponent>(ComponentType.UnitStats);
+      const stats = entity?.getComponent<StatsComponent>(
+        ComponentType.UnitStats
+      );
 
       if (shouldFreeze || !entity || !stats?.alive) {
         velocityX[physicsIndex] = zeroRaw;
@@ -88,12 +99,21 @@ export class MovementSystem extends GameSystem {
    */
   private getDesiredDirection(
     entity: Entity,
-    ownIndex: number,
+    ownIndex: number
   ): { x: FixedPoint; z: FixedPoint } | null {
-    const targetState = entity.getComponent<TargetStateComponent>(ComponentType.TargetState);
+    const targetState = entity.getComponent<TargetStateComponent>(
+      ComponentType.TargetState
+    );
     const stats = entity.getComponent<StatsComponent>(ComponentType.UnitStats);
     const team = entity.getComponent<TeamComponent>(ComponentType.Team);
     if (!targetState || !stats || !team) return null;
+
+    // Support units advance while the area is clear and hold position once hostiles
+    // are detected nearby, channeling their aura from a safer distance.
+    const supportTargeting = entity.getComponent<SupportUnitTargetingComponent>(
+      ComponentType.SupportUnitTargeting
+    );
+    if (supportTargeting && supportTargeting.enemiesDetected) return null;
 
     const ownX = FP.FromRaw(this.transformStore.arrays.fpPositionX[ownIndex]);
     const ownZ = FP.FromRaw(this.transformStore.arrays.fpPositionZ[ownIndex]);
@@ -101,15 +121,17 @@ export class MovementSystem extends GameSystem {
     let dz = team.teamId === 0 ? FP._1 : FP.Neg(FP._1);
 
     if (targetState.targetEntityId !== null) {
-      const targetIndex = this.transformStore.indexOf(targetState.targetEntityId);
+      const targetIndex = this.transformStore.indexOf(
+        targetState.targetEntityId
+      );
       if (targetIndex !== -1) {
         dx = FP.Sub(
           FP.FromRaw(this.transformStore.arrays.fpPositionX[targetIndex]),
-          ownX,
+          ownX
         );
         dz = FP.Sub(
           FP.FromRaw(this.transformStore.arrays.fpPositionZ[targetIndex]),
-          ownZ,
+          ownZ
         );
       }
     }
@@ -118,7 +140,10 @@ export class MovementSystem extends GameSystem {
     if (FP.Eq(distanceSq, FP._0)) return null;
 
     const stopRangeSq = FP.Mul(stats.stopRange, stats.stopRange);
-    if (targetState.targetEntityId !== null && FP.Lte(distanceSq, stopRangeSq)) {
+    if (
+      targetState.targetEntityId !== null &&
+      FP.Lte(distanceSq, stopRangeSq)
+    ) {
       return null;
     }
 
@@ -133,8 +158,12 @@ export class MovementSystem extends GameSystem {
     // Re-resolve only when the cached entity is missing or has been destroyed,
     // avoiding a full queryEntities() pass every tick for this singleton.
     if (!this.simStateEntity || this.simStateEntity.isDestroyed) {
-      [this.simStateEntity] = this.entityManager.queryEntities(ComponentType.SimulationState);
+      [this.simStateEntity] = this.entityManager.queryEntities(
+        ComponentType.SimulationState
+      );
     }
-    return this.simStateEntity?.getComponent<SimulationStateComponent>(ComponentType.SimulationState);
+    return this.simStateEntity?.getComponent<SimulationStateComponent>(
+      ComponentType.SimulationState
+    );
   }
 }

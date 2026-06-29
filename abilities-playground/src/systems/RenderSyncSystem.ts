@@ -3,11 +3,15 @@ import type { AbilitySystem } from '@phalanx-engine/abilities';
 import { FP } from '@phalanx-engine/math';
 import {
   ComponentType,
+  HealAuraComponent,
   HealthBarComponent,
   MeshComponent,
   TeamComponent,
   StatsComponent,
 } from '../components';
+
+/** World height of the aura ring — sits just above the ground to read as a decal. */
+const AURA_RING_GROUND_Y = 0.05;
 
 export class RenderSyncSystem extends GameSystem {
   private get _abilities(): AbilitySystem { return this.abilities as AbilitySystem; }
@@ -69,6 +73,17 @@ export class RenderSyncSystem extends GameSystem {
       healthBar.fill.position.x = ((healthRatio - 1) * healthBar.fullWidth) / 2;
       entityMesh.root.visible = stats.alive;
       healthBar.root.visible = stats.alive;
+
+      const aura = entity.getComponent<HealAuraComponent>(ComponentType.HealAura);
+
+      if (aura?.auraRing) {
+        aura.auraRing.position.set(
+          entityMesh.root.position.x,
+          AURA_RING_GROUND_Y,
+          entityMesh.root.position.z,
+        );
+        aura.auraRing.visible = stats.alive;
+      }
     }
   }
 }

@@ -18,6 +18,7 @@ import {
 import {
   ComponentType,
   DetectionRingComponent,
+  HealAuraComponent,
   HealthBarComponent,
   MeshComponent,
   StatsComponent,
@@ -269,6 +270,12 @@ export class SimulationContainer {
     const detectionRing = entity.getComponent<DetectionRingComponent>(ComponentType.DetectionRing);
     if (detectionRing) {
       this.scene.remove(detectionRing.root);
+    }
+
+    // The aura ring is a world-space decal, not a child of the unit body.
+    const aura = entity.getComponent<HealAuraComponent>(ComponentType.HealAura);
+    if (aura?.auraRing) {
+      this.scene.remove(aura.auraRing);
     }
   }
 

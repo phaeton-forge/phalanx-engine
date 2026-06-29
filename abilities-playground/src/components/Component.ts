@@ -27,6 +27,7 @@ export const ComponentType = createComponentTypeRegistry({
   CubeState: 'CubeState',
   AutoAttackTimer: 'AutoAttackTimer',
   Missile: 'Missile',
+  SupportUnitTargeting: 'SupportUnitTargeting',
 });
 
 (ComponentType as Record<string, symbol>).PhysicsBody =

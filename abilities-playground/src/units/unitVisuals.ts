@@ -33,7 +33,6 @@ export function createUnitRenderRefs(
   let auraRing: THREE.Mesh | undefined;
   if (def.visual.hasAuraRing && def.aura) {
     auraRing = createAuraRing(def.aura.radius);
-    root.add(auraRing);
   }
 
   return {
@@ -70,16 +69,18 @@ function createBody(spec: UnitDefinition['visual'], teamId: TeamId): THREE.Mesh 
 /** Thin green ring sized to the healing-aura radius; permanent aura indicator. */
 function createAuraRing(radius: number): THREE.Mesh {
   const ring = new THREE.Mesh(
-    new THREE.RingGeometry(0.96, 1, 96),
+    // Inner radius 0.98 → half the previous ring thickness (was 0.96–1.0).
+    new THREE.RingGeometry(0.98, 1, 96),
     new THREE.MeshBasicMaterial({
       color: 0x44ff88,
       transparent: true,
-      opacity: 0.7,
+      opacity: 0.35,
       side: THREE.DoubleSide,
       depthWrite: false,
     }),
   );
   ring.rotation.x = -Math.PI / 2;
+  // World Y is pinned to the ground by RenderSyncSystem; this is just a default.
   ring.position.y = 0.06;
   ring.renderOrder = 2;
   ring.scale.set(radius, radius, 1);

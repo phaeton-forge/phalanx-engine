@@ -31,7 +31,11 @@ export class Game {
   private onExit: (() => void) | null = null;
   private disposed = false;
 
-  constructor(canvas: HTMLCanvasElement, client: PhalanxClient, matchData: MatchFoundEvent) {
+  constructor(
+    canvas: HTMLCanvasElement,
+    client: PhalanxClient,
+    matchData: MatchFoundEvent
+  ) {
     this.client = client;
     this.localPlayerId = matchData.playerId;
     this.localTeamId = matchData.teamId === 1 ? 1 : 0;
@@ -59,9 +63,25 @@ export class Game {
         onPlaceUnit: (playerId, unitType, gridX, gridZ) => {
           if (playerId !== this.localPlayerId) return;
           this.formationGridSystem.placeUnit(playerId, gridX, gridZ, unitType);
-          this.client.sendCommand('formation-place', { playerId, type: unitType, gridX, gridZ });
+          this.client.sendCommand('formation-place', {
+            playerId,
+            type: unitType,
+            gridX,
+            gridZ,
+          });
         },
-      },
+        onMoveUnit: (playerId, fromX, fromZ, toX, toZ) => {
+          if (playerId !== this.localPlayerId) return;
+          this.formationGridSystem.moveUnit(playerId, fromX, fromZ, toX, toZ);
+          this.client.sendCommand('formation-move', {
+            playerId,
+            fromX,
+            fromZ,
+            toX,
+            toZ,
+          });
+        },
+      }
     );
 
     this.registerPlayers();
@@ -71,7 +91,9 @@ export class Game {
         this.formationGridSystem.startTouchDrag(this.localPlayerId, type);
       },
       onReady: () => {
-        this.client.sendCommand('formation-ready', { playerId: this.localPlayerId });
+        this.client.sendCommand('formation-ready', {
+          playerId: this.localPlayerId,
+        });
         this.ui.showWaitingStatus();
       },
       onReturnLobby: () => {
@@ -84,7 +106,7 @@ export class Game {
 
     window.addEventListener('resize', this.onResize);
     this.networkEventUnsubscribers.push(
-      this.client.on('matchEnd', () => this.ui.showResultOverlay('Match ended')),
+      this.client.on('matchEnd', () => this.ui.showResultOverlay('Match ended'))
     );
   }
 
@@ -108,7 +130,10 @@ export class Game {
         this.cameraController.update(dt);
       },
       afterFrame: () => {
-        this.renderer.render(this.arenaScene.scene, this.cameraController.camera);
+        this.renderer.render(
+          this.arenaScene.scene,
+          this.cameraController.camera
+        );
         if (!this.deploymentHidden && this.simulation.isSimulationActive()) {
           this.ui.hideStartOverlay();
           this.ui.hidePalette();

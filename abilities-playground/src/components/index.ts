@@ -18,6 +18,7 @@ export {
   HealAuraComponent,
   CubeStateComponent,
   AutoAttackTimerComponent,
+  SupportUnitTargetingComponent,
 } from './UnitComponents';
 export type { TeamId } from './UnitComponents';
 export { SpawnPointComponent } from './SpawnPointComponent';

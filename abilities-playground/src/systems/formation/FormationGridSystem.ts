@@ -14,6 +14,13 @@ export interface FormationGridSystemCallbacks {
     gridX: number,
     gridZ: number
   ) => void;
+  onMoveUnit?: (
+    playerId: string,
+    fromX: number,
+    fromZ: number,
+    toX: number,
+    toZ: number
+  ) => void;
 }
 
 /**
@@ -50,6 +57,7 @@ export class FormationGridSystem {
       this.hoverPreview,
       {
         onPlaceUnit: callbacks.onPlaceUnit,
+        onMoveUnit: callbacks.onMoveUnit,
       }
     );
   }
