@@ -216,17 +216,18 @@ export const FP = {
       return FP._0;
     }
 
-    // Taylor series: sin(x) ≈ x - x³/3! + x⁵/5! - x⁷/7!
-    const x2 = normalized.mul(normalized);
-    const x3 = x2.mul(normalized);
-    const x5 = x3.mul(x2);
-    const x7 = x5.mul(x2);
-
-    const fact3 = FP.FromInt(6);
-    const fact5 = FP.FromInt(120);
-    const fact7 = FP.FromInt(5040);
-
-    return normalized.sub(x3.div(fact3)).add(x5.div(fact5)).sub(x7.div(fact7));
+    // Reduce to [0, PI/2] so the Taylor series converges well (avoids large
+    // angles near ±PI where the truncated series loses several percent).
+    if (FP.Gt(normalized, FP.PiOver2)) {
+      return sinTaylorHalfPi(FP.Sub(FP.Pi, normalized));
+    }
+    if (FP.Lt(normalized, FP.Neg(FP.PiOver2))) {
+      return FP.Neg(sinTaylorHalfPi(FP.Add(FP.Pi, normalized)));
+    }
+    if (FP.Lt(normalized, FP._0)) {
+      return FP.Neg(sinTaylorHalfPi(FP.Neg(normalized)));
+    }
+    return sinTaylorHalfPi(normalized);
   },
 
   /**
@@ -309,6 +310,21 @@ export const FP = {
     return FP.Atan2(sinVal, clamped);
   },
 };
+
+/** Evaluate sin(x) via Taylor series; `x` must already lie in [0, PI/2]. */
+function sinTaylorHalfPi(x: FixedPoint): FixedPoint {
+  // sin(x) ≈ x - x³/3! + x⁵/5! - x⁷/7!
+  const x2 = x.mul(x);
+  const x3 = x2.mul(x);
+  const x5 = x3.mul(x2);
+  const x7 = x5.mul(x2);
+
+  const fact3 = FP.FromInt(6);
+  const fact5 = FP.FromInt(120);
+  const fact7 = FP.FromInt(5040);
+
+  return x.sub(x3.div(fact3)).add(x5.div(fact5)).sub(x7.div(fact7));
+}
 
 /** Normalize radians to [-PI, PI] for deterministic trig. */
 function normalizeAngleRad(x: FixedPoint): FixedPoint {
@@ -647,24 +663,34 @@ export const FPQuaternion = {
       return FPQuaternion.Identity();
     }
     if (FP.Eq(snapped, FP.PiOver2)) {
-      return FPQuaternion.LookRotation(FPVector3.Right);
+      const quarter = FP.Mul(FP.PiOver2, FP.FromFloat(0.5));
+      return FPQuaternion.Normalize({
+        x: FP._0,
+        y: FP.Sin(quarter),
+        z: FP._0,
+        w: FP.Cos(quarter),
+      });
     }
     if (FP.Eq(snapped, FP.Neg(FP.PiOver2))) {
-      return FPQuaternion.LookRotation(
-        FPVector3.Create(FP.Neg(FP._1), FP._0, FP._0),
-      );
+      const quarter = FP.Mul(FP.Neg(FP.PiOver2), FP.FromFloat(0.5));
+      return FPQuaternion.Normalize({
+        x: FP._0,
+        y: FP.Sin(quarter),
+        z: FP._0,
+        w: FP.Cos(quarter),
+      });
     }
     if (FP.Eq(snapped, FP.Pi) || FP.Eq(snapped, FP.Neg(FP.Pi))) {
       return { x: FP._0, y: FP._1, z: FP._0, w: FP._0 };
     }
 
     const half = FP.Mul(snapped, FP.FromFloat(0.5));
-    return {
+    return FPQuaternion.Normalize({
       x: FP._0,
       y: FP.Sin(half),
       z: FP._0,
       w: FP.Cos(half),
-    };
+    });
   },
 
   /**
@@ -684,12 +710,12 @@ export const FPQuaternion = {
     const half = FP.Mul(angle, FP.FromFloat(0.5));
     const s = FP.Sin(half);
     const c = FP.Cos(half);
-    return {
+    return FPQuaternion.Normalize({
       x: FP.Mul(axis.x, s),
       y: FP.Mul(axis.y, s),
       z: FP.Mul(axis.z, s),
       w: c,
-    };
+    });
   },
 
   /**
@@ -738,12 +764,12 @@ export const FPQuaternion = {
 
     if (FP.Gt(trace, FP._0)) {
       const s = FP.Mul(FP.Sqrt(FP.Add(trace, FP._1)), FP.FromInt(2));
-      return {
+      return FPQuaternion.Normalize({
         w: FP.Mul(quarter, s),
         x: FP.Div(FP.Sub(m21, m12), s),
         y: FP.Div(FP.Sub(m02, m20), s),
         z: FP.Div(FP.Sub(m10, m01), s),
-      };
+      });
     }
 
     if (FP.Gt(m00, m11) && FP.Gt(m00, m22)) {
@@ -751,12 +777,12 @@ export const FPQuaternion = {
         FP.Sqrt(FP.Add(FP.Sub(FP.Sub(FP._1, m11), m22), m00)),
         FP.FromInt(2),
       );
-      return {
+      return FPQuaternion.Normalize({
         w: FP.Div(FP.Sub(m21, m12), s),
         x: FP.Mul(quarter, s),
         y: FP.Div(FP.Add(m01, m10), s),
         z: FP.Div(FP.Add(m02, m20), s),
-      };
+      });
     }
 
     if (FP.Gt(m11, m22)) {
@@ -764,24 +790,24 @@ export const FPQuaternion = {
         FP.Sqrt(FP.Add(FP.Sub(FP.Sub(FP._1, m00), m22), m11)),
         FP.FromInt(2),
       );
-      return {
+      return FPQuaternion.Normalize({
         w: FP.Div(FP.Sub(m02, m20), s),
         x: FP.Div(FP.Add(m01, m10), s),
         y: FP.Mul(quarter, s),
         z: FP.Div(FP.Add(m12, m21), s),
-      };
+      });
     }
 
     const s = FP.Mul(
       FP.Sqrt(FP.Add(FP.Sub(FP.Sub(FP._1, m00), m11), m22)),
       FP.FromInt(2),
     );
-    return {
+    return FPQuaternion.Normalize({
       w: FP.Div(FP.Sub(m10, m01), s),
       x: FP.Div(FP.Add(m02, m20), s),
       y: FP.Div(FP.Add(m12, m21), s),
       z: FP.Mul(quarter, s),
-    };
+    });
   },
 
   /**
@@ -914,6 +940,10 @@ export const FPQuaternion = {
     if (sqrMag.isZero()) {
       return FPQuaternion.Identity();
     }
+    // Unit quaternions: inverse equals conjugate (no division rounding).
+    if (FP.Eq(sqrMag, FP._1)) {
+      return FPQuaternion.Conjugate(q);
+    }
     const conj = FPQuaternion.Conjugate(q);
     return {
       x: FP.Div(conj.x, sqrMag),
@@ -962,12 +992,12 @@ export const FPQuaternion = {
     const s0 = FP.Div(FP.Sin(FP.Sub(theta0, theta)), sinTheta0);
     const s1 = FP.Div(FP.Sin(theta), sinTheta0);
 
-    return {
+    return FPQuaternion.Normalize({
       x: FP.Add(FP.Mul(s0, a.x), FP.Mul(s1, bx)),
       y: FP.Add(FP.Mul(s0, a.y), FP.Mul(s1, by)),
       z: FP.Add(FP.Mul(s0, a.z), FP.Mul(s1, bz)),
       w: FP.Add(FP.Mul(s0, a.w), FP.Mul(s1, bw)),
-    };
+    });
   },
 
   /** Rotate a vector by a quaternion: q * [v, 0] * Conjugate(q). */

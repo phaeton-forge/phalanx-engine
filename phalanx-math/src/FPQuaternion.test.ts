@@ -132,4 +132,39 @@ describe('FPQuaternion', () => {
     const q = FPQuaternion.LookRotation(FPVector3.Forward, FPVector3.Forward);
     expect(FP.ToFloat(FPQuaternion.Magnitude(q))).toBeCloseTo(1, 4);
   });
+
+  it('Mul(q, Inverse(q)) equals Identity at cardinal yaws including PI', () => {
+    for (const yaw of [0, Math.PI / 2, Math.PI, -Math.PI, Math.PI - 0.02, Math.PI + 0.03]) {
+      const q = FPQuaternion.FromYaw(FP.FromFloat(yaw));
+      const product = FPQuaternion.Mul(q, FPQuaternion.Inverse(q));
+      expect(FP.ToFloat(product.x)).toBeCloseTo(0, 4);
+      expect(FP.ToFloat(product.y)).toBeCloseTo(0, 4);
+      expect(FP.ToFloat(product.z)).toBeCloseTo(0, 4);
+      expect(FP.ToFloat(product.w)).toBeCloseTo(1, 4);
+    }
+  });
+
+  it('FromYaw always produces a unit quaternion', () => {
+    for (const deg of [0, 10, 45, 70, 90, 135, 160, 180, 200, 270]) {
+      const q = FPQuaternion.FromYaw(FP.FromFloat((deg * Math.PI) / 180));
+      expect(FP.ToFloat(FPQuaternion.Magnitude(q))).toBeCloseTo(1, 4);
+    }
+  });
+
+  it('Sin/Cos stay accurate at obtuse angles after range reduction', () => {
+    for (const deg of [70, 110, 160]) {
+      const rad = (deg * Math.PI) / 180;
+      expect(FP.ToFloat(FP.Sin(FP.FromFloat(rad)))).toBeCloseTo(Math.sin(rad), 3);
+      expect(FP.ToFloat(FP.Cos(FP.FromFloat(rad)))).toBeCloseTo(Math.cos(rad), 3);
+    }
+  });
+
+  it('Slerp output is always unit length', () => {
+    const a = FPQuaternion.FromYaw(FP.FromFloat(0.3));
+    const b = FPQuaternion.FromYaw(FP.Pi);
+    for (const t of [0, 0.25, 0.5, 0.75, 1]) {
+      const mid = FPQuaternion.Slerp(a, b, FP.FromFloat(t));
+      expect(FP.ToFloat(FPQuaternion.Magnitude(mid))).toBeCloseTo(1, 4);
+    }
+  });
 });
