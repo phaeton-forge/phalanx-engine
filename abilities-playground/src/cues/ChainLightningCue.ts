@@ -36,6 +36,7 @@ export class ChainLightningCue extends Cue {
   private context: CueContext | null = null;
   private line: LineSegments2 | null = null;
   private material: LineMaterial | null = null;
+  private readonly cachedResolution = new THREE.Vector2();
   private elapsed = 0;
   private done = false;
 
@@ -47,7 +48,7 @@ export class ChainLightningCue extends Cue {
   }
 
   private get resolution(): THREE.Vector2 {
-    return new THREE.Vector2(window.innerWidth, window.innerHeight);
+    return this.cachedResolution.set(window.innerWidth, window.innerHeight);
   }
 
   public onSpawn(event: GameplayCueDispatchedEvent, context: CueContext): void {
