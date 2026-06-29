@@ -38,7 +38,7 @@ export interface UnitRosterEntry {
   readonly healPulseTicks?: number;
 }
 
-const BLUE_TEAM_SPHERES = 10;
+const BLUE_TEAM_SPHERES = 24;
 const RED_TEAM_SPHERES = 24;
 
 // Keep in sync with UnitFactory sphere mesh size (world units).

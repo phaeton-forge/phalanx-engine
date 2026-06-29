@@ -1,43 +1,41 @@
 # Phalanx Engine
 
+[![npm](https://img.shields.io/npm/v/@phalanx-engine/server)](https://www.npmjs.com/package/@phalanx-engine/server)
+[![npm](https://img.shields.io/npm/v/@phalanx-engine/client)](https://www.npmjs.com/package/@phalanx-engine/client)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+
 A game-agnostic deterministic lockstep multiplayer engine with authentication, matchmaking, and command synchronization.
 
-> Packages are published to npm under the `@phalanx-engine` scope. You can install from npm or clone this monorepo and use `workspace:*` links.
+## Table of Contents
 
-## Quick Links
+- [What is Phalanx Engine?](#what-is-phalanx-engine)
+- [Features](#features)
+- [Architecture](#architecture)
+- [Quick Start](#quick-start)
+- [Examples](#examples)
+- [Packages](#packages)
+- [Installation](#installation)
+- [Requirements](#requirements)
+- [Contributing](#contributing)
+- [License](#license)
 
-- 📖 [Server Documentation](./phalanx-server/README.md)
-- 📖 [Client Documentation](./phalanx-client/README.md)
-- 📖 [ECS Documentation](./phalanx-ecs/README.md)
-- 📖 [Physics Documentation](./phalanx-physics/README.md)
-- 📖 [Abilities Documentation](./phalanx-abilities/README.md)
-- 📖 [Math Documentation](./phalanx-math/README.md)
-- 🎮 [Babylon RTS Demo](./direct-strike-babylon-example/README.md)
+## What is Phalanx Engine?
 
-## Installation
+Phalanx is a TypeScript multiplayer game engine built around **deterministic lockstep netcode**. The server does not simulate the game world; it only collects player commands, synchronizes them across clients, and enforces match lifecycle rules. Every client runs the exact same deterministic simulation locally, which keeps bandwidth low and game state consistent across platforms.
 
-**Clone the repository:**
+It is a good fit for RTS, MOBA, tactical, and turn-based games where simulation determinism is more important than hiding latency.
 
-```bash
-git clone https://github.com/phaeton-forge/phalanx-engine.git
-cd phalanx-engine
-pnpm install
-```
+## Features
 
-# Packages
-
-This repository is a pnpm workspace containing the following publishable packages:
-
-| Package                              | Description                                                                  |
-| ------------------------------------ | ---------------------------------------------------------------------------- |
-| [@phalanx-engine/server](./phalanx-server)   | Server library for hosting multiplayer games (matchmaking, lockstep, rooms)  |
-| [@phalanx-engine/client](./phalanx-client)   | Browser/Node client for connecting to Phalanx servers                        |
-| [@phalanx-engine/ecs](./phalanx-ecs)         | Renderer-agnostic ECS library with `GameWorld` facade and SoA storage        |
-| [@phalanx-engine/physics](./phalanx-physics) | Deterministic fixed-point physics (spatial hash, narrow phase, impulses)     |
-| [@phalanx-engine/abilities](./phalanx-abilities) | Deterministic gameplay ability system (attributes, effects, tags) |
-| [@phalanx-engine/math](./phalanx-math)       | Deterministic fixed-point math library for lockstep games                    |
-
-In addition to the libraries, the workspace contains reference applications under `direct-strike-babylon-example/`, `chapaev/`, and `arena-shooter/`.
+- **Deterministic Lockstep**: Synchronizes only player commands; game logic runs deterministically on each client.
+- **Fixed-Point Math**: Platform-independent fixed-point arithmetic via `@phalanx-engine/math` ensures identical calculations everywhere.
+- **Matchmaking**: Built-in support for game modes such as 1v1, 2v2, 3v3, 4v4, and FFA.
+- **Private Rooms**: Invite-code rooms with host recovery so players can share links without losing their room.
+- **Tick System**: Configurable tick rate with command batching.
+- **Game Start Synchronization**: A ready handshake ensures all clients finish loading before the tick loop begins.
+- **Reconnection Support**: Players can rejoin matches after disconnecting.
+- **Mobile-Friendly Room Recovery**: Opt-in lifecycle recovery for mobile browsers.
+- **TypeScript**: Full TypeScript support with exported types.
 
 ## Architecture
 
@@ -49,14 +47,14 @@ In addition to the libraries, the workspace contains reference applications unde
                                        │ Socket.IO (commands & events)
                                        ▼
    ┌────────────────────────────┐  ┌──────────────────────────────┐
-   │  @phalanx-engine/client     │  │ @phalanx-engine/ecs (opt) │
-   │ connection · matchmaking · │──▶│  EntityManager · GameWorld · │
-   │ command batching · auth ·  │  │  SoA storage · pooling       │
+   │  @phalanx-engine/client    │  │ @phalanx-engine/ecs (opt)    │
+   │ connection · matchmaking · │──▶│ EntityManager · GameWorld ·  │
+   │ command batching · auth ·  │  │ SoA storage · pooling        │
    │ room recovery · render     │  └────────────────┬─────────────┘
    │ loop (ITickFrameProvider)  │                   │
    └────────────────────────────┘                   ▼
                                        ┌────────────────────────────┐
-                                       │ @phalanx-engine/physics   │
+                                       │ @phalanx-engine/physics    │
                                        │ deterministic FP physics · │
                                        │ spatial hash · collisions  │
                                        └──────────────┬─────────────┘
@@ -64,7 +62,7 @@ In addition to the libraries, the workspace contains reference applications unde
                         ┌─────────────────────────────┴─────────────────────────────┐
                         ▼                                                           ▼
            ┌────────────────────────────┐                         ┌────────────────────────────┐
-           │ @phalanx-engine/abilities │                         │   @phalanx-engine/math    │
+           │ @phalanx-engine/abilities  │                         │   @phalanx-engine/math     │
            │ GAS-style attributes ·     │                         │ FP fixed-point arithmetic  │
            │ effects · tags             │                         └────────────────────────────┘
            └────────────────────────────┘
@@ -72,214 +70,74 @@ In addition to the libraries, the workspace contains reference applications unde
 
 `@phalanx-engine/client` and `@phalanx-engine/ecs` both implement the `ITickFrameProvider` interface, so a `GameWorld` can be driven by either an internal `TickFrameManager` (single-player) or by the multiplayer client (`PhalanxClient` is fed the server's authoritative ticks).
 
-## Features
-
-- **Deterministic Lockstep**: Synchronizes only player commands, game logic runs deterministically on each client
-- **Fixed-Point Math**: Platform-independent fixed-point arithmetic via `@phalanx-engine/math` ensures identical calculations across all clients
-- **Matchmaking**: Built-in support for various game modes (1v1, 2v2, 3v3, 4v4, FFA)
-- **Private Rooms**: Invite-code rooms with host recovery so mobile players can share links without losing their room
-- **Tick System**: Configurable tick rate with command batching
-- **Game Start Synchronization**: Ready handshake ensures all clients finish loading before the tick loop begins
-- **Reconnection Support**: Players can rejoin matches after disconnection
-- **Mobile-Friendly Room Recovery**: `visibilitychange`/`pageshow`/`online` lifecycle listeners, exponential-backoff retry, localStorage persistence across hard reloads, and a pre-game stall watchdog — all opt-in via a single config flag
-- **TypeScript**: Full TypeScript support with exported types
-
-## Game Start Synchronization
-
-Phalanx uses a **ready handshake** protocol to ensure all clients are fully initialized before the simulation begins. This prevents desync caused by clients with different asset download speeds missing early ticks.
-
-### How it works
-
-1. Server emits `game-start` after the countdown completes and enters a `waiting-for-ready` state
-2. Each client receives `game-start`, loads assets, sets up the game world, and initializes all systems
-3. Each client calls `client.sendReady()` to emit `client-ready` to the server
-4. Server receives `client-ready` from **all** connected players, then starts the tick loop
-5. All clients are guaranteed to be subscribed to tick events before tick 0
-
-If any client fails to send `client-ready` within 30 seconds, the match ends with reason `'ready-timeout'`.
-
-### Usage
-
-Clients **must** call `sendReady()` after initialization:
-
-```typescript
-client.on('gameStart', async () => {
-  await game.initialize(); // Load assets, set up ECS, etc.
-  client.sendReady();      // Tell the server we're ready
-});
-```
-
-## Mobile-Friendly Room Recovery
-
-Private rooms on mobile browsers face a specific challenge: when a host shares the invite link (e.g. copies it into Telegram), the OS may kill the WebSocket while the tab is backgrounded. Without recovery the room is silently lost and the host sees an empty waiting screen.
-
-Phalanx-client ships a built-in `RoomRecoveryController` (opt-in via `roomRecovery: { enabled: true }`) that handles the full recovery lifecycle so every game gets it for free.
-
-### What it does automatically
-
-| Concern | Mechanism |
-|---|---|
-| Tab returns to foreground | `visibilitychange` + `pageshow` (bfcache) listeners trigger `room-recover` |
-| Socket reconnects | `connected` event triggers `room-recover` |
-| Network comes back | `online` event gates the attempt behind stabilization |
-| Network quality | `navigator.connection` adapts the recover ack timeout (10s normal / 15s 3G / 25s slow-2G) |
-| Transport on mobile | `mobileFriendlyTransports: true` picks `polling` on mobile UAs, `websocket` on desktop |
-| Stable guest identity | `persistGuestPlayerId: true` keeps the same anonymous id across hard reloads |
-| Cold-start recovery | `localStorage` persists the active room code so a full-page reload can reclaim the room |
-| Pre-game stall | Watchdog fires `forceRecover` if `matchFound→countdown→gameStart` goes silent |
-
-### Quick setup
-
-```typescript
-const client = new PhalanxClient({
-  serverUrl: 'https://game.example.com',
-  mobileFriendlyTransports: true,      // auto polling-on-mobile
-  persistGuestPlayerId: true,          // stable id for cold-start recovery
-  roomRecovery: { enabled: true },     // arm the recovery controller
-});
-
-// Startup: attempt cold-start recovery if the previous tab persisted a room
-const coldStartCode = client.roomRecovery!.loadColdStartCode();
-if (coldStartCode) {
-  client.roomRecovery!.resumeTrackingHost(coldStartCode);
-  await client.roomRecovery!.tryRecover();
-}
-
-// After creating a private room:
-const { code } = await client.createRoom();
-client.roomRecovery!.startTrackingHost(code);
-
-// After joining a private room (guest side):
-client.roomRecovery!.trackGuestJoin(code);
-
-// When the match starts (host side):
-client.roomRecovery!.stop(); // clears persistence and disarms hooks
-
-// Listen to recovery events for UI updates:
-client.on('recoveryStatus', (e) => {
-  if (e.phase === 'recovering')      showStatus('Reconnecting…');
-  else if (e.phase === 'retrying')   showStatus(`Retry in ${e.nextRetryMs! / 1000}s`);
-  else if (e.phase === 'gave-up')    showStatus('Could not reconnect');
-  else                               clearStatus();
-});
-
-client.on('roomTerminated', (e) => {
-  if (e.reason === 'expired') showError('Room expired — start a new one');
-  returnToMenu();
-});
-```
-
-See the [Client Documentation](./phalanx-client/README.md#mobile-friendly-room-recovery) for the full API reference.
-
 ## Quick Start
 
-> **Note**: From npm, install packages like `@phalanx-engine/server`. In this monorepo, consume libraries via `workspace:*`.
+> 🚧 **Coming soon** — a step-by-step quick start guide is in progress.
 
-### Server
+In the meantime, see the per-package documentation linked below and the [`abilities-playground`](./abilities-playground) example.
 
-```typescript
-import { Phalanx } from '@phalanx-engine/server';
+## Examples
 
-const server = new Phalanx({
-  port: 3000,
-  tickRate: 20,
-  gameMode: '3v3',
-});
+> 🚧 More examples are coming soon.
 
-await server.start();
-console.log('Phalanx server running on port 3000');
+| Example                                                            | Status     | Description                          |
+| ------------------------------------------------------------------ | ---------- | ------------------------------------ |
+| [`abilities-playground`](./abilities-playground)                   | Available  | Local sandbox for the ability system |
+| [`direct-strike-babylon-example`](./direct-strike-babylon-example) | Deprecated | Will be removed in a future release  |
+
+## Packages
+
+This repository is a pnpm workspace containing the following publishable packages:
+
+| Package                                          | Description                                                                 |
+| ------------------------------------------------ | --------------------------------------------------------------------------- |
+| [@phalanx-engine/server](./phalanx-server)       | Server library for hosting multiplayer games (matchmaking, lockstep, rooms) |
+| [@phalanx-engine/client](./phalanx-client)       | Browser/Node client for connecting to Phalanx servers                       |
+| [@phalanx-engine/ecs](./phalanx-ecs)             | Renderer-agnostic ECS library with `GameWorld` facade and SoA storage       |
+| [@phalanx-engine/physics](./phalanx-physics)     | Deterministic fixed-point physics (spatial hash, narrow phase, impulses)    |
+| [@phalanx-engine/abilities](./phalanx-abilities) | Deterministic gameplay ability system (attributes, effects, tags)           |
+| [@phalanx-engine/math](./phalanx-math)           | Deterministic fixed-point math library for lockstep games                   |
+
+## Installation
+
+### From npm
+
+Install the packages your project needs:
+
+```bash
+npm install @phalanx-engine/server @phalanx-engine/client
 ```
 
-### Client
+Optional simulation packages:
 
-```typescript
-import { PhalanxClient } from '@phalanx-engine/client';
-
-const client = await PhalanxClient.create({
-  serverUrl: 'http://localhost:3000',
-  playerId: 'player-123',
-  username: 'MyPlayer',
-});
-
-const match = await client.joinQueueAndWaitForMatch();
-await client.waitForGameStart();
-
-// After loading assets, tell the server we're ready for ticks.
-client.sendReady();
-
-client.onTick((tick, commands) => {
-  // Run deterministic simulation using `commands`
-});
-
-client.onFrame((alpha, dt) => {
-  // Render with interpolation between ticks
-});
+```bash
+npm install @phalanx-engine/ecs @phalanx-engine/physics @phalanx-engine/abilities @phalanx-engine/math
 ```
 
-### Single-player ECS + Physics
+### From source
 
-```typescript
-import { GameWorld } from '@phalanx-engine/ecs';
-import { PhysicsWorld, PhysicsBodyComponent } from '@phalanx-engine/physics';
-import { FP } from '@phalanx-engine/math';
-
-const world = new GameWorld({ tickRate: 20 });
-
-const physics = new PhysicsWorld({
-  gridCellSize: FP.FromFloat(8),
-  subSteps: 3,
-  tickRate: 20,
-});
-
-const { physicsSystem } = physics.getSystems();
-world.registerSystems([physicsSystem], []);
-
-world.start({
-  beforeTick(tick) {
-    if (tick === 0) {
-      physics.setTransformStore(world.entityManager.getOrCreateSoAStore(MyTransformSchema), {
-        fpPositionX: 'fpPositionX',
-        fpPositionY: 'fpPositionY',
-        fpPositionZ: 'fpPositionZ',
-      });
-    }
-  },
-});
+```bash
+git clone https://github.com/phaeton-forge/phalanx-engine.git
+cd phalanx-engine
+pnpm install
+pnpm build
 ```
 
-## Documentation
-
-- [Server Documentation](./phalanx-server/README.md)
-- [Client Documentation](./phalanx-client/README.md)
-- [ECS Documentation](./phalanx-ecs/README.md)
-- [Physics Documentation](./phalanx-physics/README.md)
-- [Math Documentation](./phalanx-math/README.md)
-- [Babylon RTS Demo & Dev Guide](./direct-strike-babylon-example/README.md)
-
-## Workspace Commands
-
-All commands are run from the repository root.
-
-| Command                   | What it does                                                       |
-| ------------------------- | ------------------------------------------------------------------ |
-| `pnpm install`            | Install workspace dependencies                                     |
-| `pnpm build`              | Build workspace packages (`direct-strike-babylon-example` excluded — no `build` script until physics migration) |
-| `pnpm build:direct-strike`| Build `direct-strike-babylon-example` via `build:local`            |
-| `pnpm clean`              | Run each package's `clean` script                                  |
-| `pnpm test`               | Run all package test suites (Vitest)                               |
-| `pnpm test:server`        | Run only `@phalanx-engine/server` tests                                    |
-| `pnpm test:client`        | Run only `@phalanx-engine/client` tests                                    |
-| `pnpm test:watch`         | Run package test suites in watch mode                              |
-| `pnpm dev:server`         | `tsc --watch` for `@phalanx-engine/server`                                 |
-| `pnpm dev:client`         | `tsc --watch` for `@phalanx-engine/client`                                 |
-| `pnpm lint` / `lint:fix`  | ESLint over the workspace                                          |
-| `pnpm format` / `format:check` | Prettier over the workspace                                   |
+When working inside the monorepo, packages are linked automatically via `workspace:*`.
 
 ## Requirements
 
-- Node.js 24.x (`>=24.0.0 <25.0.0`)
-- pnpm 10.x (install with `corepack enable && corepack prepare pnpm@10.33.2 --activate`)
-- Socket.IO compatible transport (HTTP or HTTPS / WSS)
+- Node.js `>= 24.0.0`
+
+## Contributing
+
+Contributions are welcome. Please open an issue or pull request on [GitHub](https://github.com/phaeton-forge/phalanx-engine).
+
+Before submitting a change:
+
+1. Run `pnpm install` and `pnpm build` to ensure the workspace builds.
+2. Run `pnpm test` to make sure all tests pass.
+3. Run `pnpm lint` and `pnpm format:check` to verify code style.
 
 ## License
 

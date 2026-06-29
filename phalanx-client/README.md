@@ -2,11 +2,43 @@
 
 Client library for [Phalanx Engine](../README.md) - a game-agnostic deterministic lockstep multiplayer engine.
 
+## Table of Contents
+
+- [Installation](#installation)
+- [Requirements](#requirements)
+- [Quick Start](#quick-start)
+- [Complete Game Loop Example](#complete-game-loop-example)
+- [Common Tasks](#common-tasks)
+- [Choosing an API](#choosing-an-api)
+- [API Reference](#api-reference)
+  - [Configuration](#configuration)
+  - [Connection](#connection)
+  - [Matchmaking](#matchmaking)
+  - [Game Lifecycle](#game-lifecycle)
+  - [Simplified Game Loop API](#simplified-game-loop-api)
+  - [Commands](#commands)
+  - [Private Rooms](#private-rooms)
+  - [Reconnection](#reconnection)
+  - [Events](#events)
+- [Advanced Topics](#advanced-topics)
+  - [Mobile-Friendly Room Recovery](#mobile-friendly-room-recovery)
+  - [Desync Detection](#desync-detection)
+  - [Pause / Resume](#pause--resume)
+  - [Authentication](#authentication)
+- [State Getters](#state-getters)
+- [Client States](#client-states)
+- [Example: Legacy Event-Based API](#example-legacy-event-based-api)
+- [License](#license)
+
 ## Installation
 
 ```bash
 npm install @phalanx-engine/client
 ```
+
+## Requirements
+
+- Node.js `>= 24.0.0`
 
 ## Quick Start
 
@@ -67,24 +99,252 @@ client.sendCommand('move', { targetX: 10, targetZ: 20 });
 client.destroy();
 ```
 
+## Complete Game Loop Example
+
+This is the recommended way to wire a full game client:
+
+```typescript
+import { PhalanxClient, type CommandsBatch } from '@phalanx-engine/client';
+
+class GameClient {
+  private client: PhalanxClient | null = null;
+  private entities: Map<string, Entity> = new Map();
+  private unsubscribers: (() => void)[] = [];
+
+  async start(
+    serverUrl: string,
+    playerId: string,
+    username: string
+  ): Promise<void> {
+    // Create and connect client
+    this.client = await PhalanxClient.create({
+      serverUrl,
+      playerId,
+      username,
+      autoReconnect: true,
+    });
+
+    // Subscribe to match lifecycle events
+    this.unsubscribers.push(
+      this.client.on('matchFound', (match) => {
+        console.log(`Match found: ${match.matchId}`);
+        this.initializeEntities(match);
+      })
+    );
+
+    this.unsubscribers.push(
+      this.client.on('gameStart', () => {
+        console.log('Game started!');
+      })
+    );
+
+    this.unsubscribers.push(
+      this.client.on('matchEnd', ({ reason }) => {
+        console.log(`Match ended: ${reason}`);
+        this.stop();
+      })
+    );
+
+    // Register tick handler - deterministic simulation
+    this.unsubscribers.push(
+      this.client.onTick((tick, commands) => {
+        this.handleTick(tick, commands);
+      })
+    );
+
+    // Register frame handler - rendering with interpolation
+    this.unsubscribers.push(
+      this.client.onFrame((alpha, dt) => {
+        this.handleFrame(alpha, dt);
+      })
+    );
+
+    // Join matchmaking queue
+    await this.client.joinQueue();
+  }
+
+  private initializeEntities(match: MatchFoundEvent): void {
+    // Create entities for all players
+    const allPlayers = [
+      { playerId: match.playerId, username: 'You' },
+      ...match.teammates,
+      ...match.opponents,
+    ];
+    for (const player of allPlayers) {
+      this.entities.set(player.playerId, new Entity(player.playerId));
+    }
+  }
+
+  private handleTick(tick: number, commands: CommandsBatch): void {
+    // Store previous positions for interpolation
+    for (const entity of this.entities.values()) {
+      entity.prevX = entity.currX;
+      entity.prevZ = entity.currZ;
+    }
+
+    // Process commands from all players
+    for (const [playerId, playerCommands] of Object.entries(
+      commands.commands
+    )) {
+      for (const cmd of playerCommands) {
+        this.processCommand(playerId, cmd);
+      }
+    }
+
+    // Run deterministic simulation step
+    this.simulate();
+  }
+
+  private handleFrame(alpha: number, dt: number): void {
+    // Interpolate entity positions for smooth 60fps rendering
+    for (const entity of this.entities.values()) {
+      entity.renderX = lerp(entity.prevX, entity.currX, alpha);
+      entity.renderZ = lerp(entity.prevZ, entity.currZ, alpha);
+    }
+
+    // Render the scene
+    renderer.render();
+  }
+
+  private processCommand(playerId: string, cmd: PlayerCommand): void {
+    const entity = this.entities.get(playerId);
+    if (!entity) return;
+
+    if (cmd.type === 'move') {
+      entity.targetX = cmd.data.targetX;
+      entity.targetZ = cmd.data.targetZ;
+    }
+  }
+
+  private simulate(): void {
+    // Move entities toward their targets
+    for (const entity of this.entities.values()) {
+      entity.moveTowardTarget();
+    }
+  }
+
+  // Call this when player clicks to move
+  move(targetX: number, targetZ: number): void {
+    this.client?.sendCommand('move', { targetX, targetZ });
+  }
+
+  async stop(): Promise<void> {
+    // Unsubscribe from all events
+    for (const unsub of this.unsubscribers) {
+      unsub();
+    }
+    this.unsubscribers = [];
+
+    // Cleanup client
+    await this.client?.destroy();
+    this.client = null;
+  }
+}
+
+// Usage
+const game = new GameClient();
+await game.start('http://localhost:3000', 'player-1', 'Alice');
+
+// Handle player input
+canvas.addEventListener('click', (e) => {
+  const worldPos = screenToWorld(e.clientX, e.clientY);
+  game.move(worldPos.x, worldPos.z);
+});
+```
+
+## Common Tasks
+
+### Connect to a server
+
+```typescript
+// Recommended: create and connect in one step
+const client = await PhalanxClient.create({
+  serverUrl: 'http://localhost:3000',
+  playerId: 'player-123',
+  username: 'MyPlayer',
+});
+
+// Alternative: manual connection
+const client = new PhalanxClient(config);
+await client.connect();
+```
+
+### Join matchmaking
+
+```typescript
+// Join and wait in one call
+const match = await client.joinQueueAndWaitForMatch();
+
+// Or manage the steps yourself
+await client.joinQueue();
+const match = await client.waitForMatch();
+```
+
+### React to game start
+
+After the countdown, the server emits `game-start`. Load your assets, initialize the world, then call `sendReady()`. The server will not start the tick loop until **all** clients report ready.
+
+```typescript
+client.on('gameStart', async () => {
+  await loadAssets();
+  initializeGameWorld();
+  client.sendReady();
+});
+```
+
+See the [server documentation](../phalanx-server/README.md#game-start-synchronization) for the full protocol.
+
+### Send commands
+
+```typescript
+// Simplified API - queue a command, automatically batched each frame
+client.sendCommand('move', { targetX: 10, targetZ: 20 });
+
+// Or submit commands manually for a specific tick
+await client.submitCommands(tick + 1, [
+  { type: 'move', data: { x: 10, y: 20 } },
+]);
+```
+
+### Disconnect and clean up
+
+```typescript
+// Disconnect (stops render loop, clears handlers)
+client.disconnect();
+
+// Destroy (disconnect + cleanup all resources)
+await client.destroy();
+```
+
+## Choosing an API
+
+Phalanx Client offers two ways to drive your game loop:
+
+| API                                                                                  | Best for                                             | Effort                                                         |
+| ------------------------------------------------------------------------------------ | ---------------------------------------------------- | -------------------------------------------------------------- |
+| **Simplified Game Loop API** (`onTick` / `onFrame` / `sendCommand`)                  | Most games                                           | Low — timing, batching, and interpolation are handled for you. |
+| **Legacy Event-Based API** (`on('tick')` / `on('commands')` / `submitCommandsAsync`) | Custom timing or integrating into an existing engine | Higher — you manage your own render loop and command flushing. |
+
+The simplified API is recommended for new projects.
+
 ## API Reference
 
 ### Configuration
 
 ```typescript
 interface PhalanxClientConfig {
-  serverUrl: string;                    // Server URL (e.g., 'http://localhost:3000')
-  playerId?: string;                    // Unique player identifier (auto-generated if omitted)
-  username?: string;                    // Display name (auto-generated if omitted)
-  authToken?: string;                   // Auth token for server authentication
-  auth?: PhalanxAuthConfig;             // OAuth config for managed authentication
-  autoReconnect?: boolean;              // Auto-reconnect on disconnect (default: true)
-  maxReconnectAttempts?: number;        // Max reconnection attempts (default: 5)
-  reconnectDelayMs?: number;            // Delay between attempts (default: 1000)
-  connectionTimeoutMs?: number;         // Connection timeout (default: 10000)
-  tickRate?: number;                    // Ticks per second, must match server (default: 20)
-  pause?: Partial<PauseConfig>;         // Pause behavior configuration
-  debug?: boolean;                      // Enable debug logging (default: false)
+  serverUrl: string; // Server URL (e.g., 'http://localhost:3000')
+  playerId?: string; // Unique player identifier (auto-generated if omitted)
+  username?: string; // Display name (auto-generated if omitted)
+  authToken?: string; // Auth token for server authentication
+  auth?: PhalanxAuthConfig; // OAuth config for managed authentication
+  autoReconnect?: boolean; // Auto-reconnect on disconnect (default: true)
+  maxReconnectAttempts?: number; // Max reconnection attempts (default: 5)
+  reconnectDelayMs?: number; // Delay between attempts (default: 1000)
+  connectionTimeoutMs?: number; // Connection timeout (default: 10000)
+  tickRate?: number; // Ticks per second, must match server (default: 20)
+  pause?: Partial<PauseConfig>; // Pause behavior configuration
+  debug?: boolean; // Enable debug logging (default: false)
 
   // ── Mobile-friendly transport & recovery ──────────────────────────────────
   mobileFriendlyTransports?: boolean;
@@ -105,14 +365,14 @@ interface PhalanxClientConfig {
 }
 
 interface PhalanxRoomRecoveryConfig {
-  enabled: boolean;               // Master switch — must be true to arm the controller
-  storageKey?: string;            // localStorage key for the room record (default: 'phalanx:activeRoom:v1')
-  roomTtlMs?: number;             // Local TTL mirroring server RoomService.ROOM_TTL_MS (default: 5 * 60 * 1000)
-  storage?: KeyValueStorage;      // Custom storage adapter (default: localStorage with memory fallback)
+  enabled: boolean; // Master switch — must be true to arm the controller
+  storageKey?: string; // localStorage key for the room record (default: 'phalanx:activeRoom:v1')
+  roomTtlMs?: number; // Local TTL mirroring server RoomService.ROOM_TTL_MS (default: 5 * 60 * 1000)
+  storage?: KeyValueStorage; // Custom storage adapter (default: localStorage with memory fallback)
   recoverTimeoutBudget?: RecoverTimeoutBudget; // Per-quality ack timeouts (default: 10s/15s/25s)
-  maxRecoverAttempts?: number;    // Max backoff retries before emitting 'gave-up' (default: 5)
+  maxRecoverAttempts?: number; // Max backoff retries before emitting 'gave-up' (default: 5)
   preGameStallWatchdog?: boolean; // Auto-arm stall watchdog on matchFound/countdown (default: true)
-  preGameStallMs?: number;        // Budget before forceRecover fires (default: 4500)
+  preGameStallMs?: number; // Budget before forceRecover fires (default: 4500)
 }
 ```
 
@@ -185,24 +445,11 @@ Notify the server that this client has finished loading and is ready to receive 
 // Example: in your game-start handler
 client.on('gameStart', async () => {
   await game.initialize(); // downloads assets, sets up ECS
-  client.sendReady();       // signals server to start tick loop
+  client.sendReady(); // signals server to start tick loop
 });
 ```
 
-### Commands
-
-```typescript
-// Submit commands with acknowledgment
-const ack = await client.submitCommands(tick, [
-  { type: 'move', data: { x: 10, y: 20 } },
-  { type: 'attack', data: { targetId: 'enemy1' } },
-]);
-
-// Submit commands without waiting for ack (fire and forget)
-client.submitCommandsAsync(tick, commands);
-```
-
-### Simplified Game Loop API (Recommended)
+### Simplified Game Loop API
 
 The `onTick` and `onFrame` methods provide a simplified API for building game loops. They handle timing, command batching, and interpolation automatically.
 
@@ -280,14 +527,17 @@ The `alpha` value in `onFrame` represents how far we are between the last tick a
 
 This allows smooth 60fps rendering even though the server only sends 20 ticks per second.
 
-### Reconnection
+### Commands
 
 ```typescript
-// Manual reconnection to a match
-const state = await client.reconnectToMatch(matchId);
+// Submit commands with acknowledgment
+const ack = await client.submitCommands(tick, [
+  { type: 'move', data: { x: 10, y: 20 } },
+  { type: 'attack', data: { targetId: 'enemy1' } },
+]);
 
-// Automatic reconnection with retries
-await client.attemptReconnection();
+// Submit commands without waiting for ack (fire and forget)
+client.submitCommandsAsync(tick, commands);
 ```
 
 ### Private Rooms
@@ -308,9 +558,97 @@ client.cancelRoom();
 await client.recoverRoom(code);
 ```
 
+### Reconnection
+
+```typescript
+// Manual reconnection to a match
+const state = await client.reconnectToMatch(matchId);
+
+// Automatic reconnection with retries
+await client.attemptReconnection();
+```
+
+### Events
+
+```typescript
+// Connection events
+client.on('connected', () => {});
+client.on('disconnected', () => {});
+client.on('reconnecting', (attempt) => {});
+client.on('reconnectFailed', () => {});
+client.on('error', (error) => {});
+
+// Queue events
+client.on('queueJoined', (status) => {});
+client.on('queueLeft', () => {});
+client.on('queueError', (error) => {});
+
+// Match events
+client.on('matchFound', (event) => {});
+client.on('countdown', (event) => {});
+client.on('gameStart', (event) => {});
+client.on('matchEnd', (event) => {});
+
+// Pause events
+client.on('gamePaused', (event) => {});
+client.on('gameResumed', (event) => {});
+
+// Tick events
+client.on('tick', (event) => {});
+client.on('commands', (event) => {});
+
+// Player events
+client.on('playerDisconnected', (event) => {});
+client.on('playerReconnected', (event) => {});
+client.on('playerReady', (event) => {}); // A player reported ready (local or remote)
+
+// Reconnection events
+client.on('reconnectState', (event) => {});
+client.on('reconnectStatus', (event) => {});
+
+// Auth events
+client.on('authStateChanged', (state) => {});
+client.on('authError', (error) => {});
+
+// Desync detection events
+client.on('desync', (event) => {}); // Local hash mismatch detected
+
+// Private room events
+client.on('roomCreated', (event) => {}); // { code: string }
+client.on('roomError', (event) => {}); // { message: string }
+client.on('roomExpired', (event) => {}); // { code: string }    — server evicted the room (TTL)
+client.on('roomCancelled', (event) => {}); // { code: string }    — host explicitly cancelled
+client.on('roomRecovered', (event) => {}); // { code: string }    — room reclaimed after disconnect
+
+// Room recovery events (emitted by RoomRecoveryController when roomRecovery.enabled: true)
+client.on('recoveryStatus', (event) => {
+  // event.phase: 'idle' | 'recovering' | 'waiting-network' | 'retrying' | 'gave-up'
+  // event.attempt?: number        — 1-based attempt count (when recovering / retrying)
+  // event.nextRetryMs?: number    — ms until next auto-retry (when retrying)
+});
+client.on('roomTerminated', (event) => {
+  // event.reason: 'expired' | 'not-found' | 'cancelled'
+  // Terminal: recovery has stopped and the room can no longer be claimed.
+});
+
+// Unsubscribe
+const unsubscribe = client.on('tick', handler);
+unsubscribe();
+
+// Or manual
+client.off('tick', handler);
+
+// Remove all listeners
+client.removeAllListeners();
+```
+
+## Advanced Topics
+
 ### Mobile-Friendly Room Recovery
 
 Private rooms on mobile browsers face a known failure mode: when the host copies the invite link into a messenger app, the OS may suspend the WebSocket. Without recovery the room is silently lost. The engine's `RoomRecoveryController` handles the full lifecycle — browser-lifecycle wiring, exponential-backoff retry, localStorage persistence, and a pre-game stall watchdog.
+
+`client.roomRecovery` is `null` when the controller is not configured.
 
 #### Enabling recovery
 
@@ -409,7 +747,9 @@ client.on('recoveryStatus', (event) => {
       showStatus('Waiting for network…');
       break;
     case 'retrying':
-      showStatus(`Lost connection. Retrying in ${Math.ceil(event.nextRetryMs! / 1000)}s…`);
+      showStatus(
+        `Lost connection. Retrying in ${Math.ceil(event.nextRetryMs! / 1000)}s…`
+      );
       break;
     case 'gave-up':
       showStatus('Could not reconnect. Use Cancel to go back.');
@@ -419,7 +759,7 @@ client.on('recoveryStatus', (event) => {
 
 client.on('roomTerminated', (event) => {
   clearStatusBanner();
-  if (event.reason === 'expired')   showError('Room expired');
+  if (event.reason === 'expired') showError('Room expired');
   if (event.reason === 'not-found') showError('Room no longer exists');
   // 'cancelled' is usually silent (own Cancel button triggered it)
   returnToMainMenu();
@@ -430,31 +770,31 @@ client.on('roomTerminated', (event) => {
 
 Accessed via `client.roomRecovery` (null when not configured):
 
-| Method | Description |
-|---|---|
-| `loadColdStartCode()` | Read persisted host record; returns code or null |
-| `startTrackingHost(code)` | Arm hooks + persist room (host created room) |
-| `resumeTrackingHost(code)` | Arm hooks only (cold-start, record already persisted) |
-| `trackGuestJoin(code)` | Persist guest-side join for cold-start surfacing |
-| `tryRecover()` | Attempt one recovery cycle (idempotent, self-retries) |
-| `forceRecover(reason)` | Force-disconnect then recover (bypasses stale socket) |
-| `stop()` | Disarm all hooks, clear persistence |
-| `hasActiveRoom()` | True while a room is being tracked |
-| `getActiveRoomCode()` | Current tracked room code or null |
-| `armPreGameStallWatchdog(reason)` | Manually arm the stall timer (auto-armed by default) |
-| `clearPreGameStallWatchdog()` | Cancel a pending stall timer |
+| Method                            | Description                                           |
+| --------------------------------- | ----------------------------------------------------- |
+| `loadColdStartCode()`             | Read persisted host record; returns code or null      |
+| `startTrackingHost(code)`         | Arm hooks + persist room (host created room)          |
+| `resumeTrackingHost(code)`        | Arm hooks only (cold-start, record already persisted) |
+| `trackGuestJoin(code)`            | Persist guest-side join for cold-start surfacing      |
+| `tryRecover()`                    | Attempt one recovery cycle (idempotent, self-retries) |
+| `forceRecover(reason)`            | Force-disconnect then recover (bypasses stale socket) |
+| `stop()`                          | Disarm all hooks, clear persistence                   |
+| `hasActiveRoom()`                 | True while a room is being tracked                    |
+| `getActiveRoomCode()`             | Current tracked room code or null                     |
+| `armPreGameStallWatchdog(reason)` | Manually arm the stall timer (auto-armed by default)  |
+| `clearPreGameStallWatchdog()`     | Cancel a pending stall timer                          |
 
 #### Built-in helpers (also exported from `phalanx-client`)
 
-| Export | Description |
-|---|---|
-| `isMobileBrowser()` | UA-based mobile detection |
-| `pickMobileFriendlyTransports()` | Returns `['polling']` on mobile, `['websocket']` on desktop |
-| `loadOrCreateGuestPlayerId(key, storage?)` | Stable guest id across reloads |
-| `RoomPersistence` | localStorage room record (configurable key, TTL, storage adapter) |
-| `getRecoverTimeoutMs(budget?)` | Adapt recover ack timeout to `navigator.connection` |
-| `armBrowserLifecycle(handlers)` | Wire visibility/pageshow/online listeners |
-| `LocalStorageAdapter` / `MemoryKeyValueStorage` | Storage adapters for the persistence layer |
+| Export                                          | Description                                                       |
+| ----------------------------------------------- | ----------------------------------------------------------------- |
+| `isMobileBrowser()`                             | UA-based mobile detection                                         |
+| `pickMobileFriendlyTransports()`                | Returns `['polling']` on mobile, `['websocket']` on desktop       |
+| `loadOrCreateGuestPlayerId(key, storage?)`      | Stable guest id across reloads                                    |
+| `RoomPersistence`                               | localStorage room record (configurable key, TTL, storage adapter) |
+| `getRecoverTimeoutMs(budget?)`                  | Adapt recover ack timeout to `navigator.connection`               |
+| `armBrowserLifecycle(handlers)`                 | Wire visibility/pageshow/online listeners                         |
+| `LocalStorageAdapter` / `MemoryKeyValueStorage` | Storage adapters for the persistence layer                        |
 
 #### Custom storage adapter
 
@@ -556,17 +896,17 @@ function computeStateHash(tick: number): string {
 const hasher = new StateHasher();
 
 // Add primitive values
-hasher.addInt(42);                    // Integer
-hasher.addFloat(3.14159);             // Float (converted to fixed-point)
-hasher.addString("entity-123");       // String
-hasher.addBool(true);                 // Boolean
+hasher.addInt(42); // Integer
+hasher.addFloat(3.14159); // Float (converted to fixed-point)
+hasher.addString('entity-123'); // String
+hasher.addBool(true); // Boolean
 
 // Add arrays
-hasher.addIntArray([1, 2, 3]);        // Array of integers
-hasher.addFloatArray([1.5, 2.5]);     // Array of floats
+hasher.addIntArray([1, 2, 3]); // Array of integers
+hasher.addFloatArray([1.5, 2.5]); // Array of floats
 
 // Get final hash (8-char hex string)
-const hash = hasher.finalize();       // e.g., "a1b2c3d4"
+const hash = hasher.finalize(); // e.g., "a1b2c3d4"
 
 // Reset for reuse
 hasher.reset();
@@ -618,17 +958,17 @@ const phalanx = new Phalanx({
   enableStateHashing: true,
   desync: {
     enabled: true,
-    action: 'end-match',      // 'log-only' | 'end-match'
-    gracePeriodTicks: 1,      // Consecutive desyncs before action
+    action: 'end-match', // 'log-only' | 'end-match'
+    gracePeriodTicks: 1, // Consecutive desyncs before action
   },
 });
 ```
 
-| Option             | Description                                        | Default      |
-| ------------------ | -------------------------------------------------- | ------------ |
-| `enabled`          | Enable desync detection                            | `true`       |
-| `action`           | Action on confirmed desync                         | `'end-match'`|
-| `gracePeriodTicks` | Consecutive desyncs required before taking action  | `1`          |
+| Option             | Description                                       | Default       |
+| ------------------ | ------------------------------------------------- | ------------- |
+| `enabled`          | Enable desync detection                           | `true`        |
+| `action`           | Action on confirmed desync                        | `'end-match'` |
+| `gracePeriodTicks` | Consecutive desyncs required before taking action | `1`           |
 
 #### Testing Desync Detection
 
@@ -703,7 +1043,7 @@ client.on('authStateChanged', (state) => {
 await client.logout();
 ```
 
-### State Getters
+## State Getters
 
 ```typescript
 const tick = client.getCurrentTick();
@@ -711,80 +1051,6 @@ const matchId = client.getMatchId();
 const playerId = client.getPlayerId();
 const username = client.getUsername();
 const clientState = client.getClientState();
-```
-
-### Events
-
-```typescript
-// Connection events
-client.on('connected', () => {});
-client.on('disconnected', () => {});
-client.on('reconnecting', (attempt) => {});
-client.on('reconnectFailed', () => {});
-client.on('error', (error) => {});
-
-// Queue events
-client.on('queueJoined', (status) => {});
-client.on('queueLeft', () => {});
-client.on('queueError', (error) => {});
-
-// Match events
-client.on('matchFound', (event) => {});
-client.on('countdown', (event) => {});
-client.on('gameStart', (event) => {});
-client.on('matchEnd', (event) => {});
-
-// Pause events
-client.on('gamePaused', (event) => {});
-client.on('gameResumed', (event) => {});
-
-// Tick events
-client.on('tick', (event) => {});
-client.on('commands', (event) => {});
-
-// Player events
-client.on('playerDisconnected', (event) => {});
-client.on('playerReconnected', (event) => {});
-client.on('playerReady', (event) => {});  // A player reported ready (local or remote)
-
-// Reconnection events
-client.on('reconnectState', (event) => {});
-client.on('reconnectStatus', (event) => {});
-
-// Auth events
-client.on('authStateChanged', (state) => {});
-client.on('authError', (error) => {});
-
-// Desync detection events
-client.on('desync', (event) => {});  // Local hash mismatch detected
-
-// Private room events
-client.on('roomCreated', (event) => {});   // { code: string }
-client.on('roomError',   (event) => {});   // { message: string }
-client.on('roomExpired', (event) => {});   // { code: string }    — server evicted the room (TTL)
-client.on('roomCancelled',(event) => {}); // { code: string }    — host explicitly cancelled
-client.on('roomRecovered',(event) => {}); // { code: string }    — room reclaimed after disconnect
-
-// Room recovery events (emitted by RoomRecoveryController when roomRecovery.enabled: true)
-client.on('recoveryStatus', (event) => {
-  // event.phase: 'idle' | 'recovering' | 'waiting-network' | 'retrying' | 'gave-up'
-  // event.attempt?: number        — 1-based attempt count (when recovering / retrying)
-  // event.nextRetryMs?: number    — ms until next auto-retry (when retrying)
-});
-client.on('roomTerminated', (event) => {
-  // event.reason: 'expired' | 'not-found' | 'cancelled'
-  // Terminal: recovery has stopped and the room can no longer be claimed.
-});
-
-// Unsubscribe
-const unsubscribe = client.on('tick', handler);
-unsubscribe();
-
-// Or manual
-client.off('tick', handler);
-
-// Remove all listeners
-client.removeAllListeners();
 ```
 
 ## Client States
@@ -802,158 +1068,16 @@ The client tracks its lifecycle state:
 | `reconnecting` | Attempting to reconnect to match   |
 | `finished`     | Match has ended                    |
 
-
-## Example: Complete Game Loop (Simplified API)
-
-```typescript
-import { PhalanxClient, type CommandsBatch } from '@phalanx-engine/client';
-
-class GameClient {
-  private client: PhalanxClient | null = null;
-  private entities: Map<string, Entity> = new Map();
-  private unsubscribers: (() => void)[] = [];
-
-  async start(serverUrl: string, playerId: string, username: string): Promise<void> {
-    // Create and connect client
-    this.client = await PhalanxClient.create({
-      serverUrl,
-      playerId,
-      username,
-      autoReconnect: true,
-    });
-
-    // Subscribe to match lifecycle events
-    this.unsubscribers.push(
-      this.client.on('matchFound', (match) => {
-        console.log(`Match found: ${match.matchId}`);
-        this.initializeEntities(match);
-      })
-    );
-
-    this.unsubscribers.push(
-      this.client.on('gameStart', () => {
-        console.log('Game started!');
-      })
-    );
-
-    this.unsubscribers.push(
-      this.client.on('matchEnd', ({ reason }) => {
-        console.log(`Match ended: ${reason}`);
-        this.stop();
-      })
-    );
-
-    // Register tick handler - deterministic simulation
-    this.unsubscribers.push(
-      this.client.onTick((tick, commands) => {
-        this.handleTick(tick, commands);
-      })
-    );
-
-    // Register frame handler - rendering with interpolation
-    this.unsubscribers.push(
-      this.client.onFrame((alpha, dt) => {
-        this.handleFrame(alpha, dt);
-      })
-    );
-
-    // Join matchmaking queue
-    await this.client.joinQueue();
-  }
-
-  private initializeEntities(match: MatchFoundEvent): void {
-    // Create entities for all players
-    const allPlayers = [
-      { playerId: match.playerId, username: 'You' },
-      ...match.teammates,
-      ...match.opponents,
-    ];
-    for (const player of allPlayers) {
-      this.entities.set(player.playerId, new Entity(player.playerId));
-    }
-  }
-
-  private handleTick(tick: number, commands: CommandsBatch): void {
-    // Store previous positions for interpolation
-    for (const entity of this.entities.values()) {
-      entity.prevX = entity.currX;
-      entity.prevZ = entity.currZ;
-    }
-
-    // Process commands from all players
-    for (const [playerId, playerCommands] of Object.entries(commands.commands)) {
-      for (const cmd of playerCommands) {
-        this.processCommand(playerId, cmd);
-      }
-    }
-
-    // Run deterministic simulation step
-    this.simulate();
-  }
-
-  private handleFrame(alpha: number, dt: number): void {
-    // Interpolate entity positions for smooth 60fps rendering
-    for (const entity of this.entities.values()) {
-      entity.renderX = lerp(entity.prevX, entity.currX, alpha);
-      entity.renderZ = lerp(entity.prevZ, entity.currZ, alpha);
-    }
-
-    // Render the scene
-    renderer.render();
-  }
-
-  private processCommand(playerId: string, cmd: PlayerCommand): void {
-    const entity = this.entities.get(playerId);
-    if (!entity) return;
-
-    if (cmd.type === 'move') {
-      entity.targetX = cmd.data.targetX;
-      entity.targetZ = cmd.data.targetZ;
-    }
-  }
-
-  private simulate(): void {
-    // Move entities toward their targets
-    for (const entity of this.entities.values()) {
-      entity.moveTowardTarget();
-    }
-  }
-
-  // Call this when player clicks to move
-  move(targetX: number, targetZ: number): void {
-    this.client?.sendCommand('move', { targetX, targetZ });
-  }
-
-  async stop(): Promise<void> {
-    // Unsubscribe from all events
-    for (const unsub of this.unsubscribers) {
-      unsub();
-    }
-    this.unsubscribers = [];
-
-    // Cleanup client
-    await this.client?.destroy();
-    this.client = null;
-  }
-}
-
-// Usage
-const game = new GameClient();
-await game.start('http://localhost:3000', 'player-1', 'Alice');
-
-// Handle player input
-canvas.addEventListener('click', (e) => {
-  const worldPos = screenToWorld(e.clientX, e.clientY);
-  game.move(worldPos.x, worldPos.z);
-});
-```
-
 ## Example: Legacy Event-Based API
 
 For more control or backward compatibility, you can use the event-based API:
 
 ```typescript
-import { PhalanxClient, TickSyncEvent, PlayerCommand } from '@phalanx-engine/client';
+import {
+  PhalanxClient,
+  TickSyncEvent,
+  PlayerCommand,
+} from '@phalanx-engine/client';
 
 class LegacyGameClient {
   private client: PhalanxClient;
@@ -996,7 +1120,10 @@ class LegacyGameClient {
     }
   }
 
-  private handleCommands(event: { tick: number; commands: PlayerCommand[] }): void {
+  private handleCommands(event: {
+    tick: number;
+    commands: PlayerCommand[];
+  }): void {
     // Process commands from all players for deterministic simulation
     for (const command of event.commands) {
       this.processCommand(command);
@@ -1025,7 +1152,7 @@ class LegacyGameClient {
 }
 
 // Usage
-const game = new GameClient('http://localhost:3000', 'player1', 'Alice');
+const game = new LegacyGameClient('http://localhost:3000', 'player1', 'Alice');
 await game.start();
 
 // Add commands based on player input
