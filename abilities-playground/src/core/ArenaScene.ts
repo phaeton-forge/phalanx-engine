@@ -6,13 +6,17 @@ export class ArenaScene {
   private readonly disposables: Array<THREE.BufferGeometry | THREE.Material> = [];
 
   build(): void {
-    this.scene.background = new THREE.Color(0x1a1714);
-    this.scene.add(new THREE.AmbientLight(0xffecd1, 0.5));
-    this.scene.add(new THREE.HemisphereLight(0xffecd1, 0x5c4a3d, 0.35));
+    // Sage-tinted background blends with the floor so the arena edges no longer
+    // fall off into black (was near-black warm #1a1714).
+    this.scene.background = new THREE.Color(0x2b3a36);
+    this.scene.add(new THREE.AmbientLight(0xffecd1, 0.55));
+    // Cool green ground bounce (was warm brown 0x5c4a3d) keeps the pastel floor clean.
+    this.scene.add(new THREE.HemisphereLight(0xffecd1, 0x46544e, 0.45));
 
-    const sun = new THREE.DirectionalLight(0xfff0d9, 1.4);
-    // Higher, slightly angled sun gives warm light with short, clean ground shadows.
-    sun.position.set(20, 50, 20);
+    const sun = new THREE.DirectionalLight(0xfff0d9, 1.25);
+    // Higher, more frontal sun lights the far half evenly; softened intensity so the
+    // warmer background/floor don't blow out the red team.
+    sun.position.set(40, 60, 30);
     sun.castShadow = true;
     sun.shadow.mapSize.width = 4096;
     sun.shadow.mapSize.height = 4096;

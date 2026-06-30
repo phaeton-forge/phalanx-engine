@@ -91,7 +91,7 @@ export const arenaParams = {
   team2SpawnZ: arenaLength / 2 - arenaSpawnInset,
   team1Color: '#7FB3FF',
   team2Color: '#FF8A8A',
-  groundColor: '#3a4a44',
+  groundColor: '#5a6f67',
   centerLineColor: '#f5f6fa',
   /**
    * Pastel team palettes ("Малышарики" style): one soft tint per unit type so
