@@ -89,10 +89,30 @@ export const arenaParams = {
   length: arenaLength,
   team1SpawnZ: -arenaLength / 2 + arenaSpawnInset,
   team2SpawnZ: arenaLength / 2 - arenaSpawnInset,
-  team1Color: '#3366FF',
-  team2Color: '#FF3333',
+  team1Color: '#7FB3FF',
+  team2Color: '#FF8A8A',
   groundColor: '#5a430b',
   centerLineColor: '#f5f6fa',
+  /**
+   * Pastel team palettes ("Малышарики" style): one soft tint per unit type so
+   * teammates are visually varied yet unmistakably warm (team2) vs cool (team1).
+   * Keys match UnitType values; team1Color/team2Color above are the base/fallback.
+   * Team 0 -> team1 (cool/blue), Team 1 -> team2 (warm/red).
+   */
+  team1Palette: {
+    sphere: '#7FB3FF',
+    cube: '#6FA8DC',
+    support: '#8FD0E8',
+    rocket: '#A6B8FF',
+    volt: '#9DB8FF',
+  } as Record<string, string>,
+  team2Palette: {
+    sphere: '#FF8A8A',
+    cube: '#F2785C',
+    support: '#FFB3A7',
+    rocket: '#FFA37A',
+    volt: '#FF9E7A',
+  } as Record<string, string>,
   /**
    * Local formation grid dimensions. The grid is centered on each team's spawn line
    * (x = 0, z = team1SpawnZ / team2SpawnZ), with the depth axis pointing toward the enemy.

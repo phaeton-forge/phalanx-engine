@@ -2,6 +2,18 @@ import * as THREE from 'three';
 import { arenaParams } from '../config/constants';
 import type { TeamId } from '../components';
 import type { UnitDefinition } from './UnitDefinition';
+import type { UnitType } from './UnitType';
+
+/**
+ * Resolve a unit's body color from its team's pastel palette, keyed by unit type.
+ * Falls back to the team base color if a type is missing from the palette.
+ * Team 0 -> cool palette, Team 1 -> warm palette.
+ */
+function resolveUnitColor(teamId: TeamId, unitType: UnitType): string {
+  const palette = teamId === 0 ? arenaParams.team1Palette : arenaParams.team2Palette;
+  const base = teamId === 0 ? arenaParams.team1Color : arenaParams.team2Color;
+  return palette[unitType] ?? base;
+}
 
 export interface UnitRenderRefs {
   root: THREE.Object3D;
@@ -19,13 +31,13 @@ export function createUnitRenderRefs(
   def: UnitDefinition,
   teamId: TeamId
 ): UnitRenderRefs {
-  const root = createBody(def.visual, teamId);
+  const root = createBody(def.visual, teamId, def.type);
 
   const {
     root: healthBarRoot,
     fill: healthBarFill,
     fullWidth: healthBarFullWidth,
-  } = createHealthBar(teamId);
+  } = createHealthBar(teamId, def.type);
 
   let spawnPoint: { marker: THREE.Object3D } | undefined;
   if (def.visual.hasSpawnArrow) {
@@ -51,26 +63,30 @@ export function createUnitRenderRefs(
 /** Body mesh only — `switch (def.visual.shape)` lives here (sphere/box/cone/octahedron/volt). */
 function createBody(
   spec: UnitDefinition['visual'],
-  teamId: TeamId
+  teamId: TeamId,
+  unitType: UnitType
 ): THREE.Object3D {
   switch (spec.shape) {
     case 'box':
-      return createBoxBody(spec.size, teamId);
+      return createBoxBody(spec.size, teamId, unitType);
     case 'sphere':
-      return createSphereBody(spec.size, teamId);
+      return createSphereBody(spec.size, teamId, unitType);
     case 'cone':
       // Cone geometry: radius, height → base sits on the ground at the support height offset.
-      return createConeBody(spec.size, teamId);
+      return createConeBody(spec.size, teamId, unitType);
     case 'octahedron':
-      return createOctahedronBody(spec.size, teamId);
+      return createOctahedronBody(spec.size, teamId, unitType);
     case 'volt':
-      return createVoltBody(spec.size, teamId);
+      return createVoltBody(spec.size, teamId, unitType);
   }
 }
 
-function createTeamMaterial(teamId: TeamId): THREE.MeshStandardMaterial {
+function createTeamMaterial(
+  teamId: TeamId,
+  unitType: UnitType
+): THREE.MeshStandardMaterial {
   return new THREE.MeshStandardMaterial({
-    color: teamId === 0 ? arenaParams.team1Color : arenaParams.team2Color,
+    color: resolveUnitColor(teamId, unitType),
     roughness: 0.35,
     metalness: 0.2,
   });
@@ -81,37 +97,53 @@ function enableShadows(mesh: THREE.Mesh): void {
   mesh.castShadow = true;
 }
 
-function createBoxBody(size: number, teamId: TeamId): THREE.Mesh {
+function createBoxBody(
+  size: number,
+  teamId: TeamId,
+  unitType: UnitType
+): THREE.Mesh {
   const mesh = new THREE.Mesh(
     new THREE.BoxGeometry(size, size, size),
-    createTeamMaterial(teamId)
+    createTeamMaterial(teamId, unitType)
   );
   enableShadows(mesh);
   return mesh;
 }
 
-function createSphereBody(size: number, teamId: TeamId): THREE.Mesh {
+function createSphereBody(
+  size: number,
+  teamId: TeamId,
+  unitType: UnitType
+): THREE.Mesh {
   const mesh = new THREE.Mesh(
     new THREE.SphereGeometry(size, 24, 16),
-    createTeamMaterial(teamId)
+    createTeamMaterial(teamId, unitType)
   );
   enableShadows(mesh);
   return mesh;
 }
 
-function createConeBody(size: number, teamId: TeamId): THREE.Mesh {
+function createConeBody(
+  size: number,
+  teamId: TeamId,
+  unitType: UnitType
+): THREE.Mesh {
   const mesh = new THREE.Mesh(
     new THREE.ConeGeometry(size, size * 2, 24),
-    createTeamMaterial(teamId)
+    createTeamMaterial(teamId, unitType)
   );
   enableShadows(mesh);
   return mesh;
 }
 
-function createOctahedronBody(size: number, teamId: TeamId): THREE.Mesh {
+function createOctahedronBody(
+  size: number,
+  teamId: TeamId,
+  unitType: UnitType
+): THREE.Mesh {
   const mesh = new THREE.Mesh(
     new THREE.OctahedronGeometry(size),
-    createTeamMaterial(teamId)
+    createTeamMaterial(teamId, unitType)
   );
   enableShadows(mesh);
   return mesh;
@@ -124,12 +156,17 @@ function createOctahedronBody(size: number, teamId: TeamId): THREE.Mesh {
  * - Hovering torus coil at the base.
  * - Small conductor orb on top where lightning originates.
  */
-function createVoltBody(size: number, teamId: TeamId): THREE.Object3D {
+function createVoltBody(
+  size: number,
+  teamId: TeamId,
+  unitType: UnitType
+): THREE.Object3D {
   const root = new THREE.Group();
 
-  const teamColor =
-    teamId === 0 ? arenaParams.team1Color : arenaParams.team2Color;
-  const coreColor = teamId === 0 ? 0x00ffff : 0xff00ff;
+  const teamColor = resolveUnitColor(teamId, unitType);
+  // Softened pastel emissive to match the "Малышарики" palette
+  // (was harsh cyan 0x00ffff / magenta 0xff00ff).
+  const coreColor = teamId === 0 ? 0x9de5ff : 0xffc2c2;
 
   const core = new THREE.Mesh(
     new THREE.OctahedronGeometry(size, 0),
@@ -191,7 +228,10 @@ function createAuraRing(radius: number): THREE.Mesh {
   return ring;
 }
 
-function createHealthBar(teamId: TeamId): {
+function createHealthBar(
+  teamId: TeamId,
+  unitType: UnitType
+): {
   root: THREE.Object3D;
   fill: THREE.Object3D;
   fullWidth: number;
@@ -205,7 +245,7 @@ function createHealthBar(teamId: TeamId): {
   const fill = new THREE.Mesh(
     new THREE.BoxGeometry(healthBarFullWidth, 0.4, 0.3),
     new THREE.MeshBasicMaterial({
-      color: teamId === 0 ? arenaParams.team1Color : arenaParams.team2Color,
+      color: resolveUnitColor(teamId, unitType),
     })
   );
 
