@@ -6,10 +6,27 @@ export class ArenaScene {
   private readonly disposables: Array<THREE.BufferGeometry | THREE.Material> = [];
 
   build(): void {
-    this.scene.background = new THREE.Color(0x1a1a2e);
-    this.scene.add(new THREE.AmbientLight(0xffffff, 0.55));
-    const sun = new THREE.DirectionalLight(0xffffff, 0.85);
-    sun.position.set(12, 20, 10);
+    this.scene.background = new THREE.Color(0x1a1714);
+    this.scene.add(new THREE.AmbientLight(0xffecd1, 0.5));
+    this.scene.add(new THREE.HemisphereLight(0xffecd1, 0x5c4a3d, 0.35));
+
+    const sun = new THREE.DirectionalLight(0xfff0d9, 1.4);
+    // Higher, slightly angled sun gives warm light with short, clean ground shadows.
+    sun.position.set(20, 50, 20);
+    sun.castShadow = true;
+    sun.shadow.mapSize.width = 4096;
+    sun.shadow.mapSize.height = 4096;
+    sun.shadow.camera.near = 0.5;
+    sun.shadow.camera.far = 200;
+
+    const shadowSpan = 160;
+    sun.shadow.camera.left = -shadowSpan;
+    sun.shadow.camera.right = shadowSpan;
+    sun.shadow.camera.top = shadowSpan;
+    sun.shadow.camera.bottom = -shadowSpan;
+    sun.shadow.bias = -0.0005;
+    sun.shadow.normalBias = 0.05;
+
     this.scene.add(sun);
     this.createArena();
   }
@@ -35,6 +52,7 @@ export class ArenaScene {
       this.trackMaterial(new THREE.MeshStandardMaterial({ color: arenaParams.groundColor })),
     );
     ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
     this.scene.add(ground);
 
     const centerLine = new THREE.Mesh(
@@ -48,6 +66,7 @@ export class ArenaScene {
       ),
     );
     centerLine.position.y = 0.03;
+    centerLine.receiveShadow = true;
     this.scene.add(centerLine);
 
     const sideLineMaterial = this.trackMaterial(
@@ -59,6 +78,7 @@ export class ArenaScene {
         sideLineMaterial,
       );
       sideLine.position.set(x, 0.04, 0);
+      sideLine.receiveShadow = true;
       this.scene.add(sideLine);
     }
 
@@ -71,6 +91,7 @@ export class ArenaScene {
         spawnLineMaterial,
       );
       spawnLine.position.set(0, 0.05, z);
+      spawnLine.receiveShadow = true;
       this.scene.add(spawnLine);
     }
   }

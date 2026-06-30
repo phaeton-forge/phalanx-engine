@@ -91,7 +91,7 @@ export const arenaParams = {
   team2SpawnZ: arenaLength / 2 - arenaSpawnInset,
   team1Color: '#3366FF',
   team2Color: '#FF3333',
-  groundColor: '#2d3436',
+  groundColor: '#5a430b',
   centerLineColor: '#f5f6fa',
   /**
    * Local formation grid dimensions. The grid is centered on each team's spawn line

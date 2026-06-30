@@ -71,37 +71,50 @@ function createBody(
 function createTeamMaterial(teamId: TeamId): THREE.MeshStandardMaterial {
   return new THREE.MeshStandardMaterial({
     color: teamId === 0 ? arenaParams.team1Color : arenaParams.team2Color,
-    roughness: 0.55,
-    metalness: 0.05,
+    roughness: 0.35,
+    metalness: 0.2,
   });
 }
 
+function enableShadows(mesh: THREE.Mesh): void {
+  // Units only cast shadows; self-shadowing on low-poly shapes creates ugly artifacts.
+  mesh.castShadow = true;
+}
+
 function createBoxBody(size: number, teamId: TeamId): THREE.Mesh {
-  return new THREE.Mesh(
+  const mesh = new THREE.Mesh(
     new THREE.BoxGeometry(size, size, size),
     createTeamMaterial(teamId)
   );
+  enableShadows(mesh);
+  return mesh;
 }
 
 function createSphereBody(size: number, teamId: TeamId): THREE.Mesh {
-  return new THREE.Mesh(
+  const mesh = new THREE.Mesh(
     new THREE.SphereGeometry(size, 24, 16),
     createTeamMaterial(teamId)
   );
+  enableShadows(mesh);
+  return mesh;
 }
 
 function createConeBody(size: number, teamId: TeamId): THREE.Mesh {
-  return new THREE.Mesh(
+  const mesh = new THREE.Mesh(
     new THREE.ConeGeometry(size, size * 2, 24),
     createTeamMaterial(teamId)
   );
+  enableShadows(mesh);
+  return mesh;
 }
 
 function createOctahedronBody(size: number, teamId: TeamId): THREE.Mesh {
-  return new THREE.Mesh(
+  const mesh = new THREE.Mesh(
     new THREE.OctahedronGeometry(size),
     createTeamMaterial(teamId)
   );
+  enableShadows(mesh);
+  return mesh;
 }
 
 /**
@@ -129,6 +142,7 @@ function createVoltBody(size: number, teamId: TeamId): THREE.Object3D {
     })
   );
   core.position.y = size * 0.85;
+  enableShadows(core);
   root.add(core);
 
   const coil = new THREE.Mesh(
@@ -143,6 +157,7 @@ function createVoltBody(size: number, teamId: TeamId): THREE.Object3D {
   );
   coil.rotation.x = Math.PI / 2;
   coil.position.y = size * 0.2;
+  enableShadows(coil);
   root.add(coil);
 
   const orb = new THREE.Mesh(
