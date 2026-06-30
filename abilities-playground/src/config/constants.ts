@@ -91,7 +91,7 @@ export const arenaParams = {
   team2SpawnZ: arenaLength / 2 - arenaSpawnInset,
   team1Color: '#7FB3FF',
   team2Color: '#FF8A8A',
-  groundColor: '#5a430b',
+  groundColor: '#3a4a44',
   centerLineColor: '#f5f6fa',
   /**
    * Pastel team palettes ("Малышарики" style): one soft tint per unit type so
@@ -103,7 +103,7 @@ export const arenaParams = {
     sphere: '#7FB3FF',
     cube: '#6FA8DC',
     support: '#8FD0E8',
-    rocket: '#A6B8FF',
+    rocket: '#B6A8FF',
     volt: '#9DB8FF',
   } as Record<string, string>,
   team2Palette: {
