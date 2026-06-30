@@ -107,6 +107,8 @@ export class MeshComponent implements IPoolableComponent {
 
   public static createProjectile(radius: number): MeshComponent {
     const root = new THREE.Mesh(new THREE.SphereGeometry(radius, 32, 32));
+    root.castShadow = true;
+    root.receiveShadow = true;
     root.visible = false;
     return new MeshComponent(root);
   }
@@ -122,6 +124,8 @@ export class MeshComponent implements IPoolableComponent {
         roughness: 0.5,
       })
     );
+    body.castShadow = true;
+    body.receiveShadow = true;
     body.rotation.x = Math.PI / 2;
 
     const flame = new THREE.Mesh(

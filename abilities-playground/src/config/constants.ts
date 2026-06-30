@@ -84,14 +84,58 @@ const arenaLength = 200;
 /** Playable width along X (was 60; ×1.5 for wider formations). */
 const arenaWidth = 90;
 
+/** Team color palette. Colors are stored as hex numbers for Three.js. */
+export interface TeamPalette {
+  /** Primary team tint used for bodies, grid lines and health bars. */
+  primary: number;
+  /** Dark shade used for outlines, bases and shadows. */
+  deep: number;
+  /** Highlight used for bright edges, emissive rims and hover states. */
+  highlight: number;
+  /** Glow color for magical / emissive elements. */
+  glow: number;
+  /** Accent for auras, abilities and grid spawn line. */
+  accent: number;
+}
+
+/** Blue / steel palette. */
+const bluePalette: TeamPalette = {
+  primary: 0x2563eb,
+  deep: 0x1e3a8a,
+  highlight: 0x60a5fa,
+  glow: 0x93c5fd,
+  accent: 0x00bfff,
+};
+
+/** Red / ember palette. */
+const redPalette: TeamPalette = {
+  primary: 0xdc2626,
+  deep: 0x7f1d1d,
+  highlight: 0xf87171,
+  glow: 0xfb923c,
+  accent: 0xff4500,
+};
+
+export const teamPalettes: Record<0 | 1, TeamPalette> = {
+  0: bluePalette,
+  1: redPalette,
+};
+
+export type TeamColorRole = keyof TeamPalette;
+
+/** Get a team color as a Three.js hex number. */
+export function getTeamColor(teamId: 0 | 1, role: TeamColorRole): number {
+  return teamPalettes[teamId][role];
+}
+
 export const arenaParams = {
   width: arenaWidth,
   length: arenaLength,
   team1SpawnZ: -arenaLength / 2 + arenaSpawnInset,
   team2SpawnZ: arenaLength / 2 - arenaSpawnInset,
-  team1Color: '#3366FF',
-  team2Color: '#FF3333',
-  groundColor: '#2d3436',
+  team1Color: '#' + bluePalette.primary.toString(16).padStart(6, '0'),
+  team2Color: '#' + redPalette.primary.toString(16).padStart(6, '0'),
+  groundColor: '#4a4e57',
   centerLineColor: '#f5f6fa',
   /**
    * Local formation grid dimensions. The grid is centered on each team's spawn line

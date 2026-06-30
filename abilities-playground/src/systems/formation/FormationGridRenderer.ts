@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { arenaParams } from '../../config/constants';
+import { getTeamColor } from '../../config/constants';
 import type { UnitFactory } from '../../units/UnitFactory';
 import type { UnitType } from '../../units/UnitType';
 import type { FormationGrid } from './FormationTypes';
@@ -83,12 +83,11 @@ export class FormationGridRenderer {
       new THREE.Float32BufferAttribute(vertices, 3)
     );
 
-    const teamColor =
-      grid.team === 0 ? arenaParams.team1Color : arenaParams.team2Color;
+    const teamColor = getTeamColor(grid.team, 'primary');
     const material = new THREE.LineBasicMaterial({
       color: teamColor,
       transparent: true,
-      opacity: 0.45,
+      opacity: 0.75,
       depthWrite: false,
     });
 
@@ -260,10 +259,11 @@ export class FormationGridRenderer {
   private disposeObject3D(root: THREE.Object3D): void {
     root.traverse((child) => {
       if (child instanceof THREE.Mesh) {
-        child.geometry?.dispose();
-        const materials = Array.isArray(child.material)
-          ? child.material
-          : [child.material];
+        const mesh = child as THREE.Mesh;
+        mesh.geometry?.dispose();
+        const materials: THREE.Material[] = Array.isArray(mesh.material)
+          ? mesh.material
+          : [mesh.material];
         materials.forEach((material) => material?.dispose());
       }
     });

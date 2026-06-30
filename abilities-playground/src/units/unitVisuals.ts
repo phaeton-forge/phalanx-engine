@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { arenaParams } from '../config/constants';
+import { getTeamColor } from '../config/constants';
 import type { TeamId } from '../components';
 import type { UnitDefinition } from './UnitDefinition';
 
@@ -70,7 +70,7 @@ function createBody(
 
 function createTeamMaterial(teamId: TeamId): THREE.MeshStandardMaterial {
   return new THREE.MeshStandardMaterial({
-    color: teamId === 0 ? arenaParams.team1Color : arenaParams.team2Color,
+    color: getTeamColor(teamId, 'primary'),
     roughness: 0.55,
     metalness: 0.05,
   });
@@ -114,9 +114,8 @@ function createOctahedronBody(size: number, teamId: TeamId): THREE.Mesh {
 function createVoltBody(size: number, teamId: TeamId): THREE.Object3D {
   const root = new THREE.Group();
 
-  const teamColor =
-    teamId === 0 ? arenaParams.team1Color : arenaParams.team2Color;
-  const coreColor = teamId === 0 ? 0x00ffff : 0xff00ff;
+  const teamColor = getTeamColor(teamId, 'primary');
+  const coreColor = getTeamColor(teamId, 'glow');
 
   const core = new THREE.Mesh(
     new THREE.OctahedronGeometry(size, 0),
@@ -190,7 +189,7 @@ function createHealthBar(teamId: TeamId): {
   const fill = new THREE.Mesh(
     new THREE.BoxGeometry(healthBarFullWidth, 0.4, 0.3),
     new THREE.MeshBasicMaterial({
-      color: teamId === 0 ? arenaParams.team1Color : arenaParams.team2Color,
+      color: getTeamColor(teamId, 'primary'),
     })
   );
 

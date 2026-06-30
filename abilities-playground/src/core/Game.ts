@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import type { MatchFoundEvent, PhalanxClient } from '@phalanx-engine/client';
 import type { CommandsBatch } from '@phalanx-engine/ecs';
 import { ArenaScene } from './ArenaScene';
+import { AssetLoaderUI } from './AssetLoaderUI';
+import { AssetManager } from './AssetManager';
 import { CameraController } from './CameraController';
 import { GameUI } from './GameUI';
 import { SimulationContainer } from './SimulationContainer';
@@ -25,6 +27,8 @@ export class Game {
   private readonly simulation: SimulationContainer;
   private formationGridSystem: FormationGridSystem;
   private readonly ui: GameUI;
+  private readonly assetManager: AssetManager;
+  private readonly assetLoaderUI: AssetLoaderUI;
   private readonly networkEventUnsubscribers: (() => void)[] = [];
   private gameOverShown = false;
   private deploymentHidden = false;
@@ -43,6 +47,8 @@ export class Game {
 
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
     this.arenaScene = new ArenaScene();
     this.arenaScene.build();
@@ -51,6 +57,9 @@ export class Game {
 
     this.cameraController = new CameraController(this.localTeamId);
     this.cameraController.addListeners(canvas);
+
+    this.assetManager = new AssetManager();
+    this.assetLoaderUI = new AssetLoaderUI();
 
     this.simulation = new SimulationContainer(client, this.arenaScene.scene);
 
@@ -114,9 +123,21 @@ export class Game {
     this.onExit = callback;
   }
 
+  getAssetManager(): AssetManager {
+    return this.assetManager;
+  }
+
   async initialize(): Promise<void> {
     this.deploymentHidden = false;
     this.onResize();
+
+    this.assetLoaderUI.show();
+    await this.assetManager.loadAll((loaded, total) => {
+      this.assetLoaderUI.update(loaded, total);
+    });
+    this.assetLoaderUI.hide();
+    this.arenaScene.applyEnvironment(this.assetManager.getEnvironment());
+
     this.ui.showStartOverlay();
     this.ui.hideResultOverlay();
     this.simulation.world.start({
@@ -158,6 +179,8 @@ export class Game {
     this.formationGridSystem.dispose();
     this.simulation.dispose();
     this.arenaScene.dispose();
+    this.assetManager.dispose();
+    this.assetLoaderUI.hide();
     this.renderer.dispose();
   }
 

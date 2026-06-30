@@ -3,8 +3,9 @@ import type { TeamId } from '../../components';
 import type { UnitFactory } from '../../units/UnitFactory';
 import type { UnitType } from '../../units/UnitType';
 
-const VALID_COLOR = 0x44ff88;
-const INVALID_COLOR = 0xff4444;
+// Semantic hover colors chosen to harmonize with both team palettes.
+const VALID_COLOR = 0x4ecca3;
+const INVALID_COLOR = 0xe74c3c;
 const GHOST_OPACITY = 0.25;
 
 /**
@@ -148,10 +149,11 @@ export class FormationHoverPreview {
   private disposeObject3D(root: THREE.Object3D): void {
     root.traverse((child) => {
       if (child instanceof THREE.Mesh) {
-        child.geometry?.dispose();
-        const materials = Array.isArray(child.material)
-          ? child.material
-          : [child.material];
+        const mesh = child as THREE.Mesh;
+        mesh.geometry?.dispose();
+        const materials: THREE.Material[] = Array.isArray(mesh.material)
+          ? mesh.material
+          : [mesh.material];
         materials.forEach((material) => material?.dispose());
       }
     });
