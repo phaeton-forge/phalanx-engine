@@ -234,9 +234,8 @@ export class TelegramAdapter implements PlatformAdapter {
     const shown = await showMonetagInterstitial(this.monetagZoneId);
     if (shown) {
       this.fullscreenAdGate.recordShown();
-      // NOTE: we intentionally do NOT preload after showing when using the
-      // 'inApp' pipeline — Monetag manages its own creative rotation, and
-      // an explicit preload right after invocation can conflict with it.
+      // Preload the next creative so subsequent calls stay instant.
+      preloadMonetagInterstitial(this.monetagZoneId);
     }
     return shown;
   }
