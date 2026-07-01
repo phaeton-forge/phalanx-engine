@@ -1,6 +1,6 @@
 {
   "name": "@phalanx-engine/server",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Phalanx Engine Server - A game-agnostic deterministic lockstep multiplayer server with authentication, matchmaking, and command synchronization",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

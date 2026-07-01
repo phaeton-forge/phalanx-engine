@@ -24,8 +24,21 @@ export interface PhysicsWorldConfig {
   defaultFriction?: FixedPoint;
   /** Maximum velocity magnitude */
   maxVelocity?: FixedPoint;
-  /** Push strength for collision resolution */
+  /** Push strength for collision resolution (used by the 'push' response) */
   pushStrength?: FixedPoint;
+
+  /**
+   * Collision response model: `'push'` (default, positional separation only)
+   * or `'impulse'` (momentum-conserving elastic collision along the normal).
+   * See PhysicsConfig.collisionResponse for details.
+   */
+  collisionResponse?: 'push' | 'impulse';
+
+  /**
+   * Coefficient of restitution `e` for the `'impulse'` response.
+   * Falls back to per-body restitution when omitted. Ignored by `'push'`.
+   */
+  restitution?: FixedPoint;
 
   /**
    * Optional custom tick provider.

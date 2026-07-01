@@ -27,6 +27,7 @@ import {
   FRICTION,
   BOARD_ELIM_HALF_EXTENT,
   CELL_SIZE,
+  RESTITUTION,
 } from '../config/constants.ts';
 import { TeamTag } from '../enums/TeamTag.ts';
 import { LockstepManager } from '../network';
@@ -51,6 +52,10 @@ function buildPhysicsConfig(): PhysicsConfig {
     maxVelocity: FP.FromFloat(MAX_FLICK_FORCE),
     defaultFriction: FP.FromFloat(1 - FRICTION * PHYSICS_DT),
     pushStrength: FP.FromFloat(15),
+    // Chapayev needs momentum transfer ("click / knock-away"), not the default
+    // push separation — a flicked checker must knock the struck one away.
+    collisionResponse: 'impulse',
+    restitution: FP.FromFloat(RESTITUTION),
     gridCellSize: FP.FromFloat(CELL_SIZE),
     worldBounds: {
       minX: FP.Neg(half),

@@ -304,20 +304,33 @@ export class PhysicsSystem extends GameSystem {
       // Compute restitution: average of both bodies, default to 1.0 if both unset
       const restitutionA = FP.FromRaw(physRestitution[physIndexA]);
       const restitutionB = FP.FromRaw(physRestitution[physIndexB]);
-      const restitution = (restitutionA === FP._0 && restitutionB === FP._0)
+      const restitution = (FP.Eq(restitutionA, FP._0) && FP.Eq(restitutionB, FP._0))
         ? FP._1
         : FP.Div(FP.Add(restitutionA, restitutionB), FP.FromFloat(2));
 
-      // Resolve collision
-      this.resolveCollision(
-        manifold,
-        restitution,
-        physIndexA, physIndexB,
-        transformIndexA, transformIndexB,
-        physVelocityX, physVelocityZ,
-        physMass, physIsStatic,
-        fpPosXArr, fpPosZArr,
-      );
+      // Resolve collision using the configured response model.
+      if (this.config.collisionResponse === 'impulse') {
+        const e = this.config.restitution ?? restitution;
+        this.resolveImpulse(
+          manifold,
+          e,
+          physIndexA, physIndexB,
+          transformIndexA, transformIndexB,
+          physVelocityX, physVelocityZ,
+          physMass, physIsStatic,
+          fpPosXArr, fpPosZArr,
+        );
+      } else {
+        this.resolveCollision(
+          manifold,
+          restitution,
+          physIndexA, physIndexB,
+          transformIndexA, transformIndexB,
+          physVelocityX, physVelocityZ,
+          physMass, physIsStatic,
+          fpPosXArr, fpPosZArr,
+        );
+      }
 
       // Emit collision event
       const event: CollisionEvent = {
@@ -396,6 +409,110 @@ export class PhysicsSystem extends GameSystem {
       const newBZ = FP.Add(posBZ, FP.Mul(nz, sepB));
       fpPosXArr[transformIndexB] = FP.ToRaw(newBX);
       fpPosZArr[transformIndexB] = FP.ToRaw(newBZ);
+    }
+  }
+
+  /**
+   * Resolve a single collision with a momentum-conserving elastic impulse
+   * along the contact normal (XZ plane), plus positional separation.
+   *
+   * Implements the legacy Chapayev formula:
+   *   j = (1 + e) * velAlongNormal / (1/mA + 1/mB)
+   * applied as vA -= j/mA * n, vB += j/mB * n, guarded by the "skip if
+   * separating" test (velAlongNormal <= 0). Static bodies are treated as
+   * having infinite mass (inverse mass 0). Only X/Z are touched; velocityY is
+   * left untouched for other consumers.
+   *
+   * The manifold normal points from A to B (n = (posB - posA)/dist), matching
+   * the legacy convention.
+   */
+  private resolveImpulse(
+    manifold: CollisionManifold,
+    restitution: FixedPoint,
+    physIndexA: number, physIndexB: number,
+    transformIndexA: number, transformIndexB: number,
+    physVelocityX: BigInt64Array, physVelocityZ: BigInt64Array,
+    physMass: BigInt64Array, physIsStatic: Uint8Array,
+    fpPosXArr: BigInt64Array, fpPosZArr: BigInt64Array,
+  ): void {
+    const isStaticA = physIsStatic[physIndexA] === 1;
+    const isStaticB = physIsStatic[physIndexB] === 1;
+
+    // Both static — nothing to do
+    if (isStaticA && isStaticB) return;
+
+    const nx = manifold.normalX;
+    const nz = manifold.normalZ;
+
+    // Inverse masses. Static bodies — and non-static bodies with mass <= 0 —
+    // are treated as infinite mass (inverse mass 0), which also avoids a
+    // divide-by-zero on FP.Div(1, 0).
+    const massA = FP.FromRaw(physMass[physIndexA]);
+    const massB = FP.FromRaw(physMass[physIndexB]);
+    const invMassA = (isStaticA || FP.Lte(massA, FP._0)) ? FP._0 : FP.Div(FP._1, massA);
+    const invMassB = (isStaticB || FP.Lte(massB, FP._0)) ? FP._0 : FP.Div(FP._1, massB);
+    const invMassSum = FP.Add(invMassA, invMassB);
+    if (FP.Lte(invMassSum, FP._0)) return;
+
+    // Relative velocity of A with respect to B, projected on the normal.
+    const velAx = FP.FromRaw(physVelocityX[physIndexA]);
+    const velAz = FP.FromRaw(physVelocityZ[physIndexA]);
+    const velBx = FP.FromRaw(physVelocityX[physIndexB]);
+    const velBz = FP.FromRaw(physVelocityZ[physIndexB]);
+
+    const dvx = FP.Sub(velAx, velBx);
+    const dvz = FP.Sub(velAz, velBz);
+    const velAlongNormal = FP.Add(FP.Mul(dvx, nx), FP.Mul(dvz, nz));
+
+    // Positional separation (split the overlap evenly among dynamic bodies).
+    const overlap = manifold.penetration;
+    if (isStaticA) {
+      this.separateBody(transformIndexB, nx, nz, overlap, fpPosXArr, fpPosZArr, true);
+    } else if (isStaticB) {
+      this.separateBody(transformIndexA, nx, nz, overlap, fpPosXArr, fpPosZArr, false);
+    } else {
+      const half = FP.Mul(overlap, SEPARATION_HALF);
+      this.separateBody(transformIndexA, nx, nz, half, fpPosXArr, fpPosZArr, false);
+      this.separateBody(transformIndexB, nx, nz, half, fpPosXArr, fpPosZArr, true);
+    }
+
+    // Bodies separating already — skip the impulse (do not "suck" them together).
+    if (FP.Lte(velAlongNormal, FP._0)) return;
+
+    // Impulse scalar: j = (1 + e) * velAlongNormal / (invMassA + invMassB)
+    const onePlusE = FP.Add(FP._1, restitution);
+    const j = FP.Div(FP.Mul(onePlusE, velAlongNormal), invMassSum);
+
+    if (!isStaticA) {
+      const scale = FP.Mul(j, invMassA); // j / mA
+      physVelocityX[physIndexA] = FP.ToRaw(FP.Sub(velAx, FP.Mul(nx, scale)));
+      physVelocityZ[physIndexA] = FP.ToRaw(FP.Sub(velAz, FP.Mul(nz, scale)));
+    }
+    if (!isStaticB) {
+      const scale = FP.Mul(j, invMassB); // j / mB
+      physVelocityX[physIndexB] = FP.ToRaw(FP.Add(velBx, FP.Mul(nx, scale)));
+      physVelocityZ[physIndexB] = FP.ToRaw(FP.Add(velBz, FP.Mul(nz, scale)));
+    }
+  }
+
+  /** Move one body along the contact normal by `amount` (dir=+1 for B side, -1 for A side). */
+  private separateBody(
+    transformIndex: number,
+    nx: FixedPoint, nz: FixedPoint,
+    amount: FixedPoint,
+    fpPosXArr: BigInt64Array, fpPosZArr: BigInt64Array,
+    positive: boolean,
+  ): void {
+    const posX = FP.FromRaw(fpPosXArr[transformIndex]);
+    const posZ = FP.FromRaw(fpPosZArr[transformIndex]);
+    const dx = FP.Mul(nx, amount);
+    const dz = FP.Mul(nz, amount);
+    if (positive) {
+      fpPosXArr[transformIndex] = FP.ToRaw(FP.Add(posX, dx));
+      fpPosZArr[transformIndex] = FP.ToRaw(FP.Add(posZ, dz));
+    } else {
+      fpPosXArr[transformIndex] = FP.ToRaw(FP.Sub(posX, dx));
+      fpPosZArr[transformIndex] = FP.ToRaw(FP.Sub(posZ, dz));
     }
   }
 
