@@ -2,21 +2,27 @@
  * MonetagSDK — thin loader/wrapper for the Monetag SDK.
  *
  * Monetag exposes a global function `show_<zoneId>()` after the loader script
- * `//libtl.com/sdk.js` is injected. That function returns a Promise whose
- * resolution semantics depend on `type`:
+ * `//libtl.com/sdk.js` is injected. That function accepts different `type`
+ * values which control both ad presentation AND promise semantics:
+ *
  *  - 'end'   (default) — Rewarded Interstitial; resolves AFTER the ad closes.
- *                        User sees a CTA "click to get reward" and clicking
- *                        redirects them out of the app. Not what we want.
- *  - 'start' — Rewarded Interstitial variant; resolves as soon as the ad
- *              STARTS. The ad still plays and auto-closes; we simply don't
- *              wait for it. Perfect for the Yandex-style "show interstitial
- *              before the match" flow.
- *  - 'preload' — fetch creative in background, no display.
- *  - 'inApp' — background scheduler; ads pop up on Monetag's own timer.
- *              We DO NOT use this: we control timing ourselves via 'start'.
+ *                        Shows a CTA "click to get reward" that redirects the
+ *                        user out of the app on click. Bad match-start UX.
+ *  - 'start' — Same Rewarded Interstitial visual, but the Promise resolves
+ *              when the ad STARTS (game keeps running while the ad plays and
+ *              auto-closes). Reward-CTA still visible in the creative.
+ *  - 'preload' — Fetch creative in background, no display.
+ *  - 'inApp' — Non-rewarded interstitial with different creative styling.
+ *              Does NOT return a usable Promise; SDK's own timer controls
+ *              close. Best UX match for "show ad before match" without any
+ *              reward semantics.
  *  - 'pop'   — Rewarded Popup; immediate external redirect. Not used.
  *
+ * We use `inApp` for the interstitial call (cleanest UX) and `preload` at
+ * boot / after each show to keep the creative warm.
+ *
  * Docs: https://docs.monetag.com/docs/sdk-reference/
+ *       https://docs.monetag.com/docs/ad-integration/inapp-interstitial/
  */
 
 const MONETAG_LOADER_SRC = '//libtl.com/sdk.js';
@@ -70,8 +76,17 @@ function isShowFnAvailable(zoneId: string): boolean {
 
 type MonetagShowType = 'end' | 'start' | 'preload' | 'pop' | 'inApp';
 
+interface MonetagInAppSettings {
+  frequency: number;
+  capping: number;
+  interval: number;
+  timeout?: number;
+  everyPage?: boolean;
+}
+
 interface MonetagShowOptions {
   type?: MonetagShowType;
+  inAppSettings?: MonetagInAppSettings;
 }
 
 type MonetagShowFn = ((options?: MonetagShowOptions) => Promise<void>) | undefined;
@@ -81,10 +96,7 @@ function getShowFn(zoneId: string): MonetagShowFn {
 }
 
 /**
- * Preload a Rewarded Interstitial creative in the background.
- * No UI is shown. Call this early (right after the SDK loads, and again after
- * each shown ad) so the next `showMonetagInterstitial()` displays instantly.
- *
+ * Preload a creative in the background so the next display is instant.
  * Fire-and-forget: errors are logged, never thrown.
  */
 export function preloadMonetagInterstitial(zoneId: string): void {
@@ -100,14 +112,21 @@ export function preloadMonetagInterstitial(zoneId: string): void {
 }
 
 /**
- * Show an interstitial ad NOW and resolve as soon as it starts playing.
+ * Trigger a single In-App Interstitial *now* using Monetag's own auto-display
+ * pipeline with a one-shot config:
+ *  - frequency: 1 → at most one ad per pipeline invocation
+ *  - capping: 0.001 → session length ≈ 3.6 seconds (only the immediate ad)
+ *  - interval: 1 → doesn't matter (we only want the first ad)
+ *  - timeout: 0 → show as soon as the SDK is ready
+ *  - everyPage: false → don't reset on navigation
  *
- * We use `type: 'start'` so the Promise resolves the moment the ad appears —
- * we don't block the game loop waiting for the user to finish watching or to
- * click a reward CTA. The ad continues to play on top of our app and
- * auto-closes; from the game's perspective it's non-blocking after resolve.
+ * Monetag's docs say `type: 'inApp'` does NOT return a usable Promise, so we
+ * resolve `true` immediately after invoking. Downstream code treats this as
+ * "ad start requested"; the ad may or may not actually appear depending on
+ * no-fill / capping / network — we can't observe that from here.
  *
- * Returns true if the SDK confirmed the ad started, false on error / no-fill.
+ * We rely on the caller (`FullscreenAdGate` in `TelegramAdapter`) to prevent
+ * calling this too frequently, even if the underlying ad didn't render.
  */
 export async function showMonetagInterstitial(zoneId: string): Promise<boolean> {
   const show = getShowFn(zoneId);
@@ -116,10 +135,23 @@ export async function showMonetagInterstitial(zoneId: string): Promise<boolean> 
     return false;
   }
   try {
-    await show({ type: 'start' });
+    // Fire the pipeline. Do NOT await — Monetag doesn't guarantee a resolve
+    // for the in-app pipeline; awaiting could hang the caller forever.
+    void show({
+      type: 'inApp',
+      inAppSettings: {
+        frequency: 1,
+        capping: 0.001,
+        interval: 1,
+        timeout: 0,
+        everyPage: false,
+      },
+    }).catch((e: unknown) => {
+      console.warn('[MonetagAds] inApp pipeline rejected', e);
+    });
     return true;
   } catch (e) {
-    console.warn('[MonetagAds] show rejected', e);
+    console.warn('[MonetagAds] show threw', e);
     return false;
   }
 }
