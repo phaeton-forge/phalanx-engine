@@ -43,6 +43,12 @@ import {
 import type { PlatformAdapter, SafeAreaInsets, AuthScheme } from './PlatformAdapter.ts';
 import type { Language } from '../i18n/i18n.ts';
 import { ROOM_CODE_PATTERN, mapLanguageCode } from './platformUtils.ts';
+import { FullscreenAdGate } from './FullscreenAdGate.ts';
+import {
+  loadMonetagSDK,
+  preloadMonetagInterstitial,
+  showMonetagInterstitial,
+} from './MonetagSDK.ts';
 
 /** Telegram Desktop platform identifiers that lack fullscreen support. */
 const DESKTOP_PLATFORMS = new Set(['tdesktop', 'macos', 'weba', 'webk', 'web']);
@@ -71,6 +77,11 @@ export class TelegramAdapter implements PlatformAdapter {
   private safeAreaListeners: Array<(insets: SafeAreaInsets) => void> = [];
   private resumeListeners: Array<() => void> = [];
   private visibilityHandler: (() => void) | null = null;
+
+  // ── Monetag ads ────────────────────────────────────────────────────
+  private readonly fullscreenAdGate = new FullscreenAdGate();
+  private monetagReady = false;
+  private monetagZoneId: string | null = null;
   // Unsub functions are retained so GC doesn't collect the signals.
   // They would be used in a dispose() path if added in the future.
   private readonly _unsubSafeArea: (() => void)[] = [];
@@ -125,6 +136,30 @@ export class TelegramAdapter implements PlatformAdapter {
       }
     };
     document.addEventListener('visibilitychange', this.visibilityHandler);
+
+    // Step 8: Load Monetag SDK (non-blocking — ads are best-effort).
+    // We only load in Telegram. The zone must be a Rewarded Interstitial zone
+    // in Monetag's dashboard — we invoke it via `type: 'start'`, which shows
+    // a full-screen ad but resolves the Promise as soon as the ad appears,
+    // without waiting for the user to click a reward CTA.
+    const zoneId = (
+      (import.meta.env['VITE_MONETAG_ZONE_ID'] as string | undefined) ?? ''
+    ).trim();
+
+    if (zoneId.length > 0) {
+      this.monetagZoneId = zoneId;
+      try {
+        await loadMonetagSDK(zoneId);
+        this.monetagReady = true;
+        console.log('[MonetagAds] SDK loaded', { zoneId });
+        // Warm the cache so the first ad shows instantly.
+        preloadMonetagInterstitial(zoneId);
+      } catch (e) {
+        console.warn('[MonetagAds] SDK load failed — ads disabled', e);
+      }
+    } else {
+      console.log('[MonetagAds] no zone id configured, ads disabled');
+    }
   }
 
   /** Call after the first game frame is rendered to hide Telegram's loading splash. */
@@ -191,8 +226,18 @@ export class TelegramAdapter implements PlatformAdapter {
     return `https://t.me/${bot ?? 'your_bot'}?start=${encodeURIComponent(code)}`;
   }
 
-  async tryShowFullscreenAd(): Promise<boolean> {
-    return false;
+  async tryShowFullscreenAd(options: { blocking?: boolean } = {}): Promise<boolean> {
+    if (!this.monetagReady || !this.monetagZoneId) return false;
+    if (!this.fullscreenAdGate.canShow()) return false;
+
+    console.log('[MonetagAds] tryShowFullscreenAd', options);
+    const shown = await showMonetagInterstitial(this.monetagZoneId, options);
+    if (shown) {
+      this.fullscreenAdGate.recordShown();
+      // Preload the next creative so subsequent calls stay instant.
+      preloadMonetagInterstitial(this.monetagZoneId);
+    }
+    return shown;
   }
 
   hapticImpact(style: 'light' | 'medium' | 'heavy'): void {

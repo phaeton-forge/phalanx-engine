@@ -241,7 +241,7 @@ export class Game {
   }
 
   private async handleFindMatch(): Promise<void> {
-    await this.platform.tryShowFullscreenAd();
+    await this.platform.tryShowFullscreenAd({ blocking: true });
     this.menuPresenter.stopAutoRotate();
     this.ui.showMatchmaking();
     void this.matchmaking!.connectAndStart();
