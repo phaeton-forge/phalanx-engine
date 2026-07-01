@@ -226,12 +226,12 @@ export class TelegramAdapter implements PlatformAdapter {
     return `https://t.me/${bot ?? 'your_bot'}?start=${encodeURIComponent(code)}`;
   }
 
-  async tryShowFullscreenAd(): Promise<boolean> {
+  async tryShowFullscreenAd(options: { blocking?: boolean } = {}): Promise<boolean> {
     if (!this.monetagReady || !this.monetagZoneId) return false;
     if (!this.fullscreenAdGate.canShow()) return false;
 
-    console.log('[MonetagAds] tryShowFullscreenAd');
-    const shown = await showMonetagInterstitial(this.monetagZoneId);
+    console.log('[MonetagAds] tryShowFullscreenAd', options);
+    const shown = await showMonetagInterstitial(this.monetagZoneId, options);
     if (shown) {
       this.fullscreenAdGate.recordShown();
       // Preload the next creative so subsequent calls stay instant.

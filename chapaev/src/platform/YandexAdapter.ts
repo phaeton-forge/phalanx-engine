@@ -84,7 +84,9 @@ export class YandexAdapter implements PlatformAdapter {
     return `https://yandex.${tld}/games/app/${appId}?payload=${encodeURIComponent(normalized)}`;
   }
 
-  async tryShowFullscreenAd(): Promise<boolean> {
+  async tryShowFullscreenAd(_options: { blocking?: boolean } = {}): Promise<boolean> {
+    // Yandex's showFullscreenAdv already resolves via onClose — effectively
+    // always "blocking". The `blocking` option is ignored here on purpose.
     console.log('[YandexAds] tryShowFullscreenAd');
     if (!this.ysdk) return false;
     if (!this.fullscreenAdGate.canShow()) return false;

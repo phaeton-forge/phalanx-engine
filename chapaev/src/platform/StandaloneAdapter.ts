@@ -88,7 +88,7 @@ export class StandaloneAdapter implements PlatformAdapter {
     return defaultInviteShareUrl(roomCode);
   }
 
-  async tryShowFullscreenAd(): Promise<boolean> {
+  async tryShowFullscreenAd(_options: { blocking?: boolean } = {}): Promise<boolean> {
     return false;
   }
 

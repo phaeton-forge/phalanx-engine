@@ -100,23 +100,32 @@ export function preloadMonetagInterstitial(zoneId: string): void {
 }
 
 /**
- * Show an interstitial ad NOW and resolve as soon as it starts playing.
+ * Show an interstitial ad NOW.
  *
- * We use `type: 'start'` so the Promise resolves the moment the ad appears —
- * we don't block the game loop waiting for the user to finish watching or to
- * click a reward CTA. The ad continues to play on top of our app and
- * auto-closes; from the game's perspective it's non-blocking after resolve.
+ * `blocking = false` (default): use `type: 'start'` — Promise resolves the
+ *   moment the ad appears. The ad continues to play on top of our app and
+ *   auto-closes; the game can proceed with UI transitions immediately.
+ *   Suitable for flows where the underlying transition is not visible
+ *   behind the ad (e.g. showing a match screen).
  *
- * Returns true if the SDK confirmed the ad started, false on error / no-fill.
+ * `blocking = true`: use `type: 'end'` — Promise resolves AFTER the ad is
+ *   closed (either by timer or by the user). Suitable for flows where the
+ *   next action would visibly race with the ad (e.g. starting matchmaking,
+ *   where a running timer under the ad looks broken).
+ *
+ * Returns true if the SDK confirmed the ad, false on error / no-fill.
  */
-export async function showMonetagInterstitial(zoneId: string): Promise<boolean> {
+export async function showMonetagInterstitial(
+  zoneId: string,
+  options: { blocking?: boolean } = {}
+): Promise<boolean> {
   const show = getShowFn(zoneId);
   if (!show) {
     console.warn('[MonetagAds] show function not available', zoneId);
     return false;
   }
   try {
-    await show({ type: 'start' });
+    await show({ type: options.blocking ? 'end' : 'start' });
     return true;
   } catch (e) {
     console.warn('[MonetagAds] show rejected', e);

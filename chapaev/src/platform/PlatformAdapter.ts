@@ -58,9 +58,14 @@ export interface PlatformAdapter {
 
   /**
    * Shows a fullscreen interstitial when supported.
+   *
+   * @param options.blocking when true, resolves only AFTER the ad is closed.
+   *   Use for flows where the next action would visibly race with the ad
+   *   (e.g. starting matchmaking). Default false: resolve when the ad starts,
+   *   so the game can transition UI while the ad plays on top.
    * @returns true if an ad was displayed (per SDK callback), false if skipped, unavailable, or errored.
    */
-  tryShowFullscreenAd(): Promise<boolean>;
+  tryShowFullscreenAd(options?: { blocking?: boolean }): Promise<boolean>;
 
   // ── UX features ────────────────────────────────────────────────────
 
