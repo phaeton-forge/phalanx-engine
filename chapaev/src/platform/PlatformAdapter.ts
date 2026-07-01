@@ -63,6 +63,13 @@ export interface PlatformAdapter {
    *   Use for flows where the next action would visibly race with the ad
    *   (e.g. starting matchmaking). Default false: resolve when the ad starts,
    *   so the game can transition UI while the ad plays on top.
+   *
+   *   NOTE: this flag is best-effort and platform-dependent. Adapters whose
+   *   underlying SDK exposes only one resolution mode ignore it — e.g. Yandex
+   *   Games always resolves on close regardless of `blocking`. Callers should
+   *   treat `blocking: false` as "safe to transition UI immediately" and
+   *   `blocking: true` as "do not start anything that races the ad visually",
+   *   not as a strict cross-platform guarantee.
    * @returns true if an ad was displayed (per SDK callback), false if skipped, unavailable, or errored.
    */
   tryShowFullscreenAd(options?: { blocking?: boolean }): Promise<boolean>;

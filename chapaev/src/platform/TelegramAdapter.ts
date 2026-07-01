@@ -82,6 +82,7 @@ export class TelegramAdapter implements PlatformAdapter {
   private readonly fullscreenAdGate = new FullscreenAdGate();
   private monetagReady = false;
   private monetagZoneId: string | null = null;
+  private monetagLoadPromise: Promise<void> | null = null;
   // Unsub functions are retained so GC doesn't collect the signals.
   // They would be used in a dispose() path if added in the future.
   private readonly _unsubSafeArea: (() => void)[] = [];
@@ -137,26 +138,28 @@ export class TelegramAdapter implements PlatformAdapter {
     };
     document.addEventListener('visibilitychange', this.visibilityHandler);
 
-    // Step 8: Load Monetag SDK (non-blocking — ads are best-effort).
-    // We only load in Telegram. The zone must be a Rewarded Interstitial zone
-    // in Monetag's dashboard — we invoke it via `type: 'start'`, which shows
-    // a full-screen ad but resolves the Promise as soon as the ad appears,
-    // without waiting for the user to click a reward CTA.
+    // Step 8: Kick off Monetag SDK load in the background — ads are
+    // best-effort and must not delay app startup. The first tryShowFullscreenAd()
+    // call awaits this promise before invoking the SDK.
+    // Zone must be a Rewarded Interstitial zone in Monetag's dashboard — we
+    // invoke it via `type: 'start'`, which shows a full-screen ad but resolves
+    // as soon as the ad appears, without waiting for a reward-CTA click.
     const zoneId = (
       (import.meta.env['VITE_MONETAG_ZONE_ID'] as string | undefined) ?? ''
     ).trim();
 
     if (zoneId.length > 0) {
       this.monetagZoneId = zoneId;
-      try {
-        await loadMonetagSDK(zoneId);
-        this.monetagReady = true;
-        console.log('[MonetagAds] SDK loaded', { zoneId });
-        // Warm the cache so the first ad shows instantly.
-        preloadMonetagInterstitial(zoneId);
-      } catch (e) {
-        console.warn('[MonetagAds] SDK load failed — ads disabled', e);
-      }
+      this.monetagLoadPromise = loadMonetagSDK(zoneId)
+        .then(() => {
+          this.monetagReady = true;
+          console.log('[MonetagAds] SDK loaded', { zoneId });
+          // Warm the cache so the first ad shows instantly.
+          preloadMonetagInterstitial(zoneId);
+        })
+        .catch((e: unknown) => {
+          console.warn('[MonetagAds] SDK load failed — ads disabled', e);
+        });
     } else {
       console.log('[MonetagAds] no zone id configured, ads disabled');
     }
@@ -227,7 +230,13 @@ export class TelegramAdapter implements PlatformAdapter {
   }
 
   async tryShowFullscreenAd(options: { blocking?: boolean } = {}): Promise<boolean> {
-    if (!this.monetagReady || !this.monetagZoneId) return false;
+    if (!this.monetagZoneId) return false;
+    // Wait for the background SDK load kicked off in init() — the first ad
+    // call may land before load completes.
+    if (!this.monetagReady && this.monetagLoadPromise) {
+      await this.monetagLoadPromise;
+    }
+    if (!this.monetagReady) return false;
     if (!this.fullscreenAdGate.canShow()) return false;
 
     console.log('[MonetagAds] tryShowFullscreenAd', options);

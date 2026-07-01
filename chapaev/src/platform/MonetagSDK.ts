@@ -32,15 +32,20 @@ export function loadMonetagSDK(zoneId: string): Promise<void> {
   if (loaderPromise) return loaderPromise;
 
   loaderPromise = new Promise<void>((resolve, reject) => {
-    // Already injected (hot reload / repeated init).
+    // Fast path: show fn already installed (hot reload, second init).
+    if (isShowFnAvailable(zoneId)) {
+      resolve();
+      return;
+    }
+
+    // Script tag already in DOM but show fn not yet installed.
+    // We cannot rely on a fresh 'load' event — the tag may already be
+    // fully loaded (event long since fired) and Monetag installs the
+    // global `show_<zoneId>` synchronously on load. Poll a short window
+    // instead of waiting on an event that will never fire.
     const existing = document.getElementById(MONETAG_SCRIPT_ID) as HTMLScriptElement | null;
     if (existing) {
-      if (isShowFnAvailable(zoneId)) {
-        resolve();
-        return;
-      }
-      existing.addEventListener('load', () => resolve(), { once: true });
-      existing.addEventListener('error', () => rejectLoad(reject), { once: true });
+      waitForShowFn(zoneId, resolve, reject);
       return;
     }
 
@@ -50,7 +55,11 @@ export function loadMonetagSDK(zoneId: string): Promise<void> {
     script.src = MONETAG_LOADER_SRC;
     script.setAttribute('data-zone', zoneId);
     script.setAttribute('data-sdk', `show_${zoneId}`);
-    script.onload = () => resolve();
+    script.onload = () => {
+      // In practice `show_<zoneId>` is defined by the time onload fires,
+      // but poll briefly to handle any async install path.
+      waitForShowFn(zoneId, resolve, reject);
+    };
     script.onerror = () => rejectLoad(reject);
     document.head.appendChild(script);
   });
@@ -61,6 +70,38 @@ export function loadMonetagSDK(zoneId: string): Promise<void> {
 function rejectLoad(reject: (reason?: unknown) => void): void {
   loaderPromise = null;
   reject(new Error('Failed to load Monetag SDK script'));
+}
+
+/**
+ * Poll for the `show_<zoneId>` global. Monetag installs it synchronously on
+ * script load, but we also cover the case where the script tag was already
+ * present in the DOM (load event long since fired) or where installation is
+ * deferred. Bounded wait — otherwise resolves as "loaded" so we can still
+ * gracefully no-op inside showMonetagInterstitial (it checks the fn again).
+ */
+function waitForShowFn(
+  zoneId: string,
+  resolve: () => void,
+  _reject: (reason?: unknown) => void,
+): void {
+  const timeoutMs = 5000;
+  const stepMs = 50;
+  const start = Date.now();
+  const tick = (): void => {
+    if (isShowFnAvailable(zoneId)) {
+      resolve();
+      return;
+    }
+    if (Date.now() - start >= timeoutMs) {
+      // Don't reject — treat as loaded-but-empty; showMonetagInterstitial
+      // will detect the missing fn and return false gracefully.
+      console.warn('[MonetagAds] show_<zoneId> did not appear within', timeoutMs, 'ms');
+      resolve();
+      return;
+    }
+    setTimeout(tick, stepMs);
+  };
+  tick();
 }
 
 function isShowFnAvailable(zoneId: string): boolean {
