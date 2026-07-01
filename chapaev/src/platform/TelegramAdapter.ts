@@ -44,7 +44,11 @@ import type { PlatformAdapter, SafeAreaInsets, AuthScheme } from './PlatformAdap
 import type { Language } from '../i18n/i18n.ts';
 import { ROOM_CODE_PATTERN, mapLanguageCode } from './platformUtils.ts';
 import { FullscreenAdGate } from './FullscreenAdGate.ts';
-import { loadMonetagSDK, showMonetagOnDemand } from './MonetagSDK.ts';
+import {
+  loadMonetagSDK,
+  preloadMonetagInterstitial,
+  showMonetagInterstitial,
+} from './MonetagSDK.ts';
 
 /** Telegram Desktop platform identifiers that lack fullscreen support. */
 const DESKTOP_PLATFORMS = new Set(['tdesktop', 'macos', 'weba', 'webk', 'web']);
@@ -134,14 +138,13 @@ export class TelegramAdapter implements PlatformAdapter {
     document.addEventListener('visibilitychange', this.visibilityHandler);
 
     // Step 8: Load Monetag SDK (non-blocking — ads are best-effort).
-    // Prefer the explicit interstitial zone; fall back to the rewarded zone.
-    const interstitialZone = import.meta.env['VITE_MONETAG_INTERSTITIAL_ZONE_ID'] as
-      | string
-      | undefined;
-    const rewardedZone = import.meta.env['VITE_MONETAG_REWARDED_ZONE_ID'] as
-      | string
-      | undefined;
-    const zoneId = (interstitialZone || rewardedZone || '').trim();
+    // We only load in Telegram. The zone must be a Rewarded Interstitial zone
+    // in Monetag's dashboard — we invoke it via `type: 'start'`, which shows
+    // a full-screen ad but resolves the Promise as soon as the ad appears,
+    // without waiting for the user to click a reward CTA.
+    const zoneId = (
+      (import.meta.env['VITE_MONETAG_ZONE_ID'] as string | undefined) ?? ''
+    ).trim();
 
     if (zoneId.length > 0) {
       this.monetagZoneId = zoneId;
@@ -149,6 +152,8 @@ export class TelegramAdapter implements PlatformAdapter {
         await loadMonetagSDK(zoneId);
         this.monetagReady = true;
         console.log('[MonetagAds] SDK loaded', { zoneId });
+        // Warm the cache so the first ad shows instantly.
+        preloadMonetagInterstitial(zoneId);
       } catch (e) {
         console.warn('[MonetagAds] SDK load failed — ads disabled', e);
       }
@@ -226,8 +231,12 @@ export class TelegramAdapter implements PlatformAdapter {
     if (!this.fullscreenAdGate.canShow()) return false;
 
     console.log('[MonetagAds] tryShowFullscreenAd');
-    const shown = await showMonetagOnDemand(this.monetagZoneId);
-    if (shown) this.fullscreenAdGate.recordShown();
+    const shown = await showMonetagInterstitial(this.monetagZoneId);
+    if (shown) {
+      this.fullscreenAdGate.recordShown();
+      // Preload the next creative so subsequent calls stay instant.
+      preloadMonetagInterstitial(this.monetagZoneId);
+    }
     return shown;
   }
 

@@ -1,23 +1,22 @@
 /**
- * MonetagSDK — thin loader/wrapper for the Monetag in-app SDK.
+ * MonetagSDK — thin loader/wrapper for the Monetag SDK.
  *
  * Monetag exposes a global function `show_<zoneId>()` after the loader script
- * `//libtl.com/sdk.js` is injected. The function returns a Promise that:
- *  - resolves when the user watches / closes the ad successfully;
- *  - rejects when the ad is skipped, fails to load, or the user is capped.
+ * `//libtl.com/sdk.js` is injected. That function returns a Promise whose
+ * resolution semantics depend on `type`:
+ *  - 'end'   (default) — Rewarded Interstitial; resolves AFTER the ad closes.
+ *                        User sees a CTA "click to get reward" and clicking
+ *                        redirects them out of the app. Not what we want.
+ *  - 'start' — Rewarded Interstitial variant; resolves as soon as the ad
+ *              STARTS. The ad still plays and auto-closes; we simply don't
+ *              wait for it. Perfect for the Yandex-style "show interstitial
+ *              before the match" flow.
+ *  - 'preload' — fetch creative in background, no display.
+ *  - 'inApp' — background scheduler; ads pop up on Monetag's own timer.
+ *              We DO NOT use this: we control timing ourselves via 'start'.
+ *  - 'pop'   — Rewarded Popup; immediate external redirect. Not used.
  *
- * We wrap it into a `boolean`-returning API to match `PlatformAdapter.tryShowFullscreenAd()`.
- *
- * Docs: https://help.monetag.com/en/articles/8836268 (Rewarded Interstitial)
- *       https://help.monetag.com/en/articles/9268255 (In-App Interstitial)
- *
- * Note on formats:
- *  - `Rewarded Interstitial` / `Rewarded Popup` — called on demand via `show_<id>()`.
- *  - `In-App Interstitial` — auto-triggered by a config passed to `show_<id>({ type: 'inApp', ... })`.
- *    You typically call it ONCE at boot and Monetag decides when to show the ad based on
- *    `frequency` / `capping` / `interval`.
- *
- * We support both modes: on-demand (default) and auto in-app (started at init).
+ * Docs: https://docs.monetag.com/docs/sdk-reference/
  */
 
 const MONETAG_LOADER_SRC = '//libtl.com/sdk.js';
@@ -28,10 +27,6 @@ let loaderPromise: Promise<void> | null = null;
 /**
  * Inject the Monetag loader script exactly once. The script defines the
  * global `show_<zoneId>` function for every zone attached to the publisher.
- *
- * The `data-zone` / `data-sdk` attributes follow Monetag's documented loader
- * contract; `data-sdk` name is derived from the zone id in the format
- * `show_<zoneId>` (this is what Monetag uses on its snippet page).
  */
 export function loadMonetagSDK(zoneId: string): Promise<void> {
   if (loaderPromise) return loaderPromise;
@@ -73,71 +68,58 @@ function isShowFnAvailable(zoneId: string): boolean {
   return typeof (window as unknown as Record<string, unknown>)[fnName] === 'function';
 }
 
-type MonetagShowFn = ((options?: MonetagShowOptions) => Promise<void>) | undefined;
-
-interface MonetagInAppSettings {
-  /** How many ads to show in the interval window. */
-  frequency: number;
-  /** Sliding window size in minutes. */
-  capping: number;
-  /** Cooldown between ads in seconds. */
-  interval: number;
-  /** Delay before the FIRST ad, in seconds. */
-  timeout?: number;
-  /** True = show only after the first interval elapses (skip immediate ad). */
-  everyPage?: boolean;
-}
+type MonetagShowType = 'end' | 'start' | 'preload' | 'pop' | 'inApp';
 
 interface MonetagShowOptions {
-  type?: 'inApp' | 'end';
-  inAppSettings?: MonetagInAppSettings;
+  type?: MonetagShowType;
 }
+
+type MonetagShowFn = ((options?: MonetagShowOptions) => Promise<void>) | undefined;
 
 function getShowFn(zoneId: string): MonetagShowFn {
   return (window as unknown as Record<string, unknown>)[`show_${zoneId}`] as MonetagShowFn;
 }
 
 /**
- * Show a Rewarded Interstitial / Rewarded Popup on demand.
- * Returns true if the ad completed successfully, false on skip / error / no-fill.
+ * Preload a Rewarded Interstitial creative in the background.
+ * No UI is shown. Call this early (right after the SDK loads, and again after
+ * each shown ad) so the next `showMonetagInterstitial()` displays instantly.
+ *
+ * Fire-and-forget: errors are logged, never thrown.
  */
-export async function showMonetagOnDemand(zoneId: string): Promise<boolean> {
+export function preloadMonetagInterstitial(zoneId: string): void {
+  const show = getShowFn(zoneId);
+  if (!show) return;
+  try {
+    void show({ type: 'preload' }).catch((e: unknown) => {
+      console.warn('[MonetagAds] preload rejected', e);
+    });
+  } catch (e) {
+    console.warn('[MonetagAds] preload threw', e);
+  }
+}
+
+/**
+ * Show an interstitial ad NOW and resolve as soon as it starts playing.
+ *
+ * We use `type: 'start'` so the Promise resolves the moment the ad appears —
+ * we don't block the game loop waiting for the user to finish watching or to
+ * click a reward CTA. The ad continues to play on top of our app and
+ * auto-closes; from the game's perspective it's non-blocking after resolve.
+ *
+ * Returns true if the SDK confirmed the ad started, false on error / no-fill.
+ */
+export async function showMonetagInterstitial(zoneId: string): Promise<boolean> {
   const show = getShowFn(zoneId);
   if (!show) {
     console.warn('[MonetagAds] show function not available', zoneId);
     return false;
   }
   try {
-    await show();
+    await show({ type: 'start' });
     return true;
   } catch (e) {
     console.warn('[MonetagAds] show rejected', e);
     return false;
-  }
-}
-
-/**
- * Start Monetag's autonomous In-App Interstitial pipeline.
- * Call this ONCE (typically during adapter init). Monetag will then show
- * interstitials on its own schedule based on the passed settings.
- *
- * We call this fire-and-forget — the returned promise resolves per-ad, but the
- * pipeline keeps running for the lifetime of the page.
- */
-export function startMonetagInApp(
-  zoneId: string,
-  settings: MonetagInAppSettings
-): void {
-  const show = getShowFn(zoneId);
-  if (!show) {
-    console.warn('[MonetagAds] show function not available for in-app', zoneId);
-    return;
-  }
-  try {
-    void show({ type: 'inApp', inAppSettings: settings }).catch((e: unknown) => {
-      console.warn('[MonetagAds] in-app pipeline error', e);
-    });
-  } catch (e) {
-    console.warn('[MonetagAds] startMonetagInApp threw', e);
   }
 }
