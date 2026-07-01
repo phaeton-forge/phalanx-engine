@@ -304,7 +304,7 @@ export class PhysicsSystem extends GameSystem {
       // Compute restitution: average of both bodies, default to 1.0 if both unset
       const restitutionA = FP.FromRaw(physRestitution[physIndexA]);
       const restitutionB = FP.FromRaw(physRestitution[physIndexB]);
-      const restitution = (restitutionA === FP._0 && restitutionB === FP._0)
+      const restitution = (FP.Eq(restitutionA, FP._0) && FP.Eq(restitutionB, FP._0))
         ? FP._1
         : FP.Div(FP.Add(restitutionA, restitutionB), FP.FromFloat(2));
 
@@ -444,9 +444,13 @@ export class PhysicsSystem extends GameSystem {
     const nx = manifold.normalX;
     const nz = manifold.normalZ;
 
-    // Inverse masses (static bodies have infinite mass -> inverse mass 0).
-    const invMassA = isStaticA ? FP._0 : FP.Div(FP._1, FP.FromRaw(physMass[physIndexA]));
-    const invMassB = isStaticB ? FP._0 : FP.Div(FP._1, FP.FromRaw(physMass[physIndexB]));
+    // Inverse masses. Static bodies — and non-static bodies with mass <= 0 —
+    // are treated as infinite mass (inverse mass 0), which also avoids a
+    // divide-by-zero on FP.Div(1, 0).
+    const massA = FP.FromRaw(physMass[physIndexA]);
+    const massB = FP.FromRaw(physMass[physIndexB]);
+    const invMassA = (isStaticA || FP.Lte(massA, FP._0)) ? FP._0 : FP.Div(FP._1, massA);
+    const invMassB = (isStaticB || FP.Lte(massB, FP._0)) ? FP._0 : FP.Div(FP._1, massB);
     const invMassSum = FP.Add(invMassA, invMassB);
     if (FP.Lte(invMassSum, FP._0)) return;
 

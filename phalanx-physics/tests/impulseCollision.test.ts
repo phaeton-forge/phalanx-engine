@@ -58,6 +58,7 @@ describe('impulse collision response', () => {
     posX: number,
     velX: number,
     mass = 1,
+    restitution = 0.5,
   ): void {
     physicsStore.add(entityId, {
       velocityX: FP.ToRaw(FP.FromFloat(velX)),
@@ -65,7 +66,7 @@ describe('impulse collision response', () => {
       velocityZ: FP.ToRaw(FP._0),
       radius: FP.ToRaw(FP._1), // radius 1 -> sumR 2
       mass: FP.ToRaw(FP.FromFloat(mass)),
-      restitution: FP.ToRaw(FP.FromFloat(0.5)),
+      restitution: FP.ToRaw(FP.FromFloat(restitution)),
       friction: FP.ToRaw(FP._1),
       isStatic: 0,
       ignorePhysics: 0,
@@ -106,6 +107,53 @@ describe('impulse collision response', () => {
     // Striker stops, struck body carries the momentum.
     expect(velX(physicsStore, 1)).toBeCloseTo(0, 3);
     expect(velX(physicsStore, 2)).toBeCloseTo(10, 3);
+  });
+
+  it('non-static body with mass=0 is treated as infinite mass (no divide-by-zero, immovable)', () => {
+    const { system, physicsStore, transformStore } = setup({
+      collisionResponse: 'impulse',
+      restitution: FP.FromFloat(1.0),
+    });
+    // Body 1: non-static but mass = 0 -> must be treated as infinite mass.
+    addBody(physicsStore, transformStore, 1, -0.9, 10, 0);
+    // Body 2: normal dynamic body, stationary.
+    addBody(physicsStore, transformStore, 2, 0.9, 0, 1);
+
+    // Must not throw (guards FP.Div(1, 0)).
+    expect(() => system.step()).not.toThrow();
+
+    // Zero-mass body behaves as immovable: its velocity is unchanged.
+    expect(velX(physicsStore, 1)).toBeCloseTo(10, 3);
+    // The struck finite-mass body still receives the impulse and moves off.
+    expect(velX(physicsStore, 2)).toBeGreaterThan(0);
+  });
+
+  it('two zero-mass non-static bodies collide without throwing and neither is impulsed', () => {
+    const { system, physicsStore, transformStore } = setup({
+      collisionResponse: 'impulse',
+      restitution: FP.FromFloat(1.0),
+    });
+    addBody(physicsStore, transformStore, 1, -0.9, 10, 0);
+    addBody(physicsStore, transformStore, 2, 0.9, -10, 0);
+
+    // invMassSum == 0 -> early return, no divide-by-zero, velocities untouched.
+    expect(() => system.step()).not.toThrow();
+    expect(velX(physicsStore, 1)).toBeCloseTo(10, 3);
+    expect(velX(physicsStore, 2)).toBeCloseTo(-10, 3);
+  });
+
+  it('unset (zero) restitution on both bodies defaults to e=1.0 in push mode (FIX 1)', () => {
+    const { system, physicsStore, transformStore } = setup(); // push mode (default)
+    // Both bodies have raw-zero restitution: the "both unset -> default 1.0"
+    // branch must fire (value-equality via FP.Eq, not reference ===).
+    addBody(physicsStore, transformStore, 1, -0.9, 10, 1, 0);
+    addBody(physicsStore, transformStore, 2, 0.9, 0, 1, 0);
+
+    system.step();
+
+    // With the bug (restitution stuck at 0) pushForce would be 0 and the
+    // struck body would gain no push velocity. Defaulting to 1.0 pushes it.
+    expect(velX(physicsStore, 2)).toBeGreaterThan(0);
   });
 
   it('default push response does NOT conserve momentum (striker keeps moving)', () => {
