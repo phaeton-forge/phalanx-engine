@@ -43,6 +43,8 @@ import {
 import type { PlatformAdapter, SafeAreaInsets, AuthScheme } from './PlatformAdapter.ts';
 import type { Language } from '../i18n/i18n.ts';
 import { ROOM_CODE_PATTERN, mapLanguageCode } from './platformUtils.ts';
+import { FullscreenAdGate } from './FullscreenAdGate.ts';
+import { loadMonetagSDK, showMonetagOnDemand } from './MonetagSDK.ts';
 
 /** Telegram Desktop platform identifiers that lack fullscreen support. */
 const DESKTOP_PLATFORMS = new Set(['tdesktop', 'macos', 'weba', 'webk', 'web']);
@@ -71,6 +73,11 @@ export class TelegramAdapter implements PlatformAdapter {
   private safeAreaListeners: Array<(insets: SafeAreaInsets) => void> = [];
   private resumeListeners: Array<() => void> = [];
   private visibilityHandler: (() => void) | null = null;
+
+  // ── Monetag ads ────────────────────────────────────────────────────
+  private readonly fullscreenAdGate = new FullscreenAdGate();
+  private monetagReady = false;
+  private monetagZoneId: string | null = null;
   // Unsub functions are retained so GC doesn't collect the signals.
   // They would be used in a dispose() path if added in the future.
   private readonly _unsubSafeArea: (() => void)[] = [];
@@ -125,6 +132,29 @@ export class TelegramAdapter implements PlatformAdapter {
       }
     };
     document.addEventListener('visibilitychange', this.visibilityHandler);
+
+    // Step 8: Load Monetag SDK (non-blocking — ads are best-effort).
+    // Prefer the explicit interstitial zone; fall back to the rewarded zone.
+    const interstitialZone = import.meta.env['VITE_MONETAG_INTERSTITIAL_ZONE_ID'] as
+      | string
+      | undefined;
+    const rewardedZone = import.meta.env['VITE_MONETAG_REWARDED_ZONE_ID'] as
+      | string
+      | undefined;
+    const zoneId = (interstitialZone || rewardedZone || '').trim();
+
+    if (zoneId.length > 0) {
+      this.monetagZoneId = zoneId;
+      try {
+        await loadMonetagSDK(zoneId);
+        this.monetagReady = true;
+        console.log('[MonetagAds] SDK loaded', { zoneId });
+      } catch (e) {
+        console.warn('[MonetagAds] SDK load failed — ads disabled', e);
+      }
+    } else {
+      console.log('[MonetagAds] no zone id configured, ads disabled');
+    }
   }
 
   /** Call after the first game frame is rendered to hide Telegram's loading splash. */
@@ -192,7 +222,13 @@ export class TelegramAdapter implements PlatformAdapter {
   }
 
   async tryShowFullscreenAd(): Promise<boolean> {
-    return false;
+    if (!this.monetagReady || !this.monetagZoneId) return false;
+    if (!this.fullscreenAdGate.canShow()) return false;
+
+    console.log('[MonetagAds] tryShowFullscreenAd');
+    const shown = await showMonetagOnDemand(this.monetagZoneId);
+    if (shown) this.fullscreenAdGate.recordShown();
+    return shown;
   }
 
   hapticImpact(style: 'light' | 'medium' | 'heavy'): void {
