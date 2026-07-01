@@ -14,22 +14,21 @@ import {
   LIGHT_SQUARE_COLOR,
   DARK_SQUARE_COLOR,
 } from '../config/constants.ts';
-import { publicAssetUrl } from '../publicAssetUrl.ts';
+import { assetManager } from './AssetManager.ts';
+import { DECK_TEXTURES, BOARD_TEXTURES } from './AssetManifest.ts';
 
 /**
  * Creates the board mesh group: a base box + 64 square tiles on top.
- * Textures are loaded from `textures/deck/` and `textures/boards/`.
+ * Textures are read from the shared AssetManager cache.
  */
 export function createBoardMesh(): THREE.Group {
   const group = new THREE.Group();
 
-  const textureLoader = new THREE.TextureLoader();
-
   // ── Deck (frame / base) ──────────────────────────────────────
-  const deckColorTex = textureLoader.load(publicAssetUrl('textures/deck/Wood028_1K-JPG_Color.jpg'));
+  const deckColorTex = assetManager.getTexture(DECK_TEXTURES.color).clone();
   deckColorTex.colorSpace = THREE.SRGBColorSpace;
-  const deckNormalTex = textureLoader.load(publicAssetUrl('textures/deck/Wood028_1K-JPG_NormalGL.jpg'));
-  const deckRoughTex = textureLoader.load(publicAssetUrl('textures/deck/Wood028_1K-JPG_Roughness.jpg'));
+  const deckNormalTex = assetManager.getTexture(DECK_TEXTURES.normal).clone();
+  const deckRoughTex = assetManager.getTexture(DECK_TEXTURES.roughness).clone();
 
   setRepeat(deckColorTex, 2, 2);
   setRepeat(deckNormalTex, 2, 2);
@@ -54,10 +53,10 @@ export function createBoardMesh(): THREE.Group {
   group.add(deckMesh);
 
   // ── Board squares ────────────────────────────────────────────
-  const boardTex = textureLoader.load(publicAssetUrl('textures/boards/Wood076_1K-JPG_Color.jpg'));
+  const boardTex = assetManager.getTexture(BOARD_TEXTURES.color);
   boardTex.colorSpace = THREE.SRGBColorSpace;
-  const boardNormal = textureLoader.load(publicAssetUrl('textures/boards/Wood076_1K-JPG_NormalGL.jpg'));
-  const boardRough = textureLoader.load(publicAssetUrl('textures/boards/Wood076_1K-JPG_Roughness.jpg'));
+  const boardNormal = assetManager.getTexture(BOARD_TEXTURES.normal);
+  const boardRough = assetManager.getTexture(BOARD_TEXTURES.roughness);
 
   const squareGeo = new THREE.PlaneGeometry(CELL_SIZE * 0.98, CELL_SIZE * 0.98);
 
@@ -78,13 +77,12 @@ export function createBoardMesh(): THREE.Group {
         color: new THREE.Color(isDark ? DARK_SQUARE_COLOR : LIGHT_SQUARE_COLOR),
       });
 
-
       const mesh = new THREE.Mesh(squareGeo, squareMat);
       mesh.rotation.x = -Math.PI / 2;
       mesh.position.set(
         (col - half) * CELL_SIZE,
         yTop,
-        (row - half) * CELL_SIZE,
+        (row - half) * CELL_SIZE
       );
       mesh.receiveShadow = true;
       group.add(mesh);
@@ -101,4 +99,3 @@ function setRepeat(tex: THREE.Texture, u: number, v: number): void {
   tex.wrapT = THREE.RepeatWrapping;
   tex.repeat.set(u, v);
 }
-

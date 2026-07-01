@@ -5,6 +5,8 @@ import { detectPlatform } from './platform/detectPlatform.ts';
 import type { PlatformAdapter } from './platform/PlatformAdapter.ts';
 import { setLanguage } from './i18n/i18n.ts';
 import { installInteractionGuards } from './installInteractionGuards.ts';
+import { assetManager } from './rendering/AssetManager.ts';
+import { LoaderOverlay } from './ui/LoaderOverlay.ts';
 
 const canvas = document.getElementById('app') as HTMLCanvasElement | null;
 
@@ -27,7 +29,8 @@ console.log(`[Chapayev] Starting in ${mode} mode`);
 
 function reportStartupError(error: unknown): void {
   console.error('[Chapayev] Failed to start game', error);
-  const message = error instanceof Error ? error.message : 'Unknown startup error';
+  const message =
+    error instanceof Error ? error.message : 'Unknown startup error';
   const errorElement = document.createElement('div');
   errorElement.setAttribute('role', 'alert');
   errorElement.style.cssText =
@@ -58,12 +61,14 @@ async function bootstrap(): Promise<void> {
       break;
     }
     case 'capacitor': {
-      const { CapacitorAdapter } = await import('./platform/CapacitorAdapter.ts');
+      const { CapacitorAdapter } =
+        await import('./platform/CapacitorAdapter.ts');
       adapter = new CapacitorAdapter();
       break;
     }
     default: {
-      const { StandaloneAdapter } = await import('./platform/StandaloneAdapter.ts');
+      const { StandaloneAdapter } =
+        await import('./platform/StandaloneAdapter.ts');
       adapter = new StandaloneAdapter();
     }
   }
@@ -86,6 +91,22 @@ async function bootstrap(): Promise<void> {
   applySafeAreaToCss();
   adapter.onSafeAreaChange(applySafeAreaToCss);
 
+  // ── Preload all assets before building the scene ──────────────────
+  const loader = new LoaderOverlay();
+  loader.show();
+
+  try {
+    await assetManager.preloadAll();
+  } catch (error) {
+    // Never leave the spinner hanging; funnel the failure through the same
+    // reportStartupError path used for the rest of bootstrap.
+    loader.hide();
+    throw error;
+  }
+
+  // Assets are ready — hide the spinner so the menu is interactive.
+  loader.hide();
+
   // ── Game construction ─────────────────────────────────────────────
   const game = new Game(canvasElement, adapter, mode);
 
@@ -106,4 +127,3 @@ async function bootstrap(): Promise<void> {
 void bootstrap().catch((error: unknown) => {
   reportStartupError(error);
 });
-

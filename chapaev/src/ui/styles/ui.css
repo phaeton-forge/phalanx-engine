@@ -10,20 +10,20 @@
   --glass-blur: blur(16px);
 
   /* Accent — gold/amber */
-  --accent: #C8943E;
-  --accent-hover: #E8B84A;
-  --accent-active: #A07030;
+  --accent: #c8943e;
+  --accent-hover: #e8b84a;
+  --accent-active: #a07030;
   --accent-glow: rgba(200, 148, 62, 0.3);
 
   /* Text */
-  --text-primary: #F0E6D6;
-  --text-muted: #B0A898;
+  --text-primary: #f0e6d6;
+  --text-muted: #b0a898;
   --text-faint: #786858;
 
   /* Status */
-  --color-success: #6AAF5C;
-  --color-error: #C45B5B;
-  --color-warning: #D4A843;
+  --color-success: #6aaf5c;
+  --color-error: #c45b5b;
+  --color-warning: #d4a843;
 
   /* Radius */
   --radius-panel: 12px;
@@ -49,7 +49,10 @@
    */
   --hud-top-gap: 8px;
   --hud-safe-top: max(var(--sai-top, 0px), env(safe-area-inset-top, 0px));
-  --hud-safe-bottom: max(var(--sai-bottom, 0px), env(safe-area-inset-bottom, 0px));
+  --hud-safe-bottom: max(
+    var(--sai-bottom, 0px),
+    env(safe-area-inset-bottom, 0px)
+  );
   --hud-safe-left: max(var(--sai-left, 0px), env(safe-area-inset-left, 0px));
   --hud-safe-right: max(var(--sai-right, 0px), env(safe-area-inset-right, 0px));
 }
@@ -91,7 +94,7 @@ html[data-platform='telegram'] {
 
 .btn-primary {
   background: var(--accent);
-  color: #1A1410;
+  color: #1a1410;
   font-weight: 600;
   border: none;
   border-radius: var(--radius-btn);
@@ -181,44 +184,88 @@ html[data-platform='telegram'] {
 /* ── Animations ────────────────────────────────────────────────── */
 
 @keyframes panel-in {
-  from { opacity: 0; transform: scale(0.95); }
-  to   { opacity: 1; transform: scale(1); }
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 @keyframes panel-out {
-  from { opacity: 1; transform: scale(1); }
-  to   { opacity: 0; transform: scale(1.05); }
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.05);
+  }
 }
 
 @keyframes slide-up-out {
-  from { opacity: 1; transform: translateY(0); }
-  to   { opacity: 0; transform: translateY(-100vh); }
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-100vh);
+  }
 }
 
 @keyframes fade-in {
-  from { opacity: 0; }
-  to   { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes fade-out {
-  from { opacity: 1; }
-  to   { opacity: 0; }
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.6; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
 }
 
 @keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @keyframes countdown-pop {
-  0% { transform: scale(0.5); opacity: 0; }
-  50% { transform: scale(1.2); opacity: 1; }
-  100% { transform: scale(1); opacity: 1; }
+  0% {
+    transform: scale(0.5);
+    opacity: 0;
+  }
+  50% {
+    transform: scale(1.2);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
 .panel-enter {
@@ -866,7 +913,9 @@ html[data-platform='telegram'] {
   text-align: center;
   opacity: 0;
   transform: scale(0.8);
-  transition: opacity 300ms ease, transform 300ms ease;
+  transition:
+    opacity 300ms ease,
+    transform 300ms ease;
   pointer-events: none;
   white-space: nowrap;
   text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
@@ -1014,3 +1063,43 @@ html[data-platform='telegram'] {
   color: var(--accent);
 }
 
+/* ── Loading Overlay ───────────────────────────────────────────── */
+
+.loader-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: #1a1410;
+  padding: var(--hud-safe-top) var(--hud-safe-right) var(--hud-safe-bottom)
+    var(--hud-safe-left);
+  z-index: 300;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--transition-medium);
+}
+
+.loader-overlay--visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.loader-spinner {
+  width: 48px;
+  height: 48px;
+  border: 3px solid rgba(200, 148, 62, 0.2);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.loader-label {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  color: var(--accent);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { EXRLoader } from 'three/addons/loaders/EXRLoader.js';
+
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
@@ -41,7 +41,8 @@ import {
   BLOOM_STRENGTH,
   BLOOM_RADIUS,
 } from '../config/constants.ts';
-import { publicAssetUrl } from '../publicAssetUrl.ts';
+import { assetManager } from './AssetManager.ts';
+import { BOARD_TEXTURES } from './AssetManifest.ts';
 
 /**
  * Screen-space vignette: darkens the edges of the frame for a
@@ -109,29 +110,28 @@ export function setupScene(canvas: HTMLCanvasElement): SceneContext {
   const pmremGenerator = new THREE.PMREMGenerator(renderer);
   pmremGenerator.compileEquirectangularShader();
 
-  new EXRLoader().load(publicAssetUrl('textures/env/IndoorEnvironmentHDRI013_2K_HDR.exr'), (exrTexture) => {
-    exrTexture.mapping = THREE.EquirectangularReflectionMapping;
+  const exrTexture = assetManager.getEnvTexture();
+  exrTexture.mapping = THREE.EquirectangularReflectionMapping;
 
-    const envMap = pmremGenerator.fromEquirectangular(exrTexture).texture;
+  const envMap = pmremGenerator.fromEquirectangular(exrTexture).texture;
 
-    // Pre-filtered cubemap for PBR reflections on checkers & board
-    scene.environment = envMap;
+  // Pre-filtered cubemap for PBR reflections on checkers & board
+  scene.environment = envMap;
 
-    // Blurred HDR as background
-    scene.background = envMap;
-    scene.backgroundBlurriness = 0.15;
-    scene.backgroundIntensity = 0.85;
+  // Blurred HDR as background
+  scene.background = envMap;
+  scene.backgroundBlurriness = 0.15;
+  scene.backgroundIntensity = 0.85;
 
-    exrTexture.dispose();
-    pmremGenerator.dispose();
-  });
+  exrTexture.dispose();
+  pmremGenerator.dispose();
 
   // ── Camera ───────────────────────────────────────────────────
   const camera = new THREE.PerspectiveCamera(
     CAMERA_FOV,
     window.innerWidth / window.innerHeight,
     CAMERA_NEAR,
-    CAMERA_FAR,
+    CAMERA_FAR
   );
   camera.position.set(CAMERA_POSITION.x, CAMERA_POSITION.y, CAMERA_POSITION.z);
 
@@ -150,7 +150,10 @@ export function setupScene(canvas: HTMLCanvasElement): SceneContext {
   // ── Lights ───────────────────────────────────────────────────
 
   // Main directional (warm lamp-like, lower angle for longer shadows)
-  const dirLight = new THREE.DirectionalLight(DIR_LIGHT_COLOR, DIR_LIGHT_INTENSITY);
+  const dirLight = new THREE.DirectionalLight(
+    DIR_LIGHT_COLOR,
+    DIR_LIGHT_INTENSITY
+  );
   dirLight.position.set(9, 4.5, 2);
   dirLight.castShadow = true;
   dirLight.shadow.mapSize.width = SHADOW_MAP_SIZE;
@@ -159,7 +162,7 @@ export function setupScene(canvas: HTMLCanvasElement): SceneContext {
   dirLight.shadow.camera.far = 40;
   dirLight.shadow.bias = 0.001;
   dirLight.shadow.normalBias = 0.01;
-  dirLight.shadow.radius = 20;        // soft, diffused shadows
+  dirLight.shadow.radius = 20; // soft, diffused shadows
   // Tight frustum around the board → higher shadow-texel density
   const shadowExtent = BOARD_EXTENT * 2;
   dirLight.shadow.camera.left = -shadowExtent;
@@ -169,33 +172,47 @@ export function setupScene(canvas: HTMLCanvasElement): SceneContext {
   scene.add(dirLight);
 
   // Cool fill from the opposite side — prevents pure-black shadows
-  const fillLight = new THREE.DirectionalLight(FILL_LIGHT_COLOR, FILL_LIGHT_INTENSITY);
+  const fillLight = new THREE.DirectionalLight(
+    FILL_LIGHT_COLOR,
+    FILL_LIGHT_INTENSITY
+  );
   fillLight.position.set(-6, 8, -4);
   scene.add(fillLight);
 
   // Soft ambient fill
-  const ambientLight = new THREE.AmbientLight(AMBIENT_LIGHT_COLOR, AMBIENT_LIGHT_INTENSITY);
+  const ambientLight = new THREE.AmbientLight(
+    AMBIENT_LIGHT_COLOR,
+    AMBIENT_LIGHT_INTENSITY
+  );
   scene.add(ambientLight);
 
   // Hemisphere (sky / ground gradient)
   const hemiLight = new THREE.HemisphereLight(
     HEMISPHERE_SKY_COLOR,
     HEMISPHERE_GROUND_COLOR,
-    HEMISPHERE_INTENSITY,
+    HEMISPHERE_INTENSITY
   );
   scene.add(hemiLight);
 
   // ── Table plane ──────────────────────────────────────────────
-  const textureLoader = new THREE.TextureLoader();
   const tableRepeat = 6;
 
-  const tableColorTex = textureLoader.load(publicAssetUrl('textures/boards/Wood076_1K-JPG_Color.jpg'));
+  const tableColorTex = assetManager.getTexture(BOARD_TEXTURES.color).clone();
   tableColorTex.colorSpace = THREE.SRGBColorSpace;
-  const tableNormalTex = textureLoader.load(publicAssetUrl('textures/boards/Wood076_1K-JPG_NormalGL.jpg'));
-  const tableRoughTex = textureLoader.load(publicAssetUrl('textures/boards/Wood076_1K-JPG_Roughness.jpg'));
-  const tableAoTex = textureLoader.load(publicAssetUrl('textures/boards/Wood076_1K-JPG_AmbientOcclusion.jpg'));
+  const tableNormalTex = assetManager.getTexture(BOARD_TEXTURES.normal).clone();
+  const tableRoughTex = assetManager
+    .getTexture(BOARD_TEXTURES.roughness)
+    .clone();
+  const tableAoTex = assetManager
+    .getTexture(BOARD_TEXTURES.ambientOcclusion)
+    .clone();
 
-  for (const tex of [tableColorTex, tableNormalTex, tableRoughTex, tableAoTex]) {
+  for (const tex of [
+    tableColorTex,
+    tableNormalTex,
+    tableRoughTex,
+    tableAoTex,
+  ]) {
     tex.wrapS = THREE.RepeatWrapping;
     tex.wrapT = THREE.RepeatWrapping;
     tex.repeat.set(tableRepeat, tableRepeat);
@@ -225,10 +242,14 @@ export function setupScene(canvas: HTMLCanvasElement): SceneContext {
   scene.add(tableMesh);
 
   // ── Table border (raised rails) ──────────────────────────────
-  const borderColorTex = textureLoader.load(publicAssetUrl('textures/boards/Wood076_1K-JPG_Color.jpg'));
+  const borderColorTex = assetManager.getTexture(BOARD_TEXTURES.color).clone();
   borderColorTex.colorSpace = THREE.SRGBColorSpace;
-  const borderNormalTex = textureLoader.load(publicAssetUrl('textures/boards/Wood076_1K-JPG_NormalGL.jpg'));
-  const borderRoughTex = textureLoader.load(publicAssetUrl('textures/boards/Wood076_1K-JPG_Roughness.jpg'));
+  const borderNormalTex = assetManager
+    .getTexture(BOARD_TEXTURES.normal)
+    .clone();
+  const borderRoughTex = assetManager
+    .getTexture(BOARD_TEXTURES.roughness)
+    .clone();
 
   for (const tex of [borderColorTex, borderNormalTex, borderRoughTex]) {
     tex.wrapS = THREE.RepeatWrapping;
@@ -248,19 +269,32 @@ export function setupScene(canvas: HTMLCanvasElement): SceneContext {
   const borderY = -BOARD_EXTENT * 0.02 + TABLE_BORDER_HEIGHT / 2;
 
   // Long sides (along X axis) — front and back
-  const longGeo = new THREE.BoxGeometry(TABLE_SIZE, TABLE_BORDER_HEIGHT, TABLE_BORDER_THICKNESS);
+  const longGeo = new THREE.BoxGeometry(
+    TABLE_SIZE,
+    TABLE_BORDER_HEIGHT,
+    TABLE_BORDER_THICKNESS
+  );
   scaleBoxUVs(longGeo, TABLE_SIZE, TABLE_BORDER_HEIGHT, TABLE_BORDER_THICKNESS);
 
   // Short sides (along Z axis) — left and right (inner length to avoid overlap at corners)
   const innerLength = TABLE_SIZE - TABLE_BORDER_THICKNESS * 2;
-  const shortGeo = new THREE.BoxGeometry(TABLE_BORDER_THICKNESS, TABLE_BORDER_HEIGHT, innerLength);
-  scaleBoxUVs(shortGeo, TABLE_BORDER_THICKNESS, TABLE_BORDER_HEIGHT, innerLength);
+  const shortGeo = new THREE.BoxGeometry(
+    TABLE_BORDER_THICKNESS,
+    TABLE_BORDER_HEIGHT,
+    innerLength
+  );
+  scaleBoxUVs(
+    shortGeo,
+    TABLE_BORDER_THICKNESS,
+    TABLE_BORDER_HEIGHT,
+    innerLength
+  );
 
   const borderPositions: [THREE.BoxGeometry, number, number, number][] = [
-    [longGeo,  0, borderY, -(tableHalf - TABLE_BORDER_THICKNESS / 2)],   // back  (-Z)
-    [longGeo,  0, borderY,  (tableHalf - TABLE_BORDER_THICKNESS / 2)],   // front (+Z)
-    [shortGeo, -(tableHalf - TABLE_BORDER_THICKNESS / 2), borderY, 0],   // left  (-X)
-    [shortGeo,  (tableHalf - TABLE_BORDER_THICKNESS / 2), borderY, 0],   // right (+X)
+    [longGeo, 0, borderY, -(tableHalf - TABLE_BORDER_THICKNESS / 2)], // back  (-Z)
+    [longGeo, 0, borderY, tableHalf - TABLE_BORDER_THICKNESS / 2], // front (+Z)
+    [shortGeo, -(tableHalf - TABLE_BORDER_THICKNESS / 2), borderY, 0], // left  (-X)
+    [shortGeo, tableHalf - TABLE_BORDER_THICKNESS / 2, borderY, 0], // right (+X)
   ];
 
   for (const [geo, x, y, z] of borderPositions) {
@@ -276,7 +310,7 @@ export function setupScene(canvas: HTMLCanvasElement): SceneContext {
   const renderTarget = new THREE.WebGLRenderTarget(
     window.innerWidth,
     window.innerHeight,
-    { samples: Math.min(renderer.capabilities.maxSamples, 4) },
+    { samples: Math.min(renderer.capabilities.maxSamples, 4) }
   );
   const composer = new EffectComposer(renderer, renderTarget);
   composer.addPass(new RenderPass(scene, camera));
@@ -286,7 +320,7 @@ export function setupScene(canvas: HTMLCanvasElement): SceneContext {
     new THREE.Vector2(window.innerWidth, window.innerHeight),
     BLOOM_STRENGTH,
     BLOOM_RADIUS,
-    BLOOM_THRESHOLD,
+    BLOOM_THRESHOLD
   );
   composer.addPass(bloomPass);
 
@@ -320,7 +354,7 @@ function scaleBoxUVs(
   geo: THREE.BoxGeometry,
   sizeX: number,
   sizeY: number,
-  sizeZ: number,
+  sizeZ: number
 ): void {
   const uv = geo.getAttribute('uv');
   const normal = geo.getAttribute('normal');
@@ -352,4 +386,3 @@ function scaleBoxUVs(
 
   uv.needsUpdate = true;
 }
-

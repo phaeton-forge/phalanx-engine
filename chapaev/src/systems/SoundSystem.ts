@@ -24,33 +24,14 @@ import {
 } from '../config/constants.ts';
 import { SilentModeHint } from '../ui/SilentModeHint.ts';
 import { audioSettings } from '../config/AudioSettings.ts';
-import { publicAssetUrl } from '../publicAssetUrl.ts';
-
-/** Paths to hit sound variants (served from public/) */
-const HIT_SOUND_PATHS: readonly string[] = [
-  'sounds/hit_01.mp3',
-  'sounds/hit_02.mp3',
-  'sounds/hit_03.mp3',
-  'sounds/hit_04.mp3',
-] as const;
-
-/** Path to the checker movement sound (served from public/) */
-const MOVEMENT_SOUND_PATH = 'sounds/checker_movement.mp3';
-
-/** Path to the rim hit sound played when a checker hits the table border */
-const RIM_HIT_SOUND_PATH = 'sounds/hit_04.mp3';
-
-/** Paths to fall-off sound variants (checker lands on deck/table surface) */
-const FALL_OFF_SOUND_PATHS: readonly string[] = [
-  'sounds/checker-fall-off.mp3',
-  'sounds/checker-fall-off_02.mp3',
-] as const;
-
-/** Paths to background music tracks (served from public/) */
-const BGM_SOUND_PATHS: readonly string[] = [
-  'sounds/bg_01.mp3',
-  'sounds/bg_02.mp3',
-] as const;
+import {
+  assetManager,
+  HIT_SOUND_PATHS,
+  MOVEMENT_SOUND_PATH,
+  RIM_HIT_SOUND_PATH,
+  FALL_OFF_SOUND_PATHS,
+  BGM_SOUND_PATHS,
+} from '../rendering';
 
 /**
  * Velocity damp factor per physics tick: max(0, 1 − friction × dt).
@@ -207,12 +188,16 @@ export class SoundSystem extends GameSystem {
       this.stopMovementSound();
       this.playHitSound();
     });
-    this.subscribe<AllSettledEvent>(ALL_SETTLED, () => this.stopMovementSound());
-    this.subscribe<RapierContactEvent>(RAPIER_CONTACT, (e) => this.onRapierContact(e));
+    this.subscribe<AllSettledEvent>(ALL_SETTLED, () =>
+      this.stopMovementSound()
+    );
+    this.subscribe<RapierContactEvent>(RAPIER_CONTACT, (e) =>
+      this.onRapierContact(e)
+    );
     this.subscribe(RAPIER_SETTLED, () => this.fadeOutSlidingSound());
 
     this.addPageLifecycleListeners();
-    this.loadSounds();
+    void this.loadSounds();
   }
 
   private addPageLifecycleListeners(): void {
@@ -224,7 +209,10 @@ export class SoundSystem extends GameSystem {
   }
 
   private removePageLifecycleListeners(): void {
-    document.removeEventListener('visibilitychange', this.handleVisibilityChange);
+    document.removeEventListener(
+      'visibilitychange',
+      this.handleVisibilityChange
+    );
     window.removeEventListener('pagehide', this.handlePageHidden);
     window.removeEventListener('pageshow', this.handlePageVisible);
     window.removeEventListener('blur', this.handlePageHidden);
@@ -249,7 +237,10 @@ export class SoundSystem extends GameSystem {
       if (!this.audioCtx) return;
     }
 
-    if (this.audioCtx.state === 'suspended' || (this.audioCtx.state as string) === 'interrupted') {
+    if (
+      this.audioCtx.state === 'suspended' ||
+      (this.audioCtx.state as string) === 'interrupted'
+    ) {
       // Play a tiny silent buffer to fully unlock the iOS audio pipeline
       const silent = this.audioCtx.createBuffer(1, 1, this.audioCtx.sampleRate);
       const src = this.audioCtx.createBufferSource();
@@ -269,63 +260,53 @@ export class SoundSystem extends GameSystem {
   };
 
   private addUnlockListeners(): void {
-    document.addEventListener('touchstart', this.unlockAudio, { capture: true });
+    document.addEventListener('touchstart', this.unlockAudio, {
+      capture: true,
+    });
     document.addEventListener('touchend', this.unlockAudio, { capture: true });
     document.addEventListener('click', this.unlockAudio, { capture: true });
   }
 
   private removeUnlockListeners(): void {
-    document.removeEventListener('touchstart', this.unlockAudio, { capture: true });
-    document.removeEventListener('touchend', this.unlockAudio, { capture: true });
+    document.removeEventListener('touchstart', this.unlockAudio, {
+      capture: true,
+    });
+    document.removeEventListener('touchend', this.unlockAudio, {
+      capture: true,
+    });
     document.removeEventListener('click', this.unlockAudio, { capture: true });
   }
 
   /** Create a Web Audio context, using the prefixed constructor on older Safari. */
   private createAudioContext(): AudioContext | null {
-    const Ctor = window.AudioContext
-      ?? (window as unknown as Record<string, unknown>).webkitAudioContext as (typeof AudioContext | undefined);
+    const Ctor =
+      window.AudioContext ??
+      ((window as unknown as Record<string, unknown>).webkitAudioContext as
+        | typeof AudioContext
+        | undefined);
     if (!Ctor) return null;
     return new Ctor();
   }
 
   /**
-   * Phase 1 — fetch all sound files as raw ArrayBuffers.
-   * This does NOT require an AudioContext and works on every platform.
-   * Request URLs use `publicAssetUrl` (same rules as textures / other `public/` files).
+   * Phase 1 — read all sound files as raw ArrayBuffers from the shared
+   * AssetManager cache. This does NOT require an AudioContext and works on
+   * every platform. Audio decoding stays in Phase 2, gated on the user-gesture
+   * AudioContext unlock (required by iOS Safari).
    */
   private async loadSounds(): Promise<void> {
     try {
-      const hitFetches = HIT_SOUND_PATHS.map(async (path) => {
-        const response = await fetch(publicAssetUrl(path));
-        return response.arrayBuffer();
-      });
-
-      const movementFetch = fetch(publicAssetUrl(MOVEMENT_SOUND_PATH)).then((r) => r.arrayBuffer());
-      const rimHitFetch = fetch(publicAssetUrl(RIM_HIT_SOUND_PATH)).then((r) => r.arrayBuffer());
-
-      const fallOffFetches = FALL_OFF_SOUND_PATHS.map(async (path) => {
-        const response = await fetch(publicAssetUrl(path));
-        return response.arrayBuffer();
-      });
-
-      const bgmFetches = BGM_SOUND_PATHS.map(async (path) => {
-        const response = await fetch(publicAssetUrl(path));
-        return response.arrayBuffer();
-      });
-
-      const [hitRaw, movementRaw, rimHitRaw, fallOffRaw, bgmRaw] = await Promise.all([
-        Promise.all(hitFetches),
-        movementFetch,
-        rimHitFetch,
-        Promise.all(fallOffFetches),
-        Promise.all(bgmFetches),
-      ]);
-
-      this.rawHitBuffers = hitRaw;
-      this.rawMovementBuffer = movementRaw;
-      this.rawRimHitBuffer = rimHitRaw;
-      this.rawFallOffBuffers = fallOffRaw;
-      this.rawBgmBuffers = bgmRaw;
+      this.rawHitBuffers = HIT_SOUND_PATHS.map((path) =>
+        assetManager.getAudioBuffer(path)
+      );
+      this.rawMovementBuffer = assetManager.getAudioBuffer(MOVEMENT_SOUND_PATH);
+      this.rawRimHitBuffer = assetManager.getAudioBuffer(RIM_HIT_SOUND_PATH);
+      this.rawFallOffBuffers = FALL_OFF_SOUND_PATHS.map((path) =>
+        assetManager.getAudioBuffer(path)
+      );
+      this.rawBgmBuffers = BGM_SOUND_PATHS.map((path) =>
+        assetManager.getAudioBuffer(path)
+      );
       this.fetched = true;
 
       // Register unlock listeners BEFORE trying to decode — on iOS Safari
@@ -340,7 +321,7 @@ export class SoundSystem extends GameSystem {
         await this.decodeBuffers();
       }
     } catch (err) {
-      console.warn('SoundSystem: Failed to fetch sounds.', err);
+      console.warn('SoundSystem: Failed to load sounds.', err);
     }
   }
 
@@ -358,23 +339,29 @@ export class SoundSystem extends GameSystem {
 
     try {
       const hitDecoded = await Promise.all(
-        this.rawHitBuffers.map((buf) => this.audioCtx!.decodeAudioData(buf.slice(0))),
+        this.rawHitBuffers.map((buf) =>
+          this.audioCtx!.decodeAudioData(buf.slice(0))
+        )
       );
 
       const movementDecoded = await this.audioCtx.decodeAudioData(
-        this.rawMovementBuffer.slice(0),
+        this.rawMovementBuffer.slice(0)
       );
 
       const rimHitDecoded = await this.audioCtx.decodeAudioData(
-        this.rawRimHitBuffer.slice(0),
+        this.rawRimHitBuffer.slice(0)
       );
 
       const fallOffDecoded = await Promise.all(
-        this.rawFallOffBuffers.map((buf) => this.audioCtx!.decodeAudioData(buf.slice(0))),
+        this.rawFallOffBuffers.map((buf) =>
+          this.audioCtx!.decodeAudioData(buf.slice(0))
+        )
       );
 
       const bgmDecoded = await Promise.all(
-        this.rawBgmBuffers.map((buf) => this.audioCtx!.decodeAudioData(buf.slice(0))),
+        this.rawBgmBuffers.map((buf) =>
+          this.audioCtx!.decodeAudioData(buf.slice(0))
+        )
       );
 
       this.hitBuffers.push(...hitDecoded);
@@ -486,7 +473,8 @@ export class SoundSystem extends GameSystem {
 
   /** Start a fall-off sliding sound (plays once). Does nothing if already playing. */
   private startSlidingSound(): void {
-    if (!this.loaded || !this.audioCtx || this.fallOffBuffers.length === 0) return;
+    if (!this.loaded || !this.audioCtx || this.fallOffBuffers.length === 0)
+      return;
     // Don't restart if already playing or fading out
     if (this.slidingSource) return;
     if (!this.ensureAudioRunning()) return;
@@ -529,7 +517,13 @@ export class SoundSystem extends GameSystem {
 
   /** Fade out the sliding sound smoothly when Rapier bodies have settled. */
   private fadeOutSlidingSound(): void {
-    if (this.slidingFadingOut || !this.slidingGain || !this.audioCtx || !this.slidingSource) return;
+    if (
+      this.slidingFadingOut ||
+      !this.slidingGain ||
+      !this.audioCtx ||
+      !this.slidingSource
+    )
+      return;
     this.slidingFadingOut = true;
 
     const now = this.audioCtx.currentTime;
@@ -538,18 +532,21 @@ export class SoundSystem extends GameSystem {
 
     const src = this.slidingSource;
     const gain = this.slidingGain;
-    setTimeout(() => {
-      if (this.slidingSource === src) {
-        src.stop();
-        src.disconnect();
-        this.slidingSource = null;
-      }
-      if (this.slidingGain === gain) {
-        gain.disconnect();
-        this.slidingGain = null;
-      }
-      this.slidingFadingOut = false;
-    }, FADE_OUT_DURATION * 1000 + 50);
+    setTimeout(
+      () => {
+        if (this.slidingSource === src) {
+          src.stop();
+          src.disconnect();
+          this.slidingSource = null;
+        }
+        if (this.slidingGain === gain) {
+          gain.disconnect();
+          this.slidingGain = null;
+        }
+        this.slidingFadingOut = false;
+      },
+      FADE_OUT_DURATION * 1000 + 50
+    );
   }
 
   /** Start the checker movement sound, stretching it to match predicted slide time. */
@@ -569,9 +566,7 @@ export class SoundSystem extends GameSystem {
     // Predict movement duration from exponential friction model:
     //   speed(N) = initialSpeed × dampFactor^N   →   stops when speed ≤ STOP_THRESHOLD
     //   N = ⌈ ln(STOP_THRESHOLD / initialSpeed) / ln(dampFactor) ⌉
-    const ticks = Math.ceil(
-      Math.log(STOP_THRESHOLD / initialSpeed) / LN_DAMP,
-    );
+    const ticks = Math.ceil(Math.log(STOP_THRESHOLD / initialSpeed) / LN_DAMP);
     const movementTime = ticks * PHYSICS_DT;
 
     const duration = this.movementBuffer.duration;
@@ -579,9 +574,7 @@ export class SoundSystem extends GameSystem {
     // Slow the sound down so it fills the entire movement time.
     // If the movement is shorter than the buffer we keep normal speed
     // (stopMovementSound will cut it short).
-    const playbackRate = movementTime > duration
-      ? duration / movementTime
-      : 1;
+    const playbackRate = movementTime > duration ? duration / movementTime : 1;
 
     const gain = this.audioCtx.createGain();
     gain.gain.value = 1;
@@ -624,7 +617,13 @@ export class SoundSystem extends GameSystem {
    * After the ramp completes the source is stopped automatically.
    */
   private fadeOutMovementSound(): void {
-    if (this.fadingOut || !this.movementGain || !this.audioCtx || !this.movementSource) return;
+    if (
+      this.fadingOut ||
+      !this.movementGain ||
+      !this.audioCtx ||
+      !this.movementSource
+    )
+      return;
     this.fadingOut = true;
 
     const now = this.audioCtx.currentTime;
@@ -634,18 +633,21 @@ export class SoundSystem extends GameSystem {
     // Schedule a hard stop after the ramp so resources are freed
     const src = this.movementSource;
     const gain = this.movementGain;
-    setTimeout(() => {
-      if (this.movementSource === src) {
-        src.stop();
-        src.disconnect();
-        this.movementSource = null;
-      }
-      if (this.movementGain === gain) {
-        gain.disconnect();
-        this.movementGain = null;
-      }
-      this.fadingOut = false;
-    }, FADE_OUT_DURATION * 1000 + 50);
+    setTimeout(
+      () => {
+        if (this.movementSource === src) {
+          src.stop();
+          src.disconnect();
+          this.movementSource = null;
+        }
+        if (this.movementGain === gain) {
+          gain.disconnect();
+          this.movementGain = null;
+        }
+        this.fadingOut = false;
+      },
+      FADE_OUT_DURATION * 1000 + 50
+    );
   }
 
   // ── Background music ─────────────────────────────────────────────
@@ -655,7 +657,8 @@ export class SoundSystem extends GameSystem {
    * cross-fades into the next track when the current one ends.
    */
   private startBgm(): void {
-    if (this.bgmStarted || this.bgmBuffers.length === 0 || !this.audioCtx) return;
+    if (this.bgmStarted || this.bgmBuffers.length === 0 || !this.audioCtx)
+      return;
     if (this.isPageHidden()) return;
     this.bgmStarted = true;
 
@@ -671,7 +674,10 @@ export class SoundSystem extends GameSystem {
 
     const gain = this.audioCtx.createGain();
     gain.gain.setValueAtTime(0, this.audioCtx.currentTime);
-    gain.gain.linearRampToValueAtTime(BGM_VOLUME, this.audioCtx.currentTime + BGM_CROSSFADE_DURATION);
+    gain.gain.linearRampToValueAtTime(
+      BGM_VOLUME,
+      this.audioCtx.currentTime + BGM_CROSSFADE_DURATION
+    );
     gain.connect(this.bgmDestination);
 
     const source = this.audioCtx.createBufferSource();
@@ -721,7 +727,8 @@ export class SoundSystem extends GameSystem {
   // ── Frame update — speed-based fade-out ─────────────────────────
 
   public override update(_deltaTime: number): void {
-    if (!this.movementSource || this.fadingOut || this.flickInitialSpeed <= 0) return;
+    if (!this.movementSource || this.fadingOut || this.flickInitialSpeed <= 0)
+      return;
 
     // Estimate elapsed ticks from wall-clock time since flick start.
     // We use the AudioContext currentTime for a smooth, drift-free clock.
@@ -731,7 +738,8 @@ export class SoundSystem extends GameSystem {
     const elapsedTicks = elapsed / PHYSICS_DT;
 
     // Predicted current speed: speed(t) = initialSpeed × dampFactor ^ elapsedTicks
-    const predictedSpeed = this.flickInitialSpeed * Math.pow(DAMP_FACTOR, elapsedTicks);
+    const predictedSpeed =
+      this.flickInitialSpeed * Math.pow(DAMP_FACTOR, elapsedTicks);
 
     // Fade threshold: fraction of initial speed
     const fadeSpeed = this.flickInitialSpeed * SPEED_FADE_THRESHOLD;
@@ -770,4 +778,3 @@ export class SoundSystem extends GameSystem {
     }
   }
 }
-

@@ -15,7 +15,11 @@ import {
   BLACK_CHECKER_ENV_MAP_INTENSITY,
 } from '../config/constants.ts';
 import { TeamTag } from '../enums/TeamTag.ts';
-import { publicAssetUrl } from '../publicAssetUrl.ts';
+import { assetManager } from './AssetManager.ts';
+import {
+  BRIGHT_CHECKER_TEXTURES,
+  DARK_CHECKER_TEXTURES,
+} from './AssetManifest.ts';
 
 /** Shared geometry – created once and reused for every checker */
 let sharedGeometry: THREE.LatheGeometry | null = null;
@@ -45,7 +49,7 @@ function getCheckerGeometry(): THREE.LatheGeometry {
 
   // 2. Bottom-edge bevel arc (quarter circle, curving from bottom face to side)
   for (let i = 0; i <= bS; i++) {
-    const angle = Math.PI / 2 * (i / bS); // 0 → π/2
+    const angle = (Math.PI / 2) * (i / bS); // 0 → π/2
     const x = r - bR + Math.sin(angle) * bR;
     const y = -halfH + bR - Math.cos(angle) * bR;
     points.push(new THREE.Vector2(x, y));
@@ -53,7 +57,7 @@ function getCheckerGeometry(): THREE.LatheGeometry {
 
   // 3. Top-edge bevel arc (quarter circle, curving from side to top face)
   for (let i = 0; i <= bS; i++) {
-    const angle = Math.PI / 2 * (i / bS); // 0 → π/2
+    const angle = (Math.PI / 2) * (i / bS); // 0 → π/2
     const x = r - bR + Math.cos(angle) * bR;
     const y = halfH - bR + Math.sin(angle) * bR;
     points.push(new THREE.Vector2(x, y));
@@ -74,13 +78,11 @@ function getCheckerMaterial(team: TeamTag): THREE.MeshStandardMaterial {
   const cached = materialCache.get(team);
   if (cached) return cached;
 
-  const textureLoader = new THREE.TextureLoader();
-
   if (team === TeamTag.White) {
-    const colorTex = textureLoader.load(publicAssetUrl('textures/bright-checker/Wood095_1K-JPG_Color.jpg'));
+    const colorTex = assetManager.getTexture(BRIGHT_CHECKER_TEXTURES.color);
     colorTex.colorSpace = THREE.SRGBColorSpace;
-    const normalTex = textureLoader.load(publicAssetUrl('textures/bright-checker/Wood095_1K-JPG_NormalGL.jpg'));
-    const roughTex = textureLoader.load(publicAssetUrl('textures/bright-checker/Wood095_1K-JPG_Roughness.jpg'));
+    const normalTex = assetManager.getTexture(BRIGHT_CHECKER_TEXTURES.normal);
+    const roughTex = assetManager.getTexture(BRIGHT_CHECKER_TEXTURES.roughness);
 
     const mat = new THREE.MeshStandardMaterial({
       map: colorTex,
@@ -96,10 +98,10 @@ function getCheckerMaterial(team: TeamTag): THREE.MeshStandardMaterial {
   }
 
   // Black
-  const colorTex = textureLoader.load(publicAssetUrl('textures/dark-checker/Wood026_1K-JPG_Color.jpg'));
+  const colorTex = assetManager.getTexture(DARK_CHECKER_TEXTURES.color);
   colorTex.colorSpace = THREE.SRGBColorSpace;
-  const normalTex = textureLoader.load(publicAssetUrl('textures/dark-checker/Wood026_1K-JPG_NormalGL.jpg'));
-  const roughTex = textureLoader.load(publicAssetUrl('textures/dark-checker/Wood026_1K-JPG_Roughness.jpg'));
+  const normalTex = assetManager.getTexture(DARK_CHECKER_TEXTURES.normal);
+  const roughTex = assetManager.getTexture(DARK_CHECKER_TEXTURES.roughness);
 
   const mat = new THREE.MeshStandardMaterial({
     map: colorTex,
@@ -126,4 +128,3 @@ export function createCheckerMesh(team: TeamTag): THREE.Mesh {
   mesh.receiveShadow = true;
   return mesh;
 }
-
