@@ -1,5 +1,5 @@
 import { Entity } from '@phalanx-engine/ecs';
-import { TransformComponent } from '../components/TransformComponent.ts';
+import { TransformComponent } from '../components';
 import { BoardComponent } from '../components/BoardComponent.ts';
 import { FPVector3 } from '@phalanx-engine/math';
 

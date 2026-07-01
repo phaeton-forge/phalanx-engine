@@ -1,11 +1,12 @@
 import * as THREE from 'three';
 import { GameSystem } from '@phalanx-engine/ecs';
 import type { SystemContext } from '@phalanx-engine/ecs';
+import { FP } from '@phalanx-engine/math';
+import type { InterpolationSystem } from '@phalanx-engine/physics';
 import { ComponentType } from '../components/Component.ts';
-import type { TransformComponent } from '../components/TransformComponent.ts';
-import type { CheckerComponent } from '../components/CheckerComponent.ts';
-import type { GameStateComponent } from '../components/GameStateComponent.ts';
-import { PhysicsBodySoASchema } from '../components/PhysicsBodyComponent.ts';
+import type { TransformComponent, CheckerComponent, GameStateComponent } from '../components';
+import { PhysicsBodySoASchema } from '../components';
+import { STOP_THRESHOLD } from '../config/constants.ts';
 import { createBoardMesh } from '../rendering/BoardMesh.ts';
 import { createCheckerMesh } from '../rendering/CheckerMesh.ts';
 import { EffectsManager } from '../rendering/EffectsManager.ts';
@@ -21,7 +22,7 @@ import type {
 
 /**
  * ThreeRenderSystem — frame system that synchronises Three.js mesh
- * positions with `TransformComponent.visualPosition`.
+ * positions with the interpolated render transforms from InterpolationSystem.
  *
  * Also manages visual effects: team highlights, collision particles,
  * speed trails, and elimination visibility.
@@ -40,9 +41,28 @@ export class ThreeRenderSystem extends GameSystem {
   /** Set of entity IDs whose mesh is managed by RapierVFXSystem (don't sync position) */
   private rapierManaged: Set<number> = new Set();
 
-  constructor(scene: THREE.Scene) {
+  /** Source of interpolated render transforms. */
+  private readonly interpolationSystem: InterpolationSystem;
+
+  constructor(scene: THREE.Scene, interpolationSystem: InterpolationSystem) {
     super();
     this.scene = scene;
+    this.interpolationSystem = interpolationSystem;
+  }
+
+  /**
+   * Resolve the render position for an entity: the interpolated sample when
+   * available, otherwise the raw fixed-point transform (used before the first
+   * interpolation snapshot, e.g. at init / round start).
+   */
+  private renderPosition(
+    entityId: number,
+    transform: TransformComponent,
+  ): { x: number; y: number; z: number } {
+    const sample = this.interpolationSystem.getInterpolatedTransform(entityId);
+    if (sample) return sample.position;
+    const fp = transform.fpPosition;
+    return { x: FP.ToFloat(fp.x), y: FP.ToFloat(fp.y), z: FP.ToFloat(fp.z) };
   }
 
   // ── Public accessors ──────────────────────────────────────────
@@ -91,11 +111,8 @@ export class ThreeRenderSystem extends GameSystem {
       // Set initial position from transform
       const transform = entity.getComponent<TransformComponent>(ComponentType.Transform);
       if (transform) {
-        mesh.position.set(
-          transform.visualPositionX,
-          transform.visualPositionY,
-          transform.visualPositionZ,
-        );
+        const p = this.renderPosition(entity.id, transform);
+        mesh.position.set(p.x, p.y, p.z);
       }
 
       this.scene.add(mesh);
@@ -134,11 +151,8 @@ export class ThreeRenderSystem extends GameSystem {
         // doesn't linger at the old Rapier-driven location for a frame.
         const transform = entity.getComponent<TransformComponent>(ComponentType.Transform);
         if (transform) {
-          mesh.position.set(
-            transform.visualPositionX,
-            transform.visualPositionY,
-            transform.visualPositionZ,
-          );
+          const p = this.renderPosition(entity.id, transform);
+          mesh.position.set(p.x, p.y, p.z);
         }
 
         // Reset material opacity
@@ -184,12 +198,9 @@ export class ThreeRenderSystem extends GameSystem {
         continue;
       }
 
-      // Sync position from transform
-      mesh.position.set(
-        transform.visualPositionX,
-        transform.visualPositionY,
-        transform.visualPositionZ,
-      );
+      // Sync position from the interpolated render transform
+      const p = this.renderPosition(entity.id, transform);
+      mesh.position.set(p.x, p.y, p.z);
 
       // ── Team highlight ──────────────────────────────────────────
       if (this.gameState && checker) {
@@ -201,18 +212,15 @@ export class ThreeRenderSystem extends GameSystem {
       // ── Speed trail ─────────────────────────────────────────────
       if (pStore) {
         const pi = pStore.indexOf(entity.id);
-        if (pi !== -1 && pStore.arrays.isMoving[pi] === 1) {
-          const vxRaw = Number(pStore.arrays.velocityX[pi]);
-          const vzRaw = Number(pStore.arrays.velocityZ[pi]);
-          // Rough speed estimate from raw (divide by FP precision scale ~100000)
-          const approxSpeed = Math.sqrt(vxRaw * vxRaw + vzRaw * vzRaw) / 100000;
-          this.effects.updateTrail(
-            entity.id,
-            transform.visualPositionX,
-            transform.visualPositionY,
-            transform.visualPositionZ,
-            approxSpeed,
-          );
+        if (pi !== -1) {
+          const vx = FP.ToFloat(FP.FromRaw(pStore.arrays.velocityX[pi]));
+          const vz = FP.ToFloat(FP.FromRaw(pStore.arrays.velocityZ[pi]));
+          const speed = Math.sqrt(vx * vx + vz * vz);
+          if (speed > STOP_THRESHOLD) {
+            this.effects.updateTrail(entity.id, p.x, p.y, p.z, speed);
+          } else {
+            this.effects.removeTrail(entity.id);
+          }
         } else {
           this.effects.removeTrail(entity.id);
         }

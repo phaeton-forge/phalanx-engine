@@ -150,10 +150,11 @@ export class AIPlayerSystem extends GameSystem {
       const transform = entity.getComponent<TransformComponent>(
         ComponentType.Transform
       )!;
+      const fp = transform.fpPosition;
       result.push({
         entityId: entity.id,
-        x: transform.visualPositionX,
-        z: transform.visualPositionZ,
+        x: FP.ToFloat(fp.x),
+        z: FP.ToFloat(fp.z),
       });
     }
 

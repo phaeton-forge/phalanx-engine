@@ -1,10 +1,10 @@
 import { GameSystem } from '@phalanx-engine/ecs';
 import type { SystemContext } from '@phalanx-engine/ecs';
-import { FPVector3 } from '@phalanx-engine/math';
+import { FPVector3, FPQuaternion } from '@phalanx-engine/math';
 import { ComponentType } from '../components';
 import type { GameStateComponent } from '../components';
 import type { CheckerComponent } from '../components';
-import type { TransformComponent } from '../components';
+import type { TransformComponent, InterpolationComponent } from '../components';
 import { PhysicsBodySoASchema } from '../components';
 import { TeamTag } from '../enums/TeamTag.ts';
 import {
@@ -297,9 +297,9 @@ export class GameRulesSystem extends GameSystem {
 
       const pi = pStore.indexOf(entity.id);
       if (pi !== -1) {
-        pStore.arrays.isAlive[pi] = 1;
-        pStore.arrays.isMoving[pi] = 0;
+        pStore.arrays.ignorePhysics[pi] = 0;
         pStore.arrays.velocityX[pi] = 0n;
+        pStore.arrays.velocityY[pi] = 0n;
         pStore.arrays.velocityZ[pi] = 0n;
       }
 
@@ -312,7 +312,16 @@ export class GameRulesSystem extends GameSystem {
       const z = (row - half) * CELL_SIZE;
       const y = BOARD_HEIGHT / 2 + CHECKER_HEIGHT / 2;
 
-      transform.fpPosition = FPVector3.FromFloat(x, y, z);
+      const fpPos = FPVector3.FromFloat(x, y, z);
+      transform.fpPosition = fpPos;
+
+      // Snap the interpolation buffers so the mesh doesn't lerp from the old
+      // (possibly off-board) location into the reset position.
+      const interp = entity.getComponent<InterpolationComponent>(ComponentType.Interpolation);
+      if (interp) {
+        interp.capture(fpPos, FPQuaternion.Identity());
+        interp.snapshot();
+      }
     }
 
     gs.whiteAliveCount = CHECKERS_PER_TEAM;

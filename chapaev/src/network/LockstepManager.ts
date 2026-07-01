@@ -7,8 +7,7 @@ import type { FlickExecutedEvent } from '../events/GameEvents.ts';
 import { ComponentType } from '../components/Component.ts';
 import type { CheckerComponent } from '../components/CheckerComponent.ts';
 import type { GameStateComponent } from '../components/GameStateComponent.ts';
-import type { PhysicsBodyComponent } from '../components/PhysicsBodyComponent.ts';
-import type { TransformComponent } from '../components/TransformComponent.ts';
+import type { PhysicsBodyComponent, TransformComponent } from '../components';
 import { TeamTag } from '../enums/TeamTag.ts';
 
 /**
@@ -180,8 +179,9 @@ export class LockstepManager {
       hasher.addInt(entity.id);
       hasher.addString(FP.ToRaw(fpPos.x).toString());
       hasher.addString(FP.ToRaw(fpPos.z).toString());
-      hasher.addString(FP.ToRaw(physicsBody.velocityX).toString());
-      hasher.addString(FP.ToRaw(physicsBody.velocityZ).toString());
+      const velocity = physicsBody.velocity;
+      hasher.addString(FP.ToRaw(velocity.x).toString());
+      hasher.addString(FP.ToRaw(velocity.z).toString());
       hasher.addBool(checker.isAlive);
     }
 

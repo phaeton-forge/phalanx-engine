@@ -38,6 +38,7 @@
     "@phalanx-engine/client": "workspace:*",
     "@phalanx-engine/ecs": "workspace:*",
     "@phalanx-engine/math": "workspace:*",
+    "@phalanx-engine/physics": "workspace:*",
     "@phalanx-engine/server": "workspace:*",
     "three": "^0.175.0"
   },

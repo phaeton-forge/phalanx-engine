@@ -452,7 +452,7 @@ export class Game {
     );
     this.ui.gameHUD.updateTurnIndicator(localPlayerIndex === 0);
 
-    const { world, flickInputSystem, interpolationSystem } = bootstrapWorld(
+    const { world, flickInputSystem } = bootstrapWorld(
       'online',
       this.sceneCtx,
       this.ctx.manager
@@ -479,10 +479,7 @@ export class Game {
 
     const { composer, controls } = this.sceneCtx;
     world.start({
-      beforeTick: () => interpolationSystem!.snapshotPositions(),
-      afterTick: () => interpolationSystem!.captureCurrentPositions(),
-      beforeFrame: (alpha: number) => {
-        interpolationSystem!.interpolate(alpha);
+      beforeFrame: () => {
         controls.update();
       },
       afterFrame: () => {
