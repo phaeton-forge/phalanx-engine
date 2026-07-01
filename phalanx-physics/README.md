@@ -306,10 +306,37 @@ interface PhysicsWorldConfig {
   defaultFriction?: FixedPoint;  // default FP.FromFloat(0.92)
   maxVelocity?: FixedPoint;      // default FP.FromFloat(15)
   pushStrength?: FixedPoint;     // default FP.FromFloat(15)
+  collisionResponse?: 'push' | 'impulse'; // default 'push'
+  restitution?: FixedPoint;      // impulse mode only; falls back to per-body restitution
   tickProvider?: IPhysicsTickProvider;
   ejectOnBoundsExit?: boolean;   // default false
   settleThreshold?: FixedPoint;  // default FP.FromFloat(0.01)
 }
+```
+
+### Collision Response (`'push'` vs `'impulse'`)
+
+`collisionResponse` selects how overlapping bodies are resolved. It defaults to
+`'push'`, so existing consumers are unchanged.
+
+| Mode | Behavior | Use when |
+|---|---|---|
+| `'push'` *(default)* | Positional separation plus a mass-weighted push velocity scaled by `pushStrength`. Does **not** conserve momentum — a fast body slides past a slower one. Cheap and very stable. | Crowd/soft separation, characters, projectiles that shouldn't ricochet — most real-time games. |
+| `'impulse'` | Momentum-conserving elastic collision along the contact normal. Applies the impulse scalar `j = (1 + e) · vₙ / (1/mₐ + 1/m_b)` (`vₙ` = relative velocity along the normal), with a "skip if separating" guard. Restores the "click / knock-away" feel. | Billiards / Chapayev checkers / air-hockey — anything where a strike must transfer momentum. |
+
+In `'impulse'` mode the restitution coefficient `e` comes from
+`config.restitution` when set, otherwise from the average of the two bodies'
+per-body `restitution`. `e = 0` is perfectly inelastic; `e = 1` is perfectly
+elastic (equal-mass head-on bodies swap velocities). Only the XZ velocity
+components are affected — `velocityY` is left untouched. Static bodies are
+treated as infinite mass (they don't move and reflect the dynamic body).
+
+```typescript
+// Chapayev-style knock-away collisions
+const physicsWorld = new PhysicsWorld({
+  collisionResponse: 'impulse',
+  restitution: FP.FromFloat(0.85),
+});
 ```
 
 ### `TransformComponent`

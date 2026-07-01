@@ -42,8 +42,27 @@ export interface PhysicsConfig {
   maxVelocity: FixedPoint;
   /** Default friction applied per sub-step when entity friction field is 0 */
   defaultFriction: FixedPoint;
-  /** Push strength for collision resolution */
+  /** Push strength for collision resolution (used by the 'push' response) */
   pushStrength: FixedPoint;
+  /**
+   * Collision response model.
+   * - `'push'` (default): positional separation with a mass-weighted push
+   *   velocity. Fast, stable, but does NOT conserve momentum — a fast body
+   *   slides past a slower one instead of knocking it away.
+   * - `'impulse'`: momentum-conserving elastic collision along the contact
+   *   normal (restitution coefficient `e`). Restores the "click / knock-away"
+   *   feel needed for games like Chapayev checkers.
+   *
+   * Default: `'push'`.
+   */
+  collisionResponse?: 'push' | 'impulse';
+  /**
+   * Coefficient of restitution `e` for the `'impulse'` response
+   * (0 = perfectly inelastic, 1 = perfectly elastic). When omitted, the
+   * impulse path falls back to the average of the two bodies' per-body
+   * restitution. Ignored by the `'push'` response.
+   */
+  restitution?: FixedPoint;
   /** Spatial hash grid cell size */
   gridCellSize: FixedPoint;
   /** World bounds for position clamping (optional) */

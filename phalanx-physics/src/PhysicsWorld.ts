@@ -41,6 +41,8 @@ export class PhysicsWorld {
       gridCellSize,
       worldBounds: config?.worldBounds,
       ejectOnBoundsExit: config?.ejectOnBoundsExit,
+      collisionResponse: config?.collisionResponse,
+      restitution: config?.restitution,
     };
 
     this.physicsSystem = new PhysicsSystem(physicsConfig);
