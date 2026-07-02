@@ -57,6 +57,29 @@ type CrazyInviteParams = Record<string, string | number | boolean>;
 /** Fires while the game is running when the player accepts a party invite. */
 type JoinRoomListener = (inviteParams: CrazyInviteParams | null) => void;
 
+/** Subset of the CrazyGames User module user object we consume. */
+interface CrazyUser {
+  username?: string;
+  profilePictureUrl?: string;
+}
+
+/** Fires when the player logs in on CrazyGames while the game is running. */
+type AuthListener = (user: CrazyUser | null) => void;
+
+/** CrazyGames User module (v3), accessed via `SDK.user`. */
+interface CrazyUserModule {
+  /**
+   * Synchronous property (NOT a method): false off-portal / on embedding
+   * domains. Guard every other user call behind it.
+   */
+  readonly isUserAccountAvailable?: boolean;
+  /** Async: resolves the logged-in user, or null when not signed in. */
+  getUser?: () => Promise<CrazyUser | null>;
+  /** Sync: register a login listener (login on CG auto-logs into the game). */
+  addAuthListener?: (listener: AuthListener) => void;
+  removeAuthListener?: (listener: AuthListener) => void;
+}
+
 interface CrazyGamesSDK {
   /**
    * v3 requires explicit async initialisation before any module is usable.
@@ -118,6 +141,8 @@ interface CrazyGamesSDK {
     addJoinRoomListener?: (listener: JoinRoomListener) => void;
     removeJoinRoomListener?: (listener: JoinRoomListener) => void;
   };
+  /** User / account module (v3). Absent off-portal. */
+  user?: CrazyUserModule;
 }
 
 declare global {
@@ -174,6 +199,21 @@ export class CrazyGamesAdapter implements PlatformAdapter {
   private settingsListener: SettingsChangeListener | null = null;
 
   /**
+   * Portal display name resolved during `init()` (CrazyGames User module) and
+   * kept fresh via the auth listener. Null when the player isn't logged in or
+   * account functionality is unavailable (off-portal).
+   */
+  private username: string | null = null;
+
+  /**
+   * Registered auth listener. This adapter lives for the whole page lifecycle
+   * and has no dispose path (same as `settingsListener` / `visibilityHandler`),
+   * so we never unregister it — the field is retained only for reference and
+   * potential future cleanup if a teardown path is ever added.
+   */
+  private authListener: AuthListener | null = null;
+
+  /**
    * Wrapped join listeners currently attached to the SDK. A Set (not a Map
    * keyed by the consumer callback) so the same `cb` can be registered more
    * than once without one registration clobbering another's wrapper — each
@@ -219,6 +259,11 @@ export class CrazyGamesAdapter implements PlatformAdapter {
     this.syncHostMute();
     this.subscribeToSettingsChanges();
 
+    // Resolve the portal display name (User module) + keep it fresh on login.
+    // Off-portal `isUserAccountAvailable` is false, so this is a clean no-op.
+    await this.syncPortalUser();
+    this.subscribeToAuthChanges();
+
     this.visibilityHandler = () => {
       if (document.visibilityState === 'visible') {
         for (const cb of this.resumeListeners) cb();
@@ -249,6 +294,16 @@ export class CrazyGamesAdapter implements PlatformAdapter {
 
   getAuthPayload(): string | null {
     return null;
+  }
+
+  /**
+   * Portal display name resolved from the CrazyGames User module during
+   * `init()` (and refreshed on login). Null when the player isn't logged in or
+   * account functionality is unavailable — callers then fall back to the
+   * server-assigned guest name.
+   */
+  getUsername(): string | null {
+    return this.username;
   }
 
   getLanguage(): Language | null {
@@ -542,6 +597,49 @@ export class CrazyGamesAdapter implements PlatformAdapter {
       console.warn('[CrazyGames] addSettingsChangeListener failed', e);
       this.settingsListener = null;
     }
+  }
+
+  /**
+   * Resolve the portal display name once during init(). `getUser()` is async
+   * and returns null when the player isn't signed in, so we cache whatever we
+   * get and let callers fall back to the server-assigned guest name.
+   */
+  private async syncPortalUser(): Promise<void> {
+    if (this.sdk?.user?.isUserAccountAvailable !== true) return;
+    if (!this.sdk.user.getUser) return;
+    try {
+      const user = await this.sdk.user.getUser();
+      this.username = this.normalizeUsername(user?.username);
+    } catch (e) {
+      console.warn('[CrazyGames] getUser failed', e);
+    }
+  }
+
+  /**
+   * Keep the cached display name fresh: logging in on CrazyGames mid-session
+   * auto-logs into the game and fires this listener. Sync registration; the
+   * listener itself just refreshes the cache for the next network connect.
+   */
+  private subscribeToAuthChanges(): void {
+    // Same guard the User module contract requires for every user call: false
+    // off-portal / on embedding domains, so this stays a clean no-op there.
+    if (this.sdk?.user?.isUserAccountAvailable !== true) return;
+    if (!this.sdk.user.addAuthListener) return;
+    this.authListener = (user: CrazyUser | null) => {
+      this.username = this.normalizeUsername(user?.username);
+    };
+    try {
+      this.sdk.user.addAuthListener(this.authListener);
+    } catch (e) {
+      console.warn('[CrazyGames] addAuthListener failed', e);
+      this.authListener = null;
+    }
+  }
+
+  /** Trim and coerce empty/whitespace-only names to null. */
+  private normalizeUsername(name: string | undefined): string | null {
+    const trimmed = name?.trim();
+    return trimmed ? trimmed : null;
   }
 
   private setAdMuted(muted: boolean): void {

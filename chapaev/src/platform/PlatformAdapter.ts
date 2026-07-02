@@ -41,6 +41,16 @@ export interface PlatformAdapter {
    */
   getAuthPayload(): string | null;
 
+  /**
+   * Portal-provided display name for the local player, when the host exposes a
+   * logged-in account (e.g. the CrazyGames User module). Returned synchronously
+   * from a value the adapter resolved during `init()`; adapters fetch/refresh
+   * it internally. Null when unavailable or the player isn't logged in — the
+   * caller then falls back to the server-assigned guest name. Optional: adapters
+   * without a portal account concept omit it entirely.
+   */
+  getUsername?(): string | null;
+
   // ── Game-specific integration ──────────────────────────────────────
 
   getLanguage(): Language | null;

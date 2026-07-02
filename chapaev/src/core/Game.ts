@@ -157,7 +157,9 @@ export class Game {
   // ── Online-mode bootstrap ───────────────────────────────────────
 
   private bootstrapOnlineCollaborators(): void {
-    this.ctx = new NetworkContext(this.getNetworkOptions());
+    // Provider (not a one-shot value): a CrazyGames login mid-session refreshes
+    // the cached username, and this recomputes it on the next connect/replace.
+    this.ctx = new NetworkContext(() => this.getNetworkOptions());
 
     this.ui.build({
       onFindMatch: () => void this.handleFindMatch(),
@@ -265,6 +267,14 @@ export class Game {
         playerId: `telegram:${userId}`,
         username: `Telegram-${userId}`,
       };
+    }
+
+    // Portal display name (e.g. CrazyGames User module). Optional per platform;
+    // null off-portal or when the player isn't signed in, so the server keeps
+    // assigning a guest name. The name then flows to the opponent's HUD.
+    const username = this.platform.getUsername?.() ?? undefined;
+    if (username) {
+      return { username };
     }
 
     return {};
