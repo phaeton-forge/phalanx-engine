@@ -72,7 +72,7 @@ export class Game {
   private reconnectStateUnsubscribe: (() => void) | null = null;
   private localTeam: TeamTag = TeamTag.White;
   private hasSentClientReady = false;
-  private inGame = false;
+  private inGameFlag = false;
 
   /** Metrika `game_type` for the active session (set when play starts). */
   private activeAnalyticsGameType: string | null = null;
@@ -170,7 +170,7 @@ export class Game {
       getPrivateRoomShareUrl: (code: string) =>
         this.platform.getInviteShareUrl(code),
 
-      isInGame: () => this.inGame,
+      isInGame: () => this.inGameFlag,
     });
 
     this.recovery = new RoomRecoveryManager(
@@ -275,8 +275,24 @@ export class Game {
     this.menuPresenter.startAutoRotate();
   }
 
+  /**
+   * Single source of truth for the "is a match active" flag. Also drives
+   * platform gameplay lifecycle events (CrazyGames requires gameplayStart/Stop
+   * around interactive play). Idempotent transitions are handled by the
+   * adapter's own balancing guards.
+   */
+  private setInGame(value: boolean): void {
+    if (this.inGameFlag === value) return;
+    this.inGameFlag = value;
+    if (value) {
+      this.platform.onGameplayStart?.();
+    } else {
+      this.platform.onGameplayStop?.();
+    }
+  }
+
   private returnToMainMenu(): void {
-    this.inGame = false;
+    this.setInGame(false);
     this.onlineSessionKind = 'none';
     this.hasSentClientReady = false;
     this.clearAnalyticsSession();
@@ -340,7 +356,7 @@ export class Game {
   }
 
   private startLocal(localMode: LocalMode): void {
-    this.inGame = true;
+    this.setInGame(true);
     this.clearSceneAndWorldBeforeNewMatch();
 
     // Replace any previous game screen so HUD callbacks bind to local mode.
@@ -422,7 +438,7 @@ export class Game {
 
     this.clearSceneAndWorldBeforeNewMatch();
 
-    this.inGame = true;
+    this.setInGame(true);
     this.onlineSessionKind = 'network';
     this.hasSentClientReady = false;
 
@@ -502,7 +518,7 @@ export class Game {
 
     this.clearSceneAndWorldBeforeNewMatch();
 
-    this.inGame = true;
+    this.setInGame(true);
     this.onlineSessionKind = 'substitute_ai';
     this.hasSentClientReady = false;
 
@@ -622,7 +638,7 @@ export class Game {
       'reconnectState',
       (snapshot: ReconnectStateEvent) => {
         if (snapshot.state !== 'waiting-for-ready') return;
-        if (!this.inGame || !this.world || !this.hasSentClientReady) return;
+        if (!this.inGameFlag || !this.world || !this.hasSentClientReady) return;
         this.sendClientReady('waiting-for-ready reconnect');
       }
     );
