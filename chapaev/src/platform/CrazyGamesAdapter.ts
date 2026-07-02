@@ -205,7 +205,12 @@ export class CrazyGamesAdapter implements PlatformAdapter {
    */
   private username: string | null = null;
 
-  /** Auth listener kept for teardown. */
+  /**
+   * Registered auth listener. This adapter lives for the whole page lifecycle
+   * and has no dispose path (same as `settingsListener` / `visibilityHandler`),
+   * so we never unregister it — the field is retained only for reference and
+   * potential future cleanup if a teardown path is ever added.
+   */
   private authListener: AuthListener | null = null;
 
   /**
@@ -616,7 +621,10 @@ export class CrazyGamesAdapter implements PlatformAdapter {
    * listener itself just refreshes the cache for the next network connect.
    */
   private subscribeToAuthChanges(): void {
-    if (!this.sdk?.user?.addAuthListener) return;
+    // Same guard the User module contract requires for every user call: false
+    // off-portal / on embedding domains, so this stays a clean no-op there.
+    if (this.sdk?.user?.isUserAccountAvailable !== true) return;
+    if (!this.sdk.user.addAuthListener) return;
     this.authListener = (user: CrazyUser | null) => {
       this.username = this.normalizeUsername(user?.username);
     };

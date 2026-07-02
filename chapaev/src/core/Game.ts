@@ -157,7 +157,9 @@ export class Game {
   // ── Online-mode bootstrap ───────────────────────────────────────
 
   private bootstrapOnlineCollaborators(): void {
-    this.ctx = new NetworkContext(this.getNetworkOptions());
+    // Provider (not a one-shot value): a CrazyGames login mid-session refreshes
+    // the cached username, and this recomputes it on the next connect/replace.
+    this.ctx = new NetworkContext(() => this.getNetworkOptions());
 
     this.ui.build({
       onFindMatch: () => void this.handleFindMatch(),
