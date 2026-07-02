@@ -19,8 +19,13 @@ const GUEST_ID_KEY = 'chapaev_guest_id';
 const CRAZYGAMES_SDK_SCRIPT_ID = 'crazygames-sdk';
 const CRAZYGAMES_SDK_SRC = 'https://sdk.crazygames.com/crazygames-sdk-v3.js';
 
-/** Key under which we round-trip our private-room code in `inviteParams`. */
-const INVITE_ROOM_KEY = 'roomCode';
+// CrazyGames flattens the invite-params object into individual query params on
+// the invite URL and exposes them back via `inviteParams[key]` / getInviteParam.
+// We key our private-room code on `roomId` — the same field showInviteButton /
+// updateRoom already round-trip natively — so the portal serialises it as a
+// plain string. (An earlier attempt nested it under an `inviteParams` object,
+// which the SDK stringified to the literal `[object Object]`.)
+const INVITE_ROOM_KEY = 'roomId';
 
 /**
  * CrazyGames environment as reported by `SDK.environment` (synchronous getter
@@ -124,26 +129,19 @@ interface CrazyGamesSDK {
     // ── Multiplayer / room module (v3) ───────────────────────────────
     /**
      * Invite payload the game was cold-launched with, or null when the launch
-     * was not from an invite. We stash our room code under `roomCode`.
+     * was not from an invite. We stash our room code under `roomId`.
      */
     readonly inviteParams?: CrazyInviteParams | null;
     /**
-     * Announce the current room + joinable state to the portal. Any subset of
-     * fields may be sent; we always send `roomId` + `isJoinable` and, on
-     * create, an `inviteParams` payload so shared links carry the room code.
+     * Announce the current room + joinable state to the portal. We send `roomId`
+     * (which the portal serialises into invite links as `inviteParams.roomId`)
+     * plus `isJoinable`.
      */
-    updateRoom?: (options: {
-      roomId?: string;
-      isJoinable?: boolean;
-      inviteParams?: CrazyInviteParams;
-    }) => void;
+    updateRoom?: (options: { roomId?: string; isJoinable?: boolean }) => void;
     /** Announce the player left their current room. */
     leftRoom?: () => void;
     /** Show the portal's native invite button for a room. */
-    showInviteButton?: (options: {
-      roomId?: string;
-      inviteParams?: CrazyInviteParams;
-    }) => string | void;
+    showInviteButton?: (options: { roomId?: string }) => string | void;
     /** Hide the portal's native invite button. */
     hideInviteButton?: () => void;
     /** Register a listener fired when the player accepts a live party invite. */
@@ -365,11 +363,11 @@ export class CrazyGamesAdapter implements PlatformAdapter {
   // Thin wrappers over `SDK.game.*` (the CrazyGames Multiplayer module). All
   // are guarded so they cleanly no-op off-portal (`disabled`) or when running
   // against an older SDK that lacks the method. The room code is our own
-  // private-room code, carried to the portal as `inviteParams.roomCode`.
+  // private-room code, carried to the portal as `inviteParams.roomId`.
 
   /**
    * Room code the game was cold-launched with, when opened from an invite.
-   * Reads `SDK.game.inviteParams.roomCode` and validates it against the shared
+   * Reads `SDK.game.inviteParams.roomId` and validates it against the shared
    * room-code pattern so a malformed payload can't drive a bogus join. Null
    * off-portal or for a normal (non-invite) launch.
    */
@@ -387,11 +385,9 @@ export class CrazyGamesAdapter implements PlatformAdapter {
     if (this.environment === 'disabled') return;
     const roomId = roomCode.trim().toUpperCase();
     try {
-      this.sdk?.game.updateRoom?.({
-        roomId,
-        isJoinable,
-        inviteParams: { [INVITE_ROOM_KEY]: roomId },
-      });
+      // `roomId` is the invite-param the portal serialises into the share URL,
+      // so a friend opening it gets `inviteParams.roomId` back.
+      this.sdk?.game.updateRoom?.({ roomId, isJoinable });
     } catch (e) {
       console.warn('[CrazyGames] updateRoom failed', e);
     }
@@ -413,10 +409,7 @@ export class CrazyGamesAdapter implements PlatformAdapter {
       // `showInviteButton` returns the portal invite link (same as `inviteLink`)
       // — capture it so our own "copy link" button shares the portal URL, not a
       // raw ?ROOM= one. void return on older SDKs leaves the ?ROOM= fallback.
-      const link = this.sdk?.game.showInviteButton?.({
-        roomId,
-        inviteParams: { [INVITE_ROOM_KEY]: roomId },
-      });
+      const link = this.sdk?.game.showInviteButton?.({ roomId });
       this.portalInviteUrl = typeof link === 'string' && link ? link : null;
     } catch (e) {
       console.warn('[CrazyGames] showInviteButton failed', e);
@@ -485,8 +478,11 @@ export class CrazyGamesAdapter implements PlatformAdapter {
   /** Pull our validated room code out of a portal invite payload. */
   private extractRoomCode(params: CrazyInviteParams | null): string | null {
     const raw = params?.[INVITE_ROOM_KEY];
-    if (typeof raw !== 'string') return null;
-    const code = raw.trim().toUpperCase();
+    // The portal serialises invite params to the URL and hands them back as
+    // strings, but the SDK typings also allow numbers (doc examples use numeric
+    // room ids) — coerce both, reject anything else, then pattern-validate.
+    if (typeof raw !== 'string' && typeof raw !== 'number') return null;
+    const code = String(raw).trim().toUpperCase();
     return ROOM_CODE_PATTERN.test(code) ? code : null;
   }
 
