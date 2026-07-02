@@ -20,6 +20,11 @@ let cached: Platform | null = null;
  *    detection time; do not rely on it alone.
  * 4. CrazyGames — the portal embeds our build in an iframe served from a
  *    `crazygames.com` host, so the referrer/ancestor origin points there.
+ *    On desktop the referrer/ancestorOrigins expose the parent origin; inside
+ *    the CrazyGames mobile app the iframe is cross-origin with an empty
+ *    referrer and no ancestorOrigins, so we additionally treat "embedded in
+ *    any iframe" as a CrazyGames signal (Telegram/Yandex are matched earlier,
+ *    so reaching this branch inside an iframe means the portal embed).
  *    The SDK is loaded in `CrazyGamesAdapter.init()`, and `getEnvironment()`
  *    is the authoritative check for whether ads run — detection here only
  *    needs to route to the adapter. `?useLocalSdk=true` forces this branch
@@ -45,9 +50,9 @@ function resolve(): Platform {
   //    Telegram injects window.Telegram.WebApp; initData is a non-empty string
   //    when the app is opened from a real Telegram client.
   //    Falls back to URL hash when the global isn't injected yet (edge case).
-  const tgWebApp = (window as unknown as Record<string, unknown>)['Telegram'] as
-    | { WebApp?: { initData?: string } }
-    | undefined;
+  const tgWebApp = (window as unknown as Record<string, unknown>)[
+    'Telegram'
+  ] as { WebApp?: { initData?: string } } | undefined;
   if (
     (typeof tgWebApp?.WebApp?.initData === 'string' &&
       tgWebApp.WebApp.initData.length > 0) ||
@@ -92,25 +97,52 @@ function isCrazyGamesHost(): boolean {
     }
 
     // Ancestor origins (Safari/Chromium expose this on the location object).
-    const ancestors = (window.location as unknown as {
-      ancestorOrigins?: { length: number; item(i: number): string | null };
-    }).ancestorOrigins;
+    const ancestors = (
+      window.location as unknown as {
+        ancestorOrigins?: { length: number; item(i: number): string | null };
+      }
+    ).ancestorOrigins;
     if (ancestors) {
       for (let i = 0; i < ancestors.length; i++) {
         const origin = ancestors.item(i);
         if (origin && crazyRe.test(new URL(origin).hostname)) return true;
       }
     }
+
+    // Embedded in an iframe with no usable origin signal. On the CrazyGames
+    // mobile app the parent frame is cross-origin: `document.referrer` is empty
+    // and `ancestorOrigins` is unavailable, so the checks above all miss. By
+    // this point Capacitor/Telegram/Yandex have already been ruled out, so an
+    // iframe embed here is the CrazyGames portal. A false positive is harmless
+    // — the adapter's `getEnvironment()` still gates ads and reports `disabled`
+    // when the SDK isn't actually present. Genuine standalone web runs
+    // top-level (`self === top`), so direct visits stay `standalone`.
+    if (isEmbeddedInIframe()) return true;
   } catch {
     // Cross-origin access can throw; treat as "not detected".
   }
   return false;
 }
 
+/**
+ * True when our document runs inside an iframe. Accessing `window.top` across
+ * origins can throw in some engines, so guard it; a thrown SecurityError itself
+ * implies a cross-origin parent (i.e. we are embedded).
+ */
+function isEmbeddedInIframe(): boolean {
+  try {
+    return window.self !== window.top;
+  } catch {
+    return true;
+  }
+}
+
 /** `?useLocalSdk=true` forces the CrazyGames local SDK harness. */
 function hasUseLocalSdkParam(): boolean {
   try {
-    return new URLSearchParams(window.location.search).get('useLocalSdk') === 'true';
+    return (
+      new URLSearchParams(window.location.search).get('useLocalSdk') === 'true'
+    );
   } catch {
     return false;
   }
@@ -124,4 +156,3 @@ function isYandexGamesCdnHost(): boolean {
     return false;
   }
 }
-
