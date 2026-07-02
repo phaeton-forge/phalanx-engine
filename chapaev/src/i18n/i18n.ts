@@ -5,8 +5,8 @@ type Dict = Record<string, string>;
 const dictionaries: Record<Language, Dict> = {
   en: {
     // Main menu
-    'mainMenu.titleText': 'CHAPAYEV',
-    'mainMenu.subtitle': 'Online board game',
+    'mainMenu.titleText': 'CHAPAEV',
+    'mainMenu.subtitle': 'Flick Checkers',
     'mainMenu.findOpponent': '🔍 Find opponent',
     'mainMenu.privateMatch': '🔑 Private match',
     'mainMenu.localGame': '🎮 Local game',
@@ -85,7 +85,7 @@ const dictionaries: Record<Language, Dict> = {
     // Rules
     'rules.title': '📜 Game rules',
     'rules.html': [
-      '<p><strong>Chapayev</strong> is a board game for two players where checkers are flicked off the board.</p>',
+      '<p><strong>Chapaev</strong> is a board game for two players where checkers are flicked off the board.</p>',
       '<p><strong>Setup.</strong> Each player places 8 checkers on the closest rank. White starts at the bottom, black at the top.</p>',
       '<p><strong>Move.</strong> Players take turns. On your turn, you flick one of your checkers toward the opponent’s. The goal is to knock enemy checkers off the board. If your checker goes off the edge, it also leaves the round.</p>',
       '<p><strong>End of round.</strong> A round ends when one player has no checkers left on the board. The round winner advances their checkers one rank forward. If both sides lose all checkers at the same time, it’s a draw and the round is replayed.</p>',
