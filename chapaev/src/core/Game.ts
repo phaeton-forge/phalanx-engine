@@ -267,6 +267,14 @@ export class Game {
       };
     }
 
+    // Portal display name (e.g. CrazyGames User module). Optional per platform;
+    // null off-portal or when the player isn't signed in, so the server keeps
+    // assigning a guest name. The name then flows to the opponent's HUD.
+    const username = this.platform.getUsername?.() ?? undefined;
+    if (username) {
+      return { username };
+    }
+
     return {};
   }
 
