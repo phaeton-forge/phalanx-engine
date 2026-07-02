@@ -73,6 +73,8 @@ export class Game {
   private flickInputSystem: FlickInputSystem | null = null;
   private commandFlushUnsubscribe: (() => void) | null = null;
   private reconnectStateUnsubscribe: (() => void) | null = null;
+  /** Unsubscribe for the portal live party-invite join listener. */
+  private joinRoomUnsubscribe: (() => void) | null = null;
   private localTeam: TeamTag = TeamTag.White;
   private hasSentClientReady = false;
   private inGameFlag = false;
@@ -123,6 +125,18 @@ export class Game {
     const persistedCode = this.recovery!.loadColdStartCode();
     if (persistedCode) {
       void this.privateRoom!.coldStartRecover(persistedCode);
+      return;
+    }
+
+    // Portal invite cold-launch (CrazyGames): the game was opened from a
+    // friend's party invite carrying a room code. This is a *separate* channel
+    // from the `?ROOM=` / Telegram / Yandex deep-link consumed above, so it
+    // can't double-fire. Join as a guest; wins over instant-multiplayer since
+    // an explicit room to join beats spawning a fresh empty one.
+    const inviteRoomCode = this.platform.getInviteRoomCode?.() ?? null;
+    if (inviteRoomCode) {
+      console.log('[Game] Launched from invite — joining room', inviteRoomCode);
+      void this.privateRoom!.joinRoom(inviteRoomCode);
       return;
     }
 
@@ -202,6 +216,7 @@ export class Game {
     this.privateRoom = new PrivateRoomCoordinator(
       this.ctx,
       this.recovery,
+      this.platform,
       {
         uiManager: this.ui.uiManager,
         matchmaking: this.ui.matchmaking,
@@ -228,6 +243,19 @@ export class Game {
         onQueueTimeoutFallbackAI: () => this.startMatchmakingSubstituteAI(),
       }
     );
+
+    // Live party-invite joins (CrazyGames): the player accepts an invite while
+    // the game is already running (no reload). Ignore it mid-match — Chapaev is
+    // 2/2 and we don't hot-swap an active game — otherwise join the room.
+    this.joinRoomUnsubscribe =
+      this.platform.onJoinRoomRequest?.((roomCode) => {
+        if (this.inGameFlag) {
+          console.log('[Game] Ignoring party invite — already in a match');
+          return;
+        }
+        console.log('[Game] Party invite accepted — joining room', roomCode);
+        void this.privateRoom!.joinRoom(roomCode);
+      }) ?? null;
   }
 
   private getNetworkOptions(): NetworkManagerOptions {
@@ -680,6 +708,8 @@ export class Game {
     this.commandFlushUnsubscribe = null;
     this.reconnectStateUnsubscribe?.();
     this.reconnectStateUnsubscribe = null;
+    this.joinRoomUnsubscribe?.();
+    this.joinRoomUnsubscribe = null;
     if (this.world) {
       this.world.stop();
       this.world.dispose();

@@ -9,6 +9,7 @@ import {
   mapLanguageCode,
   defaultInviteShareUrl,
   consumeUrlRoomCode,
+  ROOM_CODE_PATTERN,
 } from './platformUtils.ts';
 import { audioSettings } from '../config/AudioSettings.ts';
 
@@ -17,6 +18,9 @@ const GUEST_ID_KEY = 'chapaev_guest_id';
 
 const CRAZYGAMES_SDK_SCRIPT_ID = 'crazygames-sdk';
 const CRAZYGAMES_SDK_SRC = 'https://sdk.crazygames.com/crazygames-sdk-v3.js';
+
+/** Key under which we round-trip our private-room code in `inviteParams`. */
+const INVITE_ROOM_KEY = 'roomCode';
 
 /**
  * CrazyGames environment as reported by `SDK.environment` (synchronous getter
@@ -43,6 +47,15 @@ interface CrazyGameSettings {
 }
 
 type SettingsChangeListener = (newSettings: CrazyGameSettings) => void;
+
+/**
+ * Free-form invite payload the portal round-trips between the inviter and the
+ * invitee. We only ever put our room code in it, under the `roomCode` key.
+ */
+type CrazyInviteParams = Record<string, string | number | boolean>;
+
+/** Fires while the game is running when the player accepts a party invite. */
+type JoinRoomListener = (inviteParams: CrazyInviteParams | null) => void;
 
 interface CrazyGamesSDK {
   /**
@@ -75,6 +88,35 @@ interface CrazyGamesSDK {
      * room (e.g. launched from the Multiplayer landing page or a party).
      */
     readonly isInstantMultiplayer?: boolean;
+
+    // ── Multiplayer / room module (v3) ───────────────────────────────
+    /**
+     * Invite payload the game was cold-launched with, or null when the launch
+     * was not from an invite. We stash our room code under `roomCode`.
+     */
+    readonly inviteParams?: CrazyInviteParams | null;
+    /**
+     * Announce the current room + joinable state to the portal. Any subset of
+     * fields may be sent; we always send `roomId` + `isJoinable` and, on
+     * create, an `inviteParams` payload so shared links carry the room code.
+     */
+    updateRoom?: (options: {
+      roomId?: string;
+      isJoinable?: boolean;
+      inviteParams?: CrazyInviteParams;
+    }) => void;
+    /** Announce the player left their current room. */
+    leftRoom?: () => void;
+    /** Show the portal's native invite button for a room. */
+    showInviteButton?: (options: {
+      roomId?: string;
+      inviteParams?: CrazyInviteParams;
+    }) => string | void;
+    /** Hide the portal's native invite button. */
+    hideInviteButton?: () => void;
+    /** Register a listener fired when the player accepts a live party invite. */
+    addJoinRoomListener?: (listener: JoinRoomListener) => void;
+    removeJoinRoomListener?: (listener: JoinRoomListener) => void;
   };
 }
 
@@ -130,6 +172,12 @@ export class CrazyGamesAdapter implements PlatformAdapter {
   private resumeListeners: Array<() => void> = [];
   private visibilityHandler: (() => void) | null = null;
   private settingsListener: SettingsChangeListener | null = null;
+
+  /** Wrappers around consumer join callbacks, kept for later removal. */
+  private joinRoomListeners = new Map<
+    (roomCode: string) => void,
+    JoinRoomListener
+  >();
 
   /** True while a midgame ad is on screen — prevents overlapping requests. */
   private adInFlight = false;
@@ -228,6 +276,121 @@ export class CrazyGamesAdapter implements PlatformAdapter {
     } catch {
       return false;
     }
+  }
+
+  // ── Multiplayer room API ───────────────────────────────────────────
+  // Thin wrappers over `SDK.game.*` (the CrazyGames Multiplayer module). All
+  // are guarded so they cleanly no-op off-portal (`disabled`) or when running
+  // against an older SDK that lacks the method. The room code is our own
+  // private-room code, carried to the portal as `inviteParams.roomCode`.
+
+  /**
+   * Room code the game was cold-launched with, when opened from an invite.
+   * Reads `SDK.game.inviteParams.roomCode` and validates it against the shared
+   * room-code pattern so a malformed payload can't drive a bogus join. Null
+   * off-portal or for a normal (non-invite) launch.
+   */
+  getInviteRoomCode(): string | null {
+    if (this.environment === 'disabled') return null;
+    try {
+      return this.extractRoomCode(this.sdk?.game.inviteParams ?? null);
+    } catch (e) {
+      console.warn('[CrazyGames] reading inviteParams failed', e);
+      return null;
+    }
+  }
+
+  updateRoom(roomCode: string, isJoinable: boolean): void {
+    if (this.environment === 'disabled') return;
+    const roomId = roomCode.trim().toUpperCase();
+    try {
+      this.sdk?.game.updateRoom?.({
+        roomId,
+        isJoinable,
+        inviteParams: { [INVITE_ROOM_KEY]: roomId },
+      });
+    } catch (e) {
+      console.warn('[CrazyGames] updateRoom failed', e);
+    }
+  }
+
+  leftRoom(): void {
+    if (this.environment === 'disabled') return;
+    try {
+      this.sdk?.game.leftRoom?.();
+    } catch (e) {
+      console.warn('[CrazyGames] leftRoom failed', e);
+    }
+  }
+
+  showInviteButton(roomCode: string): void {
+    if (this.environment === 'disabled') return;
+    const roomId = roomCode.trim().toUpperCase();
+    try {
+      this.sdk?.game.showInviteButton?.({
+        roomId,
+        inviteParams: { [INVITE_ROOM_KEY]: roomId },
+      });
+    } catch (e) {
+      console.warn('[CrazyGames] showInviteButton failed', e);
+    }
+  }
+
+  hideInviteButton(): void {
+    if (this.environment === 'disabled') return;
+    try {
+      this.sdk?.game.hideInviteButton?.();
+    } catch (e) {
+      console.warn('[CrazyGames] hideInviteButton failed', e);
+    }
+  }
+
+  /**
+   * Subscribe to live party-invite joins. We wrap the consumer callback so the
+   * portal's raw `inviteParams` is decoded to our room code and validated
+   * before the game acts on it; an invite with a missing/invalid code is
+   * ignored rather than driving a bogus join.
+   */
+  onJoinRoomRequest(cb: (roomCode: string) => void): () => void {
+    if (
+      this.environment === 'disabled' ||
+      !this.sdk?.game.addJoinRoomListener
+    ) {
+      return () => {};
+    }
+
+    const wrapped: JoinRoomListener = (inviteParams) => {
+      const roomCode = this.extractRoomCode(inviteParams);
+      if (roomCode) cb(roomCode);
+    };
+    this.joinRoomListeners.set(cb, wrapped);
+
+    try {
+      this.sdk.game.addJoinRoomListener(wrapped);
+    } catch (e) {
+      console.warn('[CrazyGames] addJoinRoomListener failed', e);
+      this.joinRoomListeners.delete(cb);
+      return () => {};
+    }
+
+    return () => {
+      const listener = this.joinRoomListeners.get(cb);
+      if (!listener) return;
+      this.joinRoomListeners.delete(cb);
+      try {
+        this.sdk?.game.removeJoinRoomListener?.(listener);
+      } catch (e) {
+        console.warn('[CrazyGames] removeJoinRoomListener failed', e);
+      }
+    };
+  }
+
+  /** Pull our validated room code out of a portal invite payload. */
+  private extractRoomCode(params: CrazyInviteParams | null): string | null {
+    const raw = params?.[INVITE_ROOM_KEY];
+    if (typeof raw !== 'string') return null;
+    const code = raw.trim().toUpperCase();
+    return ROOM_CODE_PATTERN.test(code) ? code : null;
   }
 
   async tryShowFullscreenAd(

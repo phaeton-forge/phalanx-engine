@@ -1,6 +1,7 @@
 import type { CountdownEvent, MatchFoundEvent } from '@phalanx-engine/client';
 import type { NetworkContext } from './NetworkContext.ts';
 import type { RoomRecoveryManager } from './RoomRecoveryManager.ts';
+import type { PlatformAdapter } from '../platform/PlatformAdapter.ts';
 import type { UIManager } from '../ui/UIManager.ts';
 import type { MatchmakingScreen } from '../ui/screens/Matchmaking.ts';
 import type { PrivateMatchScreen } from '../ui/screens/PrivateMatch.ts';
@@ -31,9 +32,17 @@ interface UIRefs {
  * coordinator does not need its own copy of that timer.
  */
 export class PrivateRoomCoordinator {
+  /**
+   * Room the local player is currently in, tracked so the portal room state
+   * (CrazyGames Multiplayer module) can be announced on join and cleared on
+   * leave. Null when not in any private room.
+   */
+  private currentRoomCode: string | null = null;
+
   constructor(
     private readonly ctx: NetworkContext,
     private readonly recovery: RoomRecoveryManager,
+    private readonly platform: PlatformAdapter,
     private readonly ui: UIRefs,
     private readonly callbacks: PrivateRoomCallbacks
   ) {}
@@ -60,6 +69,10 @@ export class PrivateRoomCoordinator {
       // socket can be torn down at any moment on mobile.
       this.recovery.startTrackingHostRoom(roomCode);
 
+      // Announce the joinable room to the portal + show the native invite CTA
+      // so friends can be pulled in while we sit on the waiting screen.
+      this.enterPortalRoom(roomCode);
+
       uiManager.hideScreen('matchmaking');
       privateMatch.showWaiting(roomCode);
       uiManager.showScreen('private-match');
@@ -76,6 +89,7 @@ export class PrivateRoomCoordinator {
       matchmaking.setStatus(t('net.connectionError'));
       matchmaking.stopTimer();
       this.recovery.stop();
+      this.leavePortalRoom();
       this.callbacks.onCancelled();
     }
   }
@@ -140,6 +154,12 @@ export class PrivateRoomCoordinator {
         gameStartEvent.randomSeed
       );
 
+      // The guest is now in an active, full room. Announce the association so
+      // the portal treats the player as in-room (non-joinable) rather than
+      // free-roaming; no invite button for the joining side.
+      this.currentRoomCode = normalizedCode;
+      this.closePortalRoom();
+
       this.ctx.manager.setMatchData(matchData);
       this.ctx.cleanupConnectListeners();
       this.recovery.stop();
@@ -155,6 +175,7 @@ export class PrivateRoomCoordinator {
       matchmaking.setStatus(t('net.errorPrefix', { message }));
       matchmaking.stopTimer();
       this.recovery.stop();
+      this.leavePortalRoom();
       setTimeout(() => this.callbacks.onCancelled(), 2500);
     }
   }
@@ -187,17 +208,24 @@ export class PrivateRoomCoordinator {
         this.recovery.stop();
         privateMatch.stopWaitingTimer();
         uiManager.hideScreen('private-match');
+        // Recovery as host failed — fall back to joining as a guest, which
+        // manages its own portal room state from scratch.
+        this.leavePortalRoom();
         await this.joinRoom(normalizedCode);
         return;
       }
 
       this.recovery.resumeTrackingHostRoom(normalizedCode);
+      // Reclaimed the room as host — re-announce it as joinable to the portal
+      // (matchPromise will close it once the second player arrives).
+      this.enterPortalRoom(normalizedCode);
       await matchPromise;
     } catch (error) {
       console.error('[PrivateRoom] Deep-link room open failed:', error);
       matchmaking.setStatus(t('net.connectionError'));
       matchmaking.stopTimer();
       this.recovery.stop();
+      this.leavePortalRoom();
       this.callbacks.onCancelled();
     }
   }
@@ -221,6 +249,9 @@ export class PrivateRoomCoordinator {
       this.recovery.resumeTrackingHostRoom(code);
       const matchPromise = this.awaitMatchStart(matchmaking);
 
+      // Reclaimed our host room after a hard reload — re-announce it joinable.
+      this.enterPortalRoom(code);
+
       await this.recovery.tryRecover();
       // Either matchPromise resolves (server's pending-recover replayed
       // match-found → game-start) or we sit on the waiting screen.
@@ -231,6 +262,7 @@ export class PrivateRoomCoordinator {
       // and only `returnToMainMenu`s on terminal outcomes itself. If we
       // get here some unexpected error escaped — fall back.
       this.recovery.stop();
+      this.leavePortalRoom();
       this.callbacks.onCancelled();
     }
   }
@@ -240,7 +272,39 @@ export class PrivateRoomCoordinator {
     this.ui.privateMatch.stopWaitingTimer();
     this.ui.matchmaking.stopTimer();
     this.recovery.stop();
+    this.leavePortalRoom();
     this.callbacks.onCancelled();
+  }
+
+  // ── Portal room-state announcements ──────────────────────────────
+  // Mirror the private-room lifecycle to the platform (CrazyGames Multiplayer
+  // module). Every method is a clean no-op on adapters that don't implement
+  // the optional room API (Telegram, Yandex, standalone).
+
+  /** Player has entered a joinable room: announce it + surface an invite CTA. */
+  private enterPortalRoom(roomCode: string): void {
+    this.currentRoomCode = roomCode;
+    this.platform.updateRoom?.(roomCode, true);
+    this.platform.showInviteButton?.(roomCode);
+  }
+
+  /**
+   * Room can no longer be joined (match starting / room full). Keep the room
+   * association but flip it closed and drop the invite CTA. Chapaev is a fixed
+   * 2-player game, so a started match is always full.
+   */
+  private closePortalRoom(): void {
+    if (this.currentRoomCode) {
+      this.platform.updateRoom?.(this.currentRoomCode, false);
+    }
+    this.platform.hideInviteButton?.();
+  }
+
+  /** Player left the room entirely (cancel / error / return to menu). */
+  private leavePortalRoom(): void {
+    this.currentRoomCode = null;
+    this.platform.hideInviteButton?.();
+    this.platform.leftRoom?.();
   }
 
   // ── Internals ────────────────────────────────────────────────────
@@ -297,6 +361,10 @@ export class PrivateRoomCoordinator {
       const matchData = await matchFoundPromise;
       privateMatch.stopWaitingTimer();
       matchmaking.stopTimer();
+
+      // Second player is in — the room is now full (Chapaev is 2/2). Tell the
+      // portal it's no longer joinable and retire the invite button.
+      this.closePortalRoom();
 
       trackMatchFound('private');
 

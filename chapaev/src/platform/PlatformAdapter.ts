@@ -132,4 +132,55 @@ export interface PlatformAdapter {
    * immediately. Adapters without this concept omit it (treated as false).
    */
   isInstantMultiplayer?(): boolean;
+
+  // ── Multiplayer room API (optional, portal-specific) ───────────────
+  //
+  // These mirror the CrazyGames "Multiplayer" module. They let the portal
+  // track which room the player is in, whether that room still accepts new
+  // players, and how to invite friends. Adapters that don't run inside such a
+  // portal (Telegram, Yandex, standalone) omit them entirely — callers reach
+  // them through optional chaining, so absence is a clean no-op.
+
+  /**
+   * Room-launch params captured when the game was cold-started from an invite
+   * (i.e. a friend shared a link and the invitee opened a fresh instance).
+   * Returns the room code to join, or null when the launch was not an invite.
+   * On CrazyGames this reads `SDK.game.inviteParams` and pulls out our room
+   * code. Distinct from `getLaunchRoomCode()`, which covers the `?ROOM=` /
+   * Telegram / Yandex deep-link channels; adapters must not report the same
+   * launch through both to avoid double-joining.
+   */
+  getInviteRoomCode?(): string | null;
+
+  /**
+   * Announce to the portal that the player is now in room `roomCode` and
+   * whether it currently accepts new players (`isJoinable`). Called on room
+   * creation (`isJoinable: true`) and again when the room fills / the match
+   * starts (`isJoinable: false`). Building the portal invite payload from the
+   * room code is the adapter's responsibility.
+   */
+  updateRoom?(roomCode: string, isJoinable: boolean): void;
+
+  /**
+   * Announce that the player has left their current room (cancel, leave match,
+   * return to menu). Clears any portal-side room/invite state. Idempotent.
+   */
+  leftRoom?(): void;
+
+  /**
+   * Show the portal's native "invite friends" button for `roomCode` (e.g.
+   * CrazyGames renders one in its footer). Balanced by `hideInviteButton`.
+   */
+  showInviteButton?(roomCode: string): void;
+
+  /** Hide the portal's native invite button. Idempotent. */
+  hideInviteButton?(): void;
+
+  /**
+   * Subscribe to portal-driven "join this room now" events fired while the
+   * game is already running (e.g. the player accepts a party invite without a
+   * reload). The callback receives the room code to join. Returns an
+   * unsubscribe fn. Adapters without live invites return a no-op unsubscribe.
+   */
+  onJoinRoomRequest?(cb: (roomCode: string) => void): () => void;
 }
