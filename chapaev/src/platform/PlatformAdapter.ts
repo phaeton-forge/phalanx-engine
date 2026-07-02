@@ -1,6 +1,11 @@
 import type { Language } from '../i18n/i18n.ts';
 
-export type Platform = 'telegram' | 'yandex' | 'capacitor' | 'standalone';
+export type Platform =
+  | 'telegram'
+  | 'yandex'
+  | 'crazygames'
+  | 'capacitor'
+  | 'standalone';
 export type AuthScheme = 'telegram' | 'yandex' | 'guest';
 
 export interface SafeAreaInsets {
@@ -103,5 +108,20 @@ export interface PlatformAdapter {
    * Used during an active match.
    */
   setClosingConfirmation(enabled: boolean): void;
+
+  // ── Gameplay lifecycle (optional) ──────────────────────────────────
+
+  /**
+   * Signal that active, interactive gameplay has started (a match began).
+   * Portals like CrazyGames use this to gate happy-time ads and analytics.
+   * Optional: adapters without a gameplay concept omit it.
+   */
+  onGameplayStart?(): void;
+
+  /**
+   * Signal that active gameplay has ended (returned to menu, results, pause).
+   * Must be balanced with `onGameplayStart`. Optional.
+   */
+  onGameplayStop?(): void;
 }
 

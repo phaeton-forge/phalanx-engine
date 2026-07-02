@@ -60,6 +60,12 @@ async function bootstrap(): Promise<void> {
       adapter = new YandexAdapter();
       break;
     }
+    case 'crazygames': {
+      const { CrazyGamesAdapter } =
+        await import('./platform/CrazyGamesAdapter.ts');
+      adapter = new CrazyGamesAdapter();
+      break;
+    }
     case 'capacitor': {
       const { CapacitorAdapter } =
         await import('./platform/CapacitorAdapter.ts');

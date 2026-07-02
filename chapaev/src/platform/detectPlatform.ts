@@ -1,4 +1,9 @@
-export type Platform = 'telegram' | 'yandex' | 'capacitor' | 'standalone';
+export type Platform =
+  | 'telegram'
+  | 'yandex'
+  | 'crazygames'
+  | 'capacitor'
+  | 'standalone';
 
 let cached: Platform | null = null;
 
@@ -13,7 +18,13 @@ let cached: Platform | null = null;
  *    or `YaGames` already on `window` (e.g. host injected the script before our bundle).
  *    The SDK is loaded in `YandexAdapter.init()`, so `YaGames` is usually absent at
  *    detection time; do not rely on it alone.
- * 4. Standalone browser / local dev.
+ * 4. CrazyGames — the portal embeds our build in an iframe served from a
+ *    `crazygames.com` host, so the referrer/ancestor origin points there.
+ *    The SDK is loaded in `CrazyGamesAdapter.init()`, and `getEnvironment()`
+ *    is the authoritative check for whether ads run — detection here only
+ *    needs to route to the adapter. `?useLocalSdk=true` forces this branch
+ *    for local SDK testing.
+ * 5. Standalone browser / local dev.
  */
 export function detectPlatform(): Platform {
   if (cached !== null) return cached;
@@ -53,7 +64,56 @@ function resolve(): Platform {
   );
   if (hasYaGames || hasYandexParam || isYandexGamesCdnHost()) return 'yandex';
 
+  // 4. CrazyGames — embedded in a crazygames.com iframe, or forced locally.
+  if (isCrazyGamesHost() || hasUseLocalSdkParam()) return 'crazygames';
+
   return 'standalone';
+}
+
+/**
+ * True when our document is embedded by the CrazyGames portal. The build runs
+ * inside an iframe whose parent/ancestor origin is a `crazygames.com` host.
+ * We check the referrer and, when accessible, the ancestor origins — both are
+ * cheap best-effort signals. `getEnvironment()` in the adapter is the real
+ * authority for enabling ads, so a false positive here is harmless (it just
+ * loads the SDK, which then reports `disabled`).
+ */
+function isCrazyGamesHost(): boolean {
+  try {
+    const crazyRe = /(^|\.)crazygames\.com$/i;
+
+    // Own hostname (covers direct hosting on a crazygames subdomain).
+    if (crazyRe.test(window.location.hostname)) return true;
+
+    // Referrer of the embedding page.
+    if (document.referrer) {
+      const refHost = new URL(document.referrer).hostname;
+      if (crazyRe.test(refHost)) return true;
+    }
+
+    // Ancestor origins (Safari/Chromium expose this on the location object).
+    const ancestors = (window.location as unknown as {
+      ancestorOrigins?: { length: number; item(i: number): string | null };
+    }).ancestorOrigins;
+    if (ancestors) {
+      for (let i = 0; i < ancestors.length; i++) {
+        const origin = ancestors.item(i);
+        if (origin && crazyRe.test(new URL(origin).hostname)) return true;
+      }
+    }
+  } catch {
+    // Cross-origin access can throw; treat as "not detected".
+  }
+  return false;
+}
+
+/** `?useLocalSdk=true` forces the CrazyGames local SDK harness. */
+function hasUseLocalSdkParam(): boolean {
+  try {
+    return new URLSearchParams(window.location.search).get('useLocalSdk') === 'true';
+  } catch {
+    return false;
+  }
 }
 
 /** True when the game document is served from Yandex Games object storage (production iframe). */
