@@ -890,6 +890,95 @@ html[data-platform='telegram'] {
   }
 }
 
+/* ── Landscape on short viewports (phones held sideways) ──────────
+ * The top/bottom bars are opaque full-width strips. In portrait that's
+ * fine, but in landscape vertical space is scarce and those strips crush
+ * the board into a thin band. Here we shrink them and let them float as
+ * translucent overlays over the scene (no border strip, subtler blur) so
+ * the board reclaims the full height. `.hud-container` justify-content is
+ * neutralised so bars don't stretch the middle. */
+@media (orientation: landscape) and (max-height: 500px) {
+  .hud-container {
+    justify-content: flex-start;
+  }
+
+  .hud-top-bar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    flex-wrap: nowrap;
+    min-height: 0;
+    padding-top: calc(var(--hud-safe-top) + 2px);
+    padding-bottom: 4px;
+    padding-left: calc(10px + var(--hud-safe-left));
+    padding-right: calc(10px + var(--hud-safe-right));
+    /* Fade from a light scrim at the top to transparent so text stays
+     * readable without a hard opaque strip eating the board. */
+    background: linear-gradient(
+      to bottom,
+      rgba(20, 15, 10, 0.72),
+      rgba(20, 15, 10, 0)
+    );
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border-bottom: none;
+    gap: 6px;
+  }
+
+  /* Round info stays inline (centre) instead of wrapping to its own row. */
+  .hud-round-info {
+    order: 0;
+    flex: 0 0 auto;
+    font-size: 0.72rem;
+    margin-bottom: 0;
+  }
+
+  .hud-player-info .player-name {
+    max-width: 90px;
+    font-size: 12px;
+  }
+
+  .hud-player-info .avatar {
+    width: 24px;
+    height: 24px;
+  }
+
+  .hud-bottom-bar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding-top: 4px;
+    padding-bottom: calc(var(--hud-safe-bottom) + 4px);
+    padding-left: calc(12px + var(--hud-safe-left));
+    padding-right: calc(12px + var(--hud-safe-right));
+    background: linear-gradient(
+      to top,
+      rgba(20, 15, 10, 0.72),
+      rgba(20, 15, 10, 0)
+    );
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border-top: none;
+  }
+
+  /* Smaller tap targets: still comfortably above the ~44px min. */
+  .hud-bottom-bar button {
+    min-width: 44px;
+    min-height: 44px;
+    font-size: 20px;
+    padding: 6px 10px;
+  }
+
+  /* Sit just above the bottom overlay rather than 104px up. */
+  .hud-turn-indicator {
+    bottom: calc(var(--hud-safe-bottom) + 52px);
+    padding: 5px 18px;
+    font-size: 14px;
+  }
+}
+
 /* ── Toast Notifications ───────────────────────────────────────── */
 
 .hud-toast-container {

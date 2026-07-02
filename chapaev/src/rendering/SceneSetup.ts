@@ -134,6 +134,7 @@ export function setupScene(canvas: HTMLCanvasElement): SceneContext {
     CAMERA_FAR
   );
   camera.position.set(CAMERA_POSITION.x, CAMERA_POSITION.y, CAMERA_POSITION.z);
+  applyAspectFov(camera);
 
   // ── OrbitControls ────────────────────────────────────────────
   const controls = new OrbitControls(camera, renderer.domElement);
@@ -334,12 +335,43 @@ export function setupScene(canvas: HTMLCanvasElement): SceneContext {
   // ── Resize handler ──────────────────────────────────────────
   window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
+    applyAspectFov(camera);
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
     composer.setSize(window.innerWidth, window.innerHeight);
   });
 
   return { scene, camera, renderer, controls, composer };
+}
+
+/**
+ * Keep the board framed across orientations. `CAMERA_FOV` is tuned for a
+ * portrait-ish viewport (vertical FOV). In a wide/landscape viewport that
+ * same vertical FOV leaves the board looking distant and tiny, because the
+ * board's width — not its height — is now the limiting dimension.
+ *
+ * Fix: below a reference aspect we keep the design FOV; above it we treat
+ * `CAMERA_FOV` as the *horizontal* FOV target and derive the vertical FOV
+ * from the current aspect (Hor+ framing). This widens the vertical FOV as
+ * the viewport gets wider, so the board keeps filling the short axis. A
+ * clamp stops the FOV from blowing up on extreme aspects.
+ */
+function applyAspectFov(camera: THREE.PerspectiveCamera): void {
+  const REFERENCE_ASPECT = 1; // at/below square, use the design FOV as-is
+  const MAX_FOV = 100; // guard against extreme wide viewports
+  const aspect = camera.aspect;
+
+  if (aspect <= REFERENCE_ASPECT) {
+    camera.fov = CAMERA_FOV;
+    return;
+  }
+
+  // Treat CAMERA_FOV as the horizontal FOV we want to preserve, then solve
+  // for the vertical FOV that yields it at the current aspect ratio.
+  const halfH = THREE.MathUtils.degToRad(CAMERA_FOV) / 2;
+  const targetHorizontal = 2 * Math.atan(Math.tan(halfH) * REFERENCE_ASPECT);
+  const verticalFov = 2 * Math.atan(Math.tan(targetHorizontal / 2) / aspect);
+  camera.fov = Math.min(THREE.MathUtils.radToDeg(verticalFov), MAX_FOV);
 }
 
 /**
