@@ -173,11 +173,13 @@ export class CrazyGamesAdapter implements PlatformAdapter {
   private visibilityHandler: (() => void) | null = null;
   private settingsListener: SettingsChangeListener | null = null;
 
-  /** Wrappers around consumer join callbacks, kept for later removal. */
-  private joinRoomListeners = new Map<
-    (roomCode: string) => void,
-    JoinRoomListener
-  >();
+  /**
+   * Wrapped join listeners currently attached to the SDK. A Set (not a Map
+   * keyed by the consumer callback) so the same `cb` can be registered more
+   * than once without one registration clobbering another's wrapper — each
+   * `onJoinRoomRequest` call owns exactly the wrapper it created.
+   */
+  private joinRoomListeners = new Set<JoinRoomListener>();
 
   /** True while a midgame ad is on screen — prevents overlapping requests. */
   private adInFlight = false;
@@ -352,33 +354,40 @@ export class CrazyGamesAdapter implements PlatformAdapter {
    * ignored rather than driving a bogus join.
    */
   onJoinRoomRequest(cb: (roomCode: string) => void): () => void {
+    // Require BOTH add and remove: registering a listener we can't later
+    // detach would violate the "returns an unsubscribe fn" contract and leak.
+    const game = this.sdk?.game;
     if (
       this.environment === 'disabled' ||
-      !this.sdk?.game.addJoinRoomListener
+      !game?.addJoinRoomListener ||
+      !game.removeJoinRoomListener
     ) {
       return () => {};
     }
 
+    // Each call gets its own wrapper, tracked by identity in a Set — so the
+    // same `cb` registered twice yields two independent, separately-removable
+    // subscriptions rather than one clobbering the other.
     const wrapped: JoinRoomListener = (inviteParams) => {
       const roomCode = this.extractRoomCode(inviteParams);
       if (roomCode) cb(roomCode);
     };
-    this.joinRoomListeners.set(cb, wrapped);
 
     try {
-      this.sdk.game.addJoinRoomListener(wrapped);
+      game.addJoinRoomListener(wrapped);
     } catch (e) {
       console.warn('[CrazyGames] addJoinRoomListener failed', e);
-      this.joinRoomListeners.delete(cb);
       return () => {};
     }
+    this.joinRoomListeners.add(wrapped);
 
+    let removed = false;
     return () => {
-      const listener = this.joinRoomListeners.get(cb);
-      if (!listener) return;
-      this.joinRoomListeners.delete(cb);
+      if (removed || !this.joinRoomListeners.has(wrapped)) return;
+      removed = true;
+      this.joinRoomListeners.delete(wrapped);
       try {
-        this.sdk?.game.removeJoinRoomListener?.(listener);
+        this.sdk?.game.removeJoinRoomListener?.(wrapped);
       } catch (e) {
         console.warn('[CrazyGames] removeJoinRoomListener failed', e);
       }
