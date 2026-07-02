@@ -34,6 +34,15 @@ type CrazyEnvironment = 'local' | 'crazygames' | 'disabled';
 
 type AdType = 'midgame' | 'rewarded';
 
+/**
+ * Basic-launch monetization switch. CrazyGames' "Basic Implementation" tier
+ * requires monetization to be DISABLED (no SDK ads), so we gate every ad
+ * request behind this flag rather than deleting the code. Flip to `true` when
+ * we graduate to the Full tier (ads via SDK, AdBlock handling, guideline
+ * compliance) — the `requestAd` plumbing below is already wired.
+ */
+const MONETIZATION_ENABLED = false;
+
 interface CrazyAdCallbacks {
   adStarted?: () => void;
   adFinished?: () => void;
@@ -171,9 +180,11 @@ function createGuestUserId(): string {
  *   our own domain or inside Telegram.
  * - v3 requires `await SDK.init()` before any module call; `environment` is a
  *   synchronous getter afterwards.
- * - Ads are shown via `SDK.ad.requestAd('midgame', …)`. Frequency capping is
- *   owned by CrazyGames — we intentionally do NOT use FullscreenAdGate here
- *   (calling requestAd too often just triggers an adError, which we swallow).
+ * - Ads are gated behind `MONETIZATION_ENABLED` (false for the Basic launch
+ *   tier, which mandates monetization off). When enabled they'd be shown via
+ *   `SDK.ad.requestAd('midgame', …)`; frequency capping is owned by CrazyGames
+ *   — we intentionally do NOT use FullscreenAdGate here (calling requestAd too
+ *   often just triggers an adError, which we swallow).
  * - Audio muting has TWO sources, both routed through the transient
  *   `audioSettings.setMasterMuted()` master flag (never persisted, never
  *   clobbers the player's own volume sliders):
@@ -460,6 +471,10 @@ export class CrazyGamesAdapter implements PlatformAdapter {
   async tryShowFullscreenAd(
     _options: { blocking?: boolean } = {}
   ): Promise<boolean> {
+    // Basic launch: monetization is disabled per CrazyGames' Basic tier, so we
+    // never issue an ad request. Resolves `false` ("no ad shown") so callers
+    // proceed straight into gameplay. Flip MONETIZATION_ENABLED for Full tier.
+    if (!MONETIZATION_ENABLED) return false;
     // Ads only exist inside the real portal. On our own domain (`disabled`)
     // or local harness without ads, skip cleanly.
     if (!this.sdk || this.environment !== 'crazygames') return false;
