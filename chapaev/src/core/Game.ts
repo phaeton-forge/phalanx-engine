@@ -15,7 +15,10 @@ import { GameHUDScreen } from '../ui/screens/GameHUD.ts';
 import { bindHUDToWorld } from '../ui/HUDBindings.ts';
 import { bootstrapWorld } from './WorldBootstrapper.ts';
 import { PauseController } from './PauseController.ts';
-import type { MatchFoundEvent, ReconnectStateEvent } from '@phalanx-engine/client';
+import type {
+  MatchFoundEvent,
+  ReconnectStateEvent,
+} from '@phalanx-engine/client';
 import type { PlatformAdapter } from '../platform/PlatformAdapter.ts';
 import { t } from '../i18n/i18n.ts';
 import { generateBotOpponentDisplayName } from '../util/botOpponentName.ts';
@@ -120,6 +123,17 @@ export class Game {
     const persistedCode = this.recovery!.loadColdStartCode();
     if (persistedCode) {
       void this.privateRoom!.coldStartRecover(persistedCode);
+      return;
+    }
+
+    // Instant Multiplayer (CrazyGames): launched from the Multiplayer landing
+    // page or a party invite with no specific room to join — create a fresh
+    // joinable private room straight away instead of showing the menu, so
+    // friends can join immediately. Checked AFTER deep-link / cold-start so an
+    // explicit room to join always wins over spawning a new empty one.
+    if (this.platform.isInstantMultiplayer?.()) {
+      console.log('[Game] Instant multiplayer — creating room on launch');
+      void this.privateRoom!.createRoom();
       return;
     }
 

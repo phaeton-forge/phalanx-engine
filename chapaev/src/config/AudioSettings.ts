@@ -21,6 +21,17 @@ class AudioSettingsStore {
   private data: AudioSettingsData;
   private readonly listeners: ChangeListener[] = [];
 
+  /**
+   * Transient master mute, layered ON TOP of the user's volume preferences
+   * without overwriting them. Used for platform-driven muting (CrazyGames
+   * `settings.muteAudio`, in-ad muting, etc.). Never persisted: it reflects a
+   * runtime host/ad state, not a user choice, so a page reload starts unmuted
+   * and re-syncs from the SDK. When `true`, `effective*Volume` returns 0 while
+   * `musicVolume`/`sfxVolume` keep the real values — so opening the in-game
+   * audio settings during a mute never clobbers what the player had set.
+   */
+  private masterMuted = false;
+
   constructor() {
     this.data = this.load();
   }
@@ -42,6 +53,30 @@ class AudioSettingsStore {
   public set sfxVolume(value: number) {
     this.data.sfxVolume = Math.max(0, Math.min(1, value));
     this.save();
+    this.notify();
+  }
+
+  /** Music volume after applying master mute. Consumers should read this. */
+  public get effectiveMusicVolume(): number {
+    return this.masterMuted ? 0 : this.data.musicVolume;
+  }
+
+  /** SFX volume after applying master mute. Consumers should read this. */
+  public get effectiveSfxVolume(): number {
+    return this.masterMuted ? 0 : this.data.sfxVolume;
+  }
+
+  public get isMasterMuted(): boolean {
+    return this.masterMuted;
+  }
+
+  /**
+   * Toggle transient master mute. Idempotent: a no-op change doesn't notify.
+   * Not persisted (see `masterMuted` docs).
+   */
+  public setMasterMuted(muted: boolean): void {
+    if (this.masterMuted === muted) return;
+    this.masterMuted = muted;
     this.notify();
   }
 
@@ -67,8 +102,14 @@ class AudioSettingsStore {
         if (typeof parsed === 'object' && parsed !== null) {
           const obj = parsed as Record<string, unknown>;
           return {
-            musicVolume: typeof obj['musicVolume'] === 'number' ? obj['musicVolume'] : DEFAULTS.musicVolume,
-            sfxVolume: typeof obj['sfxVolume'] === 'number' ? obj['sfxVolume'] : DEFAULTS.sfxVolume,
+            musicVolume:
+              typeof obj['musicVolume'] === 'number'
+                ? obj['musicVolume']
+                : DEFAULTS.musicVolume,
+            sfxVolume:
+              typeof obj['sfxVolume'] === 'number'
+                ? obj['sfxVolume']
+                : DEFAULTS.sfxVolume,
           };
         }
       }
@@ -89,4 +130,3 @@ class AudioSettingsStore {
 
 /** Global audio settings instance */
 export const audioSettings = new AudioSettingsStore();
-

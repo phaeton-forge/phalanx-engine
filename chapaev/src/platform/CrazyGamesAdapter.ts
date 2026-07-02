@@ -16,10 +16,11 @@ const ZERO_INSETS: SafeAreaInsets = { top: 0, right: 0, bottom: 0, left: 0 };
 const GUEST_ID_KEY = 'chapaev_guest_id';
 
 const CRAZYGAMES_SDK_SCRIPT_ID = 'crazygames-sdk';
-const CRAZYGAMES_SDK_SRC = 'https://sdk.crazygames.com/crazygames-sdk-v2.js';
+const CRAZYGAMES_SDK_SRC = 'https://sdk.crazygames.com/crazygames-sdk-v3.js';
 
 /**
- * CrazyGames environment as reported by `SDK.environment`.
+ * CrazyGames environment as reported by `SDK.environment` (synchronous getter
+ * in v3).
  * - `local`      — running the CrazyGames dev/QA harness (or `?useLocalSdk=true`).
  * - `crazygames` — embedded in the real crazygames.com portal iframe. Ads work here.
  * - `disabled`   — served from any other origin (e.g. our own domain
@@ -32,17 +33,29 @@ type AdType = 'midgame' | 'rewarded';
 interface CrazyAdCallbacks {
   adStarted?: () => void;
   adFinished?: () => void;
-  adError?: (error: unknown) => void;
+  adError?: (error: unknown, errorData?: unknown) => void;
 }
+
+/** Subset of `SDK.game.settings` we consume. */
+interface CrazyGameSettings {
+  muteAudio?: boolean;
+  disableChat?: boolean;
+}
+
+type SettingsChangeListener = (newSettings: CrazyGameSettings) => void;
 
 interface CrazyGamesSDK {
   /**
-   * Async environment probe. Resolves to the current environment. Also
-   * supports a `(error, environment)` node-style callback, but we use the
-   * promise form.
+   * v3 requires explicit async initialisation before any module is usable.
+   * The SDK is unusable until this resolves.
    */
-  getEnvironment: () => Promise<CrazyEnvironment>;
+  init: () => Promise<void>;
+
+  /** Synchronous environment getter in v3 (was async `getEnvironment()` in v2). */
+  readonly environment: CrazyEnvironment;
+
   ad: {
+    /** v3 ad request. Callbacks only — promises are not supported for ads. */
     requestAd: (type: AdType, callbacks: CrazyAdCallbacks) => void;
   };
   game: {
@@ -52,6 +65,16 @@ interface CrazyGamesSDK {
     gameplayStart?: () => void;
     /** Mark the end of active gameplay (menu, results, pause). */
     gameplayStop?: () => void;
+    /** Host-controlled game settings (mute, chat). */
+    readonly settings?: CrazyGameSettings;
+    /** Register a listener fired whenever host game settings change. */
+    addSettingsChangeListener?: (listener: SettingsChangeListener) => void;
+    removeSettingsChangeListener?: (listener: SettingsChangeListener) => void;
+    /**
+     * True when the user should be dropped directly into a joinable multiplayer
+     * room (e.g. launched from the Multiplayer landing page or a party).
+     */
+    readonly isInstantMultiplayer?: boolean;
   };
 }
 
@@ -74,14 +97,25 @@ function createGuestUserId(): string {
 }
 
 /**
- * CrazyGamesAdapter — wraps the CrazyGames HTML5 SDK v2.
+ * CrazyGamesAdapter — wraps the CrazyGames HTML5 SDK **v3**.
  *
  * Design rules (mirrors the other adapters):
  * - The SDK script is injected only under this adapter, so it never loads on
  *   our own domain or inside Telegram.
+ * - v3 requires `await SDK.init()` before any module call; `environment` is a
+ *   synchronous getter afterwards.
  * - Ads are shown via `SDK.ad.requestAd('midgame', …)`. Frequency capping is
  *   owned by CrazyGames — we intentionally do NOT use FullscreenAdGate here
  *   (calling requestAd too often just triggers an adError, which we swallow).
+ * - Audio muting has TWO sources, both routed through the transient
+ *   `audioSettings.setMasterMuted()` master flag (never persisted, never
+ *   clobbers the player's own volume sliders):
+ *     1. host `settings.muteAudio` — takes priority over in-game audio settings
+ *        (CrazyGames requirement), synced on init + via settings listener;
+ *     2. an active midgame ad — muted on `adStarted`, restored on
+ *        `adFinished`/`adError`.
+ *   The effective mute is the OR of the two, so an ad ending never un-mutes a
+ *   host that still wants silence, and vice-versa.
  * - No SDK call is ever made from ECS Simulation.step() / System.update().
  * - Ads only actually play when `environment === 'crazygames'`. On our own
  *   domain the environment is `disabled` and every ad call resolves to `false`
@@ -95,12 +129,14 @@ export class CrazyGamesAdapter implements PlatformAdapter {
   private userId: string | null = null;
   private resumeListeners: Array<() => void> = [];
   private visibilityHandler: (() => void) | null = null;
+  private settingsListener: SettingsChangeListener | null = null;
 
   /** True while a midgame ad is on screen — prevents overlapping requests. */
   private adInFlight = false;
 
-  /** Volumes captured before muting for an ad, restored when it ends. */
-  private mutedVolumes: { music: number; sfx: number } | null = null;
+  /** Latched mute state from each source; effective mute is their OR. */
+  private hostMuted = false;
+  private adMuted = false;
 
   /** Tracks whether gameplayStart was emitted, to keep start/stop balanced. */
   private gameplayActive = false;
@@ -108,20 +144,30 @@ export class CrazyGamesAdapter implements PlatformAdapter {
   async init(): Promise<void> {
     this.userId = this.loadOrCreateUserId();
 
-    // Load the SDK best-effort. A failure here must not block the game — we
-    // just fall back to an ad-free experience.
+    // Load + initialise the SDK best-effort. A failure here must not block the
+    // game — we just fall back to an ad-free, unmuted experience.
     try {
       await this.injectSDKScript();
       const sdk = window.CrazyGames?.SDK ?? null;
-      this.sdk = sdk;
-      // getEnvironment() is async in SDK v2 (promise or callback form).
-      this.environment = sdk ? await sdk.getEnvironment() : 'disabled';
-      console.log('[CrazyGames] SDK ready', { environment: this.environment });
+      if (sdk) {
+        // v3: must await init() before touching any module or `environment`.
+        await sdk.init();
+        this.sdk = sdk;
+        this.environment = sdk.environment ?? 'disabled';
+      }
+      console.log('[CrazyGames] SDK v3 ready', {
+        environment: this.environment,
+      });
     } catch (e) {
-      console.warn('[CrazyGames] SDK load failed — running ad-free', e);
+      console.warn('[CrazyGames] SDK load/init failed — running ad-free', e);
       this.sdk = null;
       this.environment = 'disabled';
     }
+
+    // Sync host mute preference and subscribe to changes. Off-portal the
+    // settings object is absent, so this is a clean no-op.
+    this.syncHostMute();
+    this.subscribeToSettingsChanges();
 
     this.visibilityHandler = () => {
       if (document.visibilityState === 'visible') {
@@ -147,7 +193,7 @@ export class CrazyGamesAdapter implements PlatformAdapter {
   }
 
   getAuthScheme(): AuthScheme {
-    // CrazyGames auth (user account SDK) is not integrated yet — treat as guest.
+    // CrazyGames auth (User module) is not integrated yet — treat as guest.
     return 'guest';
   }
 
@@ -167,6 +213,21 @@ export class CrazyGamesAdapter implements PlatformAdapter {
     // Inside the CrazyGames iframe `window.location` is our own embedded URL,
     // so a plain ?ROOM= link still resolves back to a playable instance.
     return defaultInviteShareUrl(roomCode);
+  }
+
+  /**
+   * CrazyGames "instant multiplayer" flag. When true, the launcher (e.g. the
+   * Multiplayer landing page or a party invite) expects us to drop the player
+   * straight into a freshly-created, joinable room instead of the main menu.
+   * False/absent off-portal.
+   */
+  isInstantMultiplayer(): boolean {
+    if (this.environment === 'disabled') return false;
+    try {
+      return this.sdk?.game.isInstantMultiplayer === true;
+    } catch {
+      return false;
+    }
   }
 
   async tryShowFullscreenAd(
@@ -196,24 +257,24 @@ export class CrazyGamesAdapter implements PlatformAdapter {
       try {
         this.sdk!.ad.requestAd('midgame', {
           adStarted: () => {
-            console.log('[CrazyGames] ad started — pausing game');
-            this.setGameMuted(true);
+            console.log('[CrazyGames] ad started — muting game');
+            this.setAdMuted(true);
           },
           adFinished: () => {
             console.log('[CrazyGames] ad finished');
-            this.setGameMuted(false);
+            this.setAdMuted(false);
             finish(true);
           },
-          adError: (error: unknown) => {
+          adError: (error: unknown, errorData?: unknown) => {
             // Fired when no ad is available or the request is throttled.
-            console.warn('[CrazyGames] ad error', error);
-            this.setGameMuted(false);
+            console.warn('[CrazyGames] ad error', error, errorData);
+            this.setAdMuted(false);
             finish(false);
           },
         });
       } catch (e) {
         console.warn('[CrazyGames] requestAd threw', e);
-        this.setGameMuted(false);
+        this.setAdMuted(false);
         finish(false);
       }
     });
@@ -279,36 +340,53 @@ export class CrazyGamesAdapter implements PlatformAdapter {
     // Not applicable inside the portal iframe.
   }
 
-  // ── Private ────────────────────────────────────────────────────────
+  // ── Private: audio muting ──────────────────────────────────────────
 
   /**
-   * Mute the game audio while an ad plays. The CrazyGames iframe keeps our
-   * canvas alive underneath the ad, so we silence sound (rather than pausing
-   * the deterministic sim, which is server-authoritative in online matches).
-   * Volumes are captured on mute and restored on unmute so we never clobber
-   * the player's own settings.
+   * Read the host's `settings.muteAudio` and latch it. CrazyGames requires
+   * this to take priority over in-game audio settings. Off-portal the settings
+   * object is undefined and we leave the host-mute latch false.
    */
-  private setGameMuted(muted: boolean): void {
+  private syncHostMute(): void {
+    let muted = false;
     try {
-      if (muted) {
-        // Guard against double-mute (e.g. adStarted firing twice).
-        if (this.mutedVolumes) return;
-        this.mutedVolumes = {
-          music: audioSettings.musicVolume,
-          sfx: audioSettings.sfxVolume,
-        };
-        audioSettings.musicVolume = 0;
-        audioSettings.sfxVolume = 0;
-      } else {
-        if (!this.mutedVolumes) return;
-        audioSettings.musicVolume = this.mutedVolumes.music;
-        audioSettings.sfxVolume = this.mutedVolumes.sfx;
-        this.mutedVolumes = null;
-      }
+      muted = this.sdk?.game.settings?.muteAudio === true;
     } catch {
-      // ignore
+      muted = false;
+    }
+    this.hostMuted = muted;
+    this.applyMasterMute();
+  }
+
+  private subscribeToSettingsChanges(): void {
+    if (!this.sdk?.game.addSettingsChangeListener) return;
+    this.settingsListener = (newSettings: CrazyGameSettings) => {
+      this.hostMuted = newSettings?.muteAudio === true;
+      this.applyMasterMute();
+    };
+    try {
+      this.sdk.game.addSettingsChangeListener(this.settingsListener);
+    } catch (e) {
+      console.warn('[CrazyGames] addSettingsChangeListener failed', e);
+      this.settingsListener = null;
     }
   }
+
+  private setAdMuted(muted: boolean): void {
+    this.adMuted = muted;
+    this.applyMasterMute();
+  }
+
+  /**
+   * Push the OR of every mute source into the shared transient master mute.
+   * Reading `audioSettings.effective*Volume` elsewhere then reflects it without
+   * ever touching the persisted user volumes.
+   */
+  private applyMasterMute(): void {
+    audioSettings.setMasterMuted(this.hostMuted || this.adMuted);
+  }
+
+  // ── Private: identity & SDK bootstrap ──────────────────────────────
 
   private loadOrCreateUserId(): string {
     try {

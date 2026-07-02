@@ -391,20 +391,22 @@ export class SoundSystem extends GameSystem {
     if (!this.audioCtx) return;
 
     this.sfxMasterGain = this.audioCtx.createGain();
-    this.sfxMasterGain.gain.value = audioSettings.sfxVolume;
+    this.sfxMasterGain.gain.value = audioSettings.effectiveSfxVolume;
     this.sfxMasterGain.connect(this.audioCtx.destination);
 
     this.bgmMasterGain = this.audioCtx.createGain();
-    this.bgmMasterGain.gain.value = audioSettings.musicVolume;
+    this.bgmMasterGain.gain.value = audioSettings.effectiveMusicVolume;
     this.bgmMasterGain.connect(this.audioCtx.destination);
 
-    // Live-update volumes when the user changes settings
+    // Live-update volumes when the user changes settings OR the platform
+    // master-mute toggles (ads, CrazyGames settings.muteAudio). Reading the
+    // effective volumes folds both concerns into one subscription.
     this.settingsUnsub = audioSettings.onChange(() => {
       if (this.sfxMasterGain) {
-        this.sfxMasterGain.gain.value = audioSettings.sfxVolume;
+        this.sfxMasterGain.gain.value = audioSettings.effectiveSfxVolume;
       }
       if (this.bgmMasterGain) {
-        this.bgmMasterGain.gain.value = audioSettings.musicVolume;
+        this.bgmMasterGain.gain.value = audioSettings.effectiveMusicVolume;
       }
     });
   }

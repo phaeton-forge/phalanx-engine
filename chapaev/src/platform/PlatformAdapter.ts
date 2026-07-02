@@ -123,5 +123,13 @@ export interface PlatformAdapter {
    * Must be balanced with `onGameplayStart`. Optional.
    */
   onGameplayStop?(): void;
-}
 
+  /**
+   * Portal-driven "drop the player straight into a joinable multiplayer room"
+   * signal. CrazyGames sets this when the game is launched from the Multiplayer
+   * landing page or a party invite; when true, the boot flow should create a
+   * fresh private room instead of showing the main menu, so friends can join
+   * immediately. Adapters without this concept omit it (treated as false).
+   */
+  isInstantMultiplayer?(): boolean;
+}
