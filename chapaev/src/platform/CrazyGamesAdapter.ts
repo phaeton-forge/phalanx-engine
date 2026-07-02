@@ -232,6 +232,16 @@ export class CrazyGamesAdapter implements PlatformAdapter {
    */
   private joinRoomListeners = new Set<JoinRoomListener>();
 
+  /**
+   * Portal-native invite URL for the current room, captured from
+   * `showInviteButton`'s return value (the same link `inviteLink` produces).
+   * Unlike a plain `?ROOM=` URL, this carries the CrazyGames `inviteParams`, so
+   * a friend opening it is routed through the portal's cold-start `inviteParams`
+   * / live `addJoinRoomListener` channels rather than bypassing them. Null off
+   * portal, before a room is announced, or after the room is left.
+   */
+  private portalInviteUrl: string | null = null;
+
   /** True while a midgame ad is on screen — prevents overlapping requests. */
   private adInFlight = false;
 
@@ -326,9 +336,14 @@ export class CrazyGamesAdapter implements PlatformAdapter {
   }
 
   getInviteShareUrl(roomCode: string): string {
-    // Inside the CrazyGames iframe `window.location` is our own embedded URL,
-    // so a plain ?ROOM= link still resolves back to a playable instance.
-    return defaultInviteShareUrl(roomCode);
+    // Prefer the portal-native invite link captured from `showInviteButton`:
+    // it round-trips `inviteParams.roomCode` through CrazyGames, so a friend
+    // opening it hits the portal's cold-start `inviteParams` / live join-room
+    // channels. A plain ?ROOM= link bypasses the portal entirely — the invitee
+    // lands on a raw embed with no inviteParams and no join-room event, which is
+    // exactly the "opens on the menu" failure. Fall back to ?ROOM= only when the
+    // portal gave us nothing (older SDK, or button not yet shown).
+    return this.portalInviteUrl ?? defaultInviteShareUrl(roomCode);
   }
 
   /**
@@ -395,16 +410,23 @@ export class CrazyGamesAdapter implements PlatformAdapter {
     if (this.environment === 'disabled') return;
     const roomId = roomCode.trim().toUpperCase();
     try {
-      this.sdk?.game.showInviteButton?.({
+      // `showInviteButton` returns the portal invite link (same as `inviteLink`)
+      // — capture it so our own "copy link" button shares the portal URL, not a
+      // raw ?ROOM= one. void return on older SDKs leaves the ?ROOM= fallback.
+      const link = this.sdk?.game.showInviteButton?.({
         roomId,
         inviteParams: { [INVITE_ROOM_KEY]: roomId },
       });
+      this.portalInviteUrl = typeof link === 'string' && link ? link : null;
     } catch (e) {
       console.warn('[CrazyGames] showInviteButton failed', e);
+      this.portalInviteUrl = null;
     }
   }
 
   hideInviteButton(): void {
+    // Clear regardless of environment — the room association is gone.
+    this.portalInviteUrl = null;
     if (this.environment === 'disabled') return;
     try {
       this.sdk?.game.hideInviteButton?.();

@@ -20,6 +20,7 @@ import type {
   ReconnectStateEvent,
 } from '@phalanx-engine/client';
 import type { PlatformAdapter } from '../platform/PlatformAdapter.ts';
+import { consumeUrlRoomCode } from '../platform/platformUtils.ts';
 import { t } from '../i18n/i18n.ts';
 import { generateBotOpponentDisplayName } from '../util/botOpponentName.ts';
 import {
@@ -730,18 +731,17 @@ export class Game {
   }
 
   private consumeDeepLinkRoomCode(): string | null {
-    // Platform deep-link code (Yandex payload or Telegram start_param).
+    // Platform deep-link code (Yandex payload or Telegram start_param). On
+    // Standalone/CrazyGames this already consumes `?ROOM=` via consumeUrlRoomCode.
     const platformRoom = this.platform.getLaunchRoomCode();
     if (platformRoom) return platformRoom;
 
-    // URL-based fallback (?ROOM= or ?room=).
-    const urlParams = new URLSearchParams(window.location.search);
-    const roomCodeFromUrl = urlParams.get('ROOM') ?? urlParams.get('room');
-
-    if (roomCodeFromUrl) {
-      window.history.replaceState({}, '', window.location.pathname);
-    }
-
-    return roomCodeFromUrl ? roomCodeFromUrl.toUpperCase() : null;
+    // URL-based fallback for platforms whose primary channel is NOT the URL
+    // (Telegram start_param, Yandex payload): a game opened by a plain web link
+    // carrying `?ROOM=` should still deep-link. Reuse consumeUrlRoomCode so the
+    // code is pattern-validated and the query param is stripped from history
+    // consistently — the old inline parse skipped validation, letting a
+    // malformed code drive a bogus openDeepLinkRoom.
+    return consumeUrlRoomCode();
   }
 }
