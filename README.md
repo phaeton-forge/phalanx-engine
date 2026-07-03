@@ -80,10 +80,9 @@ In the meantime, see the per-package documentation linked below and the [`abilit
 
 > 🚧 More examples are coming soon.
 
-| Example                                                            | Status     | Description                          |
-| ------------------------------------------------------------------ | ---------- | ------------------------------------ |
-| [`abilities-playground`](./abilities-playground)                   | Available  | Local sandbox for the ability system |
-| [`direct-strike-babylon-example`](./direct-strike-babylon-example) | Deprecated | Will be removed in a future release  |
+| Example                                          | Status    | Description                          |
+| ------------------------------------------------ | --------- | ------------------------------------ |
+| [`abilities-playground`](./abilities-playground) | Available | Local sandbox for the ability system |
 
 ## Packages
 

@@ -6,7 +6,3 @@ packages:
   - 'phalanx-physics'
   - 'phalanx-abilities'
   - 'abilities-playground'
-  - 'direct-strike-babylon-example'
-  - 'arena-shooter'
-  - 'chapaev'
-  - 'chapaev/server'
