@@ -1,4 +1,4 @@
-import type { UnitType } from '../units/UnitType';
+import type { UnitType } from '../units';
 
 interface GameUICallbacks {
   onUnitDragStart: (type: UnitType) => void;
@@ -38,6 +38,7 @@ export class GameUI {
       { id: 'unit-btn-support', type: 'support', label: 'Support' },
       { id: 'unit-btn-rocket', type: 'rocket', label: 'Rocket' },
       { id: 'unit-btn-volt', type: 'volt', label: 'Volt' },
+      { id: 'unit-btn-drone', type: 'drone', label: 'Drone' },
     ];
 
     for (const { id, type, label } of unitButtonIds) {

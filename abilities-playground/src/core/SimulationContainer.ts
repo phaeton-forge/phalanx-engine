@@ -48,6 +48,7 @@ import { MissileEntity } from '../entities/Missile';
 import { autoAttack } from '../hooks/AutoAttack.ts';
 import { missileVolley } from '../hooks/MissileVolley';
 import { voltChainLightning } from '../hooks/VoltChainLightning';
+import { droneMachineGun } from '../hooks/DroneMachineGun';
 import {
   ProjectileDespawnQueueSystem,
   ProjectileCollisionSystem,
@@ -60,6 +61,8 @@ import {
   BeamCue,
   MissileImpactCue,
   ChainLightningCue,
+  MachineGunFireCue,
+  MachineGunImpactCue,
 } from '../cues';
 
 export class SimulationContainer {
@@ -124,6 +127,9 @@ export class SimulationContainer {
           new ChainLightningCue(this.scene, 0x00ffff, true),
         'Cue.ChainLightning.Jump': () =>
           new ChainLightningCue(this.scene, 0x55ffff, false),
+        'Cue.Drone.MachineGun.Fire': () => new MachineGunFireCue(this.scene),
+        'Cue.Drone.MachineGun.Impact': () =>
+          new MachineGunImpactCue(this.scene),
       },
       hooks: {
         'Hook.AutoAttack': (ctx: AbilityActivationContext) =>
@@ -132,6 +138,8 @@ export class SimulationContainer {
           missileVolley(ctx, this.world),
         'Hook.Volt.ChainLightning': (ctx: AbilityActivationContext) =>
           voltChainLightning(ctx, this.world, this.abilities),
+        'Hook.Drone.MachineGun': (ctx: AbilityActivationContext) =>
+          droneMachineGun(ctx, this.world),
       },
     });
 

@@ -1,11 +1,7 @@
 import * as THREE from 'three';
 import { arenaParams } from '../../config/constants';
 import type { TeamId } from '../../components';
-import {
-  UNIT_GRID_SIZE,
-  type UnitType,
-  type UnitGridSize,
-} from '../../units/UnitType';
+import { UNIT_GRID_SIZE, type UnitType, type UnitGridSize } from '../../units';
 import type {
   FormationGrid,
   GridCell,
@@ -247,6 +243,7 @@ export class FormationGridData {
       case 'sphere':
       case 'support':
       case 'volt':
+      case 'drone':
         return { x: gridX, z: gridZ };
       case 'rocket':
         return this.findRocketOrigin(grid, gridX, gridZ);

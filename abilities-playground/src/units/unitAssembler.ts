@@ -70,7 +70,14 @@ export function assembleUnit(
   if (refs.spawnPoint)
     entity.addComponent(new SpawnPointComponent(refs.spawnPoint.marker));
   if (def.hasAutoAttackTimer)
-    entity.addComponent(new AutoAttackTimerComponent());
+    entity.addComponent(
+      def.autoAttack
+        ? new AutoAttackTimerComponent(
+            def.autoAttack.abilityId,
+            def.autoAttack.cooldownTicks
+          )
+        : new AutoAttackTimerComponent()
+    );
   if (def.hasCubeState) entity.addComponent(new CubeStateComponent());
   if (def.aura) {
     entity.addComponent(new HealAuraComponent(def.aura, refs.auraRing ?? null));

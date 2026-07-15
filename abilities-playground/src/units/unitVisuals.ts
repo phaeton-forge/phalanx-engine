@@ -10,7 +10,8 @@ import type { UnitType } from './UnitType';
  * Team 0 -> cool palette, Team 1 -> warm palette.
  */
 function resolveUnitColor(teamId: TeamId, unitType: UnitType): string {
-  const palette = teamId === 0 ? arenaParams.team1Palette : arenaParams.team2Palette;
+  const palette =
+    teamId === 0 ? arenaParams.team1Palette : arenaParams.team2Palette;
   const base = teamId === 0 ? arenaParams.team1Color : arenaParams.team2Color;
   return palette[unitType] ?? base;
 }
@@ -78,6 +79,8 @@ function createBody(
       return createOctahedronBody(spec.size, teamId, unitType);
     case 'volt':
       return createVoltBody(spec.size, teamId, unitType);
+    case 'drone':
+      return createDroneBody(spec.size, teamId, unitType);
   }
 }
 
@@ -203,6 +206,85 @@ function createVoltBody(
   );
   orb.position.y = size * 1.55;
   root.add(orb);
+
+  return root;
+}
+
+/**
+ * Drone visual: gunship silhouette.
+ * - Rectangular box fuselage, long axis along +Z (forward).
+ * - Two mirrored wedge wings (thin triangular prisms) jutting outward along X.
+ * - A turret on top: cylinder base, box housing, thin forward-pointing barrel.
+ *   The barrel tip sits at ~local (0, size * 0.55, size * 0.9); the fire cue
+ *   uses a matching constant muzzle offset.
+ */
+function createDroneBody(
+  size: number,
+  teamId: TeamId,
+  unitType: UnitType
+): THREE.Object3D {
+  const root = new THREE.Group();
+
+  const fuselage = new THREE.Mesh(
+    new THREE.BoxGeometry(size, size * 0.5, size * 1.5),
+    createTeamMaterial(teamId, unitType)
+  );
+  enableShadows(fuselage);
+  root.add(fuselage);
+
+  // Wedge wing: triangle in the XZ-like plane, extruded thinly along Z.
+  const wingShape = new THREE.Shape();
+  wingShape.moveTo(0, -size * 0.55); // chord rear, against the hull
+  wingShape.lineTo(0, size * 0.55); // chord front, against the hull
+  wingShape.lineTo(size * 0.9, 0); // apex pointing outward
+  wingShape.closePath();
+  const wingGeometry = new THREE.ExtrudeGeometry(wingShape, {
+    depth: size * 0.15,
+    bevelEnabled: false,
+  });
+  const wingMaterial = createTeamMaterial(teamId, unitType);
+
+  const rightWing = new THREE.Mesh(wingGeometry, wingMaterial);
+  rightWing.position.set(size / 2, 0, -size * 0.075);
+  enableShadows(rightWing);
+  root.add(rightWing);
+
+  const leftWing = new THREE.Mesh(wingGeometry, wingMaterial);
+  leftWing.position.set(-size / 2, 0, -size * 0.075);
+  leftWing.scale.x = -1;
+  enableShadows(leftWing);
+  root.add(leftWing);
+
+  const turretMaterial = new THREE.MeshStandardMaterial({
+    color: resolveUnitColor(teamId, unitType),
+    metalness: 0.5,
+    roughness: 0.4,
+  });
+
+  const turretBase = new THREE.Mesh(
+    new THREE.CylinderGeometry(size * 0.35, size * 0.4, size * 0.25, 16),
+    turretMaterial
+  );
+  turretBase.position.y = size * 0.3;
+  enableShadows(turretBase);
+  root.add(turretBase);
+
+  const turretHousing = new THREE.Mesh(
+    new THREE.BoxGeometry(size * 0.5, size * 0.3, size * 0.6),
+    turretMaterial
+  );
+  turretHousing.position.y = size * 0.55;
+  enableShadows(turretHousing);
+  root.add(turretHousing);
+
+  const barrel = new THREE.Mesh(
+    new THREE.CylinderGeometry(size * 0.06, size * 0.06, size * 0.9, 12),
+    turretMaterial
+  );
+  barrel.rotation.x = Math.PI / 2; // point along +Z
+  barrel.position.set(0, size * 0.55, size * 0.9);
+  enableShadows(barrel);
+  root.add(barrel);
 
   return root;
 }

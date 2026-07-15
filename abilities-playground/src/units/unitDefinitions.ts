@@ -1,6 +1,10 @@
 import { UnitType } from './UnitType';
 import type { UnitDefinition } from './UnitDefinition';
 import {
+  DRONE_ATTACK_COOLDOWN_TICKS,
+  DRONE_DETECTION_RANGE,
+  DRONE_MAX_HEALTH,
+  DRONE_STOP_RANGE,
   HEAL_AURA_RADIUS,
   HEAL_PULSE_TICKS,
   ROCKET_DETECTION_RANGE,
@@ -22,7 +26,12 @@ export const UNIT_DEFINITIONS: Readonly<Record<UnitType, UnitDefinition>> = {
     abilities: ['Ability.AutoAttack'],
     hasAutoAttackTimer: true,
     hasCubeState: false,
-    visual: { shape: 'sphere', size: 2, hasSpawnArrow: true, hasAuraRing: false },
+    visual: {
+      shape: 'sphere',
+      size: 2,
+      hasSpawnArrow: true,
+      hasAuraRing: false,
+    },
   },
   [UnitType.Cube]: {
     type: UnitType.Cube,
@@ -65,7 +74,12 @@ export const UNIT_DEFINITIONS: Readonly<Record<UnitType, UnitDefinition>> = {
     abilities: ['Ability.MissileVolley'],
     hasAutoAttackTimer: false,
     hasCubeState: false,
-    visual: { shape: 'octahedron', size: 3, hasSpawnArrow: false, hasAuraRing: false },
+    visual: {
+      shape: 'octahedron',
+      size: 3,
+      hasSpawnArrow: false,
+      hasAuraRing: false,
+    },
   },
   [UnitType.Volt]: {
     type: UnitType.Volt,
@@ -79,6 +93,34 @@ export const UNIT_DEFINITIONS: Readonly<Record<UnitType, UnitDefinition>> = {
     abilities: ['Ability.Volt.ChainLightning'],
     hasAutoAttackTimer: false,
     hasCubeState: false,
-    visual: { shape: 'volt', size: 2.2, hasSpawnArrow: false, hasAuraRing: false },
+    visual: {
+      shape: 'volt',
+      size: 2.2,
+      hasSpawnArrow: false,
+      hasAuraRing: false,
+    },
+  },
+  [UnitType.Drone]: {
+    type: UnitType.Drone,
+    radius: 2,
+    mass: 2,
+    stopRange: DRONE_STOP_RANGE,
+    maxHealth: DRONE_MAX_HEALTH,
+    detectionRange: DRONE_DETECTION_RANGE,
+    heightOffset: 2.5,
+    gridSize: { width: 1, depth: 1 },
+    abilities: ['Ability.Drone.MachineGun'],
+    hasAutoAttackTimer: true,
+    hasCubeState: false,
+    autoAttack: {
+      abilityId: 'Ability.Drone.MachineGun',
+      cooldownTicks: DRONE_ATTACK_COOLDOWN_TICKS,
+    },
+    visual: {
+      shape: 'drone',
+      size: 2.2,
+      hasSpawnArrow: false,
+      hasAuraRing: false,
+    },
   },
 } as const;

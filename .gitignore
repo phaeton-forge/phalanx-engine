@@ -1,6 +1,9 @@
 # Dependencies
 node_modules/
 
+# Local AI agent rules
+.aiassistant/*
+
 # Build output
 dist/
 

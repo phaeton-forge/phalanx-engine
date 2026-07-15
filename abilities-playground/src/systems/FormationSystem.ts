@@ -6,9 +6,9 @@ import {
   SimulationStateComponent,
   type TeamId,
 } from '../components';
-import { FormationGridData } from './formation/FormationGridData';
-import type { UnitFactory } from '../units/UnitFactory';
-import type { UnitType } from '../units/UnitType';
+import { FormationGridData } from './formation';
+import type { UnitFactory } from '../units';
+import type { UnitType } from '../units';
 
 interface FormationPlayer {
   playerId: string;
@@ -116,7 +116,8 @@ export class FormationSystem extends GameSystem {
             cmd.type !== 'cube' &&
             cmd.type !== 'support' &&
             cmd.type !== 'rocket' &&
-            cmd.type !== 'volt') ||
+            cmd.type !== 'volt' &&
+            cmd.type !== 'drone') ||
           typeof cmd.gridX !== 'number' ||
           !Number.isInteger(cmd.gridX) ||
           typeof cmd.gridZ !== 'number' ||

@@ -3,7 +3,7 @@ import { FP } from '@phalanx-engine/math';
 import type { FixedPoint } from '@phalanx-engine/math';
 import type { IComponent } from './Component';
 import { ComponentType } from './Component';
-import { DEFAULT_UNIT_DETECTION_RANGE, type UnitType } from '../units/UnitType';
+import { DEFAULT_UNIT_DETECTION_RANGE, type UnitType } from '../units';
 import type { IPoolableComponent } from '@phalanx-engine/ecs';
 
 export type TeamId = 0 | 1;
@@ -93,6 +93,16 @@ export class CubeStateComponent implements IComponent {
 export class AutoAttackTimerComponent implements IComponent {
   public readonly type = ComponentType.AutoAttackTimer;
   public ticksUntilNextAttack: FixedPoint = FP.FromInt(0);
+  public readonly abilityId: string;
+  public readonly cooldownTicks: number;
+
+  constructor(
+    abilityId = 'Ability.AutoAttack',
+    cooldownTicks = 40 // = ATTACK_COOLDOWN_TICKS
+  ) {
+    this.abilityId = abilityId;
+    this.cooldownTicks = cooldownTicks;
+  }
 }
 
 export class MeshComponent implements IPoolableComponent {

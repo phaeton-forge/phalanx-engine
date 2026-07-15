@@ -105,6 +105,7 @@ export const arenaParams = {
     support: '#8FD0E8',
     rocket: '#B6A8FF',
     volt: '#9DB8FF',
+    drone: '#A3C9F9',
   } as Record<string, string>,
   team2Palette: {
     sphere: '#FF8A8A',
@@ -112,6 +113,7 @@ export const arenaParams = {
     support: '#FFB3A7',
     rocket: '#FFA37A',
     volt: '#FF9E7A',
+    drone: '#FFB08A',
   } as Record<string, string>,
   /**
    * Local formation grid dimensions. The grid is centered on each team's spawn line

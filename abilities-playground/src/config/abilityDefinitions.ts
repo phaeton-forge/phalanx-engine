@@ -60,6 +60,14 @@ export const ROCKET_MAX_TARGETS = 2;
 export const ROCKET_DETECTION_RANGE = 70;
 export const ROCKET_STOP_RANGE = 60;
 
+/** Drone machine-gun: low per-shot damage, high rate of fire. */
+export const DRONE_ATTACK_DAMAGE = 6;
+/** Drone attack cooldown in ticks (10 ticks = 0.5 s @ 20 TPS). */
+export const DRONE_ATTACK_COOLDOWN_TICKS = 10;
+export const DRONE_MAX_HEALTH = 90;
+export const DRONE_DETECTION_RANGE = 30;
+export const DRONE_STOP_RANGE = 26;
+
 /** Volt attack cooldown in ticks (40 ticks = 2 s @ 20 TPS). */
 export const VOLT_ATTACK_COOLDOWN_TICKS = 40;
 /** Volt hostile detection radius (world units). */
@@ -148,6 +156,18 @@ export const combatDefs = defineAbilitySystem({
         { attributeId: 'Health', op: 'Add', magnitude: FP.FromFloat(-18) },
       ],
       cues: ['Cue.Damage.Sphere'],
+    }),
+    defineEffect({
+      id: 'Effect.Damage.Drone.MachineGun',
+      type: 'Instant',
+      modifiers: [
+        {
+          attributeId: 'Health',
+          op: 'Add',
+          magnitude: FP.FromFloat(-DRONE_ATTACK_DAMAGE),
+        },
+      ],
+      cues: ['Cue.Drone.MachineGun.Impact'],
     }),
     defineEffect({
       id: 'Effect.Damage.Missile',
@@ -278,6 +298,12 @@ export const combatDefs = defineAbilitySystem({
       id: 'Ability.AutoAttack',
       target: { kind: 'Entity', origin: { kind: 'Caller' } },
       hookId: 'Hook.AutoAttack',
+    }),
+    defineAbility({
+      id: 'Ability.Drone.MachineGun',
+      target: { kind: 'Entity', origin: { kind: 'Caller' } },
+      targetEffectIds: ['Effect.Damage.Drone.MachineGun'],
+      hookId: 'Hook.Drone.MachineGun',
     }),
     defineAbility({
       id: 'Ability.HealAura',
