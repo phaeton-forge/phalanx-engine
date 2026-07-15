@@ -11,6 +11,14 @@ import {
 } from '../components';
 import { MissileEntity } from '../entities/Missile';
 import { ROCKET_MAX_TARGETS } from '../config/abilityDefinitions';
+import { MISSILE_MIN_ENGAGEMENT_RANGE } from '../config/constants';
+import { dispatchMissileExhaustCue } from './dispatchMissileExhaustCue';
+
+/** Squared minimum engagement range: rockets ignore enemies closer than this. */
+const MIN_ENGAGE_RANGE_SQ = FP.Mul(
+  FP.FromFloat(MISSILE_MIN_ENGAGEMENT_RANGE),
+  FP.FromFloat(MISSILE_MIN_ENGAGEMENT_RANGE)
+);
 
 /**
  * Missile volley activation hook.
@@ -67,7 +75,7 @@ export const missileVolley = (
   );
 
   for (let i = 0; i < targets.length; i++) {
-    world.pools.spawn<MissileEntity>('missile', {
+    const missile = world.pools.spawn<MissileEntity>('missile', {
       fpPosition: origin,
       targetEntityId: targets[i],
       teamId: team.teamId,
@@ -75,14 +83,15 @@ export const missileVolley = (
       volleyCount: targets.length,
       launcherRotation: transform.fpRotation,
     });
+    dispatchMissileExhaustCue(world, missile.id, ctx.tick);
   }
 };
 
 /**
  * Deterministic nearest-enemy selection: filters the spatial-grid result to
- * alive, hostile, typed units, sorts by squared XZ distance (ties broken by
- * ascending entity id), and returns up to `max` ids. Pure function of its
- * inputs — lockstep-safe.
+ * alive, hostile, typed units beyond the minimum engage range, sorts by squared
+ * XZ distance (ties broken by ascending entity id), and returns up to `max` ids.
+ * Pure function of its inputs — lockstep-safe.
  */
 function pickNearestEnemies(
   selfId: number,
@@ -111,7 +120,10 @@ function pickNearestEnemies(
 
     const dx = FP.Sub(targetTransform.fpPosition.x, cx);
     const dz = FP.Sub(targetTransform.fpPosition.z, cz);
-    candidates.push({ id, d2: FP.Add(FP.Mul(dx, dx), FP.Mul(dz, dz)) });
+    const d2 = FP.Add(FP.Mul(dx, dx), FP.Mul(dz, dz));
+    // Artillery has a dead zone: skip enemies inside the minimum engage range.
+    if (FP.Lt(d2, MIN_ENGAGE_RANGE_SQ)) continue;
+    candidates.push({ id, d2 });
   }
 
   candidates.sort((a, b) =>

@@ -6,3 +6,4 @@ export * from './BeamCue.ts';
 export * from './ChainLightningCue.ts';
 export * from './MachineGunFireCue.ts';
 export * from './MachineGunImpactCue.ts';
+export * from './missileExhaustCue.ts';
