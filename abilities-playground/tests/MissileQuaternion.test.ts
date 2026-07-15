@@ -24,7 +24,8 @@ import { MissileMovementSystem } from '../src/systems/MissileMovementSystem';
 import { MissileTargetingSystem } from '../src/systems/MissileTargetingSystem';
 import {
   MISSILE_ATTACK_RANGE,
-  MISSILE_LAUNCH_ARC_FALLOFF,
+  MISSILE_MIN_ENGAGEMENT_RANGE,
+  MISSILE_LAUNCH_TICKS,
 } from '../src/config/constants';
 
 function readRotation(
@@ -265,10 +266,10 @@ describe('Missile FP quaternion migration', () => {
       expect(mc.phase).toBe('attack');
     });
 
-    it('skips launch and enters approach when the target is within arc falloff', () => {
+    it('flies the full launch arc for a target beyond attack range', () => {
       const target = addTarget(
         entityManager,
-        FPVector3.FromFloat(MISSILE_LAUNCH_ARC_FALLOFF - 5, 0, 0),
+        FPVector3.FromFloat(MISSILE_MIN_ENGAGEMENT_RANGE - 5, 0, 0),
       );
 
       const missile = new MissileEntity();
@@ -286,11 +287,15 @@ describe('Missile FP quaternion migration', () => {
       mc.targetEntityId = target.id;
       mc.spawnY = FP._0;
       mc.launchHeightScale = FP._1;
+      mc.launchTicksRemaining = MISSILE_LAUNCH_TICKS;
       missile.active = true;
 
       movementSystem.processTick(0);
 
-      expect(mc.phase).toBe('approach');
+      // Close-range flat-homing was removed: the missile keeps flying its launch
+      // arc instead of dropping straight into an approach.
+      expect(mc.phase).toBe('launch');
+      expect(mc.launchTicksRemaining).toBe(MISSILE_LAUNCH_TICKS - 1);
     });
   });
 });

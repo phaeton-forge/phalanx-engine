@@ -212,32 +212,56 @@ export class MeshComponent implements IPoolableComponent {
   public static createMissile(): MeshComponent {
     const group = new THREE.Group();
 
+    const bodyLength = 2.0;
     const body = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.25, 0.6, 2.0, 12),
+      new THREE.CylinderGeometry(0.25, 0.6, bodyLength, 12),
       new THREE.MeshStandardMaterial({
         color: 0xdddddd,
         metalness: 0.5,
         roughness: 0.35,
-      })
+      }),
     );
     body.rotation.x = Math.PI / 2;
     body.castShadow = true;
 
-    const flame = new THREE.Mesh(
-      new THREE.ConeGeometry(0.5, 1.2, 12),
-      new THREE.MeshBasicMaterial({
-        color: 0xffaa33,
-        transparent: true,
-        opacity: 0.85,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-      })
-    );
-    flame.rotation.x = -Math.PI / 2;
-    flame.position.z = -(2.0 / 2 + 1.2 / 2);
+    const makeFlame = (
+      radius: number,
+      height: number,
+      color: number,
+      opacity: number,
+      emissiveIntensity: number,
+    ): THREE.Mesh => {
+      const flame = new THREE.Mesh(
+        new THREE.ConeGeometry(radius, height, 12),
+        new THREE.MeshStandardMaterial({
+          color,
+          emissive: color,
+          emissiveIntensity,
+          metalness: 0,
+          roughness: 1,
+          transparent: true,
+          opacity,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false,
+          toneMapped: false,
+        }),
+      );
+      flame.rotation.x = -Math.PI / 2;
+      flame.position.z = -(bodyLength / 2 + height / 2);
+      return flame;
+    };
+
+    // Soft realistic stack: hot core + warmer outer wash (self-lit, no PointLight)
+    const flameCore = makeFlame(0.22, 0.7, 0xfff2cc, 0.95, 3.2);
+    const flameOuter = makeFlame(0.48, 1.15, 0xff8a2a, 0.55, 2.0);
 
     group.add(body);
-    group.add(flame);
+    group.add(flameOuter);
+    group.add(flameCore);
+
+    group.userData.flameCore = flameCore;
+    group.userData.flameOuter = flameOuter;
+
     group.visible = false;
     return new MeshComponent(group);
   }
