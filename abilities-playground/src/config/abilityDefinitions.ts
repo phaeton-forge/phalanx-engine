@@ -60,13 +60,19 @@ export const ROCKET_MAX_TARGETS = 2;
 export const ROCKET_DETECTION_RANGE = 70;
 export const ROCKET_STOP_RANGE = 60;
 
-/** Drone machine-gun: low per-shot damage, high rate of fire. */
-export const DRONE_ATTACK_DAMAGE = 6;
-/** Drone attack cooldown in ticks (10 ticks = 0.5 s @ 20 TPS). */
-export const DRONE_ATTACK_COOLDOWN_TICKS = 10;
-export const DRONE_MAX_HEALTH = 90;
-export const DRONE_DETECTION_RANGE = 30;
-export const DRONE_STOP_RANGE = 26;
+/**
+ * Plasma Tank machine-gun: low per-shot damage, high rate of fire. Tier-1 unit
+ * balanced against the Sphere: the Sphere deals {@link SPHERE_ATTACK_DAMAGE}
+ * (18) every {@link ATTACK_COOLDOWN_TICKS} (40 ticks = 2 s) = 9 DPS. The Plasma
+ * Tank fires 4x faster (10 ticks = 0.5 s), so 18 / 4 = 4.5 per shot matches that DPS.
+ */
+export const PLASMA_TANK_ATTACK_DAMAGE = 4.5;
+/** Plasma Tank attack cooldown in ticks (10 ticks = 0.5 s @ 20 TPS). */
+export const PLASMA_TANK_ATTACK_COOLDOWN_TICKS = 10;
+/** Matches the Sphere's max health so the two tier-1 units trade evenly. */
+export const PLASMA_TANK_MAX_HEALTH = 100;
+export const PLASMA_TANK_DETECTION_RANGE = 30;
+export const PLASMA_TANK_STOP_RANGE = 26;
 
 /** Volt attack cooldown in ticks (40 ticks = 2 s @ 20 TPS). */
 export const VOLT_ATTACK_COOLDOWN_TICKS = 40;
@@ -158,16 +164,16 @@ export const combatDefs = defineAbilitySystem({
       cues: ['Cue.Damage.Sphere'],
     }),
     defineEffect({
-      id: 'Effect.Damage.Drone.MachineGun',
+      id: 'Effect.Damage.PlasmaTank.MachineGun',
       type: 'Instant',
       modifiers: [
         {
           attributeId: 'Health',
           op: 'Add',
-          magnitude: FP.FromFloat(-DRONE_ATTACK_DAMAGE),
+          magnitude: FP.FromFloat(-PLASMA_TANK_ATTACK_DAMAGE),
         },
       ],
-      cues: ['Cue.Drone.MachineGun.Impact'],
+      cues: ['Cue.PlasmaTank.MachineGun.Impact'],
     }),
     defineEffect({
       id: 'Effect.Damage.Missile',
@@ -300,10 +306,10 @@ export const combatDefs = defineAbilitySystem({
       hookId: 'Hook.AutoAttack',
     }),
     defineAbility({
-      id: 'Ability.Drone.MachineGun',
+      id: 'Ability.PlasmaTank.MachineGun',
       target: { kind: 'Entity', origin: { kind: 'Caller' } },
-      targetEffectIds: ['Effect.Damage.Drone.MachineGun'],
-      hookId: 'Hook.Drone.MachineGun',
+      targetEffectIds: ['Effect.Damage.PlasmaTank.MachineGun'],
+      hookId: 'Hook.PlasmaTank.MachineGun',
     }),
     defineAbility({
       id: 'Ability.HealAura',

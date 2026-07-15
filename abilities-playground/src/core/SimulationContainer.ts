@@ -48,7 +48,7 @@ import { MissileEntity } from '../entities/Missile';
 import { autoAttack } from '../hooks/AutoAttack.ts';
 import { missileVolley } from '../hooks/MissileVolley';
 import { voltChainLightning } from '../hooks/VoltChainLightning';
-import { droneMachineGun } from '../hooks/DroneMachineGun';
+import { plasmaTankMachineGun } from '../hooks/PlasmaTankMachineGun';
 import {
   ProjectileDespawnQueueSystem,
   ProjectileCollisionSystem,
@@ -127,8 +127,9 @@ export class SimulationContainer {
           new ChainLightningCue(this.scene, 0x00ffff, true),
         'Cue.ChainLightning.Jump': () =>
           new ChainLightningCue(this.scene, 0x55ffff, false),
-        'Cue.Drone.MachineGun.Fire': () => new MachineGunFireCue(this.scene),
-        'Cue.Drone.MachineGun.Impact': () =>
+        'Cue.PlasmaTank.MachineGun.Fire': () =>
+          new MachineGunFireCue(this.scene),
+        'Cue.PlasmaTank.MachineGun.Impact': () =>
           new MachineGunImpactCue(this.scene),
       },
       hooks: {
@@ -138,8 +139,8 @@ export class SimulationContainer {
           missileVolley(ctx, this.world),
         'Hook.Volt.ChainLightning': (ctx: AbilityActivationContext) =>
           voltChainLightning(ctx, this.world, this.abilities),
-        'Hook.Drone.MachineGun': (ctx: AbilityActivationContext) =>
-          droneMachineGun(ctx, this.world),
+        'Hook.PlasmaTank.MachineGun': (ctx: AbilityActivationContext) =>
+          plasmaTankMachineGun(ctx, this.world),
       },
     });
 

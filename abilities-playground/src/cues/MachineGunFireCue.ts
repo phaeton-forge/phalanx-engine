@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { Entity } from '@phalanx-engine/ecs';
-import { FPVector3 } from '@phalanx-engine/math';
+import { FPQuaternion, FPVector3 } from '@phalanx-engine/math';
 import { Cue } from '@phalanx-engine/abilities';
 import type {
   CueContext,
@@ -14,10 +14,15 @@ import {
 import { clamp01 } from './vfxHelpers';
 
 const LIFETIME_SECONDS = 0.35;
-/** Local muzzle height above the drone origin (matches turret barrel in unitVisuals). */
-const MUZZLE_HEIGHT = 1.2;
-/** Forward offset of the muzzle toward the target, in world units. */
-const MUZZLE_FORWARD = 2.0;
+/**
+ * Must match `UnitType.PlasmaTank` visual.size and `createPlasmaTankBody` barrel tip:
+ * housing half-depth size*0.225, barrel length size*0.9, embed 15%
+ * → tip at (0, size*0.55, size*0.99).
+ */
+const PLASMA_TANK_VISUAL_SIZE = 2.2;
+const MUZZLE_LOCAL_X = 0;
+const MUZZLE_LOCAL_Y = PLASMA_TANK_VISUAL_SIZE * 0.55;
+const MUZZLE_LOCAL_Z = PLASMA_TANK_VISUAL_SIZE * 0.99;
 /** Approximate hit height on the target. */
 const TARGET_HEIGHT = 1.0;
 /** Number of tracer rounds visible along the line. */
@@ -26,14 +31,17 @@ const TRACER_COUNT = 4;
 const TRACER_LENGTH_FRACTION = 0.12;
 /** How many times the tracers cycle from muzzle to target over the lifetime. */
 const TRACER_CYCLES = 3;
-/** Muzzle flash is visible/fading only during this fraction of the lifetime. */
-const FLASH_FRACTION = 0.1 / LIFETIME_SECONDS;
+/** Muzzle flash visible for this many seconds of the cue lifetime. */
+const FLASH_DURATION_SECONDS = 0.12;
+/** Spark particles around the muzzle during the flash. */
+const MUZZLE_SPARK_COUNT = 14;
+
+const LOCAL_FORWARD = new THREE.Vector3(0, 0, 1);
 
 /**
- * Machine-gun fire VFX: a short burst of bright tracer segments travelling from
- * the drone's muzzle toward its target, plus a brief muzzle flash. Render-only;
- * damage is applied by the ability's effect. Endpoints recompute each frame so
- * tracers track moving units.
+ * Machine-gun fire VFX: tracer segments, a bright additive muzzle flash (core
+ * glow + directional flare + spark spray). Render-only; damage comes from the
+ * ability's effects.
  */
 export class MachineGunFireCue extends Cue {
   private readonly scene: THREE.Scene;
@@ -46,14 +54,24 @@ export class MachineGunFireCue extends Cue {
   private tracerGeometry: THREE.BufferGeometry | null = null;
   private tracerMaterial: THREE.LineBasicMaterial | null = null;
 
-  private flash: THREE.Points | null = null;
-  private flashGeometry: THREE.BufferGeometry | null = null;
-  private flashMaterial: THREE.PointsMaterial | null = null;
+  private flashGroup: THREE.Group | null = null;
+  private flashCore: THREE.Mesh | null = null;
+  private flashHalo: THREE.Mesh | null = null;
+  private flashFlare: THREE.Mesh | null = null;
+  private flashCoreMaterial: THREE.MeshBasicMaterial | null = null;
+  private flashHaloMaterial: THREE.MeshBasicMaterial | null = null;
+
+  private sparks: THREE.Points | null = null;
+  private sparkGeometry: THREE.BufferGeometry | null = null;
+  private sparkMaterial: THREE.PointsMaterial | null = null;
+  private readonly sparkVelocities = new Float32Array(MUZZLE_SPARK_COUNT * 3);
 
   private readonly muzzle = new THREE.Vector3();
   private readonly targetPoint = new THREE.Vector3();
   private readonly head = new THREE.Vector3();
   private readonly tail = new THREE.Vector3();
+  private readonly forward = new THREE.Vector3();
+  private readonly lookAt = new THREE.Quaternion();
 
   private elapsed = 0;
   private done = false;
@@ -88,9 +106,50 @@ export class MachineGunFireCue extends Cue {
     this.tracers.renderOrder = 9500;
     this.scene.add(this.tracers);
 
-    this.flashMaterial = new THREE.PointsMaterial({
-      color: 0xfff2c0,
-      size: 1.6,
+    this.flashGroup = new THREE.Group();
+    this.flashGroup.renderOrder = 10_000;
+    this.scene.add(this.flashGroup);
+
+    this.flashHaloMaterial = new THREE.MeshBasicMaterial({
+      color: 0xffaa44,
+      transparent: true,
+      opacity: 0.85,
+      depthWrite: false,
+      depthTest: false,
+      blending: THREE.AdditiveBlending,
+    });
+    this.flashHalo = new THREE.Mesh(
+      new THREE.SphereGeometry(0.55, 10, 8),
+      this.flashHaloMaterial
+    );
+    this.flashGroup.add(this.flashHalo);
+
+    this.flashCoreMaterial = new THREE.MeshBasicMaterial({
+      color: 0xfff6d0,
+      transparent: true,
+      opacity: 1,
+      depthWrite: false,
+      depthTest: false,
+      blending: THREE.AdditiveBlending,
+    });
+    this.flashCore = new THREE.Mesh(
+      new THREE.SphereGeometry(0.28, 10, 8),
+      this.flashCoreMaterial
+    );
+    this.flashGroup.add(this.flashCore);
+
+    // Short directional flare that points along the barrel/shot axis.
+    this.flashFlare = new THREE.Mesh(
+      new THREE.ConeGeometry(0.22, 0.9, 8, 1, true),
+      this.flashHaloMaterial
+    );
+    this.flashFlare.rotation.x = Math.PI / 2;
+    this.flashFlare.position.z = 0.35;
+    this.flashGroup.add(this.flashFlare);
+
+    this.sparkMaterial = new THREE.PointsMaterial({
+      color: 0xffe8a0,
+      size: 0.45,
       sizeAttenuation: true,
       transparent: true,
       opacity: 1,
@@ -98,15 +157,28 @@ export class MachineGunFireCue extends Cue {
       depthWrite: false,
       blending: THREE.AdditiveBlending,
     });
-    this.flashGeometry = new THREE.BufferGeometry();
-    this.flashGeometry.setAttribute(
+    this.sparkGeometry = new THREE.BufferGeometry();
+    const sparkPositions = new Float32Array(MUZZLE_SPARK_COUNT * 3);
+    for (let i = 0; i < MUZZLE_SPARK_COUNT; i++) {
+      const angle = (i / MUZZLE_SPARK_COUNT) * Math.PI * 2;
+      const spread = 0.35 + (i % 3) * 0.15;
+      // Prefer outward spray around +Z (shot direction in local flash space).
+      this.sparkVelocities[i * 3] = Math.cos(angle) * spread * 4;
+      this.sparkVelocities[i * 3 + 1] = Math.sin(angle) * spread * 3;
+      this.sparkVelocities[i * 3 + 2] = 6 + (i % 4) * 1.5;
+      sparkPositions[i * 3] = 0;
+      sparkPositions[i * 3 + 1] = 0;
+      sparkPositions[i * 3 + 2] = 0;
+    }
+    this.sparkGeometry.setAttribute(
       'position',
-      new THREE.BufferAttribute(new Float32Array(3), 3)
+      new THREE.BufferAttribute(sparkPositions, 3)
     );
-    this.flash = new THREE.Points(this.flashGeometry, this.flashMaterial);
-    this.flash.frustumCulled = false;
-    this.flash.renderOrder = 10_000;
-    this.scene.add(this.flash);
+    this.sparks = new THREE.Points(this.sparkGeometry, this.sparkMaterial);
+    this.sparks.frustumCulled = false;
+    this.flashGroup.add(this.sparks);
+
+    this.flashGroup.visible = false;
   }
 
   public override update(deltaTimeSeconds: number): void {
@@ -144,7 +216,7 @@ export class MachineGunFireCue extends Cue {
     }
 
     this.updateTracers();
-    this.updateFlash();
+    this.updateFlash(deltaTimeSeconds);
   }
 
   public override isFinished(): boolean {
@@ -153,17 +225,29 @@ export class MachineGunFireCue extends Cue {
 
   public override dispose(): void {
     if (this.tracers) this.scene.remove(this.tracers);
-    if (this.flash) this.scene.remove(this.flash);
+    if (this.flashGroup) this.scene.remove(this.flashGroup);
     this.tracerGeometry?.dispose();
     this.tracerMaterial?.dispose();
-    this.flashGeometry?.dispose();
-    this.flashMaterial?.dispose();
+    this.flashCore?.geometry.dispose();
+    this.flashHalo?.geometry.dispose();
+    this.flashFlare?.geometry.dispose();
+    this.flashCoreMaterial?.dispose();
+    // Halo material is shared with the flare mesh; dispose once.
+    this.flashHaloMaterial?.dispose();
+    this.sparkGeometry?.dispose();
+    this.sparkMaterial?.dispose();
     this.tracers = null;
     this.tracerGeometry = null;
     this.tracerMaterial = null;
-    this.flash = null;
-    this.flashGeometry = null;
-    this.flashMaterial = null;
+    this.flashGroup = null;
+    this.flashCore = null;
+    this.flashHalo = null;
+    this.flashFlare = null;
+    this.flashCoreMaterial = null;
+    this.flashHaloMaterial = null;
+    this.sparks = null;
+    this.sparkGeometry = null;
+    this.sparkMaterial = null;
   }
 
   /** Populate `muzzle` and `targetPoint`; returns false if a transform is missing. */
@@ -176,16 +260,32 @@ export class MachineGunFireCue extends Cue {
     );
     if (!sourceTransform || !targetTransform) return false;
 
-    const s = FPVector3.ToFloat(sourceTransform.fpPosition);
+    const tipLocal = FPVector3.FromFloat(
+      MUZZLE_LOCAL_X,
+      MUZZLE_LOCAL_Y,
+      MUZZLE_LOCAL_Z
+    );
+    const tipWorld = FPVector3.Add(
+      sourceTransform.fpPosition,
+      FPQuaternion.RotateVector(sourceTransform.fpRotation, tipLocal)
+    );
+    const tip = FPVector3.ToFloat(tipWorld);
+    this.muzzle.set(tip.x, tip.y, tip.z);
+
     const t = FPVector3.ToFloat(targetTransform.fpPosition);
     this.targetPoint.set(t.x, t.y + TARGET_HEIGHT, t.z);
 
-    this.muzzle.set(s.x, s.y + MUZZLE_HEIGHT, s.z);
-    const forward = this.head.set(t.x - s.x, 0, t.z - s.z);
-    if (forward.lengthSq() > 1e-6) {
-      forward.normalize().multiplyScalar(MUZZLE_FORWARD);
-      this.muzzle.x += forward.x;
-      this.muzzle.z += forward.z;
+    // Flash/flare and spark spray face along the barrel (+Z of the unit mesh).
+    const barrelDir = FPQuaternion.RotateVector(
+      sourceTransform.fpRotation,
+      FPVector3.FromFloat(0, 0, 1)
+    );
+    const dir = FPVector3.ToFloat(barrelDir);
+    this.forward.set(dir.x, 0, dir.z);
+    if (this.forward.lengthSq() > 1e-6) {
+      this.forward.normalize();
+    } else {
+      this.forward.set(0, 0, 1);
     }
     return true;
   }
@@ -208,21 +308,53 @@ export class MachineGunFireCue extends Cue {
     this.tracerMaterial!.opacity = 0.9 * (1 - p);
   }
 
-  private updateFlash(): void {
-    if (!this.flash || !this.flashMaterial || !this.flashGeometry) return;
-    const p = this.elapsed / LIFETIME_SECONDS;
-    const positions = this.flashGeometry.getAttribute(
-      'position'
-    ) as THREE.BufferAttribute;
-    positions.setXYZ(0, this.muzzle.x, this.muzzle.y, this.muzzle.z);
-    positions.needsUpdate = true;
-
-    if (p >= FLASH_FRACTION) {
-      this.flashMaterial.opacity = 0;
+  private updateFlash(deltaTimeSeconds: number): void {
+    if (
+      !this.flashGroup ||
+      !this.flashCore ||
+      !this.flashHalo ||
+      !this.flashCoreMaterial ||
+      !this.flashHaloMaterial ||
+      !this.sparks ||
+      !this.sparkMaterial ||
+      !this.sparkGeometry
+    ) {
       return;
     }
-    const k = p / FLASH_FRACTION;
-    this.flashMaterial.opacity = 1 - k;
-    this.flash.scale.setScalar(0.6 + 0.8 * k);
+
+    this.flashGroup.position.copy(this.muzzle);
+    this.lookAt.setFromUnitVectors(LOCAL_FORWARD, this.forward);
+    this.flashGroup.quaternion.copy(this.lookAt);
+
+    if (this.elapsed >= FLASH_DURATION_SECONDS) {
+      this.flashGroup.visible = false;
+      return;
+    }
+
+    this.flashGroup.visible = true;
+    const k = this.elapsed / FLASH_DURATION_SECONDS;
+    const fade = 1 - k;
+    // Pop: expand quickly then hold as opacity falls.
+    const scale = 0.7 + 1.4 * Math.sin(Math.min(1, k * 1.6) * Math.PI * 0.5);
+    this.flashCore.scale.setScalar(scale);
+    this.flashHalo.scale.setScalar(scale * 1.35);
+    this.flashCoreMaterial.opacity = fade;
+    this.flashHaloMaterial.opacity = 0.75 * fade;
+    this.sparkMaterial.opacity = fade;
+    this.sparkMaterial.size = 0.55 * (1 - k * 0.5);
+
+    const positions = this.sparkGeometry.getAttribute(
+      'position'
+    ) as THREE.BufferAttribute;
+    for (let i = 0; i < MUZZLE_SPARK_COUNT; i++) {
+      const ix = i * 3;
+      positions.setXYZ(
+        i,
+        positions.getX(i) + this.sparkVelocities[ix] * deltaTimeSeconds,
+        positions.getY(i) + this.sparkVelocities[ix + 1] * deltaTimeSeconds,
+        positions.getZ(i) + this.sparkVelocities[ix + 2] * deltaTimeSeconds
+      );
+    }
+    positions.needsUpdate = true;
   }
 }

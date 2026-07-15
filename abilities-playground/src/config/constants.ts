@@ -9,7 +9,7 @@ export const networkConfig = {
 };
 
 /** World units per second for projectile forward travel. */
-export const PROJECTILE_SPEED = 120;
+export const PROJECTILE_SPEED = 180;
 
 /** Radians of Y rotation applied per simulation tick when turning to face a target. */
 export const UNIT_TURN_SPEED_RADIANS_PER_TICK = Math.PI / 15;
@@ -105,7 +105,7 @@ export const arenaParams = {
     support: '#8FD0E8',
     rocket: '#B6A8FF',
     volt: '#9DB8FF',
-    drone: '#A3C9F9',
+    plasmaTank: '#A3C9F9',
   } as Record<string, string>,
   team2Palette: {
     sphere: '#FF8A8A',
@@ -113,7 +113,7 @@ export const arenaParams = {
     support: '#FFB3A7',
     rocket: '#FFA37A',
     volt: '#FF9E7A',
-    drone: '#FFB08A',
+    plasmaTank: '#FFB08A',
   } as Record<string, string>,
   /**
    * Local formation grid dimensions. The grid is centered on each team's spawn line

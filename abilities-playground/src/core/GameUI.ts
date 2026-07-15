@@ -38,7 +38,7 @@ export class GameUI {
       { id: 'unit-btn-support', type: 'support', label: 'Support' },
       { id: 'unit-btn-rocket', type: 'rocket', label: 'Rocket' },
       { id: 'unit-btn-volt', type: 'volt', label: 'Volt' },
-      { id: 'unit-btn-drone', type: 'drone', label: 'Drone' },
+      { id: 'unit-btn-plasma-tank', type: 'plasmaTank', label: 'Plasma Tank' },
     ];
 
     for (const { id, type, label } of unitButtonIds) {

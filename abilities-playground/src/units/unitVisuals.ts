@@ -79,8 +79,8 @@ function createBody(
       return createOctahedronBody(spec.size, teamId, unitType);
     case 'volt':
       return createVoltBody(spec.size, teamId, unitType);
-    case 'drone':
-      return createDroneBody(spec.size, teamId, unitType);
+    case 'plasmaTank':
+      return createPlasmaTankBody(spec.size, teamId, unitType);
   }
 }
 
@@ -211,14 +211,14 @@ function createVoltBody(
 }
 
 /**
- * Drone visual: gunship silhouette.
+ * Plasma Tank visual: compact gun platform.
  * - Rectangular box fuselage, long axis along +Z (forward).
- * - Two mirrored wedge wings (thin triangular prisms) jutting outward along X.
- * - A turret on top: cylinder base, box housing, thin forward-pointing barrel.
- *   The barrel tip sits at ~local (0, size * 0.55, size * 0.9); the fire cue
- *   uses a matching constant muzzle offset.
+ * - A turret on top: cylinder base, a small box housing sized to sit on the
+ *   base, and a thin forward-pointing barrel seated into the housing face.
+ *   Barrel tip local Z = housingHalfDepth + barrelLength - embed = size * 0.99
+ *   for the defaults below; MachineGunFireCue must stay in sync.
  */
-function createDroneBody(
+function createPlasmaTankBody(
   size: number,
   teamId: TeamId,
   unitType: UnitType
@@ -232,34 +232,20 @@ function createDroneBody(
   enableShadows(fuselage);
   root.add(fuselage);
 
-  // Wedge wing: triangle in the XZ-like plane, extruded thinly along Z.
-  const wingShape = new THREE.Shape();
-  wingShape.moveTo(0, -size * 0.55); // chord rear, against the hull
-  wingShape.lineTo(0, size * 0.55); // chord front, against the hull
-  wingShape.lineTo(size * 0.9, 0); // apex pointing outward
-  wingShape.closePath();
-  const wingGeometry = new THREE.ExtrudeGeometry(wingShape, {
-    depth: size * 0.15,
-    bevelEnabled: false,
-  });
-  const wingMaterial = createTeamMaterial(teamId, unitType);
-
-  const rightWing = new THREE.Mesh(wingGeometry, wingMaterial);
-  rightWing.position.set(size / 2, 0, -size * 0.075);
-  enableShadows(rightWing);
-  root.add(rightWing);
-
-  const leftWing = new THREE.Mesh(wingGeometry, wingMaterial);
-  leftWing.position.set(-size / 2, 0, -size * 0.075);
-  leftWing.scale.x = -1;
-  enableShadows(leftWing);
-  root.add(leftWing);
-
   const turretMaterial = new THREE.MeshStandardMaterial({
     color: resolveUnitColor(teamId, unitType),
     metalness: 0.5,
     roughness: 0.4,
   });
+
+  const turretY = size * 0.55;
+  const housingDepth = size * 0.45;
+  const housingHalfDepth = housingDepth * 0.5;
+  const barrelLength = size * 0.9;
+  const barrelHalfLength = barrelLength * 0.5;
+  // Seat ~15% of the barrel inside the housing so it clearly stems from it.
+  const barrelEmbed = barrelLength * 0.15;
+  const barrelCenterZ = housingHalfDepth + barrelHalfLength - barrelEmbed;
 
   const turretBase = new THREE.Mesh(
     new THREE.CylinderGeometry(size * 0.35, size * 0.4, size * 0.25, 16),
@@ -269,20 +255,21 @@ function createDroneBody(
   enableShadows(turretBase);
   root.add(turretBase);
 
+  // Housing footprint fits inside the base's top radius (0.35).
   const turretHousing = new THREE.Mesh(
-    new THREE.BoxGeometry(size * 0.5, size * 0.3, size * 0.6),
+    new THREE.BoxGeometry(size * 0.4, size * 0.25, housingDepth),
     turretMaterial
   );
-  turretHousing.position.y = size * 0.55;
+  turretHousing.position.y = turretY;
   enableShadows(turretHousing);
   root.add(turretHousing);
 
   const barrel = new THREE.Mesh(
-    new THREE.CylinderGeometry(size * 0.06, size * 0.06, size * 0.9, 12),
+    new THREE.CylinderGeometry(size * 0.06, size * 0.06, barrelLength, 12),
     turretMaterial
   );
   barrel.rotation.x = Math.PI / 2; // point along +Z
-  barrel.position.set(0, size * 0.55, size * 0.9);
+  barrel.position.set(0, turretY, barrelCenterZ);
   enableShadows(barrel);
   root.add(barrel);
 

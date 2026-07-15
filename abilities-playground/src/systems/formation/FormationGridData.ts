@@ -243,7 +243,7 @@ export class FormationGridData {
       case 'sphere':
       case 'support':
       case 'volt':
-      case 'drone':
+      case 'plasmaTank':
         return { x: gridX, z: gridZ };
       case 'rocket':
         return this.findRocketOrigin(grid, gridX, gridZ);

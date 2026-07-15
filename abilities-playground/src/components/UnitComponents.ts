@@ -115,20 +115,98 @@ export class MeshComponent implements IPoolableComponent {
     MeshComponent.scene = scene;
   }
 
-  public static createProjectile(radius: number): MeshComponent {
-    const root = new THREE.Mesh(
-      new THREE.SphereGeometry(radius, 32, 32),
-      new THREE.MeshStandardMaterial({
-        color: 0xffddaa,
-        emissive: 0xffaa55,
-        emissiveIntensity: 0.4,
-        roughness: 0.2,
-        metalness: 0.1,
-      })
-    );
-    root.castShadow = true;
-    root.visible = false;
-    return new MeshComponent(root);
+  /**
+   * Thin plasma bolt along local +Z. Root is a Group so RenderSync can set world
+   * quaternion without wiping child pitch (same pattern as missiles).
+   * Team tint is applied on spawn via {@link applyTeamColor}.
+   * @param length Approx. bolt length; thickness scales with it.
+   */
+  public static createProjectile(length: number): MeshComponent {
+    const coreRadius = length * 0.1;
+    const boltLength = length * 1.8;
+    const group = new THREE.Group();
+
+    const addBoltLayer = (
+      radius: number,
+      opacity: number,
+      layer: 'core' | 'mid' | 'halo',
+      segments = 10
+    ): void => {
+      const material = new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        toneMapped: false,
+      });
+      const mesh = new THREE.Mesh(
+        new THREE.CylinderGeometry(radius, radius, boltLength, segments),
+        material
+      );
+      // Default cylinder axis is Y; pitch so the bolt flies along local +Z.
+      mesh.rotation.x = Math.PI / 2;
+      mesh.userData.plasmaLayer = layer;
+      group.add(mesh);
+    };
+
+    // White-hot core + stacked additive shells = dense plasma look under ACES.
+    addBoltLayer(coreRadius, 1.0, 'core');
+    addBoltLayer(coreRadius * 1.7, 0.95, 'mid');
+    addBoltLayer(coreRadius * 3.2, 0.55, 'halo');
+    addBoltLayer(coreRadius * 5.5, 0.28, 'halo', 12);
+
+    // Soft glowing tips so the ends read as energy, not cut plastic.
+    const tipMat = (opacity: number) =>
+      new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        toneMapped: false,
+      });
+    const tipZ = boltLength * 0.5;
+    for (const z of [-tipZ, tipZ]) {
+      const tip = new THREE.Mesh(
+        new THREE.SphereGeometry(coreRadius * 1.4, 10, 8),
+        tipMat(0.9)
+      );
+      tip.position.z = z;
+      tip.userData.plasmaLayer = 'mid';
+      group.add(tip);
+
+      const tipHalo = new THREE.Mesh(
+        new THREE.SphereGeometry(coreRadius * 3.0, 10, 8),
+        tipMat(0.35)
+      );
+      tipHalo.position.z = z;
+      tipHalo.userData.plasmaLayer = 'halo';
+      group.add(tipHalo);
+    }
+
+    group.visible = false;
+    return new MeshComponent(group);
+  }
+
+  /** Retint a pooled plasma bolt to a bright, saturated team energy color. */
+  public applyTeamColor(teamId: TeamId): void {
+    // Pastel arena body colors are too soft for plasma — push toward electric hues.
+    const mid = teamId === 0 ? '#9fd8ff' : '#ff9a9a';
+    const halo = teamId === 0 ? '#4ab0ff' : '#ff4d5c';
+
+    this.root.traverse((obj) => {
+      if (!(obj instanceof THREE.Mesh)) return;
+      const material = obj.material as THREE.MeshBasicMaterial;
+      const layer = obj.userData.plasmaLayer as string | undefined;
+      if (layer === 'core') {
+        material.color.set('#ffffff');
+      } else if (layer === 'mid') {
+        material.color.set(mid);
+      } else {
+        material.color.set(halo);
+      }
+    });
   }
 
   public static createMissile(): MeshComponent {

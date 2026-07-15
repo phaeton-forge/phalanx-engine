@@ -4,7 +4,7 @@ export const UnitType = {
   Support: 'support',
   Rocket: 'rocket',
   Volt: 'volt',
-  Drone: 'drone',
+  PlasmaTank: 'plasmaTank',
 } as const;
 
 export type UnitType = (typeof UnitType)[keyof typeof UnitType];
@@ -24,5 +24,5 @@ export const UNIT_GRID_SIZE: Readonly<Record<UnitType, UnitGridSize>> = {
   [UnitType.Cube]: { width: 2, depth: 2 },
   [UnitType.Rocket]: { width: 2, depth: 1 },
   [UnitType.Volt]: { width: 1, depth: 1 },
-  [UnitType.Drone]: { width: 1, depth: 1 },
+  [UnitType.PlasmaTank]: { width: 1, depth: 1 },
 } as const;

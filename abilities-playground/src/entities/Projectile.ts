@@ -1,17 +1,20 @@
 import { Entity, type IPoolableEntity } from '@phalanx-engine/ecs';
 import { FP, FPQuaternion } from '@phalanx-engine/math';
-import type { FPVector3 as FPVector3Type, FPVector2 as FPVector2Type } from '@phalanx-engine/math';
+import type {
+  FPVector3 as FPVector3Type,
+  FPVector2 as FPVector2Type,
+} from '@phalanx-engine/math';
 import {
   InterpolationComponent,
   PhysicsBodyComponent,
   TransformComponent,
 } from '@phalanx-engine/physics';
+import { MeshComponent, TeamComponent } from '../components';
+import type { TeamId } from '../components';
 import {
-  MeshComponent,
-  TeamComponent,
-} from '../components';
-import type { TeamId } from '../components/UnitComponents';
-import { ProjectileComponent, PROJECTILE_DEFAULT_LIFETIME } from '../components/ProjectileComponent.ts';
+  ProjectileComponent,
+  PROJECTILE_DEFAULT_LIFETIME,
+} from '../components/ProjectileComponent.ts';
 
 export const PROJECTILE_RADIUS = 0.5;
 const PROJECTILE_MASS = 1;
@@ -22,7 +25,10 @@ export interface ProjectileSpawnArgs {
   teamId: TeamId;
 }
 
-export class ProjectileEntity extends Entity implements IPoolableEntity<ProjectileSpawnArgs> {
+export class ProjectileEntity
+  extends Entity
+  implements IPoolableEntity<ProjectileSpawnArgs>
+{
   private _active = false;
 
   public get active() {
@@ -34,6 +40,7 @@ export class ProjectileEntity extends Entity implements IPoolableEntity<Projecti
   }
 
   // Cached typed references — no getComponent lookups in onSpawn/onDespawn
+  private readonly mesh: MeshComponent;
   private readonly projectile: ProjectileComponent;
   private readonly team: TeamComponent;
   private readonly interpolation: InterpolationComponent;
@@ -42,7 +49,9 @@ export class ProjectileEntity extends Entity implements IPoolableEntity<Projecti
   constructor() {
     super();
     // Mesh visibility is handled by MeshComponent's own IPoolableComponent hooks.
-    this.addComponent(MeshComponent.createProjectile(PROJECTILE_RADIUS));
+    this.mesh = this.addComponent(
+      MeshComponent.createProjectile(PROJECTILE_RADIUS)
+    );
     this.projectile = this.addComponent(new ProjectileComponent());
     this.team = this.addComponent(new TeamComponent(0));
     this.interpolation = this.addComponent(new InterpolationComponent());
@@ -55,7 +64,7 @@ export class ProjectileEntity extends Entity implements IPoolableEntity<Projecti
         mass: FP.FromFloat(PROJECTILE_MASS),
         friction: FP.FromFloat(0.15),
         restitution: FP.FromFloat(0.05),
-      }),
+      })
     );
   }
 
@@ -68,9 +77,18 @@ export class ProjectileEntity extends Entity implements IPoolableEntity<Projecti
     this.projectile.fpDirection2.y = args.fpDirection2.y;
     this.projectile.lifeTime = PROJECTILE_DEFAULT_LIFETIME;
     this.team.teamId = args.teamId;
+    this.mesh.applyTeamColor(args.teamId);
 
-    // Snap interpolation so the first frame doesn't blend from a stale position.
-    this.interpolation.capture(args.fpPosition, FPQuaternion.Identity());
+    // Align the bolt with travel direction (fpDirection2.y is world Z).
+    const rotation = FPQuaternion.LookRotation({
+      x: args.fpDirection2.x,
+      y: FP._0,
+      z: args.fpDirection2.y,
+    });
+    this.transform.fpRotation = rotation;
+
+    // Snap interpolation so the first frame doesn't blend from a stale pose.
+    this.interpolation.capture(args.fpPosition, rotation);
     this.interpolation.snapshot();
   }
 

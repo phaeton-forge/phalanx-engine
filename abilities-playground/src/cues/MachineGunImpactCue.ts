@@ -10,16 +10,18 @@ import type {
 import { ComponentType, TransformComponent } from '../components';
 import { easeOutCubic } from './vfxHelpers';
 
-const DURATION_SECONDS = 0.25;
-const START_SCALE = 0.3;
-const END_SCALE = 1.0;
-const PARTICLE_COUNT = 30;
+const DURATION_SECONDS = 0.3;
+const PARTICLE_COUNT = 48;
+const SPARK_SPEED = 8;
 
-/** Small bright spark burst at the machine-gun hit point. */
+/** Bright spark burst at the machine-gun hit point on the target surface. */
 export class MachineGunImpactCue extends Cue {
   private points: THREE.Points | null = null;
   private geometry: THREE.BufferGeometry | null = null;
   private material: THREE.PointsMaterial | null = null;
+  private flash: THREE.Mesh | null = null;
+  private flashMaterial: THREE.MeshBasicMaterial | null = null;
+  private readonly velocities = new Float32Array(PARTICLE_COUNT * 3);
   private elapsed = 0;
   private done = false;
   private readonly scene: THREE.Scene;
@@ -39,14 +41,41 @@ export class MachineGunImpactCue extends Cue {
   }
 
   public override update(deltaTimeSeconds: number): void {
-    if (this.done || !this.points || !this.material) {
+    if (this.done || !this.points || !this.material || !this.geometry) {
       return;
     }
     this.elapsed += deltaTimeSeconds;
     const t = this.elapsed / DURATION_SECONDS;
     const k = easeOutCubic(t);
-    this.points.scale.setScalar(START_SCALE + (END_SCALE - START_SCALE) * k);
+
+    const positions = this.geometry.getAttribute(
+      'position'
+    ) as THREE.BufferAttribute;
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+      const ix = i * 3;
+      positions.setXYZ(
+        i,
+        positions.getX(i) + this.velocities[ix] * deltaTimeSeconds,
+        positions.getY(i) + this.velocities[ix + 1] * deltaTimeSeconds,
+        positions.getZ(i) + this.velocities[ix + 2] * deltaTimeSeconds
+      );
+      // Mild gravity so sparks arc down.
+      this.velocities[ix + 1] -= 12 * deltaTimeSeconds;
+    }
+    positions.needsUpdate = true;
+
     this.material.opacity = 0.95 * (1 - k);
+    this.material.size = 0.75 * (1 - k * 0.55);
+
+    if (this.flash && this.flashMaterial) {
+      const flashT = Math.min(1, this.elapsed / 0.08);
+      this.flash.scale.setScalar(0.4 + flashT * 1.2);
+      this.flashMaterial.opacity = 0.9 * (1 - flashT);
+      if (flashT >= 1) {
+        this.flash.visible = false;
+      }
+    }
+
     if (t >= 1) {
       this.done = true;
     }
@@ -60,11 +89,18 @@ export class MachineGunImpactCue extends Cue {
     if (this.points) {
       this.scene.remove(this.points);
     }
+    if (this.flash) {
+      this.scene.remove(this.flash);
+      this.flash.geometry.dispose();
+    }
     this.geometry?.dispose();
     this.material?.dispose();
+    this.flashMaterial?.dispose();
     this.points = null;
     this.geometry = null;
     this.material = null;
+    this.flash = null;
+    this.flashMaterial = null;
   }
 
   private spawnBurst(position: THREE.Vector3): void {
@@ -78,9 +114,15 @@ export class MachineGunImpactCue extends Cue {
         y = Math.random() * 2 - 1;
         z = Math.random() * 2 - 1;
       } while (x * x + y * y + z * z > 1);
-      positions[i * 3] = x;
-      positions[i * 3 + 1] = y;
-      positions[i * 3 + 2] = z;
+      const len = Math.sqrt(x * x + y * y + z * z) || 1;
+      // Start near the impact surface; mostly fly out and slightly up.
+      positions[i * 3] = (x / len) * 0.15;
+      positions[i * 3 + 1] = (y / len) * 0.15;
+      positions[i * 3 + 2] = (z / len) * 0.15;
+      const speed = SPARK_SPEED * (0.55 + Math.random() * 0.7);
+      this.velocities[i * 3] = (x / len) * speed;
+      this.velocities[i * 3 + 1] = Math.abs(y / len) * speed + 2;
+      this.velocities[i * 3 + 2] = (z / len) * speed;
     }
 
     this.geometry = new THREE.BufferGeometry();
@@ -91,7 +133,7 @@ export class MachineGunImpactCue extends Cue {
 
     this.material = new THREE.PointsMaterial({
       color: new THREE.Color(0xffd24d),
-      size: 0.5,
+      size: 0.75,
       sizeAttenuation: true,
       transparent: true,
       opacity: 0.95,
@@ -104,8 +146,25 @@ export class MachineGunImpactCue extends Cue {
     this.points.position.copy(position);
     this.points.frustumCulled = false;
     this.points.renderOrder = 10_000;
-    this.points.scale.setScalar(START_SCALE);
     this.scene.add(this.points);
+
+    // Brief white-hot flash at the impact point.
+    this.flashMaterial = new THREE.MeshBasicMaterial({
+      color: 0xfff2c0,
+      transparent: true,
+      opacity: 0.9,
+      depthWrite: false,
+      depthTest: false,
+      blending: THREE.AdditiveBlending,
+    });
+    this.flash = new THREE.Mesh(
+      new THREE.SphereGeometry(0.35, 10, 8),
+      this.flashMaterial
+    );
+    this.flash.position.copy(position);
+    this.flash.renderOrder = 10_001;
+    this.flash.scale.setScalar(0.4);
+    this.scene.add(this.flash);
   }
 
   private tryGetImpactPoint(
@@ -144,10 +203,11 @@ export class MachineGunImpactCue extends Cue {
       src.z - tgt.z
     );
     const lenSq = normal.lengthSq();
-    if (lenSq < 1e-8) return new THREE.Vector3(tgt.x, tgt.y, tgt.z);
+    if (lenSq < 1e-8) return new THREE.Vector3(tgt.x, tgt.y + 1, tgt.z);
     normal.multiplyScalar(1 / Math.sqrt(lenSq));
 
-    return new THREE.Vector3(tgt.x, tgt.y, tgt.z).addScaledVector(
+    // Lift slightly so sparks sit on the unit body, not the ground plane.
+    return new THREE.Vector3(tgt.x, tgt.y + 0.4, tgt.z).addScaledVector(
       normal,
       targetRadius * 1.05 + 0.05
     );

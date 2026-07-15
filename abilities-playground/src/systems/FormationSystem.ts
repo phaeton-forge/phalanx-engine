@@ -117,7 +117,7 @@ export class FormationSystem extends GameSystem {
             cmd.type !== 'support' &&
             cmd.type !== 'rocket' &&
             cmd.type !== 'volt' &&
-            cmd.type !== 'drone') ||
+            cmd.type !== 'plasmaTank') ||
           typeof cmd.gridX !== 'number' ||
           !Number.isInteger(cmd.gridX) ||
           typeof cmd.gridZ !== 'number' ||
