@@ -8,15 +8,25 @@ import type { Entity } from '@phalanx-engine/ecs';
 import { FPVector3 } from '@phalanx-engine/math';
 import type { TransformComponent } from '@phalanx-engine/physics';
 import { ComponentType, MeshComponent } from '../components';
+import { clamp01, getSoftCircleTexture } from './vfxHelpers';
 
-const PARTICLE_CAPACITY = 96;
-const EMIT_PER_SECOND = 28;
+const PARTICLE_CAPACITY = 128;
+const EMIT_PER_SECOND = 52;
+const PARTICLES_PER_EMIT = 2;
 const LIFE_MIN = 1.5;
 const LIFE_MAX = 2.5;
-const SMOKE_SIZE = 0.55;
+const SIZE_START = 0.9;
+const SIZE_END = 2.4;
+const ALPHA_START = 0.55;
+const POINT_SCALE = 180;
 const BASE_CORE_OPACITY = 0.95;
 const BASE_OUTER_OPACITY = 0.55;
 const BASE_LIGHT_INTENSITY = 1.1;
+
+const COLOR_WARM = new THREE.Color('#c4a882');
+const COLOR_COOL = new THREE.Color('#6e6e72');
+
+const LOCAL_EXHAUST = new THREE.Vector3(0, 0, -1);
 
 type ExhaustUserData = {
   flameCore?: THREE.Mesh;
@@ -25,6 +35,39 @@ type ExhaustUserData = {
 };
 
 type MaybeActive = { active?: boolean };
+
+const VERTEX_SHADER = /* glsl */ `
+attribute float aSize;
+attribute float aAlpha;
+attribute vec3 aColor;
+
+uniform float uScale;
+
+varying float vAlpha;
+varying vec3 vColor;
+
+void main() {
+  vAlpha = aAlpha;
+  vColor = aColor;
+  vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+  gl_PointSize = aSize * (uScale / max(0.15, -mvPosition.z));
+  gl_Position = projectionMatrix * mvPosition;
+}
+`;
+
+const FRAGMENT_SHADER = /* glsl */ `
+uniform sampler2D uMap;
+
+varying float vAlpha;
+varying vec3 vColor;
+
+void main() {
+  float mask = texture2D(uMap, gl_PointCoord).a;
+  float alpha = mask * vAlpha;
+  if (alpha < 0.01) discard;
+  gl_FragColor = vec4(vColor, alpha);
+}
+`;
 
 export class MissileExhaustCue extends Cue {
   private readonly scene: THREE.Scene;
@@ -37,17 +80,22 @@ export class MissileExhaustCue extends Cue {
 
   private points: THREE.Points | null = null;
   private geometry: THREE.BufferGeometry | null = null;
-  private material: THREE.PointsMaterial | null = null;
+  private material: THREE.ShaderMaterial | null = null;
   private positions: Float32Array | null = null;
   private velocities: Float32Array | null = null;
   private ages: Float32Array | null = null;
   private lifetimes: Float32Array | null = null;
+  private sizes: Float32Array | null = null;
+  private alphas: Float32Array | null = null;
+  private colors: Float32Array | null = null;
   private aliveCount = 0;
 
   private flameCore: THREE.Mesh | null = null;
   private flameOuter: THREE.Mesh | null = null;
   private engineLight: THREE.PointLight | null = null;
   private readonly nozzleWorld = new THREE.Vector3();
+  private readonly exhaustDir = new THREE.Vector3();
+  private readonly tmpColor = new THREE.Color();
 
   public constructor(scene: THREE.Scene) {
     super();
@@ -79,22 +127,40 @@ export class MissileExhaustCue extends Cue {
     this.velocities = new Float32Array(PARTICLE_CAPACITY * 3);
     this.ages = new Float32Array(PARTICLE_CAPACITY);
     this.lifetimes = new Float32Array(PARTICLE_CAPACITY);
+    this.sizes = new Float32Array(PARTICLE_CAPACITY);
+    this.alphas = new Float32Array(PARTICLE_CAPACITY);
+    this.colors = new Float32Array(PARTICLE_CAPACITY * 3);
 
     this.geometry = new THREE.BufferGeometry();
     this.geometry.setAttribute(
       'position',
       new THREE.BufferAttribute(this.positions, 3),
     );
+    this.geometry.setAttribute(
+      'aSize',
+      new THREE.BufferAttribute(this.sizes, 1),
+    );
+    this.geometry.setAttribute(
+      'aAlpha',
+      new THREE.BufferAttribute(this.alphas, 1),
+    );
+    this.geometry.setAttribute(
+      'aColor',
+      new THREE.BufferAttribute(this.colors, 3),
+    );
     this.geometry.setDrawRange(0, 0);
 
-    this.material = new THREE.PointsMaterial({
-      color: new THREE.Color('#9a9a9a'),
-      size: SMOKE_SIZE,
-      sizeAttenuation: true,
+    this.material = new THREE.ShaderMaterial({
+      uniforms: {
+        uMap: { value: getSoftCircleTexture() },
+        uScale: { value: POINT_SCALE },
+      },
+      vertexShader: VERTEX_SHADER,
+      fragmentShader: FRAGMENT_SHADER,
       transparent: true,
-      opacity: 0.45,
       depthWrite: false,
       blending: THREE.NormalBlending,
+      toneMapped: false,
     });
 
     this.points = new THREE.Points(this.geometry, this.material);
@@ -120,7 +186,9 @@ export class MissileExhaustCue extends Cue {
         this.emitAccumulator += EMIT_PER_SECOND * deltaTimeSeconds;
         while (this.emitAccumulator >= 1) {
           this.emitAccumulator -= 1;
-          this.spawnParticle();
+          for (let n = 0; n < PARTICLES_PER_EMIT; n++) {
+            this.spawnParticle(entity);
+          }
         }
       }
     }
@@ -147,6 +215,9 @@ export class MissileExhaustCue extends Cue {
     this.velocities = null;
     this.ages = null;
     this.lifetimes = null;
+    this.sizes = null;
+    this.alphas = null;
+    this.colors = null;
     this.flameCore = null;
     this.flameOuter = null;
     this.engineLight = null;
@@ -174,31 +245,75 @@ export class MissileExhaustCue extends Cue {
     return true;
   }
 
-  private spawnParticle(): void {
+  private updateExhaustDir(entity: Entity): void {
+    const mesh = entity.getComponent<MeshComponent>(ComponentType.Mesh);
+    if (mesh) {
+      this.exhaustDir
+        .copy(LOCAL_EXHAUST)
+        .applyQuaternion(mesh.root.quaternion)
+        .normalize();
+      return;
+    }
+    this.exhaustDir.set(0, 0.2, -1).normalize();
+  }
+
+  private spawnParticle(entity: Entity): void {
     if (
       !this.positions ||
       !this.velocities ||
       !this.ages ||
-      !this.lifetimes
+      !this.lifetimes ||
+      !this.sizes ||
+      !this.alphas ||
+      !this.colors
     ) {
       return;
     }
     if (this.aliveCount >= PARTICLE_CAPACITY) return;
 
+    this.updateExhaustDir(entity);
+
     const i = this.aliveCount++;
     const o = i * 3;
-    this.positions[o] = this.nozzleWorld.x + (Math.random() - 0.5) * 0.25;
+    const jitter = 0.18;
+    this.positions[o] = this.nozzleWorld.x + (Math.random() - 0.5) * jitter;
     this.positions[o + 1] =
-      this.nozzleWorld.y + (Math.random() - 0.5) * 0.25;
-    this.positions[o + 2] = this.nozzleWorld.z + (Math.random() - 0.5) * 0.25;
+      this.nozzleWorld.y + (Math.random() - 0.5) * jitter;
+    this.positions[o + 2] =
+      this.nozzleWorld.z + (Math.random() - 0.5) * jitter;
 
-    this.velocities[o] = (Math.random() - 0.5) * 0.35;
-    this.velocities[o + 1] = 0.35 + Math.random() * 0.45;
-    this.velocities[o + 2] = (Math.random() - 0.5) * 0.35;
+    const backSpeed = 1.4 + Math.random() * 1.8;
+    const spread = 0.55;
+    this.velocities[o] =
+      this.exhaustDir.x * backSpeed + (Math.random() - 0.5) * spread;
+    this.velocities[o + 1] =
+      this.exhaustDir.y * backSpeed +
+      0.15 +
+      Math.random() * 0.35 +
+      (Math.random() - 0.5) * spread * 0.5;
+    this.velocities[o + 2] =
+      this.exhaustDir.z * backSpeed + (Math.random() - 0.5) * spread;
 
     this.ages[i] = 0;
     this.lifetimes[i] = LIFE_MIN + Math.random() * (LIFE_MAX - LIFE_MIN);
+    this.writeVisuals(i, 0);
     this.syncDrawRange();
+  }
+
+  private writeVisuals(index: number, ageRatio: number): void {
+    if (!this.sizes || !this.alphas || !this.colors) return;
+
+    const t = clamp01(ageRatio);
+    // Ease out: grow and fade as smoke ages
+    const fade = 1 - t * t;
+    this.sizes[index] = SIZE_START + (SIZE_END - SIZE_START) * t;
+    this.alphas[index] = ALPHA_START * fade;
+
+    this.tmpColor.copy(COLOR_WARM).lerp(COLOR_COOL, t);
+    const co = index * 3;
+    this.colors[co] = this.tmpColor.r;
+    this.colors[co + 1] = this.tmpColor.g;
+    this.colors[co + 2] = this.tmpColor.b;
   }
 
   private ageParticles(dt: number): void {
@@ -207,11 +322,15 @@ export class MissileExhaustCue extends Cue {
       !this.velocities ||
       !this.ages ||
       !this.lifetimes ||
+      !this.sizes ||
+      !this.alphas ||
+      !this.colors ||
       !this.geometry
     ) {
       return;
     }
 
+    const damp = Math.exp(-1.4 * dt);
     let write = 0;
     for (let read = 0; read < this.aliveCount; read++) {
       const life = this.lifetimes[read]!;
@@ -220,8 +339,11 @@ export class MissileExhaustCue extends Cue {
 
       const ro = read * 3;
       const wo = write * 3;
-      this.positions[wo] =
-        this.positions[ro]! + this.velocities[ro]! * dt;
+      this.velocities[ro] *= damp;
+      this.velocities[ro + 1] *= damp;
+      this.velocities[ro + 2] *= damp;
+
+      this.positions[wo] = this.positions[ro]! + this.velocities[ro]! * dt;
       this.positions[wo + 1] =
         this.positions[ro + 1]! + this.velocities[ro + 1]! * dt;
       this.positions[wo + 2] =
@@ -231,15 +353,15 @@ export class MissileExhaustCue extends Cue {
       this.velocities[wo + 2] = this.velocities[ro + 2]!;
       this.ages[write] = age;
       this.lifetimes[write] = life;
+      this.writeVisuals(write, age / life);
       write++;
     }
     this.aliveCount = write;
     this.geometry.attributes.position.needsUpdate = true;
+    this.geometry.attributes.aSize.needsUpdate = true;
+    this.geometry.attributes.aAlpha.needsUpdate = true;
+    this.geometry.attributes.aColor.needsUpdate = true;
     this.syncDrawRange();
-
-    if (this.material) {
-      this.material.opacity = this.emitting ? 0.45 : 0.35;
-    }
   }
 
   private syncDrawRange(): void {
