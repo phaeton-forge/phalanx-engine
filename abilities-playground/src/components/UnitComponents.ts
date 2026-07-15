@@ -229,11 +229,16 @@ export class MeshComponent implements IPoolableComponent {
       height: number,
       color: number,
       opacity: number,
+      emissiveIntensity: number,
     ): THREE.Mesh => {
       const flame = new THREE.Mesh(
         new THREE.ConeGeometry(radius, height, 12),
-        new THREE.MeshBasicMaterial({
+        new THREE.MeshStandardMaterial({
           color,
+          emissive: color,
+          emissiveIntensity,
+          metalness: 0,
+          roughness: 1,
           transparent: true,
           opacity,
           blending: THREE.AdditiveBlending,
@@ -246,21 +251,16 @@ export class MeshComponent implements IPoolableComponent {
       return flame;
     };
 
-    // Soft realistic stack: hot core + warmer outer wash
-    const flameCore = makeFlame(0.22, 0.7, 0xfff2cc, 0.95);
-    const flameOuter = makeFlame(0.48, 1.15, 0xff8a2a, 0.55);
-
-    const engineLight = new THREE.PointLight(0xffa040, 1.1, 5, 2);
-    engineLight.position.z = -(bodyLength / 2 + 0.15);
+    // Soft realistic stack: hot core + warmer outer wash (self-lit, no PointLight)
+    const flameCore = makeFlame(0.22, 0.7, 0xfff2cc, 0.95, 3.2);
+    const flameOuter = makeFlame(0.48, 1.15, 0xff8a2a, 0.55, 2.0);
 
     group.add(body);
     group.add(flameOuter);
     group.add(flameCore);
-    group.add(engineLight);
 
     group.userData.flameCore = flameCore;
     group.userData.flameOuter = flameOuter;
-    group.userData.engineLight = engineLight;
 
     group.visible = false;
     return new MeshComponent(group);

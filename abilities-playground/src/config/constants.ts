@@ -49,10 +49,11 @@ export const MISSILE_CRUISE_TURN = 0.4;
 /** XZ distance from the target where a cruising missile starts its 3D dive. */
 export const MISSILE_ATTACK_RANGE = 25;
 /**
- * XZ distance below which the launch arc is skipped and cruise altitude scales
- * down linearly to zero (close-range shots home flat instead of looping).
+ * Minimum engagement range (world units, XZ). The rocket is high-arc artillery:
+ * it refuses to fire on enemies closer than this, so every missile always flies
+ * the full launch arc + cruise + dive instead of a flat close-range shot.
  */
-export const MISSILE_LAUNCH_ARC_FALLOFF = 40;
+export const MISSILE_MIN_ENGAGEMENT_RANGE = 35;
 export const MISSILE_RADIUS = 0.6;
 /**
  * Radius (world units) around a missile used to search for a new hostile target

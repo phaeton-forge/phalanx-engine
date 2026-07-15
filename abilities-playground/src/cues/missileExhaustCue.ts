@@ -20,10 +20,15 @@ const SIZE_END = 2.4;
 const ALPHA_START = 0.6;
 const BASE_CORE_OPACITY = 0.95;
 const BASE_OUTER_OPACITY = 0.55;
-const BASE_LIGHT_INTENSITY = 1.1;
+const BASE_CORE_EMISSIVE = 3.2;
+const BASE_OUTER_EMISSIVE = 2.0;
 
 const COLOR_WARM = new THREE.Color('#c4a882');
 const COLOR_COOL = new THREE.Color('#6e6e72');
+
+// Smooth per-particle wander so trails curl instead of tracking straight lines.
+const TURB_STRENGTH = 1.2;
+const TURB_FREQ = 2.3;
 
 const LOCAL_EXHAUST = new THREE.Vector3(0, 0, -1);
 
@@ -39,7 +44,6 @@ function viewportPointScale(): number {
 type ExhaustUserData = {
   flameCore?: THREE.Mesh;
   flameOuter?: THREE.Mesh;
-  engineLight?: THREE.PointLight;
 };
 
 type MaybeActive = { active?: boolean };
@@ -93,6 +97,7 @@ export class MissileExhaustCue extends Cue {
   private velocities: Float32Array | null = null;
   private ages: Float32Array | null = null;
   private lifetimes: Float32Array | null = null;
+  private seeds: Float32Array | null = null;
   private sizes: Float32Array | null = null;
   private alphas: Float32Array | null = null;
   private colors: Float32Array | null = null;
@@ -100,7 +105,6 @@ export class MissileExhaustCue extends Cue {
 
   private flameCore: THREE.Mesh | null = null;
   private flameOuter: THREE.Mesh | null = null;
-  private engineLight: THREE.PointLight | null = null;
   private readonly nozzleWorld = new THREE.Vector3();
   private readonly exhaustDir = new THREE.Vector3();
   private readonly tmpColor = new THREE.Color();
@@ -129,12 +133,12 @@ export class MissileExhaustCue extends Cue {
     const data = mesh.root.userData as ExhaustUserData;
     this.flameCore = data.flameCore ?? null;
     this.flameOuter = data.flameOuter ?? null;
-    this.engineLight = data.engineLight ?? null;
 
     this.positions = new Float32Array(PARTICLE_CAPACITY * 3);
     this.velocities = new Float32Array(PARTICLE_CAPACITY * 3);
     this.ages = new Float32Array(PARTICLE_CAPACITY);
     this.lifetimes = new Float32Array(PARTICLE_CAPACITY);
+    this.seeds = new Float32Array(PARTICLE_CAPACITY);
     this.sizes = new Float32Array(PARTICLE_CAPACITY);
     this.alphas = new Float32Array(PARTICLE_CAPACITY);
     this.colors = new Float32Array(PARTICLE_CAPACITY * 3);
@@ -188,7 +192,7 @@ export class MissileExhaustCue extends Cue {
 
     if (!entity || (entity as MaybeActive).active === false) {
       this.emitting = false;
-      this.restoreNozzleDefaults(false);
+      this.restoreNozzleDefaults();
     } else if (this.emitting) {
       if (!this.resolveNozzle(entity)) {
         this.emitting = false;
@@ -226,12 +230,12 @@ export class MissileExhaustCue extends Cue {
     this.velocities = null;
     this.ages = null;
     this.lifetimes = null;
+    this.seeds = null;
     this.sizes = null;
     this.alphas = null;
     this.colors = null;
     this.flameCore = null;
     this.flameOuter = null;
-    this.engineLight = null;
   }
 
   private resolveNozzle(entity: Entity): boolean {
@@ -274,6 +278,7 @@ export class MissileExhaustCue extends Cue {
       !this.velocities ||
       !this.ages ||
       !this.lifetimes ||
+      !this.seeds ||
       !this.sizes ||
       !this.alphas ||
       !this.colors
@@ -307,6 +312,7 @@ export class MissileExhaustCue extends Cue {
 
     this.ages[i] = 0;
     this.lifetimes[i] = LIFE_MIN + Math.random() * (LIFE_MAX - LIFE_MIN);
+    this.seeds[i] = Math.random() * Math.PI * 2;
     this.writeVisuals(i, 0);
     this.syncDrawRange();
   }
@@ -333,6 +339,7 @@ export class MissileExhaustCue extends Cue {
       !this.velocities ||
       !this.ages ||
       !this.lifetimes ||
+      !this.seeds ||
       !this.sizes ||
       !this.alphas ||
       !this.colors ||
@@ -354,6 +361,16 @@ export class MissileExhaustCue extends Cue {
       this.velocities[ro + 1] *= damp;
       this.velocities[ro + 2] *= damp;
 
+      // Smooth curl: gentle wander that grows as the puff slows, bending paths.
+      const seed = this.seeds[read]!;
+      const swirl = TURB_STRENGTH * age;
+      this.velocities[ro] +=
+        Math.sin(age * TURB_FREQ + seed) * swirl * dt;
+      this.velocities[ro + 1] +=
+        Math.sin(age * TURB_FREQ * 0.8 + seed * 1.7) * swirl * 0.6 * dt;
+      this.velocities[ro + 2] +=
+        Math.cos(age * TURB_FREQ * 1.3 + seed * 2.3) * swirl * dt;
+
       this.positions[wo] = this.positions[ro]! + this.velocities[ro]! * dt;
       this.positions[wo + 1] =
         this.positions[ro + 1]! + this.velocities[ro + 1]! * dt;
@@ -364,6 +381,7 @@ export class MissileExhaustCue extends Cue {
       this.velocities[wo + 2] = this.velocities[ro + 2]!;
       this.ages[write] = age;
       this.lifetimes[write] = life;
+      this.seeds[write] = seed;
       this.writeVisuals(write, age / life);
       write++;
     }
@@ -382,33 +400,35 @@ export class MissileExhaustCue extends Cue {
   private flickerNozzle(): void {
     const pulse = 0.85 + 0.15 * Math.sin(this.elapsed * 18 + Math.random());
     const coreMat = this.flameCore?.material as
-      | THREE.MeshBasicMaterial
+      | THREE.MeshStandardMaterial
       | undefined;
     const outerMat = this.flameOuter?.material as
-      | THREE.MeshBasicMaterial
+      | THREE.MeshStandardMaterial
       | undefined;
-    if (coreMat) coreMat.opacity = BASE_CORE_OPACITY * pulse;
+    if (coreMat) {
+      coreMat.opacity = BASE_CORE_OPACITY * pulse;
+      coreMat.emissiveIntensity = BASE_CORE_EMISSIVE * pulse;
+    }
     if (outerMat) {
       outerMat.opacity = BASE_OUTER_OPACITY * (0.9 + 0.1 * pulse);
-    }
-    if (this.engineLight) {
-      this.engineLight.intensity = BASE_LIGHT_INTENSITY * pulse;
-      this.engineLight.visible = true;
+      outerMat.emissiveIntensity = BASE_OUTER_EMISSIVE * (0.9 + 0.1 * pulse);
     }
   }
 
-  private restoreNozzleDefaults(lightOn: boolean): void {
+  private restoreNozzleDefaults(): void {
     const coreMat = this.flameCore?.material as
-      | THREE.MeshBasicMaterial
+      | THREE.MeshStandardMaterial
       | undefined;
     const outerMat = this.flameOuter?.material as
-      | THREE.MeshBasicMaterial
+      | THREE.MeshStandardMaterial
       | undefined;
-    if (coreMat) coreMat.opacity = BASE_CORE_OPACITY;
-    if (outerMat) outerMat.opacity = BASE_OUTER_OPACITY;
-    if (this.engineLight) {
-      this.engineLight.intensity = BASE_LIGHT_INTENSITY;
-      this.engineLight.visible = lightOn;
+    if (coreMat) {
+      coreMat.opacity = BASE_CORE_OPACITY;
+      coreMat.emissiveIntensity = BASE_CORE_EMISSIVE;
+    }
+    if (outerMat) {
+      outerMat.opacity = BASE_OUTER_OPACITY;
+      outerMat.emissiveIntensity = BASE_OUTER_EMISSIVE;
     }
   }
 }

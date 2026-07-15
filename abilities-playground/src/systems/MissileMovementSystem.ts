@@ -15,7 +15,6 @@ import {
   MISSILE_SPEED,
   MISSILE_LAUNCH_HEIGHT,
   MISSILE_ATTACK_RANGE,
-  MISSILE_LAUNCH_ARC_FALLOFF,
   PROJECTILE_DESPAWN_DELAY_TICKS,
   MISSILE_RETARGET_RANGE,
 } from '../config/constants';
@@ -37,8 +36,6 @@ const FP_SPEED = FP.FromFloat(MISSILE_SPEED);
 const FP_STEP = FP.Mul(FP_SPEED, FP_TICK);
 const FP_ATTACK_RANGE = FP.FromFloat(MISSILE_ATTACK_RANGE);
 const FP_ATTACK_RANGE_SQ = FP.Mul(FP_ATTACK_RANGE, FP_ATTACK_RANGE);
-const FP_ARC_FALLOFF = FP.FromFloat(MISSILE_LAUNCH_ARC_FALLOFF);
-const FP_ARC_FALLOFF_SQ = FP.Mul(FP_ARC_FALLOFF, FP_ARC_FALLOFF);
 const FP_RETARGET_RANGE = FP.FromFloat(MISSILE_RETARGET_RANGE);
 
 type FlatOffset = { dx: FixedPoint; dz: FixedPoint; distSq: FixedPoint };
@@ -99,23 +96,12 @@ export class MissileMovementSystem extends GameSystem {
     this.physicsStore.arrays.velocityZ[pIdx] = 0n;
   }
 
-  /** Scales launch/cruise altitude down as the target gets closer. */
-  private cruiseAltitude(
-    mc: MissileComponent,
-    flatDistSq: FixedPoint | null
-  ): FixedPoint {
-    let height = FP.Mul(
+  /** Full cruise altitude above spawn. Every missile flies the complete arc. */
+  private cruiseAltitude(mc: MissileComponent): FixedPoint {
+    const height = FP.Mul(
       FP.FromFloat(MISSILE_LAUNCH_HEIGHT),
       mc.launchHeightScale
     );
-    if (
-      flatDistSq !== null &&
-      FP.Lt(flatDistSq, FP_ARC_FALLOFF_SQ) &&
-      FP.Gt(flatDistSq, FP._0)
-    ) {
-      const ratio = FP.Div(FP.Sqrt(flatDistSq), FP_ARC_FALLOFF);
-      height = FP.Mul(height, ratio);
-    }
     return FP.Add(mc.spawnY, height);
   }
 
@@ -149,12 +135,8 @@ export class MissileMovementSystem extends GameSystem {
     );
   }
 
-  private clampMinAltitude(
-    mc: MissileComponent,
-    tIdx: number,
-    flatDistSq: FixedPoint | null
-  ): void {
-    const minY = this.cruiseAltitude(mc, flatDistSq);
+  private clampMinAltitude(mc: MissileComponent, tIdx: number): void {
+    const minY = this.cruiseAltitude(mc);
     const currentY = FP.FromRaw(this.transformStore.arrays.fpPositionY[tIdx]);
     if (FP.Lt(currentY, minY)) {
       this.transformStore.arrays.fpPositionY[tIdx] = FP.ToRaw(minY);
@@ -213,15 +195,11 @@ export class MissileMovementSystem extends GameSystem {
     this.disablePhysics(pIdx);
 
     const flat = this.flatOffsetToTarget(mc, tIdx);
-    if (flat !== null) {
-      if (this.tryEnterAttack(missile, mc, tIdx, pIdx, tick, flat.distSq)) {
-        return;
-      }
-      if (FP.Lte(flat.distSq, FP_ARC_FALLOFF_SQ)) {
-        mc.phase = 'approach';
-        this.tickApproach(missile, mc, tIdx, pIdx, tick);
-        return;
-      }
+    if (
+      flat !== null &&
+      this.tryEnterAttack(missile, mc, tIdx, pIdx, tick, flat.distSq)
+    ) {
+      return;
     }
 
     this.moveAlongForward(tIdx, FP_STEP);
@@ -255,7 +233,7 @@ export class MissileMovementSystem extends GameSystem {
       return;
     }
 
-    this.clampMinAltitude(mc, tIdx, flat.distSq);
+    this.clampMinAltitude(mc, tIdx);
     this.stepFlatTowardTarget(flat, tIdx);
   }
 
