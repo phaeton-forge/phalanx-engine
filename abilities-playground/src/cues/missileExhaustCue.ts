@@ -17,8 +17,7 @@ const LIFE_MIN = 1.5;
 const LIFE_MAX = 2.5;
 const SIZE_START = 0.9;
 const SIZE_END = 2.4;
-const ALPHA_START = 0.55;
-const POINT_SCALE = 180;
+const ALPHA_START = 0.6;
 const BASE_CORE_OPACITY = 0.95;
 const BASE_OUTER_OPACITY = 0.55;
 const BASE_LIGHT_INTENSITY = 1.1;
@@ -27,6 +26,15 @@ const COLOR_WARM = new THREE.Color('#c4a882');
 const COLOR_COOL = new THREE.Color('#6e6e72');
 
 const LOCAL_EXHAUST = new THREE.Vector3(0, 0, -1);
+
+/**
+ * Matches THREE.PointsMaterial's size attenuation: gl_PointSize is
+ * `size * (0.5 * drawingBufferHeight) / -viewZ`. A hardcoded scale renders
+ * sub-pixel (invisible) sprites at gameplay camera distance.
+ */
+function viewportPointScale(): number {
+  return 0.5 * window.innerHeight * (window.devicePixelRatio || 1);
+}
 
 type ExhaustUserData = {
   flameCore?: THREE.Mesh;
@@ -153,7 +161,7 @@ export class MissileExhaustCue extends Cue {
     this.material = new THREE.ShaderMaterial({
       uniforms: {
         uMap: { value: getSoftCircleTexture() },
-        uScale: { value: POINT_SCALE },
+        uScale: { value: viewportPointScale() },
       },
       vertexShader: VERTEX_SHADER,
       fragmentShader: FRAGMENT_SHADER,
@@ -173,6 +181,9 @@ export class MissileExhaustCue extends Cue {
     if (this.done || !this.context) return;
 
     this.elapsed += deltaTimeSeconds;
+    if (this.material) {
+      this.material.uniforms.uScale!.value = viewportPointScale();
+    }
     const entity = this.context.entityManager.getEntity(this.missileEntityId);
 
     if (!entity || (entity as MaybeActive).active === false) {
