@@ -93,8 +93,7 @@ Determinism boundary: all `Math.random` (and similar) lives only in cue/mesh pre
 
 ## Testing
 
-- No unit assertions on particle positions (non-deterministic by design).
-- Existing missile / quaternion / movement tests must remain green (sim path unchanged).
+- No new automated tests for this visual feature (VFX is verified by eye).
 - Manual verification in abilities-playground:
   - nozzle reads as soft realistic glow
   - smoke trails linger ~1.5–2.5s

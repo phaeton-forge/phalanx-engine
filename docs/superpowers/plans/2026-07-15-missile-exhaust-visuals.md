@@ -6,7 +6,7 @@
 
 **Architecture:** Upgrade `MeshComponent.createMissile()` with a layered nozzle + `PointLight` (refs on `group.userData`). Add `MissileExhaustCue` that follows the missile, emits/ages gray smoke particles, and soft-flickers the nozzle. Dispatch the cue from `missileVolley` on each spawn via `eventBus.emit(gameplayCueKey(...))` (same presentation path as `plasmaTankMachineGun` fire cue). Simulation / FP paths stay untouched.
 
-**Tech Stack:** TypeScript, Three.js, Vitest, `@phalanx-engine/abilities` Cue API, abilities-playground ECS
+**Tech Stack:** TypeScript, Three.js, `@phalanx-engine/abilities` Cue API, abilities-playground ECS
 
 ## Global Constraints
 
@@ -15,6 +15,7 @@
 - Cue must not dispose mesh-owned flame/light objects
 - Follow existing cue patterns (`BeamCue` lifecycle, `MissileImpactCue` Points style, `PlasmaTankMachineGun` hook dispatch)
 - Work in `phalanx-engine` git root under `abilities-playground/`
+- **No new automated tests.** This is visual VFX work; verify by running the playground and looking at missiles. Do not add Vitest files for this feature. Do not follow TDD for these tasks.
 
 ---
 
@@ -27,8 +28,7 @@
 | `abilities-playground/src/cues/index.ts` | Export cue |
 | `abilities-playground/src/core/SimulationContainer.ts` | Register `'Cue.Missile.Exhaust'` factory |
 | `abilities-playground/src/hooks/MissileVolley.ts` | Dispatch exhaust cue per spawned missile |
-| `abilities-playground/tests/createMissileVisual.test.ts` | Mesh/userData structure tests |
-| `abilities-playground/tests/MissileExhaustCue.test.ts` | Cue lifecycle tests (no particle-position asserts) |
+| `abilities-playground/src/hooks/dispatchMissileExhaustCue.ts` | Small helper to emit the exhaust cue event |
 
 ---
 
@@ -36,7 +36,6 @@
 
 **Files:**
 - Modify: `abilities-playground/src/components/UnitComponents.ts` (`createMissile`, ~lines 212–243)
-- Create: `abilities-playground/tests/createMissileVisual.test.ts`
 
 **Interfaces:**
 - Consumes: existing `MeshComponent.createMissile(): MeshComponent`, `MeshComponent.initScene(scene)`
@@ -44,58 +43,9 @@
   - `flameCore: THREE.Mesh`
   - `flameOuter: THREE.Mesh`
   - `engineLight: THREE.PointLight`
-  - (optional helper) nozzle is `flameCore` world position
+  - nozzle sample point is `flameCore` world position
 
-- [ ] **Step 1: Write the failing test**
-
-Create `abilities-playground/tests/createMissileVisual.test.ts`:
-
-```typescript
-import { describe, it, expect, beforeEach } from 'vitest';
-import * as THREE from 'three';
-import { MeshComponent } from '../src/components';
-
-describe('MeshComponent.createMissile exhaust visuals', () => {
-  beforeEach(() => {
-    MeshComponent.initScene(new THREE.Scene());
-  });
-
-  it('exposes soft nozzle meshes and a short-range engine light on userData', () => {
-    const mesh = MeshComponent.createMissile();
-    const data = mesh.root.userData;
-
-    expect(data.flameCore).toBeInstanceOf(THREE.Mesh);
-    expect(data.flameOuter).toBeInstanceOf(THREE.Mesh);
-    expect(data.engineLight).toBeInstanceOf(THREE.PointLight);
-
-    const light = data.engineLight as THREE.PointLight;
-    expect(light.intensity).toBeGreaterThan(0);
-    expect(light.distance).toBeGreaterThan(0);
-    expect(light.distance).toBeLessThanOrEqual(8);
-
-    const coreMat = (data.flameCore as THREE.Mesh).material as THREE.MeshBasicMaterial;
-    const outerMat = (data.flameOuter as THREE.Mesh).material as THREE.MeshBasicMaterial;
-    expect(coreMat.transparent).toBe(true);
-    expect(outerMat.transparent).toBe(true);
-    expect(coreMat.blending).toBe(THREE.AdditiveBlending);
-    expect(outerMat.blending).toBe(THREE.AdditiveBlending);
-    expect(coreMat.depthWrite).toBe(false);
-    expect(outerMat.depthWrite).toBe(false);
-
-    expect(mesh.root.children).toContain(data.flameCore);
-    expect(mesh.root.children).toContain(data.flameOuter);
-    expect(mesh.root.children).toContain(data.engineLight);
-  });
-});
-```
-
-- [ ] **Step 2: Run test to verify it fails**
-
-Run: `npm test -- createMissileVisual.test.ts`  
-Working directory: `abilities-playground`  
-Expected: FAIL (missing `userData.flameCore` / `engineLight`, or only one flame child)
-
-- [ ] **Step 3: Implement soft nozzle in `createMissile`**
+- [ ] **Step 1: Implement soft nozzle in `createMissile`**
 
 Replace the single-cone flame block in `MeshComponent.createMissile` with:
 
@@ -160,15 +110,20 @@ public static createMissile(): MeshComponent {
 
 Keep body geometry/material otherwise unchanged.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [ ] **Step 2: Typecheck**
 
-Run: `npm test -- createMissileVisual.test.ts`  
-Expected: PASS
-
-- [ ] **Step 5: Commit**
+Run from `abilities-playground`:
 
 ```bash
-git add abilities-playground/src/components/UnitComponents.ts abilities-playground/tests/createMissileVisual.test.ts
+npx tsc --noEmit
+```
+
+Expected: no errors related to the missile mesh change.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add abilities-playground/src/components/UnitComponents.ts
 git commit -m "feat(missiles): add soft nozzle glow meshes and engine light"
 ```
 
@@ -180,98 +135,14 @@ git commit -m "feat(missiles): add soft nozzle glow meshes and engine light"
 - Create: `abilities-playground/src/cues/missileExhaustCue.ts`
 - Modify: `abilities-playground/src/cues/index.ts`
 - Modify: `abilities-playground/src/core/SimulationContainer.ts` (cues map + import)
-- Create: `abilities-playground/tests/MissileExhaustCue.test.ts`
 
 **Interfaces:**
 - Consumes: `group.userData.flameCore|flameOuter|engineLight` from Task 1; `Cue` / `CueContext` / `GameplayCueDispatchedEvent` from `@phalanx-engine/abilities`; `ComponentType.Mesh`, `MeshComponent`, `TransformComponent`
 - Produces: `export class MissileExhaustCue extends Cue` with constructor `(scene: THREE.Scene)`; cue id string `'Cue.Missile.Exhaust'` for Task 3
 
-- [ ] **Step 1: Write the failing lifecycle tests**
+- [ ] **Step 1: Implement `MissileExhaustCue`**
 
-Create `abilities-playground/tests/MissileExhaustCue.test.ts`:
-
-```typescript
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import * as THREE from 'three';
-import { Entity, EntityManager } from '@phalanx-engine/ecs';
-import type { CueContext, GameplayCueDispatchedEvent } from '@phalanx-engine/abilities';
-import { ComponentType, MeshComponent } from '../src/components';
-import { MissileExhaustCue } from '../src/cues/missileExhaustCue';
-
-function cueEvent(missileId: number): GameplayCueDispatchedEvent {
-  return {
-    tick: 1,
-    cueId: 'Cue.Missile.Exhaust',
-    sourceEntityId: missileId,
-    targetEntityId: missileId,
-    phase: 'OnApplied',
-  };
-}
-
-describe('MissileExhaustCue', () => {
-  let scene: THREE.Scene;
-  let entityManager: EntityManager;
-  let context: CueContext;
-
-  beforeEach(() => {
-    scene = new THREE.Scene();
-    MeshComponent.initScene(scene);
-    entityManager = new EntityManager();
-    entityManager.registerComponentTypes([ComponentType.Mesh]);
-    context = { entityManager, eventBus: { emit() {}, on() {}, off() {} } as never };
-    vi.spyOn(Math, 'random').mockReturnValue(0.5);
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it('finishes immediately when the missile entity is missing', () => {
-    const cue = new MissileExhaustCue(scene);
-    cue.onSpawn(cueEvent(999), context);
-    expect(cue.isFinished()).toBe(true);
-    cue.dispose();
-  });
-
-  it('keeps fading smoke after the missile goes inactive, then finishes', () => {
-    const entity = new Entity();
-    const mesh = MeshComponent.createMissile();
-    entity.addComponent(mesh);
-    // Mimic MissileEntity.active without importing the full entity graph
-    (entity as { active?: boolean }).active = true;
-    entityManager.addEntity(entity);
-
-    const cue = new MissileExhaustCue(scene);
-    cue.onSpawn(cueEvent(entity.id), context);
-    expect(cue.isFinished()).toBe(false);
-
-    // Emit for a couple frames
-    cue.update(0.05);
-    cue.update(0.05);
-    expect(scene.children.some((c) => c instanceof THREE.Points)).toBe(true);
-
-    (entity as { active?: boolean }).active = false;
-    mesh.root.visible = false;
-
-    // Advance past max particle lifetime (~2.5s) without asserting positions
-    for (let i = 0; i < 60; i++) cue.update(0.05);
-    expect(cue.isFinished()).toBe(true);
-
-    cue.dispose();
-    expect(scene.children.some((c) => c instanceof THREE.Points)).toBe(false);
-  });
-});
-```
-
-- [ ] **Step 2: Run tests to verify they fail**
-
-Run: `npm test -- MissileExhaustCue.test.ts`  
-Working directory: `abilities-playground`  
-Expected: FAIL (module not found / class missing)
-
-- [ ] **Step 3: Implement `MissileExhaustCue`**
-
-Create `abilities-playground/src/cues/missileExhaustCue.ts` with this behavior (complete implementation; tune constants within soft-realistic bounds):
+Create `abilities-playground/src/cues/missileExhaustCue.ts`:
 
 ```typescript
 import * as THREE from 'three';
@@ -498,7 +369,6 @@ export class MissileExhaustCue extends Cue {
     this.syncDrawRange();
 
     if (this.material) {
-      // Soft overall fade while any smoke remains
       this.material.opacity = this.emitting ? 0.45 : 0.35;
     }
   }
@@ -532,9 +402,9 @@ export class MissileExhaustCue extends Cue {
 }
 ```
 
-**Implementation notes for the agent:**
-- Per-particle opacity via a single `PointsMaterial` is approximate; that is acceptable for soft smoke (do not add a custom shader unless needed).
-- `ComponentType.Transform` must match the playground export used elsewhere (same as `BeamCue.getBeamAnchor`).
+**Implementation notes:**
+- Per-particle opacity via a single `PointsMaterial` is approximate; acceptable for soft smoke (no custom shader).
+- `ComponentType.Transform` must match the playground export used by `BeamCue.getBeamAnchor`.
 
 Then export from `abilities-playground/src/cues/index.ts`:
 
@@ -550,18 +420,20 @@ Register in `SimulationContainer` cues map:
 
 Add `MissileExhaustCue` to the existing cues import list in that file.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [ ] **Step 2: Typecheck**
 
-Run: `npm test -- MissileExhaustCue.test.ts`  
-Expected: PASS
-
-Also run: `npm test -- createMissileVisual.test.ts`  
-Expected: PASS
-
-- [ ] **Step 5: Commit**
+Run from `abilities-playground`:
 
 ```bash
-git add abilities-playground/src/cues/missileExhaustCue.ts abilities-playground/src/cues/index.ts abilities-playground/src/core/SimulationContainer.ts abilities-playground/tests/MissileExhaustCue.test.ts
+npx tsc --noEmit
+```
+
+Expected: no errors related to the new cue / registration.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add abilities-playground/src/cues/missileExhaustCue.ts abilities-playground/src/cues/index.ts abilities-playground/src/core/SimulationContainer.ts
 git commit -m "feat(missiles): add MissileExhaustCue for smoke trails and nozzle flicker"
 ```
 
@@ -570,16 +442,16 @@ git commit -m "feat(missiles): add MissileExhaustCue for smoke trails and nozzle
 ### Task 3: Dispatch exhaust cue on missile spawn
 
 **Files:**
+- Create: `abilities-playground/src/hooks/dispatchMissileExhaustCue.ts`
 - Modify: `abilities-playground/src/hooks/MissileVolley.ts`
-- Test: extend or add a focused assertion via existing tests if present; otherwise manual + keep Task 2 coverage. Prefer a small unit test of a helper if extracting one.
 
 **Interfaces:**
 - Consumes: `MissileExhaustCue` registration from Task 2; `pools.spawn` returns `MissileEntity`
 - Produces: each spawned missile immediately dispatches `{ cueId: 'Cue.Missile.Exhaust', sourceEntityId: missile.id, ... }` on the world event bus
 
-- [ ] **Step 1: Write a failing dispatch helper test (optional but preferred)**
+- [ ] **Step 1: Add dispatch helper**
 
-If extracting a tiny helper keeps the hook clean, add `abilities-playground/src/hooks/bufferMissileExhaustCue.ts` (name can be `dispatchMissileExhaustCue` since this uses eventBus emit, not the abilities buffer):
+Create `abilities-playground/src/hooks/dispatchMissileExhaustCue.ts`:
 
 ```typescript
 import {
@@ -606,47 +478,9 @@ export function dispatchMissileExhaustCue(
 }
 ```
 
-Test `abilities-playground/tests/dispatchMissileExhaustCue.test.ts`:
+- [ ] **Step 2: Wire `missileVolley`**
 
-```typescript
-import { describe, it, expect, vi } from 'vitest';
-import { EventBus } from '@phalanx-engine/ecs';
-import { gameplayCueKey } from '@phalanx-engine/abilities';
-import {
-  MISSILE_EXHAUST_CUE_ID,
-  dispatchMissileExhaustCue,
-} from '../src/hooks/bufferMissileExhaustCue';
-
-describe('dispatchMissileExhaustCue', () => {
-  it('emits the exhaust cue event for the missile id', () => {
-    const eventBus = new EventBus();
-    const world = { eventBus } as never;
-    const spy = vi.fn();
-    eventBus.on(gameplayCueKey(MISSILE_EXHAUST_CUE_ID), spy);
-
-    dispatchMissileExhaustCue(world, 42, 7);
-
-    expect(spy).toHaveBeenCalledTimes(1);
-    expect(spy.mock.calls[0][0]).toMatchObject({
-      cueId: MISSILE_EXHAUST_CUE_ID,
-      sourceEntityId: 42,
-      targetEntityId: 42,
-      tick: 7,
-      phase: 'OnApplied',
-    });
-  });
-});
-```
-
-- [ ] **Step 2: Run test to verify it fails**
-
-Run: `npm test -- dispatchMissileExhaustCue.test.ts`  
-Expected: FAIL (module missing)
-
-- [ ] **Step 3: Implement helper + wire `missileVolley`**
-
-1. Add the helper file from Step 1.
-2. In `missileVolley`, change the spawn loop to:
+In `missileVolley`, change the spawn loop to:
 
 ```typescript
 for (let i = 0; i < targets.length; i++) {
@@ -664,22 +498,25 @@ for (let i = 0; i < targets.length; i++) {
 
 Do **not** put `Math.random` in the hook. Do **not** change missile targeting / spawn args.
 
-- [ ] **Step 4: Run tests**
+- [ ] **Step 3: Typecheck + manual visual verify**
 
 Run from `abilities-playground`:
 
 ```bash
-npm test -- createMissileVisual.test.ts MissileExhaustCue.test.ts dispatchMissileExhaustCue.test.ts MissileQuaternion.test.ts
+npx tsc --noEmit
+npm run dev
 ```
 
-Expected: all PASS
+In-game checklist:
+- Soft warm nozzle glow on flying missiles
+- Gray smoke trails that linger ~1.5–2.5s
+- Impact cue still plays
+- No leftover `THREE.Points` after missiles clear / battle reset
 
-Manual check (when convenient): `npm run dev` in abilities-playground, fire missile volley — soft glow + gray smoke lingering ~1.5–2.5s; impact cue still plays; no leftover Points after missiles clear.
-
-- [ ] **Step 5: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
-git add abilities-playground/src/hooks/MissileVolley.ts abilities-playground/src/hooks/bufferMissileExhaustCue.ts abilities-playground/tests/dispatchMissileExhaustCue.test.ts
+git add abilities-playground/src/hooks/MissileVolley.ts abilities-playground/src/hooks/dispatchMissileExhaustCue.ts
 git commit -m "feat(missiles): dispatch exhaust cue when volley missiles spawn"
 ```
 
@@ -696,11 +533,12 @@ git commit -m "feat(missiles): dispatch exhaust cue when volley missiles spawn"
 | Register cue factory + export | Task 2 |
 | Dispatch on spawn | Task 3 |
 | Non-deterministic smoke only in presentation | Tasks 2–3 |
-| No sim/FP changes; existing missile tests stay green | Task 3 verification |
+| No sim/FP changes | All tasks (presentation-only) |
 | Cue does not dispose mesh flame/light | Task 2 `dispose` |
+| Verify visually in playground | Task 3 |
 
 ## Self-review notes
 
-- No TBD placeholders.
-- Dispatch uses `eventBus.emit(gameplayCueKey(...))` (PlasmaTank fire pattern) rather than `abilities.gameplayCueBuffer.push`; both reach `CuePresentationSystem`. Chosen so the hook does not need an `AbilitySystem` parameter.
+- No TDD / no new Vitest files — verification is typecheck + manual playtest.
+- Dispatch uses `eventBus.emit(gameplayCueKey(...))` (PlasmaTank fire pattern) rather than `abilities.gameplayCueBuffer.push`; both reach `CuePresentationSystem`.
 - Type names are consistent: `MissileExhaustCue`, `'Cue.Missile.Exhaust'`, `dispatchMissileExhaustCue`.
