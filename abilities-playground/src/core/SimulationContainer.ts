@@ -60,6 +60,7 @@ import {
   HealCrossCue,
   BeamCue,
   MissileImpactCue,
+  MissileExhaustCue,
   ChainLightningCue,
   MachineGunFireCue,
   MachineGunImpactCue,
@@ -123,6 +124,7 @@ export class SimulationContainer {
         'Cue.Beam.Yellow': () =>
           new BeamCue(this.scene, 0xffdd33, CUBE_SPEED_BUFF_TAG),
         'Cue.Missile.Impact': () => new MissileImpactCue(this.scene),
+        'Cue.Missile.Exhaust': () => new MissileExhaustCue(this.scene),
         'Cue.ChainLightning.Primary': () =>
           new ChainLightningCue(this.scene, 0x00ffff, true),
         'Cue.ChainLightning.Jump': () =>

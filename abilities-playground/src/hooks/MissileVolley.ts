@@ -11,6 +11,7 @@ import {
 } from '../components';
 import { MissileEntity } from '../entities/Missile';
 import { ROCKET_MAX_TARGETS } from '../config/abilityDefinitions';
+import { dispatchMissileExhaustCue } from './dispatchMissileExhaustCue';
 
 /**
  * Missile volley activation hook.
@@ -67,7 +68,7 @@ export const missileVolley = (
   );
 
   for (let i = 0; i < targets.length; i++) {
-    world.pools.spawn<MissileEntity>('missile', {
+    const missile = world.pools.spawn<MissileEntity>('missile', {
       fpPosition: origin,
       targetEntityId: targets[i],
       teamId: team.teamId,
@@ -75,6 +76,7 @@ export const missileVolley = (
       volleyCount: targets.length,
       launcherRotation: transform.fpRotation,
     });
+    dispatchMissileExhaustCue(world, missile.id, ctx.tick);
   }
 };
 
