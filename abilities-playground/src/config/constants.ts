@@ -50,8 +50,9 @@ export const MISSILE_CRUISE_TURN = 0.4;
 export const MISSILE_ATTACK_RANGE = 25;
 /**
  * Minimum engagement range (world units, XZ). The rocket is high-arc artillery:
- * it refuses to fire on enemies closer than this, so every missile always flies
- * the full launch arc + cruise + dive instead of a flat close-range shot.
+ * it refuses to fire on enemies closer than this, so a missile is never spawned
+ * close enough for a flat close-range shot. A missile that closes to within
+ * MISSILE_ATTACK_RANGE mid-flight may still dive early; this only gates spawning.
  */
 export const MISSILE_MIN_ENGAGEMENT_RANGE = 35;
 export const MISSILE_RADIUS = 0.6;

@@ -96,7 +96,10 @@ export class MissileMovementSystem extends GameSystem {
     this.physicsStore.arrays.velocityZ[pIdx] = 0n;
   }
 
-  /** Full cruise altitude above spawn. Every missile flies the complete arc. */
+  /**
+   * Full cruise altitude above spawn. Reached once the launch arc completes;
+   * a missile may dive early if it closes to within MISSILE_ATTACK_RANGE first.
+   */
   private cruiseAltitude(mc: MissileComponent): FixedPoint {
     const height = FP.Mul(
       FP.FromFloat(MISSILE_LAUNCH_HEIGHT),

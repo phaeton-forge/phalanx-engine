@@ -220,6 +220,10 @@ export class MissileExhaustCue extends Cue {
   }
 
   public override dispose(): void {
+    // Restore flame meshes before dropping our refs: dispose() can run while
+    // the missile is still in the scene (teardown/reset), and otherwise the
+    // nozzle would stay stuck in a flickered opacity/emissiveIntensity state.
+    this.restoreNozzleDefaults();
     if (this.points) this.scene.remove(this.points);
     this.geometry?.dispose();
     this.material?.dispose();
