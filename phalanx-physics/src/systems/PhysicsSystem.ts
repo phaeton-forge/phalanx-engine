@@ -134,7 +134,8 @@ export class PhysicsSystem extends GameSystem {
 
   /**
    * Returns true when all non-static, non-ignored bodies have velocity magnitude
-   * below the given threshold.
+   * below the given threshold. Considers the full 3D velocity (X, Y, Z), so a
+   * body moving only on Y (e.g. falling shrapnel) is correctly not settled.
    *
    * This is a pure query with no side effects. Game code is responsible for
    * interpreting what "settled" means in gameplay terms.
@@ -145,6 +146,7 @@ export class PhysicsSystem extends GameSystem {
     const thresh = threshold ?? FP.FromFloat(0.01);
     const threshSq = FP.Mul(thresh, thresh);
     const velX = this.physicsStore.arrays.velocityX;
+    const velY = this.physicsStore.arrays.velocityY;
     const velZ = this.physicsStore.arrays.velocityZ;
     const isStatic = this.physicsStore.arrays.isStatic;
     const ignore = this.physicsStore.arrays.ignorePhysics;
@@ -153,8 +155,10 @@ export class PhysicsSystem extends GameSystem {
       const i = this.physicsStore.indexOf(entityId);
       if (isStatic[i] === 1 || ignore[i] === 1) continue;
       const vx = FP.FromRaw(velX[i]);
+      const vy = FP.FromRaw(velY[i]);
       const vz = FP.FromRaw(velZ[i]);
-      if (FP.Gt(FP.Add(FP.Mul(vx, vx), FP.Mul(vz, vz)), threshSq)) return false;
+      const velMagSq = FP.Add(FP.Add(FP.Mul(vx, vx), FP.Mul(vy, vy)), FP.Mul(vz, vz));
+      if (FP.Gt(velMagSq, threshSq)) return false;
     }
     return true;
   }

@@ -135,6 +135,21 @@ describe('GravitySystem', () => {
     expect(FP.ToFloat(FP.FromRaw(transformStore.arrays.fpPositionY[txIdx]))).toBeCloseTo(99.975, 4);
   });
 
+  it('skips static bodies: velocityY and positionY stay unchanged', () => {
+    const { gravitySystem, physicsStore, transformStore } = setup();
+    addBody(physicsStore, transformStore, 1, { useGravity: true, posY: 50 });
+    const idx = physicsStore.indexOf(1);
+    physicsStore.arrays.isStatic[idx] = 1;
+    const txIdx = transformStore.indexOf(1);
+
+    gravitySystem.processTick(1);
+
+    // Static + useGravity is a clean no-op: no velocity accumulation...
+    expect(FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityY[idx]))).toBeCloseTo(0, 5);
+    // ...and no position change.
+    expect(FP.ToFloat(FP.FromRaw(transformStore.arrays.fpPositionY[txIdx]))).toBeCloseTo(50, 5);
+  });
+
   it('is a no-op when gravity is 0', () => {
     const { gravitySystem, physicsStore, transformStore } = setup(FP._0);
     addBody(physicsStore, transformStore, 1, { velY: 2, useGravity: true });

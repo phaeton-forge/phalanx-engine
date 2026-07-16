@@ -14,7 +14,9 @@ import { PhysicsSoASchema } from '../components/PhysicsBodyComponent';
  * Ordering: register GravitySystem BEFORE PhysicsSystem so the acceleration is
  * applied before that tick's position integration (semi-implicit Euler).
  *
- * When `gravity` is 0 (default), the system is a no-op.
+ * When `gravity` is 0 (default), the system is a no-op. Static bodies are
+ * skipped (they never integrate position, so accumulating velocity on them
+ * would be dead state) — static+useGravity is therefore a clean no-op.
  *
  * v1 supports only `gravityAxis='y'`. X/Z are integrated by PhysicsSystem, so
  * applying gravity there would double-integrate that axis; `'x'`/`'z'` are
@@ -53,10 +55,14 @@ export class GravitySystem extends GameSystem {
     const delta = FP.Mul(this.gravity, this.tickDt);
     const physVelocityY = this.physicsStore.arrays.velocityY;
     const physUseGravity = this.physicsStore.arrays.useGravity;
+    const physIsStatic = this.physicsStore.arrays.isStatic;
 
     for (const entityId of this.physicsStore.entityIds()) {
       const physIndex = this.physicsStore.indexOf(entityId);
       if (physUseGravity[physIndex] !== 1) continue;
+      // Static bodies never integrate position, so accumulating velocity on
+      // them is dead state — skip so static+useGravity is a clean no-op.
+      if (physIsStatic[physIndex] === 1) continue;
 
       // velocityY -= gravity * tickDt
       const velY = FP.FromRaw(physVelocityY[physIndex]);

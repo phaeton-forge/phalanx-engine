@@ -293,7 +293,7 @@ class PhysicsWorld {
 
 - **`applyImpulse(entityId, vx, vz)`** — Set body XZ velocity (replaces, does not accumulate). Re-enables previously ejected bodies.
 - **`applyImpulse3D(entityId, vx, vy, vz)`** — Set full 3D body velocity (replaces all three axes). Re-enables previously ejected bodies. Use for arcing ordnance; see [Gravity](#gravity).
-- **`isSettled(threshold?)`** — Pure query: `true` when all non-static, non-ignored bodies are below velocity threshold (default from config, falling back to `FP.FromFloat(0.01)`).
+- **`isSettled(threshold?)`** — Pure query: `true` when all non-static, non-ignored bodies are below velocity threshold (default from config, falling back to `FP.FromFloat(0.01)`). Considers the full 3D velocity (X, Y, Z), so a body falling on Y alone is correctly reported as not settled.
 - **`onBoundsExit(callback)`** — Subscribe to `BOUNDS_EXIT` events (requires `ejectOnBoundsExit: true`).
 - **`setCollisionFilter(filter)`** — Inject a per-pair predicate. Return `false` to skip collision resolution for that pair.
 

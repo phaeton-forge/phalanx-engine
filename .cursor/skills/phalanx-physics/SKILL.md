@@ -499,6 +499,7 @@ physicsWorld.applyImpulse3D(
 
 - Body should fall / arc (projectile, shell, fragment, jump)? → set `useGravity: true` and give it a launch velocity (`applyImpulse3D`).
 - Body is ground-plane only (units, most gameplay)? → leave `useGravity` false (default); it never moves on Y.
+- Body is static (`isStatic=1`)? → `GravitySystem` skips it, so `static + useGravity` is a clean no-op (statics never integrate position).
 - Need gravity along X or Z? → not supported in v1 (`GravitySystem` throws). X/Z are owned by `PhysicsSystem`'s integrator; ceding an axis is a v2 change.
 - Gravity magnitude is applied per whole tick (`gravity * tickDt`), not per sub-step, so very high gravity + few ticks is a coarse approximation — increase tick rate for smoother arcs.
 
