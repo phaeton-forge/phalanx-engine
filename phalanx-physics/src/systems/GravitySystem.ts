@@ -56,14 +56,15 @@ export class GravitySystem extends GameSystem {
     const physVelocityY = this.physicsStore.arrays.velocityY;
     const physUseGravity = this.physicsStore.arrays.useGravity;
     const physIsStatic = this.physicsStore.arrays.isStatic;
+    const physIgnorePhysics = this.physicsStore.arrays.ignorePhysics;
 
     for (const entityId of this.physicsStore.entityIds()) {
       const physIndex = this.physicsStore.indexOf(entityId);
       if (physUseGravity[physIndex] !== 1) continue;
+      if (physIgnorePhysics[physIndex] === 1) continue;
       // Static bodies never integrate position, so accumulating velocity on
       // them is dead state — skip so static+useGravity is a clean no-op.
       if (physIsStatic[physIndex] === 1) continue;
-
       // velocityY -= gravity * tickDt
       const velY = FP.FromRaw(physVelocityY[physIndex]);
       physVelocityY[physIndex] = FP.ToRaw(FP.Sub(velY, delta));
