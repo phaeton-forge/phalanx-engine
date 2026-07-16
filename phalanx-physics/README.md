@@ -16,6 +16,7 @@ A deterministic, fixed-point physics engine for the [Phalanx Engine](../README.m
 - **Tick Providers**: Pluggable `IPhysicsTickProvider` interface decouples tick scheduling from simulation logic — supports GameWorld-driven, autonomous (turn-based), and external (rAF) modes
 - **Impulse API**: `applyImpulse()` sets body XZ velocity for flick/strike mechanics; `applyImpulse3D()` sets full 3D velocity for arcing ordnance; `isSettled()` queries whether all bodies are at rest
 - **Gravity**: opt-in gravitational acceleration via `GravitySystem` + per-body `useGravity` flag; position integrated on all three axes by `PhysicsSystem` (see [Gravity](#gravity))
+- **Raycast / Swept-Segment Query**: `raycastSegment()` / `segmentVsAABB()` return the nearest hit (point + surface normal) against caller-supplied AABBs — a **workaround for 3D collisions** (e.g. ordnance vs a building) until full 3D body-body collision exists (see [Raycast / swept-segment queries](#raycast--swept-segment-queries))
 - **Bounds Exit Mode**: Optional `ejectOnBoundsExit` mode marks out-of-bounds bodies as ignored and emits `BOUNDS_EXIT` events instead of clamping
 - **Event-Driven**: Collision, trigger enter, trigger exit, and bounds exit events emitted via phalanx-ecs `EventBus`
 - **Built-in Transform & Interpolation**: `TransformComponent` (SoA fixed-point spatial state), `InterpolationComponent`, and `InterpolationSystem` for tick-to-frame render smoothing
@@ -277,13 +278,11 @@ class PhysicsWorld {
   applyImpulse3D(entityId: number, vx: FixedPoint, vy: FixedPoint, vz: FixedPoint): void;
   isSettled(threshold?: FixedPoint): boolean;
 
-  // 3D collision workaround — see "Raycast / swept-segment queries"
-  raycastSegment(prev: { x: FixedPoint; y: FixedPoint; z: FixedPoint }, cur: { x: FixedPoint; y: FixedPoint; z: FixedPoint }, boxes: ReadonlyArray<AABB3>): RayHit | null;
-
   // Spatial / transform queries
   readonly spatialGrid: SpatialHashGrid;
   getEntityPosition(entityId: number): { x: FixedPoint; z: FixedPoint } | undefined;
   getInterpolatedTransform(entityId: number): InterpolatedTransformSample | undefined;
+  raycastSegment(prev: Vec3FP, cur: Vec3FP, boxes: ReadonlyArray<AABB>): RayHit | null;
 
   // Cleanup
   dispose(): void;
@@ -293,6 +292,7 @@ class PhysicsWorld {
 - **`getSystems()`** — Returns `physicsSystem` and `gravitySystem` (register as tick systems, gravity before physics) and `interpolationSystem` (register as frame system). Backward-compatible: destructuring only `{ physicsSystem, interpolationSystem }` still works.
 - **`getEntityPosition(entityId)`** — Fixed-point position for gameplay queries (e.g. ability targeting).
 - **`getInterpolatedTransform(entityId)`** — Interpolated float transform for rendering, populated after `InterpolationSystem` runs. Returns an `InterpolatedTransformSample` with `position: { x, y, z }` and `rotation: { x, y, z, w }` — rotation is a float quaternion (slerped between tick samples), apply it directly to a mesh quaternion.
+- **`raycastSegment(prev, cur, boxes)`** — Swept-segment (raycast) query returning the nearest hit against caller-supplied AABBs. **Workaround for 3D collisions** (e.g. ordnance vs a building) until full 3D body-body collision exists; see [Raycast / swept-segment queries](#raycast--swept-segment-queries).
 
 - **`applyImpulse(entityId, vx, vz)`** — Set body XZ velocity (replaces, does not accumulate). Re-enables previously ejected bodies.
 - **`applyImpulse3D(entityId, vx, vy, vz)`** — Set full 3D body velocity (replaces all three axes). Re-enables previously ejected bodies. Use for arcing ordnance; see [Gravity](#gravity).
@@ -428,46 +428,67 @@ integrated across every sub-step. The net ΔY per tick is `velocityY * tickDt`
 require folding the acceleration into `PhysicsSystem.step()`'s loop (at which
 point it would no longer be a separate system); this is intentionally not done.
 
-## Raycast / swept-segment queries (3D collision workaround)
+## Raycast / swept-segment queries
 
-The body-vs-body narrow phase is **2D/XZ only** (circles on the ground plane) and
-has no notion of height. For **3D collision** — e.g. a fast-moving ordnance
-(artillery shrapnel, shell, projectile) hitting a static obstacle such as a
-building, where you need the impact point and surface normal — use the swept-
-segment raycast query as a **workaround** until a full 3D body-body collision
-system is implemented (planned v2: `BoxColliderComponent` as ECS entities +
-grid-accelerated raycast + 3D sphere/box vs sphere/box resolution).
+> ⚠️ **Workaround for 3D collisions.** The core physics pipeline is 2D/XZ
+> (circle-vs-circle broad/narrow phase); it does **not** detect collisions on
+> the Y axis. For 3D collisions — e.g. ordnance hitting a static obstacle like a
+> building — use this swept-segment raycast query as a workaround until full 3D
+> body-body collision is implemented (planned for v2). It answers "did this
+> moving point cross a box between last tick and this tick, and if so, where and
+> on which face?"
+
+Pass a moving body's previous and current position, plus the AABBs of the static
+obstacles you care about. The query returns the nearest impact point and the
+outward surface normal, or `null` if nothing was hit.
 
 ```typescript
-import { FP } from '@phalanx-engine/math';
-import { PhysicsWorld, type AABB3, type RayHit } from '@phalanx-engine/physics';
+import { PhysicsWorld } from '@phalanx-engine/physics';
+import type { Vec3FP, AABB, RayHit } from '@phalanx-engine/physics';
 
-// prev = previous tick position of the shard, cur = current position (after
-// gravity + integration ran). buildings = static 3D AABBs.
-const hit: RayHit | null = physicsWorld.raycastSegment(prev, cur, buildings);
+const hit: RayHit | null = physicsWorld.raycastSegment(prevPos, curPos, buildingBoxes);
 if (hit) {
-  spawnSecondaryAoE(hit.point, radii);   // explosion on the wall
-  cue(Impact, hit.point);                // VFX/SFX at the impact
-  // hit.normal is the outward face normal — use for ricochet / impulse direction.
-  despawn(shrapnel);
-  return;
+  // hit.t     — parametric distance along the segment, 0 at prev, 1 at cur
+  // hit.point — impact position (= lerp(prev, cur, t)), fixed-point
+  // hit.normal — outward face normal at the impact (±X / ±Y / ±Z), fixed-point
+  detonateAt(hit.point, hit.normal);
 }
-// No building hit -> check ground plane, else carry prevPos forward next tick.
 ```
 
-- `segmentVsAABB(prev, cur, box)` — pure slab-method query returning
-  `{ t, point, normal }` (t in `[0,1]` along the segment, `point = lerp(prev, cur, t)`,
-  `normal` = outward face normal of the entry plane) or `null`.
-- `PhysicsWorld.raycastSegment(prev, cur, boxes)` — scans a caller-supplied list of
-  static `AABB3` boxes and returns the **nearest** hit, or `null`.
+`RayHit`, `Vec3FP`, and `AABB` are exported from the package root. The low-level
+`segmentVsAABB(prev, cur, box)` tests a single box (returns the same `RayHit`
+shape or `null`); `raycastSegment` is the multi-box convenience wrapper.
 
-Using the swept segment (not point-in-box per tick) prevents **tunneling**: a
-fast shard cannot skip through a thin wall between ticks.
+### Semantics
 
-**v1 limitations:** linear scan over caller-supplied boxes (no broad-phase
-acceleration) — fine for tens of obstacles; the unit-vs-unit 2D circle pipeline
-is untouched. **v2 path:** `BoxColliderComponent` as ECS entities + spatial-grid
-raycast + full 3D body-body collision.
+- **`t ∈ [0, 1]`** — `0` at `prev`, `1` at `cur`; `point = lerp(prev, cur, t)`.
+- **Segment starting inside a box** → `t = 0`, `point = prev`, `normal` = the
+  nearest face's outward normal.
+- **Normal convention** — outward normal of the entry face: moving `+X` enters
+  the min-X face → `normal = -X`; moving `-Y` enters the max-Y (top) face →
+  `normal = +Y`, and so on.
+- **Deterministic** — pure `FP.*` fixed-point math, no floats. Degenerate cases
+  (segment parallel to a slab, zero-length segment) are handled without
+  divide-by-zero or `NaN`; identical inputs always yield a bit-for-bit identical
+  `RayHit`.
+
+### v1 limitations (workaround scope)
+
+- **Pure linear scan** over the boxes you pass — no broad-phase acceleration
+  (the spatial hash grid is not consulted).
+- **Caller-supplied boxes** — the query does not read colliders from the ECS; you
+  assemble the `AABB[]` yourself.
+- **Point-vs-box only** — the moving body is treated as a point (its radius is
+  not swept); inflate the box by the radius if you need a Minkowski-style margin.
+- **Unit-vs-unit collisions remain 2D/XZ** in `PhysicsSystem` — this query does
+  not change the body-body pipeline.
+
+### v2 path (planned)
+
+Full 3D collision is planned for v2: a `BoxColliderComponent`, grid-accelerated
+raycasts (broad-phase against the spatial hash), and true 3D body-body collision
+resolution — at which point this swept-segment query becomes an optimization
+detail rather than the only 3D path.
 
 ### `TransformComponent`
 

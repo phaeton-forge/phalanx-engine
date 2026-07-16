@@ -5,7 +5,8 @@ import { GravitySystem } from './systems/GravitySystem';
 import { InterpolationSystem } from './systems/InterpolationSystem';
 import type { InterpolatedTransformSample } from './systems/InterpolationSystem';
 import { SpatialHashGrid } from './collision/SpatialHashGrid';
-import { segmentVsAABB, type AABB3, type RayHit } from './collision/Raycast';
+import { segmentVsAABB } from './collision/Raycast';
+import type { RayHit, Vec3FP, AABB } from './collision/Raycast';
 import { PhysicsEvents } from './events';
 import type { PhysicsWorldConfig } from './PhysicsWorldConfig';
 import type { FixedPoint } from '@phalanx-engine/math';
@@ -156,42 +157,6 @@ export class PhysicsWorld {
     return unsub;
   }
 
-  /**
-   * WORKAROUND for 3D collision detection.
-   *
-   * Casts a swept segment `prev -> cur` against a list of static 3D AABBs
-   * (e.g. buildings / cover) and returns the nearest impact with its point
-   * and outward face normal, or `null` if none is hit.
-   *
-   * Use this for fast-moving ordnance (artillery shrapnel / shells / projectiles)
-   * to detect hits on static obstacles without a full 3D body-body collision
-   * system (planned v2). The 2D/XZ circle pipeline for unit-vs-unit collisions
-   * is unaffected. Pure query — no side effects, no state mutation.
-   *
-   * v1 limitation: linear scan over caller-supplied boxes (no broad-phase
-   * acceleration). Fine for tens of obstacles; optimise with a spatial grid
-   * when obstacle counts grow.
-   *
-   * @param prev   Segment start (previous tick position of the ordnance).
-   * @param cur    Segment end (current tick position of the ordnance).
-   * @param boxes  Static 3D AABBs to test against.
-   * @returns The nearest impact along the segment, or `null`.
-   */
-  public raycastSegment(
-    prev: { x: FixedPoint; y: FixedPoint; z: FixedPoint },
-    cur: { x: FixedPoint; y: FixedPoint; z: FixedPoint },
-    boxes: ReadonlyArray<AABB3>,
-  ): RayHit | null {
-    let best: RayHit | null = null;
-    for (const b of boxes) {
-      const hit = segmentVsAABB(prev, cur, b);
-      if (hit && (best === null || FP.Lt(hit.t, best.t))) {
-        best = hit;
-      }
-    }
-    return best;
-  }
-
   /** Direct access to the spatial grid for custom queries (e.g. range finding) */
   public get spatialGrid(): SpatialHashGrid {
     return this.physicsSystem.getSpatialGrid();
@@ -204,6 +169,33 @@ export class PhysicsWorld {
     entityId: number
   ): { x: FixedPoint; z: FixedPoint } | undefined {
     return this.physicsSystem.getEntityPosition(entityId);
+  }
+
+  /**
+   * Swept-segment (raycast) query against caller-supplied axis-aligned boxes,
+   * returning the nearest hit (smallest `t`) or `null` when nothing is hit.
+   *
+   * WORKAROUND FOR 3D COLLISIONS: the core physics pipeline is 2D/XZ, so it
+   * does not detect collisions on the Y axis. For 3D collisions — e.g. ordnance
+   * hitting a static obstacle like a building — use this swept-segment raycast
+   * query as a workaround until full 3D body-body collision is implemented
+   * (planned for v2). Pass a moving body's previous and current position to get
+   * the impact point and surface normal.
+   *
+   * v1 is a pure linear scan over the supplied boxes with no broad-phase
+   * acceleration; unit-vs-unit collisions remain 2D/XZ in `PhysicsSystem`.
+   *
+   * Pure query — no side effects.
+   */
+  public raycastSegment(prev: Vec3FP, cur: Vec3FP, boxes: ReadonlyArray<AABB>): RayHit | null {
+    let nearest: RayHit | null = null;
+    for (const box of boxes) {
+      const hit = segmentVsAABB(prev, cur, box);
+      if (hit && (nearest === null || FP.Lt(hit.t, nearest.t))) {
+        nearest = hit;
+      }
+    }
+    return nearest;
   }
 
   /**

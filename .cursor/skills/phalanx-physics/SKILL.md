@@ -3,7 +3,7 @@ name: phalanx-physics
 description: Add deterministic fixed-point physics to a game using the phalanx-physics library from the phalanx-engine repository. Use when the user wants to set up collision detection, velocity integration, spatial hashing, or physics bodies. Covers PhysicsWorld facade, TransformComponent, InterpolationSystem, PhysicsBodyComponent, SpatialHashGrid, NarrowPhase, PhysicsSystem, and collision filtering patterns.
 metadata:
   author: phaeton2040-AI
-  version: '1.3'
+  version: '1.4'
 ---
 
 # Phalanx Physics Skill
@@ -20,6 +20,7 @@ Use this skill when the user asks to:
 - Add game-specific collision filtering (e.g., team-based rules)
 - Query entities by spatial proximity (range queries)
 - Add gravity or launch arcing/ballistic ordnance (artillery, shrapnel, projectiles)
+- Detect a 3D collision — e.g. ordnance hitting a static obstacle like a building — via a swept-segment raycast (workaround until full 3D body-body collision exists)
 - Wire physics systems into a GameWorld tick pipeline
 - Set up tick-to-frame interpolation for rendering
 
@@ -418,7 +419,7 @@ import type { PhysicsBodyConfig } from '@phalanx-engine/physics';
 
 // Collision primitives
 import { SpatialHashGrid, NarrowPhase, segmentVsAABB } from '@phalanx-engine/physics';
-import type { CollisionManifold, AABB3, RayHit } from '@phalanx-engine/physics';
+import type { CollisionManifold, RayHit, Vec3FP, AABB } from '@phalanx-engine/physics';
 
 // Systems
 import { PhysicsSystem, GravitySystem, InterpolationSystem } from '@phalanx-engine/physics';
@@ -503,27 +504,47 @@ physicsWorld.applyImpulse3D(
 - Need gravity along X or Z? → not supported in v1 (`GravitySystem` throws). X/Z are owned by `PhysicsSystem`'s integrator; ceding an axis is a v2 change.
 - Gravity magnitude is applied per whole tick (`gravity * tickDt`), not per sub-step, so very high gravity + few ticks is a coarse approximation — increase tick rate for smoother arcs.
 
-### 3D collision workaround (raycast)
+## Raycast / Swept-Segment Queries (3D collision workaround)
 
-The body-vs-body narrow phase is **2D/XZ only** (circles, no height). For 3D
-collision — e.g. a fast ordnance (shrapnel / shell / projectile) hitting a static
-obstacle (building) where you need the impact point + surface normal — use the
-**swept-segment raycast** as a **workaround** until full 3D body-body collision
-ships (v2: `BoxColliderComponent` + grid raycast + 3D sphere/box resolution).
+> ⚠️ **Workaround for 3D collisions.** The core pipeline is 2D/XZ and does not
+> detect Y-axis collisions. For 3D collisions — e.g. ordnance hitting a static
+> obstacle like a building — use this swept-segment raycast query as a workaround
+> until full 3D body-body collision is implemented (planned for v2).
 
-- `physicsWorld.raycastSegment(prev, cur, boxes)` — scans caller-supplied static
-  `AABB3` boxes, returns nearest `{ t, point, normal }` or `null`.
-- `segmentVsAABB(prev, cur, box)` — pure slab-method primitive (`t` in `[0,1]`,
-  `point = lerp(prev,cur,t)`, `normal` = outward entry-face normal).
-- Swept segment (not point-in-box) prevents tunneling through thin walls.
-- Unit-vs-unit 2D circle pipeline is untouched.
-- Decision tree:
-  - Need to know where a fast ordnance hit a static obstacle (point + normal)?
-    → `raycastSegment(prevPos, curPos, buildingBoxes)` each tick; on hit, react
-    (secondary AoE at `hit.point`, ricochet along `hit.normal`, despawn).
-  - Ground landing? → model ground as a big flat `AABB3` (same query) or a plane check.
-  - Obstacle count in the hundreds+? → v1 linear scan still works; v2 will add a
-    spatial grid once `BoxColliderComponent` exists.
+`raycastSegment` sweeps a moving point (a body's previous → current position)
+against caller-supplied AABBs and returns the nearest hit — impact point and
+outward face normal — or `null`. `segmentVsAABB` is the single-box primitive.
+
+```typescript
+import { PhysicsWorld } from '@phalanx-engine/physics';
+import type { Vec3FP, AABB, RayHit } from '@phalanx-engine/physics';
+
+const hit: RayHit | null = physicsWorld.raycastSegment(prevPos, curPos, buildingBoxes);
+if (hit) {
+  // hit.t ∈ [0,1] (0 at prev, 1 at cur); hit.point = lerp(prev, cur, t)
+  // hit.normal = outward entry-face normal (±X/±Y/±Z), fixed-point
+  detonateAt(hit.point, hit.normal);
+}
+```
+
+Semantics: `t ∈ [0,1]`; segment starting inside a box → `t=0`, `point=prev`,
+`normal` = nearest face. Fully deterministic `FP.*` math — degenerate cases
+(parallel-to-slab, zero-length) never divide-by-zero or produce `NaN`.
+
+### Raycast decision tree
+
+- Need to detect ordnance/projectile hitting a static 3D obstacle (building,
+  wall)? → build the obstacle `AABB[]` and call `raycastSegment(prev, cur, boxes)`
+  each tick. **This is the sanctioned 3D-collision workaround.**
+- Need unit-vs-unit collision? → that stays in the 2D/XZ `PhysicsSystem`
+  circle-vs-circle pipeline; do **not** use raycast for it.
+- Testing a single box? → use `segmentVsAABB` directly.
+
+**v1 limitations (workaround scope):** pure linear scan over caller-supplied
+boxes (no broad-phase / spatial-hash acceleration); the moving body is a point
+(radius not swept — inflate the box for a margin); unit-vs-unit stays 2D/XZ.
+**v2 path:** `BoxColliderComponent`, grid-accelerated raycasts, and true 3D
+body-body collision resolution.
 
 ## Best Practices
 

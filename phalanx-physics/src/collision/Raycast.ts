@@ -1,14 +1,18 @@
 import { FP, type FixedPoint } from '@phalanx-engine/math';
 
-/** A 3D point / direction in fixed-point. Structurally compatible with `FPVector3`. */
-interface Vec3 {
+/**
+ * Fixed-point 3D point/vector used by the raycast query.
+ */
+export interface Vec3FP {
   x: FixedPoint;
   y: FixedPoint;
   z: FixedPoint;
 }
 
-/** Axis-aligned 3D bounding box in fixed-point. */
-export interface AABB3 {
+/**
+ * Axis-aligned bounding box in fixed-point world space.
+ */
+export interface AABB {
   minX: FixedPoint;
   minY: FixedPoint;
   minZ: FixedPoint;
@@ -18,151 +22,128 @@ export interface AABB3 {
 }
 
 /**
- * Result of a swept-segment (raycast) query against an AABB.
- *
- * - `t` — parametric position of the impact along the segment, in `[0, 1]`
- *   (`0` at `prev`, `1` at `cur`).
- * - `point` — the impact point in 3D space (`lerp(prev, cur, t)`).
- * - `normal` — outward face normal of the box at the entry point (one of ±X/±Y/±Z).
+ * Result of a swept-segment vs AABB query.
  */
 export interface RayHit {
+  /** Parametric hit distance along the segment, `t ∈ [0, 1]` (0 at `prev`, 1 at `cur`). */
   t: FixedPoint;
-  point: Vec3;
-  normal: Vec3;
+  /** World-space hit point, equal to `lerp(prev, cur, t)`. */
+  point: Vec3FP;
+  /** Outward unit normal of the entry face (one of ±X/±Y/±Z). */
+  normal: Vec3FP;
 }
 
 /**
- * WORKAROUND for 3D collision detection.
+ * Swept-segment (raycast) vs axis-aligned box, using the deterministic slab
+ * method entirely in `FP.*` fixed-point arithmetic.
  *
- * The physics engine's body-vs-body narrow phase is 2D/XZ only (circles on the
- * ground plane). For 3D collision — e.g. a fast-moving ordnance (artillery
- * shrapnel, shell, projectile) hitting a static obstacle such as a building —
- * use this swept-segment query as a workaround until a full 3D body-body
- * collision system is implemented (planned v2: `BoxColliderComponent` as ECS
- * entities + grid-accelerated raycast + 3D sphere/box vs sphere/box resolution).
+ * WORKAROUND FOR 3D COLLISIONS: the core physics pipeline is 2D/XZ
+ * (circle-vs-circle) and does not detect collisions on the Y axis. For 3D
+ * collisions — e.g. ordnance hitting a static obstacle like a building — use
+ * this swept-segment raycast query as a workaround until full 3D body-body
+ * collision is implemented (planned for v2). Call it with a moving body's
+ * previous and current position to get the impact point and surface normal
+ * against caller-supplied static boxes.
  *
- * Casts a segment `prev -> cur` against an axis-aligned 3D box and returns the
- * first impact (`t`, `point`, outward `normal`), or `null` if the segment never
- * enters the box. Using the swept segment (rather than point-in-box per tick)
- * prevents tunneling: a fast shard cannot skip through a thin wall between ticks.
+ * Conventions:
+ * - `t ∈ [0, 1]`: 0 at `prev`, 1 at `cur`; `point = lerp(prev, cur, t)`.
+ * - `normal` is the OUTWARD normal of the face the segment enters through.
+ *   Entering the min-X face while moving +X yields `(-1, 0, 0)`, etc.
+ * - Segment starting inside the box → hit at `t = 0`, `point = prev`, and
+ *   `normal` = the outward normal of the nearest face.
+ * - Zero-length segment: outside the box → `null`; inside → `t = 0`.
+ * - Axes parallel to a slab are handled without dividing by zero (guarded by an
+ *   explicit `FP.Eq(delta, 0)` check — `FP.Div` throws on divide-by-zero).
  *
- * Pure, deterministic, fixed-point only. Uses the slab method.
- *
- * @param prev  Segment start (previous tick position of the ordnance).
- * @param cur   Segment end (current tick position of the ordnance).
- * @param box   Axis-aligned 3D box to test against.
- * @returns The nearest impact along the segment, or `null` if no intersection.
+ * @returns the entry hit, or `null` when the segment never intersects the box.
  */
-export function segmentVsAABB(prev: Vec3, cur: Vec3, box: AABB3): RayHit | null {
-  const pPrev: readonly FixedPoint[] = [prev.x, prev.y, prev.z];
-  const pCur: readonly FixedPoint[] = [cur.x, cur.y, cur.z];
-  const pMin: readonly FixedPoint[] = [box.minX, box.minY, box.minZ];
-  const pMax: readonly FixedPoint[] = [box.maxX, box.maxY, box.maxZ];
+export function segmentVsAABB(prev: Vec3FP, cur: Vec3FP, box: AABB): RayHit | null {
+  const dx = FP.Sub(cur.x, prev.x);
+  const dy = FP.Sub(cur.y, prev.y);
+  const dz = FP.Sub(cur.z, prev.z);
 
-  // Segment starts inside the box -> impact at the start with the nearest face
-  // normal (covers both stationary points and moving segments that begin inside).
-  const startsInside =
-    FP.Gte(prev.x, box.minX) && FP.Lte(prev.x, box.maxX) &&
-    FP.Gte(prev.y, box.minY) && FP.Lte(prev.y, box.maxY) &&
-    FP.Gte(prev.z, box.minZ) && FP.Lte(prev.z, box.maxZ);
-  if (startsInside) {
-    return {
-      t: FP._0,
-      point: { x: prev.x, y: prev.y, z: prev.z },
-      normal: nearestFaceNormal(pPrev, pMin, pMax),
-    };
-  }
+  // Clip the parameter range [0, 1] against each slab (Liang-Barsky style).
+  let tEnter = FP._0;
+  let tExit = FP._1;
 
-  let tEnter: FixedPoint = FP._0;
-  let tExit: FixedPoint = FP._0;
-  let entrySet = false;
-  let exitSet = false;
-  let entryAxis = 0;
-  let entryFromMin = true;
+  // Outward normal of the entry face; stays null while the entry is still at
+  // t = 0 (which means the segment started inside the box).
+  let entryNormal: Vec3FP | null = null;
 
-  for (let a = 0; a < 3; a++) {
-    const d = FP.Sub(pCur[a], pPrev[a]);
-
+  const clip = (
+    p: FixedPoint,
+    d: FixedPoint,
+    lo: FixedPoint,
+    hi: FixedPoint,
+    negNormal: Vec3FP,
+    posNormal: Vec3FP,
+  ): boolean => {
     if (FP.Eq(d, FP._0)) {
-      // Segment is parallel to this slab. It lies within the slab for the
-      // whole [0,1] interval iff `prev` is inside [min, max] on this axis.
-      if (FP.Lt(pPrev[a], pMin[a]) || FP.Gt(pPrev[a], pMax[a])) {
-        return null;
-      }
-      continue; // no constraint on this axis
+      // Parallel to this slab: only possible to hit if the origin is inside it.
+      return !(FP.Lt(p, lo) || FP.Gt(p, hi));
     }
-
-    // Crossing times of the two slab planes.
-    let tMin = FP.Div(FP.Sub(pMin[a], pPrev[a]), d);
-    let tMax = FP.Div(FP.Sub(pMax[a], pPrev[a]), d);
-    // d > 0  -> enters through the min face (outward normal = -axis)
-    // d < 0  -> enters through the max face (outward normal = +axis)
-    const fromMin = FP.Gt(d, FP._0);
-    if (FP.Gt(tMin, tMax)) {
-      const tmp = tMin;
-      tMin = tMax;
-      tMax = tmp;
+    const t1 = FP.Div(FP.Sub(lo, p), d);
+    const t2 = FP.Div(FP.Sub(hi, p), d);
+    const tNear = FP.Min(t1, t2);
+    const tFar = FP.Max(t1, t2);
+    // Moving in +axis enters through the min face (outward normal -axis);
+    // moving in -axis enters through the max face (outward normal +axis).
+    const nearNormal = FP.Gt(d, FP._0) ? negNormal : posNormal;
+    if (FP.Gt(tNear, tEnter)) {
+      tEnter = tNear;
+      entryNormal = nearNormal;
     }
-
-    // Overall entry = max of per-axis entry times; exit = min of per-axis exits.
-    if (!entrySet || FP.Gt(tMin, tEnter)) {
-      tEnter = tMin;
-      entryAxis = a;
-      entryFromMin = fromMin;
+    if (FP.Lt(tFar, tExit)) {
+      tExit = tFar;
     }
-    if (!exitSet || FP.Lt(tMax, tExit)) {
-      tExit = tMax;
-    }
-    entrySet = true;
-    exitSet = true;
-  }
-
-  // No overlap of the per-axis intervals -> segment misses the box.
-  if (FP.Gt(tEnter, tExit)) return null;
-  // Box lies entirely before the segment start or beyond its end.
-  if (FP.Lt(tExit, FP._0)) return null;
-  if (FP.Gt(tEnter, FP._1)) return null;
-
-  const t = FP.Clamp(tEnter, FP._0, FP._1);
-  const point: Vec3 = {
-    x: FP.Lerp(prev.x, cur.x, t),
-    y: FP.Lerp(prev.y, cur.y, t),
-    z: FP.Lerp(prev.z, cur.z, t),
+    return !FP.Gt(tEnter, tExit);
   };
-  return { t, point, normal: axisNormal(entryAxis, entryFromMin) };
-}
 
-/** Outward unit normal for the entry face of a given axis. */
-function axisNormal(axis: number, fromMin: boolean): Vec3 {
-  const s = fromMin ? FP.Neg(FP._1) : FP._1;
-  if (axis === 0) return { x: s, y: FP._0, z: FP._0 };
-  if (axis === 1) return { x: FP._0, y: s, z: FP._0 };
-  return { x: FP._0, y: FP._0, z: s };
-}
+  if (!clip(prev.x, dx, box.minX, box.maxX, NEG_X, POS_X)) return null;
+  if (!clip(prev.y, dy, box.minY, box.maxY, NEG_Y, POS_Y)) return null;
+  if (!clip(prev.z, dz, box.minZ, box.maxZ, NEG_Z, POS_Z)) return null;
 
-/** Outward normal of the box face nearest to a point (used when starting inside). */
-function nearestFaceNormal(
-  p: readonly FixedPoint[],
-  pMin: readonly FixedPoint[],
-  pMax: readonly FixedPoint[],
-): Vec3 {
-  let bestAxis = 0;
-  let bestFromMin = true;
-  let bestDist = FP.Sub(p[0], pMin[0]); // distance to minX face
-
-  for (let a = 0; a < 3; a++) {
-    const distMin = FP.Sub(p[a], pMin[a]); // to min face (>=0 inside)
-    const distMax = FP.Sub(pMax[a], p[a]); // to max face (>=0 inside)
-    if (FP.Lt(distMin, bestDist)) {
-      bestDist = distMin;
-      bestAxis = a;
-      bestFromMin = true;
-    }
-    if (FP.Lt(distMax, bestDist)) {
-      bestDist = distMax;
-      bestAxis = a;
-      bestFromMin = false;
-    }
+  // Entry never advanced past t = 0 → the segment started inside the box.
+  if (entryNormal === null) {
+    return { t: FP._0, point: { x: prev.x, y: prev.y, z: prev.z }, normal: nearestFaceNormal(prev, box) };
   }
-  return axisNormal(bestAxis, bestFromMin);
+
+  const t = tEnter;
+  return {
+    t,
+    point: {
+      x: FP.Lerp(prev.x, cur.x, t),
+      y: FP.Lerp(prev.y, cur.y, t),
+      z: FP.Lerp(prev.z, cur.z, t),
+    },
+    normal: entryNormal,
+  };
 }
+
+/** Outward normal of the box face nearest to an interior point. */
+function nearestFaceNormal(p: Vec3FP, box: AABB): Vec3FP {
+  let best = FP.Sub(p.x, box.minX);
+  let normal = NEG_X;
+
+  const consider = (dist: FixedPoint, faceNormal: Vec3FP): void => {
+    if (FP.Lt(dist, best)) {
+      best = dist;
+      normal = faceNormal;
+    }
+  };
+
+  consider(FP.Sub(box.maxX, p.x), POS_X);
+  consider(FP.Sub(p.y, box.minY), NEG_Y);
+  consider(FP.Sub(box.maxY, p.y), POS_Y);
+  consider(FP.Sub(p.z, box.minZ), NEG_Z);
+  consider(FP.Sub(box.maxZ, p.z), POS_Z);
+
+  return normal;
+}
+
+const NEG_X: Vec3FP = { x: FP.Neg(FP._1), y: FP._0, z: FP._0 };
+const POS_X: Vec3FP = { x: FP._1, y: FP._0, z: FP._0 };
+const NEG_Y: Vec3FP = { x: FP._0, y: FP.Neg(FP._1), z: FP._0 };
+const POS_Y: Vec3FP = { x: FP._0, y: FP._1, z: FP._0 };
+const NEG_Z: Vec3FP = { x: FP._0, y: FP._0, z: FP.Neg(FP._1) };
+const POS_Z: Vec3FP = { x: FP._0, y: FP._0, z: FP._1 };

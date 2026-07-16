@@ -16,7 +16,7 @@ export { SpatialHashGrid } from './collision/SpatialHashGrid';
 export { NarrowPhase } from './collision/NarrowPhase';
 export type { CollisionManifold } from './collision/CollisionManifold';
 export { segmentVsAABB } from './collision/Raycast';
-export type { AABB3, RayHit } from './collision/Raycast';
+export type { RayHit, Vec3FP, AABB } from './collision/Raycast';
 
 // Systems
 export { PhysicsSystem, GravitySystem, InterpolationSystem } from './systems';
