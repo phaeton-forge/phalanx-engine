@@ -7,3 +7,7 @@ export * from './ChainLightningCue.ts';
 export * from './MachineGunFireCue.ts';
 export * from './MachineGunImpactCue.ts';
 export * from './missileExhaustCue.ts';
+export * from './SauMuzzleFlashCue.ts';
+export * from './SauImpactCue.ts';
+export * from './SauSecondaryImpactCue.ts';
+export * from './SauFallingShadowCue.ts';

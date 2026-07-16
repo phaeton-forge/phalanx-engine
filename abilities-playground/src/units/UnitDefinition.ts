@@ -3,7 +3,7 @@ import type { UnitType, UnitGridSize } from './UnitType';
 /** View-layer description (geometry + decorations). Data, not behavior. */
 export interface UnitVisualSpec {
   readonly shape:
-    'sphere' | 'box' | 'cone' | 'octahedron' | 'volt' | 'plasmaTank';
+    'sphere' | 'box' | 'cone' | 'octahedron' | 'volt' | 'plasmaTank' | 'sau';
   readonly size: number; // sphere radius / box edge / cone radius / etc.
   readonly hasSpawnArrow: boolean;
   readonly hasAuraRing: boolean;

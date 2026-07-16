@@ -81,6 +81,8 @@ function createBody(
       return createVoltBody(spec.size, teamId, unitType);
     case 'plasmaTank':
       return createPlasmaTankBody(spec.size, teamId, unitType);
+    case 'sau':
+      return createSauBody(spec.size, teamId, unitType);
   }
 }
 
@@ -272,6 +274,166 @@ function createPlasmaTankBody(
   barrel.position.set(0, turretY, barrelCenterZ);
   enableShadows(barrel);
   root.add(barrel);
+
+  return root;
+}
+
+/**
+ * SAU (self-propelled artillery) visual: a hover artillery tank.
+ *
+ * Ported from the finalized concept: a hovering platform + layered hull with a
+ * rounded bow, a boxy turret, and a long elevated barrel. The model is authored
+ * with its long axis along local +X and its barrel toward +X; the outer root is
+ * yawed -90° so the barrel points +Z (the engine's forward axis, matching the
+ * other units and `SauMuzzleFlashCue`'s muzzle offset). `size` scales the whole
+ * assembly (size 3.8 reproduces the concept's 1.3× scale).
+ */
+function createSauBody(
+  size: number,
+  teamId: TeamId,
+  unitType: UnitType
+): THREE.Object3D {
+  const root = new THREE.Group();
+  const model = new THREE.Group();
+  root.add(model);
+
+  const hullMat = createTeamMaterial(teamId, unitType);
+  const hullLoMat = new THREE.MeshStandardMaterial({
+    color: resolveUnitColor(teamId, unitType),
+    roughness: 0.85,
+    metalness: 0.15,
+  });
+  hullLoMat.color.multiplyScalar(0.7);
+  const turretMat = createTeamMaterial(teamId, unitType);
+  const gunMat = new THREE.MeshStandardMaterial({
+    color: 0x35393d,
+    roughness: 0.55,
+    metalness: 0.45,
+  });
+  const darkMat = new THREE.MeshStandardMaterial({
+    color: 0x2a2d30,
+    roughness: 0.7,
+    metalness: 0.3,
+  });
+  const detailMat = new THREE.MeshStandardMaterial({
+    color: resolveUnitColor(teamId, unitType),
+    roughness: 0.8,
+    metalness: 0.1,
+  });
+  detailMat.color.multiplyScalar(0.85);
+  const platformMat = new THREE.MeshStandardMaterial({
+    color: 0x2b3022,
+    roughness: 0.6,
+    metalness: 0.35,
+  });
+
+  const HOVER_Y = 1.15;
+
+  const add = (
+    geometry: THREE.BufferGeometry,
+    material: THREE.Material,
+    x: number,
+    y: number,
+    z: number,
+    castShadow = true
+  ): THREE.Mesh => {
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.position.set(x, y, z);
+    if (castShadow) mesh.castShadow = true;
+    model.add(mesh);
+    return mesh;
+  };
+
+  // Hover platform + skirt.
+  add(new THREE.BoxGeometry(4.5, 0.34, 2.05), platformMat, -0.1, 0.66, 0);
+  add(new THREE.BoxGeometry(4.5, 0.2, 2.05), darkMat, -0.1, HOVER_Y - 0.4, 0, false);
+
+  // Hull stack.
+  add(new THREE.BoxGeometry(4.4, 1.0, 1.95), hullLoMat, -0.1, HOVER_Y, 0);
+  const bow = add(
+    new THREE.CylinderGeometry(0.5, 0.5, 1.95, 24),
+    hullLoMat,
+    2.1,
+    HOVER_Y,
+    0
+  );
+  bow.rotation.x = Math.PI / 2;
+  add(new THREE.BoxGeometry(4.1, 0.55, 1.78), hullMat, -0.1, HOVER_Y + 0.62, 0);
+  add(new THREE.BoxGeometry(0.9, 0.6, 1.6), detailMat, -2.05, HOVER_Y + 0.6, 0);
+
+  // Turret.
+  add(new THREE.BoxGeometry(2.4, 0.78, 1.8), turretMat, -0.25, HOVER_Y + 1.27, 0);
+  add(new THREE.BoxGeometry(2.0, 0.12, 1.45), detailMat, -0.25, HOVER_Y + 1.7, 0);
+  const cupola = add(
+    new THREE.CylinderGeometry(0.3, 0.32, 0.34, 16),
+    detailMat,
+    0,
+    HOVER_Y + 1.92,
+    -0.45
+  );
+  cupola.castShadow = true;
+  add(
+    new THREE.CylinderGeometry(0.23, 0.23, 0.08, 16),
+    darkMat,
+    -0.95,
+    HOVER_Y + 1.74,
+    0.45,
+    false
+  );
+  add(new THREE.BoxGeometry(0.5, 0.62, 1.0), gunMat, 1.0, HOVER_Y + 1.22, 0);
+
+  // Barrel assembly (elevated, along +X local).
+  const barrelGroup = new THREE.Group();
+  barrelGroup.position.set(1.1, HOVER_Y + 1.22, 0);
+  barrelGroup.rotation.z = 0.28;
+  model.add(barrelGroup);
+  const barrel = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.14, 0.15, 5.6, 24),
+    gunMat
+  );
+  barrel.rotation.z = -Math.PI / 2;
+  barrel.position.x = 2.8;
+  barrel.castShadow = true;
+  barrelGroup.add(barrel);
+  const fume = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.22, 0.22, 0.55, 20),
+    darkMat
+  );
+  fume.rotation.z = -Math.PI / 2;
+  fume.position.x = 4.0;
+  barrelGroup.add(fume);
+  const muzzle = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.2, 0.17, 0.55, 20),
+    darkMat
+  );
+  muzzle.rotation.z = -Math.PI / 2;
+  muzzle.position.x = 5.5;
+  barrelGroup.add(muzzle);
+
+  // Antenna + side exhaust.
+  const antenna = add(
+    new THREE.CylinderGeometry(0.022, 0.022, 1.7, 6),
+    darkMat,
+    -1.35,
+    HOVER_Y + 2.45,
+    0.55
+  );
+  antenna.castShadow = true;
+  const exhaust = add(
+    new THREE.CylinderGeometry(0.13, 0.13, 0.95, 12),
+    darkMat,
+    -2.4,
+    HOVER_Y + 0.5,
+    0.5,
+    false
+  );
+  exhaust.rotation.z = Math.PI / 2;
+
+  // Lower the assembly so its mass centers near the group origin, then yaw so
+  // the barrel faces +Z and scale to the requested size (3.8 → concept 1.3×).
+  model.position.y = -HOVER_Y;
+  root.rotation.y = -Math.PI / 2;
+  root.scale.setScalar(size * 0.342);
 
   return root;
 }
