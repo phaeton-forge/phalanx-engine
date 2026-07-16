@@ -4,6 +4,8 @@ import { PhysicsSystem } from './systems/PhysicsSystem';
 import { InterpolationSystem } from './systems/InterpolationSystem';
 import type { InterpolatedTransformSample } from './systems/InterpolationSystem';
 import { SpatialHashGrid } from './collision/SpatialHashGrid';
+import { segmentVsAABB } from './collision/Raycast';
+import type { RayHit, Vec3FP, AABB } from './collision/Raycast';
 import { PhysicsEvents } from './events';
 import type { PhysicsWorldConfig } from './PhysicsWorldConfig';
 import type { FixedPoint } from '@phalanx-engine/math';
@@ -158,6 +160,29 @@ export class PhysicsWorld {
    */
   public getInterpolatedTransform(entityId: number): InterpolatedTransformSample | undefined {
     return this.interpolationSystem.getInterpolatedTransform(entityId);
+  }
+
+  /**
+   * Swept-segment (raycast) query against a caller-supplied list of static AABBs.
+   *
+   * Scans every box and returns the nearest hit along the segment (smallest `t`
+   * in [0, 1]), or `null` if none intersect. Pure query with no side effects —
+   * intended for fast-moving ordnance vs static obstacles (impact point + normal).
+   * The caller owns box construction and lifetime; there is no broad-phase in v1.
+   */
+  public raycastSegment(
+    prev: Vec3FP,
+    cur: Vec3FP,
+    boxes: ReadonlyArray<AABB>
+  ): RayHit | null {
+    let nearest: RayHit | null = null;
+    for (const box of boxes) {
+      const hit = segmentVsAABB(prev, cur, box);
+      if (hit !== null && (nearest === null || FP.Lt(hit.t, nearest.t))) {
+        nearest = hit;
+      }
+    }
+    return nearest;
   }
 
   /** Clean up all subscriptions and system resources */

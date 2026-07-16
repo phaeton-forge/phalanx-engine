@@ -19,6 +19,7 @@ Use this skill when the user asks to:
 - Implement deterministic collision resolution for lockstep multiplayer
 - Add game-specific collision filtering (e.g., team-based rules)
 - Query entities by spatial proximity (range queries)
+- Raycast / swept-segment a fast-moving projectile against static 3D obstacles
 - Wire physics systems into a GameWorld tick pipeline
 - Set up tick-to-frame interpolation for rendering
 
@@ -393,6 +394,33 @@ const manifold = NarrowPhase.circleVsCircle(
 
 Returns `CollisionManifold | null`: `{ entityA, entityB, normalX, normalZ, penetration }`.
 
+### Swept-segment raycast — segmentVsAABB / PhysicsWorld.raycastSegment
+
+```typescript
+const hit = segmentVsAABB(prev, cur, box);            // pure math, single box
+const nearest = world.raycastSegment(prev, cur, boxes); // nearest of many boxes
+```
+
+Returns `RayHit | null`: `{ t, point: {x,y,z}, normal: {x,y,z} }`, where `t ∈ [0,1]`
+(0 at `prev`, 1 at `cur`), `point = lerp(prev, cur, t)`, and `normal` is the outward
+entry-face normal (±X/±Y/±Z). Segment-starts-inside → `{ t: 0, point: prev, normal:
+nearest face }`. All-fixed-point slab method; degenerate/parallel/zero-length inputs
+are deterministic (no NaN, no divide-by-zero).
+
+**Which collision query do I reach for?**
+
+- Two round units overlapping on the ground (XZ)? → `NarrowPhase.circleVsCircle`
+  (this is what `PhysicsSystem` runs automatically).
+- A fast-moving projectile / shrapnel / shell that could tunnel through a static
+  building or cover in one tick, and you need the impact point + face normal? →
+  `segmentVsAABB` (one box) or `PhysicsWorld.raycastSegment` (caller-supplied box
+  list). Generic math only — the game owns "what is a building / ground" and what
+  happens on impact.
+
+**v1 limitations:** linear scan over caller-supplied boxes (no broad-phase for
+raycasts), no ECS collider component, unit-vs-unit stays 2D/XZ. **v2 path:**
+`BoxColliderComponent` + grid-accelerated raycast + full 3D body-vs-body.
+
 ## Exports from phalanx-physics
 
 ```typescript
@@ -410,8 +438,8 @@ import {
 import type { PhysicsBodyConfig } from '@phalanx-engine/physics';
 
 // Collision primitives
-import { SpatialHashGrid, NarrowPhase } from '@phalanx-engine/physics';
-import type { CollisionManifold } from '@phalanx-engine/physics';
+import { SpatialHashGrid, NarrowPhase, segmentVsAABB } from '@phalanx-engine/physics';
+import type { CollisionManifold, RayHit, Vec3FP, AABB } from '@phalanx-engine/physics';
 
 // Systems
 import { PhysicsSystem, InterpolationSystem } from '@phalanx-engine/physics';

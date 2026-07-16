@@ -280,6 +280,9 @@ class PhysicsWorld {
   getEntityPosition(entityId: number): { x: FixedPoint; z: FixedPoint } | undefined;
   getInterpolatedTransform(entityId: number): InterpolatedTransformSample | undefined;
 
+  // Swept-segment (raycast) query
+  raycastSegment(prev: Vec3FP, cur: Vec3FP, boxes: ReadonlyArray<AABB>): RayHit | null;
+
   // Cleanup
   dispose(): void;
 }
@@ -293,6 +296,48 @@ class PhysicsWorld {
 - **`isSettled(threshold?)`** — Pure query: `true` when all non-static, non-ignored bodies are below velocity threshold (default from config, falling back to `FP.FromFloat(0.01)`).
 - **`onBoundsExit(callback)`** — Subscribe to `BOUNDS_EXIT` events (requires `ejectOnBoundsExit: true`).
 - **`setCollisionFilter(filter)`** — Inject a per-pair predicate. Return `false` to skip collision resolution for that pair.
+- **`raycastSegment(prev, cur, boxes)`** — See [Raycast / swept-segment queries](#raycast--swept-segment-queries).
+
+## Raycast / swept-segment queries
+
+A minimal, generic swept-segment (raycast) query for **fast-moving ordnance vs
+static 3D obstacles** — e.g. artillery shrapnel / a shell / a projectile moves
+from `prev` to `cur` in one tick and you need the **impact point + face normal**
+against a building or piece of cover.
+
+```typescript
+import { segmentVsAABB, type RayHit, type Vec3FP, type AABB } from '@phalanx-engine/physics';
+
+// Pure math query against a single box.
+function segmentVsAABB(prev: Vec3FP, cur: Vec3FP, box: AABB): RayHit | null;
+
+interface RayHit {
+  t: FixedPoint;                         // parametric hit in [0, 1] (0 at prev, 1 at cur)
+  point: { x: FixedPoint; y: FixedPoint; z: FixedPoint };  // = lerp(prev, cur, t)
+  normal: { x: FixedPoint; y: FixedPoint; z: FixedPoint }; // outward entry-face normal (±X/±Y/±Z)
+}
+```
+
+- **`segmentVsAABB(prev, cur, box)`** — Slab method, evaluated entirely in
+  fixed-point. Returns the entry `RayHit` (smallest `t` in `[0, 1]`) or `null`
+  if the segment misses the box within that range. `normal` is the outward face
+  normal of the entry slab (a ±X/±Y/±Z unit vector).
+- **`PhysicsWorld.raycastSegment(prev, cur, boxes)`** — Convenience facade that
+  linearly scans a **caller-supplied** list of boxes and returns the nearest hit
+  (smallest `t`), or `null`. Pure query, no side effects.
+
+**Conventions & degenerate cases (deterministic, no NaN / divide-by-zero):**
+
+- Segment starting **inside** the box → `{ t: 0, point: prev, normal: <nearest face normal> }`.
+- Zero-length segment (`prev == cur`) → `null` when outside, inside-hit (`t = 0`) when inside.
+- Segment parallel to a slab → handled without dividing by a zero direction component.
+
+**v1 limitations:** linear scan over caller-supplied boxes (no broad-phase / grid
+acceleration for raycasts), no ECS component, and the unit-vs-unit collision
+pipeline remains 2D/XZ circle-based — this query does not touch it.
+
+**v2 path:** a `BoxColliderComponent`, grid-accelerated raycasts (reuse
+`SpatialHashGrid` for broad-phase), and full 3D body-vs-body collision.
 
 ### `PhysicsWorldConfig`
 
