@@ -10,6 +10,10 @@ import {
   ROCKET_DETECTION_RANGE,
   ROCKET_MAX_HEALTH,
   ROCKET_STOP_RANGE,
+  SAU_COOLDOWN_TICKS,
+  SAU_DETECTION_RANGE,
+  SAU_MAX_HEALTH,
+  SAU_STOP_RANGE,
   VOLT_DETECTION_RANGE,
 } from '../config/abilityDefinitions';
 
@@ -119,6 +123,29 @@ export const UNIT_DEFINITIONS: Readonly<Record<UnitType, UnitDefinition>> = {
     visual: {
       shape: 'plasmaTank',
       size: 2.2,
+      hasSpawnArrow: false,
+      hasAuraRing: false,
+    },
+  },
+  [UnitType.Sau]: {
+    type: UnitType.Sau,
+    radius: 2.2,
+    mass: 4,
+    stopRange: SAU_STOP_RANGE,
+    maxHealth: SAU_MAX_HEALTH,
+    detectionRange: SAU_DETECTION_RANGE,
+    heightOffset: 2.5,
+    gridSize: { width: 1, depth: 2 },
+    abilities: ['Ability.SAU.Artillery'],
+    hasAutoAttackTimer: true,
+    hasCubeState: false,
+    autoAttack: {
+      abilityId: 'Ability.SAU.Artillery',
+      cooldownTicks: SAU_COOLDOWN_TICKS,
+    },
+    visual: {
+      shape: 'sau',
+      size: 3.8,
       hasSpawnArrow: false,
       hasAuraRing: false,
     },

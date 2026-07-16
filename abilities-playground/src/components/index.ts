@@ -23,3 +23,6 @@ export {
 export type { TeamId } from './UnitComponents';
 export { SpawnPointComponent } from './SpawnPointComponent';
 export { MissileComponent } from './MissileComponent';
+export { ArtilleryShellComponent } from './ArtilleryShellComponent';
+export type { ShrapnelConfig } from './ArtilleryShellComponent';
+export { ShrapnelPayloadComponent } from './ShrapnelPayloadComponent';

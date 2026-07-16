@@ -116,6 +116,40 @@ export const VOLT_COOLDOWN_TAG = 'Cooldown.Ability.VoltAttack';
  */
 export const MISSILE_VOLLEY_COOLDOWN_TAG = 'Cooldown.Ability.MissileVolley';
 
+/**
+ * SAU (self-propelled artillery). A slow, long-range siege unit that lobs a
+ * delayed-detonation shell onto a snapshotted impact point. On detonation it
+ * deals a primary AoE and sprays gravity-affected shrapnel that deals a smaller
+ * secondary AoE where each fragment lands.
+ */
+export const SAU_MAX_HEALTH = 140;
+/** Primary AoE damage dealt to enemies inside {@link SAU_PRIMARY_RADIUS} at detonation. */
+export const SAU_ATTACK_DAMAGE = 45;
+/** Secondary AoE damage dealt where each shrapnel fragment lands. */
+export const SAU_SECONDARY_DAMAGE = 20;
+/** Radius (world units) of the primary blast around the impact point. */
+export const SAU_PRIMARY_RADIUS = 10;
+/** Radius (world units) of each shrapnel fragment's secondary blast. */
+export const SAU_SECONDARY_RADIUS = 5;
+/** Number of shrapnel fragments sprayed on detonation. */
+export const SAU_SHRAPNEL_COUNT = 6;
+/** Attack cooldown in ticks (80 ticks = 4 s @ 20 TPS) — deliberately slow siege cadence. */
+export const SAU_COOLDOWN_TICKS = 80;
+export const SAU_DETECTION_RANGE = 80;
+export const SAU_STOP_RANGE = 70;
+/** Minimum engagement range (world units, XZ): the SAU refuses to fire on enemies inside this dead zone. */
+export const SAU_MIN_ENGAGEMENT_RANGE = 30;
+
+/**
+ * Whether SAU blasts (primary + secondary) hit allied units. Enemy-only by
+ * default; flip to true to enable friendly fire. Named so the intent is explicit
+ * at every call site rather than a bare boolean literal.
+ */
+export const SAU_FRIENDLY_FIRE = false;
+
+/** Tag granted to a SAU while its artillery ability is on cooldown. */
+export const SAU_COOLDOWN_TAG = 'Cooldown.Ability.SAU';
+
 export const combatDefs = defineAbilitySystem({
   attributes: [
     defineAttribute({
@@ -200,6 +234,37 @@ export const combatDefs = defineAbilitySystem({
       durationTicks: VOLT_ATTACK_COOLDOWN_TICKS,
       modifiers: [],
       tagsGranted: [VOLT_COOLDOWN_TAG],
+    }),
+    defineEffect({
+      id: 'Effect.SAU.Cooldown',
+      type: 'Duration',
+      durationTicks: SAU_COOLDOWN_TICKS,
+      modifiers: [],
+      tagsGranted: [SAU_COOLDOWN_TAG],
+    }),
+    defineEffect({
+      id: 'Effect.Damage.SAU.Primary',
+      type: 'Instant',
+      modifiers: [
+        {
+          attributeId: 'Health',
+          op: 'Add',
+          magnitude: FP.FromFloat(-SAU_ATTACK_DAMAGE),
+        },
+      ],
+      cues: ['Cue.SAU.Impact'],
+    }),
+    defineEffect({
+      id: 'Effect.Damage.SAU.Secondary',
+      type: 'Instant',
+      modifiers: [
+        {
+          attributeId: 'Health',
+          op: 'Add',
+          magnitude: FP.FromFloat(-SAU_SECONDARY_DAMAGE),
+        },
+      ],
+      cues: ['Cue.SAU.SecondaryImpact'],
     }),
     defineEffect({
       id: 'Effect.Damage.Volt.Primary',
@@ -329,6 +394,16 @@ export const combatDefs = defineAbilitySystem({
       hookId: 'Hook.Volt.ChainLightning',
       cooldownEffectId: 'Effect.Volt.Cooldown',
       activationBlockedTags: [VOLT_COOLDOWN_TAG],
+    }),
+    defineAbility({
+      id: 'Ability.SAU.Artillery',
+      // Entity target from the caller-supplied lock; the hook snapshots the
+      // target's position into a fixed impact point (no targetEffectIds — all
+      // damage is AoE, applied later by ArtilleryShellSystem/ShrapnelLandingSystem).
+      target: { kind: 'Entity', origin: { kind: 'Caller' } },
+      hookId: 'Hook.SAU.Fire',
+      cooldownEffectId: 'Effect.SAU.Cooldown',
+      activationBlockedTags: [SAU_COOLDOWN_TAG],
     }),
   ],
 });

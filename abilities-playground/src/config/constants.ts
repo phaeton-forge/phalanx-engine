@@ -14,6 +14,26 @@ export const PROJECTILE_SPEED = 180;
 /** Radians of Y rotation applied per simulation tick when turning to face a target. */
 export const UNIT_TURN_SPEED_RADIANS_PER_TICK = Math.PI / 15;
 
+/**
+ * SAU (self-propelled artillery) shrapnel physics tuning.
+ *
+ * Gravity in phalanx-physics v1 is GLOBAL (a single PhysicsWorldConfig.gravity
+ * applied by GravitySystem to every body with useGravity=true). Shrapnel is the
+ * only body in the playground that opts into gravity, so we set the world's
+ * global gravity to {@link SAU_SHRAPNEL_GRAVITY} and mark only shrapnel bodies
+ * useGravity — no per-shrapnel gravity is faked. The shrapnel config therefore
+ * carries count/cone/speed only; gravity lives here on the world config.
+ */
+export const SAU_SHRAPNEL_GRAVITY = 30;
+/** Launch speed (world units/s) of each shrapnel fragment along its cone ray. */
+export const SAU_SHRAPNEL_SPEED = 42;
+/** Half-angle (radians) of the upward cone the shrapnel fragments fan out into. */
+export const SAU_SHRAPNEL_CONE = Math.PI / 5;
+/** Ticks between the shell being fired and its detonation (4–6 = 0.2–0.3 s @ 20 TPS). */
+export const SAU_SHELL_DELAY_TICKS = 5;
+/** Ground plane Y (world units) shrapnel fragments land on in v1 (no building AABBs yet). */
+export const SAU_GROUND_Y = 0;
+
 export const physicsConfig = {
   subSteps: 3,
   gridCellSize: 8,
@@ -23,6 +43,8 @@ export const physicsConfig = {
    */
   maxVelocity: Math.max(PROJECTILE_SPEED, 18),
   pushStrength: 12,
+  /** Global downward acceleration applied to useGravity bodies (SAU shrapnel). */
+  gravity: SAU_SHRAPNEL_GRAVITY,
 };
 
 /** Seconds before an active projectile is returned to the pool. */
@@ -108,6 +130,7 @@ export const arenaParams = {
     rocket: '#B6A8FF',
     volt: '#9DB8FF',
     plasmaTank: '#A3C9F9',
+    sau: '#8FA98C',
   } as Record<string, string>,
   team2Palette: {
     sphere: '#FF8A8A',
@@ -116,6 +139,7 @@ export const arenaParams = {
     rocket: '#FFA37A',
     volt: '#FF9E7A',
     plasmaTank: '#FFB08A',
+    sau: '#C9A98F',
   } as Record<string, string>,
   /**
    * Local formation grid dimensions. The grid is centered on each team's spawn line
