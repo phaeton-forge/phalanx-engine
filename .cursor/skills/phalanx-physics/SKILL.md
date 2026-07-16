@@ -417,8 +417,8 @@ import {
 import type { PhysicsBodyConfig } from '@phalanx-engine/physics';
 
 // Collision primitives
-import { SpatialHashGrid, NarrowPhase } from '@phalanx-engine/physics';
-import type { CollisionManifold } from '@phalanx-engine/physics';
+import { SpatialHashGrid, NarrowPhase, segmentVsAABB } from '@phalanx-engine/physics';
+import type { CollisionManifold, AABB3, RayHit } from '@phalanx-engine/physics';
 
 // Systems
 import { PhysicsSystem, GravitySystem, InterpolationSystem } from '@phalanx-engine/physics';
@@ -502,6 +502,28 @@ physicsWorld.applyImpulse3D(
 - Body is static (`isStatic=1`)? → `GravitySystem` skips it, so `static + useGravity` is a clean no-op (statics never integrate position).
 - Need gravity along X or Z? → not supported in v1 (`GravitySystem` throws). X/Z are owned by `PhysicsSystem`'s integrator; ceding an axis is a v2 change.
 - Gravity magnitude is applied per whole tick (`gravity * tickDt`), not per sub-step, so very high gravity + few ticks is a coarse approximation — increase tick rate for smoother arcs.
+
+### 3D collision workaround (raycast)
+
+The body-vs-body narrow phase is **2D/XZ only** (circles, no height). For 3D
+collision — e.g. a fast ordnance (shrapnel / shell / projectile) hitting a static
+obstacle (building) where you need the impact point + surface normal — use the
+**swept-segment raycast** as a **workaround** until full 3D body-body collision
+ships (v2: `BoxColliderComponent` + grid raycast + 3D sphere/box resolution).
+
+- `physicsWorld.raycastSegment(prev, cur, boxes)` — scans caller-supplied static
+  `AABB3` boxes, returns nearest `{ t, point, normal }` or `null`.
+- `segmentVsAABB(prev, cur, box)` — pure slab-method primitive (`t` in `[0,1]`,
+  `point = lerp(prev,cur,t)`, `normal` = outward entry-face normal).
+- Swept segment (not point-in-box) prevents tunneling through thin walls.
+- Unit-vs-unit 2D circle pipeline is untouched.
+- Decision tree:
+  - Need to know where a fast ordnance hit a static obstacle (point + normal)?
+    → `raycastSegment(prevPos, curPos, buildingBoxes)` each tick; on hit, react
+    (secondary AoE at `hit.point`, ricochet along `hit.normal`, despawn).
+  - Ground landing? → model ground as a big flat `AABB3` (same query) or a plane check.
+  - Obstacle count in the hundreds+? → v1 linear scan still works; v2 will add a
+    spatial grid once `BoxColliderComponent` exists.
 
 ## Best Practices
 

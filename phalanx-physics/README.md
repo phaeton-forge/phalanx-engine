@@ -277,6 +277,9 @@ class PhysicsWorld {
   applyImpulse3D(entityId: number, vx: FixedPoint, vy: FixedPoint, vz: FixedPoint): void;
   isSettled(threshold?: FixedPoint): boolean;
 
+  // 3D collision workaround — see "Raycast / swept-segment queries"
+  raycastSegment(prev: { x: FixedPoint; y: FixedPoint; z: FixedPoint }, cur: { x: FixedPoint; y: FixedPoint; z: FixedPoint }, boxes: ReadonlyArray<AABB3>): RayHit | null;
+
   // Spatial / transform queries
   readonly spatialGrid: SpatialHashGrid;
   getEntityPosition(entityId: number): { x: FixedPoint; z: FixedPoint } | undefined;
@@ -424,6 +427,47 @@ integrated across every sub-step. The net ΔY per tick is `velocityY * tickDt`
 (semi-implicit Euler) — correct for gameplay. Sub-step-accurate gravity would
 require folding the acceleration into `PhysicsSystem.step()`'s loop (at which
 point it would no longer be a separate system); this is intentionally not done.
+
+## Raycast / swept-segment queries (3D collision workaround)
+
+The body-vs-body narrow phase is **2D/XZ only** (circles on the ground plane) and
+has no notion of height. For **3D collision** — e.g. a fast-moving ordnance
+(artillery shrapnel, shell, projectile) hitting a static obstacle such as a
+building, where you need the impact point and surface normal — use the swept-
+segment raycast query as a **workaround** until a full 3D body-body collision
+system is implemented (planned v2: `BoxColliderComponent` as ECS entities +
+grid-accelerated raycast + 3D sphere/box vs sphere/box resolution).
+
+```typescript
+import { FP } from '@phalanx-engine/math';
+import { PhysicsWorld, type AABB3, type RayHit } from '@phalanx-engine/physics';
+
+// prev = previous tick position of the shard, cur = current position (after
+// gravity + integration ran). buildings = static 3D AABBs.
+const hit: RayHit | null = physicsWorld.raycastSegment(prev, cur, buildings);
+if (hit) {
+  spawnSecondaryAoE(hit.point, radii);   // explosion on the wall
+  cue(Impact, hit.point);                // VFX/SFX at the impact
+  // hit.normal is the outward face normal — use for ricochet / impulse direction.
+  despawn(shrapnel);
+  return;
+}
+// No building hit -> check ground plane, else carry prevPos forward next tick.
+```
+
+- `segmentVsAABB(prev, cur, box)` — pure slab-method query returning
+  `{ t, point, normal }` (t in `[0,1]` along the segment, `point = lerp(prev, cur, t)`,
+  `normal` = outward face normal of the entry plane) or `null`.
+- `PhysicsWorld.raycastSegment(prev, cur, boxes)` — scans a caller-supplied list of
+  static `AABB3` boxes and returns the **nearest** hit, or `null`.
+
+Using the swept segment (not point-in-box per tick) prevents **tunneling**: a
+fast shard cannot skip through a thin wall between ticks.
+
+**v1 limitations:** linear scan over caller-supplied boxes (no broad-phase
+acceleration) — fine for tens of obstacles; the unit-vs-unit 2D circle pipeline
+is untouched. **v2 path:** `BoxColliderComponent` as ECS entities + spatial-grid
+raycast + full 3D body-body collision.
 
 ### `TransformComponent`
 
