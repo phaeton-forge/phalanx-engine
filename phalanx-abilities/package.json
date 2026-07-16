@@ -1,6 +1,6 @@
 {
   "name": "@phalanx-engine/abilities",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Deterministic gameplay ability system for Phalanx Engine",
   "type": "module",
   "main": "./dist/index.js",

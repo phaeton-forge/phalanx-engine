@@ -13,11 +13,12 @@ import type { FixedPoint } from '@phalanx-engine/math';
 import type { CollisionEvent, PhysicsConfig, BoundsExitEvent } from './types';
 
 /**
- * PhysicsWorld — high-level facade that owns PhysicsSystem and InterpolationSystem.
+ * PhysicsWorld — high-level facade that owns GravitySystem, PhysicsSystem,
+ * and InterpolationSystem.
  *
- * Consumers create a PhysicsWorld, register both systems from getSystems()
- * with GameWorld, and read interpolated transforms for rendering via
- * getInterpolatedTransform().
+ * Consumers create a PhysicsWorld, register systems from getSystems()
+ * with GameWorld (gravity before physics), and read interpolated transforms
+ * for rendering via getInterpolatedTransform().
  */
 export class PhysicsWorld {
   private readonly physicsSystem: PhysicsSystem;

@@ -1,9 +1,9 @@
 ---
 name: phalanx-physics
-description: Add deterministic fixed-point physics to a game using the phalanx-physics library from the phalanx-engine repository. Use when the user wants to set up collision detection, velocity integration, spatial hashing, or physics bodies. Covers PhysicsWorld facade, TransformComponent, InterpolationSystem, PhysicsBodyComponent, SpatialHashGrid, NarrowPhase, PhysicsSystem, and collision filtering patterns.
+description: Add deterministic fixed-point physics to a game using the phalanx-physics library from the phalanx-engine repository. Use when the user wants to set up collision detection, velocity integration, spatial hashing, or physics bodies. Covers PhysicsWorld facade, TransformComponent, InterpolationSystem, PhysicsBodyComponent, GravitySystem, SpatialHashGrid, NarrowPhase, PhysicsSystem, applyImpulse3D, gravityMultiplier, raycastSegment, and collision filtering patterns.
 metadata:
   author: phaeton2040-AI
-  version: '1.4'
+  version: '1.5'
 ---
 
 # Phalanx Physics Skill
@@ -37,7 +37,7 @@ PhysicsWorld (Facade)
 ├── GravitySystem         ← Applies acceleration to velocityY (runs BEFORE PhysicsSystem)
 ├── PhysicsSystem         ← Velocity integration + collision pipeline (sub-stepped)
 │   ├── SpatialHashGrid   ← O(n) broad-phase via spatial hashing
-│   └── NarrowPhase       ← Circle vs Circle collision tests
+│   └── NarrowPhase       ← Circle vs Circle / Circle vs AABB / AABB vs AABB tests
 └── InterpolationSystem   ← Tick/frame lifecycle hooks for render smoothing
     ├── TransformComponent (built-in SoA)
     └── InterpolationComponent (tick samples)
@@ -47,7 +47,7 @@ Pipeline per tick (all deterministic, fixed-point):
 ```
 MovementSystem (game-specific, sets velocities)
     ↓
-GravitySystem.processTick()   ← velocityY -= gravity * dt (only bodies with useGravity=1)
+GravitySystem.processTick()   ← velocityY -= gravity * dt * gravityMultiplier (useGravity=1 only)
     ↓
 PhysicsSystem.processTick()
     for each sub-step:
@@ -55,7 +55,7 @@ PhysicsSystem.processTick()
       → rebuild spatial grid
       → query candidate pairs
       → narrow-phase circle-vs-circle tests
-      → resolve: impulse push + positional separation
+      → resolve: 'push' (default) or 'impulse' collision response + positional separation
       → emit PhysicsEvents.COLLISION via EventBus
     after iteration: emit PhysicsEvents.BOUNDS_EXIT for any bodies ejected this tick
     ↓
@@ -138,14 +138,16 @@ class RenderSystem extends GameSystem {
 ### 3. Register Systems with GameWorld
 
 ```typescript
-const { physicsSystem, interpolationSystem } = physicsWorld.getSystems();
+const { gravitySystem, physicsSystem, interpolationSystem } = physicsWorld.getSystems();
 
 // Register in tick system order — ORDER MATTERS:
 // 1. Game-specific system sets velocities (e.g., MovementSystem)
-// 2. PhysicsSystem integrates velocities, detects, and resolves collisions
-// 3. Game-specific systems react to the updated positions
+// 2. GravitySystem applies acceleration (no-op when gravity=0 / useGravity=false)
+// 3. PhysicsSystem integrates velocities, detects, and resolves collisions
+// 4. Game-specific systems react to the updated positions
 const tickSystems = [
   movementSystem,    // Game-specific: sets velocities on PhysicsBodyComponent
+  gravitySystem,     // phalanx-physics: acceleration (before integration)
   physicsSystem,     // phalanx-physics: integrate + collide + resolve
   combatSystem,      // Game-specific: reacts to updated positions
 ];
@@ -159,6 +161,7 @@ world.registerSystems(tickSystems, frameSystems);
 ```
 
 > **No `setTransformStore()` needed.** `PhysicsSystem` reads/writes the built-in `TransformSoASchema` store directly.
+> Destructure only `{ physicsSystem, interpolationSystem }` if you do not need gravity — `gravitySystem` is always created but is a no-op when `gravity` is 0.
 
 ### 4. Register Component Type Symbols
 
@@ -343,20 +346,21 @@ Attach `InterpolationComponent` on any entity that needs render smoothing alongs
 
 ## PhysicsSoASchema Fields
 
-| Field           | Type  | TypedArray       | Description                           |
-| --------------- | ----- | ---------------- | ------------------------------------- |
-| `velocityX`     | `i64` | `BigInt64Array`  | X velocity (raw FixedPoint)           |
-| `velocityY`     | `i64` | `BigInt64Array`  | Y velocity (raw FixedPoint)           |
-| `velocityZ`     | `i64` | `BigInt64Array`  | Z velocity (raw FixedPoint)           |
-| `radius`        | `i64` | `BigInt64Array`  | Collision radius (raw FixedPoint)     |
-| `mass`          | `i64` | `BigInt64Array`  | Entity mass (raw FixedPoint)          |
-| `restitution`   | `i64` | `BigInt64Array`  | Bounce factor (raw FixedPoint)        |
-| `friction`      | `i64` | `BigInt64Array`  | Surface friction (raw FixedPoint)     |
-| `isStatic`      | `u8`  | `Uint8Array`     | 1 = immovable, 0 = dynamic           |
-| `ignorePhysics` | `u8`  | `Uint8Array`     | 1 = skip all physics, 0 = active     |
-| `useGravity`    | `u8`  | `Uint8Array`     | 1 = GravitySystem applies gravity, 0 = ignore (default) |
-| `lastX`         | `f64` | `Float64Array`   | Cached float X position               |
-| `lastZ`         | `f64` | `Float64Array`   | Cached float Z position               |
+| Field                | Type  | TypedArray       | Description                           |
+| -------------------- | ----- | ---------------- | ------------------------------------- |
+| `velocityX`          | `i64` | `BigInt64Array`  | X velocity (raw FixedPoint)           |
+| `velocityY`          | `i64` | `BigInt64Array`  | Y velocity (raw FixedPoint)           |
+| `velocityZ`          | `i64` | `BigInt64Array`  | Z velocity (raw FixedPoint)           |
+| `radius`             | `i64` | `BigInt64Array`  | Collision radius (raw FixedPoint)     |
+| `mass`               | `i64` | `BigInt64Array`  | Entity mass (raw FixedPoint)          |
+| `restitution`        | `i64` | `BigInt64Array`  | Bounce factor (raw FixedPoint)        |
+| `friction`           | `i64` | `BigInt64Array`  | Surface friction (raw FixedPoint)     |
+| `isStatic`           | `u8`  | `Uint8Array`     | 1 = immovable, 0 = dynamic           |
+| `ignorePhysics`      | `u8`  | `Uint8Array`     | 1 = skip all physics, 0 = active     |
+| `useGravity`         | `u8`  | `Uint8Array`     | 1 = GravitySystem applies gravity, 0 = ignore (default) |
+| `gravityMultiplier`  | `i64` | `BigInt64Array`  | Per-body scale on world gravity (default `FP._1`) |
+| `lastX`              | `f64` | `Float64Array`   | Cached float X position               |
+| `lastZ`              | `f64` | `Float64Array`   | Cached float Z position               |
 
 ## PhysicsWorldConfig
 
@@ -370,14 +374,29 @@ interface PhysicsWorldConfig {
   worldBounds?: {
     minX: FixedPoint; minZ: FixedPoint; maxX: FixedPoint; maxZ: FixedPoint;
   };
-  defaultRestitution?: FixedPoint;
-  defaultFriction?: FixedPoint;
+  defaultFriction?: FixedPoint; // Applied when body friction is 0 (default: FP.FromFloat(0.92))
+  collisionResponse?: 'push' | 'impulse'; // default 'push'
+  restitution?: FixedPoint;    // impulse mode only; falls back to per-body restitution
   tickProvider?: IPhysicsTickProvider;
   ejectOnBoundsExit?: boolean;
   settleThreshold?: FixedPoint;
   gravity?: FixedPoint;             // Acceleration magnitude (default: FP._0 = disabled)
   gravityAxis?: 'x' | 'y' | 'z';   // Gravity axis (default: 'y'; only 'y' supported in v1)
 }
+```
+
+### Collision Response (`'push'` vs `'impulse'`)
+
+| Mode | Behavior | Use when |
+|---|---|---|
+| `'push'` *(default)* | Positional separation + mass-weighted push velocity. Does **not** conserve momentum. | Crowd/soft separation, characters, most real-time games. |
+| `'impulse'` | Momentum-conserving elastic collision along the contact normal. | Billiards / Chapayev / air-hockey — strike must transfer momentum. |
+
+```typescript
+const physicsWorld = new PhysicsWorld({
+  collisionResponse: 'impulse',
+  restitution: FP.FromFloat(0.85),
+});
 ```
 
 ## Collision Pipeline Detail
@@ -452,7 +471,7 @@ import type {
 
 `GravitySystem` adds optional deterministic gravity. It follows a strict **one-owner-per-axis** rule:
 
-- **GravitySystem applies ACCELERATION only**: `velocityY -= gravity * dt` for bodies with `useGravity = 1`. It never writes position.
+- **GravitySystem applies ACCELERATION only**: `velocityY -= gravity * dt * gravityMultiplier` for bodies with `useGravity = 1`. It never writes position.
 - **PhysicsSystem owns position integration**: `posY += velY * dt` happens in `applyVelocities`, alongside X/Z.
 - Collisions remain 2D/XZ — Y never affects broad/narrow phase. `maxVelocity` and `worldBounds` clamps stay XZ-only.
 
@@ -468,8 +487,9 @@ const physicsWorld = new PhysicsWorld({
 // Per-body opt-in (default false — existing bodies are unaffected):
 entity.addComponent(new PhysicsBodyComponent(entity.id, {
   radius: FP.FromFloat(0.5),
-  mass: FP.FromFloat(1.0),
+  mass: FP._1,                   // with mass 1, applyImpulse3D args ≈ desired velocity
   useGravity: true,
+  gravityMultiplier: FP.FromFloat(2), // optional per-body scale (default FP._1)
 }));
 ```
 
@@ -482,27 +502,29 @@ world.registerSystems([gravitySystem, physicsSystem, /* ... */], [interpolationS
 
 ### Firing arcing ordnance (artillery / shrapnel)
 
-Use `applyImpulse3D` to launch a body on a ballistic arc in one call — it sets all three velocity components and clears `ignorePhysics`:
+Use `applyImpulse3D` to launch a body on a ballistic arc. It is a **true momentum impulse** — `velocity = impulse / mass` on all three axes — and clears `ignorePhysics`. Bodies with `mass <= 0` are unchanged.
 
 ```typescript
 // Launch a shell up and forward; gravity pulls it back into a parabola.
+// With mass = 1, these impulse values equal the resulting velocity.
 physicsWorld.applyImpulse3D(
   shellId,
-  FP.FromFloat(0),    // vx
-  FP.FromFloat(20),   // vy (up)
-  FP.FromFloat(30),   // vz (forward)
+  FP.FromFloat(0),    // ix
+  FP.FromFloat(20),   // iy (up)
+  FP.FromFloat(30),   // iz (forward)
 );
 ```
 
-> `applyImpulse` (XZ-only) is unchanged for grounded knockback. Use `applyImpulse3D` when the Y component matters.
+> **Asymmetry:** `applyImpulse(entityId, vx, vz)` sets XZ **velocity** directly (does **not** divide by mass) — historical flick API. `applyImpulse3D` divides by mass. Prefer `mass = FP._1` when you want impulse args to match desired velocity.
 
 ### Gravity decision tree
 
-- Body should fall / arc (projectile, shell, fragment, jump)? → set `useGravity: true` and give it a launch velocity (`applyImpulse3D`).
+- Body should fall / arc (projectile, shell, fragment, jump)? → set `useGravity: true`, optionally tune `gravityMultiplier`, and give it a launch impulse (`applyImpulse3D`).
 - Body is ground-plane only (units, most gameplay)? → leave `useGravity` false (default); it never moves on Y.
 - Body is static (`isStatic=1`)? → `GravitySystem` skips it, so `static + useGravity` is a clean no-op (statics never integrate position).
+- Need lighter/heavier fall without changing world gravity? → set `gravityMultiplier` (e.g. `2` = twice world gravity; `0` = no gravity without clearing the flag).
 - Need gravity along X or Z? → not supported in v1 (`GravitySystem` throws). X/Z are owned by `PhysicsSystem`'s integrator; ceding an axis is a v2 change.
-- Gravity magnitude is applied per whole tick (`gravity * tickDt`), not per sub-step, so very high gravity + few ticks is a coarse approximation — increase tick rate for smoother arcs.
+- Gravity magnitude is applied per whole tick (`gravity * tickDt * multiplier`), not per sub-step, so very high gravity + few ticks is a coarse approximation — increase tick rate for smoother arcs.
 
 ## Raycast / Swept-Segment Queries (3D collision workaround)
 
@@ -566,9 +588,10 @@ body-body collision resolution.
 ### Integration
 
 - Set `world.context.physics = physicsWorld` before `registerSystems()`
-- Register `physicsSystem` as tick system, `interpolationSystem` as frame system
+- Register `gravitySystem` then `physicsSystem` as tick systems, `interpolationSystem` as frame system
 - Attach `TransformComponent` + `InterpolationComponent` on every entity that moves and renders
 - Use `this.physics.getInterpolatedTransform()` in render systems — do not maintain separate visual position caches
 - Use `physicsWorld.getEntityPosition()` for fixed-point gameplay queries (ability targeting, range checks)
+- Use `applyImpulse3D` for ballistic launch (`v = i / mass`); use `applyImpulse` only for grounded XZ flick velocity
 - Use `setCollisionFilter()` for game-specific rules — keeps phalanx-physics decoupled from game concepts
 - Call `physicsWorld.dispose()` when tearing down the game

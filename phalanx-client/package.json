@@ -1,6 +1,6 @@
 {
   "name": "@phalanx-engine/client",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Client library for Phalanx Engine - a game-agnostic deterministic lockstep multiplayer engine",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

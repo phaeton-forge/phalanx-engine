@@ -18,9 +18,13 @@ export interface PhysicsWorldConfig {
     maxX: FixedPoint;
     maxZ: FixedPoint;
   };
-  /** Default restitution for new physics bodies (default FP.FromFloat(0.5)) */
+  /**
+   * Default restitution for new physics bodies.
+   * @remarks Reserved — not currently wired through PhysicsWorld. Set restitution
+   * on each PhysicsBodyConfig instead (component default is FP.FromFloat(0.5)).
+   */
   defaultRestitution?: FixedPoint;
-  /** Default friction for new physics bodies (default FP.FromFloat(0.3)) */
+  /** Default friction applied when a body's friction field is 0 (default FP.FromFloat(0.92)) */
   defaultFriction?: FixedPoint;
   /** Maximum velocity magnitude */
   maxVelocity?: FixedPoint;

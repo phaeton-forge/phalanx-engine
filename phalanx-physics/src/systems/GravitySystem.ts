@@ -6,10 +6,10 @@ import { PhysicsSoASchema } from '../components/PhysicsBodyComponent';
  * GravitySystem — applies gravitational ACCELERATION to velocity.
  *
  * On each tick, for every body with `useGravity=true`, it decays the velocity
- * along the configured axis: `velocityY -= gravity * tickDt` (for the default
- * `gravityAxis='y'`). It NEVER writes position — position integration is owned
- * exclusively by PhysicsSystem.applyVelocities (which integrates X/Y/Z). This
- * "one owner per axis" rule avoids double-integration.
+ * along the configured axis: `velocityY -= gravity * tickDt * gravityMultiplier`
+ * (for the default `gravityAxis='y'`). It NEVER writes position — position
+ * integration is owned exclusively by PhysicsSystem.applyVelocities (which
+ * integrates X/Y/Z). This "one owner per axis" rule avoids double-integration.
  *
  * Ordering: register GravitySystem BEFORE PhysicsSystem so the acceleration is
  * applied before that tick's position integration (semi-implicit Euler).
