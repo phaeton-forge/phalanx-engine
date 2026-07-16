@@ -78,6 +78,18 @@ export interface PhysicsConfig {
    * When false (default), bodies are clamped to the boundary.
    */
   ejectOnBoundsExit?: boolean;
+  /**
+   * Gravitational acceleration magnitude applied by GravitySystem to bodies
+   * with `useGravity=true`. Default 0 (no gravity → GravitySystem is a no-op).
+   */
+  gravity?: FixedPoint;
+  /**
+   * Axis along which gravity is applied. Default `'y'`. In v1 only `'y'` is
+   * supported: X/Z are owned by PhysicsSystem's position integrator, so gravity
+   * on those axes would double-integrate. `'x'`/`'z'` are reserved and cause
+   * GravitySystem to throw.
+   */
+  gravityAxis?: 'x' | 'y' | 'z';
 }
 
 /**
@@ -89,4 +101,17 @@ export interface PhysicsBodyConfig {
   isStatic?: boolean;
   restitution?: FixedPoint;
   friction?: FixedPoint;
+  /**
+   * When true, GravitySystem applies gravitational acceleration to this body's
+   * velocity each tick (default false). Existing bodies keep `useGravity=false`
+   * and are unaffected. Integration of the resulting velocity into position is
+   * still owned by PhysicsSystem.
+   */
+  useGravity?: boolean;
+  /**
+   * Per-body scale on global gravity when `useGravity=true` (default `FP._1`).
+   * Does not affect bodies with `useGravity=false`. `0` disables gravity on
+   * that body without toggling the flag.
+   */
+  gravityMultiplier?: FixedPoint;
 }

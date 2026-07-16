@@ -27,6 +27,7 @@ import {
 } from '../components';
 
 import {
+  ArtilleryShellSystem,
   AttackSystem,
   ChainLightningJumpSystem,
   CubeTargetingSystem,
@@ -39,16 +40,21 @@ import {
   MovementSystem,
   RenderSyncSystem,
   RotationSystem,
+  ShrapnelLandingSystem,
+  ShrapnelSpinSystem,
   TargetingSystem,
   VoltAttackSystem,
 } from '../systems';
 import { UnitFactory } from '../units';
 import { ProjectileEntity } from '../entities/Projectile.ts';
 import { MissileEntity } from '../entities/Missile';
+import { ArtilleryShellEntity } from '../entities/ArtilleryShell';
+import { ShrapnelEntity } from '../entities/Shrapnel';
 import { autoAttack } from '../hooks/AutoAttack.ts';
 import { missileVolley } from '../hooks/MissileVolley';
 import { voltChainLightning } from '../hooks/VoltChainLightning';
 import { plasmaTankMachineGun } from '../hooks/PlasmaTankMachineGun';
+import { sauArtillery } from '../hooks/SauArtillery';
 import {
   ProjectileDespawnQueueSystem,
   ProjectileCollisionSystem,
@@ -64,6 +70,10 @@ import {
   ChainLightningCue,
   MachineGunFireCue,
   MachineGunImpactCue,
+  SauMuzzleFlashCue,
+  SauImpactCue,
+  SauSecondaryImpactCue,
+  SauFallingShadowCue,
 } from '../cues';
 
 export class SimulationContainer {
@@ -95,6 +105,14 @@ export class SimulationContainer {
             factory: () => new MissileEntity(),
             pool: { initialSize: 30, maxSize: 120 },
           },
+          artilleryShell: {
+            factory: () => new ArtilleryShellEntity(),
+            pool: { initialSize: 12, maxSize: 60 },
+          },
+          shrapnel: {
+            factory: () => new ShrapnelEntity(),
+            pool: { initialSize: 60, maxSize: 300 },
+          },
         },
       },
     });
@@ -105,6 +123,9 @@ export class SimulationContainer {
       tickRate: networkConfig.tickRate,
       maxVelocity: FP.FromFloat(physicsConfig.maxVelocity),
       pushStrength: FP.FromFloat(physicsConfig.pushStrength),
+      // Global gravity (v1): only shrapnel bodies opt in via useGravity, so this
+      // affects nothing else in the playground. See config/constants.ts.
+      gravity: FP.FromFloat(physicsConfig.gravity),
       worldBounds: {
         minX: FP.FromFloat(-arenaParams.width / 2),
         maxX: FP.FromFloat(arenaParams.width / 2),
@@ -133,6 +154,10 @@ export class SimulationContainer {
           new MachineGunFireCue(this.scene),
         'Cue.PlasmaTank.MachineGun.Impact': () =>
           new MachineGunImpactCue(this.scene),
+        'Cue.SAU.MuzzleFlash': () => new SauMuzzleFlashCue(this.scene),
+        'Cue.SAU.Impact': () => new SauImpactCue(this.scene),
+        'Cue.SAU.SecondaryImpact': () => new SauSecondaryImpactCue(this.scene),
+        'Cue.SAU.FallingShadow': () => new SauFallingShadowCue(this.scene),
       },
       hooks: {
         'Hook.AutoAttack': (ctx: AbilityActivationContext) =>
@@ -143,6 +168,8 @@ export class SimulationContainer {
           voltChainLightning(ctx, this.world, this.abilities),
         'Hook.PlasmaTank.MachineGun': (ctx: AbilityActivationContext) =>
           plasmaTankMachineGun(ctx, this.world),
+        'Hook.SAU.Fire': (ctx: AbilityActivationContext) =>
+          sauArtillery(ctx, this.world),
       },
     });
 
@@ -156,6 +183,15 @@ export class SimulationContainer {
       if (statsA && !statsA.alive) return false;
       const statsB = eB.getComponent<StatsComponent>(ComponentType.UnitStats);
       if (statsB && !statsB.alive) return false;
+
+      // Shrapnel is gravity-affected and physics-integrated, but it must not be
+      // pushed around by (or push) units or other fragments — its only job is to
+      // arc and land. Exclude shrapnel↔unit and shrapnel↔shrapnel pairs so the
+      // collision filter (not ignorePhysics) protects it. Ground landing is
+      // resolved geometrically by ShrapnelLandingSystem.
+      const aShrapnel = eA.hasComponent(ComponentType.ShrapnelPayload);
+      const bShrapnel = eB.hasComponent(ComponentType.ShrapnelPayload);
+      if (aShrapnel || bShrapnel) return false;
 
       const aProjectile = eA.hasComponent(ComponentType.Projectile);
       const bProjectile = eB.hasComponent(ComponentType.Projectile);
@@ -185,8 +221,14 @@ export class SimulationContainer {
     this.unitFactory = new UnitFactory(this.scene, this.abilities);
     this.formationSystem = new FormationSystem(this.unitFactory);
 
-    const { physicsSystem, interpolationSystem } =
+    const { physicsSystem, gravitySystem, interpolationSystem } =
       this.physicsWorld.getSystems();
+    // SAU order (documented): AttackSystem → abilities (Hook.SAU.Fire) →
+    // ArtilleryShellSystem → GravitySystem → physicsSystem →
+    // ShrapnelLandingSystem. The shell system spawns shrapnel before gravity +
+    // integration so fragments get their first arc step on their birth tick;
+    // the landing system runs after integration to sweep prev→cur for ground
+    // crossings.
     this.world.registerSystems(
       [
         this.formationSystem,
@@ -199,7 +241,10 @@ export class SimulationContainer {
         new ProjectileMovementSystem(),
         new MissileTargetingSystem(),
         new MissileMovementSystem(),
+        new ArtilleryShellSystem(),
+        gravitySystem,
         physicsSystem,
+        new ShrapnelLandingSystem(),
         new HealingAuraSystem(),
         new ProjectileCollisionSystem(),
         new RotationSystem(),
@@ -207,7 +252,10 @@ export class SimulationContainer {
         new CubeTargetingSystem(),
         new ProjectileDespawnQueueSystem(),
       ],
-      [interpolationSystem, new RenderSyncSystem()]
+      // ShrapnelSpinSystem is cosmetic-only (rotates the shard mesh inside the
+      // MeshComponent root) and must run after RenderSyncSystem has positioned
+      // the roots for the frame.
+      [interpolationSystem, new RenderSyncSystem(), new ShrapnelSpinSystem()]
     );
 
     this.spawnSimulationState();
@@ -265,7 +313,9 @@ export class SimulationContainer {
 
       const isPooled =
         entity.hasComponent(ComponentType.Projectile) ||
-        entity.hasComponent(ComponentType.Missile);
+        entity.hasComponent(ComponentType.Missile) ||
+        entity.hasComponent(ComponentType.ArtilleryShell) ||
+        entity.hasComponent(ComponentType.ShrapnelPayload);
 
       if (pools && isPooled) {
         pools.despawn(entity);

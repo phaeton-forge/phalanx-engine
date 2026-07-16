@@ -5,6 +5,7 @@ export const UnitType = {
   Rocket: 'rocket',
   Volt: 'volt',
   PlasmaTank: 'plasmaTank',
+  Sau: 'sau',
 } as const;
 
 export type UnitType = (typeof UnitType)[keyof typeof UnitType];
@@ -25,4 +26,5 @@ export const UNIT_GRID_SIZE: Readonly<Record<UnitType, UnitGridSize>> = {
   [UnitType.Rocket]: { width: 2, depth: 1 },
   [UnitType.Volt]: { width: 1, depth: 1 },
   [UnitType.PlasmaTank]: { width: 1, depth: 1 },
+  [UnitType.Sau]: { width: 1, depth: 2 },
 } as const;

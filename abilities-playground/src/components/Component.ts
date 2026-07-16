@@ -28,6 +28,8 @@ export const ComponentType = createComponentTypeRegistry({
   AutoAttackTimer: 'AutoAttackTimer',
   Missile: 'Missile',
   SupportUnitTargeting: 'SupportUnitTargeting',
+  ArtilleryShell: 'ArtilleryShell',
+  ShrapnelPayload: 'ShrapnelPayload',
 });
 
 (ComponentType as Record<string, symbol>).PhysicsBody =

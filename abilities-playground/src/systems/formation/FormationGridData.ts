@@ -247,6 +247,8 @@ export class FormationGridData {
         return { x: gridX, z: gridZ };
       case 'rocket':
         return this.findRocketOrigin(grid, gridX, gridZ);
+      case 'sau':
+        return this.findSauOrigin(grid, gridX, gridZ);
       case 'cube':
         return this.findCubeOrigin(grid, gridX, gridZ);
       default:
@@ -288,6 +290,42 @@ export class FormationGridData {
     }
 
     return this.findOriginFromPlacedUnits(grid, gridX, gridZ, 'rocket');
+  }
+
+  /**
+   * Find the origin of an SAU (1x2 footprint) — the near cell of the 1x2 area.
+   */
+  private findSauOrigin(
+    grid: FormationGrid,
+    gridX: number,
+    gridZ: number
+  ): GridCoords | null {
+    for (let dz = 0; dz >= -1; dz--) {
+      const checkZ = gridZ + dz;
+      if (checkZ >= 0) {
+        const checkCell = grid.cells[gridX]?.[checkZ];
+        if (checkCell?.unitType === 'sau') {
+          const isOrigin =
+            checkZ + 1 < grid.gridHeight &&
+            grid.cells[gridX][checkZ]?.unitType === 'sau' &&
+            grid.cells[gridX][checkZ + 1]?.unitType === 'sau';
+
+          if (
+            isOrigin &&
+            grid.placedUnits.some(
+              (u) =>
+                u.gridX === gridX &&
+                u.gridZ === checkZ &&
+                u.unitType === 'sau'
+            )
+          ) {
+            return { x: gridX, z: checkZ };
+          }
+        }
+      }
+    }
+
+    return this.findOriginFromPlacedUnits(grid, gridX, gridZ, 'sau');
   }
 
   /**

@@ -71,6 +71,8 @@ describe('isSettled', () => {
       friction: FP.ToRaw(FP._1),
       isStatic: isStatic ? 1 : 0,
       ignorePhysics: ignorePhysics ? 1 : 0,
+      useGravity: 0,
+      gravityMultiplier: FP.ToRaw(FP._1),
       lastX: 0,
       lastZ: 0,
     });
@@ -122,6 +124,27 @@ describe('isSettled', () => {
 
   it('returns true when world is empty', () => {
     const { system } = setupSystem();
+    expect(system.isSettled()).toBe(true);
+  });
+
+  it('returns false when a body moves only on Y (vx=0, vz=0, vy!=0)', () => {
+    const { system, physicsStore, transformStore } = setupSystem();
+    addEntity(physicsStore, transformStore, 1, 0, 0);
+    // Falling shrapnel: only velocityY is nonzero.
+    const idx = physicsStore.indexOf(1);
+    physicsStore.arrays.velocityY[idx] = FP.ToRaw(FP.FromFloat(5));
+
+    expect(system.isSettled()).toBe(false);
+  });
+
+  it('returns true when Y velocity is zeroed back out', () => {
+    const { system, physicsStore, transformStore } = setupSystem();
+    addEntity(physicsStore, transformStore, 1, 0, 0);
+    const idx = physicsStore.indexOf(1);
+    physicsStore.arrays.velocityY[idx] = FP.ToRaw(FP.FromFloat(5));
+    expect(system.isSettled()).toBe(false);
+
+    physicsStore.arrays.velocityY[idx] = FP.ToRaw(FP._0);
     expect(system.isSettled()).toBe(true);
   });
 });

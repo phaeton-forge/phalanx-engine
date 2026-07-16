@@ -112,8 +112,30 @@ export class PhysicsSystem extends GameSystem {
   }
 
   /**
+   * Apply a 3D momentum impulse to a physics body. Replaces any existing
+   * velocity on all three axes. Velocity is `impulse / mass`; bodies with
+   * mass <= 0 are treated as immovable (no velocity change).
+   *
+   * @param entityId  Target entity
+   * @param ix        Impulse along X axis (FixedPoint)
+   * @param iy        Impulse along Y axis (FixedPoint)
+   * @param iz        Impulse along Z axis (FixedPoint)
+   */
+  public applyImpulse3D(entityId: number, ix: FixedPoint, iy: FixedPoint, iz: FixedPoint): void {
+    const physIndex = this.physicsStore.indexOf(entityId);
+    if (physIndex === -1) return;
+    this.physicsStore.arrays.ignorePhysics[physIndex] = 0; // re-enable if previously ejected
+    const mass = FP.FromRaw(this.physicsStore.arrays.mass[physIndex]);
+    if (FP.Lte(mass, FP._0)) return;
+    this.physicsStore.arrays.velocityX[physIndex] = FP.ToRaw(FP.Div(ix, mass));
+    this.physicsStore.arrays.velocityY[physIndex] = FP.ToRaw(FP.Div(iy, mass));
+    this.physicsStore.arrays.velocityZ[physIndex] = FP.ToRaw(FP.Div(iz, mass));
+  }
+
+  /**
    * Returns true when all non-static, non-ignored bodies have velocity magnitude
-   * below the given threshold.
+   * below the given threshold. Considers the full 3D velocity (X, Y, Z), so a
+   * body moving only on Y (e.g. falling shrapnel) is correctly not settled.
    *
    * This is a pure query with no side effects. Game code is responsible for
    * interpreting what "settled" means in gameplay terms.
@@ -124,6 +146,7 @@ export class PhysicsSystem extends GameSystem {
     const thresh = threshold ?? FP.FromFloat(0.01);
     const threshSq = FP.Mul(thresh, thresh);
     const velX = this.physicsStore.arrays.velocityX;
+    const velY = this.physicsStore.arrays.velocityY;
     const velZ = this.physicsStore.arrays.velocityZ;
     const isStatic = this.physicsStore.arrays.isStatic;
     const ignore = this.physicsStore.arrays.ignorePhysics;
@@ -132,8 +155,10 @@ export class PhysicsSystem extends GameSystem {
       const i = this.physicsStore.indexOf(entityId);
       if (isStatic[i] === 1 || ignore[i] === 1) continue;
       const vx = FP.FromRaw(velX[i]);
+      const vy = FP.FromRaw(velY[i]);
       const vz = FP.FromRaw(velZ[i]);
-      if (FP.Gt(FP.Add(FP.Mul(vx, vx), FP.Mul(vz, vz)), threshSq)) return false;
+      const velMagSq = FP.Add(FP.Add(FP.Mul(vx, vx), FP.Mul(vy, vy)), FP.Mul(vz, vz));
+      if (FP.Gt(velMagSq, threshSq)) return false;
     }
     return true;
   }
@@ -144,11 +169,13 @@ export class PhysicsSystem extends GameSystem {
    */
   private applyVelocities(dt: FixedPoint): void {
     const physVelocityX = this.physicsStore.arrays.velocityX;
+    const physVelocityY = this.physicsStore.arrays.velocityY;
     const physVelocityZ = this.physicsStore.arrays.velocityZ;
     const physIsStatic = this.physicsStore.arrays.isStatic;
     const physIgnorePhysics = this.physicsStore.arrays.ignorePhysics;
 
     const fpPosXArr = this.transformStore.arrays.fpPositionX;
+    const fpPosYArr = this.transformStore.arrays.fpPositionY;
     const fpPosZArr = this.transformStore.arrays.fpPositionZ;
 
     const maxVelSq = FP.Mul(this.config.maxVelocity, this.config.maxVelocity);
@@ -209,6 +236,14 @@ export class PhysicsSystem extends GameSystem {
 
       fpPosXArr[transformIndex] = FP.ToRaw(newPosX);
       fpPosZArr[transformIndex] = FP.ToRaw(newPosZ);
+
+      // Integrate Y independently: pos.y += vel.y * dt. No maxVelocity or
+      // worldBounds clamp on Y (those remain XZ-only), and Y does not affect
+      // collision detection. Additive/safe: bodies with velocityY=0 (all
+      // existing bodies) do not move on Y.
+      const velY = FP.FromRaw(physVelocityY[physIndex]);
+      const posY = FP.FromRaw(fpPosYArr[transformIndex]);
+      fpPosYArr[transformIndex] = FP.ToRaw(FP.Add(posY, FP.Mul(velY, dt)));
     }
 
     // Emit buffered BOUNDS_EXIT events after iteration completes

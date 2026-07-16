@@ -80,6 +80,8 @@ describe('boundsExit', () => {
       friction: FP.ToRaw(FP._1),
       isStatic: 0,
       ignorePhysics: 0,
+      useGravity: 0,
+      gravityMultiplier: FP.ToRaw(FP._1),
       lastX: 0,
       lastZ: 0,
     });
