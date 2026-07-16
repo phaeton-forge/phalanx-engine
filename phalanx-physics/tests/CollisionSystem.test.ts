@@ -79,6 +79,7 @@ describe('Collision (via PhysicsSystem)', () => {
       friction: FP.ToRaw(FP.FromFloat(0.3)),
       isStatic: isStatic ? 1 : 0,
       ignorePhysics: 0,
+      useGravity: 0,
       lastX: 0,
       lastZ: 0,
     });

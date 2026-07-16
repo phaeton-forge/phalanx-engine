@@ -60,4 +60,17 @@ export interface PhysicsWorldConfig {
    * Default: FP.FromFloat(0.01)
    */
   settleThreshold?: FixedPoint;
+
+  /**
+   * Gravitational acceleration magnitude applied by GravitySystem to bodies
+   * with `useGravity=true`. Default 0 = no gravity (GravitySystem is a no-op).
+   */
+  gravity?: FixedPoint;
+
+  /**
+   * Axis along which gravity acts. Default `'y'`. Only `'y'` is supported in
+   * v1 — `'x'`/`'z'` are reserved (PhysicsSystem owns those axes) and cause
+   * GravitySystem to throw.
+   */
+  gravityAxis?: 'x' | 'y' | 'z';
 }

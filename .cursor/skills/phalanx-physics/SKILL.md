@@ -3,7 +3,7 @@ name: phalanx-physics
 description: Add deterministic fixed-point physics to a game using the phalanx-physics library from the phalanx-engine repository. Use when the user wants to set up collision detection, velocity integration, spatial hashing, or physics bodies. Covers PhysicsWorld facade, TransformComponent, InterpolationSystem, PhysicsBodyComponent, SpatialHashGrid, NarrowPhase, PhysicsSystem, and collision filtering patterns.
 metadata:
   author: phaeton2040-AI
-  version: '1.2'
+  version: '1.3'
 ---
 
 # Phalanx Physics Skill
@@ -19,6 +19,7 @@ Use this skill when the user asks to:
 - Implement deterministic collision resolution for lockstep multiplayer
 - Add game-specific collision filtering (e.g., team-based rules)
 - Query entities by spatial proximity (range queries)
+- Add gravity or launch arcing/ballistic ordnance (artillery, shrapnel, projectiles)
 - Wire physics systems into a GameWorld tick pipeline
 - Set up tick-to-frame interpolation for rendering
 
@@ -32,6 +33,7 @@ Use this skill when the user asks to:
 
 ```
 PhysicsWorld (Facade)
+├── GravitySystem         ← Applies acceleration to velocityY (runs BEFORE PhysicsSystem)
 ├── PhysicsSystem         ← Velocity integration + collision pipeline (sub-stepped)
 │   ├── SpatialHashGrid   ← O(n) broad-phase via spatial hashing
 │   └── NarrowPhase       ← Circle vs Circle collision tests
@@ -43,6 +45,8 @@ PhysicsWorld (Facade)
 Pipeline per tick (all deterministic, fixed-point):
 ```
 MovementSystem (game-specific, sets velocities)
+    ↓
+GravitySystem.processTick()   ← velocityY -= gravity * dt (only bodies with useGravity=1)
     ↓
 PhysicsSystem.processTick()
     for each sub-step:
@@ -349,6 +353,7 @@ Attach `InterpolationComponent` on any entity that needs render smoothing alongs
 | `friction`      | `i64` | `BigInt64Array`  | Surface friction (raw FixedPoint)     |
 | `isStatic`      | `u8`  | `Uint8Array`     | 1 = immovable, 0 = dynamic           |
 | `ignorePhysics` | `u8`  | `Uint8Array`     | 1 = skip all physics, 0 = active     |
+| `useGravity`    | `u8`  | `Uint8Array`     | 1 = GravitySystem applies gravity, 0 = ignore (default) |
 | `lastX`         | `f64` | `Float64Array`   | Cached float X position               |
 | `lastZ`         | `f64` | `Float64Array`   | Cached float Z position               |
 
@@ -369,6 +374,8 @@ interface PhysicsWorldConfig {
   tickProvider?: IPhysicsTickProvider;
   ejectOnBoundsExit?: boolean;
   settleThreshold?: FixedPoint;
+  gravity?: FixedPoint;             // Acceleration magnitude (default: FP._0 = disabled)
+  gravityAxis?: 'x' | 'y' | 'z';   // Gravity axis (default: 'y'; only 'y' supported in v1)
 }
 ```
 
@@ -414,7 +421,7 @@ import { SpatialHashGrid, NarrowPhase } from '@phalanx-engine/physics';
 import type { CollisionManifold } from '@phalanx-engine/physics';
 
 // Systems
-import { PhysicsSystem, InterpolationSystem } from '@phalanx-engine/physics';
+import { PhysicsSystem, GravitySystem, InterpolationSystem } from '@phalanx-engine/physics';
 import type { InterpolatedTransformSample } from '@phalanx-engine/physics';
 
 // Facade
@@ -439,6 +446,61 @@ import type {
 ```
 
 > Note: `TransformFieldMapping` and `setTransformStore()` have been removed. Use the built-in `TransformComponent` instead.
+
+## Gravity & Ballistic Ordnance
+
+`GravitySystem` adds optional deterministic gravity. It follows a strict **one-owner-per-axis** rule:
+
+- **GravitySystem applies ACCELERATION only**: `velocityY -= gravity * dt` for bodies with `useGravity = 1`. It never writes position.
+- **PhysicsSystem owns position integration**: `posY += velY * dt` happens in `applyVelocities`, alongside X/Z.
+- Collisions remain 2D/XZ — Y never affects broad/narrow phase. `maxVelocity` and `worldBounds` clamps stay XZ-only.
+
+Enable it by passing `gravity` (and optionally `gravityAxis`) to `PhysicsWorld`, then flag individual bodies:
+
+```typescript
+const physicsWorld = new PhysicsWorld({
+  // ...
+  gravity: FP.FromFloat(9.8),   // acceleration magnitude; default FP._0 disables gravity
+  gravityAxis: 'y',              // default 'y'; 'x'/'z' throw in v1
+});
+
+// Per-body opt-in (default false — existing bodies are unaffected):
+entity.addComponent(new PhysicsBodyComponent(entity.id, {
+  radius: FP.FromFloat(0.5),
+  mass: FP.FromFloat(1.0),
+  useGravity: true,
+}));
+```
+
+Register `gravitySystem` as a tick system **before** `physicsSystem`:
+
+```typescript
+const { gravitySystem, physicsSystem, interpolationSystem } = physicsWorld.getSystems();
+world.registerSystems([gravitySystem, physicsSystem, /* ... */], [interpolationSystem]);
+```
+
+### Firing arcing ordnance (artillery / shrapnel)
+
+Use `applyImpulse3D` to launch a body on a ballistic arc in one call — it sets all three velocity components and clears `ignorePhysics`:
+
+```typescript
+// Launch a shell up and forward; gravity pulls it back into a parabola.
+physicsWorld.applyImpulse3D(
+  shellId,
+  FP.FromFloat(0),    // vx
+  FP.FromFloat(20),   // vy (up)
+  FP.FromFloat(30),   // vz (forward)
+);
+```
+
+> `applyImpulse` (XZ-only) is unchanged for grounded knockback. Use `applyImpulse3D` when the Y component matters.
+
+### Gravity decision tree
+
+- Body should fall / arc (projectile, shell, fragment, jump)? → set `useGravity: true` and give it a launch velocity (`applyImpulse3D`).
+- Body is ground-plane only (units, most gameplay)? → leave `useGravity` false (default); it never moves on Y.
+- Need gravity along X or Z? → not supported in v1 (`GravitySystem` throws). X/Z are owned by `PhysicsSystem`'s integrator; ceding an axis is a v2 change.
+- Gravity magnitude is applied per whole tick (`gravity * tickDt`), not per sub-step, so very high gravity + few ticks is a coarse approximation — increase tick rate for smoother arcs.
 
 ## Best Practices
 

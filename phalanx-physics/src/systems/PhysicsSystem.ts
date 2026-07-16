@@ -112,6 +112,27 @@ export class PhysicsSystem extends GameSystem {
   }
 
   /**
+   * Set the full 3D velocity of a physics body ("flick" impulse in 3D).
+   * Replaces any existing velocity on all three axes. Mirrors applyImpulse but
+   * also sets velocityY — used for arcing ordnance (e.g. artillery shrapnel)
+   * that leaves the ground plane. The Y component is integrated by
+   * applyVelocities and decayed by GravitySystem when `useGravity=true`.
+   *
+   * @param entityId  Target entity
+   * @param vx        New velocity along X axis (FixedPoint)
+   * @param vy        New velocity along Y axis (FixedPoint)
+   * @param vz        New velocity along Z axis (FixedPoint)
+   */
+  public applyImpulse3D(entityId: number, vx: FixedPoint, vy: FixedPoint, vz: FixedPoint): void {
+    const physIndex = this.physicsStore.indexOf(entityId);
+    if (physIndex === -1) return;
+    this.physicsStore.arrays.ignorePhysics[physIndex] = 0; // re-enable if previously ejected
+    this.physicsStore.arrays.velocityX[physIndex] = FP.ToRaw(vx);
+    this.physicsStore.arrays.velocityY[physIndex] = FP.ToRaw(vy);
+    this.physicsStore.arrays.velocityZ[physIndex] = FP.ToRaw(vz);
+  }
+
+  /**
    * Returns true when all non-static, non-ignored bodies have velocity magnitude
    * below the given threshold.
    *
@@ -144,11 +165,13 @@ export class PhysicsSystem extends GameSystem {
    */
   private applyVelocities(dt: FixedPoint): void {
     const physVelocityX = this.physicsStore.arrays.velocityX;
+    const physVelocityY = this.physicsStore.arrays.velocityY;
     const physVelocityZ = this.physicsStore.arrays.velocityZ;
     const physIsStatic = this.physicsStore.arrays.isStatic;
     const physIgnorePhysics = this.physicsStore.arrays.ignorePhysics;
 
     const fpPosXArr = this.transformStore.arrays.fpPositionX;
+    const fpPosYArr = this.transformStore.arrays.fpPositionY;
     const fpPosZArr = this.transformStore.arrays.fpPositionZ;
 
     const maxVelSq = FP.Mul(this.config.maxVelocity, this.config.maxVelocity);
@@ -209,6 +232,14 @@ export class PhysicsSystem extends GameSystem {
 
       fpPosXArr[transformIndex] = FP.ToRaw(newPosX);
       fpPosZArr[transformIndex] = FP.ToRaw(newPosZ);
+
+      // Integrate Y independently: pos.y += vel.y * dt. No maxVelocity or
+      // worldBounds clamp on Y (those remain XZ-only), and Y does not affect
+      // collision detection. Additive/safe: bodies with velocityY=0 (all
+      // existing bodies) do not move on Y.
+      const velY = FP.FromRaw(physVelocityY[physIndex]);
+      const posY = FP.FromRaw(fpPosYArr[transformIndex]);
+      fpPosYArr[transformIndex] = FP.ToRaw(FP.Add(posY, FP.Mul(velY, dt)));
     }
 
     // Emit buffered BOUNDS_EXIT events after iteration completes

@@ -14,7 +14,8 @@ A deterministic, fixed-point physics engine for the [Phalanx Engine](../README.m
 - **Sub-stepping**: Configurable physics sub-steps per tick for higher fidelity at the same tick rate
 - **Collision Filtering**: Inject game-specific collision rules via callback — no coupling to game concepts
 - **Tick Providers**: Pluggable `IPhysicsTickProvider` interface decouples tick scheduling from simulation logic — supports GameWorld-driven, autonomous (turn-based), and external (rAF) modes
-- **Impulse API**: `applyImpulse()` sets body velocity for flick/strike mechanics; `isSettled()` queries whether all bodies are at rest
+- **Impulse API**: `applyImpulse()` sets body XZ velocity for flick/strike mechanics; `applyImpulse3D()` sets full 3D velocity for arcing ordnance; `isSettled()` queries whether all bodies are at rest
+- **Gravity**: opt-in gravitational acceleration via `GravitySystem` + per-body `useGravity` flag; position integrated on all three axes by `PhysicsSystem` (see [Gravity](#gravity))
 - **Bounds Exit Mode**: Optional `ejectOnBoundsExit` mode marks out-of-bounds bodies as ignored and emits `BOUNDS_EXIT` events instead of clamping
 - **Event-Driven**: Collision, trigger enter, trigger exit, and bounds exit events emitted via phalanx-ecs `EventBus`
 - **Built-in Transform & Interpolation**: `TransformComponent` (SoA fixed-point spatial state), `InterpolationComponent`, and `InterpolationSystem` for tick-to-frame render smoothing
@@ -260,7 +261,7 @@ class PhysicsWorld {
   constructor(config?: PhysicsWorldConfig);
 
   // System wiring
-  getSystems(): { physicsSystem: PhysicsSystem; interpolationSystem: InterpolationSystem };
+  getSystems(): { physicsSystem: PhysicsSystem; gravitySystem: GravitySystem; interpolationSystem: InterpolationSystem };
   setCollisionFilter(filter: (entityA: number, entityB: number) => boolean): void;
 
   // Event subscriptions (must be called after GameWorld.start())
@@ -273,6 +274,7 @@ class PhysicsWorld {
 
   // Impulse / settle queries
   applyImpulse(entityId: number, vx: FixedPoint, vz: FixedPoint): void;
+  applyImpulse3D(entityId: number, vx: FixedPoint, vy: FixedPoint, vz: FixedPoint): void;
   isSettled(threshold?: FixedPoint): boolean;
 
   // Spatial / transform queries
@@ -285,11 +287,12 @@ class PhysicsWorld {
 }
 ```
 
-- **`getSystems()`** — Returns both `physicsSystem` (register as tick system) and `interpolationSystem` (register as frame system).
+- **`getSystems()`** — Returns `physicsSystem` and `gravitySystem` (register as tick systems, gravity before physics) and `interpolationSystem` (register as frame system). Backward-compatible: destructuring only `{ physicsSystem, interpolationSystem }` still works.
 - **`getEntityPosition(entityId)`** — Fixed-point position for gameplay queries (e.g. ability targeting).
 - **`getInterpolatedTransform(entityId)`** — Interpolated float transform for rendering, populated after `InterpolationSystem` runs. Returns an `InterpolatedTransformSample` with `position: { x, y, z }` and `rotation: { x, y, z, w }` — rotation is a float quaternion (slerped between tick samples), apply it directly to a mesh quaternion.
 
-- **`applyImpulse(entityId, vx, vz)`** — Set body velocity (replaces, does not accumulate). Re-enables previously ejected bodies.
+- **`applyImpulse(entityId, vx, vz)`** — Set body XZ velocity (replaces, does not accumulate). Re-enables previously ejected bodies.
+- **`applyImpulse3D(entityId, vx, vy, vz)`** — Set full 3D body velocity (replaces all three axes). Re-enables previously ejected bodies. Use for arcing ordnance; see [Gravity](#gravity).
 - **`isSettled(threshold?)`** — Pure query: `true` when all non-static, non-ignored bodies are below velocity threshold (default from config, falling back to `FP.FromFloat(0.01)`).
 - **`onBoundsExit(callback)`** — Subscribe to `BOUNDS_EXIT` events (requires `ejectOnBoundsExit: true`).
 - **`setCollisionFilter(filter)`** — Inject a per-pair predicate. Return `false` to skip collision resolution for that pair.
@@ -311,6 +314,8 @@ interface PhysicsWorldConfig {
   tickProvider?: IPhysicsTickProvider;
   ejectOnBoundsExit?: boolean;   // default false
   settleThreshold?: FixedPoint;  // default FP.FromFloat(0.01)
+  gravity?: FixedPoint;          // acceleration magnitude, default 0 (disabled)
+  gravityAxis?: 'x' | 'y' | 'z'; // default 'y'; only 'y' supported in v1
 }
 ```
 
@@ -338,6 +343,87 @@ const physicsWorld = new PhysicsWorld({
   restitution: FP.FromFloat(0.85),
 });
 ```
+
+## Gravity
+
+Gravity is **opt-in** and off by default (`gravity` defaults to `0`, so
+`GravitySystem` is a no-op and existing bodies are unaffected). It is designed
+for arcing ordnance — artillery shrapnel, thrown grenades, anything that leaves
+the ground plane.
+
+### Model: acceleration vs. integration
+
+The engine follows the "one owner per axis" rule to avoid double-integration:
+
+| Concern | Owner | What it does |
+|---|---|---|
+| **Acceleration** | `GravitySystem` | For bodies with `useGravity=true`, decays velocity along the gravity axis each tick: `velocityY -= gravity * tickDt`. **Never writes position.** |
+| **Integration** | `PhysicsSystem.applyVelocities` | Integrates position from velocity on **all three axes**: `posX/Y/Z += velX/Y/Z * dt`. This is the *only* position integrator. |
+
+Because `PhysicsSystem` already integrates X/Z, gravity is restricted to the Y
+axis — applying it to X/Z would double-integrate those axes (the body would move
+twice and desync friction/clamp). See `gravityAxis` below.
+
+Y integration is **additive and safe**: `maxVelocity` and `worldBounds` clamps
+remain XZ-only, and collision detection stays 2D/XZ (a shrapnel body at altitude
+flies over ground units). Bodies with `velocityY = 0` — i.e. every pre-existing
+body — do not move on Y, so behavior is unchanged.
+
+### `useGravity` flag
+
+Per-body opt-in, set via `PhysicsBodyConfig.useGravity` (default `false`):
+
+```typescript
+new PhysicsBodyComponent(entity.id, {
+  radius: FP.FromFloat(0.2),
+  friction: FP._1,     // no XZ damping for a projectile
+  useGravity: true,    // GravitySystem will pull it down
+});
+```
+
+### `gravityAxis` — why only `'y'`
+
+`gravityAxis` defaults to `'y'` and **only `'y'` is supported in v1**.
+Constructing `GravitySystem` with `'x'` or `'z'` throws. Those axes are owned by
+`PhysicsSystem`'s position integrator; letting `GravitySystem` also drive them
+would double-integrate. `'x'`/`'z'` are reserved for a future version that would
+cede an axis from `PhysicsSystem`.
+
+### `applyImpulse3D`
+
+`applyImpulse()` sets only XZ velocity (backward-compatible). To launch a body
+with vertical velocity, use `applyImpulse3D(entityId, vx, vy, vz)` — it replaces
+all three velocity components and clears `ignorePhysics`.
+
+```typescript
+// Launch shrapnel up and out; GravitySystem arcs it back down.
+physicsWorld.applyImpulse3D(shrapnelId, FP.FromFloat(6), FP.FromFloat(8), FP.FromFloat(-3));
+```
+
+### System ordering
+
+Register **`GravitySystem` before `PhysicsSystem`** so the tick's acceleration is
+applied before that tick's integration (semi-implicit Euler):
+
+```typescript
+const { gravitySystem, physicsSystem, interpolationSystem } = physicsWorld.getSystems();
+world.registerSystems(
+  [movementSystem, gravitySystem, physicsSystem, /* landing systems… */],
+  [interpolationSystem, renderSystem],
+);
+```
+
+`getSystems()` remains backward-compatible: callers that destructure only
+`{ physicsSystem, interpolationSystem }` simply ignore `gravitySystem`.
+
+### Tick-resolution gravity vs. sub-stepped integration
+
+`GravitySystem` runs once per `GameWorld` tick, while `PhysicsSystem` sub-steps
+(e.g. 3×). Gravity is applied once per tick, then that same `velocityY` is
+integrated across every sub-step. The net ΔY per tick is `velocityY * tickDt`
+(semi-implicit Euler) — correct for gameplay. Sub-step-accurate gravity would
+require folding the acceleration into `PhysicsSystem.step()`'s loop (at which
+point it would no longer be a separate system); this is intentionally not done.
 
 ### `TransformComponent`
 
@@ -397,6 +483,7 @@ class PhysicsBodyComponent extends SoAComponent<typeof PhysicsSoASchema.definiti
   readonly friction: FixedPoint;
   readonly isStatic: boolean;
   ignorePhysics: boolean;        // get/set
+  useGravity: boolean;           // get/set — opt in to GravitySystem acceleration
 
   // Spatial-grid bookkeeping
   lastX: number;
@@ -409,6 +496,7 @@ interface PhysicsBodyConfig {
   isStatic?: boolean;            // default false
   restitution?: FixedPoint;      // default FP.FromFloat(0.5)
   friction?: FixedPoint;         // default FP._0
+  useGravity?: boolean;          // default false — opt in to GravitySystem acceleration
 }
 ```
 

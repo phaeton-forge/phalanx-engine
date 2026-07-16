@@ -17,7 +17,7 @@ export { NarrowPhase } from './collision/NarrowPhase';
 export type { CollisionManifold } from './collision/CollisionManifold';
 
 // Systems
-export { PhysicsSystem, InterpolationSystem } from './systems';
+export { PhysicsSystem, GravitySystem, InterpolationSystem } from './systems';
 export type { InterpolatedTransformSample } from './systems';
 
 // Facade

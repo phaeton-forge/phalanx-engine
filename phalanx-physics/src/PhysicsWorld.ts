@@ -1,6 +1,7 @@
 import { type EventBus } from '@phalanx-engine/ecs';
 import { FP } from '@phalanx-engine/math';
 import { PhysicsSystem } from './systems/PhysicsSystem';
+import { GravitySystem } from './systems/GravitySystem';
 import { InterpolationSystem } from './systems/InterpolationSystem';
 import type { InterpolatedTransformSample } from './systems/InterpolationSystem';
 import { SpatialHashGrid } from './collision/SpatialHashGrid';
@@ -18,6 +19,7 @@ import type { CollisionEvent, PhysicsConfig, BoundsExitEvent } from './types';
  */
 export class PhysicsWorld {
   private readonly physicsSystem: PhysicsSystem;
+  private readonly gravitySystem: GravitySystem;
   private readonly interpolationSystem: InterpolationSystem;
   private eventBusRef: EventBus | null = null;
   private readonly unsubscribers: (() => void)[] = [];
@@ -31,6 +33,8 @@ export class PhysicsWorld {
     const maxVelocity = config?.maxVelocity ?? FP.FromFloat(15.0);
     const pushStrength = config?.pushStrength ?? FP.FromFloat(15.0);
     const defaultFriction = config?.defaultFriction ?? FP.FromFloat(0.92);
+    const gravity = config?.gravity ?? FP._0;
+    const gravityAxis = config?.gravityAxis ?? 'y';
 
     const physicsConfig: PhysicsConfig = {
       tickDt,
@@ -43,9 +47,12 @@ export class PhysicsWorld {
       ejectOnBoundsExit: config?.ejectOnBoundsExit,
       collisionResponse: config?.collisionResponse,
       restitution: config?.restitution,
+      gravity,
+      gravityAxis,
     };
 
     this.physicsSystem = new PhysicsSystem(physicsConfig);
+    this.gravitySystem = new GravitySystem(gravity, gravityAxis, tickDt);
     this.interpolationSystem = new InterpolationSystem();
     this.settleThreshold = config?.settleThreshold;
 
@@ -59,10 +66,12 @@ export class PhysicsWorld {
    */
   public getSystems(): {
     physicsSystem: PhysicsSystem;
+    gravitySystem: GravitySystem;
     interpolationSystem: InterpolationSystem;
   } {
     return {
       physicsSystem: this.physicsSystem,
+      gravitySystem: this.gravitySystem,
       interpolationSystem: this.interpolationSystem,
     };
   }
@@ -119,6 +128,14 @@ export class PhysicsWorld {
   /** Apply a velocity impulse to a body ("flick" mechanic). Replaces existing velocity. */
   public applyImpulse(entityId: number, vx: FixedPoint, vz: FixedPoint): void {
     this.physicsSystem.applyImpulse(entityId, vx, vz);
+  }
+
+  /**
+   * Apply a full 3D velocity impulse to a body (replaces existing velocity on
+   * all three axes). Use for arcing ordnance that leaves the ground plane.
+   */
+  public applyImpulse3D(entityId: number, vx: FixedPoint, vy: FixedPoint, vz: FixedPoint): void {
+    this.physicsSystem.applyImpulse3D(entityId, vx, vy, vz);
   }
 
   /**

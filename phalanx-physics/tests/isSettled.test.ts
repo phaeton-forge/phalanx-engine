@@ -71,6 +71,7 @@ describe('isSettled', () => {
       friction: FP.ToRaw(FP._1),
       isStatic: isStatic ? 1 : 0,
       ignorePhysics: ignorePhysics ? 1 : 0,
+      useGravity: 0,
       lastX: 0,
       lastZ: 0,
     });
