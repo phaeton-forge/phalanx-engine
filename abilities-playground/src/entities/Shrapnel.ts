@@ -15,7 +15,7 @@ import { SHRAPNEL_GRAVITY_MULTIPLIER, SHRAPNEL_MASS } from '../config/constants'
 import { ShrapnelPayloadComponent } from '../components/ShrapnelPayloadComponent';
 
 /** Physics radius of a shrapnel fragment (small; landing is by ground sweep). */
-export const SHRAPNEL_RADIUS = 0.25;
+export const SHRAPNEL_RADIUS = 0.7;
 
 /** Visual size (world units) of the shared shard mesh. */
 export const SHRAPNEL_VISUAL_RADIUS = 0.8;
