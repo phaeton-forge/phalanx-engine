@@ -112,24 +112,24 @@ export class PhysicsSystem extends GameSystem {
   }
 
   /**
-   * Set the full 3D velocity of a physics body ("flick" impulse in 3D).
-   * Replaces any existing velocity on all three axes. Mirrors applyImpulse but
-   * also sets velocityY — used for arcing ordnance (e.g. artillery shrapnel)
-   * that leaves the ground plane. The Y component is integrated by
-   * applyVelocities and decayed by GravitySystem when `useGravity=true`.
+   * Apply a 3D momentum impulse to a physics body. Replaces any existing
+   * velocity on all three axes. Velocity is `impulse / mass`; bodies with
+   * mass <= 0 are treated as immovable (no velocity change).
    *
    * @param entityId  Target entity
-   * @param vx        New velocity along X axis (FixedPoint)
-   * @param vy        New velocity along Y axis (FixedPoint)
-   * @param vz        New velocity along Z axis (FixedPoint)
+   * @param ix        Impulse along X axis (FixedPoint)
+   * @param iy        Impulse along Y axis (FixedPoint)
+   * @param iz        Impulse along Z axis (FixedPoint)
    */
-  public applyImpulse3D(entityId: number, vx: FixedPoint, vy: FixedPoint, vz: FixedPoint): void {
+  public applyImpulse3D(entityId: number, ix: FixedPoint, iy: FixedPoint, iz: FixedPoint): void {
     const physIndex = this.physicsStore.indexOf(entityId);
     if (physIndex === -1) return;
     this.physicsStore.arrays.ignorePhysics[physIndex] = 0; // re-enable if previously ejected
-    this.physicsStore.arrays.velocityX[physIndex] = FP.ToRaw(vx);
-    this.physicsStore.arrays.velocityY[physIndex] = FP.ToRaw(vy);
-    this.physicsStore.arrays.velocityZ[physIndex] = FP.ToRaw(vz);
+    const mass = FP.FromRaw(this.physicsStore.arrays.mass[physIndex]);
+    if (FP.Lte(mass, FP._0)) return;
+    this.physicsStore.arrays.velocityX[physIndex] = FP.ToRaw(FP.Div(ix, mass));
+    this.physicsStore.arrays.velocityY[physIndex] = FP.ToRaw(FP.Div(iy, mass));
+    this.physicsStore.arrays.velocityZ[physIndex] = FP.ToRaw(FP.Div(iz, mass));
   }
 
   /**

@@ -108,4 +108,10 @@ export interface PhysicsBodyConfig {
    * still owned by PhysicsSystem.
    */
   useGravity?: boolean;
+  /**
+   * Per-body scale on global gravity when `useGravity=true` (default `FP._1`).
+   * Does not affect bodies with `useGravity=false`. `0` disables gravity on
+   * that body without toggling the flag.
+   */
+  gravityMultiplier?: FixedPoint;
 }

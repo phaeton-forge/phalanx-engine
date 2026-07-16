@@ -11,17 +11,18 @@ import {
 } from '@phalanx-engine/physics';
 import { MeshComponent, TeamComponent } from '../components';
 import type { TeamId } from '../components';
+import { SHRAPNEL_GRAVITY_MULTIPLIER, SHRAPNEL_MASS } from '../config/constants';
 import { ShrapnelPayloadComponent } from '../components/ShrapnelPayloadComponent';
 
 /** Physics radius of a shrapnel fragment (small; landing is by ground sweep). */
 export const SHRAPNEL_RADIUS = 0.25;
 
 /** Visual size (world units) of the shared shard mesh. */
-export const SHRAPNEL_VISUAL_RADIUS = 0.5;
+export const SHRAPNEL_VISUAL_RADIUS = 0.8;
 
 export interface ShrapnelSpawnArgs {
   fpPosition: FPVector3Type;
-  /** Full 3D launch velocity (world units/s); applied via applyImpulse3D by the caller. */
+  /** Full 3D launch impulse (world units·kg/s); applied via applyImpulse3D by the caller. */
   sourceEntityId: number;
   teamId: TeamId;
   secondaryEffectId: string;
@@ -67,10 +68,11 @@ export class ShrapnelEntity
     this.body = this.addComponent(
       new PhysicsBodyComponent(this.id, {
         radius: FP.FromFloat(SHRAPNEL_RADIUS),
-        mass: FP._1,
+        mass: FP.FromFloat(SHRAPNEL_MASS),
         friction: FP._1,
         restitution: FP._0,
         useGravity: true,
+        gravityMultiplier: FP.FromFloat(SHRAPNEL_GRAVITY_MULTIPLIER),
       })
     );
     this.payload = this.addComponent(new ShrapnelPayloadComponent());

@@ -133,11 +133,12 @@ export class PhysicsWorld {
   }
 
   /**
-   * Apply a full 3D velocity impulse to a body (replaces existing velocity on
-   * all three axes). Use for arcing ordnance that leaves the ground plane.
+   * Apply a 3D momentum impulse to a body (replaces existing velocity on all
+   * three axes). Velocity is `impulse / mass`. Use for arcing ordnance that
+   * leaves the ground plane.
    */
-  public applyImpulse3D(entityId: number, vx: FixedPoint, vy: FixedPoint, vz: FixedPoint): void {
-    this.physicsSystem.applyImpulse3D(entityId, vx, vy, vz);
+  public applyImpulse3D(entityId: number, ix: FixedPoint, iy: FixedPoint, iz: FixedPoint): void {
+    this.physicsSystem.applyImpulse3D(entityId, ix, iy, iz);
   }
 
   /**

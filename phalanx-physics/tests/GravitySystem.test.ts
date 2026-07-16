@@ -46,6 +46,7 @@ function addBody(
     isStatic: 0,
     ignorePhysics: 0,
     useGravity: opts.useGravity ? 1 : 0,
+    gravityMultiplier: FP.ToRaw(FP._1),
     lastX: 0,
     lastZ: 0,
   });
@@ -91,6 +92,29 @@ describe('GravitySystem', () => {
 
     gravitySystem.processTick(3);
     expect(FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityY[idx]))).toBeCloseTo(-3 * deltaPerTick, 5);
+  });
+
+  it('scales gravity by per-body gravityMultiplier', () => {
+    const { gravitySystem, physicsStore, transformStore } = setup();
+    addBody(physicsStore, transformStore, 1, { useGravity: true });
+    const idx = physicsStore.indexOf(1);
+    physicsStore.arrays.gravityMultiplier[idx] = FP.ToRaw(FP.FromFloat(2));
+
+    const deltaPerTick = FP.ToFloat(FP.Mul(GRAVITY, TICK_DT)); // 0.5
+
+    gravitySystem.processTick(1);
+    expect(FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityY[idx]))).toBeCloseTo(-2 * deltaPerTick, 5);
+  });
+
+  it('applies no gravity when gravityMultiplier is 0', () => {
+    const { gravitySystem, physicsStore, transformStore } = setup();
+    addBody(physicsStore, transformStore, 1, { velY: 3, useGravity: true });
+    const idx = physicsStore.indexOf(1);
+    physicsStore.arrays.gravityMultiplier[idx] = FP.ToRaw(FP._0);
+
+    gravitySystem.processTick(1);
+
+    expect(FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityY[idx]))).toBeCloseTo(3, 5);
   });
 
   it('does not change X/Z velocities', () => {

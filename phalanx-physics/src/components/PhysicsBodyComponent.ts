@@ -19,6 +19,7 @@ export const PhysicsSoASchema = defineSoASchema({
   isStatic: 'u8',
   ignorePhysics: 'u8',
   useGravity: 'u8',
+  gravityMultiplier: 'i64',
   lastX: 'f64',
   lastZ: 'f64',
 }, 'PhysicsBody');
@@ -56,6 +57,7 @@ export class PhysicsBodyComponent extends SoAComponent<typeof PhysicsSoASchema.d
     const friction = config.friction ?? FP._0;
     const isStatic = config.isStatic ?? false;
     const useGravity = config.useGravity ?? false;
+    const gravityMultiplier = config.gravityMultiplier ?? FP._1;
 
     super(PhysicsSoASchema, entityId, {
       velocityX: FP.ToRaw(FP._0),
@@ -68,6 +70,7 @@ export class PhysicsBodyComponent extends SoAComponent<typeof PhysicsSoASchema.d
       isStatic: isStatic ? 1 : 0,
       ignorePhysics: 0,
       useGravity: useGravity ? 1 : 0,
+      gravityMultiplier: FP.ToRaw(gravityMultiplier),
       lastX: 0,
       lastZ: 0,
     });
@@ -198,6 +201,20 @@ export class PhysicsBodyComponent extends SoAComponent<typeof PhysicsSoASchema.d
     const idx = this.getIndex();
     if (idx === -1) return;
     this.store.arrays.useGravity[idx] = value ? 1 : 0;
+  }
+
+  // ============ Gravity Multiplier ============
+
+  public get gravityMultiplier(): FixedPoint {
+    const idx = this.getIndex();
+    if (idx === -1) return FP._1;
+    return FP.FromRaw(this.store.arrays.gravityMultiplier[idx]);
+  }
+
+  public set gravityMultiplier(value: FixedPoint) {
+    const idx = this.getIndex();
+    if (idx === -1) return;
+    this.store.arrays.gravityMultiplier[idx] = FP.ToRaw(value);
   }
 
   // ============ Cached Position (for spatial grid) ============

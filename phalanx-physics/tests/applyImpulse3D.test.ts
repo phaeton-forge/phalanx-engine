@@ -46,6 +46,7 @@ function addBody(
     isStatic: 0,
     ignorePhysics: 0,
     useGravity: useGravity ? 1 : 0,
+    gravityMultiplier: FP.ToRaw(FP._1),
     lastX: 0,
     lastZ: 0,
   });
@@ -78,7 +79,7 @@ describe('applyImpulse3D', () => {
     return { physicsSystem, gravitySystem, physicsStore, transformStore };
   }
 
-  it('sets all three velocity components', () => {
+  it('sets all three velocity components (mass=1: impulse equals velocity)', () => {
     const { physicsSystem, physicsStore, transformStore } = setup();
     addBody(physicsStore, transformStore, 1, false);
 
@@ -88,6 +89,32 @@ describe('applyImpulse3D', () => {
     expect(FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityX[idx]))).toBeCloseTo(4, 5);
     expect(FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityY[idx]))).toBeCloseTo(5, 5);
     expect(FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityZ[idx]))).toBeCloseTo(-2, 5);
+  });
+
+  it('scales velocity by 1/mass for heavier bodies', () => {
+    const { physicsSystem, physicsStore, transformStore } = setup();
+    addBody(physicsStore, transformStore, 1, false);
+    const idx = physicsStore.indexOf(1);
+    physicsStore.arrays.mass[idx] = FP.ToRaw(FP.FromFloat(2));
+
+    physicsSystem.applyImpulse3D(1, FP.FromFloat(4), FP.FromFloat(5), FP.FromFloat(-2));
+
+    expect(FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityX[idx]))).toBeCloseTo(2, 5);
+    expect(FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityY[idx]))).toBeCloseTo(2.5, 5);
+    expect(FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityZ[idx]))).toBeCloseTo(-1, 5);
+  });
+
+  it('no-ops velocity for zero or negative mass (infinite mass)', () => {
+    const { physicsSystem, physicsStore, transformStore } = setup();
+    addBody(physicsStore, transformStore, 1, false);
+    const idx = physicsStore.indexOf(1);
+    physicsStore.arrays.mass[idx] = FP.ToRaw(FP._0);
+
+    physicsSystem.applyImpulse3D(1, FP.FromFloat(4), FP.FromFloat(5), FP.FromFloat(-2));
+
+    expect(FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityX[idx]))).toBeCloseTo(0, 5);
+    expect(FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityY[idx]))).toBeCloseTo(0, 5);
+    expect(FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityZ[idx]))).toBeCloseTo(0, 5);
   });
 
   it('clears ignorePhysics', () => {

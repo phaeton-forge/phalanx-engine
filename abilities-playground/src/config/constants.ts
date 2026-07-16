@@ -24,9 +24,13 @@ export const UNIT_TURN_SPEED_RADIANS_PER_TICK = Math.PI / 15;
  * useGravity — no per-shrapnel gravity is faked. The shrapnel config therefore
  * carries count/cone/speed only; gravity lives here on the world config.
  */
-export const SAU_SHRAPNEL_GRAVITY = 80;
+export const SAU_SHRAPNEL_GRAVITY = 10;
+/** Mass of each shrapnel fragment (scales launch velocity from applyImpulse3D). */
+export const SHRAPNEL_MASS = 2.1;
+/** Per-body gravity scale on top of global {@link SAU_SHRAPNEL_GRAVITY}. */
+export const SHRAPNEL_GRAVITY_MULTIPLIER = 8;
 /**
- * Launch speed (world units/s) of each shrapnel fragment along its cone ray.
+ * Launch impulse magnitude (world units·kg/s) of each shrapnel fragment along its cone ray.
  *
  * Caps the ballistic scatter radius. Fragments are launched in an upward cone of
  * half-angle {@link SAU_SHRAPNEL_CONE} and arc back to the ground under
@@ -38,7 +42,7 @@ export const SAU_SHRAPNEL_GRAVITY = 80;
  * change speed (effect is quadratic); to speed up/slow down the burst change
  * both proportionally (range scales with speed²/gravity).
  */
-export const SAU_SHRAPNEL_SPEED = 32;
+export const SAU_SHRAPNEL_SPEED = 58;
 /** Half-angle (radians) of the upward cone the shrapnel fragments fan out into. */
 export const SAU_SHRAPNEL_CONE = Math.PI / 5;
 /** Ticks between the shell being fired and its detonation (4–6 = 0.2–0.3 s @ 20 TPS). */
