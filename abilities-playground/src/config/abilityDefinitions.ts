@@ -132,7 +132,7 @@ export const SAU_PRIMARY_RADIUS = 10;
 /** Radius (world units) of each shrapnel fragment's secondary blast. */
 export const SAU_SECONDARY_RADIUS = 5;
 /** Number of shrapnel fragments sprayed on detonation. */
-export const SAU_SHRAPNEL_COUNT = 6;
+export const SAU_SHRAPNEL_COUNT = 3;
 /** Attack cooldown in ticks (80 ticks = 4 s @ 20 TPS) — deliberately slow siege cadence. */
 export const SAU_COOLDOWN_TICKS = 80;
 export const SAU_DETECTION_RANGE = 80;
@@ -252,7 +252,9 @@ export const combatDefs = defineAbilitySystem({
           magnitude: FP.FromFloat(-SAU_ATTACK_DAMAGE),
         },
       ],
-      cues: ['Cue.SAU.Impact'],
+      // No effect-attached cue: ArtilleryShellSystem emits Cue.SAU.Impact at the
+      // snapshotted impact point. An effect cue would dispatch from the effect
+      // source (the SAU), rendering a phantom blast on the firing unit.
     }),
     defineEffect({
       id: 'Effect.Damage.SAU.Secondary',
@@ -264,7 +266,8 @@ export const combatDefs = defineAbilitySystem({
           magnitude: FP.FromFloat(-SAU_SECONDARY_DAMAGE),
         },
       ],
-      cues: ['Cue.SAU.SecondaryImpact'],
+      // No effect-attached cue: ShrapnelLandingSystem emits
+      // Cue.SAU.SecondaryImpact at each fragment's landing point.
     }),
     defineEffect({
       id: 'Effect.Damage.Volt.Primary',

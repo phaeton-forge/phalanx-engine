@@ -41,6 +41,7 @@ import {
   RenderSyncSystem,
   RotationSystem,
   ShrapnelLandingSystem,
+  ShrapnelSpinSystem,
   TargetingSystem,
   VoltAttackSystem,
 } from '../systems';
@@ -251,7 +252,10 @@ export class SimulationContainer {
         new CubeTargetingSystem(),
         new ProjectileDespawnQueueSystem(),
       ],
-      [interpolationSystem, new RenderSyncSystem()]
+      // ShrapnelSpinSystem is cosmetic-only (rotates the shard mesh inside the
+      // MeshComponent root) and must run after RenderSyncSystem has positioned
+      // the roots for the frame.
+      [interpolationSystem, new RenderSyncSystem(), new ShrapnelSpinSystem()]
     );
 
     this.spawnSimulationState();

@@ -283,10 +283,11 @@ function createPlasmaTankBody(
  *
  * Ported from the finalized concept: a hovering platform + layered hull with a
  * rounded bow, a boxy turret, and a long elevated barrel. The model is authored
- * with its long axis along local +X and its barrel toward +X; the outer root is
+ * with its long axis along local +X and its barrel toward +X; the inner model is
  * yawed -90° so the barrel points +Z (the engine's forward axis, matching the
- * other units and `SauMuzzleFlashCue`'s muzzle offset). `size` scales the whole
- * assembly (size 3.8 reproduces the concept's 1.3× scale).
+ * other units and `SauMuzzleFlashCue`'s muzzle offset). Root rotation stays
+ * available for team facing. `size` scales the whole assembly (size 3.8
+ * reproduces the concept's 1.3× scale).
  */
 function createSauBody(
   size: number,
@@ -429,10 +430,12 @@ function createSauBody(
   );
   exhaust.rotation.z = Math.PI / 2;
 
-  // Lower the assembly so its mass centers near the group origin, then yaw so
-  // the barrel faces +Z and scale to the requested size (3.8 → concept 1.3×).
+  // Lower the assembly so its mass centers near the group origin, then yaw the
+  // inner model so the barrel faces +Z. Keep root.rotation free for team facing
+  // / combat turns (FormationGridRenderer and RotationSystem write root.yaw).
+  // Scale to the requested size (3.8 → concept 1.3×).
   model.position.y = -HOVER_Y;
-  root.rotation.y = -Math.PI / 2;
+  model.rotation.y = -Math.PI / 2;
   root.scale.setScalar(size * 0.342);
 
   return root;

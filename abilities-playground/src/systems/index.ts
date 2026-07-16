@@ -15,5 +15,6 @@ export { ProjectileDespawnQueueSystem } from './ProjectileDespawnQueueSystem';
 export { RenderSyncSystem } from './RenderSyncSystem';
 export { RotationSystem } from './RotationSystem';
 export { ShrapnelLandingSystem } from './ShrapnelLandingSystem';
+export { ShrapnelSpinSystem } from './ShrapnelSpinSystem';
 export { TargetingSystem } from './TargetingSystem';
 export { VoltAttackSystem } from './VoltAttackSystem';

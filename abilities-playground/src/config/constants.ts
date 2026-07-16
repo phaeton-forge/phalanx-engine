@@ -24,13 +24,25 @@ export const UNIT_TURN_SPEED_RADIANS_PER_TICK = Math.PI / 15;
  * useGravity — no per-shrapnel gravity is faked. The shrapnel config therefore
  * carries count/cone/speed only; gravity lives here on the world config.
  */
-export const SAU_SHRAPNEL_GRAVITY = 30;
-/** Launch speed (world units/s) of each shrapnel fragment along its cone ray. */
-export const SAU_SHRAPNEL_SPEED = 42;
+export const SAU_SHRAPNEL_GRAVITY = 80;
+/**
+ * Launch speed (world units/s) of each shrapnel fragment along its cone ray.
+ *
+ * Caps the ballistic scatter radius. Fragments are launched in an upward cone of
+ * half-angle {@link SAU_SHRAPNEL_CONE} and arc back to the ground under
+ * {@link SAU_SHRAPNEL_GRAVITY}, so the max horizontal landing distance is
+ * roughly `speed² · sin(2·cone) / gravity`. Speed and gravity are tuned as a
+ * pair: 26 u/s with gravity 60 lands fragments ≈11 units out (≈13 including
+ * launch height, within the intended ≤15-unit spread) after only ≈0.7 s of
+ * flight — a snappy burst rather than a slow lob. To widen/narrow the spread
+ * change speed (effect is quadratic); to speed up/slow down the burst change
+ * both proportionally (range scales with speed²/gravity).
+ */
+export const SAU_SHRAPNEL_SPEED = 32;
 /** Half-angle (radians) of the upward cone the shrapnel fragments fan out into. */
 export const SAU_SHRAPNEL_CONE = Math.PI / 5;
 /** Ticks between the shell being fired and its detonation (4–6 = 0.2–0.3 s @ 20 TPS). */
-export const SAU_SHELL_DELAY_TICKS = 5;
+export const SAU_SHELL_DELAY_TICKS = 8;
 /** Ground plane Y (world units) shrapnel fragments land on in v1 (no building AABBs yet). */
 export const SAU_GROUND_Y = 0;
 
@@ -41,7 +53,7 @@ export const physicsConfig = {
    * Physics clamps every body's velocity magnitude to this value during integration.
    * Must be >= {@link PROJECTILE_SPEED} or projectiles will not reach their configured speed.
    */
-  maxVelocity: Math.max(PROJECTILE_SPEED, 18),
+  maxVelocity: Math.max(PROJECTILE_SPEED, SAU_SHRAPNEL_SPEED),
   pushStrength: 12,
   /** Global downward acceleration applied to useGravity bodies (SAU shrapnel). */
   gravity: SAU_SHRAPNEL_GRAVITY,

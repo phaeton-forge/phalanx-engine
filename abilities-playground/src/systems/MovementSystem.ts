@@ -43,6 +43,13 @@ export class MovementSystem extends GameSystem {
 
     for (const entityId of this.physicsStore.entityIds()) {
       const physicsIndex = this.physicsStore.indexOf(entityId);
+
+      // Ballistic bodies (useGravity=true, e.g. SAU shrapnel) own all three
+      // velocity axes: GravitySystem accelerates them and PhysicsSystem
+      // integrates the arc. The unit-movement controller must not touch them,
+      // otherwise it flattens the arc by zeroing velocity every tick.
+      if (this.physicsStore.arrays.useGravity[physicsIndex] === 1) continue;
+
       velocityY[physicsIndex] = zeroRaw;
 
       const shouldFreeze =

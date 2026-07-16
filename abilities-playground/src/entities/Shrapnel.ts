@@ -9,12 +9,15 @@ import {
   PhysicsBodyComponent,
   TransformComponent,
 } from '@phalanx-engine/physics';
-import { TeamComponent } from '../components';
+import { MeshComponent, TeamComponent } from '../components';
 import type { TeamId } from '../components';
 import { ShrapnelPayloadComponent } from '../components/ShrapnelPayloadComponent';
 
 /** Physics radius of a shrapnel fragment (small; landing is by ground sweep). */
 export const SHRAPNEL_RADIUS = 0.25;
+
+/** Visual size (world units) of the shared shard mesh. */
+export const SHRAPNEL_VISUAL_RADIUS = 0.5;
 
 export interface ShrapnelSpawnArgs {
   fpPosition: FPVector3Type;
@@ -52,10 +55,13 @@ export class ShrapnelEntity
   private readonly transform: TransformComponent;
   private readonly body: PhysicsBodyComponent;
   private readonly payload: ShrapnelPayloadComponent;
-
   constructor() {
     super();
     this.team = this.addComponent(new TeamComponent(0));
+    // Visibility is driven by MeshComponent's own IPoolableComponent hooks
+    // (hidden in the pool, shown on spawn). RenderSyncSystem positions the
+    // root each frame; ShrapnelSpinSystem tumbles the shard inside it.
+    this.addComponent(MeshComponent.createShrapnel(SHRAPNEL_VISUAL_RADIUS));
     this.interpolation = this.addComponent(new InterpolationComponent());
     this.transform = this.addComponent(new TransformComponent(this.id));
     this.body = this.addComponent(

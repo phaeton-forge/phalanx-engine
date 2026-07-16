@@ -266,6 +266,61 @@ export class MeshComponent implements IPoolableComponent {
     return new MeshComponent(group);
   }
 
+  /**
+   * Shared shard geometry/material for all SAU shrapnel fragments. A single
+   * squashed tetrahedron reads as a jagged metal chunk; sharing one geometry
+   * and one material across every fragment keeps pooled spawns allocation-free.
+   * Never disposed — shrapnel is pooled, and this pair lives for the app's
+   * lifetime.
+   */
+  private static shrapnelGeometry?: THREE.BufferGeometry;
+  private static shrapnelMaterial?: THREE.MeshStandardMaterial;
+
+  /**
+   * Shared incendiary shard material. Exposed so the cosmetic ShrapnelSpinSystem
+   * can pulse its emissive intensity (the "about to blow" glow) once per frame
+   * for every fragment at once. Undefined until the first shard is created.
+   */
+  public static getShrapnelMaterial(): THREE.MeshStandardMaterial | undefined {
+    return MeshComponent.shrapnelMaterial;
+  }
+
+  /**
+   * Jagged incendiary shard for SAU shrapnel fragments — dark scorched metal
+   * with a hot glowing core, so it reads as live ordnance about to detonate
+   * rather than inert debris (its emissive glow is pulsed by ShrapnelSpinSystem).
+   * Root is a Group to match the RenderSync contract (world quaternion set on
+   * the root); the inner shard mesh stays free for cosmetic spin. Visibility is
+   * toggled by the pool hooks: hidden while dormant, shown on spawn.
+   */
+  public static createShrapnel(radius: number): MeshComponent {
+    if (!MeshComponent.shrapnelGeometry) {
+      const geometry = new THREE.TetrahedronGeometry(radius, 0);
+      // Non-uniform squash turns the regular tetrahedron into an irregular
+      // splinter silhouette from every angle.
+      geometry.scale(1.5, 0.55, 0.9);
+      MeshComponent.shrapnelGeometry = geometry;
+      MeshComponent.shrapnelMaterial = new THREE.MeshStandardMaterial({
+        color: 0x2b1a12,
+        roughness: 0.4,
+        metalness: 0.8,
+        emissive: 0xff5a1e,
+        emissiveIntensity: 1.6,
+        toneMapped: false,
+      });
+    }
+
+    const group = new THREE.Group();
+    const shard = new THREE.Mesh(
+      MeshComponent.shrapnelGeometry,
+      MeshComponent.shrapnelMaterial
+    );
+    shard.castShadow = true;
+    group.add(shard);
+    group.visible = false;
+    return new MeshComponent(group);
+  }
+
   constructor(root: THREE.Object3D) {
     this.root = root;
 
