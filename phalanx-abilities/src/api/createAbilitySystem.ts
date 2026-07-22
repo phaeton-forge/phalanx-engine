@@ -82,7 +82,13 @@ export interface AbilitySystem extends IAbilitySystem {
   pendingActivationAbilityId(index: number): string | undefined;
   initComponent(init?: AbilitySystemComponentInit): AbilitySystemComponent;
   activateAbility(casterEntityId: number, abilityId: string, providedTarget?: ProvidedTarget): boolean;
-  applyEffect(targetEntityId: number, effectId: string, sourceEntityId?: number): void;
+  applyEffect(
+    targetEntityId: number,
+    effectId: string,
+    sourceEntityId?: number,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- game-defined payload values, by design.
+    setByCaller?: ReadonlyMap<string, any>
+  ): void;
   removeEffectsByTag(entityId: number, grantedTag: string): number;
   removeEffectsByDefId(entityId: number, effectId: string): number;
   getAttribute(entityId: number, attrId: string): AttributeValue;
@@ -160,7 +166,13 @@ class AbilitySystemImpl implements AbilitySystem {
     cues: CueConfig
   ) {
     this.gameplayCueBuffer = facade.gameplayCueBufferInternal;
-    this.tickSystems = buildTickSystems(registries, runtime, pipeline, cues);
+    this.tickSystems = buildTickSystems(
+      registries,
+      runtime,
+      facade,
+      pipeline,
+      cues
+    );
   }
 
   public initComponent(init: AbilitySystemComponentInit = {}): AbilitySystemComponent {
@@ -183,9 +195,11 @@ class AbilitySystemImpl implements AbilitySystem {
   public applyEffect(
     targetEntityId: number,
     effectId: string,
-    sourceEntityId: number = NO_SOURCE_ENTITY_ID
+    sourceEntityId: number = NO_SOURCE_ENTITY_ID,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- game-defined payload values, by design.
+    setByCaller?: ReadonlyMap<string, any>
   ): void {
-    this.facade.applyEffect(targetEntityId, effectId, sourceEntityId);
+    this.facade.applyEffect(targetEntityId, effectId, sourceEntityId, setByCaller);
   }
 
   public removeEffectsByTag(entityId: number, grantedTag: string): number {
@@ -286,6 +300,7 @@ class AbilitySystemImpl implements AbilitySystem {
           typeof entry === 'string'
             ? NO_SOURCE_ENTITY_ID
             : entry.sourceEntityId ?? NO_SOURCE_ENTITY_ID,
+        setByCaller: null,
       });
     }
   }
@@ -321,10 +336,15 @@ function isAttributeValuePair(
 function buildTickSystems(
   registries: AbilitySystemRegistries,
   runtime: AbilitySystemRuntime,
+  facade: AbilitySystemFacade,
   pipeline: AbilitySystemPipeline,
   cues: CueConfig
 ): GameSystem[] {
-  const effectApplication = new EffectApplicationSystem(registries, runtime);
+  const effectApplication = new EffectApplicationSystem(
+    registries,
+    runtime,
+    facade
+  );
   const effectTick = new EffectTickSystem(registries, runtime);
   const aggregation = new AttributeAggregationSystem(registries);
   const cueCleanup = new CueBufferCleanupSystem(runtime);

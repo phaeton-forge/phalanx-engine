@@ -17,8 +17,10 @@ A deterministic gameplay ability system (GAS-inspired) for the [Phalanx Engine](
 ### MVP scope
 
 Included in v0.1: flat modifiers, channeling via `Duration` + `removeEffectsByTag`, hooks.
+Added in v0.2: **dynamic magnitude calculation** (`Modifier.calculation`) and `setByCaller` — see
+[Dynamic magnitudes](#dynamic-magnitudes) below.
 
-Planned for v2: execution calculations, granted abilities, stacking rules, line-of-sight raycast, SoA attribute storage.
+Planned for v2: granted abilities, stacking rules, line-of-sight raycast, SoA attribute storage.
 
 ## Installation
 
@@ -187,11 +189,16 @@ Modifier aggregation (FIFO by `instanceId`):
 ```
 acc = base
 for each active effect instance (sorted by instanceId ASC):
+  magnitude = modifier.calculation ? capturedEffectiveMagnitude : modifier.magnitude
   Add      → acc = acc + magnitude
   Multiply → acc = acc * magnitude
   Override → acc = magnitude
 current = clamp(acc) per AttributeDef
 ```
+
+`capturedEffectiveMagnitude` is the one-time snapshot described in
+[Dynamic magnitudes](#dynamic-magnitudes) below; when no modifier declares a `calculation`,
+aggregation is exactly the pre-existing `modifier.magnitude` path.
 
 ### Effects
 
@@ -202,6 +209,75 @@ current = clamp(acc) per AttributeDef
 | `Periodic` | Duration + fires modifiers every `periodTicks`; optional `executePeriodicOnApplication` |
 
 Durations and periods are **whole simulation ticks** (`number`), compared to `runtime.currentTick` — not `FixedPoint` values.
+
+### Dynamic magnitudes
+
+A `Modifier` can carry an optional `calculation` — a pure, FP-only function (Unreal GAS
+`ModMagnitudeCalculation` analog) that computes the modifier's *effective* magnitude at
+effect-application time, instead of always using the static `magnitude`:
+
+```typescript
+import type { MagnitudeCalcContext, MagnitudeCalculation } from '@phalanx-engine/abilities';
+
+const levelScaledDamage: MagnitudeCalculation = (ctx: MagnitudeCalcContext) => {
+  // Fall back to the static magnitude when there is no source (e.g. world hazard)
+  // or it has since despawned — tryGetAttribute returns undefined for both.
+  const level = ctx.abilities.tryGetAttribute(ctx.sourceEntityId, 'AbilityLevel');
+  if (!level) {
+    return ctx.baseMagnitude;
+  }
+  // baseMagnitude * (1 + 0.5 * (level - 1))
+  const multiplier = FP.Add(FP.FromInt(1), FP.Mul(FP.FromFloat(0.5), FP.Sub(level.current, FP.FromInt(1))));
+  return FP.Mul(ctx.baseMagnitude, multiplier);
+};
+
+defineEffect({
+  id: 'Effect.AutoAttack.Damage',
+  type: 'Instant',
+  modifiers: [
+    { attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(-18), calculation: levelScaledDamage },
+  ],
+});
+
+// AbilitySystemFacade.applyEffect(targetId, effectId, sourceId?, setByCaller?)
+abilities.applyEffect(enemyId, 'Effect.AutoAttack.Damage', casterId);
+```
+
+`MagnitudeCalcContext`:
+
+| Field | Meaning |
+|-------|---------|
+| `baseMagnitude` | The modifier's static `magnitude` — use it as a base/default value |
+| `sourceEntityId` | The effect's source entity id, or `NO_SOURCE_ENTITY_ID` (`-1`) when there is none. A despawned source is indistinguishable from a valid id here — don't branch on the id, just read through `abilities` |
+| `targetEntityId` | The entity the effect is being applied to |
+| `abilities` | The same `AbilitySystemFacade` every game system already holds, narrowed to its two read-only methods (`tryGetAttribute`, `hasTag`) — no wrapper object is created for calculations |
+| `setByCaller` | `ReadonlyMap<string, any> \| null` — optional per-application payload (SetByCaller analog), passed as the 4th argument to `applyEffect` |
+| `effectId` / `attributeId` | The effect and attribute the modifier belongs to |
+
+A calculation reads source/target attributes exactly the way any other game system does:
+`ctx.abilities.tryGetAttribute(entityId, attrId)` returns `undefined` when the entity, its
+`AttributesComponent`, or the attribute id is missing (including a missing/despawned source) —
+no separate reader type to learn, and no allocation per application.
+
+**Snapshot semantics — the one rule to remember:** every modifier's effective magnitude is
+computed **exactly once, at application time**, before any mutation:
+
+- **Instant** — the computed value is used immediately instead of `magnitude`.
+- **Duration** — the computed value is captured on the `ActiveEffectInstance` and reused for
+  the whole lifetime of the effect. Changing the source's attributes afterward — or the source
+  despawning — never changes an already-applied Duration modifier.
+- **Periodic** — captured the same way at application time; every periodic landing (including
+  ones fired via `executePeriodicOnApplication`) reuses the captured value. Recomputing per
+  firing is a possible post-MVP addition, not a silent behavior difference.
+
+**Purity/determinism rules:** a `calculation` MUST be pure and FP-only — no floats, no
+`Math.random`, no `Date.now()`, no external/mutable state. A calculation that throws propagates
+to the caller (same loud-failure philosophy as an unknown effect id); calculations should
+handle a missing/despawned source explicitly (typically by falling back to `baseMagnitude`)
+rather than throwing for valid game states.
+
+**Backward compatible:** modifiers that omit `calculation` behave byte-for-byte as before —
+this is a zero-overhead opt-in feature.
 
 ### Abilities
 
@@ -347,11 +423,16 @@ function applyDamageWithMark(
 }
 ```
 
-This is an intentional MVP limitation — v2 may add execution calculations.
+This is an intentional MVP limitation for `IncomingDamageMultiplier`-style attributes read
+before `applyEffect`; for scaling a modifier's own magnitude from an attribute, prefer
+`Modifier.calculation` (see [Dynamic magnitudes](#dynamic-magnitudes)) instead of pre-computing
+and passing a raw magnitude.
 
 ### 5. Custom execution formulas
 
-`phalanx-abilities` doesn't support complex math inside effect definitions yet. For complex formulas (e.g. `Damage = (Base + Strength * 2) * (1 - Armor / 100)`), read the attributes from the facade and calculate manually before calling `applyEffect`.
+For formulas that only depend on attributes already known to the caller (e.g.
+`IncomingDamageMultiplier`), read them from the facade and calculate manually before calling
+`applyEffect` — this remains a valid, simple pattern:
 
 ```typescript
 defineEffect({
@@ -366,6 +447,11 @@ if (targetMarked) {
   abilities.applyEffect(enemyId, 'Effect.Damage.Marked');
 }
 ```
+
+For formulas that need to read the **source**'s attributes at application time (e.g.
+`Damage = Base * levelMultiplier(source.AbilityLevel)`), or need a per-application payload
+(SetByCaller), declare a `Modifier.calculation` instead — see
+[Dynamic magnitudes](#dynamic-magnitudes).
 
 ## Gameplay cues
 
@@ -496,7 +582,7 @@ createAbilitySystem(world: GameWorld, config: CreateAbilitySystemConfig): Abilit
 |--------|-------------|
 | `initComponent(init?)` | Create `AbilitySystemComponent` with optional seed data |
 | `activateAbility(casterId, abilityId, providedTarget?)` | Queue activation |
-| `applyEffect(targetId, effectId, sourceId?)` | Queue effect (`sourceId` defaults to `-1`) |
+| `applyEffect(targetId, effectId, sourceId?, setByCaller?)` | Queue effect (`sourceId` defaults to `-1`; `setByCaller` is an optional `ReadonlyMap<string, any>` forwarded to `Modifier.calculation`) |
 | `getAttribute` / `tryGetAttribute` | Read base/current |
 | `hasTag` / `addTag` / `removeTag` | Tag queries and ad-hoc tags |
 | `removeEffectsByTag` / `removeEffectsByDefId` | Flag instances for removal next tick |

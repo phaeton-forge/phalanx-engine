@@ -9,7 +9,9 @@ export class AttributesComponent implements IComponent {
 
   public constructor(attributeCount: number) {
     if (!Number.isInteger(attributeCount) || attributeCount < 0) {
-      throw new Error(`attributeCount must be a non-negative integer, got ${attributeCount}`);
+      throw new Error(
+        `attributeCount must be a non-negative integer, got ${attributeCount}`
+      );
     }
 
     this.base = new BigInt64Array(attributeCount);

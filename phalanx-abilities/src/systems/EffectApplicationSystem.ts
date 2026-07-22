@@ -10,12 +10,14 @@ import {
   getGameplayTagsComponent,
 } from '../components';
 import type { PendingEffectAdd } from '../components';
+import type { AbilitySystemFacade } from '../api/AbilitySystemFacade';
 import type { AbilitySystemRegistries } from '../registry';
 import { appendGameplayCueEvents } from '../runtime';
 import type { AbilitySystemRuntime } from '../runtime';
 import type {
   ActiveEffectInstance,
   EffectDef,
+  MagnitudeCalcContext,
   Modifier,
   ModifierOp,
 } from '../types';
@@ -64,7 +66,8 @@ import type {
 export class EffectApplicationSystem extends GameSystem {
   public constructor(
     private readonly registries: AbilitySystemRegistries,
-    private readonly runtime: AbilitySystemRuntime
+    private readonly runtime: AbilitySystemRuntime,
+    private readonly facade: AbilitySystemFacade
   ) {
     super();
   }
@@ -86,7 +89,10 @@ export class EffectApplicationSystem extends GameSystem {
       // Drain pendingAdd by swapping with a stable empty array so re-entrant
       // applyEffect calls from inside (none today; insurance for the future)
       // accumulate for the next tick.
-      const drained = activeEffects.pendingAdd.splice(0, activeEffects.pendingAdd.length);
+      const drained = activeEffects.pendingAdd.splice(
+        0,
+        activeEffects.pendingAdd.length
+      );
 
       for (let i = 0; i < drained.length; i++) {
         this.applyOne(entity, drained[i], attributeIndexCache, tick);
@@ -126,9 +132,19 @@ export class EffectApplicationSystem extends GameSystem {
     // grant tags and queue the instance atomically.
     this.grantTags(effectDef, tags);
 
+    // Snapshot semantics — the single semantic rule for dynamic magnitudes:
+    // every modifier's effective magnitude is computed exactly once, here,
+    // before any mutation. `effective` is `null` when no modifier declares a
+    // `calculation` (the zero-overhead, pre-existing path).
+    const effective = this.computeEffectiveMagnitudes(
+      entity,
+      effectDef,
+      pending
+    );
+
     switch (effectDef.type) {
       case 'Instant':
-        this.applyInstant(entity, effectDef, attributeIndexCache);
+        this.applyInstant(entity, effectDef, attributeIndexCache, effective);
         appendGameplayCueEvents(
           this.runtime.gameplayCueBuffer,
           effectDef.cues,
@@ -140,7 +156,14 @@ export class EffectApplicationSystem extends GameSystem {
         return;
       case 'Duration':
       case 'Periodic':
-        this.queueDurational(entity, effectDef, pending, attributeIndexCache, tick);
+        this.queueDurational(
+          entity,
+          effectDef,
+          pending,
+          attributeIndexCache,
+          tick,
+          effective
+        );
         appendGameplayCueEvents(
           this.runtime.gameplayCueBuffer,
           effectDef.cues,
@@ -154,12 +177,14 @@ export class EffectApplicationSystem extends GameSystem {
         // and subsequent periodic firings keep working. Determinism is
         // preserved because the queueing path allocated the FIFO instanceId
         // before we mutate base, so aggregation on the same tick observes
-        // ordering identical to a freshly-applied Instant.
+        // ordering identical to a freshly-applied Instant. Reuses the same
+        // `effective` snapshot as the queued instance — a calculation is
+        // evaluated once per application, never per landing.
         if (
           effectDef.type === 'Periodic' &&
           effectDef.executePeriodicOnApplication === true
         ) {
-          this.applyInstant(entity, effectDef, attributeIndexCache);
+          this.applyInstant(entity, effectDef, attributeIndexCache, effective);
           appendGameplayCueEvents(
             this.runtime.gameplayCueBuffer,
             effectDef.cues,
@@ -171,6 +196,48 @@ export class EffectApplicationSystem extends GameSystem {
         }
         return;
     }
+  }
+
+  /**
+   * Evaluate `Modifier.calculation` for every modifier that declares one,
+   * exactly once, at application time. Returns `null` when no modifier in
+   * the effect declares a `calculation` — callers must then fall back to
+   * `modifier.magnitude` (identical to pre-dynamic-magnitude behavior).
+   *
+   * `ctx.abilities` is the facade itself (no wrapper object allocated) —
+   * calculations read source/target attributes the same way any other game
+   * system does, via `tryGetAttribute`/`hasTag`. A despawned or sourceless
+   * `sourceEntityId` naturally yields `tryGetAttribute(...) === undefined`;
+   * calculations handle that themselves (typically falling back to
+   * `baseMagnitude`) rather than the engine special-casing a `null` source.
+   */
+  private computeEffectiveMagnitudes(
+    entity: Entity,
+    effectDef: EffectDef,
+    pending: PendingEffectAdd
+  ): readonly FixedPoint[] | null {
+    const hasCalculation = effectDef.modifiers.some(
+      (modifier) => modifier.calculation !== undefined
+    );
+    if (!hasCalculation) {
+      return null;
+    }
+
+    return effectDef.modifiers.map((modifier) => {
+      if (!modifier.calculation) {
+        return modifier.magnitude;
+      }
+      const ctx: MagnitudeCalcContext = {
+        baseMagnitude: modifier.magnitude,
+        sourceEntityId: pending.sourceEntityId,
+        targetEntityId: entity.id,
+        abilities: this.facade,
+        setByCaller: pending.setByCaller ?? null,
+        effectId: effectDef.id,
+        attributeId: modifier.attributeId,
+      };
+      return modifier.calculation(ctx);
+    });
   }
 
   /**
@@ -210,7 +277,10 @@ export class EffectApplicationSystem extends GameSystem {
     }
   }
 
-  private checkTagPredicates(effectDef: EffectDef, tags: GameplayTagsComponent): boolean {
+  private checkTagPredicates(
+    effectDef: EffectDef,
+    tags: GameplayTagsComponent
+  ): boolean {
     if (effectDef.tagsRequired) {
       for (const tag of effectDef.tagsRequired) {
         if (!tags.tags.has(tag)) {
@@ -246,7 +316,8 @@ export class EffectApplicationSystem extends GameSystem {
   private applyInstant(
     entity: Entity,
     effectDef: EffectDef,
-    attributeIndexCache: Map<string, number>
+    attributeIndexCache: Map<string, number>,
+    effective: readonly FixedPoint[] | null
   ): void {
     const attributes = getAttributesComponent(entity);
     if (!attributes) {
@@ -257,10 +328,15 @@ export class EffectApplicationSystem extends GameSystem {
       return;
     }
 
-    for (const modifier of effectDef.modifiers) {
-      const index = this.resolveAttributeIndex(modifier.attributeId, attributeIndexCache);
+    for (let i = 0; i < effectDef.modifiers.length; i++) {
+      const modifier = effectDef.modifiers[i];
+      const index = this.resolveAttributeIndex(
+        modifier.attributeId,
+        attributeIndexCache
+      );
+      const magnitude = effective ? effective[i] : modifier.magnitude;
       const current = FP.FromRaw(attributes.base[index]);
-      const next = applyInstantModifier(current, modifier.op, modifier.magnitude);
+      const next = applyInstantModifier(current, modifier.op, magnitude);
       attributes.base[index] = FP.ToRaw(next);
       attributes.dirty[index] = 1;
     }
@@ -271,12 +347,15 @@ export class EffectApplicationSystem extends GameSystem {
     effectDef: EffectDef,
     pending: PendingEffectAdd,
     attributeIndexCache: Map<string, number>,
-    tick: number
+    tick: number,
+    effective: readonly FixedPoint[] | null
   ): void {
     const activeEffects = getActiveEffectsComponent(entity);
     // pendingAdd lives on ActiveEffectsComponent, so it must exist here.
     if (!activeEffects) {
-      throw new Error('ActiveEffectsComponent missing while draining pendingAdd');
+      throw new Error(
+        'ActiveEffectsComponent missing while draining pendingAdd'
+      );
     }
 
     // durationTicks was validated upstream in validateEffectOrThrow, so the
@@ -287,7 +366,9 @@ export class EffectApplicationSystem extends GameSystem {
     // applyOne) does NOT advance nextPeriodTick — the immediate landing is
     // additive to the regular schedule, matching Unreal's GAS semantics.
     const nextPeriodTick =
-      effectDef.type === 'Periodic' ? tick + (effectDef.periodTicks as number) : 0;
+      effectDef.type === 'Periodic'
+        ? tick + (effectDef.periodTicks as number)
+        : 0;
     const instance: ActiveEffectInstance = {
       instanceId: this.runtime.instanceIdCounter.next(),
       defId: effectDef.id,
@@ -298,6 +379,11 @@ export class EffectApplicationSystem extends GameSystem {
       // first countdown for this instance — without that, a durationTicks=1
       // effect would expire before AttributeAggregationSystem ever sees it.
       enteredOnTick: tick,
+      // Snapshot of effective magnitudes captured at application time so
+      // AttributeAggregationSystem / EffectTickSystem stay independent of the
+      // source entity's lifetime and later attribute changes. `null` when no
+      // modifier declared a `calculation` (pre-existing behavior).
+      capturedMagnitudes: effective ? [...effective] : null,
     };
     activeEffects.queue.push(instance);
 
@@ -319,7 +405,10 @@ export class EffectApplicationSystem extends GameSystem {
       return;
     }
     for (const modifier of modifiers) {
-      const index = this.resolveAttributeIndex(modifier.attributeId, attributeIndexCache);
+      const index = this.resolveAttributeIndex(
+        modifier.attributeId,
+        attributeIndexCache
+      );
       attributes.dirty[index] = 1;
     }
   }

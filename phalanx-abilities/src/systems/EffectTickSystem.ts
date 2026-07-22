@@ -218,7 +218,7 @@ export class EffectTickSystem extends GameSystem {
       }
 
       while (tick >= instance.nextPeriodTick) {
-        this.applyPeriodicPayload(effectDef, attributes);
+        this.applyPeriodicPayload(effectDef, instance, attributes);
         appendGameplayCueEvents(
           this.runtime.gameplayCueBuffer,
           effectDef.cues,
@@ -237,18 +237,28 @@ export class EffectTickSystem extends GameSystem {
    * attributes dirty so the same-tick aggregation pass observes the new
    * value. Tag grants are NOT re-issued per period — they were granted once
    * at apply time and are revoked when the instance expires.
+   *
+   * Reuses `instance.capturedMagnitudes` (snapshotted at application time)
+   * in place of `modifier.magnitude` for modifiers whose effect declared a
+   * `calculation` — every periodic landing fires with the same magnitude
+   * that was computed once when the effect was applied (documented:
+   * per-firing recompute is a post-MVP option, not a silent behavior change).
    */
   private applyPeriodicPayload(
     effectDef: EffectDef,
+    instance: ActiveEffectInstance,
     attributes: AttributesComponent | undefined
   ): void {
     if (!attributes || effectDef.modifiers.length === 0) {
       return;
     }
-    for (const modifier of effectDef.modifiers) {
+    const captured = instance.capturedMagnitudes;
+    for (let i = 0; i < effectDef.modifiers.length; i++) {
+      const modifier = effectDef.modifiers[i];
       const index = this.registries.attributes.indexOf(modifier.attributeId);
+      const magnitude = captured ? captured[i] : modifier.magnitude;
       const current = FP.FromRaw(attributes.base[index]);
-      const next = applyPeriodicModifier(current, modifier.op, modifier.magnitude);
+      const next = applyPeriodicModifier(current, modifier.op, magnitude);
       attributes.base[index] = FP.ToRaw(next);
       attributes.dirty[index] = 1;
     }

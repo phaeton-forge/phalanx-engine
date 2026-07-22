@@ -1,3 +1,5 @@
+import type { FixedPoint } from '@phalanx-engine/math';
+
 export interface ActiveEffectInstance {
   /** Monotonic id used for deterministic FIFO modifier aggregation. */
   instanceId: number;
@@ -26,4 +28,17 @@ export interface ActiveEffectInstance {
    * survives through {@link AttributeAggregationSystem} on its application tick.
    */
   enteredOnTick: number;
+  /**
+   * Per-modifier effective magnitudes, snapshotted once at application time
+   * (parallel array to `EffectDef.modifiers`, same index). `undefined`/`null`
+   * when none of the effect's modifiers declare a `calculation` — the
+   * pre-existing, zero-overhead path (also the shape produced by
+   * hand-authored instances, e.g. in tests, that omit this field). When
+   * present, `AttributeAggregationSystem` and `EffectTickSystem` read
+   * `capturedMagnitudes[i]` in place of `modifiers[i].magnitude` for every
+   * modifier so a Duration/Periodic effect's magnitude stays fixed for its
+   * whole lifetime even if the source entity's attributes change or the
+   * source despawns after application.
+   */
+  capturedMagnitudes?: FixedPoint[] | null;
 }

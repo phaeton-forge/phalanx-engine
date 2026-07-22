@@ -24,27 +24,41 @@ export class AbilitySystemComponent implements IComponent {
   }
 }
 
-export function getAbilitySystemComponent(entity: Entity): AbilitySystemComponent | undefined {
-  return entity.getComponent<AbilitySystemComponent>(AbilitiesComponentType.AbilitySystem);
+export function getAbilitySystemComponent(
+  entity: Entity
+): AbilitySystemComponent | undefined {
+  return entity.getComponent<AbilitySystemComponent>(
+    AbilitiesComponentType.AbilitySystem
+  );
 }
 
-export function getAttributesComponent(entity: Entity): AttributesComponent | undefined {
+export function getAttributesComponent(
+  entity: Entity
+): AttributesComponent | undefined {
   return (
     getAbilitySystemComponent(entity)?.attributes ??
     entity.getComponent<AttributesComponent>(AbilitiesComponentType.Attributes)
   );
 }
 
-export function getActiveEffectsComponent(entity: Entity): ActiveEffectsComponent | undefined {
+export function getActiveEffectsComponent(
+  entity: Entity
+): ActiveEffectsComponent | undefined {
   return (
     getAbilitySystemComponent(entity)?.activeEffects ??
-    entity.getComponent<ActiveEffectsComponent>(AbilitiesComponentType.ActiveEffects)
+    entity.getComponent<ActiveEffectsComponent>(
+      AbilitiesComponentType.ActiveEffects
+    )
   );
 }
 
-export function getGameplayTagsComponent(entity: Entity): GameplayTagsComponent | undefined {
+export function getGameplayTagsComponent(
+  entity: Entity
+): GameplayTagsComponent | undefined {
   return (
     getAbilitySystemComponent(entity)?.tags ??
-    entity.getComponent<GameplayTagsComponent>(AbilitiesComponentType.GameplayTags)
+    entity.getComponent<GameplayTagsComponent>(
+      AbilitiesComponentType.GameplayTags
+    )
   );
 }
