@@ -19,8 +19,8 @@
     "prepublishOnly": "npm run build"
   },
   "peerDependencies": {
-    "@phalanx-engine/ecs": "^0.1.0",
-    "@phalanx-engine/math": "^0.1.0"
+    "@phalanx-engine/ecs": "^0.2.0",
+    "@phalanx-engine/math": "^0.2.0"
   },
   "devDependencies": {
     "@phalanx-engine/ecs": "workspace:*",

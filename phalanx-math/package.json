@@ -1,6 +1,6 @@
 {
   "name": "@phalanx-engine/math",
-  "version": "0.1.6",
+  "version": "0.2.0",
   "description": "Deterministic fixed-point math library for Phalanx Engine - ensures identical calculations across all platforms",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
