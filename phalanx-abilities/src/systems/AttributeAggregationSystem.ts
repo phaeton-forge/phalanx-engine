@@ -61,6 +61,7 @@ export class AttributeAggregationSystem extends GameSystem {
       const orderedEffects = this.takeOrderedEffects(activeEffects);
       // Resolve each EffectDef once per entity per tick instead of per dirty attribute.
       const resolvedEffectDefs = this.resolveEffectDefs(orderedEffects);
+      const resolvedInstances = this.resolvedInstancesBuffer;
 
       for (let attributeIndex = 0; attributeIndex < attributes.dirty.length; attributeIndex++) {
         if (attributes.dirty[attributeIndex] === 0) {
@@ -75,12 +76,16 @@ export class AttributeAggregationSystem extends GameSystem {
         let value = FP.FromRaw(attributes.base[attributeIndex]);
         for (let i = 0; i < resolvedEffectDefs.length; i++) {
           const effectDef = resolvedEffectDefs[i];
-          for (const modifier of effectDef.modifiers) {
+          const captured = resolvedInstances[i].capturedMagnitudes;
+          const modifiers = effectDef.modifiers;
+          for (let m = 0; m < modifiers.length; m++) {
+            const modifier = modifiers[m];
             if (modifier.attributeId !== attributeDef.id) {
               continue;
             }
 
-            value = applyModifier(value, modifier.op, modifier.magnitude);
+            const magnitude = captured ? captured[m] : modifier.magnitude;
+            value = applyModifier(value, modifier.op, magnitude);
           }
         }
 
@@ -131,6 +136,13 @@ export class AttributeAggregationSystem extends GameSystem {
   }
 
   private readonly resolvedEffectDefsBuffer: EffectDef[] = [];
+  /**
+   * Parallel buffer to {@link resolvedEffectDefsBuffer} (same index),
+   * carrying the source `ActiveEffectInstance` for each resolved def so the
+   * modifier loop can read `instance.capturedMagnitudes` when a dynamic
+   * `calculation` was used at application time.
+   */
+  private readonly resolvedInstancesBuffer: ActiveEffectInstance[] = [];
 
   /**
    * Resolve {@link EffectDef}s for the entity's ordered queue.
@@ -145,13 +157,17 @@ export class AttributeAggregationSystem extends GameSystem {
    */
   private resolveEffectDefs(orderedEffects: readonly ActiveEffectInstance[]): readonly EffectDef[] {
     const buffer = this.resolvedEffectDefsBuffer;
+    const instancesBuffer = this.resolvedInstancesBuffer;
     buffer.length = 0;
+    instancesBuffer.length = 0;
     for (let i = 0; i < orderedEffects.length; i++) {
-      const def = this.registries.effects.get(orderedEffects[i].defId);
+      const instance = orderedEffects[i];
+      const def = this.registries.effects.get(instance.defId);
       if (def.type === 'Periodic') {
         continue;
       }
       buffer.push(def);
+      instancesBuffer.push(instance);
     }
     return buffer;
   }

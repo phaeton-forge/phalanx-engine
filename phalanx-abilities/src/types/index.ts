@@ -11,6 +11,12 @@ export type {
   EffectType,
 } from './EffectDef';
 export type { Modifier, ModifierOp } from './ModifierOp';
+export type { AttributeValue } from './AttributeValue';
+export type {
+  AbilityStateReader,
+  MagnitudeCalcContext,
+  MagnitudeCalculation,
+} from './MagnitudeCalculation';
 export type {
   ProvidedTarget,
   TargetFilter,

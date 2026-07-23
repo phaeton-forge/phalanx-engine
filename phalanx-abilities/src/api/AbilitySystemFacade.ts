@@ -1,6 +1,5 @@
 import { Entity, type EntityManager } from '@phalanx-engine/ecs';
 import { FP } from '@phalanx-engine/math';
-import type { FixedPoint } from '@phalanx-engine/math';
 import {
   ActiveEffectsComponent,
   AttributesComponent,
@@ -11,12 +10,13 @@ import {
 } from '../components';
 import type { AbilitySystemRegistries } from '../registry';
 import type { AbilitySystemRuntime, GameplayCueBufferView } from '../runtime';
-import type { AbilityHook, ProvidedTarget } from '../types';
+import type { AbilityHook, AttributeValue, ProvidedTarget } from '../types';
 
-export interface AttributeValue {
-  base: FixedPoint;
-  current: FixedPoint;
-}
+// Re-exported for backward compatibility: `AttributeValue` used to be declared
+// in this module. The canonical declaration now lives in `types/AttributeValue.ts`
+// (needed there so `MagnitudeCalcContext` / `AbilityStateReader` can reference it
+// without an api → types → api import cycle).
+export type { AttributeValue } from '../types';
 
 /**
  * Sentinel `sourceEntityId` written by {@link AbilitySystemFacade.applyEffect}
@@ -138,11 +138,18 @@ export class AbilitySystemFacade {
    * is allocated during application, not enqueue, so the facade cannot hand
    * it back synchronously. If callers need to track an applied instance,
    * Stage 5 will introduce an `apply` event on `EventBus`.
+   *
+   * `setByCaller` (SetByCaller analog) is an optional per-application payload
+   * forwarded to any `Modifier.calculation` the effect's modifiers declare,
+   * via `MagnitudeCalcContext.setByCaller`. Omit it (or pass `undefined`) for
+   * effects that don't need caller-supplied data; the recorded value is
+   * `null` in that case.
    */
   public applyEffect(
     targetEntityId: number,
     effectId: string,
-    sourceEntityId: number = NO_SOURCE_ENTITY_ID
+    sourceEntityId: number = NO_SOURCE_ENTITY_ID,
+    setByCaller?: ReadonlyMap<string, unknown>
   ): void {
     const target = this.requireEntity(targetEntityId);
     if (!this.registries.effects.has(effectId)) {
@@ -150,7 +157,11 @@ export class AbilitySystemFacade {
     }
 
     const activeEffects = this.getOrCreateActiveEffects(target);
-    activeEffects.pendingAdd.push({ defId: effectId, sourceEntityId });
+    activeEffects.pendingAdd.push({
+      defId: effectId,
+      sourceEntityId,
+      setByCaller: setByCaller ?? null,
+    });
   }
 
   /**

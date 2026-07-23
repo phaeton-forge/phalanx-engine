@@ -1,6 +1,6 @@
 ---
 name: phalanx-abilities
-description: Create deterministic gameplay abilities, effects, attributes, tags, and activation hooks using phalanx-abilities from the phalanx-engine repository. Use when building GAS-style combat, buffs, cooldowns, channeling, or integrating abilities with phalanx-ecs GameWorld. Covers defineAttribute/defineEffect/defineAbility, createAbilitySystem, AbilitySystemFacade, gameplay cues, and lockstep determinism.
+description: Create deterministic gameplay abilities, effects, attributes, tags, and activation hooks using phalanx-abilities from the phalanx-engine repository. Use when building GAS-style combat, buffs, cooldowns, channeling, or integrating abilities with phalanx-ecs GameWorld. Covers defineAttribute/defineEffect/defineAbility, createAbilitySystem, AbilitySystemFacade, dynamic magnitude calculation (Modifier.calculation, setByCaller), gameplay cues, and lockstep determinism.
 metadata:
   author: phaeton2040-AI
   version: '1.0'
@@ -251,17 +251,80 @@ const mult =
 const damage = FP.Mul(baseDamage, mult);
 ```
 
-Not automatic in the library (MVP) — v2 execution calculations may absorb this.
+For scaling a modifier's own magnitude from a source attribute at application time, prefer
+`Modifier.calculation` (below) over this manual read-then-apply pattern.
+
+### Dynamic magnitude calculation (ability-level-scaled damage)
+
+`Modifier.calculation` (Unreal GAS `ModMagnitudeCalculation` analog) lets an effect's magnitude
+be computed from source/target attributes and an optional per-application `setByCaller` payload,
+evaluated **once at effect-application time** — not on every tick.
+
+```typescript
+import type { MagnitudeCalcContext, MagnitudeCalculation } from '@phalanx-engine/abilities';
+
+const levelScaledDamage: MagnitudeCalculation = (ctx: MagnitudeCalcContext) => {
+  // ctx.abilities is the same AbilitySystemFacade every game system already holds,
+  // narrowed to tryGetAttribute/hasTag — no wrapper reader object is created.
+  const level = ctx.abilities.tryGetAttribute(ctx.sourceEntityId, 'AbilityLevel');
+  if (!level) {
+    return ctx.baseMagnitude; // no source / despawned source: fall back to base
+  }
+  const multiplier = FP.Add(FP.FromInt(1), FP.Mul(FP.FromFloat(0.5), FP.Sub(level.current, FP.FromInt(1))));
+  return FP.Mul(ctx.baseMagnitude, multiplier);
+};
+
+defineEffect({
+  id: 'Effect.AutoAttack.Damage',
+  type: 'Instant',
+  modifiers: [
+    { attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(-18), calculation: levelScaledDamage },
+  ],
+});
+
+// setByCaller (4th arg) forwards a ReadonlyMap into ctx.setByCaller — e.g. a chain-lightning
+// per-jump falloff index looked up in an FP falloff table.
+abilities.applyEffect(targetId, 'Effect.AutoAttack.Damage', casterId, new Map([['jumpIndex', 2]]));
+```
+
+**When to use `calculation` vs static `magnitude` vs manual pre-computation:**
+
+| Need | Approach |
+|------|----------|
+| Fixed magnitude, no per-source scaling | Static `magnitude` on the `Modifier` |
+| Magnitude scales with the **source's** attributes (ability level, stat) | `Modifier.calculation` reading `ctx.abilities.tryGetAttribute(ctx.sourceEntityId, ...)` |
+| Magnitude scales with data known only at the call site (e.g. chain-lightning jump index) | `Modifier.calculation` reading `ctx.setByCaller` |
+| Magnitude scales with an attribute already on the **target**, read before calling `applyEffect` | Either manual pre-computation (`tryGetAttribute` + calculate) or `calculation` reading `ctx.abilities.tryGetAttribute(ctx.targetEntityId, ...)` — prefer `calculation` for anything reused across many call sites |
+
+**Snapshot semantics:** the effective magnitude is computed exactly once, at application time:
+- `Instant` — used immediately.
+- `Duration` / `Periodic` — captured on the `ActiveEffectInstance` and reused for the whole
+  lifetime / every periodic landing. The source's attributes changing afterward, or the source
+  despawning, never retroactively changes an already-applied modifier.
+
+**Determinism:** a `calculation` MUST be pure and FP-only (no floats, `Math.random`,
+`Date.now()`, or external state) and must not throw for valid game states — a missing/despawned
+source simply makes `ctx.abilities.tryGetAttribute(ctx.sourceEntityId, ...)` return `undefined`;
+handle that explicitly (typically falling back to `baseMagnitude`).
+
+**Design note:** there is no `AttributeReader`/wrapper-reader abstraction. Calculations receive
+`sourceEntityId` / `targetEntityId` plus the facade itself (typed as the narrow `AbilityStateReader`
+interface) — the same object and API every other game system uses, so nothing new has to be
+instantiated or learned just for magnitude calculations.
 
 ### Custom execution formulas
 
-`phalanx-abilities` doesn't support complex math inside effect definitions yet. For complex formulas (e.g. `Damage = (Base + Strength * 2) * (1 - Armor / 100)`), read the attributes from the facade and calculate manually before calling `applyEffect`.
+For formulas over attributes already known to the caller before `applyEffect` (e.g.
+`IncomingDamageMultiplier`), read-then-calculate remains valid:
 
 ```typescript
 const mult =
   abilities.tryGetAttribute(targetId, 'IncomingDamageMultiplier')?.current ?? FP.FromInt(1);
 const damage = FP.Mul(baseDamage, mult);
 ```
+
+For formulas needing the **source's** attributes at application time or a setByCaller payload,
+use `Modifier.calculation` instead (see above).
 
 ## phalanx-ecs integration
 
@@ -279,6 +342,11 @@ const damage = FP.Mul(baseDamage, mult);
 - `activateAbility` snapshots `providedTarget` — do not mutate the object after the call
 - AoE and Auras are **user-side**: implement radius searches and periodic aura ticks in your own game systems, then call `applyEffect` on targets.
 - `applyEffect` source default: `NO_SOURCE_ENTITY_ID` (`-1`) when omitted
+- `applyEffect(targetId, effectId, sourceId?, setByCaller?)` — `setByCaller` is an optional
+  `ReadonlyMap<string, unknown>` forwarded into `MagnitudeCalcContext.setByCaller` for any
+  `Modifier.calculation` the effect's modifiers declare
+- `Modifier.calculation` MUST be pure and FP-only; snapshot semantics mean it runs exactly once
+  per application, never per tick/landing (see Dynamic magnitude calculation recipe above)
 - Effect removal via `removeEffectsByTag` flags `remainingTicks = 0`; processed next `EffectTickSystem` pass
 - Two peers must register identical definitions before any entity spawns
 
@@ -347,6 +415,9 @@ import type {
   AbilityActivationContext,
   Modifier,
   ModifierOp,
+  AbilityStateReader,
+  MagnitudeCalcContext,
+  MagnitudeCalculation,
 } from '@phalanx-engine/abilities';
 
 // Systems (custom pipelines)
