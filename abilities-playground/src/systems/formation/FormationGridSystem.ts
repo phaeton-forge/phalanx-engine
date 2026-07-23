@@ -21,6 +21,7 @@ export interface FormationGridSystemCallbacks {
     toX: number,
     toZ: number
   ) => void;
+  onPlacementSelectionEnd?: () => void;
 }
 
 /**
@@ -58,6 +59,7 @@ export class FormationGridSystem {
       {
         onPlaceUnit: callbacks.onPlaceUnit,
         onMoveUnit: callbacks.onMoveUnit,
+        onPlacementSelectionEnd: callbacks.onPlacementSelectionEnd,
       }
     );
   }
@@ -71,38 +73,32 @@ export class FormationGridSystem {
   }
 
   /**
-   * Start dragging a unit type from the palette.
+   * Enter click-to-place selection for a unit type from the palette.
    */
-  startTouchDrag(playerId: string, unitType: UnitType): void {
-    this.inputHandler.startTouchDrag(playerId, unitType);
+  enterPlacementMode(playerId: string, unitType: UnitType): void {
+    this.inputHandler.enterPlacementMode(playerId, unitType);
   }
 
   /**
-   * Update a drag at screen coordinates.
+   * Exit click-to-place selection without placing.
+   * @param notify When true, fires onPlacementSelectionEnd (used for Esc).
    */
-  updateTouchDrag(clientX: number, clientY: number): void {
-    this.inputHandler.updateTouchDrag(clientX, clientY);
+  exitPlacementMode(notify = true): void {
+    this.inputHandler.exitPlacementMode(notify);
   }
 
   /**
-   * End the current drag. Placement (if valid) is emitted via the onPlaceUnit callback.
+   * Returns true if a unit type is selected for click-to-place.
    */
-  endTouchDrag(): void {
-    this.inputHandler.endTouchDrag();
+  isPlacementModeActive(): boolean {
+    return this.inputHandler.isPlacementModeActive();
   }
 
   /**
-   * Cancel the current drag without placing.
+   * Returns the currently selected unit type, if any.
    */
-  cancelTouchDrag(): void {
-    this.inputHandler.endTouchDrag();
-  }
-
-  /**
-   * Returns true if a drag is currently active.
-   */
-  isTouchDragActive(): boolean {
-    return this.inputHandler.isTouchDragActive();
+  getSelectedUnitType(): UnitType | null {
+    return this.inputHandler.getSelectedUnitType();
   }
 
   /**

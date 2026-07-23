@@ -86,20 +86,32 @@ export class Game {
             toZ,
           });
         },
+        onPlacementSelectionEnd: () => {
+          this.ui.setSelectedUnit(null);
+        },
       }
     );
 
     this.registerPlayers();
 
     this.ui = new GameUI({
-      onUnitDragStart: (type) => {
-        this.formationGridSystem.startTouchDrag(this.localPlayerId, type);
+      onUnitSelect: (type) => {
+        if (type === null) {
+          this.formationGridSystem.exitPlacementMode(false);
+          return;
+        }
+        this.formationGridSystem.enterPlacementMode(this.localPlayerId, type);
       },
       onReady: () => {
         this.client.sendCommand('formation-ready', {
           playerId: this.localPlayerId,
         });
         this.ui.showWaitingStatus();
+      },
+      onResetArena: () => {
+        this.client.sendCommand('arena-reset', {
+          playerId: this.localPlayerId,
+        });
       },
       onReturnLobby: () => {
         this.dispose();
@@ -111,7 +123,9 @@ export class Game {
 
     window.addEventListener('resize', this.onResize);
     this.networkEventUnsubscribers.push(
-      this.client.on('matchEnd', () => this.ui.showResultOverlay('Match ended'))
+      this.client.on('matchEnd', () =>
+        this.ui.showResultOverlay('Match ended', { showResetArena: false })
+      )
     );
   }
 
@@ -126,6 +140,10 @@ export class Game {
     this.ui.hideResultOverlay();
     this.simulation.world.start({
       beforeTick: (_tick: number, commandsBatch: CommandsBatch) => {
+        if (this.containsArenaResetCommand(commandsBatch)) {
+          this.resetToDeployment();
+          return;
+        }
         this.simulation.formationSystem.processCommands(commandsBatch);
       },
       afterTick: () => {
@@ -199,7 +217,8 @@ export class Game {
     const title = this.simulation.getGameOverTitle(this.localTeamId);
     if (title === null) return;
 
-    this.resetToDeployment();
+    this.gameOverShown = true;
+    this.ui.showResultOverlay(title, { showResetArena: true });
   }
 
   private resetToDeployment(): void {
@@ -209,6 +228,16 @@ export class Game {
     this.deploymentHidden = false;
     this.ui.hideResultOverlay();
     this.ui.showStartOverlay();
+  }
+
+  private containsArenaResetCommand(commandsBatch: CommandsBatch): boolean {
+    for (const playerId of Object.keys(commandsBatch.commands)) {
+      const commands = commandsBatch.commands[playerId] ?? [];
+      for (const command of commands) {
+        if (command.type === 'arena-reset') return true;
+      }
+    }
+    return false;
   }
 
   private readonly onResize = (): void => {

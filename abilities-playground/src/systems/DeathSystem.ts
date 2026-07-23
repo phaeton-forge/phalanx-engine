@@ -22,9 +22,12 @@ export class DeathSystem extends GameSystem {
 
   public override processTick(tick: number): void {
     const simState = this.getSimulationState();
-    if (!simState?.active || simState.gameOver) return;
+    if (!simState) return;
 
+    // Always flush pending despawns so corpses clear even after battle end.
     this.despawnDueEntities(tick);
+
+    if (!simState.active || simState.gameOver) return;
 
     let team0Alive = false;
     let team1Alive = false;
@@ -56,10 +59,11 @@ export class DeathSystem extends GameSystem {
     }
 
     if (!team0Alive || !team1Alive) {
+      // Freeze remaining units in place for balance review until arena reset.
+      simState.active = false;
       simState.gameOver = true;
 
       if (team0Alive) simState.winner = 0;
-
       else if (team1Alive) simState.winner = 1;
       else simState.winner = null;
     }

@@ -18,24 +18,30 @@ export interface FormationInputCallbacks {
     toX: number,
     toZ: number
   ) => void;
+  /** Fired when placement selection ends (Esc, or explicit exit). */
+  onPlacementSelectionEnd?: () => void;
 }
 
-interface DragState {
+interface PlacementSelection {
   playerId: string;
   unitType: UnitType;
-  /** Origin cell of an already-placed unit being moved. Undefined for palette placement. */
-  source?: { gridX: number; gridZ: number };
+}
+
+interface MoveDragState {
+  playerId: string;
+  unitType: UnitType;
+  source: { gridX: number; gridZ: number };
 }
 
 /**
- * FormationInputHandler - DOM pointer input for drag-to-place and drag-to-move
+ * FormationInputHandler - DOM pointer input for click-to-place and drag-to-move
  * unit deployment.
  *
- * - Drag starts from a UI unit button (via `startTouchDrag`) for new placements.
- * - Drag starts from a pointer-down on an existing preview unit (via internal
- *   canvas listener) for moving already-placed units.
- * - Pointer move raycasts against the invisible grid pick planes.
- * - Pointer up over a valid cell emits `onPlaceUnit` or `onMoveUnit`.
+ * - Click a unit palette button (via `enterPlacementMode`) to select a unit type.
+ * - Click grid cells to place that unit repeatedly; Esc exits selection mode.
+ * - Drag starts from a pointer-down on an existing preview unit for moving
+ *   already-placed units (only when placement selection is inactive).
+ * - Pointer move raycasts against the invisible grid pick planes for hover feedback.
  *
  * This class is purely local/cosmetic; it does not send commands or touch ECS state.
  */
@@ -48,7 +54,8 @@ export class FormationInputHandler {
   private readonly hoverPreview: FormationHoverPreview;
   private readonly callbacks: FormationInputCallbacks;
 
-  private dragState: DragState | null = null;
+  private placementSelection: PlacementSelection | null = null;
+  private moveDrag: MoveDragState | null = null;
 
   constructor(
     canvas: HTMLCanvasElement,
@@ -70,54 +77,68 @@ export class FormationInputHandler {
   }
 
   /**
-   * Start a drag from a unit palette button.
+   * Enter click-to-place selection for a unit type from the palette.
    */
-  startTouchDrag(playerId: string, unitType: UnitType): void {
-    this.endTouchDrag();
-
-    this.dragState = { playerId, unitType };
-    window.addEventListener('pointermove', this.onPointerMove);
-    window.addEventListener('pointerup', this.onPointerUp);
-    window.addEventListener('pointercancel', this.onPointerUp);
-  }
-
-  /**
-   * Update the drag position from screen coordinates.
-   */
-  updateTouchDrag(clientX: number, clientY: number): void {
-    if (!this.dragState) return;
-    this.updateHover(clientX, clientY);
-  }
-
-  /**
-   * End the current drag and attempt placement/movement.
-   */
-  endTouchDrag(): void {
-    window.removeEventListener('pointermove', this.onPointerMove);
-    window.removeEventListener('pointerup', this.onPointerUp);
-    window.removeEventListener('pointercancel', this.onPointerUp);
-
+  enterPlacementMode(playerId: string, unitType: UnitType): void {
+    this.endMoveDrag();
     this.hoverPreview.hide();
-    this.dragState = null;
+    this.placementSelection = { playerId, unitType };
+    window.addEventListener('pointermove', this.onPlacementPointerMove);
+    window.addEventListener('keydown', this.onKeyDown);
   }
 
   /**
-   * Returns true if a drag is currently active.
+   * Exit click-to-place selection without placing.
    */
-  isTouchDragActive(): boolean {
-    return this.dragState !== null;
+  exitPlacementMode(notify = true): void {
+    if (!this.placementSelection) return;
+
+    window.removeEventListener('pointermove', this.onPlacementPointerMove);
+    window.removeEventListener('keydown', this.onKeyDown);
+    this.hoverPreview.hide();
+    this.placementSelection = null;
+
+    if (notify) {
+      this.callbacks.onPlacementSelectionEnd?.();
+    }
+  }
+
+  /**
+   * Returns true if a unit type is selected for click-to-place.
+   */
+  isPlacementModeActive(): boolean {
+    return this.placementSelection !== null;
+  }
+
+  /**
+   * Returns the currently selected unit type, if any.
+   */
+  getSelectedUnitType(): UnitType | null {
+    return this.placementSelection?.unitType ?? null;
   }
 
   /**
    * Clean up any active listeners.
    */
   dispose(): void {
-    this.endTouchDrag();
+    this.exitPlacementMode(false);
+    this.endMoveDrag();
     this.canvas.removeEventListener('pointerdown', this.onPointerDown);
   }
 
+  private readonly onKeyDown = (event: KeyboardEvent): void => {
+    if (event.key !== 'Escape') return;
+    event.preventDefault();
+    this.exitPlacementMode();
+  };
+
   private readonly onPointerDown = (event: PointerEvent): void => {
-    if (this.dragState) return;
+    if (this.moveDrag) return;
+
+    if (this.placementSelection) {
+      this.tryPlaceAt(event.clientX, event.clientY);
+      return;
+    }
 
     const hit = this.raycastUnitPreview(event.clientX, event.clientY);
     if (!hit) return;
@@ -144,73 +165,108 @@ export class FormationInputHandler {
     this.startMoveDrag(playerId, cell.unitType, origin.x, origin.z);
   };
 
+  private tryPlaceAt(clientX: number, clientY: number): void {
+    if (!this.placementSelection) return;
+
+    const { playerId, unitType } = this.placementSelection;
+    const placement = this.resolveGridPlacement(clientX, clientY);
+    if (!placement || placement.playerId !== playerId) return;
+
+    const { gridX, gridZ } = placement;
+    if (this.gridData.canPlaceUnit(playerId, gridX, gridZ, unitType)) {
+      this.callbacks.onPlaceUnit?.(playerId, unitType, gridX, gridZ);
+      this.updateHover(clientX, clientY, playerId, unitType);
+    }
+  }
+
   private startMoveDrag(
     playerId: string,
     unitType: UnitType,
     fromGridX: number,
     fromGridZ: number
   ): void {
-    this.endTouchDrag();
+    this.endMoveDrag();
 
-    this.dragState = {
+    this.moveDrag = {
       playerId,
       unitType,
       source: { gridX: fromGridX, gridZ: fromGridZ },
     };
-    window.addEventListener('pointermove', this.onPointerMove);
-    window.addEventListener('pointerup', this.onPointerUp);
-    window.addEventListener('pointercancel', this.onPointerUp);
+    window.addEventListener('pointermove', this.onMovePointerMove);
+    window.addEventListener('pointerup', this.onMovePointerUp);
+    window.addEventListener('pointercancel', this.onMovePointerUp);
   }
 
-  private readonly onPointerMove = (event: PointerEvent): void => {
-    if (!this.dragState) return;
-    this.updateHover(event.clientX, event.clientY);
+  private endMoveDrag(): void {
+    window.removeEventListener('pointermove', this.onMovePointerMove);
+    window.removeEventListener('pointerup', this.onMovePointerUp);
+    window.removeEventListener('pointercancel', this.onMovePointerUp);
+
+    this.hoverPreview.hide();
+    this.moveDrag = null;
+  }
+
+  private readonly onPlacementPointerMove = (event: PointerEvent): void => {
+    if (!this.placementSelection) return;
+    this.updateHover(
+      event.clientX,
+      event.clientY,
+      this.placementSelection.playerId,
+      this.placementSelection.unitType
+    );
   };
 
-  private readonly onPointerUp = (event: PointerEvent): void => {
-    if (!this.dragState) return;
+  private readonly onMovePointerMove = (event: PointerEvent): void => {
+    if (!this.moveDrag) return;
+    this.updateHover(
+      event.clientX,
+      event.clientY,
+      this.moveDrag.playerId,
+      this.moveDrag.unitType,
+      this.moveDrag.source
+    );
+  };
 
-    const { playerId, unitType, source } = this.dragState;
+  private readonly onMovePointerUp = (event: PointerEvent): void => {
+    if (!this.moveDrag) return;
+
+    const { playerId, unitType, source } = this.moveDrag;
     const placement = this.resolveGridPlacement(event.clientX, event.clientY);
 
-    this.endTouchDrag();
+    this.endMoveDrag();
 
     if (!placement || placement.playerId !== playerId) return;
 
     const { gridX, gridZ } = placement;
-
-    if (source) {
-      const isSameCell = source.gridX === gridX && source.gridZ === gridZ;
-      if (
-        !isSameCell &&
-        this.gridData.canMoveUnit(
-          playerId,
-          source.gridX,
-          source.gridZ,
-          gridX,
-          gridZ,
-          unitType
-        )
-      ) {
-        this.callbacks.onMoveUnit?.(
-          playerId,
-          source.gridX,
-          source.gridZ,
-          gridX,
-          gridZ
-        );
-      }
-    } else {
-      if (this.gridData.canPlaceUnit(playerId, gridX, gridZ, unitType)) {
-        this.callbacks.onPlaceUnit?.(playerId, unitType, gridX, gridZ);
-      }
+    const isSameCell = source.gridX === gridX && source.gridZ === gridZ;
+    if (
+      !isSameCell &&
+      this.gridData.canMoveUnit(
+        playerId,
+        source.gridX,
+        source.gridZ,
+        gridX,
+        gridZ,
+        unitType
+      )
+    ) {
+      this.callbacks.onMoveUnit?.(
+        playerId,
+        source.gridX,
+        source.gridZ,
+        gridX,
+        gridZ
+      );
     }
   };
 
-  private updateHover(clientX: number, clientY: number): void {
-    if (!this.dragState) return;
-
-    const { playerId, unitType, source } = this.dragState;
+  private updateHover(
+    clientX: number,
+    clientY: number,
+    playerId: string,
+    unitType: UnitType,
+    source?: { gridX: number; gridZ: number }
+  ): void {
     const resolved = this.resolveGridPlacement(clientX, clientY);
 
     if (!resolved || resolved.playerId !== playerId) {

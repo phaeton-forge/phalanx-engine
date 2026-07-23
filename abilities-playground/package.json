@@ -6,9 +6,13 @@
   "scripts": {
     "dev": "vite --host --mode development",
     "build": "tsc && vite build",
+    "build:yandex": "tsc && vite build --mode production",
     "test": "vitest run",
     "server": "tsx server/index.ts",
-    "dev:all": "concurrently \"npm run server\" \"npm run dev\""
+    "dev:all": "concurrently \"npm run server\" \"npm run dev\"",
+    "deploy": "node yc_bucket_deploy.mjs",
+    "release": "node release.mjs",
+    "release:zip": "node release.mjs --targets zip"
   },
   "dependencies": {
     "@phalanx-engine/abilities": "workspace:*",
@@ -20,11 +24,15 @@
     "three": "^0.175.0"
   },
   "devDependencies": {
+    "@aws-sdk/client-s3": "^3.705.0",
+    "@aws-sdk/lib-storage": "^3.705.0",
     "@types/node": "^20.0.0",
     "@types/three": "^0.175.0",
+    "archiver": "^7.0.1",
     "concurrently": "^9.1.2",
     "@phalanx-engine/ecs": "workspace:*",
     "@phalanx-engine/math": "workspace:*",
+    "dotenv": "^16.4.7",
     "tsx": "^4.0.0",
     "typescript": "~5.9.3",
     "vite": "8.0.5",

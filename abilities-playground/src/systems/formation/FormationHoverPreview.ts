@@ -8,11 +8,11 @@ const INVALID_COLOR = 0xff4444;
 const GHOST_OPACITY = 0.25;
 
 /**
- * FormationHoverPreview - Three.js hover feedback for drag-to-place.
+ * FormationHoverPreview - Three.js hover feedback for placement/move.
  *
  * Shows:
  * - A green/red translucent highlight box over the target footprint
- * - A fainter ghost of the unit being dragged
+ * - A fainter ghost of the unit being placed or moved
  */
 export class FormationHoverPreview {
   private readonly scene: THREE.Scene;

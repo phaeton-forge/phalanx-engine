@@ -2,6 +2,12 @@ import { Phalanx } from '@phalanx-engine/server';
 
 const PORT = parseInt(process.env.PORT ?? '3001', 10);
 
+const DEFAULT_CORS_ORIGINS = [
+  'https://abilities.phalanx-games.net',
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+] as const;
+
 async function main(): Promise<void> {
   console.log(`[abilities-playground] Starting Phalanx server on port ${PORT}...`);
 
@@ -12,12 +18,7 @@ async function main(): Promise<void> {
     countdownSeconds: 3,
     matchmakingIntervalMs: 1000,
     cors: {
-      origin: [
-        'http://localhost:5173',
-        'http://127.0.0.1:5173',
-        'http://localhost:4173',
-        'http://127.0.0.1:4173',
-      ],
+      origin: [...DEFAULT_CORS_ORIGINS],
       credentials: true,
     },
   });

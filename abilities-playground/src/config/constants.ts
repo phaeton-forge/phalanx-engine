@@ -1,6 +1,10 @@
 /** Server URL — override with VITE_SERVER_URL for deployed clients. */
+const PRODUCTION_SERVER_URL = 'https://abilities-playground-backend.onrender.com';
+const DEVELOPMENT_SERVER_URL = 'http://localhost:3001';
+
 export const SERVER_URL =
-  import.meta.env.VITE_SERVER_URL || 'http://localhost:3001';
+  import.meta.env.VITE_SERVER_URL ||
+  (import.meta.env.PROD ? PRODUCTION_SERVER_URL : DEVELOPMENT_SERVER_URL);
 
 /** Must match the Phalanx server tickRate. */
 export const networkConfig = {

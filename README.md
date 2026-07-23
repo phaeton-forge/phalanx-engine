@@ -72,17 +72,34 @@ It is a good fit for RTS, MOBA, tactical, and turn-based games where simulation 
 
 ## Quick Start
 
-> 🚧 **Coming soon** — a step-by-step quick start guide is in progress.
+The fastest way to see Phalanx in action is the [`abilities-playground`](./abilities-playground) — a local multiplayer sandbox that exercises lockstep netcode, ECS, physics, and the gameplay ability system together.
 
-In the meantime, see the per-package documentation linked below and the [`abilities-playground`](./abilities-playground) example.
+```bash
+git clone https://github.com/phaeton-forge/phalanx-engine.git
+cd phalanx-engine
+pnpm install
+pnpm build
+pnpm --filter abilities-playground dev:all
+```
+
+Then open **http://localhost:5173** in two browser windows (or tabs). Each client connects to the playground server on port `3001`, matchmakes into a 1v1, and runs the same deterministic simulation.
+
+To run the client or server separately:
+
+```bash
+pnpm --filter abilities-playground server   # Phalanx server on :3001
+pnpm --filter abilities-playground dev      # Vite client on :5173
+```
+
+For npm package setup and per-library docs, see [Installation](#installation) and [Packages](#packages).
 
 ## Examples
 
 > 🚧 More examples are coming soon.
 
-| Example                                          | Status    | Description                          |
-| ------------------------------------------------ | --------- | ------------------------------------ |
-| [`abilities-playground`](./abilities-playground) | Available | Local sandbox for the ability system |
+| Example                                          | Status    | Description                                                                 |
+| ------------------------------------------------ | --------- | --------------------------------------------------------------------------- |
+| [`abilities-playground`](./abilities-playground) | Available | Local multiplayer sandbox — see [Quick Start](#quick-start) for run steps |
 
 ## Packages
 
