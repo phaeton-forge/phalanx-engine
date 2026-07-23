@@ -6,8 +6,7 @@ export interface PendingEffectAdd {
   defId: string;
   sourceEntityId: number;
   /** SetByCaller payload from `applyEffect`; `undefined`/`null` when the caller omitted it. */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- game-defined payload values, by design.
-  setByCaller?: ReadonlyMap<string, any> | null;
+  setByCaller?: ReadonlyMap<string, unknown> | null;
 }
 
 export class ActiveEffectsComponent implements IComponent {

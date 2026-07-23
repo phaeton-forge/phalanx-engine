@@ -251,7 +251,7 @@ abilities.applyEffect(enemyId, 'Effect.AutoAttack.Damage', casterId);
 | `sourceEntityId` | The effect's source entity id, or `NO_SOURCE_ENTITY_ID` (`-1`) when there is none. A despawned source is indistinguishable from a valid id here — don't branch on the id, just read through `abilities` |
 | `targetEntityId` | The entity the effect is being applied to |
 | `abilities` | The same `AbilitySystemFacade` every game system already holds, narrowed to its two read-only methods (`tryGetAttribute`, `hasTag`) — no wrapper object is created for calculations |
-| `setByCaller` | `ReadonlyMap<string, any> \| null` — optional per-application payload (SetByCaller analog), passed as the 4th argument to `applyEffect` |
+| `setByCaller` | `ReadonlyMap<string, unknown> \| null` — optional per-application payload (SetByCaller analog), passed as the 4th argument to `applyEffect` |
 | `effectId` / `attributeId` | The effect and attribute the modifier belongs to |
 
 A calculation reads source/target attributes exactly the way any other game system does:
@@ -582,7 +582,7 @@ createAbilitySystem(world: GameWorld, config: CreateAbilitySystemConfig): Abilit
 |--------|-------------|
 | `initComponent(init?)` | Create `AbilitySystemComponent` with optional seed data |
 | `activateAbility(casterId, abilityId, providedTarget?)` | Queue activation |
-| `applyEffect(targetId, effectId, sourceId?, setByCaller?)` | Queue effect (`sourceId` defaults to `-1`; `setByCaller` is an optional `ReadonlyMap<string, any>` forwarded to `Modifier.calculation`) |
+| `applyEffect(targetId, effectId, sourceId?, setByCaller?)` | Queue effect (`sourceId` defaults to `-1`; `setByCaller` is an optional `ReadonlyMap<string, unknown>` forwarded to `Modifier.calculation`) |
 | `getAttribute` / `tryGetAttribute` | Read base/current |
 | `hasTag` / `addTag` / `removeTag` | Tag queries and ad-hoc tags |
 | `removeEffectsByTag` / `removeEffectsByDefId` | Flag instances for removal next tick |

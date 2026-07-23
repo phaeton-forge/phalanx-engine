@@ -343,7 +343,7 @@ use `Modifier.calculation` instead (see above).
 - AoE and Auras are **user-side**: implement radius searches and periodic aura ticks in your own game systems, then call `applyEffect` on targets.
 - `applyEffect` source default: `NO_SOURCE_ENTITY_ID` (`-1`) when omitted
 - `applyEffect(targetId, effectId, sourceId?, setByCaller?)` — `setByCaller` is an optional
-  `ReadonlyMap<string, any>` forwarded into `MagnitudeCalcContext.setByCaller` for any
+  `ReadonlyMap<string, unknown>` forwarded into `MagnitudeCalcContext.setByCaller` for any
   `Modifier.calculation` the effect's modifiers declare
 - `Modifier.calculation` MUST be pure and FP-only; snapshot semantics mean it runs exactly once
   per application, never per tick/landing (see Dynamic magnitude calculation recipe above)

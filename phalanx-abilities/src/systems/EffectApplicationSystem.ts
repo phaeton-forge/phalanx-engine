@@ -128,19 +128,22 @@ export class EffectApplicationSystem extends GameSystem {
     // counts (1-3) and amortized by attributeIndexCache.
     this.validateEffectOrThrow(effectDef, attributeIndexCache);
 
-    // From here on out the effect cannot reject itself, so it is safe to
-    // grant tags and queue the instance atomically.
-    this.grantTags(effectDef, tags);
-
     // Snapshot semantics — the single semantic rule for dynamic magnitudes:
     // every modifier's effective magnitude is computed exactly once, here,
-    // before any mutation. `effective` is `null` when no modifier declares a
-    // `calculation` (the zero-overhead, pre-existing path).
+    // before any mutation (including tag grants). `effective` is `null` when
+    // no modifier declares a `calculation` (the zero-overhead, pre-existing
+    // path). Evaluated before `grantTags` so a throwing calculation cannot
+    // leave the entity with tags granted for an effect that never finished
+    // applying/queuing.
     const effective = this.computeEffectiveMagnitudes(
       entity,
       effectDef,
       pending
     );
+
+    // From here on out the effect cannot reject itself, so it is safe to
+    // grant tags and queue the instance atomically.
+    this.grantTags(effectDef, tags);
 
     switch (effectDef.type) {
       case 'Instant':

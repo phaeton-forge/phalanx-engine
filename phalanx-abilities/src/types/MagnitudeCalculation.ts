@@ -39,11 +39,11 @@ export interface MagnitudeCalcContext {
   abilities: AbilityStateReader;
   /**
    * Per-application payload from `applyEffect` (SetByCaller analog); null if none.
-   * Values are game-defined (`any`) for developer convenience; anything fed into FP math
-   * must already be FP/int — determinism is the calculation author's responsibility.
+   * Values are `unknown` — game-defined payloads, so calculations must explicitly
+   * narrow/cast before use; anything fed into FP math must already be FP/int —
+   * determinism is the calculation author's responsibility.
    */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- game-defined payload values, by design.
-  setByCaller: ReadonlyMap<string, any> | null;
+  setByCaller: ReadonlyMap<string, unknown> | null;
   effectId: string;
   attributeId: string;
 }

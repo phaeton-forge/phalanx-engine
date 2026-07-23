@@ -10,13 +10,13 @@ import {
 } from './helpers';
 
 // ---------------------------------------------------------------------------
-// Task 0 вЂ” Dynamic magnitude calculation (Modifier.calculation + setByCaller).
+// Task 0 - Dynamic magnitude calculation (Modifier.calculation + setByCaller).
 //
 // Covers:
 //  1. Instant/Duration/Periodic each evaluating a calculation that reads the
 //     source attribute, the target attribute, and setByCaller.
 //  2. Snapshot semantics: a Duration/Periodic modifier's effective magnitude
-//     is fixed at application time вЂ” changing the source attribute (or the
+//     is fixed at application time - changing the source attribute (or the
 //     source despawning) afterward does not change the already-applied
 //     modifier.
 //  3. Null-source fallback (no source / despawned source).
@@ -74,7 +74,14 @@ describe('dynamic magnitude calculation', () => {
   it('Instant: setByCaller payload is threaded into the calculation context', () => {
     const jumpFalloff: MagnitudeCalculation = (ctx) => {
       const jumpIndex = (ctx.setByCaller?.get('jumpIndex') as number | undefined) ?? 0;
-      const falloff = FP.FromFloat(Math.pow(0.75, jumpIndex));
+      // FP-only exponentiation by repeated multiplication (no Math.pow/floats):
+      // 0.75^jumpIndex via an integer loop, using FP.FromString (not FromFloat)
+      // so the literal never round-trips through a JS float.
+      const perJumpFalloff = FP.FromString('0.75');
+      let falloff = FP.FromInt(1);
+      for (let i = 0; i < jumpIndex; i++) {
+        falloff = FP.Mul(falloff, perJumpFalloff);
+      }
       return FP.Mul(ctx.baseMagnitude, falloff);
     };
     const { world, abilities } = createTestWorld({
@@ -176,7 +183,7 @@ describe('dynamic magnitude calculation', () => {
     world.dispose();
   });
 
-  it('Duration: snapshot semantics вЂ” source attribute change after application does not change the modifier', () => {
+  it('Duration: snapshot semantics - source attribute change after application does not change the modifier', () => {
     const { world, abilities } = createTestWorld({
       pipeline: 'effects',
       attributes: [HealthAttribute, ArmorAttribute, levelAttribute()],
@@ -213,7 +220,7 @@ describe('dynamic magnitude calculation', () => {
     expect(FP.ToFloat(abilities.getAttribute(target.id, 'Armor').current)).toBe(40);
 
     // Bump the source's level well after application. The already-applied
-    // Duration modifier must NOT recompute вЂ” snapshot semantics.
+    // Duration modifier must NOT recompute - snapshot semantics.
     abilities.applyEffect(source.id, 'Effect.LevelUp', source.id);
     world.processAllTicks(3);
     expect(FP.ToFloat(abilities.getAttribute(source.id, 'AbilityLevel').current)).toBe(5);

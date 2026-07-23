@@ -86,8 +86,7 @@ export interface AbilitySystem extends IAbilitySystem {
     targetEntityId: number,
     effectId: string,
     sourceEntityId?: number,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- game-defined payload values, by design.
-    setByCaller?: ReadonlyMap<string, any>
+    setByCaller?: ReadonlyMap<string, unknown>
   ): void;
   removeEffectsByTag(entityId: number, grantedTag: string): number;
   removeEffectsByDefId(entityId: number, effectId: string): number;
@@ -196,8 +195,7 @@ class AbilitySystemImpl implements AbilitySystem {
     targetEntityId: number,
     effectId: string,
     sourceEntityId: number = NO_SOURCE_ENTITY_ID,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- game-defined payload values, by design.
-    setByCaller?: ReadonlyMap<string, any>
+    setByCaller?: ReadonlyMap<string, unknown>
   ): void {
     this.facade.applyEffect(targetEntityId, effectId, sourceEntityId, setByCaller);
   }
