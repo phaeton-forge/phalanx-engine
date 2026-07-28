@@ -25,17 +25,17 @@ every machine, every CPU, every browser, forever.**
 
 ### 0.1 Banned in simulation code (tick path)
 
-| Banned                                                | Use instead                                              |
-| ----------------------------------------------------- | -------------------------------------------------------- |
-| `Math.random()`                                       | Seeded deterministic RNG from `gameStart.randomSeed`      |
-| `Date.now()`, `performance.now()`, `new Date()`       | The `tick` number passed to `processTick(tick)`           |
-| `Math.sin/cos/sqrt/abs/floor/...` on sim values       | `FP.Sin`, `FP.Cos`, `FP.Sqrt`, `FP.Abs`, `FP.Floor`, ...  |
-| `number` arithmetic (`+ - * /`) on sim values          | `FP.Add`, `FP.Sub`, `FP.Mul`, `FP.Div`                    |
-| `float`/`number` for positions, velocities, masses     | `FixedPoint` (`FP`, `FPVector2/3`, `FPQuaternion`)        |
-| Unordered `Map`/`Set`/`Object.keys` iteration          | Sorted iteration (`store.entityIds()`, `keys().sort()`)   |
-| `store.forEachDense()` in a tick system                | `store.entityIds()` + `store.indexOf()`                   |
-| `requestAnimationFrame` / timers driving sim state      | Server-driven ticks via `ITickFrameProvider`              |
-| DOM / renderer / asset access                          | Frame systems only                                        |
+| Banned                                             | Use instead                                              |
+| -------------------------------------------------- | -------------------------------------------------------- |
+| `Math.random()`                                    | Seeded deterministic RNG from `gameStart.randomSeed`     |
+| `Date.now()`, `performance.now()`, `new Date()`    | The `tick` number passed to `processTick(tick)`          |
+| `Math.sin/cos/sqrt/abs/floor/...` on sim values    | `FP.Sin`, `FP.Cos`, `FP.Sqrt`, `FP.Abs`, `FP.Floor`, ... |
+| `number` arithmetic (`+ - * /`) on sim values      | `FP.Add`, `FP.Sub`, `FP.Mul`, `FP.Div`                   |
+| `float`/`number` for positions, velocities, masses | `FixedPoint` (`FP`, `FPVector2/3`, `FPQuaternion`)       |
+| Unordered `Map`/`Set`/`Object.keys` iteration      | Sorted iteration (`store.entityIds()`, `keys().sort()`)  |
+| `store.forEachDense()` in a tick system            | `store.entityIds()` + `store.indexOf()`                  |
+| `requestAnimationFrame` / timers driving sim state | Server-driven ticks via `ITickFrameProvider`             |
+| DOM / renderer / asset access                      | Frame systems only                                       |
 
 ### 0.2 The tick/frame split (non-negotiable)
 
@@ -154,7 +154,7 @@ during iteration, then run the full suite once before finishing.
 - `getInterpolatedTransform()` is only meaningful in frame systems, after
   `InterpolationSystem.beforeFrame(alpha)` has run.
 - Missing SoA rows (`indexOf(entityId) === -1`) are always handled by an early
-  return, never by throwing. Invalid *configuration*, by contrast, MUST throw
+  return, never by throwing. Invalid _configuration_, by contrast, MUST throw
   from the constructor with a descriptive message.
 
 ---
@@ -309,7 +309,7 @@ Pooling is **engine-driven**. Game code calls exactly two APIs:
 
 ## 6. Networking (`@phalanx-engine/client` / `@phalanx-engine/server`)
 
-- The protocol is **command-based**. Clients send *intent*
+- The protocol is **command-based**. Clients send _intent_
   (`client.sendCommand(type, data)`), never state. Positions, health and
   velocities MUST NOT be transmitted.
 - The **server owns the tick clock**. Clients MUST NOT advance the simulation on
@@ -346,8 +346,13 @@ Pooling is **engine-driven**. Game code calls exactly two APIs:
   `src/**/*.test.ts`). One file per system/feature, named `<Subject>.test.ts`.
 - Mandatory isolation:
   ```ts
-  beforeEach(() => { resetEntityIdCounter(); SoAComponent.useEntityManager(em); });
-  afterEach(() => { SoAComponent.resetContext(); });
+  beforeEach(() => {
+    resetEntityIdCounter();
+    SoAComponent.useEntityManager(em);
+  });
+  afterEach(() => {
+    SoAComponent.resetContext();
+  });
   ```
   Omitting `SoAComponent.resetContext()` leaks global state between tests.
 - Unit tests drive the pipeline explicitly with `world.processAllTicks(n)` /
