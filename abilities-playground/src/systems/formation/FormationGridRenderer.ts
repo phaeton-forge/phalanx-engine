@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { arenaParams } from '../../config/constants';
 import type { UnitFactory } from '../../units/UnitFactory';
 import type { UnitType } from '../../units/UnitType';
+import { disposeUnitVisual } from '../../units/unitVisuals';
 import type { FormationGrid } from './FormationTypes';
 
 /**
@@ -258,14 +259,6 @@ export class FormationGridRenderer {
   }
 
   private disposeObject3D(root: THREE.Object3D): void {
-    root.traverse((child) => {
-      if (child instanceof THREE.Mesh) {
-        child.geometry?.dispose();
-        const materials = Array.isArray(child.material)
-          ? child.material
-          : [child.material];
-        materials.forEach((material) => material?.dispose());
-      }
-    });
+    disposeUnitVisual(root);
   }
 }

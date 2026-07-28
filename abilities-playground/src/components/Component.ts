@@ -28,6 +28,7 @@ export const ComponentType = createComponentTypeRegistry({
   AutoAttackTimer: 'AutoAttackTimer',
   Missile: 'Missile',
   SupportUnitTargeting: 'SupportUnitTargeting',
+  Turret: 'Turret',
   ArtilleryShell: 'ArtilleryShell',
   ShrapnelPayload: 'ShrapnelPayload',
 });

@@ -3,36 +3,62 @@ import type { SoAComponentStore, SystemContext } from '@phalanx-engine/ecs';
 import { FP, FPQuaternion } from '@phalanx-engine/math';
 import type { FixedPoint } from '@phalanx-engine/math';
 import { TransformSoASchema } from '@phalanx-engine/physics';
-import { UNIT_TURN_SPEED_RADIANS_PER_TICK } from '../config/constants';
+import {
+  TURRET_TURN_SPEED_RADIANS_PER_TICK,
+  UNIT_TURN_SPEED_RADIANS_PER_TICK,
+} from '../config/constants';
 import {
   ComponentType,
   StatsComponent,
   TargetStateComponent,
   TeamComponent,
+  TurretComponent,
 } from '../components';
 
 const MAX_TURN_PER_TICK = FP.FromFloat(UNIT_TURN_SPEED_RADIANS_PER_TICK);
+const MAX_TURRET_TURN_PER_TICK = FP.FromFloat(
+  TURRET_TURN_SPEED_RADIANS_PER_TICK,
+);
+const TWO = FP.FromInt(2);
+const TEAM0_DEFAULT_YAW = FP._0;
+const TEAM1_DEFAULT_YAW = FP.Pi;
+
+/** Wrap an angle (radians) into [-π, π] using fixed-point only. */
+function normalizeAngle(radians: FixedPoint): FixedPoint {
+  let angle = radians;
+  while (FP.Gt(angle, FP.Pi)) {
+    angle = FP.Sub(angle, FP.Pi2);
+  }
+  while (FP.Lt(angle, FP.Neg(FP.Pi))) {
+    angle = FP.Add(angle, FP.Pi2);
+  }
+  return angle;
+}
 
 /** Shortest-path rotation toward a target angle, clamped by max delta (radians). */
 function rotateTowardY(
   current: FixedPoint,
-  targetRadians: number,
+  target: FixedPoint,
   maxDelta: FixedPoint,
 ): FixedPoint {
-  const currentRad = FP.ToFloat(current);
-  let delta = targetRadians - currentRad;
-  if (delta > Math.PI) delta -= 2 * Math.PI;
-  if (delta < -Math.PI) delta += 2 * Math.PI;
+  const normalizedTarget = normalizeAngle(target);
+  const delta = normalizeAngle(FP.Sub(normalizedTarget, current));
 
-  const maxDeltaRad = FP.ToFloat(maxDelta);
-  if (Math.abs(delta) <= maxDeltaRad) {
-    return FP.FromFloat(targetRadians);
+  if (FP.Lte(FP.Abs(delta), maxDelta)) {
+    return normalizedTarget;
   }
-  return FP.FromFloat(currentRad + Math.sign(delta) * maxDeltaRad);
+
+  const step = FP.Lt(delta, FP._0) ? FP.Neg(maxDelta) : maxDelta;
+  return normalizeAngle(FP.Add(current, step));
 }
 
 export class RotationSystem extends GameSystem {
   private transformStore!: SoAComponentStore<typeof TransformSoASchema.definition>;
+
+  /** Scratch: set by {@link updateFacing}; valid only when {@link hasFacing} is true. */
+  private hasFacing = false;
+  private facingAngle: FixedPoint = FP._0;
+  private facingInAttackRange = false;
 
   public override init(context: SystemContext): void {
     super.init(context);
@@ -45,9 +71,8 @@ export class RotationSystem extends GameSystem {
     const y = FP.FromRaw(ax.fpRotationY[unitIndex]);
     const z = FP.FromRaw(ax.fpRotationZ[unitIndex]);
     const w = FP.FromRaw(ax.fpRotationW[unitIndex]);
-    const two = FP.FromInt(2);
-    const sinY = FP.Mul(two, FP.Add(FP.Mul(w, y), FP.Mul(x, z)));
-    const cosY = FP.Sub(FP._1, FP.Mul(two, FP.Add(FP.Mul(y, y), FP.Mul(z, z))));
+    const sinY = FP.Mul(TWO, FP.Add(FP.Mul(w, y), FP.Mul(x, z)));
+    const cosY = FP.Sub(FP._1, FP.Mul(TWO, FP.Add(FP.Mul(y, y), FP.Mul(z, z))));
     return FP.Atan2(sinY, cosY);
   }
 
@@ -78,40 +103,76 @@ export class RotationSystem extends GameSystem {
       if (unitIndex === -1) continue;
 
       const currentY = this.readRotationY(unitIndex);
-      const desiredY = this.computeFacingAngle(targetState, team, unitIndex);
+      this.updateFacing(targetState, stats, unitIndex);
+      const turret = unit.getComponent<TurretComponent>(ComponentType.Turret);
+
+      // Turreted units split the job: the hull turns only while it still has to
+      // drive toward the target, the turret does all the aiming once in range.
+      if (turret && this.hasFacing && this.facingInAttackRange) {
+        const relativeYaw = normalizeAngle(FP.Sub(this.facingAngle, currentY));
+        turret.yaw = rotateTowardY(
+          turret.yaw,
+          relativeYaw,
+          MAX_TURRET_TURN_PER_TICK,
+        );
+        continue;
+      }
+
+      const desiredY = this.hasFacing
+        ? this.facingAngle
+        : team.teamId === 0
+          ? TEAM0_DEFAULT_YAW
+          : TEAM1_DEFAULT_YAW;
       this.writeRotationY(
         unitIndex,
         rotateTowardY(currentY, desiredY, MAX_TURN_PER_TICK),
       );
+
+      // Out of range (or no target): recenter the turret so the barrel lines up
+      // with the hull again while the tank advances.
+      if (turret) {
+        turret.yaw = rotateTowardY(turret.yaw, FP._0, MAX_TURRET_TURN_PER_TICK);
+      }
     }
   }
 
-  private computeFacingAngle(
+  /**
+   * Writes world-space yaw toward the current target and whether it is inside
+   * `stopRange` into instance scratch fields. Sets {@link hasFacing} false when
+   * there is no usable target (avoids allocating a result object each tick).
+   */
+  private updateFacing(
     targetState: TargetStateComponent,
-    team: TeamComponent,
+    stats: StatsComponent,
     ownIndex: number,
-  ): number {
+  ): void {
+    this.hasFacing = false;
+
+    if (targetState.targetEntityId === null) return;
+
+    const targetIndex = this.transformStore.indexOf(targetState.targetEntityId);
+    if (targetIndex === -1) return;
+
     const ownX = FP.FromRaw(this.transformStore.arrays.fpPositionX[ownIndex]);
     const ownZ = FP.FromRaw(this.transformStore.arrays.fpPositionZ[ownIndex]);
+    const dx = FP.Sub(
+      FP.FromRaw(this.transformStore.arrays.fpPositionX[targetIndex]),
+      ownX,
+    );
+    const dz = FP.Sub(
+      FP.FromRaw(this.transformStore.arrays.fpPositionZ[targetIndex]),
+      ownZ,
+    );
 
-    if (targetState.targetEntityId !== null) {
-      const targetIndex = this.transformStore.indexOf(targetState.targetEntityId);
-      if (targetIndex !== -1) {
-        const dx = FP.Sub(
-          FP.FromRaw(this.transformStore.arrays.fpPositionX[targetIndex]),
-          ownX,
-        );
-        const dz = FP.Sub(
-          FP.FromRaw(this.transformStore.arrays.fpPositionZ[targetIndex]),
-          ownZ,
-        );
-        const distanceSq = FP.Add(FP.Mul(dx, dx), FP.Mul(dz, dz));
-        if (!FP.Eq(distanceSq, FP._0)) {
-          return Math.atan2(FP.ToFloat(dx), FP.ToFloat(dz));
-        }
-      }
-    }
+    const distanceSq = FP.Add(FP.Mul(dx, dx), FP.Mul(dz, dz));
+    if (FP.Eq(distanceSq, FP._0)) return;
 
-    return team.teamId === 0 ? 0 : Math.PI;
+    // Same predicate MovementSystem uses to stop advancing, so "hull turns"
+    // and "hull drives" switch off on exactly the same tick.
+    // Yaw convention matches prior Math.atan2(dx, dz): FP.Atan2(y=dx, x=dz).
+    const stopRangeSq = FP.Mul(stats.stopRange, stats.stopRange);
+    this.facingAngle = FP.Atan2(dx, dz);
+    this.facingInAttackRange = FP.Lte(distanceSq, stopRangeSq);
+    this.hasFacing = true;
   }
 }

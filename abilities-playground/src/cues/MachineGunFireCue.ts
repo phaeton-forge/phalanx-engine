@@ -8,6 +8,7 @@ import type {
 } from '@phalanx-engine/abilities';
 import {
   ComponentType,
+  MeshComponent,
   StatsComponent,
   TransformComponent,
 } from '../components';
@@ -15,11 +16,10 @@ import { clamp01 } from './vfxHelpers';
 
 const LIFETIME_SECONDS = 0.35;
 /**
- * Must match `UnitType.PlasmaTank` visual.size and `createPlasmaTankBody` barrel tip:
- * housing half-depth size*0.225, barrel length size*0.9, embed 15%
- * → tip at (0, size*0.55, size*0.99).
+ * Fallback local tip used only if the glTF `MuzzleFlashPoint` empty is missing
+ * from the model; approximates the barrel tip at (0, size*0.55, size*0.99).
  */
-const PLASMA_TANK_VISUAL_SIZE = 2.2;
+const PLASMA_TANK_VISUAL_SIZE = 2.8;
 const MUZZLE_LOCAL_X = 0;
 const MUZZLE_LOCAL_Y = PLASMA_TANK_VISUAL_SIZE * 0.55;
 const MUZZLE_LOCAL_Z = PLASMA_TANK_VISUAL_SIZE * 0.99;
@@ -35,13 +35,23 @@ const TRACER_CYCLES = 3;
 const FLASH_DURATION_SECONDS = 0.12;
 /** Spark particles around the muzzle during the flash. */
 const MUZZLE_SPARK_COUNT = 14;
+/**
+ * Turret kick distance in parent (Base) space. Applied opposite the turret's
+ * current traverse direction — see {@link MachineGunFireCue.updateRecoil}.
+ */
+const RECOIL_DISTANCE = 0.14;
+/** Full kick-and-return duration; kept within the cue lifetime. */
+const RECOIL_DURATION_SECONDS = 0.28;
+/** Fraction of recoil duration spent on the initial kick (rest is the return). */
+const RECOIL_KICK_FRACTION = 0.22;
 
 const LOCAL_FORWARD = new THREE.Vector3(0, 0, 1);
+const WORLD_UP = new THREE.Vector3(0, 1, 0);
 
 /**
  * Machine-gun fire VFX: tracer segments, a bright additive muzzle flash (core
- * glow + directional flare + spark spray). Render-only; damage comes from the
- * ability's effects.
+ * glow + directional flare + spark spray), plus a short Turret recoil kick.
+ * Render-only; damage comes from the ability's effects.
  */
 export class MachineGunFireCue extends Cue {
   private readonly scene: THREE.Scene;
@@ -65,6 +75,10 @@ export class MachineGunFireCue extends Cue {
   private sparkGeometry: THREE.BufferGeometry | null = null;
   private sparkMaterial: THREE.PointsMaterial | null = null;
   private readonly sparkVelocities = new Float32Array(MUZZLE_SPARK_COUNT * 3);
+
+  private turret: THREE.Object3D | null = null;
+  private readonly turretRestLocal = new THREE.Vector3();
+  private turretRestYaw = 0;
 
   private readonly muzzle = new THREE.Vector3();
   private readonly targetPoint = new THREE.Vector3();
@@ -179,12 +193,15 @@ export class MachineGunFireCue extends Cue {
     this.flashGroup.add(this.sparks);
 
     this.flashGroup.visible = false;
+
+    this.bindTurret(context, event.sourceEntityId);
   }
 
   public override update(deltaTimeSeconds: number): void {
     if (this.done || !this.context) return;
     this.elapsed += deltaTimeSeconds;
     if (this.elapsed >= LIFETIME_SECONDS) {
+      this.resetTurret();
       this.done = true;
       return;
     }
@@ -192,6 +209,7 @@ export class MachineGunFireCue extends Cue {
     const source = this.context.entityManager.getEntity(this.sourceEntityId);
     const target = this.context.entityManager.getEntity(this.targetEntityId);
     if (!source || !target) {
+      this.resetTurret();
       this.done = true;
       return;
     }
@@ -202,6 +220,7 @@ export class MachineGunFireCue extends Cue {
       ComponentType.UnitStats
     );
     if (!sourceStats?.alive || !targetStats?.alive) {
+      this.resetTurret();
       this.done = true;
       return;
     }
@@ -211,12 +230,14 @@ export class MachineGunFireCue extends Cue {
       !this.tracers ||
       !this.tracerMaterial
     ) {
+      this.resetTurret();
       this.done = true;
       return;
     }
 
     this.updateTracers();
     this.updateFlash(deltaTimeSeconds);
+    this.updateRecoil();
   }
 
   public override isFinished(): boolean {
@@ -224,6 +245,7 @@ export class MachineGunFireCue extends Cue {
   }
 
   public override dispose(): void {
+    this.resetTurret();
     if (this.tracers) this.scene.remove(this.tracers);
     if (this.flashGroup) this.scene.remove(this.flashGroup);
     this.tracerGeometry?.dispose();
@@ -248,6 +270,7 @@ export class MachineGunFireCue extends Cue {
     this.sparks = null;
     this.sparkGeometry = null;
     this.sparkMaterial = null;
+    this.turret = null;
   }
 
   /** Populate `muzzle` and `targetPoint`; returns false if a transform is missing. */
@@ -260,22 +283,31 @@ export class MachineGunFireCue extends Cue {
     );
     if (!sourceTransform || !targetTransform) return false;
 
-    const tipLocal = FPVector3.FromFloat(
-      MUZZLE_LOCAL_X,
-      MUZZLE_LOCAL_Y,
-      MUZZLE_LOCAL_Z
-    );
-    const tipWorld = FPVector3.Add(
-      sourceTransform.fpPosition,
-      FPQuaternion.RotateVector(sourceTransform.fpRotation, tipLocal)
-    );
-    const tip = FPVector3.ToFloat(tipWorld);
-    this.muzzle.set(tip.x, tip.y, tip.z);
+    const mesh = source.getComponent<MeshComponent>(ComponentType.Mesh);
+    const muzzlePoint = mesh?.root.userData.muzzleFlashPoint as
+      THREE.Object3D | undefined;
+    if (muzzlePoint) {
+      muzzlePoint.updateWorldMatrix(true, false);
+      muzzlePoint.getWorldPosition(this.muzzle);
+    } else {
+      const tipLocal = FPVector3.FromFloat(
+        MUZZLE_LOCAL_X,
+        MUZZLE_LOCAL_Y,
+        MUZZLE_LOCAL_Z
+      );
+      const tipWorld = FPVector3.Add(
+        sourceTransform.fpPosition,
+        FPQuaternion.RotateVector(sourceTransform.fpRotation, tipLocal)
+      );
+      const tip = FPVector3.ToFloat(tipWorld);
+      this.muzzle.set(tip.x, tip.y, tip.z);
+    }
 
     const t = FPVector3.ToFloat(targetTransform.fpPosition);
     this.targetPoint.set(t.x, t.y + TARGET_HEIGHT, t.z);
 
-    // Flash/flare and spark spray face along the barrel (+Z of the unit mesh).
+    // Flash/flare and spark spray face along the barrel: the hull's forward
+    // axis (+Z) swung by however far the turret is currently traversed.
     const barrelDir = FPQuaternion.RotateVector(
       sourceTransform.fpRotation,
       FPVector3.FromFloat(0, 0, 1)
@@ -286,6 +318,12 @@ export class MachineGunFireCue extends Cue {
       this.forward.normalize();
     } else {
       this.forward.set(0, 0, 1);
+    }
+    if (this.turret) {
+      this.forward.applyAxisAngle(
+        WORLD_UP,
+        this.turret.rotation.y - this.turretRestYaw
+      );
     }
     return true;
   }
@@ -356,5 +394,60 @@ export class MachineGunFireCue extends Cue {
       );
     }
     positions.needsUpdate = true;
+  }
+
+  /**
+   * Resolve the glTF Turret on the source mesh and cache its authored rest
+   * pose. Missing turret is fine — procedural fallbacks have no Turret node.
+   */
+  private bindTurret(context: CueContext, sourceEntityId: number): void {
+    const source = context.entityManager.getEntity(sourceEntityId);
+    const mesh = source?.getComponent<MeshComponent>(ComponentType.Mesh);
+    const turret = mesh?.root.userData.turret as THREE.Object3D | undefined;
+    if (!turret) return;
+
+    const rest = turret.userData.restLocalPosition as THREE.Vector3 | undefined;
+    this.turretRestLocal.copy(rest ?? turret.position);
+    this.turretRestYaw =
+      (turret.userData.restLocalYaw as number | undefined) ?? turret.rotation.y;
+    this.turret = turret;
+  }
+
+  /**
+   * Kick the Turret backward along its own barrel axis (opposite the traversed
+   * aim direction), then ease it back to rest. Peak sits early so the kick
+   * reads as a sharp punch. `Object3D.position` is parent-local, so the offset
+   * is built from the turret's current traverse angle rather than assuming the
+   * barrel still points along the hull's +Z.
+   */
+  private updateRecoil(): void {
+    if (!this.turret) return;
+    if (this.elapsed >= RECOIL_DURATION_SECONDS) {
+      this.resetTurret();
+      return;
+    }
+
+    const t = this.elapsed / RECOIL_DURATION_SECONDS;
+    let amount: number;
+    if (t <= RECOIL_KICK_FRACTION) {
+      const u = t / RECOIL_KICK_FRACTION;
+      amount = Math.sin(u * Math.PI * 0.5);
+    } else {
+      const u = (t - RECOIL_KICK_FRACTION) / (1 - RECOIL_KICK_FRACTION);
+      amount = Math.cos(u * Math.PI * 0.5);
+    }
+
+    const traverse = this.turret.rotation.y - this.turretRestYaw;
+    const kick = RECOIL_DISTANCE * amount;
+    this.turret.position.set(
+      this.turretRestLocal.x - Math.sin(traverse) * kick,
+      this.turretRestLocal.y,
+      this.turretRestLocal.z - Math.cos(traverse) * kick
+    );
+  }
+
+  private resetTurret(): void {
+    if (!this.turret) return;
+    this.turret.position.copy(this.turretRestLocal);
   }
 }

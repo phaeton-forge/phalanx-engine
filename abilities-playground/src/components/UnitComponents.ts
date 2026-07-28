@@ -82,6 +82,20 @@ export class TargetStateComponent implements IComponent {
   public targetEntityId: number | null = null;
 }
 
+/**
+ * Simulation state of a unit's independently traversable turret (Plasma Tank).
+ *
+ * {@link yaw} is the turret's aim angle *relative to the hull*, in radians,
+ * normalized to (-π, π]. The hull only turns while the unit still has to drive
+ * toward its target; once the target is inside attack range the hull holds
+ * still and this angle does the aiming (see RotationSystem). The view layer
+ * applies it on top of the model's authored turret rest yaw (RenderSyncSystem).
+ */
+export class TurretComponent implements IComponent {
+  public readonly type = ComponentType.Turret;
+  public yaw: FixedPoint = FP._0;
+}
+
 /** Tracks up to two enemy and two ally beam targets for cube units. */
 export class CubeStateComponent implements IComponent {
   public readonly type = ComponentType.CubeState;

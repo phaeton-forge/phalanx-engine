@@ -8,6 +8,7 @@ import { SimulationContainer } from './SimulationContainer';
 import { FormationGridSystem } from '../systems/formation/FormationGridSystem';
 import { MeshComponent } from '../components';
 import type { TeamId } from '../components';
+import { setPlasmaTankTextureAnisotropy } from '../units/plasmaTankModel';
 
 interface FormationPlayer {
   playerId: string;
@@ -41,13 +42,21 @@ export class Game {
     this.localTeamId = matchData.teamId === 1 ? 1 : 0;
     this.players = this.buildPlayerList(matchData);
 
-    this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer = new THREE.WebGLRenderer({
+      canvas,
+      antialias: true,
+      powerPreference: 'high-performance',
+    });
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.0;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+
+    setPlasmaTankTextureAnisotropy(
+      this.renderer.capabilities.getMaxAnisotropy()
+    );
 
     this.arenaScene = new ArenaScene();
     this.arenaScene.build();
@@ -245,6 +254,9 @@ export class Game {
     const width = canvas.clientWidth || window.innerWidth;
     const height = canvas.clientHeight || window.innerHeight;
 
+    // Re-apply DPR on resize — browser zoom / monitor changes alter it, and
+    // Firefox with resistFingerprinting can report 1 (soft on HiDPI).
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.cameraController.onResize(width, height);
     this.renderer.setSize(width, height, false);
   };

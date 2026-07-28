@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { TeamId } from '../../components';
 import type { UnitFactory } from '../../units/UnitFactory';
 import type { UnitType } from '../../units/UnitType';
+import { disposeUnitVisual } from '../../units/unitVisuals';
 
 const VALID_COLOR = 0x44ff88;
 const INVALID_COLOR = 0xff4444;
@@ -146,14 +147,6 @@ export class FormationHoverPreview {
   }
 
   private disposeObject3D(root: THREE.Object3D): void {
-    root.traverse((child) => {
-      if (child instanceof THREE.Mesh) {
-        child.geometry?.dispose();
-        const materials = Array.isArray(child.material)
-          ? child.material
-          : [child.material];
-        materials.forEach((material) => material?.dispose());
-      }
-    });
+    disposeUnitVisual(root);
   }
 }

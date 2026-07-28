@@ -46,6 +46,7 @@ import {
   VoltAttackSystem,
 } from '../systems';
 import { UnitFactory } from '../units';
+import { disposeUnitVisual } from '../units/unitVisuals';
 import { ProjectileEntity } from '../entities/Projectile.ts';
 import { MissileEntity } from '../entities/Missile';
 import { ArtilleryShellEntity } from '../entities/ArtilleryShell';
@@ -329,22 +330,10 @@ export class SimulationContainer {
   }
 
   private removeEntityVisuals(entity: Entity): void {
-    const disposeObject3D = (root: THREE.Object3D): void => {
-      root.traverse((child) => {
-        if (child instanceof THREE.Mesh) {
-          child.geometry?.dispose();
-          const materials = Array.isArray(child.material)
-            ? child.material
-            : [child.material];
-          materials.forEach((material) => material?.dispose());
-        }
-      });
-    };
-
     const mesh = entity.getComponent<MeshComponent>(ComponentType.Mesh);
     if (mesh) {
       this.scene.remove(mesh.root);
-      disposeObject3D(mesh.root);
+      disposeUnitVisual(mesh.root);
     }
 
     const healthBar = entity.getComponent<HealthBarComponent>(
@@ -352,7 +341,7 @@ export class SimulationContainer {
     );
     if (healthBar) {
       this.scene.remove(healthBar.root);
-      disposeObject3D(healthBar.root);
+      disposeUnitVisual(healthBar.root);
     }
 
     const detectionRing = entity.getComponent<DetectionRingComponent>(
@@ -360,14 +349,14 @@ export class SimulationContainer {
     );
     if (detectionRing) {
       this.scene.remove(detectionRing.root);
-      disposeObject3D(detectionRing.root);
+      disposeUnitVisual(detectionRing.root);
     }
 
     // The aura ring is a world-space decal, not a child of the unit body.
     const aura = entity.getComponent<HealAuraComponent>(ComponentType.HealAura);
     if (aura?.auraRing) {
       this.scene.remove(aura.auraRing);
-      disposeObject3D(aura.auraRing);
+      disposeUnitVisual(aura.auraRing);
     }
   }
 

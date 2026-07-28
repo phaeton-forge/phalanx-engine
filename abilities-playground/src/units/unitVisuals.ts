@@ -3,6 +3,8 @@ import { arenaParams } from '../config/constants';
 import type { TeamId } from '../components';
 import type { UnitDefinition } from './UnitDefinition';
 import type { UnitType } from './UnitType';
+import { bindPlasmaTankEffects } from './plasmaTankEffects';
+import { createPlasmaTankModelInstance, isSharedModelGeometry } from './plasmaTankModel';
 
 /**
  * Resolve a unit's body color from its team's pastel palette, keyed by unit type.
@@ -61,6 +63,34 @@ export function createUnitRenderRefs(
   };
 }
 
+/**
+ * Tear down a visual built by `createUnitRenderRefs`.
+ *
+ * Geometry that comes from a cached/preloaded model is shared across every
+ * instance, so it is skipped here — disposing it would blank out all other
+ * units using the same model. Materials are per-instance (see
+ * `createPlasmaTankModelInstance`) and are safe to dispose; their textures are
+ * shared and intentionally left alive.
+ */
+export function disposeUnitVisual(root: THREE.Object3D): void {
+  root.traverse((child) => {
+    if (
+      !(child instanceof THREE.Mesh) &&
+      !(child instanceof THREE.Points) &&
+      !(child instanceof THREE.LineSegments)
+    ) {
+      return;
+    }
+    if (!isSharedModelGeometry(child.geometry)) {
+      child.geometry?.dispose();
+    }
+    const materials = Array.isArray(child.material)
+      ? child.material
+      : [child.material];
+    for (const material of materials) material?.dispose();
+  });
+}
+
 /** Body mesh only — `switch (def.visual.shape)` lives here (sphere/box/cone/octahedron/volt). */
 function createBody(
   spec: UnitDefinition['visual'],
@@ -80,7 +110,7 @@ function createBody(
     case 'volt':
       return createVoltBody(spec.size, teamId, unitType);
     case 'plasmaTank':
-      return createPlasmaTankBody(spec.size, teamId, unitType);
+      return createPlasmaTankBody(spec.size);
     case 'sau':
       return createSauBody(spec.size, teamId, unitType);
   }
@@ -213,68 +243,16 @@ function createVoltBody(
 }
 
 /**
- * Plasma Tank visual: compact gun platform.
- * - Rectangular box fuselage, long axis along +Z (forward).
- * - A turret on top: cylinder base, a small box housing sized to sit on the
- *   base, and a thin forward-pointing barrel seated into the housing face.
- *   Barrel tip local Z = housingHalfDepth + barrelLength - embed = size * 0.99
- *   for the defaults below; MachineGunFireCue must stay in sync.
+ * Plasma Tank visual: the imported glTF model (see `plasmaTankModel` /
+ * `AssetManager`). The model is preloaded via the asset manifest before the
+ * game scene is built, so it is always available here.
  */
-function createPlasmaTankBody(
-  size: number,
-  teamId: TeamId,
-  unitType: UnitType
-): THREE.Object3D {
+function createPlasmaTankBody(size: number): THREE.Object3D {
   const root = new THREE.Group();
-
-  const fuselage = new THREE.Mesh(
-    new THREE.BoxGeometry(size, size * 0.5, size * 1.5),
-    createTeamMaterial(teamId, unitType)
-  );
-  enableShadows(fuselage);
-  root.add(fuselage);
-
-  const turretMaterial = new THREE.MeshStandardMaterial({
-    color: resolveUnitColor(teamId, unitType),
-    metalness: 0.5,
-    roughness: 0.4,
-  });
-
-  const turretY = size * 0.55;
-  const housingDepth = size * 0.45;
-  const housingHalfDepth = housingDepth * 0.5;
-  const barrelLength = size * 0.9;
-  const barrelHalfLength = barrelLength * 0.5;
-  // Seat ~15% of the barrel inside the housing so it clearly stems from it.
-  const barrelEmbed = barrelLength * 0.15;
-  const barrelCenterZ = housingHalfDepth + barrelHalfLength - barrelEmbed;
-
-  const turretBase = new THREE.Mesh(
-    new THREE.CylinderGeometry(size * 0.35, size * 0.4, size * 0.25, 16),
-    turretMaterial
-  );
-  turretBase.position.y = size * 0.3;
-  enableShadows(turretBase);
-  root.add(turretBase);
-
-  // Housing footprint fits inside the base's top radius (0.35).
-  const turretHousing = new THREE.Mesh(
-    new THREE.BoxGeometry(size * 0.4, size * 0.25, housingDepth),
-    turretMaterial
-  );
-  turretHousing.position.y = turretY;
-  enableShadows(turretHousing);
-  root.add(turretHousing);
-
-  const barrel = new THREE.Mesh(
-    new THREE.CylinderGeometry(size * 0.06, size * 0.06, barrelLength, 12),
-    turretMaterial
-  );
-  barrel.rotation.x = Math.PI / 2; // point along +Z
-  barrel.position.set(0, turretY, barrelCenterZ);
-  enableShadows(barrel);
-  root.add(barrel);
-
+  const modelInstance = createPlasmaTankModelInstance(size);
+  root.add(modelInstance);
+  // MuzzleFlashPoint → cue spawn; EngineBlue_* / EngineRed_* → constant thrusters.
+  bindPlasmaTankEffects(root, modelInstance);
   return root;
 }
 

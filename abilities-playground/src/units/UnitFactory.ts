@@ -78,17 +78,24 @@ export class UnitFactory {
 
 function dimObject(root: THREE.Object3D): void {
   root.traverse((child: THREE.Object3D) => {
-    if (child instanceof THREE.Mesh) {
-      const materials = Array.isArray(child.material) ? child.material : [child.material];
-      for (const material of materials) {
-        if (
-          material instanceof THREE.MeshStandardMaterial ||
-          material instanceof THREE.MeshBasicMaterial
-        ) {
-          material.transparent = true;
-          material.opacity = 0.45;
-          material.depthWrite = false;
-        }
+    if (
+      !(child instanceof THREE.Mesh) &&
+      !(child instanceof THREE.Points)
+    ) {
+      return;
+    }
+    const materials = Array.isArray(child.material)
+      ? child.material
+      : [child.material];
+    for (const material of materials) {
+      if (
+        material instanceof THREE.MeshStandardMaterial ||
+        material instanceof THREE.MeshBasicMaterial ||
+        material instanceof THREE.PointsMaterial
+      ) {
+        material.transparent = true;
+        material.opacity *= 0.45;
+        material.depthWrite = false;
       }
     }
   });

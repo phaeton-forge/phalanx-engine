@@ -116,13 +116,14 @@ export const UNIT_DEFINITIONS: Readonly<Record<UnitType, UnitDefinition>> = {
     abilities: ['Ability.PlasmaTank.MachineGun'],
     hasAutoAttackTimer: true,
     hasCubeState: false,
+    hasTurret: true,
     autoAttack: {
       abilityId: 'Ability.PlasmaTank.MachineGun',
       cooldownTicks: PLASMA_TANK_ATTACK_COOLDOWN_TICKS,
     },
     visual: {
       shape: 'plasmaTank',
-      size: 2.2,
+      size: 2.8,
       hasSpawnArrow: false,
       hasAuraRing: false,
     },

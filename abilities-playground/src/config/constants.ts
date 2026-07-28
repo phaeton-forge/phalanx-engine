@@ -19,6 +19,14 @@ export const PROJECTILE_SPEED = 180;
 export const UNIT_TURN_SPEED_RADIANS_PER_TICK = Math.PI / 15;
 
 /**
+ * Radians of local Y rotation a turret (e.g. the Plasma Tank) traverses per
+ * simulation tick. Faster than the hull turn rate — a turret only has to swing
+ * its own mass, and it must be able to keep a strafing target in its sights
+ * while the hull stays parked.
+ */
+export const TURRET_TURN_SPEED_RADIANS_PER_TICK = Math.PI / 9;
+
+/**
  * SAU (self-propelled artillery) shrapnel physics tuning.
  *
  * Gravity in phalanx-physics v1 is GLOBAL (a single PhysicsWorldConfig.gravity
@@ -116,7 +124,7 @@ export const cameraConfig = {
   moveSpeed: 90,
   edgeScrollMargin: 24,
   boundsPadding: 20,
-  minHeight: 35,
+  minHeight: 12,
   maxHeight: 140,
   zoomSensitivity: 0.08,
 };

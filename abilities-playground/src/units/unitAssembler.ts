@@ -18,6 +18,7 @@ import {
   CubeStateComponent,
   AutoAttackTimerComponent,
   SupportUnitTargetingComponent,
+  TurretComponent,
 } from '../components';
 import type { TeamId } from '../components';
 import type { UnitDefinition } from './UnitDefinition';
@@ -79,6 +80,7 @@ export function assembleUnit(
         : new AutoAttackTimerComponent()
     );
   if (def.hasCubeState) entity.addComponent(new CubeStateComponent());
+  if (def.hasTurret) entity.addComponent(new TurretComponent());
   if (def.aura) {
     entity.addComponent(new HealAuraComponent(def.aura, refs.auraRing ?? null));
     entity.addComponent(new SupportUnitTargetingComponent());

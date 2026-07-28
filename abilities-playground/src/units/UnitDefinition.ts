@@ -25,6 +25,12 @@ export interface UnitDefinition {
   // --- optional components, expressed as DATA (this IS the differentiation) ---
   readonly hasAutoAttackTimer: boolean; // → AutoAttackTimerComponent
   readonly hasCubeState: boolean; // → CubeStateComponent
+  /**
+   * Unit's model has an independently traversable turret → TurretComponent.
+   * Such units keep their hull pointed along their drive direction and aim with
+   * the turret alone once the target is within {@link stopRange}.
+   */
+  readonly hasTurret?: boolean;
   readonly aura?: { readonly radius: number; readonly pulseTicks: number }; // → HealAuraComponent
   readonly autoAttack?: {
     readonly abilityId: string;

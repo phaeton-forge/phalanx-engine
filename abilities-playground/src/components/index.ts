@@ -19,6 +19,7 @@ export {
   CubeStateComponent,
   AutoAttackTimerComponent,
   SupportUnitTargetingComponent,
+  TurretComponent,
 } from './UnitComponents';
 export type { TeamId } from './UnitComponents';
 export { SpawnPointComponent } from './SpawnPointComponent';
