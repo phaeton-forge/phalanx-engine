@@ -82,6 +82,9 @@ export type { IAbilitySystem } from './IAbilitySystem';
 // Physics world contract (implemented by phalanx-physics)
 export type { IPhysicsWorld, InterpolatedTransformSample } from './IPhysicsWorld';
 
+// Match-scoped deterministic RNG contract
+export type { IRandom } from './IRandom';
+
 // Tick/Frame Management
 export { TickFrameManager } from './TickFrameManager';
 export type { TickFrameManagerConfig } from './TickFrameManager';

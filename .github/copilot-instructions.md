@@ -31,7 +31,8 @@ game engine. Packages: `math`, `physics`, `ecs`, `abilities`, `client`,
    typed arrays out of loops, iterate `store.entityIds()`.
 7. **Networking is command-based.** Send intent, never state. The server owns
    the tick clock. Iterate command batches in sorted `playerId` order. Call
-   `sendReady()` only after full initialisation.
+   `sendReady()` only after full initialisation. `PhalanxClient` seeds match
+   RNG on game start; `GameWorld` wires `context.random` from the client.
 8. **TypeScript.** `strict`, `noUncheckedIndexedAccess`, **no `any`**, prefer
    `interface` for public API. ESM relative imports carry the `.js` extension.
 9. **Style.** Prettier (single quotes, semicolons, 80 cols, 2 spaces). Only

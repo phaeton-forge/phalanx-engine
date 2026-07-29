@@ -3,17 +3,22 @@
  * Client library for connecting to Phalanx Engine servers
  */
 
+import { DeterministicRandom } from './DeterministicRandom.js';
 import { EventEmitter } from './EventEmitter.js';
+import { resolveMatchRandomSeed } from './matchSeed.js';
 import { RenderLoop } from './RenderLoop.js';
 import { SocketManager } from './SocketManager.js';
 import { DesyncDetector, type DesyncConfig } from './DesyncDetector.js';
 import { AuthManager } from './auth/AuthManager.js';
-import type { AuthState, CallbackParams } from './auth/types.js';
+import type { AuthState } from './auth/types.js';
 import {
   RoomRecoveryController,
   type RecoveryClientPort,
 } from './recovery/index.js';
-import { pickMobileFriendlyTransports, loadOrCreateGuestPlayerId } from './recovery/index.js';
+import {
+  pickMobileFriendlyTransports,
+  loadOrCreateGuestPlayerId,
+} from './recovery/index.js';
 import type {
   PhalanxClientConfig,
   PhalanxClientEvents,
@@ -62,8 +67,16 @@ import type {
  * ```
  */
 export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
-  private config: Required<Omit<PhalanxClientConfig, 'authToken' | 'auth' | 'playerId' | 'username' | 'pause' | 'roomRecovery'>> &
-    Pick<PhalanxClientConfig, 'authToken' | 'auth' | 'playerId' | 'username' | 'pause' | 'roomRecovery'>;
+  private config: Required<
+    Omit<
+      PhalanxClientConfig,
+      'authToken' | 'auth' | 'playerId' | 'username' | 'pause' | 'roomRecovery'
+    >
+  > &
+    Pick<
+      PhalanxClientConfig,
+      'authToken' | 'auth' | 'playerId' | 'username' | 'pause' | 'roomRecovery'
+    >;
   private socketManager: SocketManager;
   private renderLoop: RenderLoop;
   private desyncDetector: DesyncDetector;
@@ -88,6 +101,10 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
   // ITickFrameProvider pause/resume handler arrays
   private pauseHandlers: PauseHandler[] = [];
   private resumeHandlers: PauseHandler[] = [];
+
+  // Match-scoped deterministic RNG (initialized on game start)
+  private _random: DeterministicRandom | null = null;
+  private _randomSeed: number | null = null;
 
   constructor(config: PhalanxClientConfig) {
     super();
@@ -130,7 +147,9 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
       ...config,
       socketTransports: resolvedSocketTransports,
       playerId: resolvedPlayerId || defaultPlayerId,
-      username: config.username || `Player-${(resolvedPlayerId || defaultPlayerId).slice(-6)}`,
+      username:
+        config.username ||
+        `Player-${(resolvedPlayerId || defaultPlayerId).slice(-6)}`,
     };
 
     // Initialize auth if configured
@@ -173,13 +192,10 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
           this.emit('matchFound', data);
         },
         onCountdown: (data) => this.emit('countdown', data),
-        onGameStart: (data) => {
-          this.clientState = 'playing';
-          this.currentTick = 0;
-          this.emit('gameStart', data);
-        },
+        onGameStart: (data) => this.handleGameStart(data),
         onMatchEnd: (data) => {
           this.clientState = 'finished';
+          this.resetMatchRandom();
           this.emit('matchEnd', data);
         },
 
@@ -283,7 +299,9 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
     // (after socketManager exists) because it routes through this very
     // client's `connect`/`disconnect`/`recoverRoom`/`on(...)` surface.
     if (config.roomRecovery?.enabled) {
-      this._roomRecovery = this.createRoomRecoveryController(config.roomRecovery);
+      this._roomRecovery = this.createRoomRecoveryController(
+        config.roomRecovery
+      );
     }
   }
 
@@ -337,9 +355,13 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
   /**
    * Initialize authentication manager
    */
-  private initializeAuth(authConfig: NonNullable<PhalanxClientConfig['auth']>): void {
+  private initializeAuth(
+    authConfig: NonNullable<PhalanxClientConfig['auth']>
+  ): void {
     if (authConfig.provider !== 'google' || !authConfig.google) {
-      console.warn('[PhalanxClient] Invalid auth config - only Google is supported');
+      console.warn(
+        '[PhalanxClient] Invalid auth config - only Google is supported'
+      );
       this.authState.isLoading = false;
       return;
     }
@@ -349,7 +371,9 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
       google: {
         clientId: authConfig.google.clientId,
         scopes: authConfig.google.scopes || ['openid', 'profile', 'email'],
-        redirectUri: authConfig.google.redirectUri || (typeof window !== 'undefined' ? window.location.origin : undefined),
+        redirectUri:
+          authConfig.google.redirectUri ||
+          (typeof window !== 'undefined' ? window.location.origin : undefined),
         tokenExchangeUrl: authConfig.google.tokenExchangeUrl,
       },
       debug: this.config.debug,
@@ -371,13 +395,15 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
    * Handle auth state changes from AuthManager
    */
   private handleAuthStateChange(state: AuthState): void {
-    const user: PhalanxAuthUser | null = state.user ? {
-      id: state.user.id,
-      username: state.user.username,
-      email: state.user.email,
-      avatarUrl: state.user.avatarUrl,
-      provider: state.provider || 'google',
-    } : null;
+    const user: PhalanxAuthUser | null = state.user
+      ? {
+          id: state.user.id,
+          username: state.user.username,
+          email: state.user.email,
+          avatarUrl: state.user.avatarUrl,
+          provider: state.provider || 'google',
+        }
+      : null;
 
     this.authState = {
       isAuthenticated: state.isAuthenticated,
@@ -388,7 +414,8 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
     // Update config with auth user info
     if (user) {
       this.config.playerId = user.id;
-      this.config.username = user.username || user.email || `Player-${user.id.slice(-6)}`;
+      this.config.username =
+        user.username || user.email || `Player-${user.id.slice(-6)}`;
       this.config.authToken = state.token || undefined;
 
       // Update socket manager with new credentials
@@ -426,11 +453,13 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
       });
 
       if (!result.valid) {
-        this.emit('authError', { message: result.error || 'Authentication failed' });
+        this.emit('authError', {
+          message: result.error || 'Authentication failed',
+        });
       }
     } catch (err) {
       this.emit('authError', {
-        message: err instanceof Error ? err.message : 'Authentication failed'
+        message: err instanceof Error ? err.message : 'Authentication failed',
       });
     }
 
@@ -525,6 +554,7 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
     this.currentMatchId = null;
     this.currentTick = 0;
     this.pendingCommands = [];
+    this.resetMatchRandom();
   }
 
   /**
@@ -636,7 +666,7 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
    */
   async recoverRoom(
     code: string,
-    timeoutMs?: number,
+    timeoutMs?: number
   ): Promise<RoomRecoveredEvent> {
     this.ensureConnected();
     const event = await this.socketManager.recoverRoom(code, timeoutMs);
@@ -730,10 +760,54 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
    */
   async waitForGameStart(): Promise<GameStartEvent> {
     const data = await this.socketManager.waitForGameStart();
+    this.handleGameStart(data);
+    return data;
+  }
+
+  /**
+   * Match-scoped deterministic RNG. Available after game start.
+   */
+  get random(): DeterministicRandom {
+    if (!this._random) {
+      throw new Error(
+        '[PhalanxClient] RNG unavailable until game start (await waitForGameStart())'
+      );
+    }
+    return this._random;
+  }
+
+  /** The seed used for {@link random}, or null before game start. */
+  get randomSeed(): number | null {
+    return this._randomSeed;
+  }
+
+  private handleGameStart(data: GameStartEvent): void {
+    // `waitForGameStart()` and the socket `game-start` handler both funnel
+    // here; reconnect recovery may replay the same event locally too.
+    if (
+      this.clientState === 'playing' &&
+      this.currentMatchId === data.matchId &&
+      this._random !== null
+    ) {
+      return;
+    }
+
     this.clientState = 'playing';
     this.currentTick = 0;
+    this.currentMatchId = data.matchId;
+    this.initializeMatchRandom(data);
     this.emit('gameStart', data);
-    return data;
+  }
+
+  private initializeMatchRandom(event: GameStartEvent): void {
+    const seed = resolveMatchRandomSeed(event);
+    this._randomSeed = seed;
+    this._random = new DeterministicRandom(seed);
+  }
+
+  private resetMatchRandom(): void {
+    this._random = null;
+    this._randomSeed = null;
   }
 
   // ============================================

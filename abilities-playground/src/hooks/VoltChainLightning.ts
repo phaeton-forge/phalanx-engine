@@ -10,7 +10,6 @@ import {
   CHAIN_LIGHTNING_RANDOM_JUMPS,
 } from '../config/abilityDefinitions';
 import { ComponentType, UnitTypeComponent } from '../components';
-import { GameRandom } from '../core/GameRandom';
 import {
   GameEvents,
   type ChainLightningJumpQueuedEvent,
@@ -41,8 +40,6 @@ export const voltChainLightning = (
   const physics = world.context.physics as PhysicsWorld | undefined;
   if (!physics) return;
 
-  if (!GameRandom.isInitialized()) return;
-
   const chain = resolveChainLightning(
     ctx.casterEntityId,
     CHAIN_LIGHTNING_RANDOM_JUMPS,
@@ -50,7 +47,7 @@ export const voltChainLightning = (
     CHAIN_LIGHTNING_JUMP_RADIUS,
     physics,
     world.entityManager,
-    GameRandom.rng
+    world.context.random
   );
 
   for (let i = 0; i < chain.length; i++) {
