@@ -11,7 +11,8 @@ import type { EventBus } from './EventBus';
 import type { EntityManager } from './EntityManager';
 import type { SystemContext } from './SystemContext';
 import type { GameSystem } from './GameSystem';
-import {resetEntityIdCounter} from "./Entity";
+import type { IRandom } from './IRandom';
+import { resetEntityIdCounter } from './Entity';
 import {
   isBeforeTick,
   isAfterTick,
@@ -61,6 +62,16 @@ export interface GameWorldConfig {
    * the built-in panel (e.g. for custom tooling or headless environments).
    */
   debugPanelConfig?: DebugPanelConfig;
+  /**
+   * Match-scoped deterministic RNG for single-player or test worlds.
+   * When omitted, {@link GameWorld} reads `tickFrameProvider.random` if set.
+   *
+   * Multiplayer: call `await client.waitForGameStart()` **before**
+   * `new GameWorld({ tickFrameProvider: client })`. Create one world per
+   * match — RNG is snapshotted here and is not refreshed if the client
+   * re-seeds on a later game start.
+   */
+  random?: IRandom;
 }
 
 /**
@@ -74,7 +85,10 @@ export interface GameWorldConfig {
  */
 export interface GameWorldHooks {
   /** Called before tick systems are processed (e.g. snapshot positions, execute commands) */
-  beforeTick?: (tick: number, commands: import('./ITickFrameProvider').CommandsBatch) => void;
+  beforeTick?: (
+    tick: number,
+    commands: import('./ITickFrameProvider').CommandsBatch
+  ) => void;
   /** Called after tick systems have been processed (e.g. capture positions, cleanup) */
   afterTick?: (tick: number) => void;
   /** Called before frame systems are updated (e.g. camera input) */
@@ -139,13 +153,10 @@ export class GameWorld {
   private _paused: boolean = false;
 
   constructor(config: GameWorldConfig) {
-
     resetEntityIdCounter();
 
     // Create SystemRegistry with eagerly-initialized core deps
-    this.systemRegistry = new SystemRegistry(
-      config.componentTypes
-    );
+    this.systemRegistry = new SystemRegistry(config.componentTypes);
 
     // Set SoAComponent context so SoA-backed components can resolve stores
     SoAComponent.useEntityManager(this.systemRegistry.entityManager);
@@ -154,7 +165,9 @@ export class GameWorld {
     if (config.pooling) {
       this._poolingConfig = config.pooling;
       this._pools = new PoolManager(this.systemRegistry.entityManager);
-      for (const [typeKey, typeConfig] of Object.entries(config.pooling.entityTypes)) {
+      for (const [typeKey, typeConfig] of Object.entries(
+        config.pooling.entityTypes
+      )) {
         this._pools.registerEntityType(typeKey, typeConfig);
       }
     } else {
@@ -175,12 +188,17 @@ export class GameWorld {
       this.ownsProvider = true;
     }
 
+    const resolvedRandom = this.resolveConfiguredRandom(config);
+    if (resolvedRandom) {
+      this.systemRegistry.getContext().random = resolvedRandom;
+    }
+
     // Setup debug data provider if configured
     if (config.debug) {
       this._debugProvider = new DebugDataProvider(
         this.systemRegistry.entityManager,
         this._pools,
-        config.debugConfig,
+        config.debugConfig
       );
       this._debugPanelConfig = config.debugPanelConfig;
     } else {
@@ -252,6 +270,11 @@ export class GameWorld {
   /** Entity manager */
   public get entityManager(): EntityManager {
     return this.systemRegistry.entityManager;
+  }
+
+  /** Match-scoped deterministic RNG. Throws if not configured. */
+  public get random(): IRandom {
+    return this.systemRegistry.getContext().random;
   }
 
   /** Pool manager. null if pooling is not configured. */
@@ -404,7 +427,7 @@ export class GameWorld {
 
     // Start internal TickFrameManager if we own it
     if (this.ownsProvider && this.provider instanceof TickFrameManager) {
-      (this.provider as TickFrameManager).start();
+      this.provider.start();
     }
 
     // Start debug data provider if configured
@@ -415,8 +438,14 @@ export class GameWorld {
       // and a DOM environment is available. This keeps the overlay opt-in so
       // consumers who only need DebugDataProvider aren't surprised by DOM
       // side effects.
-      if (this._debugPanelConfig !== undefined && typeof document !== 'undefined') {
-        this._debugPanel = new DebugPanel(this._debugProvider, this._debugPanelConfig);
+      if (
+        this._debugPanelConfig !== undefined &&
+        typeof document !== 'undefined'
+      ) {
+        this._debugPanel = new DebugPanel(
+          this._debugProvider,
+          this._debugPanelConfig
+        );
       }
     }
   }
@@ -443,7 +472,7 @@ export class GameWorld {
     }
 
     if (this.ownsProvider && this.provider instanceof TickFrameManager) {
-      (this.provider as TickFrameManager).stop();
+      this.provider.stop();
     }
 
     // Destroy debug panel
@@ -471,5 +500,30 @@ export class GameWorld {
     }
     this.systemRegistry.dispose();
     SoAComponent.resetContext();
+  }
+
+  private resolveConfiguredRandom(config: GameWorldConfig): IRandom | undefined {
+    if (config.random) {
+      return config.random;
+    }
+
+    if (!config.tickFrameProvider) {
+      return undefined;
+    }
+
+    try {
+      return config.tickFrameProvider.random;
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.message.includes('RNG unavailable until game start')
+      ) {
+        throw new Error(
+          'GameWorld: match RNG is not ready. Call await client.waitForGameStart() before constructing GameWorld with tickFrameProvider.',
+          { cause: error }
+        );
+      }
+      throw error;
+    }
   }
 }

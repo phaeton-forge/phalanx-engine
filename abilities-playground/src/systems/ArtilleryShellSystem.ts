@@ -15,7 +15,6 @@ import { ArtilleryShellComponent } from '../components/ArtilleryShellComponent';
 import type { ArtilleryShellEntity } from '../entities/ArtilleryShell';
 import { ShrapnelEntity } from '../entities/Shrapnel';
 import { SAU_FRIENDLY_FIRE } from '../config/abilityDefinitions';
-import { GameRandom } from '../core/GameRandom';
 
 export const SAU_IMPACT_CUE_ID = 'Cue.SAU.Impact';
 export const SAU_FALLING_SHADOW_CUE_ID = 'Cue.SAU.FallingShadow';
@@ -35,7 +34,7 @@ const SAU_SHADOW_LEAD_TICKS = 2;
  * On the detonation tick it applies the primary AoE (enemy-only by default; see
  * {@link SAU_FRIENDLY_FIRE}) around the snapshotted impact point, spawns N
  * gravity-affected shrapnel fragments along a deterministic cone (seeded via
- * {@link GameRandom} so replays match), emits the impact cue, and returns the
+ * {@link SystemContext.random} so replays match), emits the impact cue, and returns the
  * shell to the pool. A one-shot falling-shadow cue fires
  * {@link SAU_SHADOW_LEAD_TICKS} ticks earlier.
  */
@@ -110,18 +109,11 @@ export class ArtilleryShellSystem extends GameSystem {
     const { count, cone, speed } = shell.shrapnelConfig;
     const speedF = FP.ToFloat(speed);
     const coneF = FP.ToFloat(cone);
-    const useRng = GameRandom.isInitialized();
+    const rng = this.random;
 
     for (let i = 0; i < count; i++) {
-      // Deterministic cone direction (upward-biased). Seeded RNG keeps replays
-      // in lockstep; when uninitialized (e.g. isolated tests) fall back to an
-      // even fan so behaviour stays deterministic without a seed.
-      const azimuth = useRng
-        ? GameRandom.rng.floatRange(0, Math.PI * 2)
-        : (Math.PI * 2 * i) / count;
-      const polar = useRng
-        ? GameRandom.rng.floatRange(0, coneF)
-        : coneF * 0.5;
+      const azimuth = rng.floatRange(0, Math.PI * 2);
+      const polar = rng.floatRange(0, coneF);
 
       const sinP = Math.sin(polar);
       const dirX = sinP * Math.cos(azimuth);

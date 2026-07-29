@@ -26,6 +26,8 @@
  * ```
  */
 
+import type { IRandom } from './IRandom';
+
 /**
  * Commands grouped by player ID
  * In single-player mode, this will be empty.
@@ -88,6 +90,12 @@ export type PauseHandler = () => void;
  *   confirmation back to all clients, ensuring deterministic freeze.
  */
 export interface ITickFrameProvider {
+  /**
+   * Match-scoped deterministic RNG, when the provider owns a seed
+   * (e.g. {@link PhalanxClient} after game start).
+   */
+  readonly random?: IRandom;
+
   /**
    * Subscribe to tick updates (deterministic simulation)
    * @param handler - Called for each simulation tick

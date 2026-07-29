@@ -8,7 +8,6 @@ import {
   CUBE_SLOW_TAG,
   CUBE_SPEED_BUFF_TAG,
 } from '../config/abilityDefinitions';
-import { GameRandom } from '../core/GameRandom';
 import {
   ComponentType,
   CubeStateComponent,
@@ -24,7 +23,7 @@ const EFFECT_CUBE_SPEED_BUFF = 'Effect.Cube.SpeedBuff';
 /**
  * Cube units maintain up to two enemy slow-beams and two ally speed-beams
  * within their detection radius. Targets are picked deterministically via
- * {@link GameRandom}; effects are applied/removed through phalanx-abilities.
+ * {@link SystemContext.random}; effects are applied/removed through phalanx-abilities.
  *
  * Range queries use {@link PhysicsWorld.spatialGrid.queryRadius} — distance is
  * filtered inside the spatial grid (deterministic, id-sorted); game code only
@@ -35,16 +34,18 @@ export class CubeTargetingSystem extends GameSystem {
     return this.abilities as AbilitySystem;
   }
 
-  private transformStore!: SoAComponentStore<typeof TransformSoASchema.definition>;
+  private transformStore!: SoAComponentStore<
+    typeof TransformSoASchema.definition
+  >;
 
   public override init(context: SystemContext): void {
     super.init(context);
-    this.transformStore = this.entityManager.getOrCreateSoAStore(TransformSoASchema);
+    this.transformStore =
+      this.entityManager.getOrCreateSoAStore(TransformSoASchema);
   }
 
   public override processTick(): void {
     if (!this.getSimulationState()?.active) return;
-    if (!GameRandom.isInitialized()) return;
 
     const physics = this.physics as PhysicsWorld | undefined;
     if (!physics) return;
@@ -54,14 +55,18 @@ export class CubeTargetingSystem extends GameSystem {
       ComponentType.UnitStats,
       ComponentType.Team,
       ComponentType.UnitType,
-      ComponentType.Transform,
+      ComponentType.Transform
     );
 
     for (const cube of cubes) {
       const stats = cube.getComponent<StatsComponent>(ComponentType.UnitStats);
-      const cubeState = cube.getComponent<CubeStateComponent>(ComponentType.CubeState);
+      const cubeState = cube.getComponent<CubeStateComponent>(
+        ComponentType.CubeState
+      );
       const team = cube.getComponent<TeamComponent>(ComponentType.Team);
-      const unitType = cube.getComponent<UnitTypeComponent>(ComponentType.UnitType);
+      const unitType = cube.getComponent<UnitTypeComponent>(
+        ComponentType.UnitType
+      );
       if (!stats || !cubeState || !team || !unitType) continue;
 
       if (!stats.alive) {
@@ -72,13 +77,17 @@ export class CubeTargetingSystem extends GameSystem {
       const cubeIndex = this.transformStore.indexOf(cube.id);
       if (cubeIndex === -1) continue;
 
-      const cubeX = FP.FromRaw(this.transformStore.arrays.fpPositionX[cubeIndex]);
-      const cubeZ = FP.FromRaw(this.transformStore.arrays.fpPositionZ[cubeIndex]);
+      const cubeX = FP.FromRaw(
+        this.transformStore.arrays.fpPositionX[cubeIndex]
+      );
+      const cubeZ = FP.FromRaw(
+        this.transformStore.arrays.fpPositionZ[cubeIndex]
+      );
 
       const nearbyIds = physics.spatialGrid.queryRadius(
         cubeX,
         cubeZ,
-        unitType.detectionRadius,
+        unitType.detectionRadius
       );
       const nearbySet = new Set(nearbyIds);
 
@@ -86,14 +95,14 @@ export class CubeTargetingSystem extends GameSystem {
         cubeState.enemyTargets,
         CUBE_SLOW_TAG,
         nearbySet,
-        (targetTeam) => targetTeam !== team.teamId,
+        (targetTeam) => targetTeam !== team.teamId
       );
 
       this.validateTargets(
         cubeState.allyTargets,
         CUBE_SPEED_BUFF_TAG,
         nearbySet,
-        (targetTeam) => targetTeam === team.teamId,
+        (targetTeam) => targetTeam === team.teamId
       );
 
       this.acquireTargets(
@@ -102,7 +111,7 @@ export class CubeTargetingSystem extends GameSystem {
         EFFECT_CUBE_SLOW,
         team.teamId,
         nearbyIds,
-        false,
+        false
       );
 
       this.acquireTargets(
@@ -111,7 +120,7 @@ export class CubeTargetingSystem extends GameSystem {
         EFFECT_CUBE_SPEED_BUFF,
         team.teamId,
         nearbyIds,
-        true,
+        true
       );
     }
   }
@@ -120,7 +129,7 @@ export class CubeTargetingSystem extends GameSystem {
     targets: number[],
     grantedTag: string,
     nearbySet: ReadonlySet<number>,
-    teamFilter: (targetTeam: number) => boolean,
+    teamFilter: (targetTeam: number) => boolean
   ): void {
     for (let i = targets.length - 1; i >= 0; i--) {
       const targetId = targets[i];
@@ -142,7 +151,7 @@ export class CubeTargetingSystem extends GameSystem {
     effectId: string,
     cubeTeamId: number,
     nearbyIds: readonly number[],
-    allies: boolean,
+    allies: boolean
   ): void {
     while (targets.length < CUBE_MAX_BEAM_TARGETS) {
       const candidates = this.collectCandidates(
@@ -150,11 +159,11 @@ export class CubeTargetingSystem extends GameSystem {
         cubeTeamId,
         nearbyIds,
         targets,
-        allies,
+        allies
       );
       if (candidates.length === 0) break;
 
-      const picked = GameRandom.rng.pick(candidates);
+      const picked = this.random.pick(candidates);
       targets.push(picked);
       this._abilities.applyEffect(picked, effectId, cubeId);
     }
@@ -165,7 +174,7 @@ export class CubeTargetingSystem extends GameSystem {
     cubeTeamId: number,
     nearbyIds: readonly number[],
     alreadyTargeted: readonly number[],
-    allies: boolean,
+    allies: boolean
   ): number[] {
     const candidates: number[] = [];
 
@@ -194,7 +203,7 @@ export class CubeTargetingSystem extends GameSystem {
   private isValidTarget(
     targetId: number,
     nearbySet: ReadonlySet<number>,
-    teamFilter: (targetTeam: number) => boolean,
+    teamFilter: (targetTeam: number) => boolean
   ): boolean {
     if (!nearbySet.has(targetId)) return false;
 
@@ -221,7 +230,11 @@ export class CubeTargetingSystem extends GameSystem {
   }
 
   private getSimulationState(): SimulationStateComponent | undefined {
-    const [entity] = this.entityManager.queryEntities(ComponentType.SimulationState);
-    return entity?.getComponent<SimulationStateComponent>(ComponentType.SimulationState);
+    const [entity] = this.entityManager.queryEntities(
+      ComponentType.SimulationState
+    );
+    return entity?.getComponent<SimulationStateComponent>(
+      ComponentType.SimulationState
+    );
   }
 }

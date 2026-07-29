@@ -1,4 +1,4 @@
-import type { DeterministicRandom } from '@phalanx-engine/client';
+import type { IRandom } from '@phalanx-engine/ecs';
 import type { EntityManager } from '@phalanx-engine/ecs';
 import type { FixedPoint } from '@phalanx-engine/math';
 import { FP } from '@phalanx-engine/math';
@@ -31,7 +31,7 @@ export function resolveChainLightning(
   jumpRadius: FixedPoint,
   physics: PhysicsWorld,
   entityManager: EntityManager,
-  rng: DeterministicRandom
+  rng: IRandom
 ): ChainLink[] {
   const caster = entityManager.getEntity(casterId);
   if (!caster) return [];
@@ -145,7 +145,7 @@ function pickRandomHostile(
   jumpRadius: FixedPoint,
   physics: PhysicsWorld,
   entityManager: EntityManager,
-  rng: DeterministicRandom
+  rng: IRandom
 ): number | null {
   const candidates: number[] = [];
   const radiusSq = FP.Mul(jumpRadius, jumpRadius);

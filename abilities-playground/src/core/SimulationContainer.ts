@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { PhalanxClient } from '@phalanx-engine/client';
-import { Entity, GameWorld, resetEntityIdCounter } from '@phalanx-engine/ecs';
+import { Entity, GameWorld } from '@phalanx-engine/ecs';
 import { FP } from '@phalanx-engine/math';
 import { PhysicsWorld } from '@phalanx-engine/physics';
 import {
@@ -87,8 +87,6 @@ export class SimulationContainer {
   private readonly scene: THREE.Scene;
 
   constructor(client: PhalanxClient, scene: THREE.Scene) {
-    resetEntityIdCounter();
-
     this.scene = scene;
     this.world = new GameWorld({
       componentTypes: Object.values(ComponentType),

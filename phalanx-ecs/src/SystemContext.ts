@@ -4,6 +4,7 @@ import type { GameSystem } from './GameSystem';
 import type { IAbilitySystem } from './IAbilitySystem';
 import type { IPhysicsWorld } from './IPhysicsWorld';
 import type { PoolManager } from './pool/PoolManager';
+import type { IRandom } from './IRandom';
 
 /**
  * SystemContext - Shared dependencies container for all game systems
@@ -56,12 +57,32 @@ export class SystemContext {
    */
   public pools: PoolManager | null = null;
 
+  private _random: IRandom | undefined;
+
   constructor(
     eventBus: EventBus,
     entityManager: EntityManager
   ) {
     this.eventBus = eventBus;
     this.entityManager = entityManager;
+  }
+
+  /**
+   * Match-scoped deterministic RNG.
+   * Set by GameWorld from config or the tick provider; may be set manually
+   * in isolated unit tests.
+   */
+  public set random(r: IRandom) {
+    this._random = r;
+  }
+
+  public get random(): IRandom {
+    if (!this._random) {
+      throw new Error(
+        'SystemContext.random is not configured: pass GameWorldConfig.random or a tickFrameProvider that exposes random'
+      );
+    }
+    return this._random;
   }
 
   /**

@@ -24,8 +24,8 @@ import {
   ShrapnelLandingSystem,
   computeGroundLanding,
 } from '../src/systems/ShrapnelLandingSystem';
+import { DeterministicRandom } from '@phalanx-engine/client';
 import { sauArtillery } from '../src/hooks/SauArtillery';
-import { GameRandom } from '../src/core/GameRandom';
 import {
   SAU_SHRAPNEL_COUNT,
   SAU_MIN_ENGAGEMENT_RANGE,
@@ -207,9 +207,9 @@ describe('ArtilleryShellSystem shrapnel determinism', () => {
   });
 
   function runDetonation(seed: number): Array<[number, number, number]> {
-    GameRandom.initialize(seed);
     const entityManager = makeManager();
     const context = new SystemContext(new EventBus(), entityManager);
+    context.random = new DeterministicRandom(seed);
     const impulses: Array<[number, number, number]> = [];
     let nextId = 5000;
     context.physics = {

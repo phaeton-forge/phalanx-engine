@@ -1,7 +1,6 @@
 import { PhalanxClient } from '@phalanx-engine/client';
 import type { CountdownEvent, MatchFoundEvent } from '@phalanx-engine/client';
 import { SERVER_URL, networkConfig, pauseConfig } from '../config/constants';
-import { GameRandom } from '../core/GameRandom';
 
 export class LobbyScene {
   private client: PhalanxClient;
@@ -99,18 +98,7 @@ export class LobbyScene {
       this.setStatus(`Starting in ${event.seconds}...`);
     });
 
-    const gameStartEvent = await this.client.waitForGameStart();
-
-    if (gameStartEvent.randomSeed !== undefined) {
-      GameRandom.initialize(gameStartEvent.randomSeed);
-    } else if (this.matchData) {
-      const fallbackSeed =
-        this.matchData.matchId
-          .split('')
-          .reduce((acc, char) => (acc << 5) - acc + char.charCodeAt(0), 0) >>>
-        0;
-      GameRandom.initialize(fallbackSeed);
-    }
+    await this.client.waitForGameStart();
 
     this.transitionToGame();
   }

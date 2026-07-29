@@ -178,14 +178,21 @@ during iteration, then run the full suite once before finishing.
 ### 4.2 Bootstrap order
 
 ```ts
-resetEntityIdCounter();                 // deterministic IDs; mandatory per match/test
+await client.waitForGameStart(); // match RNG ready on client.random
+await assetManager.preloadAll();
 const world = new GameWorld({ tickFrameProvider: client, componentTypes: [...] });
 world.context.physics = physicsWorld;   // wire services BEFORE registerSystems
 const abilities = createAbilitySystem(world, { definitions });
 world.registerSystems([...tickSystems], [...frameSystems]);
 world.start({ beforeTick, afterTick, beforeFrame, afterFrame });
+client.sendReady();
 ```
 
+- `GameWorld` resets entity ids on construction — do not call
+  `resetEntityIdCounter()` in game bootstrap (only in isolated tests that build
+  entities without a world). Never create entities before `new GameWorld(...)`.
+- `PhalanxClient` owns match RNG: after `waitForGameStart()`, use
+  `world.context.random` / `this.random` in tick systems.
 - **Registration order IS execution order.** It is part of the determinism
   contract; changing it changes simulation results.
 - Never call `world.processAllTicks()` / `world.updateAll()` manually outside

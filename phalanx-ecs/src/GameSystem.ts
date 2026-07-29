@@ -4,6 +4,7 @@ import type { EntityManager } from './EntityManager';
 import type { IAbilitySystem } from './IAbilitySystem';
 import type { IPhysicsWorld } from './IPhysicsWorld';
 import type { PoolManager } from './pool/PoolManager';
+import type { IRandom } from './IRandom';
 
 /**
  * GameSystem - Abstract base class for all game systems
@@ -59,6 +60,14 @@ export abstract class GameSystem {
    */
   protected get pools(): PoolManager | null {
     return this.context.pools;
+  }
+
+  /**
+   * Match-scoped deterministic RNG. Throws if no RNG was configured for
+   * this world.
+   */
+  protected get random(): IRandom {
+    return this.context.random;
   }
 
   /** Whether this system is enabled */
