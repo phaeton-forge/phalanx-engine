@@ -15,7 +15,7 @@ export class LobbyScene {
   private onGameStart:
     | ((
         client: PhalanxClient,
-        matchData: MatchFoundEvent,
+        matchData: MatchFoundEvent
       ) => void | Promise<void>)
     | null = null;
 
@@ -25,7 +25,7 @@ export class LobbyScene {
     this.lobbyElement = document.getElementById('lobby')!;
     this.gameContainer = document.getElementById('game-container')!;
     this.findMatchButton = document.getElementById(
-      'find-match-btn',
+      'find-match-btn'
     ) as HTMLButtonElement;
     this.statusElement = document.getElementById('status')!;
 
@@ -41,8 +41,8 @@ export class LobbyScene {
   setOnGameStart(
     callback: (
       client: PhalanxClient,
-      matchData: MatchFoundEvent,
-    ) => void | Promise<void>,
+      matchData: MatchFoundEvent
+    ) => void | Promise<void>
   ): void {
     this.onGameStart = callback;
   }
@@ -65,7 +65,7 @@ export class LobbyScene {
     } catch (error) {
       this.setStatus(
         `Error: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        'error',
+        'error'
       );
       this.findMatchButton.disabled = false;
     }
@@ -78,13 +78,13 @@ export class LobbyScene {
       this.client.on('disconnected', () => {
         this.setStatus('Disconnected from server', 'error');
         this.findMatchButton.disabled = false;
-      }),
+      })
     );
 
     this.networkUnsubscribers.push(
       this.client.on('error', (error) => {
         this.setStatus(`Error: ${error.message}`, 'error');
-      }),
+      })
     );
 
     await this.client.connect();
@@ -107,7 +107,8 @@ export class LobbyScene {
       const fallbackSeed =
         this.matchData.matchId
           .split('')
-          .reduce((acc, char) => (acc << 5) - acc + char.charCodeAt(0), 0) >>> 0;
+          .reduce((acc, char) => (acc << 5) - acc + char.charCodeAt(0), 0) >>>
+        0;
       GameRandom.initialize(fallbackSeed);
     }
 
@@ -130,7 +131,7 @@ export class LobbyScene {
         this.lobbyElement.style.display = 'flex';
         this.setStatus(
           `Failed to start game: ${error instanceof Error ? error.message : 'Unknown error'}`,
-          'error',
+          'error'
         );
         this.findMatchButton.disabled = false;
       });

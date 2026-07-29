@@ -142,7 +142,7 @@ export class Game {
     this.onExit = callback;
   }
 
-  async initialize(): Promise<void> {
+  initialize(): void {
     this.deploymentHidden = false;
     this.onResize();
     this.ui.showStartOverlay();

@@ -21,7 +21,9 @@ class GameRandomInstance {
   /** Lockstep-safe RNG; throws if {@link initialize} has not been called. */
   get rng(): DeterministicRandom {
     if (!this.instance) {
-      throw new Error('[GameRandom] initialize(seed) must be called before using rng');
+      throw new Error(
+        '[GameRandom] initialize(seed) must be called before using rng'
+      );
     }
     return this.instance;
   }
