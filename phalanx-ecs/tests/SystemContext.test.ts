@@ -87,7 +87,12 @@ describe('SystemContext shared services', () => {
       int: () => 0,
       intRange: () => 1,
       boolean: () => true,
-      pick: (arr) => arr[0] as never,
+      pick: (arr) => {
+        if (arr.length === 0) {
+          throw new Error('Cannot pick from empty array');
+        }
+        return arr[0]!;
+      },
       shuffle: (arr) => arr,
     };
 
