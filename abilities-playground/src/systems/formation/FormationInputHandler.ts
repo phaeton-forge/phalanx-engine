@@ -20,6 +20,10 @@ export interface FormationInputCallbacks {
   ) => void;
   /** Fired when placement selection ends (Esc, or explicit exit). */
   onPlacementSelectionEnd?: () => void;
+  /** Fired when a drag-to-move gesture on a placed unit begins. */
+  onMoveDragStart?: () => void;
+  /** Fired when a drag-to-move gesture ends (drop or cancel). */
+  onMoveDragEnd?: () => void;
 }
 
 interface PlacementSelection {
@@ -192,18 +196,23 @@ export class FormationInputHandler {
       unitType,
       source: { gridX: fromGridX, gridZ: fromGridZ },
     };
+    this.callbacks.onMoveDragStart?.();
     window.addEventListener('pointermove', this.onMovePointerMove);
     window.addEventListener('pointerup', this.onMovePointerUp);
     window.addEventListener('pointercancel', this.onMovePointerUp);
   }
 
   private endMoveDrag(): void {
+    const wasDragging = this.moveDrag !== null;
     window.removeEventListener('pointermove', this.onMovePointerMove);
     window.removeEventListener('pointerup', this.onMovePointerUp);
     window.removeEventListener('pointercancel', this.onMovePointerUp);
 
     this.hoverPreview.hide();
     this.moveDrag = null;
+    if (wasDragging) {
+      this.callbacks.onMoveDragEnd?.();
+    }
   }
 
   private readonly onPlacementPointerMove = (event: PointerEvent): void => {

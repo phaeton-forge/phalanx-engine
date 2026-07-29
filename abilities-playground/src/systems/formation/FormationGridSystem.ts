@@ -22,6 +22,8 @@ export interface FormationGridSystemCallbacks {
     toZ: number
   ) => void;
   onPlacementSelectionEnd?: () => void;
+  onMoveDragStart?: () => void;
+  onMoveDragEnd?: () => void;
 }
 
 /**
@@ -60,6 +62,8 @@ export class FormationGridSystem {
         onPlaceUnit: callbacks.onPlaceUnit,
         onMoveUnit: callbacks.onMoveUnit,
         onPlacementSelectionEnd: callbacks.onPlacementSelectionEnd,
+        onMoveDragStart: callbacks.onMoveDragStart,
+        onMoveDragEnd: callbacks.onMoveDragEnd,
       }
     );
   }

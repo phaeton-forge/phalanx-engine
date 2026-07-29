@@ -98,6 +98,12 @@ export class Game {
         onPlacementSelectionEnd: () => {
           this.ui.setSelectedUnit(null);
         },
+        onMoveDragStart: () => {
+          this.cameraController.setTouchPanBlocked(true);
+        },
+        onMoveDragEnd: () => {
+          this.cameraController.setTouchPanBlocked(false);
+        },
       }
     );
 
