@@ -1,6 +1,6 @@
 {
   "name": "@phalanx-engine/ecs",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "Lightweight, renderer-agnostic Entity-Component-System library with optional multiplayer support via Phalanx Engine",
   "type": "module",
   "main": "./dist/index.js",

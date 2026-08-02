@@ -29,6 +29,13 @@ export { FixedPoint };
 const DEFAULT_PRECISION = 5;
 
 /**
+ * Integer scale derived from {@link DEFAULT_PRECISION}: a value's raw bigint
+ * base = value × 10^DEFAULT_PRECISION. Exposed for {@link FP.ToInt}'s
+ * float-free integer extraction.
+ */
+const FP_SCALE = 10n ** BigInt(DEFAULT_PRECISION);
+
+/**
  * FP - Fixed-point number creation, conversion, and math utilities
  * Quantum-style unified API for all fixed-point operations
  */
@@ -45,7 +52,10 @@ export const FP = {
    * @param value - Number to convert
    * @param precision - Decimal precision (default: 18)
    */
-  FromFloat: (value: number, precision: number = DEFAULT_PRECISION): FixedPoint => {
+  FromFloat: (
+    value: number,
+    precision: number = DEFAULT_PRECISION
+  ): FixedPoint => {
     // Use toFixed(precision) for deterministic conversion across all JS engines
     // This ensures the same string representation regardless of browser
     // and stays within the precision limit of the fixed-point library
@@ -74,6 +84,30 @@ export const FP = {
     precision: number = DEFAULT_PRECISION
   ): FixedPoint => {
     return fpFromInt(BigInt(value), 0, precision);
+  },
+
+  /**
+   * Convert a fixed-point number to a truncated integer (rounds toward zero)
+   * as a plain JS number, via raw bigint division — no float round-trip.
+   *
+   * This is the FP-native inverse of {@link FP.FromInt} and the deterministic
+   * alternative to `Math.trunc(FP.ToFloat(fp))`. Use it on the tick path when
+   * a simulation value (an ability level, a count, an index) must drive a
+   * branch or a table lookup; `ToFloat` is presentation-only by contract.
+   *
+   * Assumes the default precision (10^5). For values created with a custom
+   * precision, scale the raw base manually via {@link FP.ToRaw}.
+   *
+   * @example
+   * ```typescript
+   * const level = FP.ToInt(attribute.current); // ability level FP(3) -> 3
+   * const multiplier = table[level - 1];
+   * ```
+   */
+  ToInt: (fp: FixedPoint): number => {
+    const raw = fp.base;
+    // BigInt division truncates toward zero, matching Math.trunc semantics.
+    return Number(raw / FP_SCALE);
   },
 
   /**
@@ -192,11 +226,7 @@ export const FP = {
   },
 
   /** Clamp a value between min and max */
-  Clamp: (
-    value: FixedPoint,
-    min: FixedPoint,
-    max: FixedPoint
-  ): FixedPoint => {
+  Clamp: (value: FixedPoint, min: FixedPoint, max: FixedPoint): FixedPoint => {
     return FixedPoint.min(FixedPoint.max(value, min), max);
   },
 
@@ -238,7 +268,10 @@ export const FP = {
     const normalized = normalizeAngleRad(x);
 
     if (FP.Eq(normalized, FP._0)) return FP._1;
-    if (FP.Eq(normalized, FP.PiOver2) || FP.Eq(normalized, FP.Neg(FP.PiOver2))) {
+    if (
+      FP.Eq(normalized, FP.PiOver2) ||
+      FP.Eq(normalized, FP.Neg(FP.PiOver2))
+    ) {
       return FP._0;
     }
     if (FP.Eq(normalized, FP.Pi) || FP.Eq(normalized, FP.Neg(FP.Pi))) {
@@ -638,7 +671,7 @@ export const FPQuaternion = {
     x: FixedPoint,
     y: FixedPoint,
     z: FixedPoint,
-    w: FixedPoint,
+    w: FixedPoint
   ): FPQuaternion => ({ x, y, z, w }),
 
   /** Create a quaternion from float components */
@@ -698,11 +731,7 @@ export const FPQuaternion = {
    * `axis` is assumed to be unit length (caller's responsibility).
    */
   FromAxisAngle: (axis: FPVector3, angle: FixedPoint): FPQuaternion => {
-    if (
-      FP.Eq(axis.x, FP._0) &&
-      FP.Eq(axis.z, FP._0) &&
-      !FP.Eq(axis.y, FP._0)
-    ) {
+    if (FP.Eq(axis.x, FP._0) && FP.Eq(axis.z, FP._0) && !FP.Eq(axis.y, FP._0)) {
       const yaw = FP.Gt(axis.y, FP._0) ? angle : FP.Neg(angle);
       return FPQuaternion.FromYaw(yaw);
     }
@@ -724,7 +753,7 @@ export const FPQuaternion = {
    */
   LookRotation: (
     forwardDir: FPVector3,
-    upDir: FPVector3 = FPVector3.Up,
+    upDir: FPVector3 = FPVector3.Up
   ): FPQuaternion => {
     const forward = FPVector3.Normalize(forwardDir);
     // Degenerate forward (zero-length): Normalize yields the zero vector, so no
@@ -775,7 +804,7 @@ export const FPQuaternion = {
     if (FP.Gt(m00, m11) && FP.Gt(m00, m22)) {
       const s = FP.Mul(
         FP.Sqrt(FP.Add(FP.Sub(FP.Sub(FP._1, m11), m22), m00)),
-        FP.FromInt(2),
+        FP.FromInt(2)
       );
       return FPQuaternion.Normalize({
         w: FP.Div(FP.Sub(m21, m12), s),
@@ -788,7 +817,7 @@ export const FPQuaternion = {
     if (FP.Gt(m11, m22)) {
       const s = FP.Mul(
         FP.Sqrt(FP.Add(FP.Sub(FP.Sub(FP._1, m00), m22), m11)),
-        FP.FromInt(2),
+        FP.FromInt(2)
       );
       return FPQuaternion.Normalize({
         w: FP.Div(FP.Sub(m02, m20), s),
@@ -800,7 +829,7 @@ export const FPQuaternion = {
 
     const s = FP.Mul(
       FP.Sqrt(FP.Add(FP.Sub(FP.Sub(FP._1, m00), m11), m22)),
-      FP.FromInt(2),
+      FP.FromInt(2)
     );
     return FPQuaternion.Normalize({
       w: FP.Div(FP.Sub(m10, m01), s),
@@ -856,15 +885,24 @@ export const FPQuaternion = {
 
     if (FP.Gt(cosY, threshold)) {
       const m23 = FP.Mul(two, FP.Sub(FP.Mul(y, z), FP.Mul(w, x)));
-      const m33 = FP.Sub(FP._1, FP.Mul(two, FP.Add(FP.Mul(x, x), FP.Mul(y, y))));
+      const m33 = FP.Sub(
+        FP._1,
+        FP.Mul(two, FP.Add(FP.Mul(x, x), FP.Mul(y, y)))
+      );
       const m12 = FP.Mul(two, FP.Sub(FP.Mul(x, y), FP.Mul(w, z)));
-      const m11 = FP.Sub(FP._1, FP.Mul(two, FP.Add(FP.Mul(y, y), FP.Mul(z, z))));
+      const m11 = FP.Sub(
+        FP._1,
+        FP.Mul(two, FP.Add(FP.Mul(y, y), FP.Mul(z, z)))
+      );
       xAngle = FP.Atan2(FP.Neg(m23), m33);
       zAngle = FP.Atan2(FP.Neg(m12), m11);
     } else {
       // Gimbal lock: fix roll at zero and derive pitch from the remaining terms.
       const m32 = FP.Mul(two, FP.Add(FP.Mul(y, z), FP.Mul(w, x)));
-      const m22 = FP.Sub(FP._1, FP.Mul(two, FP.Add(FP.Mul(x, x), FP.Mul(z, z))));
+      const m22 = FP.Sub(
+        FP._1,
+        FP.Mul(two, FP.Add(FP.Mul(x, x), FP.Mul(z, z)))
+      );
       xAngle = FP.Atan2(m32, m22);
       zAngle = FP._0;
     }
@@ -878,19 +916,19 @@ export const FPQuaternion = {
   Mul: (a: FPQuaternion, b: FPQuaternion): FPQuaternion => ({
     x: FP.Add(
       FP.Add(FP.Mul(a.w, b.x), FP.Mul(a.x, b.w)),
-      FP.Sub(FP.Mul(a.y, b.z), FP.Mul(a.z, b.y)),
+      FP.Sub(FP.Mul(a.y, b.z), FP.Mul(a.z, b.y))
     ),
     y: FP.Add(
       FP.Sub(FP.Mul(a.w, b.y), FP.Mul(a.x, b.z)),
-      FP.Add(FP.Mul(a.y, b.w), FP.Mul(a.z, b.x)),
+      FP.Add(FP.Mul(a.y, b.w), FP.Mul(a.z, b.x))
     ),
     z: FP.Add(
       FP.Add(FP.Mul(a.w, b.z), FP.Mul(a.x, b.y)),
-      FP.Sub(FP.Mul(a.z, b.w), FP.Mul(a.y, b.x)),
+      FP.Sub(FP.Mul(a.z, b.w), FP.Mul(a.y, b.x))
     ),
     w: FP.Sub(
       FP.Sub(FP.Mul(a.w, b.w), FP.Mul(a.x, b.x)),
-      FP.Add(FP.Mul(a.y, b.y), FP.Mul(a.z, b.z)),
+      FP.Add(FP.Mul(a.y, b.y), FP.Mul(a.z, b.z))
     ),
   }),
 
@@ -898,7 +936,7 @@ export const FPQuaternion = {
   Dot: (a: FPQuaternion, b: FPQuaternion): FixedPoint =>
     FP.Add(
       FP.Add(FP.Mul(a.x, b.x), FP.Mul(a.y, b.y)),
-      FP.Add(FP.Mul(a.z, b.z), FP.Mul(a.w, b.w)),
+      FP.Add(FP.Mul(a.z, b.z), FP.Mul(a.w, b.w))
     ),
 
   /** Magnitude (length) of a quaternion. */
@@ -909,7 +947,7 @@ export const FPQuaternion = {
   SqrMagnitude: (q: FPQuaternion): FixedPoint =>
     FP.Add(
       FP.Add(FP.Mul(q.x, q.x), FP.Mul(q.y, q.y)),
-      FP.Add(FP.Mul(q.z, q.z), FP.Mul(q.w, q.w)),
+      FP.Add(FP.Mul(q.z, q.z), FP.Mul(q.w, q.w))
     ),
 
   /** Normalize a quaternion. Returns Identity() if magnitude is zero. */
@@ -1005,7 +1043,7 @@ export const FPQuaternion = {
     const vQuat: FPQuaternion = { x: v.x, y: v.y, z: v.z, w: FP._0 };
     const result = FPQuaternion.Mul(
       FPQuaternion.Mul(q, vQuat),
-      FPQuaternion.Conjugate(q),
+      FPQuaternion.Conjugate(q)
     );
     return { x: result.x, y: result.y, z: result.z };
   },
@@ -1013,11 +1051,12 @@ export const FPQuaternion = {
   // ============ Conversion ============
 
   /** Convert to a plain object with float values (for display/serialization). */
-  ToFloat: (q: FPQuaternion): { x: number; y: number; z: number; w: number } => ({
+  ToFloat: (
+    q: FPQuaternion
+  ): { x: number; y: number; z: number; w: number } => ({
     x: q.x.toDecimal(),
     y: q.y.toDecimal(),
     z: q.z.toDecimal(),
     w: q.w.toDecimal(),
   }),
 };
-
