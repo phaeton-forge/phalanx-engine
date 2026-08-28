@@ -43,5 +43,3 @@ jobs:
 
       - name: Publish @phalanx-engine packages
         run: pnpm publish:packages --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

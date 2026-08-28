@@ -597,8 +597,8 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
    * Join the matchmaking queue
    * @returns Promise that resolves with queue status
    */
-  async joinQueue(): Promise<QueueStatusEvent> {
-    const status = await this.socketManager.joinQueue();
+  async joinQueue(gameType?: string): Promise<QueueStatusEvent> {
+    const status = await this.socketManager.joinQueue(gameType);
     this.clientState = 'in-queue';
     this.emit('queueJoined', status);
     return status;
@@ -733,8 +733,8 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
    * Join queue and wait for match in one call
    * @returns Promise that resolves with match found event
    */
-  async joinQueueAndWaitForMatch(): Promise<MatchFoundEvent> {
-    await this.joinQueue();
+  async joinQueueAndWaitForMatch(gameType?: string): Promise<MatchFoundEvent> {
+    await this.joinQueue(gameType);
     return this.waitForMatch();
   }
 

@@ -1,6 +1,6 @@
 {
   "name": "@phalanx-engine/math",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Deterministic fixed-point math library for Phalanx Engine - ensures identical calculations across all platforms",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -12,8 +12,8 @@
     }
   },
   "scripts": {
-    "build": "tsc",
-    "dev": "tsc --watch",
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsc -p tsconfig.build.json --watch",
     "clean": "rimraf dist",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",

@@ -221,7 +221,7 @@ export class SocketManager {
   /**
    * Join the matchmaking queue
    */
-  async joinQueue(): Promise<QueueStatusEvent> {
+  async joinQueue(gameType?: string): Promise<QueueStatusEvent> {
     this.ensureConnected();
 
     return new Promise((resolve, reject) => {
@@ -241,6 +241,7 @@ export class SocketManager {
       this.socket!.emit('queue-join', {
         playerId: this.config.playerId,
         username: this.config.username,
+        gameType,
       });
     });
   }

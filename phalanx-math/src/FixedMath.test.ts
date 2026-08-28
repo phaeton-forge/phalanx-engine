@@ -39,7 +39,7 @@ describe('FP.ToInt', () => {
     // Using FromFloat to construct a value with a known fractional part.
     const fp = FP.FromFloat(7.3);
     const raw = FP.ToRaw(fp);
-    const scale = 10n ** 5n; // DEFAULT_PRECISION
+    const scale = 100000n; // 10^DEFAULT_PRECISION (5)
     expect(FP.ToInt(fp)).toBe(Number(raw / scale));
   });
 
