@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
+import { describe, expect, it, beforeEach, afterEach, afterAll, vi } from 'vitest';
 import { CameraController } from '../src/core/CameraController';
 
 const windowListeners = {
@@ -8,6 +8,9 @@ const windowListeners = {
 
 vi.stubGlobal('window', windowListeners);
 
+afterAll(() => {
+  vi.unstubAllGlobals();
+});
 function createCanvas(): HTMLCanvasElement {
   const canvas = {
     addEventListener: vi.fn(),
