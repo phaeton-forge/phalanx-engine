@@ -184,10 +184,10 @@ export class CameraController {
       if (!a || !b || this.pinchStartDistance <= 0) return;
       event.preventDefault();
       const distance = this.touchDistance(a, b);
+      if (distance <= 0) return;
       // Fingers apart → zoom in (lower camera); fingers together → zoom out.
       const scale = this.pinchStartDistance / distance;
       this.cameraHeight = THREE.MathUtils.clamp(
-        this.pinchStartHeight * scale,
         cameraConfig.minHeight,
         cameraConfig.maxHeight
       );
