@@ -114,6 +114,7 @@
         width: 100%;
         height: 100%;
         display: block;
+        touch-action: none;
       }
 
       /* Bottom panel so frozen winner units stay visible for balance review. */
@@ -385,7 +386,11 @@
           <button id="unit-btn-volt" type="button" data-unit-type="volt">
             Volt
           </button>
-          <button id="unit-btn-plasma-tank" type="button" data-unit-type="plasmaTank">
+          <button
+            id="unit-btn-plasma-tank"
+            type="button"
+            data-unit-type="plasmaTank"
+          >
             Plasma Tank
           </button>
           <button id="unit-btn-sau" type="button" data-unit-type="sau">
@@ -397,9 +402,7 @@
       <div id="result-overlay">
         <h2 id="result-title">Victory</h2>
         <div class="result-actions">
-          <button id="reset-arena-btn" type="button" hidden>
-            Reset Arena
-          </button>
+          <button id="reset-arena-btn" type="button" hidden>Reset Arena</button>
           <button id="return-lobby-btn" class="secondary" type="button">
             Return to Lobby
           </button>
