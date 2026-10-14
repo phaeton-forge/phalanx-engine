@@ -412,7 +412,7 @@ class instances.
 | `formatVersion` newer                    | reject                                                   |
 | `digest` ≠ `digestBytes(body)`           | reject (corrupt)                                         |
 
-A reject throws `SnapshotRejectedError(reason)`.
+A reject throws `SnapshotRejectedError(reason)`. `migrations[v]` is the step from version `v` to `v + 1`.
 
 ## 6. StateHelpers (optional)
 

@@ -33,7 +33,7 @@ metadata:
 ## Rules
 
 1. `createWorld(config, ctx)` builds `new GameWorld({ tickFrameProvider:
-   ctx.tickFrameProvider, random: ctx.random, ... })` and calls
+ctx.tickFrameProvider, random: ctx.random, ... })` and calls
    `world.start()`. Never call `processAllTicks`.
 2. `ctx.purpose === 'restore'`: build static content only;
    `GameState.restore` recreates dynamic entities.
@@ -70,10 +70,11 @@ the reader must consume the body exactly.
 follow the body and are not part of the digest. `null` omits an extra;
 an empty `Uint8Array` stores it.
 
-`checkSnapshotCompatibility` returns `accept`, `migrate` (every step from
-the stored format up to the current one is present), or `reject`.
-`decodeSnapshot` rejects a bad magic and a digest that does not match the
-body (`SnapshotRejectedError`).
+`checkSnapshotCompatibility` returns `accept`, `migrate` (`migrations[v]` is
+the step from version `v` to `v + 1`; every step from the stored format up
+to the current one must be present), or `reject`. A `simVersion` mismatch
+rejects. `decodeSnapshot` throws `SnapshotRejectedError` for a bad magic, a
+truncated buffer, trailing bytes, or a digest that does not match the body.
 
 ## Minimal game
 

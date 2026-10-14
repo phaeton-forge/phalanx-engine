@@ -1,7 +1,7 @@
-/** A snapshot failed the version policy or its digest check. */
+/** A snapshot failed the version policy, its digest check, or decoding. */
 export class SnapshotRejectedError extends Error {
-  public constructor(reason: string) {
-    super(`snapshot rejected: ${reason}`);
+  public constructor(reason: string, options?: ErrorOptions) {
+    super(`snapshot rejected: ${reason}`, options);
     this.name = 'SnapshotRejectedError';
   }
 }

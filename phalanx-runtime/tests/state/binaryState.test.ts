@@ -172,6 +172,18 @@ describe('BinaryStateWriter / BinaryStateReader', () => {
     ).toBe('ok');
   });
 
+  it('rejects a non-canonical overlong varint', () => {
+    expect(() =>
+      new BinaryStateReader(new Uint8Array([0x80, 0x00])).varint()
+    ).toThrow(/non-canonical encoding/);
+    expect(
+      readBack(
+        written((w) => w.varint(128)),
+        (r) => r.varint()
+      )
+    ).toBe(128);
+  });
+
   it('rejects a varint above 2^53-1', () => {
     // 9-byte continuation cannot be a safe integer.
     const overlong = written((w) => {
@@ -187,6 +199,16 @@ describe('BinaryStateWriter / BinaryStateReader', () => {
     const padded = new Uint8Array(4 + payload.length);
     padded.set(payload, 4);
     expect(readBack(padded.subarray(4), (r) => r.u32())).toBe(0x11223344);
+  });
+
+  it('rejects a list or sortedBy count that cannot fit in the remaining bytes', () => {
+    const bytes = written((w) => {
+      w.varint(3);
+      w.u8(1);
+    });
+    expect(() => new BinaryStateReader(bytes).list((r) => r.u8())).toThrow(
+      /count 3 exceeds 1 remaining byte/
+    );
   });
 
   it('keeps list order and reports indexes', () => {

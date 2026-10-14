@@ -36,4 +36,9 @@ Entries collected per package until the synchronized 0.3.0 release
   / `decodeSnapshot` with the `PHXS` header, xxhash64 `digestBytes`,
   `canonicalConfigBytes` / `configHash`, and `checkSnapshotCompatibility`.
   The digest covers `GameState` bytes only; bot state and the input
-  checkpoint are stored outside it. No float methods.
+  checkpoint are stored outside it. No float methods. `decodeSnapshot`
+  throws `SnapshotRejectedError` (with the reader error as `cause`) for a
+  truncated buffer or trailing bytes. Non-canonical varints are rejected,
+  and a `list` / `sortedBy` count that cannot fit in the remaining bytes
+  throws. `migrations[v]` is the step from version `v` to `v + 1`. A
+  `simVersion` mismatch still rejects.

@@ -134,10 +134,10 @@ export function encodeSnapshot(
 
 /**
  * Inverse of {@link encodeSnapshot}. Throws {@link SnapshotRejectedError}
- * when the magic is wrong, the buffer is shorter than the magic, or
- * `header.digest` is not `digestBytes(body)`. A truncated tail or trailing
- * bytes throw from the reader (`StateReader: unexpected end of buffer`,
- * `StateReader.done`).
+ * when the magic is wrong, the buffer is truncated, trailing bytes remain,
+ * or `header.digest` is not `digestBytes(body)`. A reader failure (truncated
+ * tail, trailing bytes, malformed varint) is rethrown as
+ * {@link SnapshotRejectedError} with the original error as `cause`.
  */
 export function decodeSnapshot(bytes: SnapshotBytes): DecodedSnapshot {
   if (!(bytes instanceof Uint8Array)) {
@@ -150,7 +150,18 @@ export function decodeSnapshot(bytes: SnapshotBytes): DecodedSnapshot {
     throw new SnapshotRejectedError('magic mismatch');
   }
 
-  const r = new BinaryStateReader(bytes.subarray(MAGIC_BYTES.length));
+  try {
+    return parseSnapshot(bytes.subarray(MAGIC_BYTES.length));
+  } catch (error) {
+    if (error instanceof SnapshotRejectedError) throw error;
+    const reason =
+      error instanceof Error ? error.message : 'malformed snapshot';
+    throw new SnapshotRejectedError(reason, { cause: error });
+  }
+}
+
+function parseSnapshot(payload: Uint8Array): DecodedSnapshot {
+  const r = new BinaryStateReader(payload);
   const engineFormat = r.varint();
   const gameId = r.str();
   const simVersion = r.str();
@@ -219,6 +230,7 @@ export function configHash(config: unknown): Digest {
  * `simVersion` mismatch, or a newer `formatVersion`. Returns `migrate` when
  * the stored format is older and every step `migrations[v]` exists for
  * `v` from the stored format up to (but not including) the expected format.
+ * `migrations[v]` is the step from version `v` to `v + 1`.
  * Otherwise accepts.
  *
  * The digest is not an input here: {@link decodeSnapshot} rejects a body

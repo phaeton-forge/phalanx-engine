@@ -226,9 +226,21 @@ describe('snapshot header', () => {
     const padded = new Uint8Array(encoded.length + 1);
     padded.set(encoded);
     padded[encoded.length] = 1;
-    expect(() => decodeSnapshot(padded)).toThrow(/unread byte/);
-    expect(() => decodeSnapshot(encoded.subarray(0, 6))).toThrow(
+    const trailing = captureRejected(padded);
+    expect(trailing).toBeInstanceOf(SnapshotRejectedError);
+    expect(trailing.message).toMatch(/unread byte/);
+    expect(trailing.cause).toBeInstanceOf(Error);
+    expect((trailing.cause as Error).message).toMatch(/unread byte/);
+
+    const truncated = captureRejected(encoded.subarray(0, 6));
+    expect(truncated).toBeInstanceOf(SnapshotRejectedError);
+    expect(truncated.message).toMatch(/unexpected end of buffer/);
+    expect(truncated.cause).toBeInstanceOf(Error);
+    expect((truncated.cause as Error).message).toMatch(
       /unexpected end of buffer/
+    );
+    expect(() => decodeSnapshot(new Uint8Array([0x50, 0x48]))).toThrow(
+      SnapshotRejectedError
     );
   });
 });
@@ -434,3 +446,13 @@ describe('canonicalConfigBytes / configHash', () => {
     expect(() => canonicalConfigBytes(circular)).toThrow(/circular/);
   });
 });
+
+function captureRejected(bytes: Uint8Array): SnapshotRejectedError {
+  try {
+    decodeSnapshot(bytes);
+  } catch (error) {
+    if (error instanceof SnapshotRejectedError) return error;
+    throw error;
+  }
+  throw new Error('expected SnapshotRejectedError');
+}

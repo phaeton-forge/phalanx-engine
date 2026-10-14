@@ -244,6 +244,11 @@ export class BinaryStateReader implements StateReader {
         throw new Error('StateReader.varint: value exceeds 2^53-1');
       }
       if ((byte & 0x80) === 0) {
+        // A continued group whose payload is 0 is an overlong encoding
+        // (for example 0x80 0x00 for 0). The only canonical zero is 0x00.
+        if (shift > 0 && (byte & 0x7f) === 0) {
+          throw new Error('StateReader.varint: non-canonical encoding');
+        }
         return result;
       }
       shift += 7;
@@ -313,6 +318,14 @@ export class BinaryStateReader implements StateReader {
 
   public list<T>(read: (r: StateReader, index: number) => T): T[] {
     const count = this.varint();
+    // `sortedBy` is read through `list`. Every item writes at least one byte,
+    // so a count larger than the unread tail cannot be a real list.
+    const remaining = this.unreadCount();
+    if (count > remaining) {
+      throw new Error(
+        `StateReader.list: count ${String(count)} exceeds ${String(remaining)} remaining byte(s)`
+      );
+    }
     const out: T[] = [];
     for (let index = 0; index < count; index += 1) {
       out.push(read(this, index));
