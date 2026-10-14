@@ -1,6 +1,6 @@
 import { notImplemented } from '../notImplemented.js';
 
-/** A complete engine snapshot: header, game body and optional bot state. */
+/** A complete engine snapshot: header, game body, optional bot and input state. */
 export type SnapshotBytes = Uint8Array;
 
 /** Lowercase hex xxhash64 of a byte string (16 characters). */
@@ -29,11 +29,19 @@ export interface DecodedSnapshot {
   /** Bytes written by `GameState.save`. Covered by `header.digest`. */
   readonly body: Uint8Array;
   /**
-   * State of the bot policies run by the side that took the snapshot, or
-   * `null`. Not part of the digest: in server mode clients never run server
-   * bots, so bot state must not influence the shared hash.
+   * State of the bot policies hosted by the runner that took the snapshot,
+   * or `null`. Not part of the digest. A runner restores it only for slots
+   * it hosts; a client ignores a server snapshot's bot state.
    */
   readonly botState: Uint8Array | null;
+  /**
+   * InputCheckpoint bytes of the runner that took the snapshot, or
+   * `null`. Not part of the digest. Holds commands submitted but not yet
+   * delivered, so a local resume does not lose the input-delay queue.
+   * Applied only for slots this runner submits; ignored on a snapshot
+   * received from the network.
+   */
+  readonly inputCheckpoint: Uint8Array | null;
 }
 
 export type VersionDecision = 'accept' | 'migrate' | 'reject';
@@ -51,10 +59,16 @@ export interface ExpectedSnapshotIdentity {
   readonly configHash: Digest;
 }
 
+/** Sections outside the digest. Both are optional. */
+export interface SnapshotExtras {
+  readonly botState?: Uint8Array | null;
+  readonly inputCheckpoint?: Uint8Array | null;
+}
+
 export function encodeSnapshot(
   _header: Omit<SnapshotHeader, 'magic' | 'digest'>,
   _body: Uint8Array,
-  _botState?: Uint8Array | null
+  _extras?: SnapshotExtras
 ): SnapshotBytes {
   return notImplemented('encodeSnapshot', 2);
 }

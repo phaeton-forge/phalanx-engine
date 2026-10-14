@@ -47,7 +47,8 @@ describe('impulse collision response', () => {
     const system = new PhysicsSystem(createConfig(overrides));
     system.init(context);
     const physicsStore = entityManager.getOrCreateSoAStore(PhysicsSoASchema);
-    const transformStore = entityManager.getOrCreateSoAStore(TransformSoASchema);
+    const transformStore =
+      entityManager.getOrCreateSoAStore(TransformSoASchema);
     return { system, physicsStore, transformStore };
   }
 
@@ -58,7 +59,7 @@ describe('impulse collision response', () => {
     posX: number,
     velX: number,
     mass = 1,
-    restitution = 0.5,
+    restitution = 0.5
   ): void {
     physicsStore.add(entityId, {
       velocityX: FP.ToRaw(FP.FromFloat(velX)),
@@ -78,8 +79,31 @@ describe('impulse collision response', () => {
     addTransformRow(transformStore, entityId, posX, 0);
   }
 
-  const velX = (store: SoAComponentStore<typeof PhysicsSoASchema.definition>, id: number) =>
-    FP.ToFloat(FP.FromRaw(store.arrays.velocityX[store.indexOf(id)]));
+  const velX = (
+    store: SoAComponentStore<typeof PhysicsSoASchema.definition>,
+    id: number
+  ) => FP.ToFloat(FP.FromRaw(store.arrays.velocityX[store.indexOf(id)]));
+
+  it('queryRadius after resolution still uses the pre-separation centers', () => {
+    const { system, physicsStore, transformStore } = setup();
+    // Overlapping (dist 1.8 < sum of radii 2) and at rest, so the only
+    // position change is collision separation after the grid rebuild.
+    addBody(physicsStore, transformStore, 1, -0.9, 0);
+    addBody(physicsStore, transformStore, 2, 0.9, 0);
+
+    system.step();
+
+    const idx = transformStore.indexOf(1);
+    const x = FP.FromRaw(transformStore.arrays.fpPositionX[idx]);
+    const z = FP.FromRaw(transformStore.arrays.fpPositionZ[idx]);
+    // A rebuild from the post-separation transform would include entity 1
+    // at radius 0. The live grid must not: restore has to replay these
+    // cached centers, not the saved transforms.
+    const hits = system
+      .getSpatialGrid()
+      .queryRadius(x, z, FP.FromFloat(0.0001));
+    expect(hits).not.toContain(1);
+  });
 
   it('equal-mass head-on at e=1 exchanges velocities', () => {
     const { system, physicsStore, transformStore } = setup({

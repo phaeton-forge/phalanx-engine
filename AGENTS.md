@@ -25,8 +25,9 @@ Any divergence is a desync, which ends the match.
 > lockstep **peer**: it runs the same simulation code headlessly, injects
 > server-bot commands into the command stream, arbitrates state hashes and
 > serves snapshots. It never streams state; every rule in this file applies to
-> the server-side simulation unchanged. Relay-only matches behave as before.
-> See `docs/design/server-sim.md`.
+> the server-side simulation unchanged. A desynced client in this mode is
+> resynced from a snapshot and the match continues. Relay mode still ends the
+> match on desync. See `docs/design/server-sim.md`.
 
 Therefore: **every line of simulation code must produce identical results on
 every machine, every CPU, every browser, forever.**
@@ -40,6 +41,7 @@ every machine, every CPU, every browser, forever.**
 | `Math.sin/cos/sqrt/abs/floor/...` on sim values    | `FP.Sin`, `FP.Cos`, `FP.Sqrt`, `FP.Abs`, `FP.Floor`, ... |
 | `number` arithmetic (`+ - * /`) on sim values      | `FP.Add`, `FP.Sub`, `FP.Mul`, `FP.Div`                   |
 | `float`/`number` for positions, velocities, masses | `FixedPoint` (`FP`, `FPVector2/3`, `FPQuaternion`)       |
+| `IRandom.float`, `floatRange`, `boolean`           | `int` / `intRange` (the float draws are `@deprecated`)   |
 | Unordered `Map`/`Set`/`Object.keys` iteration      | Sorted iteration (`store.entityIds()`, `keys().sort()`)  |
 | `store.forEachDense()` in a tick system            | `store.entityIds()` + `store.indexOf()`                  |
 | `requestAnimationFrame` / timers driving sim state | Server-driven ticks via `ITickFrameProvider`             |

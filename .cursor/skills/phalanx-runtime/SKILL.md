@@ -43,9 +43,12 @@ metadata:
    observes and `sortedBy` for id-keyed containers.
 5. `restore(save(x))` must re-save to identical bytes, and a restored world
    must produce the same digest as the original every tick.
-6. Bot state is NOT `GameState`. Use `BotPolicy.save/restore`.
+6. Bot state is NOT `GameState`. Use `BotPolicy.save/restore`. A finished
+   replay never runs the bot. Local resume does: with a log tail, `decide`
+   runs during catch-up and submits only commands past `throughTick`.
 7. A bot's `decide(sim, tick)` must not mutate `sim`; its commands run at
-   `tick + inputDelayTicks`.
+   `tick + inputDelayTicks`. A snapshot also stores the not-yet-delivered
+   submits (the input checkpoint), outside the digest.
 8. Match configs are JSON-safe with integer numbers only.
 
 ## Minimal game

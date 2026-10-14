@@ -64,14 +64,14 @@ never depends on the client or the server.
 
 The mode is chosen per match by `MatchConfigBase.simMode`.
 
-|                | `client`                                     | `server`                                                                |
-| -------------- | -------------------------------------------- | ----------------------------------------------------------------------- |
-| Who simulates  | each client                                  | each client **and** the server (peer)                                   |
-| Ticks/commands | `LocalTransport` (offline) or relay lockstep | the server stamps; human and server-bot commands share one stream       |
-| Bots           | local slots (`runsOn: 'local'`)              | server slots (`runsOn: 'server'`); clients never run them               |
-| Hash           | clients compare (relay)                      | the server is the arbiter; a desynced client is identified and resynced |
-| Reconnect      | local snapshot (every 300 ticks) + log tail  | **fresh server snapshot on request** + ticks in flight                  |
-| Traffic        | commands only                                | commands only (no state streaming)                                      |
+|                | `client`                                       | `server`                                                          |
+| -------------- | ---------------------------------------------- | ----------------------------------------------------------------- |
+| Who simulates  | each client                                    | each client **and** the server (peer)                             |
+| Ticks/commands | `LocalTransport` (offline) or relay lockstep   | the server stamps; human and server-bot commands share one stream |
+| Bots           | local slots (`runsOn: 'local'`)                | server slots (`runsOn: 'server'`); clients never run them         |
+| Hash           | clients compare; a mismatch **ends the match** | the server is the arbiter; a mismatch **resyncs that client**     |
+| Reconnect      | local snapshot (every 300 ticks) + log tail    | **fresh server snapshot on request** + ticks in flight            |
+| Traffic        | commands only                                  | commands only (no state streaming)                                |
 
 Online 1v1 for the first game (Sketch Legion) uses server mode directly.
 
@@ -97,7 +97,9 @@ Per server tick T, inside `GameRoom.processTick`
    `GameState.save()` bytes.
 6. Clients send `state-hash(T)`. Each client is compared **against the
    server**, not against the other clients. A mismatching client receives
-   `desync` and resyncs from a fresh snapshot; the match continues.
+   `desync` and resyncs from a fresh snapshot; the match continues. Relay
+   mode is unchanged: `GameRoom.receiveStateHash` still ends the match.
+   Task 11 must not apply the resync policy there.
 
 ```mermaid
 sequenceDiagram
@@ -180,3 +182,18 @@ otherwise.
 
 These numbers are estimates from one game's bench; Task 11 must measure the
 real per-tick cost under `SimHost` and record it here.
+
+## 8. Practice and bot auto-fill (Sketch Legion)
+
+Decided 2026-10-14. Two ways into a human-vs-server-bot match, both
+`simMode: 'server'`:
+
+- **Practice / training.** A dedicated entry starts immediately: the human
+  plus server bot slots from `resolveMatchConfig`. No queue.
+- **Matchmaking auto-fill.** The queue waits for a live opponent. If none
+  arrives within a timeout, the empty slots are filled with server bots
+  (the Lands / Chapaev behaviour) and the match starts.
+
+Private rooms stay two humans. Task 11 adds both paths; the timeout value
+is game config, not an engine constant. A process restart still drops the
+queue and any in-memory match ("no result"); Redis is out of 0.3.

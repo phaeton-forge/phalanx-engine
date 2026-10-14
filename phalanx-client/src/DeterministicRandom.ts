@@ -34,7 +34,9 @@ export class DeterministicRandom {
   }
 
   /**
-   * Get next random float in range [0, 1)
+   * Get next random float in range [0, 1).
+   *
+   * @deprecated No floats in simulation code. Use `int` / `intRange`.
    */
   float(): number {
     // Use unsigned 32-bit integer for conversion
@@ -43,7 +45,9 @@ export class DeterministicRandom {
   }
 
   /**
-   * Get next random float in range [min, max)
+   * Get next random float in range [min, max).
+   *
+   * @deprecated No floats in simulation code. Use `intRange`.
    * @param min - Minimum value (inclusive)
    * @param max - Maximum value (exclusive)
    */
@@ -73,7 +77,10 @@ export class DeterministicRandom {
   }
 
   /**
-   * Get next random boolean
+   * Get next random boolean.
+   *
+   * @deprecated Float probability draw. Simulation code uses an integer
+   * threshold instead.
    * @param probability - Probability of true (default 0.5)
    */
   boolean(probability: number = 0.5): boolean {

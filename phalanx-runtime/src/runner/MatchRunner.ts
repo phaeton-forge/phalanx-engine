@@ -32,6 +32,16 @@ export interface RunnerOptions {
 export interface FastForwardOptions {
   /** Wall-clock budget per chunk before yielding to the event loop. */
   readonly budgetMs: number;
+  /**
+   * Last tick to execute, inclusive. Empty ticks still run: a command
+   * iterable cannot express them. Replay passes `ReplayRecord.lastTick`.
+   * Server catch-up passes `TransportCatchUp.currentTick - 1`, because
+   * `GameRoom.currentTick` between ticks is the next tick to run
+   * (`GameRoom.ts` increments it at the end of `processTick`).
+   * Throws when `throughTick` is below the runner's current tick or when
+   * an entry falls outside `(current, throughTick]`.
+   */
+  readonly throughTick: number;
   /** Progress in `[0, 1]`; reaches exactly `1` at the end. */
   readonly onProgress?: (progress: number) => void;
 }
@@ -112,14 +122,22 @@ export class MatchRunner<G extends AnyGameDefinition> {
     notImplemented('MatchRunner.submit', 6);
   }
 
-  /** Header + `GameState.save()` + hosted bot state, after a full tick. */
+  /**
+   * Header + `GameState.save()` + hosted bot state + the input checkpoint,
+   * after a full tick (hosted `decide` already submitted). Bot state and
+   * the checkpoint are outside the digest.
+   */
   public snapshot(): SnapshotBytes {
     return notImplemented('MatchRunner.snapshot', 6);
   }
 
   /**
    * Version policy → fresh `createWorld(config, { purpose: 'restore' })` →
-   * `GameState.restore` → `done()` → round-trip check → bot state.
+   * `GameState.restore` → `done()` → round-trip check. Then bot state and
+   * the input checkpoint, but only for slots this runner hosts or submits:
+   * a client restoring a server snapshot ignores both. With no following
+   * `fastForward`, `start` re-submits the checkpoint and does not re-run
+   * `decide` for the snapshot tick.
    */
   public restore(_bytes: SnapshotBytes): void {
     notImplemented('MatchRunner.restore', 6);
@@ -131,8 +149,14 @@ export class MatchRunner<G extends AnyGameDefinition> {
   }
 
   /**
-   * Execute logged ticks without frames, in chunks of `budgetMs`, while
-   * buffering live batches; resolves once caught up with the transport.
+   * Execute every tick after the current one through `options.throughTick`,
+   * including ticks with no entries, without frames, in chunks of
+   * `budgetMs`. Live batches that arrive meanwhile are buffered.
+   *
+   * Discards the restored input checkpoint (the log supersedes it). After
+   * each replayed tick, hosted policies `decide`; a result is submitted
+   * only when its target tick is past `throughTick`. `fromReplay` does not
+   * use this path and never calls `decide`.
    */
   public fastForward(
     _entries: Iterable<LogEntry>,

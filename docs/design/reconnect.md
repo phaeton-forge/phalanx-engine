@@ -31,8 +31,9 @@ online and in local (bot) matches.
 - `match-log` request from tick N, answered in chunks of at most 2000 ticks.
 - Match `buildId` check: a client with a different build cannot resume.
 - On SIGTERM, send `server-shutdown` to all rooms. A Render deploy restarts
-  the process and kills in-memory matches, which end with "no result" for
-  now (Redis later).
+  the process and kills in-memory matches, which end with "no result".
+  That is accepted for 0.3 (no players yet). Redis is not part of this
+  release.
 
 ## 4. Session token (Task 9)
 
@@ -79,17 +80,23 @@ online and in local (bot) matches.
 - Snapshot size for 240 bodies + 200 projectiles + GAS ≈ 100–115 KB raw,
   35–50 KB deflated. Deserializing takes 10–20 ms on a phone.
 - A snapshot contains the engine header, the game body (`GameState.save()`)
-  and, separately, the state of the bots hosted by the side that took it.
-  Bot state is outside the digest (see
-  [runtime-api.md § Snapshot layout](./runtime-api.md#snapshot-layout)).
-  A server snapshot sent to a client carries the server bots' state, which
-  the client ignores.
+  and, outside the digest, the writer's hosted bot state and its input
+  checkpoint (commands submitted but not yet delivered, plus per-slot
+  sequence counters). See
+  [runtime-api.md § Snapshot layout](./runtime-api.md#snapshot-layout).
+  A client restoring a server snapshot ignores both extra sections: server
+  bot commands arrive later in the command stream. A local resume applies
+  them. With input delay 2, a snapshot after tick T still owes commands
+  for T+1 and T+2; the checkpoint is what keeps them.
 
 ## 7. Catch-up
 
 - Runs on the main thread in chunks of ~80 ms per frame
-  (`fastForward({ budgetMs: 80 })`), with rendering off and a progress UI
-  (`onCatchUp`).
+  (`fastForward({ budgetMs: 80, throughTick })`), with rendering off and a
+  progress UI (`onCatchUp`). `throughTick` is inclusive. For a server
+  catch-up it is `TransportCatchUp.currentTick - 1` (`GameRoom.currentTick`
+  between ticks is the next tick to run). Empty ticks in the gap still
+  execute.
 - Live batches that arrive during catch-up are buffered. The runner goes
   live at a lag of ≤ 2 ticks.
 - Input opens 1 s after going live.
@@ -110,3 +117,10 @@ not ended.
   runtime's pause goes through the runner-owned provider, so it never drops
   ticks.
 - Resume from the latest stored snapshot plus the logged ticks after it.
+- The snapshot's input checkpoint is re-submitted when the log has no tail.
+  When the log continues through tick L, the checkpoint is discarded and
+  hosted bot policies are advanced during catch-up: `decide` runs after
+  each replayed tick, and a produced command is submitted only if its
+  target tick is past L. Otherwise the next live decision uses the policy
+  state from the snapshot tick and diverges from an uninterrupted match.
+  Finished replays and clients watching server bots do not run policies.

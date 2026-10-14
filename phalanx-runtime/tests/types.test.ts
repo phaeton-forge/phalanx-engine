@@ -4,6 +4,8 @@ import {
   type AnyGameDefinition,
   type CommandOf,
   type ConfigOf,
+  type DecodedSnapshot,
+  type FastForwardOptions,
   type MatchRunner,
   type SimOf,
   type StateWriter,
@@ -37,6 +39,22 @@ describe('contract types', () => {
     const { state: _state, ...withoutState } = TinyGame;
     // @ts-expect-error `state` is required
     expectTypeOf(defineGame).toBeCallableWith(withoutState);
+  });
+
+  it('requires an inclusive throughTick on fastForward', () => {
+    expectTypeOf<FastForwardOptions['throughTick']>().toBeNumber();
+    // @ts-expect-error empty ticks are invisible in the command iterable
+    const incomplete: FastForwardOptions = { budgetMs: 80 };
+    expectTypeOf(incomplete.budgetMs).toBeNumber();
+  });
+
+  it('keeps bot state and the input checkpoint outside the digested body', () => {
+    expectTypeOf<
+      DecodedSnapshot['botState']
+    >().toEqualTypeOf<Uint8Array | null>();
+    expectTypeOf<
+      DecodedSnapshot['inputCheckpoint']
+    >().toEqualTypeOf<Uint8Array | null>();
   });
 
   it('exposes no float writer on StateWriter', () => {

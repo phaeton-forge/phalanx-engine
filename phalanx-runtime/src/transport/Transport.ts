@@ -11,7 +11,11 @@ export interface TransportCatchUp {
   readonly snapshot?: SnapshotBytes;
   /** Every entry after the snapshot tick (or from tick 0), in order. */
   readonly log: readonly LogEntry[];
-  /** Server tick at the time of the reply. */
+  /**
+   * Server `GameRoom.currentTick` at the reply: the next tick to run.
+   * The last completed tick, and `fastForward`'s `throughTick`, is
+   * `currentTick - 1`.
+   */
   readonly currentTick: number;
 }
 

@@ -19,7 +19,10 @@ import type { StateReader, StateWriter } from '../state/StateIO.js';
  *     constructors create the SoA rows,
  *  2. overwrite row and component values (`readSoAStores`, `readAbilities`),
  *  3. `readEntityIds` sets the counter to the saved high-water mark,
- *  4. `readRandom` and game singletons, finally `rebuildPhysics`.
+ *  4. `readRandom` and game singletons, then `readBroadphase`.
+ *     `rebuildPhysics` (from the saved transforms) is NOT the last step:
+ *     after a collision the live grid still holds the pre-separation
+ *     centers.
  * `save` writes the same sections in the same order.
  */
 export const StateHelpers = {
@@ -95,7 +98,25 @@ export const StateHelpers = {
   readRandom(_r: StateReader, _rng: IRandom): void {
     notImplemented('StateHelpers.readRandom', 4);
   },
-  /** `PhysicsWorld.rebuildBroadphase()` on `world.context.physics`, if any. */
+  /**
+   * Cached broadphase centers (the fixed-point positions last passed to
+   * `SpatialHashGrid.insert`), for every physics grid on the world.
+   * These are the pre-separation positions, not the saved transforms, and
+   * not the lossy `lastX`/`lastZ` floats.
+   */
+  writeBroadphase(_w: StateWriter, _world: GameWorld): void {
+    notImplemented('StateHelpers.writeBroadphase', 4);
+  },
+  /** Re-insert those centers. Task 4's continuation test covers this. */
+  readBroadphase(_r: StateReader, _world: GameWorld): void {
+    notImplemented('StateHelpers.readBroadphase', 4);
+  },
+  /**
+   * Rebuild every grid from the current transforms. Correct only when no
+   * collision resolution has moved a body since the last grid rebuild
+   * (a fresh world before its first physics step). After a physics tick,
+   * use `readBroadphase`.
+   */
   rebuildPhysics(_world: GameWorld): void {
     notImplemented('StateHelpers.rebuildPhysics', 4);
   },

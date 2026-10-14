@@ -25,7 +25,7 @@ Contents:
 11. [Review & corrections](#review--corrections)
 12. [Corrections for later tasks](#corrections-for-later-tasks)
 13. [Task map](#task-map)
-14. [Open questions](#open-questions)
+14. [Decisions](#decisions-andrey-2026-10-14)
 
 ---
 
@@ -334,6 +334,12 @@ export interface DecodedSnapshot {
   readonly header: SnapshotHeader;
   readonly body: Uint8Array; // GameState bytes, covered by digest
   readonly botState: Uint8Array | null; // NOT covered by digest
+  readonly inputCheckpoint: Uint8Array | null; // NOT covered by digest
+}
+
+export interface SnapshotExtras {
+  readonly botState?: Uint8Array | null;
+  readonly inputCheckpoint?: Uint8Array | null;
 }
 
 export type VersionDecision = 'accept' | 'migrate' | 'reject';
@@ -352,7 +358,7 @@ export interface ExpectedSnapshotIdentity {
 export function encodeSnapshot(
   header: Omit<SnapshotHeader, 'magic' | 'digest'>,
   body: Uint8Array,
-  botState?: Uint8Array | null
+  extras?: SnapshotExtras
 ): SnapshotBytes;
 export function decodeSnapshot(bytes: SnapshotBytes): DecodedSnapshot;
 export function digestBytes(bytes: Uint8Array): Digest;
@@ -381,7 +387,14 @@ Task 2 implements this exact byte layout (all through `BinaryStateWriter`):
 2. `varint engineFormat`, `str gameId`, `str simVersion`,
    `varint formatVersion`, `str configHash`, `varint tick`, `str digest`;
 3. `bytes body` (the `GameState.save()` output);
-4. `bool hasBotState`, then `bytes botState` if true.
+4. `bool hasBotState`, then `bytes botState` if true;
+5. `bool hasInputCheckpoint`, then `bytes inputCheckpoint` if true.
+
+`encodeSnapshot(header, body, extras?)` takes both extra sections in a
+`SnapshotExtras` object. Neither is covered by `header.digest`. A runner
+applies them only for slots it hosts or submits; a client restoring a
+server snapshot ignores both. The input checkpoint is the writer's
+not-yet-delivered submits (input delay) and the per-slot `nextSeq`.
 
 `canonicalConfigBytes`: object keys sorted by UTF-16 code unit
 (`Array.prototype.sort()` default), values tagged by type, safe integers
@@ -432,6 +445,10 @@ export const StateHelpers: {
   readPools(r: StateReader, world: GameWorld): void;
   writeRandom(w: StateWriter, rng: IRandom): void;
   readRandom(r: StateReader, rng: IRandom): void;
+  /** Pre-separation grid centers, not the saved transforms. */
+  writeBroadphase(w: StateWriter, world: GameWorld): void;
+  readBroadphase(r: StateReader, world: GameWorld): void;
+  /** From current transforms. Wrong after a collision; see finding 6. */
   rebuildPhysics(world: GameWorld): void;
   writeAbilities(w: StateWriter, world: GameWorld): void; // Task 5
   readAbilities(r: StateReader, world: GameWorld): void;
@@ -444,7 +461,9 @@ export const StateHelpers: {
    constructors create the SoA rows.
 2. Overwrite row and component values (`readSoAStores`, `readAbilities`).
 3. `readEntityIds` sets the counter to the saved high-water mark.
-4. `readRandom` and game singletons; finally `rebuildPhysics`.
+4. `readRandom` and game singletons, then `readBroadphase`.
+   `rebuildPhysics` (from the saved transforms) does not reproduce the grid
+   after a collision.
 
 `save` writes the same sections in the same order.
 
@@ -518,6 +537,9 @@ export interface RunnerOptions {
 }
 export interface FastForwardOptions {
   readonly budgetMs: number;
+  /** Inclusive. Empty ticks still run. Replay: lastTick.
+   *  Server catch-up: TransportCatchUp.currentTick - 1. */
+  readonly throughTick: number;
   readonly onProgress?: (progress: number) => void;
 }
 
@@ -603,10 +625,21 @@ export interface ReplayRecord<Cfg extends MatchConfigBase = MatchConfigBase> {
 6. hosted bots `decide(sim, T)` → submitted for `T + inputDelayTicks`.
 
 `submit` never applies input locally before the transport delivers it in a
-batch. `restore` builds a fresh world with `purpose: 'restore'`, then calls
-`GameState.restore`, `done()`, the round-trip check and the bot state.
-`fastForward` runs ticks without frames, in chunks of `budgetMs`, buffering
-live batches.
+batch. `snapshot` is taken after step 6, so the input checkpoint holds the
+commands just submitted for `T + inputDelayTicks` and `nextSeq`. `restore`
+builds a fresh world with `purpose: 'restore'`, then calls
+`GameState.restore`, `done()`, the round-trip check, and — only for slots
+this runner hosts or submits — the bot state and the checkpoint. A client
+restoring a server snapshot ignores those two sections.
+
+`fastForward(entries, { budgetMs, throughTick })` runs every tick after the
+current one through `throughTick` inclusive, including ticks that have no
+entries, without frames, in chunks of `budgetMs`. It discards the restored
+checkpoint (the log supersedes it). After each replayed tick the hosted
+policies `decide`; the result is submitted only when its target tick is
+past `throughTick`. `start` with no `fastForward` re-submits the checkpoint
+and does not call `decide` again for the snapshot tick. `fromReplay` never
+calls `decide`.
 
 ## 9. Transport
 
@@ -618,6 +651,7 @@ export type TransportKind = 'local' | 'relay-lockstep' | 'server-peer';
 export interface TransportCatchUp {
   readonly snapshot?: SnapshotBytes; // absent → replay log from tick 0
   readonly log: readonly LogEntry[];
+  /** Next server tick to run. throughTick = currentTick - 1. */
   readonly currentTick: number;
 }
 export interface TransportJoin {
@@ -735,21 +769,21 @@ class LegionState implements GameState {
     );
     w.section('gas', 1, (w) => StateHelpers.writeAbilities(w, world));
     // NOT included: bot plans/RNGs (BotPolicy.save, outside the digest),
-    // the targeting cache (recomputed on the next tick % 4), the spatial
-    // hash (rebuilt by rebuildPhysics), interpolation and cues. The current
-    // tick is in the engine header.
+    // the targeting cache (recomputed on the next tick % 4), interpolation
+    // and cues. The broadphase is readBroadphase (pre-separation centers),
+    // not a rebuild from these transforms. The tick is in the header.
   }
 
   restore(r: StateReader): void {
     // Same sections, same order. Entities first (spawnWithId / readPools),
-    // then values, then the id counter, then RNG, then rebuildPhysics.
+    // then values, then the id counter, then RNG, then readBroadphase.
   }
 }
 ```
 
 Changes against the draft: no `bots` section (finding 8); no `tick` field
 (the header owns it); pools are saved (finding 11); `readPhysicsAndRebuild`
-is replaced by `writeSoAStores` + `rebuildPhysics` (finding 6); grid cells
+is replaced by `writeSoAStores` + `readBroadphase` (finding 6); grid cells
 use `list`.
 
 ### 10.2 Public usage (corrected)
@@ -852,10 +886,12 @@ the correction lands.
 - **How the world gets it.** The runner creates the match RNG from
   `config.seed` and passes it as `WorldInitContext.random`; the game passes
   it to `new GameWorld({ random: ctx.random, ... })`.
-- **Minor conflict.** `IRandom` exposes float methods (`float`,
-  `floatRange`, `boolean`). They are deterministic in JS, but AGENTS.md §0
-  bans floats in the sim. Not changed (additive policy); games should use
-  integer methods in sim code.
+- **Floats.** `IRandom.float`, `floatRange` and `boolean` are `@deprecated`
+  as of this PR (ecs interface and both `DeterministicRandom` copies).
+  Simulation code uses `int` / `intRange`. The methods stay as wrappers
+  until the remaining call site (`abilities-playground`
+  `ArtilleryShellSystem`) is moved off them; Task 13 removes the methods
+  once that call site is gone. New sim code must not add any.
 
 ### 2. Transport vs `ITickFrameProvider`
 
@@ -969,16 +1005,27 @@ the correction lands.
 
 ### 6. Physics
 
-- **Evidence.** `PhysicsSystem` rebuilds the spatial grid from scratch in
-  every substep (`phalanx-physics/src/systems/PhysicsSystem.ts:79`,
-  `:258–281`). There are no persistent contacts or cross-tick caches.
-  `PhysicsBodyComponent.lastX/lastZ` are f64 display caches.
-- **Decision.** No restore rebuild is needed for the physics step itself.
-  `rebuildPhysics` matters only for game queries (`queryRadius`, raycasts)
-  issued before the first physics step after restore. Task 3 exposes the
-  existing private rebuild as `PhysicsWorld.rebuildBroadphase()`;
-  `CollisionSystem` has its own grid and needs the same. Float fields are
-  skipped by `writeSoAStore`.
+- **Evidence.** Each substep integrates velocity, rebuilds the grid, then
+  resolves collisions (`PhysicsSystem.ts:77–81`). Resolution then moves the
+  transforms (`:428–446`). `queryRadius` filters with the centers cached at
+  `insert` (`SpatialHashGrid.ts:42–44`, `:151–152`), so after a collision
+  the grid is the pre-separation positions while the transforms are the
+  post-separation ones. `CollisionSystem.processTick` (`:52–54`) has the
+  same order. `lastX`/`lastZ` are the f64 copies written at insert time
+  (`PhysicsSystem.ts:277–279`); they are lossy and are not a restore source.
+  There is no contact carried across ticks. The next physics step rebuilds
+  again, so the physics step itself does not need the old grid. Anything
+  that queries before that next rebuild does.
+- **Decision.** Do not change the live refresh boundary: rebuilding again
+  after resolution would change query results for existing games. Task 3
+  exposes the cached fixed-point centers (both grids). Task 4's
+  `writeBroadphase` / `readBroadphase` persist and re-insert them.
+  `rebuildPhysics` rebuilds from the current transforms and is correct only
+  before the first resolving step. `phalanx-physics/tests/impulseCollision.test.ts`
+  locks the live behaviour: after one step, `queryRadius` at the
+  post-separation transform does not contain the body. Task 4 adds the
+  continuation test (collide, snapshot, restore, query again, same ids, and
+  not the ids a transform rebuild would return).
 - **Minor.** `PhysicsSystem.step` calls `FP.FromFloat(subSteps)` once per
   step (`:76`). Deterministic, but against AGENTS.md §2; not fixed here.
 
@@ -1101,12 +1148,20 @@ Literal instructions for each task; they override the original task text.
     `generateSeed` `require` path or reimplement it with an ESM import.
   - abilities: `InstanceIdCounter` setter and a runtime state
     export/import on the ability system.
-  - physics: public `PhysicsWorld.rebuildBroadphase()` (and for
-    `CollisionSystem`).
+  - physics: expose the cached fixed-point broadphase centers of
+    `PhysicsSystem` and `CollisionSystem`. Do not rebuild the grid after
+    resolution; that changes live query results.
+  - `IRandom.float`, `floatRange` and `boolean` are already `@deprecated`.
+    Keep them as wrappers when moving the class. Do not add float call
+    sites. Removal is Task 13, after `ArtilleryShellSystem` stops using
+    `floatRange`.
 - **Task 4 (SoA/entity/RNG/physics helpers).** Require explicit unique
   schema names; implement `spawnWithId` and `writePools` / `readPools`; skip
-  f32/f64 fields; follow the normative restore order; `rebuildPhysics`
-  replaces `readPhysicsAndRebuild`.
+  f32/f64 fields; follow the normative restore order. `readBroadphase`
+  restores the pre-separation centers; `rebuildPhysics` is only for a world
+  that has not resolved a collision yet. Continuation test: two overlapping
+  bodies, one `step`, snapshot, restore, `queryRadius` matches the live
+  grid and differs from a rebuild off the saved transforms.
 - **Task 5 (GAS helpers).** Cover the full component layout, attributes
   including `dirty`, the effect queue and `pendingAdd` in array order, tags
   / ad-hoc tags / grant counts and abilities in insertion order, and the
@@ -1121,6 +1176,17 @@ Literal instructions for each task; they override the original task text.
     interleaved in one process.
   - Order by (slot, seq); keep rejected entries in the log.
   - Bot RNG seeded from `(config.seed, slot)`; bot state outside the digest.
+  - Snapshot after `decide`, and write the input checkpoint (pending
+    target ticks + per-slot `nextSeq`) outside the digest. Test: input
+    delay 2, snapshot just after a decision, resume with an empty tail, the
+    delayed commands still execute.
+  - `fastForward` takes an inclusive `throughTick` and runs empty ticks.
+    A log tail discards the checkpoint and still calls `decide` after each
+    replayed tick, submitting only commands whose target is past
+    `throughTick`. Test: snapshot at T, tail through T+50, the next live
+    decision matches a run that never restored. `fromReplay` does not
+    call `decide`. A client does not apply a server snapshot's bot state
+    or checkpoint.
 - **Task 7 (persistence).** `IndexedDbMatchStore` and `visibilitychange`
   handling live in `@phalanx-engine/client` (the runtime has no DOM). The
   runtime keeps the `MatchStore` interface and an in-memory store.
@@ -1132,19 +1198,28 @@ Literal instructions for each task; they override the original task text.
   180 s budget; `abandoned` when all humans are absent.
 - **Task 11 (SimHost).**
   - Per-room `tickRate` from `GameTypeConfig`, validated against the game.
-  - A new room path for human-vs-server-bot (private rooms are 2 humans).
+  - Practice/training: start a server-mode match immediately, human plus
+    server bots. Matchmaking auto-fill: if no live opponent arrives within
+    a timeout, fill the empty slots with server bots and start (Lands /
+    Chapaev). Private rooms stay 2 humans. The timeout is game config.
   - Run the sim synchronously inside `processTick`; inject bot commands into
     `pendingCommands[T + d]`, requiring `1 ≤ d ≤ maxTickAhead`.
-  - Hash arbiter: compare each client with the server, resync instead of
-    ending the match.
+  - Hash arbiter for **server mode only**: compare each client with the
+    server and resync that client. Relay mode keeps
+    `receiveStateHash` ending the match.
+  - No Redis and no snapshot recovery across a process restart. In-memory
+    matches end with "no result".
   - Decode-only pre-filter on the server for human commands.
 - **Task 12 (ServerPeerTransport).** `MatchRunner.join` lives in the runtime
   and uses `Transport.join()`; the session token is the transport's
   concern. Client re-exports `MatchRunner`, `LocalTransport`, `defineGame`.
+  Catch-up calls `fastForward` with `throughTick = currentTick - 1` and
+  does not apply the snapshot's bot state or input checkpoint.
 - **Task 13 (release prep).** Change the abilities/physics peer ranges to
   `workspace:^`; remove `private`; add `phalanx-runtime` to `PACKAGE_DIRS`;
   bump everything to 0.3.0 together; turn `CHANGELOG.unreleased.md` into
-  `CHANGELOG.md`.
+  `CHANGELOG.md`. Remove `IRandom.float`, `floatRange` and `boolean` once
+  `ArtilleryShellSystem` no longer calls them.
 
 ## Task map
 
@@ -1164,16 +1239,20 @@ Literal instructions for each task; they override the original task text.
 | 12   | ServerPeerTransport + client re-exports                               | `MatchRunner.join`                                                                                                                     |
 | 13   | Synchronized 0.3.0 release prep + CHANGELOG                           | —                                                                                                                                      |
 
-## Open questions
+## Decisions (Andrey, 2026-10-14)
 
-1. **Server restarts.** Render deploys kill in-memory matches ("no result").
-   Is that acceptable for the first online release, or is Redis persistence
-   needed before launch?
-2. **`IRandom` float methods.** Keep them (deterministic in JS) or deprecate
-   them for sim code in 0.3?
-3. **Desync policy in relay mode.** Server mode resyncs a desynced client;
-   should relay mode keep ending the match?
-4. **Bot rooms.** Should human-vs-server-bot matches go through matchmaking,
-   private rooms, or a new "practice" entry?
-5. **Branch naming.** The task asked for `feat/runtime-01-contracts`; the
-   agent environment requires `cursor/…`. Rename on merge if needed.
+1. **Server restarts.** In-memory matches ending with "no result" is
+   acceptable. No Redis in 0.3 (no players yet). Task 8 still sends
+   `server-shutdown` on SIGTERM; Task 11 does not add persistence.
+2. **No floats in `IRandom`.** `float`, `floatRange` and `boolean` are
+   deprecated now. Sim code uses `int` / `intRange`. The methods are
+   removed in Task 13 after the playground call site is gone.
+3. **Desync.** Relay mode ends the match. Server mode resyncs the client
+   and continues. Task 11 must not change the relay path.
+4. **Sketch Legion bots.** A practice/training entry starts a server-mode
+   match immediately (human + server bots). Matchmaking fills empty slots
+   with server bots when no live opponent arrives within a timeout, as
+   Lands and Chapaev do. Private rooms stay two humans. Task 11.
+5. **Branch name.** This work is on `cursor/runtime-01-contracts-37b3`
+   because the agent environment requires that prefix. The requested name
+   was `feat/runtime-01-contracts`.

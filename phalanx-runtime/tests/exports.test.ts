@@ -52,6 +52,8 @@ const STATE_HELPERS = [
   'readPools',
   'writeRandom',
   'readRandom',
+  'writeBroadphase',
+  'readBroadphase',
   'rebuildPhysics',
   'writeAbilities',
   'readAbilities',
@@ -131,6 +133,7 @@ describe('skeletons name their implementing task', () => {
       typeof runtime.StateHelpers.rebuildPhysics
     >[0];
     expectTask(() => runtime.StateHelpers.writeEntityIds(w, world), 4);
+    expectTask(() => runtime.StateHelpers.writeBroadphase(w, world), 4);
     expectTask(() => runtime.StateHelpers.rebuildPhysics(world), 4);
     expectTask(() => runtime.StateHelpers.writeAbilities(w, world), 5);
   });
