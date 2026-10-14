@@ -5,4 +5,5 @@ packages:
   - 'phalanx-ecs'
   - 'phalanx-physics'
   - 'phalanx-abilities'
+  - 'phalanx-runtime'
   - 'abilities-playground'
