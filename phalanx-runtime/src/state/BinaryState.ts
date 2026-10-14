@@ -84,11 +84,15 @@ export class BinaryStateWriter implements StateWriter {
     this.u8(v ? 1 : 0);
   }
 
-  /** UTF-8 bytes prefixed by `varint(byteLength)`. */
+  /**
+   * UTF-8 bytes prefixed by `varint(byteLength)`.
+   * Unpaired UTF-16 surrogates throw before any byte is written.
+   */
   public str(v: string): void {
     if (typeof v !== 'string') {
       throw new Error('StateWriter.str: expected a string');
     }
+    assertWellFormedUtf16(v);
     this.writeLengthPrefixed(textEncoder.encode(v));
   }
 
@@ -358,7 +362,29 @@ const I64_MIN = -0x8000000000000000n;
 const I64_MAX = 0x7fffffffffffffffn;
 
 const textEncoder = new TextEncoder();
-const textDecoder = new TextDecoder('utf-8', { fatal: true });
+// `ignoreBOM` keeps a leading U+FEFF as data. The default strips it.
+const textDecoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
+
+const HIGH_SURROGATE_START = 0xd800;
+const LOW_SURROGATE_START = 0xdc00;
+const SURROGATE_END = 0xdfff;
+
+function assertWellFormedUtf16(value: string): void {
+  for (let i = 0; i < value.length; i += 1) {
+    const code = value.charCodeAt(i);
+    if (code < HIGH_SURROGATE_START || code > SURROGATE_END) continue;
+    const next = i + 1 < value.length ? value.charCodeAt(i + 1) : -1;
+    if (
+      code < LOW_SURROGATE_START &&
+      next >= LOW_SURROGATE_START &&
+      next <= SURROGATE_END
+    ) {
+      i += 1;
+      continue;
+    }
+    throw new Error('StateWriter.str: unpaired surrogate');
+  }
+}
 
 function assertIntegerInRange(
   method: string,

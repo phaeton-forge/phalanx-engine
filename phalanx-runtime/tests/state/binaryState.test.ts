@@ -172,6 +172,46 @@ describe('BinaryStateWriter / BinaryStateReader', () => {
     ).toBe('ok');
   });
 
+  it('rejects unpaired UTF-16 surrogates and keeps valid pairs', () => {
+    const w = new BinaryStateWriter();
+    w.u8(1);
+    expect(() => w.str('\uD800')).toThrow(/unpaired surrogate/);
+    expect(() => w.str('\uDC00')).toThrow(/unpaired surrogate/);
+    expect(() => w.str('a\uD800')).toThrow(/unpaired surrogate/);
+    expect(() => w.str('\uDE00\uD83D')).toThrow(/unpaired surrogate/);
+    expect([...w.finish()]).toEqual([1]);
+
+    expect(
+      readBack(
+        written((writer) => writer.str('😀')),
+        (r) => r.str()
+      )
+    ).toBe('😀');
+    expect([...written((writer) => writer.str('a😀b'))]).toEqual([
+      6, 0x61, 0xf0, 0x9f, 0x98, 0x80, 0x62,
+    ]);
+  });
+
+  it('preserves a leading U+FEFF in strings and section keys', () => {
+    const bom = '\uFEFFunits';
+    expect(
+      readBack(
+        written((w) => w.str(bom)),
+        (r) => r.str()
+      )
+    ).toBe(bom);
+    expect(
+      readBack(
+        written((w) => {
+          w.section(bom, 1, (s) => {
+            s.u8(7);
+          });
+        }),
+        (r) => r.section(bom, (s) => s.u8())
+      )
+    ).toBe(7);
+  });
+
   it('rejects a non-canonical overlong varint', () => {
     expect(() =>
       new BinaryStateReader(new Uint8Array([0x80, 0x00])).varint()

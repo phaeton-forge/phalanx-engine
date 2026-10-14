@@ -419,6 +419,34 @@ describe('canonicalConfigBytes / configHash', () => {
     text.done();
   });
 
+  it('rejects unpaired surrogates in config values and keys', () => {
+    expect(() => canonicalConfigBytes('\uD800')).toThrow(/unpaired surrogate/);
+    expect(() => canonicalConfigBytes({ '\uD800': 1 })).toThrow(
+      /unpaired surrogate/
+    );
+    expect(() => canonicalConfigBytes({ label: '\uDC00' })).toThrow(
+      /unpaired surrogate/
+    );
+    expect(() => canonicalConfigBytes(['a\uD800'])).toThrow(
+      /unpaired surrogate/
+    );
+
+    const emoji = canonicalConfigBytes({ label: '😀' });
+    const replacement = canonicalConfigBytes({ label: '\uFFFD' });
+    expect(emoji).not.toEqual(replacement);
+    const text = new BinaryStateReader(canonicalConfigBytes('😀'));
+    expect(text.u8()).toBe(3);
+    expect(text.str()).toBe('😀');
+    text.done();
+    const keyed = new BinaryStateReader(canonicalConfigBytes({ '😀': 1 }));
+    expect(keyed.u8()).toBe(5);
+    expect(keyed.varint()).toBe(1);
+    expect(keyed.str()).toBe('😀');
+    expect(keyed.u8()).toBe(2);
+    expect(keyed.i64()).toBe(1n);
+    keyed.done();
+  });
+
   it('throws on floats, bigint, undefined, functions, symbols and class instances', () => {
     expect(() => canonicalConfigBytes(1.5)).toThrow(/safe integer/);
     expect(() => canonicalConfigBytes(Number.NaN)).toThrow(/safe integer/);

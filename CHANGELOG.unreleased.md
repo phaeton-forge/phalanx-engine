@@ -41,4 +41,6 @@ Entries collected per package until the synchronized 0.3.0 release
   truncated buffer or trailing bytes. Non-canonical varints are rejected,
   and a `list` / `sortedBy` count that cannot fit in the remaining bytes
   throws. `migrations[v]` is the step from version `v` to `v + 1`. A
-  `simVersion` mismatch still rejects.
+  `simVersion` mismatch still rejects. `StateWriter.str` rejects unpaired
+  UTF-16 surrogates (including canonical config keys and values), and
+  `StateReader.str` keeps a leading U+FEFF.

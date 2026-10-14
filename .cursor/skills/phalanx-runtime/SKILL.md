@@ -62,7 +62,9 @@ Little-endian, lengths and counts as unsigned LEB128, no `f32` / `f64`.
 `list` writes the given order (effect queues, pool free lists). `sortedBy`
 sorts by a unique integer key and throws on duplicates or non-integers.
 `section` is `str(key)`, `varint(version)`, `varint(byteLength)`, body, and
-the reader must consume the body exactly.
+the reader must consume the body exactly. `str` rejects unpaired UTF-16
+surrogates, so a lone surrogate cannot share bytes with U+FFFD. That covers
+canonical config keys and values. The reader keeps a leading U+FEFF.
 
 `encodeSnapshot` wraps the body in a `PHXS` header. `engineFormat`,
 `formatVersion` and `tick` are varints. `digestBytes` is xxhash64 (seed 0,

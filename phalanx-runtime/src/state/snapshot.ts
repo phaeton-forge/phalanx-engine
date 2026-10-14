@@ -208,9 +208,10 @@ function parseSnapshot(payload: Uint8Array): DecodedSnapshot {
  * (`Array.prototype.sort()` with no comparator). Only own enumerable string
  * keys are visited.
  *
- * Throws on non-integer numbers, `bigint`, `undefined`, functions, symbols
- * and class instances (anything whose prototype is not `Object.prototype`,
- * `null`, or `Array.prototype`).
+ * Throws on non-integer numbers, `bigint`, `undefined`, functions, symbols,
+ * unpaired UTF-16 surrogates (string values and object keys, via
+ * {@link BinaryStateWriter.str}), and class instances (anything whose
+ * prototype is not `Object.prototype`, `null`, or `Array.prototype`).
  */
 export function canonicalConfigBytes(config: unknown): Uint8Array {
   const w = new BinaryStateWriter();
