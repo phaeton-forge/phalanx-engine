@@ -15,10 +15,18 @@ For rules that apply to games built on top of the engine, see
 
 ## 0. The Prime Directive: Determinism
 
-Phalanx is a **deterministic lockstep** engine. The server never simulates the
-world; it only orders and rebroadcasts commands. Every client replays the same
-commands and MUST arrive at bit-identical state. Any divergence is a desync,
-which ends the match.
+Phalanx is a **deterministic lockstep** engine. By default (relay mode) the
+server never simulates the world; it only orders and rebroadcasts commands.
+Every client replays the same commands and MUST arrive at bit-identical state.
+Any divergence is a desync, which ends the match.
+
+> **Amendment (runtime 0.3, opt-in server simulation):** a match configured
+> with `simMode: 'server'` (`@phalanx-engine/runtime`) adds the server as a
+> lockstep **peer**: it runs the same simulation code headlessly, injects
+> server-bot commands into the command stream, arbitrates state hashes and
+> serves snapshots. It never streams state; every rule in this file applies to
+> the server-side simulation unchanged. Relay-only matches behave as before.
+> See `docs/design/server-sim.md`.
 
 Therefore: **every line of simulation code must produce identical results on
 every machine, every CPU, every browser, forever.**
@@ -277,6 +285,12 @@ Pooling is **engine-driven**. Game code calls exactly two APIs:
 - Networked player intent arrives via the commands batch; internal simulation
   decisions (AI, chase, pathing) should use direct system calls, not fake
   network commands.
+- **Amendment (runtime 0.3):** a _bot slot_ (`SlotConfig` `kind: 'bot'`) is a
+  **player**, not in-sim AI. Its `BotPolicy` reads the simulation and emits
+  ordinary commands into the command log, exactly like a human slot. This is
+  the sanctioned exception to the rule above: unit-level AI (chase, pathing,
+  targeting) stays in systems; player-level decisions of a bot slot are
+  commands. See `docs/design/runtime-api.md` § Bots.
 
 ---
 
