@@ -31,3 +31,16 @@ Entries collected per package until the synchronized 0.3.0 release
   result); relay desync ends the match and server-mode desync resyncs the
   client; Sketch Legion gets a practice entry plus matchmaking bot
   auto-fill.
+- Canonical state bytes (Task 2): `BinaryStateWriter` / `BinaryStateReader`
+  (`list` keeps order, `sortedBy` sorts unique integer keys), `encodeSnapshot`
+  / `decodeSnapshot` with the `PHXS` header, xxhash64 `digestBytes`,
+  `canonicalConfigBytes` / `configHash`, and `checkSnapshotCompatibility`.
+  The digest covers `GameState` bytes only; bot state and the input
+  checkpoint are stored outside it. No float methods. `decodeSnapshot`
+  throws `SnapshotRejectedError` (with the reader error as `cause`) for a
+  truncated buffer or trailing bytes. Non-canonical varints are rejected,
+  and a `list` / `sortedBy` count that cannot fit in the remaining bytes
+  throws. `migrations[v]` is the step from version `v` to `v + 1`. A
+  `simVersion` mismatch still rejects. `StateWriter.str` rejects unpaired
+  UTF-16 surrogates (including canonical config keys and values), and
+  `StateReader.str` keeps a leading U+FEFF.

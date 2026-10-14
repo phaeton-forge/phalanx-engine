@@ -1,6 +1,6 @@
 ---
 name: phalanx-runtime
-description: Describe a Phalanx game as one GameDefinition and run it with MatchRunner from @phalanx-engine/runtime (engine 0.3). Use when defining games with defineGame, implementing the GameState save/restore contract, writing BotPolicy bots, choosing simMode 'client' vs 'server', snapshots, replays, reconnect, or Transport/LocalTransport. Status - skeleton, implementation in progress.
+description: Describe a Phalanx game as one GameDefinition and run it with MatchRunner from @phalanx-engine/runtime (engine 0.3). Use when defining games with defineGame, implementing the GameState save/restore contract, writing BotPolicy bots, choosing simMode 'client' vs 'server', snapshots, replays, reconnect, or Transport/LocalTransport. Canonical state bytes (Task 2) are implemented; later tasks are still a skeleton.
 metadata:
   author: phaeton2040-AI
   version: '0.1'
@@ -8,9 +8,11 @@ metadata:
 
 # Phalanx Runtime Skill
 
-> **Status: skeleton, implementation in progress.** The contracts are final;
-> most members throw `NotImplementedError` with
-> `not implemented: <member> (Task NN)`. Check
+> **Status: Tasks 1–2 implemented; the rest is still a skeleton.**
+> `BinaryStateWriter` / `BinaryStateReader`, `encodeSnapshot` /
+> `decodeSnapshot`, `digestBytes`, `canonicalConfigBytes`, `configHash` and
+> `checkSnapshotCompatibility` are live. Later members throw
+> `NotImplementedError` with `not implemented: <member> (Task NN)`. Check
 > `docs/design/runtime-api.md` § Task map before relying on a member.
 
 ## When to Use This Skill
@@ -31,7 +33,7 @@ metadata:
 ## Rules
 
 1. `createWorld(config, ctx)` builds `new GameWorld({ tickFrameProvider:
-   ctx.tickFrameProvider, random: ctx.random, ... })` and calls
+ctx.tickFrameProvider, random: ctx.random, ... })` and calls
    `world.start()`. Never call `processAllTicks`.
 2. `ctx.purpose === 'restore'`: build static content only;
    `GameState.restore` recreates dynamic entities.
@@ -50,6 +52,31 @@ metadata:
    `tick + inputDelayTicks`. A snapshot also stores the not-yet-delivered
    submits (the input checkpoint), outside the digest.
 8. Match configs are JSON-safe with integer numbers only.
+   `configHash(config)` is `digestBytes(canonicalConfigBytes(config))`:
+   object keys sorted by UTF-16 code unit, safe integers only.
+
+## Canonical state bytes
+
+`BinaryStateWriter` / `BinaryStateReader` are the snapshot codec.
+Little-endian, lengths and counts as unsigned LEB128, no `f32` / `f64`.
+`list` writes the given order (effect queues, pool free lists). `sortedBy`
+sorts by a unique integer key and throws on duplicates or non-integers.
+`section` is `str(key)`, `varint(version)`, `varint(byteLength)`, body, and
+the reader must consume the body exactly. `str` rejects unpaired UTF-16
+surrogates, so a lone surrogate cannot share bytes with U+FFFD. That covers
+canonical config keys and values. The reader keeps a leading U+FEFF.
+
+`encodeSnapshot` wraps the body in a `PHXS` header. `engineFormat`,
+`formatVersion` and `tick` are varints. `digestBytes` is xxhash64 (seed 0,
+16 lowercase hex chars) of the body only. `botState` and `inputCheckpoint`
+follow the body and are not part of the digest. `null` omits an extra;
+an empty `Uint8Array` stores it.
+
+`checkSnapshotCompatibility` returns `accept`, `migrate` (`migrations[v]` is
+the step from version `v` to `v + 1`; every step from the stored format up
+to the current one must be present), or `reject`. A `simVersion` mismatch
+rejects. `decodeSnapshot` throws `SnapshotRejectedError` for a bad magic, a
+truncated buffer, trailing bytes, or a digest that does not match the body.
 
 ## Minimal game
 

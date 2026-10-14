@@ -1,8 +1,9 @@
 /**
  * @phalanx-engine/runtime — isomorphic match runtime (no DOM, no sockets).
  *
- * Status: skeleton. Contracts are final for Tasks 2–13; members that throw
- * `NotImplementedError` name the task that implements them. Design:
+ * Status: Tasks 1–2 are implemented (contracts, canonical state bytes,
+ * snapshot header, digest, version policy). Later tasks still throw
+ * `NotImplementedError` naming the task that implements them. Design:
  * docs/design/runtime-api.md.
  *
  * @packageDocumentation

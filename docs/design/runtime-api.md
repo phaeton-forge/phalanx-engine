@@ -232,7 +232,7 @@ export interface StateWriter {
   varint(v: number): void; // unsigned LEB128, 0..2^53-1
   i64(v: bigint): void; // FP.ToRaw(fp), LE
   bool(v: boolean): void;
-  str(v: string): void; // varint(byteLength) + UTF-8
+  str(v: string): void; // varint(byteLength) + UTF-8; unpaired surrogates throw
   bytes(v: Uint8Array): void; // varint(length) + bytes
   section(key: string, version: number, body: (w: StateWriter) => void): void;
   /** varint(count) + items in the GIVEN order (observable order). */
@@ -412,7 +412,7 @@ class instances.
 | `formatVersion` newer                    | reject                                                   |
 | `digest` ≠ `digestBytes(body)`           | reject (corrupt)                                         |
 
-A reject throws `SnapshotRejectedError(reason)`.
+A reject throws `SnapshotRejectedError(reason)`. `migrations[v]` is the step from version `v` to `v + 1`.
 
 ## 6. StateHelpers (optional)
 

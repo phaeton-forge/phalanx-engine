@@ -116,17 +116,45 @@ describe('command rejections', () => {
   });
 });
 
-describe('skeletons name their implementing task', () => {
-  const bytes = new Uint8Array(0);
+describe('canonical state bytes', () => {
+  it('Task 02: writer, digest, snapshot and version policy run', () => {
+    const writer = new runtime.BinaryStateWriter();
+    writer.u8(1);
+    const bytes = writer.finish();
+    const reader = new runtime.BinaryStateReader(bytes);
+    expect(reader.u8()).toBe(1);
+    reader.done();
 
-  it('Task 02: binary state + snapshot format', () => {
-    expectTask(() => new runtime.BinaryStateWriter(), 2);
-    expectTask(() => new runtime.BinaryStateReader(bytes), 2);
-    expectTask(() => runtime.digestBytes(bytes), 2);
-    expectTask(() => runtime.decodeSnapshot(bytes), 2);
-    expectTask(() => runtime.configHash({}), 2);
+    expect(runtime.digestBytes(new Uint8Array(0))).toBe('ef46db3751d8e999');
+    const configHash = runtime.configHash({ seed: 1 });
+    const snapshot = runtime.encodeSnapshot(
+      {
+        engineFormat: runtime.ENGINE_SNAPSHOT_FORMAT,
+        gameId: 'g',
+        simVersion: 'g-1',
+        formatVersion: 1,
+        configHash,
+        tick: 0,
+      },
+      bytes
+    );
+    const decoded = runtime.decodeSnapshot(snapshot);
+    expect(decoded.header.digest).toBe(runtime.digestBytes(bytes));
+    expect(decoded.botState).toBeNull();
+    expect(decoded.inputCheckpoint).toBeNull();
+    expect(
+      runtime.checkSnapshotCompatibility(decoded.header, {
+        engineFormat: runtime.ENGINE_SNAPSHOT_FORMAT,
+        gameId: 'g',
+        simVersion: 'g-1',
+        formatVersion: 1,
+        configHash,
+      }).decision
+    ).toBe('accept');
   });
+});
 
+describe('skeletons name their implementing task', () => {
   it('Task 04/05: state helpers', () => {
     const w = {} as runtime.StateWriter;
     const world = {} as Parameters<
