@@ -58,7 +58,12 @@ export const MyGame = defineGame({
 
 Implemented today: `defineGame`, the constants (`ENGINE_SNAPSHOT_FORMAT`,
 snapshot intervals, …), `botPlayerId` / `isBotPlayerId`, `rejectCommand` /
-`isCommandRejection`, `NotImplementedError`.
+`isCommandRejection`, `NotImplementedError`, `BinaryStateWriter` /
+`BinaryStateReader` (`list` keeps order, `sortedBy` sorts unique integer
+keys), `encodeSnapshot` / `decodeSnapshot` (header, body, and optional bot
+state and input checkpoint outside the digest), `digestBytes` (xxhash64,
+seed 0), `canonicalConfigBytes` / `configHash`, and
+`checkSnapshotCompatibility`. There is no `f32` or `f64` writer.
 
 ## Design docs
 

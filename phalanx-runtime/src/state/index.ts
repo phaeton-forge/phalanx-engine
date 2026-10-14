@@ -14,6 +14,7 @@ export type {
   Digest,
   SnapshotHeader,
   DecodedSnapshot,
+  SnapshotExtras,
   VersionDecision,
   CompatibilityResult,
   ExpectedSnapshotIdentity,

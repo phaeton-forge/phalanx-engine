@@ -1,4 +1,14 @@
-import { notImplemented } from '../notImplemented.js';
+import { SNAPSHOT_MAGIC } from '../constants.js';
+import { BinaryStateReader, BinaryStateWriter } from './BinaryState.js';
+import { digestBytes } from './digest.js';
+import { SnapshotRejectedError } from './errors.js';
+
+export { digestBytes };
+
+const MAGIC_BYTES = new Uint8Array(SNAPSHOT_MAGIC.length);
+for (let i = 0; i < SNAPSHOT_MAGIC.length; i += 1) {
+  MAGIC_BYTES[i] = SNAPSHOT_MAGIC.charCodeAt(i);
+}
 
 /** A complete engine snapshot: header, game body, optional bot and input state. */
 export type SnapshotBytes = Uint8Array;
@@ -65,47 +75,315 @@ export interface SnapshotExtras {
   readonly inputCheckpoint?: Uint8Array | null;
 }
 
+/**
+ * Byte layout (all through {@link BinaryStateWriter}, little-endian):
+ *
+ * 1. 4 bytes ASCII `PHXS`;
+ * 2. `varint engineFormat`, `str gameId`, `str simVersion`,
+ *    `varint formatVersion`, `str configHash`, `varint tick`, `str digest`;
+ * 3. `bytes body` (GameState bytes; this is the only input to `digest`);
+ * 4. `bool hasBotState`, then `bytes botState` when the flag is set;
+ * 5. `bool hasInputCheckpoint`, then `bytes inputCheckpoint` when set.
+ *
+ * `engineFormat`, `formatVersion` and `tick` are varints, not fixed `u32`s.
+ * An empty `Uint8Array` extra is stored (flag set, length 0). `null` and
+ * omission both store the flag clear and decode back to `null`.
+ */
 export function encodeSnapshot(
-  _header: Omit<SnapshotHeader, 'magic' | 'digest'>,
-  _body: Uint8Array,
-  _extras?: SnapshotExtras
+  header: Omit<SnapshotHeader, 'magic' | 'digest'>,
+  body: Uint8Array,
+  extras?: SnapshotExtras
 ): SnapshotBytes {
-  return notImplemented('encodeSnapshot', 2);
-}
+  if (header === null || typeof header !== 'object') {
+    throw new Error('encodeSnapshot: header must be an object');
+  }
+  requireVarintField('engineFormat', header.engineFormat);
+  requireStringField('gameId', header.gameId);
+  requireStringField('simVersion', header.simVersion);
+  requireVarintField('formatVersion', header.formatVersion);
+  requireStringField('configHash', header.configHash);
+  requireVarintField('tick', header.tick);
+  if (!(body instanceof Uint8Array)) {
+    throw new Error('encodeSnapshot: body must be a Uint8Array');
+  }
+  const botState = optionalBytes(extras?.botState, 'botState');
+  const inputCheckpoint = optionalBytes(
+    extras?.inputCheckpoint,
+    'inputCheckpoint'
+  );
+  const digest = digestBytes(body);
 
-export function decodeSnapshot(_bytes: SnapshotBytes): DecodedSnapshot {
-  return notImplemented('decodeSnapshot', 2);
-}
-
-/** xxhash64 (seed 0) of `bytes`, pure TypeScript, lowercase hex. */
-export function digestBytes(_bytes: Uint8Array): Digest {
-  return notImplemented('digestBytes', 2);
+  const w = new BinaryStateWriter();
+  for (const byte of MAGIC_BYTES) {
+    w.u8(byte);
+  }
+  w.varint(header.engineFormat);
+  w.str(header.gameId);
+  w.str(header.simVersion);
+  w.varint(header.formatVersion);
+  w.str(header.configHash);
+  w.varint(header.tick);
+  w.str(digest);
+  w.bytes(body);
+  w.bool(botState !== null);
+  if (botState !== null) w.bytes(botState);
+  w.bool(inputCheckpoint !== null);
+  if (inputCheckpoint !== null) w.bytes(inputCheckpoint);
+  return w.finish();
 }
 
 /**
- * Canonical bytes of a JSON-safe match config: object keys sorted by UTF-16
- * code unit, safe integers, strings, booleans, `null`, arrays and plain
- * objects. Throws on non-integer numbers, `bigint`, `undefined`, functions
- * and class instances.
+ * Inverse of {@link encodeSnapshot}. Throws {@link SnapshotRejectedError}
+ * when the magic is wrong, the buffer is shorter than the magic, or
+ * `header.digest` is not `digestBytes(body)`. A truncated tail or trailing
+ * bytes throw from the reader (`StateReader: unexpected end of buffer`,
+ * `StateReader.done`).
  */
-export function canonicalConfigBytes(_config: unknown): Uint8Array {
-  return notImplemented('canonicalConfigBytes', 2);
+export function decodeSnapshot(bytes: SnapshotBytes): DecodedSnapshot {
+  if (!(bytes instanceof Uint8Array)) {
+    throw new Error('decodeSnapshot: expected a Uint8Array');
+  }
+  if (bytes.byteLength < MAGIC_BYTES.length) {
+    throw new SnapshotRejectedError('truncated snapshot');
+  }
+  if (!hasMagic(bytes)) {
+    throw new SnapshotRejectedError('magic mismatch');
+  }
+
+  const r = new BinaryStateReader(bytes.subarray(MAGIC_BYTES.length));
+  const engineFormat = r.varint();
+  const gameId = r.str();
+  const simVersion = r.str();
+  const formatVersion = r.varint();
+  const configHash = r.str();
+  const tick = r.varint();
+  const digest = r.str();
+  const body = r.bytes();
+  const hasBotState = r.bool();
+  const botState = hasBotState ? r.bytes() : null;
+  const hasInputCheckpoint = r.bool();
+  const inputCheckpoint = hasInputCheckpoint ? r.bytes() : null;
+  r.done();
+
+  const actual = digestBytes(body);
+  if (digest !== actual) {
+    throw new SnapshotRejectedError('digest mismatch');
+  }
+
+  return {
+    header: {
+      magic: SNAPSHOT_MAGIC,
+      engineFormat,
+      gameId,
+      simVersion,
+      formatVersion,
+      configHash,
+      tick,
+      digest,
+    },
+    body,
+    botState,
+    inputCheckpoint,
+  };
+}
+
+/**
+ * Canonical bytes of a JSON-safe match config.
+ *
+ * Type tag (`u8`) then payload, written with {@link BinaryStateWriter}:
+ * `0` null, `1` bool, `2` safe integer (`i64`), `3` string, `4` array
+ * (`varint` length, elements in order), `5` object (`varint` count, then
+ * `str` key + value). Object keys are sorted by UTF-16 code unit
+ * (`Array.prototype.sort()` with no comparator). Only own enumerable string
+ * keys are visited.
+ *
+ * Throws on non-integer numbers, `bigint`, `undefined`, functions, symbols
+ * and class instances (anything whose prototype is not `Object.prototype`,
+ * `null`, or `Array.prototype`).
+ */
+export function canonicalConfigBytes(config: unknown): Uint8Array {
+  const w = new BinaryStateWriter();
+  writeCanonical(w, config, new Set());
+  return w.finish();
 }
 
 /** `digestBytes(canonicalConfigBytes(config))`. */
-export function configHash(_config: unknown): Digest {
-  return notImplemented('configHash', 2);
+export function configHash(config: unknown): Digest {
+  return digestBytes(canonicalConfigBytes(config));
 }
 
 /**
- * Version policy: reject on any `engineFormat`, `gameId`, `configHash` or
- * `simVersion` mismatch and on a newer `formatVersion`; `migrate` when the
- * stored format is older and every step `migrate[v]` exists; else accept.
+ * Version policy for an already-decoded header.
+ *
+ * Rejects a bad `magic`, or any `engineFormat`, `gameId`, `configHash` or
+ * `simVersion` mismatch, or a newer `formatVersion`. Returns `migrate` when
+ * the stored format is older and every step `migrations[v]` exists for
+ * `v` from the stored format up to (but not including) the expected format.
+ * Otherwise accepts.
+ *
+ * The digest is not an input here: {@link decodeSnapshot} rejects a body
+ * whose xxhash64 does not match `header.digest`.
  */
 export function checkSnapshotCompatibility(
-  _header: SnapshotHeader,
-  _expected: ExpectedSnapshotIdentity,
-  _migrations?: Readonly<Record<number, unknown>>
+  header: SnapshotHeader,
+  expected: ExpectedSnapshotIdentity,
+  migrations?: Readonly<Record<number, unknown>>
 ): CompatibilityResult {
-  return notImplemented('checkSnapshotCompatibility', 2);
+  if (header.magic !== SNAPSHOT_MAGIC) {
+    return { decision: 'reject', reason: 'magic mismatch' };
+  }
+  if (header.engineFormat !== expected.engineFormat) {
+    return { decision: 'reject', reason: 'engineFormat mismatch' };
+  }
+  if (header.gameId !== expected.gameId) {
+    return { decision: 'reject', reason: 'gameId mismatch' };
+  }
+  if (header.configHash !== expected.configHash) {
+    return { decision: 'reject', reason: 'configHash mismatch' };
+  }
+  if (header.simVersion !== expected.simVersion) {
+    return { decision: 'reject', reason: 'simVersion mismatch' };
+  }
+  if (header.formatVersion > expected.formatVersion) {
+    return { decision: 'reject', reason: 'formatVersion is newer' };
+  }
+  if (header.formatVersion < expected.formatVersion) {
+    for (let v = header.formatVersion; v < expected.formatVersion; v += 1) {
+      if (migrations === undefined || migrations[v] === undefined) {
+        return {
+          decision: 'reject',
+          reason: `missing migration from format ${String(v)}`,
+        };
+      }
+    }
+    return { decision: 'migrate' };
+  }
+  return { decision: 'accept' };
+}
+
+const TAG_NULL = 0;
+const TAG_BOOL = 1;
+const TAG_INT = 2;
+const TAG_STR = 3;
+const TAG_ARRAY = 4;
+const TAG_OBJECT = 5;
+
+function writeCanonical(
+  w: BinaryStateWriter,
+  value: unknown,
+  stack: Set<object>
+): void {
+  if (value === null) {
+    w.u8(TAG_NULL);
+    return;
+  }
+  switch (typeof value) {
+    case 'boolean':
+      w.u8(TAG_BOOL);
+      w.bool(value);
+      return;
+    case 'number':
+      if (!Number.isSafeInteger(value)) {
+        throw new Error(
+          `canonicalConfigBytes: number must be a safe integer, got ${String(value)}`
+        );
+      }
+      w.u8(TAG_INT);
+      w.i64(BigInt(value));
+      return;
+    case 'string':
+      w.u8(TAG_STR);
+      w.str(value);
+      return;
+    case 'undefined':
+      throw new Error('canonicalConfigBytes: undefined is not allowed');
+    case 'bigint':
+      throw new Error('canonicalConfigBytes: bigint is not allowed');
+    case 'function':
+      throw new Error('canonicalConfigBytes: functions are not allowed');
+    case 'symbol':
+      throw new Error('canonicalConfigBytes: symbols are not allowed');
+    case 'object':
+      break;
+    default:
+      throw new Error(`canonicalConfigBytes: unsupported type ${typeof value}`);
+  }
+
+  if (stack.has(value)) {
+    throw new Error('canonicalConfigBytes: circular reference');
+  }
+  stack.add(value);
+  try {
+    if (isArray(value)) {
+      if (Object.getPrototypeOf(value) !== Array.prototype) {
+        throw new Error(
+          'canonicalConfigBytes: class instances are not allowed'
+        );
+      }
+      w.u8(TAG_ARRAY);
+      w.varint(value.length);
+      for (const element of value) {
+        writeCanonical(w, element, stack);
+      }
+      return;
+    }
+    if (!isPlainObject(value)) {
+      throw new Error('canonicalConfigBytes: class instances are not allowed');
+    }
+    const keys = Object.keys(value).sort();
+    w.u8(TAG_OBJECT);
+    w.varint(keys.length);
+    for (const key of keys) {
+      w.str(key);
+      writeCanonical(w, value[key], stack);
+    }
+  } finally {
+    stack.delete(value);
+  }
+}
+
+function isArray(value: object): value is readonly unknown[] {
+  return Array.isArray(value);
+}
+
+function isPlainObject(value: object): value is Record<string, unknown> {
+  const proto: unknown = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
+}
+
+function hasMagic(bytes: Uint8Array): boolean {
+  for (let i = 0; i < MAGIC_BYTES.length; i += 1) {
+    if (bytes[i] !== MAGIC_BYTES[i]) return false;
+  }
+  return true;
+}
+
+function requireVarintField(name: string, value: number): void {
+  if (
+    typeof value !== 'number' ||
+    !Number.isInteger(value) ||
+    value < 0 ||
+    value > Number.MAX_SAFE_INTEGER
+  ) {
+    throw new Error(
+      `encodeSnapshot: ${name} must be an integer 0..2^53-1, got ${String(value)}`
+    );
+  }
+}
+
+function requireStringField(name: string, value: string): void {
+  if (typeof value !== 'string') {
+    throw new Error(`encodeSnapshot: ${name} must be a string`);
+  }
+}
+
+function optionalBytes(
+  value: Uint8Array | null | undefined,
+  label: string
+): Uint8Array | null {
+  if (value === undefined || value === null) return null;
+  if (!(value instanceof Uint8Array)) {
+    throw new Error(`encodeSnapshot: ${label} must be a Uint8Array or null`);
+  }
+  return value;
 }
