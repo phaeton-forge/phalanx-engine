@@ -1,0 +1,57 @@
+{
+  "name": "@phalanx-engine/runtime",
+  "version": "0.3.0",
+  "private": true,
+  "description": "Isomorphic match runtime for Phalanx Engine: GameDefinition, GameState snapshot contract, MatchRunner, bots as command producers and transports (client and server simulation modes)",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "rebuild": "npm run clean && npm run build",
+    "typecheck": "tsc -p tsconfig.test.json",
+    "test": "tsc -p tsconfig.test.json && vitest run",
+    "prepublishOnly": "npm run build"
+  },
+  "peerDependencies": {
+    "@phalanx-engine/ecs": "workspace:^",
+    "@phalanx-engine/math": "workspace:^"
+  },
+  "devDependencies": {
+    "@phalanx-engine/ecs": "workspace:*",
+    "@phalanx-engine/math": "workspace:*",
+    "typescript": "~5.9.3",
+    "vitest": "^1.0.0"
+  },
+  "keywords": [
+    "lockstep",
+    "deterministic",
+    "snapshot",
+    "replay",
+    "server-simulation",
+    "phalanx"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/phaeton-forge/phalanx-engine.git",
+    "directory": "phalanx-runtime"
+  },
+  "bugs": "https://github.com/phaeton-forge/phalanx-engine/issues",
+  "homepage": "https://github.com/phaeton-forge/phalanx-engine/tree/main/phalanx-runtime#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ]
+}
