@@ -231,6 +231,51 @@ describe('broadphase snapshot hooks', () => {
     expect(() => physicsWorld.rebuildBroadphase()).toThrow(/init/);
   });
 
+  it('getCenters keeps a non-default precision through restore', () => {
+    const precision = 2;
+    const cellSize = FP.FromInt(4, precision);
+    const live = new SpatialHashGrid(cellSize);
+    const x = FP.FromInt(10, precision);
+    const z = FP.FromInt(-3, precision);
+    const radius = FP.FromInt(1, precision);
+    live.insert(7, x, z, radius);
+
+    const saved = live.getCenters();
+    const center = saved[0];
+    expect(center).toBeDefined();
+    if (!center) {
+      throw new Error('missing center');
+    }
+    expect(center.x.precision).toBe(x.precision);
+    expect(center.z.precision).toBe(z.precision);
+    expect(center.radius.precision).toBe(radius.precision);
+    expect(FP.Eq(center.x, x)).toBe(true);
+    expect(FP.Eq(center.z, z)).toBe(true);
+    expect(FP.Eq(center.radius, radius)).toBe(true);
+    expect(
+      FP.Eq(
+        FP.Sub(center.x, FP.FromInt(1, precision)),
+        FP.FromInt(9, precision)
+      )
+    ).toBe(true);
+
+    const liveQuery = [...live.queryRadius(x, z, radius)];
+    const restored = new SpatialHashGrid(cellSize);
+    restored.restoreBroadphase(saved);
+    const again = restored.getCenters()[0];
+    expect(again).toBeDefined();
+    if (!again) {
+      throw new Error('missing restored center');
+    }
+    expect(again.x.precision).toBe(x.precision);
+    expect(again.x.base).toBe(x.base);
+    expect(again.z.precision).toBe(z.precision);
+    expect(again.z.base).toBe(z.base);
+    expect(again.radius.precision).toBe(radius.precision);
+    expect(again.radius.base).toBe(radius.base);
+    expect([...restored.queryRadius(x, z, radius)]).toEqual(liveQuery);
+  });
+
   it('restoreBroadphase replays saved radius so queryRadius matches', () => {
     const cellSize = FP.FromInt(4);
     const live = new SpatialHashGrid(cellSize);

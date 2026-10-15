@@ -32,15 +32,28 @@ describe('EntityPool', () => {
   });
 
   it('revives entity on acquire', () => {
-    const pool = new EntityPool(() => new Entity());
+    const TestType = Symbol('Revive');
+    const pool = new EntityPool(() => {
+      const created = new Entity();
+      created.addComponent({ type: TestType });
+      return created;
+    });
 
     const entity = pool.acquire();
+    const id = entity.id;
     entity.destroy();
     expect(entity.isDestroyed).toBe(true);
+    expect(pool.ownedIds()).toEqual([id]);
 
     pool.release(entity);
+    expect(pool.ownedIds()).toEqual([id]);
+    expect(pool.freeListIds()).toEqual([id]);
+
     const reused = pool.acquire();
+    expect(reused).toBe(entity);
+    expect(reused.id).toBe(id);
     expect(reused.isDestroyed).toBe(false);
+    expect(reused.hasComponent(TestType)).toBe(true);
   });
 
   it('preserves attached components across release/acquire', () => {

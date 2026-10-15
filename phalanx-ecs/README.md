@@ -681,7 +681,7 @@ const owned = world.pools?.ownedIds(typeKeys[0]); // creation order
 const freeList = world.pools?.freeListIds(typeKeys[0]); // oldest release first; acquire pops the last
 ```
 
-`setEntityIdCounter` throws if the value is not an integer `>= 0`. The caller must pass a value greater than or equal to every live entity id; a lower value is accepted and the next id can collide. `SoAComponent.useEntityManager(null)` clears the context (`resetContext()` does the same). Pool `ownedIds` include checked-out entities and the free list, and omit an entity disposed outside despawn. `PoolManager.restore(typeKey, entities, freeListIds)` puts that free list back so the next spawn returns the same id. `drain()` still drops free-list objects.
+`setEntityIdCounter` throws if the value is not an integer `>= 0`. The caller must pass a value greater than or equal to every live entity id; a lower value is accepted and the next id can collide. `SoAComponent.useEntityManager(null)` clears the context (`resetContext()` does the same). Pool `ownedIds` include checked-out entities and the free list, and omit an entity disposed outside despawn. `destroy()` does not remove the entity; the next acquire revives the same instance. `PoolManager.restore(typeKey, entities, freeListIds)` puts that free list back so the next spawn returns the same id. `drain()` still drops free-list objects.
 
 ## License
 

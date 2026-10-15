@@ -61,6 +61,8 @@ Entries collected per package until the synchronized 0.3.0 release
   The next `spawn` pops the same id the free list would have returned.
 - An entity disposed outside `despawn` / `release` is dropped from the
   pool's owned set and free list, so a snapshot does not keep the dead id.
+  `destroy()` only marks the entity. Snapshot reads and the next `acquire`
+  keep that instance, its id, and its components.
 
 ## @phalanx-engine/math
 
@@ -96,7 +98,8 @@ Entries collected per package until the synchronized 0.3.0 release
   registry. `instanceId` must be `>=` every live effect instance id; that
   bound is the caller's responsibility (a lower integer is still stored).
 - Fixed-point fields on a restored `providedTarget` are recognized by
-  shape (`base` and `precision` bigints), not by `instanceof FixedPoint`.
+  shape (`base` and `precision` bigints), not by `instanceof FixedPoint`,
+  then reconstructed as a local `FixedPoint` so arithmetic methods exist.
 
 ## @phalanx-engine/physics
 
@@ -109,4 +112,5 @@ Entries collected per package until the synchronized 0.3.0 release
   centers in ascending entity id. Snapshot restore must use the saved
   centers: `rebuildBroadphase` reads current transforms and is valid only
   for a collision-free world. After resolution the live grid still holds
-  the pre-separation centers.
+  the pre-separation centers. Exported centers copy each value's own
+  precision (`FP.FromRaw` would default to 5).

@@ -201,12 +201,12 @@ describe('ability runtime state', () => {
     expect(abilities.pendingActivationCount).toBe(0);
   });
 
-  it('importRuntimeState accepts a FixedPoint from another math copy', () => {
+  it('importRuntimeState rebuilds a foreign FixedPoint so arithmetic works', () => {
     const { abilities } = createWorld();
+    const source = FP.FromInt(4, 2);
     const foreign = {
-      base: FP.ToRaw(FP.FromInt(4)),
-      precision: 5n,
-      eq: () => false,
+      base: source.base,
+      precision: source.precision,
     };
     abilities.importRuntimeState({
       instanceId: 1,
@@ -216,12 +216,27 @@ describe('ability runtime state', () => {
           casterEntityId: 1,
           abilityId: 'Ability.Wait',
           enqueueTick: 0,
-          providedTarget: { x: foreign as never },
+          providedTarget: { x: foreign as never, z: foreign as never },
         },
       ],
       resolvedActivationsThisTick: [],
     });
     const exported = abilities.exportRuntimeState();
-    expect(exported.activationRequests[0]?.providedTarget?.x).toBe(foreign);
+    const restoredX = exported.activationRequests[0]?.providedTarget?.x;
+    const restoredZ = exported.activationRequests[0]?.providedTarget?.z;
+    expect(restoredX).toBeDefined();
+    expect(restoredZ).toBeDefined();
+    if (!restoredX || !restoredZ) {
+      throw new Error('missing restored target');
+    }
+    expect(restoredX).not.toBe(foreign);
+    expect(restoredX.precision).toBe(source.precision);
+    expect(restoredX.base).toBe(source.base);
+    expect(FP.Eq(FP.Sub(restoredX, FP.FromInt(1, 2)), FP.FromInt(3, 2))).toBe(
+      true
+    );
+    expect(FP.Eq(FP.Sub(restoredZ, FP.FromInt(1, 2)), FP.FromInt(3, 2))).toBe(
+      true
+    );
   });
 });

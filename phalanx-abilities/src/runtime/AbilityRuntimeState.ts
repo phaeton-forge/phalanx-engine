@@ -1,4 +1,4 @@
-import type { FixedPoint } from '@phalanx-engine/math';
+import { FixedPoint } from '@phalanx-engine/math';
 import type { ProvidedTarget } from '../types';
 import type {
   AbilityActivationRequest,
@@ -272,33 +272,33 @@ function readProvidedTarget(
   }
   const x = value['x'];
   if (x !== undefined) {
-    if (!isFixedPoint(x)) {
-      throw new Error(`${label}.x must be a FixedPoint`);
-    }
-    copy.x = x;
+    copy.x = readFixedPoint(x, `${label}.x`);
   }
   const z = value['z'];
   if (z !== undefined) {
-    if (!isFixedPoint(z)) {
-      throw new Error(`${label}.z must be a FixedPoint`);
-    }
-    copy.z = z;
+    copy.z = readFixedPoint(z, `${label}.z`);
   }
   return copy;
 }
 
 /**
- * Shape check, not `instanceof`. A bundled game can load two copies of
- * `@phalanx-engine/math`, and a FixedPoint from the other copy is still
- * a fixed-point value (`base` and `precision` bigints).
+ * Accept a FixedPoint by shape, then build one from this package.
+ *
+ * `instanceof FixedPoint` fails when a bundle loads two copies of
+ * `@phalanx-engine/math`. A plain `{ base, precision }` record has the
+ * same shape and no arithmetic methods, so storing it makes `FP.Sub`
+ * throw. The local instance keeps the validated base and precision.
  */
-function isFixedPoint(value: unknown): value is FixedPoint {
+function readFixedPoint(value: unknown, label: string): FixedPoint {
   if (!isRecord(value)) {
-    return false;
+    throw new Error(`${label} must be a FixedPoint`);
   }
-  return (
-    typeof value['base'] === 'bigint' && typeof value['precision'] === 'bigint'
-  );
+  const base = value['base'];
+  const precision = value['precision'];
+  if (typeof base !== 'bigint' || typeof precision !== 'bigint') {
+    throw new Error(`${label} must be a FixedPoint`);
+  }
+  return new FixedPoint(base, precision);
 }
 
 function assertRegisteredAbility(

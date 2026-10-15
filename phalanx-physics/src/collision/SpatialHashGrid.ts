@@ -1,4 +1,4 @@
-import { FP, type FixedPoint } from '@phalanx-engine/math';
+import { FixedPoint, FP } from '@phalanx-engine/math';
 
 /**
  * Deterministic spatial hash grid for broad-phase collision detection.
@@ -24,6 +24,16 @@ export interface BroadphaseCenter {
   readonly x: FixedPoint;
   readonly z: FixedPoint;
   readonly radius: FixedPoint;
+}
+
+/**
+ * Copy a center value and keep its precision.
+ *
+ * `FP.ToRaw` returns only the base. `FP.FromRaw` then defaults to
+ * precision 5, so `FP.FromInt(10, 2)` would be exported as 0.01.
+ */
+function copyFixedPoint(value: FixedPoint): FixedPoint {
+  return new FixedPoint(value.base, value.precision);
 }
 
 export class SpatialHashGrid {
@@ -209,9 +219,9 @@ export class SpatialHashGrid {
       }
       centers.push({
         entityId,
-        x: FP.FromRaw(FP.ToRaw(x)),
-        z: FP.FromRaw(FP.ToRaw(z)),
-        radius: FP.FromRaw(FP.ToRaw(radius)),
+        x: copyFixedPoint(x),
+        z: copyFixedPoint(z),
+        radius: copyFixedPoint(radius),
       });
     }
     return centers;
