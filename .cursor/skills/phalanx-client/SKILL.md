@@ -554,7 +554,7 @@ import {
   EventEmitter,
   RenderLoop,
   SocketManager,
-  DeterministicRandom,
+  DeterministicRandom, // re-exported from @phalanx-engine/math (getState / setState / fromState)
   StateHasher,
   DesyncDetector,
 } from '@phalanx-engine/client';

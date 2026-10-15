@@ -451,6 +451,10 @@ world.processAllTicks(2);
 
 Use `pipeline: 'effects-retain-cues'` to assert on `abilities.gameplayCueBuffer` before cleanup. Pass a non-empty `cues` map (e.g. a `NoopCue` factory in test helpers) when you need `GAMEPLAY_CUE_EVENT` dispatch in tests.
 
+## Runtime snapshot
+
+`InstanceIdCounter.set(n)` accepts any integer `>= 0` (a restore may move the mark down). The caller must pass a value `>=` every live effect instance id. `abilities.exportRuntimeState()` / `importRuntimeState(state)` copy the instance-id counter, the activation queue, `currentTick`, and resolved activations. Both methods are required on `AbilitySystem`. `importRuntimeState` rejects an unregistered `abilityId`, does not clear the cue buffer, and accepts a FixedPoint by shape (`base` and `precision` bigints), then builds a local `FixedPoint` so a second copy of `@phalanx-engine/math` still restores and `FP.Sub` works.
+
 ## Related skills
 
 - `phalanx-ecs` — GameWorld, entities, systems, lockstep

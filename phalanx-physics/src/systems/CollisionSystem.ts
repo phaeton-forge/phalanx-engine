@@ -2,7 +2,10 @@ import { GameSystem, type SoAComponentStore, type SystemContext } from '@phalanx
 import { FP, type FixedPoint } from '@phalanx-engine/math';
 import { PhysicsSoASchema } from '../components/PhysicsBodyComponent';
 import { TransformSoASchema } from '../components/TransformComponent';
-import { SpatialHashGrid } from '../collision/SpatialHashGrid';
+import {
+  SpatialHashGrid,
+  type BroadphaseCenter,
+} from '../collision/SpatialHashGrid';
 import { NarrowPhase } from '../collision/NarrowPhase';
 import type { CollisionManifold } from '../collision/CollisionManifold';
 import { PhysicsEvents } from '../events';
@@ -47,6 +50,43 @@ export class CollisionSystem extends GameSystem {
   /** Expose the spatial grid for external queries (e.g. range queries) */
   public getSpatialGrid(): SpatialHashGrid {
     return this.spatialGrid;
+  }
+
+  /**
+   * Centers cached in the broadphase, ascending by entity id.
+   * After resolution these are the pre-separation positions and radii.
+   */
+  public getBroadphaseCenters(): readonly BroadphaseCenter[] {
+    return this.spatialGrid.getCenters();
+  }
+
+  /**
+   * Clear the grid and re-insert every body from its current transform,
+   * in ascending entity id. Does not resolve collisions.
+   * {@link processTick} is unchanged: it still rebuilds, then resolves,
+   * and does not rebuild again after resolution.
+   *
+   * Valid only for a collision-free world. After a hit the live grid
+   * still holds pre-separation centers, so a snapshot restore must call
+   * {@link restoreBroadphase} with the saved centers.
+   *
+   * @throws If {@link init} has not run.
+   */
+  public rebuildBroadphase(): void {
+    if (!this.physicsStore || !this.transformStore) {
+      throw new Error(
+        'CollisionSystem.rebuildBroadphase: call init() before rebuilding the broadphase'
+      );
+    }
+    this.rebuildSpatialGrid();
+  }
+
+  /**
+   * Replace the broadphase with saved centers (clear, then insert in
+   * ascending entity id). Does not read transforms.
+   */
+  public restoreBroadphase(centers: readonly BroadphaseCenter[]): void {
+    this.spatialGrid.restoreBroadphase(centers);
   }
 
   public override processTick(_tick: number): void {

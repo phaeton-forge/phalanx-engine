@@ -4,7 +4,10 @@ import { PhysicsSystem } from './systems/PhysicsSystem';
 import { GravitySystem } from './systems/GravitySystem';
 import { InterpolationSystem } from './systems/InterpolationSystem';
 import type { InterpolatedTransformSample } from './systems/InterpolationSystem';
-import { SpatialHashGrid } from './collision/SpatialHashGrid';
+import {
+  SpatialHashGrid,
+  type BroadphaseCenter,
+} from './collision/SpatialHashGrid';
 import { segmentVsAABB } from './collision/Raycast';
 import type { RayHit, Vec3FP, AABB } from './collision/Raycast';
 import { PhysicsEvents } from './events';
@@ -162,6 +165,34 @@ export class PhysicsWorld {
   /** Direct access to the spatial grid for custom queries (e.g. range finding) */
   public get spatialGrid(): SpatialHashGrid {
     return this.physicsSystem.getSpatialGrid();
+  }
+
+  /**
+   * Centers cached in the physics broadphase, ascending by entity id.
+   * See {@link PhysicsSystem.getBroadphaseCenters}.
+   */
+  public getBroadphaseCenters(): readonly BroadphaseCenter[] {
+    return this.physicsSystem.getBroadphaseCenters();
+  }
+
+  /**
+   * Clear the physics broadphase and re-insert bodies from their current
+   * transforms, in ascending entity id. Does not resolve collisions.
+   *
+   * Valid only for a collision-free world. After resolution the live grid
+   * still holds pre-separation centers, so restoring a snapshot must use
+   * {@link restoreBroadphase}. See {@link PhysicsSystem.rebuildBroadphase}.
+   */
+  public rebuildBroadphase(): void {
+    this.physicsSystem.rebuildBroadphase();
+  }
+
+  /**
+   * Replace the physics broadphase with saved centers.
+   * See {@link PhysicsSystem.restoreBroadphase}.
+   */
+  public restoreBroadphase(centers: readonly BroadphaseCenter[]): void {
+    this.physicsSystem.restoreBroadphase(centers);
   }
 
   /**

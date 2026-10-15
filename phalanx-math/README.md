@@ -167,6 +167,23 @@ Deterministic fixed-point quaternion for entity rotations. Stored in `(x, y, z, 
 
 - `FPQuaternion.ToFloat(q)` - Convert to `{ x, y, z, w }` floats for display/serialization
 
+## DeterministicRandom
+
+`DeterministicRandom` is the canonical match RNG (`xoroshiro128plus` via `pure-rand`). `@phalanx-engine/client` re-exports it. `@phalanx-engine/server` subclasses it and adds `generateSeed()` (`node:crypto`) and `fromBigInt()`.
+
+```typescript
+import { DeterministicRandom } from '@phalanx-engine/math';
+
+const rng = new DeterministicRandom(12345);
+rng.intRange(1, 6);
+
+const saved = rng.getState(); // 4 safe integers
+const continued = DeterministicRandom.fromState(saved);
+rng.setState(saved);
+```
+
+`getState()` does not draw. `fromState` / `setState` continue the same sequence. `float`, `floatRange`, and `boolean` remain as deprecated wrappers so existing call sites keep compiling. New simulation code uses `int` / `intRange` only. `getGenerator` / `setGenerator` are deprecated in favour of `getState` / `setState` / `fromState` (`pure-rand`'s generator type stays off new call sites).
+
 ## Why Fixed-Point?
 
 JavaScript's `Number` type uses IEEE 754 floating-point, which can produce slightly different results on different platforms/hardware. In lockstep multiplayer, even tiny differences compound over time, causing desync.

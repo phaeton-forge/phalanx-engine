@@ -44,3 +44,73 @@ Entries collected per package until the synchronized 0.3.0 release
   `simVersion` mismatch still rejects. `StateWriter.str` rejects unpaired
   UTF-16 surrogates (including canonical config keys and values), and
   `StateReader.str` keeps a leading U+FEFF.
+
+## @phalanx-engine/ecs
+
+- Snapshot accessors (Task 3): `getEntityIdCounter` / `setEntityIdCounter`
+  (module functions and `GameWorld` delegates), `SoAComponent.currentEntityManager()`,
+  and pool `typeKeys` / `ownedIds` / `freeListIds`. Allocation order, the
+  constructor reset, and pool acquire/release behavior are unchanged.
+- `setEntityIdCounter` still accepts any integer `>= 0`. The caller must
+  pass a value `>=` every live entity id; a lower value is stored and the
+  next allocation can collide.
+- `SoAComponent.useEntityManager(null)` clears the context, the same as
+  `resetContext()`.
+- `PoolManager.restore(typeKey, entitiesInCreationOrder, freeListIds)`
+  replaces that pool's owned set and free list without creating entities.
+  The next `spawn` pops the same id the free list would have returned.
+- An entity disposed outside `despawn` / `release` is dropped from the
+  pool's owned set and free list, so a snapshot does not keep the dead id.
+  `destroy()` only marks the entity. Snapshot reads and the next `acquire`
+  keep that instance, its id, and its components.
+
+## @phalanx-engine/math
+
+- `DeterministicRandom` now lives here (`xoroshiro128plus`). `getState()`
+  returns four integer words; `setState` / `fromState` continue that
+  sequence. Deprecated `float`, `floatRange`, and `boolean` stay as wrappers.
+  No new float APIs.
+- `getGenerator` and `setGenerator` are deprecated in favour of `getState`
+  / `setState` / `fromState`. The generator methods expose `pure-rand`'s
+  `RandomGenerator` on the public math API.
+
+## @phalanx-engine/client
+
+- `DeterministicRandom` is re-exported from `@phalanx-engine/math` under the
+  same name. Instance methods are unchanged.
+
+## @phalanx-engine/server
+
+- `DeterministicRandom` subclasses the math implementation. `fromBigInt`
+  is unchanged. `generateSeed` uses an ESM `node:crypto` import instead of
+  `require`.
+
+## @phalanx-engine/abilities
+
+- `InstanceIdCounter.set(n)` restores any integer `>= 0`.
+  `AbilitySystem.exportRuntimeState` / `importRuntimeState` copy the
+  instance-id counter, activation queue, current tick, and resolved
+  activations. The cue buffer is not part of that snapshot.
+- **Interface change:** `AbilitySystem` now requires `exportRuntimeState`
+  and `importRuntimeState`. External implementations and test mocks of
+  `AbilitySystem` must add both methods.
+- `importRuntimeState` rejects an `abilityId` that is not in the ability
+  registry. `instanceId` must be `>=` every live effect instance id; that
+  bound is the caller's responsibility (a lower integer is still stored).
+- Fixed-point fields on a restored `providedTarget` are recognized by
+  shape (`base` and `precision` bigints), not by `instanceof FixedPoint`,
+  then reconstructed as a local `FixedPoint` so arithmetic methods exist.
+
+## @phalanx-engine/physics
+
+- `SpatialHashGrid.getCenters`, `PhysicsSystem` / `CollisionSystem` /
+  `PhysicsWorld.getBroadphaseCenters`, and `rebuildBroadphase` (clear and
+  re-insert from current transforms in ascending entity id; no collision
+  resolution). The live physics step still rebuilds only before resolution.
+- `BroadphaseCenter` includes the `radius` used for cell coverage.
+  `restoreBroadphase(centers)` clears the grid and re-inserts those
+  centers in ascending entity id. Snapshot restore must use the saved
+  centers: `rebuildBroadphase` reads current transforms and is valid only
+  for a collision-free world. After resolution the live grid still holds
+  the pre-separation centers. Exported centers copy each value's own
+  precision (`FP.FromRaw` would default to 5).

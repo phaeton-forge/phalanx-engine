@@ -17,6 +17,8 @@ export {
   FPQuaternion,
 } from './FixedMath.js';
 
+export { DeterministicRandom } from './DeterministicRandom.js';
+
 export type {
   // 2D vector interface (type-only export to avoid conflict with const)
   FPVector2 as FPVector2Interface,

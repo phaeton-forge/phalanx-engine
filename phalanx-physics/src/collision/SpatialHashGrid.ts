@@ -1,4 +1,4 @@
-import { FP, type FixedPoint } from '@phalanx-engine/math';
+import { FixedPoint, FP } from '@phalanx-engine/math';
 
 /**
  * Deterministic spatial hash grid for broad-phase collision detection.
@@ -9,6 +9,33 @@ import { FP, type FixedPoint } from '@phalanx-engine/math';
  *
  * Zero-GC design: reuses internal arrays between calls.
  */
+/**
+ * Fixed-point center cached when a body was inserted into the broadphase.
+ *
+ * After collision resolution the transform may have moved; this center is
+ * the pre-separation position the grid still queries against. `radius` is
+ * the radius passed to {@link SpatialHashGrid.insert}: cell coverage
+ * depends on it, and a restore that drops it rebuilds the wrong cells.
+ * `x`, `z`, and `radius` are copies, so mutating them does not change the
+ * grid.
+ */
+export interface BroadphaseCenter {
+  readonly entityId: number;
+  readonly x: FixedPoint;
+  readonly z: FixedPoint;
+  readonly radius: FixedPoint;
+}
+
+/**
+ * Copy a center value and keep its precision.
+ *
+ * `FP.ToRaw` returns only the base. `FP.FromRaw` then defaults to
+ * precision 5, so `FP.FromInt(10, 2)` would be exported as 0.01.
+ */
+function copyFixedPoint(value: FixedPoint): FixedPoint {
+  return new FixedPoint(value.base, value.precision);
+}
+
 export class SpatialHashGrid {
   private readonly cellSize: FixedPoint;
   private readonly cells: Map<string, number[]> = new Map();
@@ -22,6 +49,8 @@ export class SpatialHashGrid {
    */
   private readonly entityPosX: Map<number, FixedPoint> = new Map();
   private readonly entityPosZ: Map<number, FixedPoint> = new Map();
+  /** Radius used for cell coverage at insert/update. Not used by queryRadius. */
+  private readonly entityRadius: Map<number, FixedPoint> = new Map();
 
   /** Reusable pairs array — cleared and reused each queryPairs() call */
   private readonly _pairsResult: [number, number][] = [];
@@ -42,6 +71,7 @@ export class SpatialHashGrid {
     // Store the center position for exact distance filtering in queryRadius.
     this.entityPosX.set(entityId, posX);
     this.entityPosZ.set(entityId, posZ);
+    this.entityRadius.set(entityId, radius);
 
     for (const key of cellKeys) {
       let cell = this.cells.get(key);
@@ -77,6 +107,7 @@ export class SpatialHashGrid {
     this.entityCells.delete(entityId);
     this.entityPosX.delete(entityId);
     this.entityPosZ.delete(entityId);
+    this.entityRadius.delete(entityId);
   }
 
   /**
@@ -166,6 +197,66 @@ export class SpatialHashGrid {
   }
 
   /**
+   * Cached centers in ascending entity id.
+   *
+   * These are the positions stored at {@link insert} / {@link update}, not
+   * a live read of the transform. Empty when the grid has been {@link clear}ed.
+   */
+  public getCenters(): readonly BroadphaseCenter[] {
+    const ids: number[] = [];
+    for (const id of this.entityPosX.keys()) {
+      ids.push(id);
+    }
+    ids.sort((a, b) => a - b);
+
+    const centers: BroadphaseCenter[] = [];
+    for (const entityId of ids) {
+      const x = this.entityPosX.get(entityId);
+      const z = this.entityPosZ.get(entityId);
+      const radius = this.entityRadius.get(entityId);
+      if (x === undefined || z === undefined || radius === undefined) {
+        continue;
+      }
+      centers.push({
+        entityId,
+        x: copyFixedPoint(x),
+        z: copyFixedPoint(z),
+        radius: copyFixedPoint(radius),
+      });
+    }
+    return centers;
+  }
+
+  /**
+   * Replace the grid with a saved center snapshot.
+   *
+   * Clears every cell, then inserts in ascending entity id. Cell coverage
+   * uses each center's saved radius. Pass the centers from {@link getCenters}
+   * on the live grid: {@link SpatialHashGrid} does not read transforms.
+   *
+   * @throws If `centers` contains a duplicate entity id.
+   */
+  public restoreBroadphase(centers: readonly BroadphaseCenter[]): void {
+    const ordered = centers.slice();
+    ordered.sort((a, b) => a.entityId - b.entityId);
+
+    let previousId: number | undefined;
+    for (const center of ordered) {
+      if (previousId === center.entityId) {
+        throw new Error(
+          `SpatialHashGrid.restoreBroadphase: duplicate entity id ${center.entityId}`
+        );
+      }
+      previousId = center.entityId;
+    }
+
+    this.clear();
+    for (const center of ordered) {
+      this.insert(center.entityId, center.x, center.z, center.radius);
+    }
+  }
+
+  /**
    * Remove all entities from the grid.
    */
   public clear(): void {
@@ -173,6 +264,7 @@ export class SpatialHashGrid {
     this.entityCells.clear();
     this.entityPosX.clear();
     this.entityPosZ.clear();
+    this.entityRadius.clear();
   }
 
   /**

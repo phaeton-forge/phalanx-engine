@@ -8,7 +8,7 @@ A deterministic, fixed-point physics engine for the [Phalanx Engine](../README.m
 
 - **Deterministic by Design**: All math uses `FP.*` fixed-point operations — no floating-point non-determinism
 - **SoA Storage**: Physics body data stored in contiguous typed arrays (`BigInt64Array` for fixed-point, `Uint8Array` for flags) via phalanx-ecs `SoAComponent`
-- **Spatial Hash Grid**: O(n) broad-phase collision detection with configurable cell size
+- **Spatial Hash Grid**: O(n) broad-phase collision detection with configurable cell size. `getCenters()` / `getBroadphaseCenters()` read the cached fixed-point centers and radii, preserving each value's precision (pre-separation after a resolve). `restoreBroadphase(centers)` clears the grid and re-inserts those saved centers in ascending entity id. `rebuildBroadphase()` re-inserts from current transforms and is valid only for a collision-free world; after a hit the live grid still holds the pre-separation centers. The live step still rebuilds before resolution only.
 - **Narrow Phase**: Circle vs Circle, Circle vs AABB, and AABB vs AABB collision tests
 - **Impulse Resolution**: Mass-weighted velocity impulse + positional separation for overlap correction
 - **Sub-stepping**: Configurable physics sub-steps per tick for higher fidelity at the same tick rate

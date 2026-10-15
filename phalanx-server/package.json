@@ -50,7 +50,6 @@
   ],
   "dependencies": {
     "@phalanx-engine/math": "workspace:*",
-    "pure-rand": "^7.0.1",
     "socket.io": "^4.7.0"
   },
   "devDependencies": {

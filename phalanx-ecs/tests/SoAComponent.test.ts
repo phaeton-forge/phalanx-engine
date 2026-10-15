@@ -111,6 +111,14 @@ describe('SoAComponent', () => {
     );
   });
 
+  it('useEntityManager(null) clears the context', () => {
+    SoAComponent.useEntityManager(null);
+    expect(SoAComponent.currentEntityManager()).toBeNull();
+    expect(() => new TestComponent(1, 10, 20)).toThrow(
+      'SoAComponent: No EntityManager context'
+    );
+  });
+
   it('constructs and stores initial values', () => {
     const comp = new TestComponent(1, 10, 20);
     expect(comp.x).toBe(10);

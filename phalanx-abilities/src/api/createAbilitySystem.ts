@@ -19,8 +19,15 @@ import {
 import { createAbilitySystemRegistries } from '../registry';
 import type { AbilitySystemRegistries } from '../registry';
 import { createAbilitySystemRuntime } from '../runtime';
-import type { AbilitySystemRuntime } from '../runtime';
-import type { GameplayCueBufferView } from '../runtime';
+import type {
+  AbilityRuntimeState,
+  AbilitySystemRuntime,
+  GameplayCueBufferView,
+} from '../runtime';
+import {
+  exportAbilityRuntimeState,
+  importAbilityRuntimeState,
+} from '../runtime/AbilityRuntimeState';
 import type {
   AbilityHook,
   ProvidedTarget,
@@ -80,6 +87,23 @@ export interface AbilitySystem extends IAbilitySystem {
   /** Pending activation requests not yet drained (for tests). */
   readonly pendingActivationCount: number;
   pendingActivationAbilityId(index: number): string | undefined;
+  /**
+   * Copy the per-world runtime (instance-id counter, activation queue,
+   * current tick, resolved activations). The cue buffer is presentation
+   * and is not included.
+   */
+  exportRuntimeState(): AbilityRuntimeState;
+  /**
+   * Replace the per-world runtime from {@link exportRuntimeState}.
+   * Does not touch the cue buffer. Throws if `state` is not a valid
+   * snapshot of that runtime, or if an `abilityId` is not in this world's
+   * ability registry.
+   *
+   * `state.instanceId` must be >= every live effect instance id. A lower
+   * integer is stored; keeping it above the live ids is the caller's
+   * responsibility.
+   */
+  importRuntimeState(state: AbilityRuntimeState): void;
   initComponent(init?: AbilitySystemComponentInit): AbilitySystemComponent;
   activateAbility(casterEntityId: number, abilityId: string, providedTarget?: ProvidedTarget): boolean;
   applyEffect(
@@ -155,6 +179,14 @@ class AbilitySystemImpl implements AbilitySystem {
 
   public pendingActivationAbilityId(index: number): string | undefined {
     return this.runtime.activationRequests[index]?.abilityId;
+  }
+
+  public exportRuntimeState(): AbilityRuntimeState {
+    return exportAbilityRuntimeState(this.runtime);
+  }
+
+  public importRuntimeState(state: AbilityRuntimeState): void {
+    importAbilityRuntimeState(this.runtime, state, this.registries.abilities);
   }
 
   public constructor(

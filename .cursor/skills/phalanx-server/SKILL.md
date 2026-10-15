@@ -469,7 +469,8 @@ import { Phalanx } from '@phalanx-engine/server';
 // Auth utilities
 import { TokenValidatorService, createDevValidator, createEndpointValidator } from '@phalanx-engine/server';
 
-// Math utilities (re-exported from phalanx-math)
+// RNG subclasses @phalanx-engine/math and adds generateSeed / fromBigInt.
+// FP* are re-exported from phalanx-math.
 import { DeterministicRandom, FP, FPVector2, FPVector3, FixedPoint } from '@phalanx-engine/server';
 import type { FPVector2Interface, FPVector3Interface } from '@phalanx-engine/server';
 

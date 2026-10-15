@@ -17,7 +17,13 @@ export { GameWorld, GameWorldEvents } from './GameWorld';
 export type { GameWorldConfig, GameWorldHooks } from './GameWorld';
 
 // Entity and Component
-export { Entity, resetEntityIdCounter, nextEntityId } from './Entity';
+export {
+  Entity,
+  resetEntityIdCounter,
+  nextEntityId,
+  getEntityIdCounter,
+  setEntityIdCounter,
+} from './Entity';
 export { IComponent, createComponentTypeRegistry } from './Component';
 export type { IComponent as Component } from './Component';
 

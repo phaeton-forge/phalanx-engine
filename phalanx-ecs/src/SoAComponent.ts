@@ -53,8 +53,11 @@ export abstract class SoAComponent<S extends SoASchemaDefinition> implements ICo
   /**
    * Set the EntityManager context. Called once by GameWorld on construction.
    * All SoAComponent subclasses will use this to resolve their stores.
+   *
+   * Pass `null` to clear the context. {@link resetContext} does the same;
+   * a host restoring a saved `null` calls this with `null`.
    */
-  public static useEntityManager(em: EntityManager): void {
+  public static useEntityManager(em: EntityManager | null): void {
     SoAComponent._entityManager = em;
   }
 
@@ -63,6 +66,19 @@ export abstract class SoAComponent<S extends SoASchemaDefinition> implements ICo
    */
   public static resetContext(): void {
     SoAComponent._entityManager = null;
+  }
+
+  /**
+   * EntityManager currently installed for SoA store lookup, or `null` when
+   * {@link resetContext} has cleared it (or nothing has called
+   * {@link useEntityManager} yet).
+   *
+   * Process-global, like the entity id counter. A host that runs more than
+   * one world saves this, installs the world's manager for the duration of
+   * the call, then restores the previous value.
+   */
+  public static currentEntityManager(): EntityManager | null {
+    return SoAComponent._entityManager;
   }
 
   // ── Constructor ───────────────────────────────────────────────────────
