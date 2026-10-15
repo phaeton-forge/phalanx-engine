@@ -196,6 +196,28 @@ describe('PoolManager', () => {
     }).toThrow("Pool 'test' is already registered");
   });
 
+  it('createForRestore skips hooks and restore discards prewarm', () => {
+    manager.registerEntityType('test', {
+      factory: () => new TestPoolableEntity(),
+      pool: { initialSize: 2 },
+    });
+    manager.prewarmAll();
+    expect(TestPoolableEntity.entityDespawnCalls).toBe(2);
+    resetHookState();
+
+    const created = manager.createForRestore('test');
+    expect(created).toBeInstanceOf(TestPoolableEntity);
+    expect(created._poolTypeKey).toBeUndefined();
+    expect(TestPoolableEntity.entityDespawnCalls).toBe(0);
+    expect(HookRecordingComponent.despawnCalls).toBe(0);
+    expect(manager.ownedIds('test')).not.toContain(created.id);
+
+    manager.restore('test', [created], []);
+    expect(manager.ownedIds('test')).toEqual([created.id]);
+    expect(manager.freeListIds('test')).toEqual([]);
+    expect(entityManager.getEntity(created.id)).toBeUndefined();
+  });
+
   it('prewarmAll uses initialSize', () => {
     manager.registerEntityType('test', {
       factory: () => new VoidPoolableEntity(),

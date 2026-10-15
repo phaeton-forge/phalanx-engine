@@ -353,6 +353,25 @@ describe('SoA state helpers', () => {
     ).toThrow('readSoAStore: missing entity 7 in Lone');
   });
 
+  it('throws when the store has an entity the section omitted', () => {
+    const schema = defineSoASchema({ a: 'u8' }, 'Extra');
+    const source = new GameWorld({});
+    const store = source.entityManager.getOrCreateSoAStore(schema);
+    store.add(1, { a: 1 });
+    const bytes = finish((writer) => {
+      StateHelpers.writeSoAStore(writer, store);
+    });
+
+    const restored = new GameWorld({});
+    const restoredStore = restored.entityManager.getOrCreateSoAStore(schema);
+    restoredStore.add(1, { a: 0 });
+    restoredStore.add(2, { a: 0 });
+    const reader = new BinaryStateReader(bytes);
+    expect(() => StateHelpers.readSoAStore(reader, restoredStore)).toThrow(
+      'readSoAStore: extra entity 2 in Extra'
+    );
+  });
+
   it('throws when a saved entity has no row', () => {
     const source = buildWorld();
     const bytes = finish((writer) => {

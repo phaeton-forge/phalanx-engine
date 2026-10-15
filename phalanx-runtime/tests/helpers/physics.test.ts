@@ -8,6 +8,7 @@ import {
 import { FP } from '@phalanx-engine/math';
 import type { FixedPoint } from '@phalanx-engine/math';
 import {
+  CollisionSystem,
   PhysicsBodyComponent,
   PhysicsSoASchema,
   PhysicsWorld,
@@ -205,6 +206,36 @@ describe('physics state helpers', () => {
     const query = [...physics.spatialGrid.queryRadius(FP._0, FP._0, FP._1)];
     expect(query).toContain(1);
     expect(query).not.toContain(2);
+  });
+
+  it('saves a registered CollisionSystem under collisionSystem', () => {
+    const world = new GameWorld({});
+    const collision = new CollisionSystem(FP.FromInt(4));
+    world.registerSystems([collision], []);
+    collision.restoreBroadphase([
+      {
+        entityId: 3,
+        x: FP.FromInt(1),
+        z: FP.FromInt(2),
+        radius: FP._1,
+      },
+    ]);
+
+    const bytes = finish((writer) => {
+      StateHelpers.writeBroadphase(writer, world);
+    });
+    expect(new TextDecoder().decode(bytes)).toContain('collisionSystem');
+
+    const restored = new GameWorld({});
+    const restoredCollision = new CollisionSystem(FP.FromInt(4));
+    restored.registerSystems([restoredCollision], []);
+    const reader = new BinaryStateReader(bytes);
+    StateHelpers.readBroadphase(reader, restored);
+    reader.done();
+    const center = restoredCollision.getBroadphaseCenters()[0];
+    expect(center?.entityId).toBe(3);
+    expect(FP.Eq(center?.x ?? FP._0, FP.FromInt(1))).toBe(true);
+    expect(FP.Eq(center?.z ?? FP._0, FP.FromInt(2))).toBe(true);
   });
 
   it('throws when the world has no broadphase', () => {

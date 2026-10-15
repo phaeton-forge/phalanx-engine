@@ -269,7 +269,8 @@ export function writeSoAStore<S extends SoASchemaDefinition>(
  * {@link readSoAStores}, which registers an empty store when this world
  * has not created one yet.
  *
- * @throws If a saved id has no row, or the section version is not 1.
+ * @throws If a saved id has no row, the store has a row the section
+ * omitted, or the section version is not 1.
  */
 export function readSoAStore<S extends SoASchemaDefinition>(
   r: StateReader,
@@ -283,6 +284,15 @@ export function readSoAStore<S extends SoASchemaDefinition>(
       readRow(row, store, name, seen);
       return 0;
     });
+    if (seen.size !== store.entityIds().length) {
+      for (const id of store.entityIds()) {
+        if (!seen.has(id)) {
+          throw new Error(
+            `readSoAStore: extra entity ${String(id)} in ${name}`
+          );
+        }
+      }
+    }
   });
 }
 

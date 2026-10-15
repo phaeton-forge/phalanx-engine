@@ -4,7 +4,10 @@ import { SoAComponent } from './SoAComponent.js';
 import { PoolManager } from './pool/PoolManager.js';
 import { DebugDataProvider } from './debug/DebugDataProvider.js';
 import { DebugPanel } from './debug/DebugPanel.js';
-import type { DebugDataProviderConfig, DebugPanelConfig } from './debug/types.js';
+import type {
+  DebugDataProviderConfig,
+  DebugPanelConfig,
+} from './debug/types.js';
 import type { PoolingConfig } from './pool/types.js';
 import type { ITickFrameProvider, Unsubscribe } from './ITickFrameProvider.js';
 import type { EventBus } from './EventBus.js';

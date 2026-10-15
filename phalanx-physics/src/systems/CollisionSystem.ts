@@ -83,10 +83,21 @@ export class CollisionSystem extends GameSystem {
 
   /**
    * Replace the broadphase with saved centers (clear, then insert in
-   * ascending entity id). Does not read transforms.
+   * ascending entity id). Does not read transforms. Writes `lastX` /
+   * `lastZ` from those centers (`FP.ToFloat`) so the first rendered
+   * frame matches the restored grid. Those fields are presentation
+   * only; simulation must not read them.
    */
   public restoreBroadphase(centers: readonly BroadphaseCenter[]): void {
     this.spatialGrid.restoreBroadphase(centers);
+    const lastX = this.physicsStore.arrays.lastX;
+    const lastZ = this.physicsStore.arrays.lastZ;
+    for (const center of centers) {
+      const index = this.physicsStore.indexOf(center.entityId);
+      if (index === -1) continue;
+      lastX[index] = FP.ToFloat(center.x);
+      lastZ[index] = FP.ToFloat(center.z);
+    }
   }
 
   public override processTick(_tick: number): void {

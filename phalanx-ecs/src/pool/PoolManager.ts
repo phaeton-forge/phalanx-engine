@@ -15,6 +15,8 @@ import type { EntityTypeConfig, PoolStats } from './types.js';
 export class PoolManager {
   private readonly pools: Map<string, EntityPool<Entity>> = new Map();
   private readonly initialSizes: Map<string, number> = new Map();
+  /** Raw factories, without the dormant-hook wrapper passed to each pool. */
+  private readonly rawFactories: Map<string, () => Entity> = new Map();
 
   constructor(private readonly entityManager: EntityManager) {}
 
@@ -30,6 +32,8 @@ export class PoolManager {
     if (this.pools.has(typeKey)) {
       throw new Error(`Pool '${typeKey}' is already registered`);
     }
+
+    this.rawFactories.set(typeKey, () => config.factory());
 
     const factory = (): T => {
       const entity = config.factory();
@@ -154,23 +158,73 @@ export class PoolManager {
   }
 
   /**
+   * Construct one entity with the raw factory.
+   *
+   * Does not run `onSpawn` / `onDespawn`, does not set `_poolTypeKey`, and
+   * does not register the entity. The id is whatever the factory's
+   * constructor allocates from the current counter. {@link restore} adopts
+   * the instance afterwards.
+   *
+   * @throws If `typeKey` is not registered.
+   */
+  public createForRestore(typeKey: string): Entity {
+    const factory = this.rawFactories.get(typeKey);
+    if (!factory) {
+      throw new Error(`Pool '${typeKey}' is not registered`);
+    }
+    return factory();
+  }
+
+  /**
+   * Dispose prewarmed free entities so a snapshot can reuse their ids.
+   *
+   * `start()` prewarms by default. Those entities sit on the free list,
+   * were never registered, and already consumed ids. They are removed from
+   * the SoA stores and `dispose`d without `addEntity`. A checked-out entity,
+   * or a free entity that is already registered, is left in place and this
+   * throws.
+   *
+   * @throws If `typeKey` is not registered, or the pool is not entirely
+   * dormant and unregistered.
+   */
+  public discardPrewarmed(typeKey: string): void {
+    const pool = this.requirePool(typeKey);
+    const ownedIds = pool.ownedIds();
+    if (ownedIds.length === 0) return;
+    const free = new Set(pool.freeListIds());
+    for (const id of ownedIds) {
+      if (!free.has(id) || this.entityManager.getEntity(id) !== undefined) {
+        throw new Error(`Pool '${typeKey}' is not empty`);
+      }
+    }
+    for (const entity of pool.takeDormant()) {
+      this.entityManager.removeEntity(entity);
+      entity.dispose();
+    }
+  }
+
+  /**
    * Replace the owned set and free list of `typeKey`.
    *
+   * Discards a prewarmed free list first ({@link discardPrewarmed}).
    * `entitiesInCreationOrder` is the entities the pool should reference,
    * in creation order. `freeListIds` lists the free ones from oldest
    * release to newest; the next {@link spawn} pops the last id. Entities
    * whose ids are absent from `freeListIds` stay checked out.
    *
    * Does not create entities or change ids. The caller supplies the
-   * instances the snapshot described.
+   * instances the snapshot described. Build them with
+   * {@link createForRestore} when the snapshot must allocate those ids.
    *
-   * @throws If `typeKey` is not registered, or the id lists are inconsistent.
+   * @throws If `typeKey` is not registered, the pool has checked-out
+   * entities, or the id lists are inconsistent.
    */
   public restore(
     typeKey: string,
     entitiesInCreationOrder: readonly Entity[],
     freeListIds: readonly number[]
   ): void {
+    this.discardPrewarmed(typeKey);
     const pool = this.requirePool(typeKey);
     pool.adopt(entitiesInCreationOrder, freeListIds);
     for (const entity of entitiesInCreationOrder) {

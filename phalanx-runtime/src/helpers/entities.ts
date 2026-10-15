@@ -128,20 +128,24 @@ function readPoolRecords(r: StateReader): PoolRecord[] {
 }
 
 /**
- * Bind pools with `PoolManager.restore`.
+ * Rebuild pool membership from the snapshot.
  *
- * Does not construct entities. `PoolManager` does not expose its factory,
- * and `restore` only adopts instances the caller already holds. Recreate
- * every owned id with {@link spawnWithId} before this call, on a world
- * that registered the same type keys and has not spawned or prewarmed
- * those pools.
+ * `start()` prewarms by default, so a fresh world already holds free
+ * entities and has consumed ids. Those dormant entities are discarded
+ * (`dispose`, never `addEntity`) before the saved ids are allocated.
+ * Each owned id is then constructed with `PoolManager.createForRestore`
+ * (the raw factory: no `onSpawn` / `onDespawn`). Checked-out entities are
+ * registered. Free-list entities are not, and `onDespawn` runs for them
+ * so they match a despawned pool entry.
  *
- * Free-list entities are then taken out of the entity manager (the same
- * membership a `despawn` leaves) without pushing them onto the free list
- * a second time. Checked-out entities stay registered.
+ * That `onDespawn` already ran when the original entity was prewarmed or
+ * despawned. It runs again on the restored instance. Keep it idempotent.
  *
- * @throws If the type-key list differs, a pool is not empty, or an owned
- * id is not in the entity manager.
+ * `readEntityIds` still runs later and installs the saved high-water mark.
+ * Prewarm and these allocations both move the counter; the saved mark wins.
+ *
+ * @throws If the type-key list differs, a pool has a checked-out entity,
+ * or the factory does not allocate the saved id.
  */
 export function readPools(r: StateReader, world: GameWorld): void {
   const records = readPoolRecords(r);
@@ -160,35 +164,62 @@ export function readPools(r: StateReader, world: GameWorld): void {
   }
 
   for (const record of records) {
-    if (pools.ownedIds(record.typeKey).length !== 0) {
-      throw new Error(
-        `readPools: pool '${record.typeKey}' is not empty. Restore into a world that has not spawned or prewarmed this pool.`
-      );
-    }
+    pools.discardPrewarmed(record.typeKey);
     const entities: Entity[] = [];
     for (const id of record.ownedIds) {
-      const entity = world.entityManager.getEntity(id);
-      if (entity === undefined) {
-        throw new Error(
-          `readPools: missing entity ${String(id)} for pool '${record.typeKey}'`
-        );
-      }
-      entities.push(entity);
+      entities.push(createPooledEntity(world, pools, record.typeKey, id));
     }
     pools.restore(record.typeKey, entities, record.freeListIds);
     const free = new Set(record.freeListIds);
     for (const entity of entities) {
-      if (!free.has(entity.id)) continue;
-      parkFreeEntity(world, entity);
+      if (free.has(entity.id)) {
+        parkFreeEntity(world, entity);
+      } else if (world.entityManager.getEntity(entity.id) === undefined) {
+        world.entityManager.addEntity(entity);
+      }
     }
   }
 }
 
 /**
- * Match despawn membership for a free-list entity that was recreated with
- * `spawnWithId`: drop it from the manager and run the dormant hooks.
- * `PoolManager.restore` already recorded the free-list order, so this does
- * not call `release`.
+ * Allocate `id` from the raw pool factory. Does not register the entity.
+ * The counter is left at `max(previous, id)` until `readEntityIds`.
+ */
+function createPooledEntity(
+  world: GameWorld,
+  pools: NonNullable<GameWorld['pools']>,
+  typeKey: string,
+  id: number
+): Entity {
+  if (world.entityManager.getEntity(id) !== undefined) {
+    throw new Error(
+      `readPools: entity ${String(id)} already exists for pool '${typeKey}'`
+    );
+  }
+  const saved = world.getEntityIdCounter();
+  world.setEntityIdCounter(id - 1);
+  let entity: Entity;
+  try {
+    entity = pools.createForRestore(typeKey);
+  } catch (error) {
+    world.setEntityIdCounter(saved);
+    throw error;
+  }
+  if (entity.id !== id || world.getEntityIdCounter() !== id) {
+    world.setEntityIdCounter(saved);
+    throw new Error(
+      `readPools: factory for '${typeKey}' must construct exactly one entity with id ${String(id)}`
+    );
+  }
+  world.setEntityIdCounter(Math.max(saved, id));
+  return entity;
+}
+
+/**
+ * Match despawn membership for a restored free-list entity: drop its SoA
+ * row and run dormant hooks. `PoolManager.restore` already recorded the
+ * free-list order, so this does not call `release`. `onDespawn` runs here
+ * even though the saved entity was already dormant.
  */
 function parkFreeEntity(world: GameWorld, entity: Entity): void {
   if (world.entityManager.getEntity(entity.id) !== undefined) {

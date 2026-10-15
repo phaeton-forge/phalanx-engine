@@ -23,12 +23,13 @@ import { notImplemented } from '../notImplemented.js';
  * calls them by itself.
  *
  * Restore order inside `GameState.restore` (normative):
- *  1. recreate dynamic entities by id (`spawnWithId`, then `readPools`);
- *     their constructors create the SoA rows,
+ *  1. `spawnWithId` for dynamic entities that are not in a pool, then
+ *     `readPools` (it constructs pooled entities itself, discarding
+ *     prewarmed free entities first),
  *  2. overwrite row and component values (`readSoAStores`, `readAbilities`),
  *  3. `readEntityIds` sets the counter to the saved high-water mark,
  *  4. `readRandom` and game singletons, then `readBroadphase`.
- *     `rebuildPhysics` (from the saved transforms) is NOT the last step:
+ *     `rebuildPhysics` (from the saved transforms) is not the last step:
  *     after a collision the live grid still holds the pre-separation
  *     centers.
  * `save` writes the same sections in the same order.

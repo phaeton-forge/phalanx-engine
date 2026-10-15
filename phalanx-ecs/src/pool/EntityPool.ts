@@ -130,6 +130,25 @@ export class EntityPool<T extends Entity = Entity> {
   }
 
   /**
+   * Remove every free entity when nothing is checked out.
+   *
+   * The returned instances are no longer referenced by the pool and their
+   * dispose callback is cleared. The caller disposes them. A checked-out
+   * entity makes this throw so a live pool is not silently dropped.
+   */
+  public takeDormant(): T[] {
+    if (this.owned.size !== this.available.length) {
+      throw new Error('EntityPool.takeDormant: pool has checked-out entities');
+    }
+    const dormant = this.available.splice(0, this.available.length);
+    this.owned.clear();
+    for (const entity of dormant) {
+      entity._onDispose = undefined;
+    }
+    return dormant;
+  }
+
+  /**
    * Replace the owned set and the free list.
    *
    * `entitiesInCreationOrder` is every entity this pool should reference,

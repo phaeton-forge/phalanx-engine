@@ -51,11 +51,16 @@ export const MyGame = defineGame({
   `GameState`. SoA rows (explicit schema names; `f32` / `f64` skipped),
   the entity id counter, `spawnWithId`, pool membership, RNG state and
   broadphase centers are implemented. GAS helpers are still Task 5.
-  Recreate entities before `readSoAStores`. A zero-row section registers
-  a missing empty store; a saved id with no row still throws. Restore
-  broadphase with
+  Restore order: `spawnWithId` for non-pooled entities, `readPools`
+  (constructs pooled entities and discards prewarmed free ones; free
+  entities get `onDespawn` again), `readSoAStores`, `readEntityIds`,
+  `readRandom`, `readBroadphase`. A zero-row SoA section registers a
+  missing empty store; a saved id with no row still throws, and a row
+  the section omitted throws `extra entity`. Restore broadphase with
   `readBroadphase` (pre-separation centers, including radius and each
-  value's precision). `rebuildPhysics` is only for a collision-free world.
+  value's precision). That also fills `lastX` / `lastZ` for the first
+  frame. Do not read `lastX` / `lastZ` in simulation. `rebuildPhysics`
+  is only for a collision-free world.
 - **`BotPolicy`**: a bot is a command producer for its slot, not a
   simulation system. Its commands enter the same log as humans'.
 - **`Transport`**: extends ecs `ITickFrameProvider` with `submit` and
@@ -74,10 +79,13 @@ seed 0), `canonicalConfigBytes` / `configHash`,
 `checkSnapshotCompatibility`, and `StateHelpers` except
 `writeAbilities` / `readAbilities`. There is no `f32` or `f64` writer.
 
-`readPools` adopts entities that were already recreated with `spawnWithId`
-(`PoolManager.restore` does not construct them). Pool type keys stay in
-registration order. RNG state is `getState` / `setState` (four int32
-words).
+`readPools` calls `PoolManager.createForRestore` for each owned id, then
+`restore`. Prewarmed free entities from `world.start()` are discarded
+first. Free-list entities receive `onDespawn` again on the restored
+instance; keep that hook idempotent. `readEntityIds` then installs the
+saved counter. Pool type keys stay in registration order. RNG state is
+`getState` / `setState` (four int32 words). Physics and math are peer
+dependencies; physics is optional.
 
 ## Design docs
 

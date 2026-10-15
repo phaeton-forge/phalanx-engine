@@ -13,8 +13,7 @@
     }
   },
   "dependencies": {
-    "@phalanx-engine/ecs": "workspace:*",
-    "@phalanx-engine/physics": "workspace:*"
+    "@phalanx-engine/ecs": "workspace:*"
   },
   "scripts": {
     "build": "tsc",
@@ -26,11 +25,18 @@
   },
   "peerDependencies": {
     "@phalanx-engine/ecs": "workspace:^",
-    "@phalanx-engine/math": "workspace:^"
+    "@phalanx-engine/math": "workspace:^",
+    "@phalanx-engine/physics": "workspace:^"
+  },
+  "peerDependenciesMeta": {
+    "@phalanx-engine/physics": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@phalanx-engine/ecs": "workspace:*",
     "@phalanx-engine/math": "workspace:*",
+    "@phalanx-engine/physics": "workspace:*",
     "typescript": "~5.9.3",
     "vitest": "^1.0.0"
   },

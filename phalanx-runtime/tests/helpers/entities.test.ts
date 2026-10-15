@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   Entity,
+  GameSystem,
   GameWorld,
   SoAComponent,
   resetEntityIdCounter,
   type IPoolableEntity,
+  type ITickFrameProvider,
 } from '@phalanx-engine/ecs';
 import { StateHelpers } from '../../src/helpers/StateHelpers.js';
 import {
@@ -30,6 +32,21 @@ function finish(fill: (w: BinaryStateWriter) => void): Uint8Array {
   return writer.finish();
 }
 
+const quietProvider: ITickFrameProvider = {
+  onTick: () => () => {},
+  onFrame: () => () => {},
+};
+
+class SpawnSystem extends GameSystem {
+  public readonly spawned: Unit[] = [];
+
+  public override processTick(tick: number): void {
+    const pools = this.pools;
+    if (pools === null) return;
+    this.spawned.push(pools.spawn<Unit>('unit', { hp: tick }));
+  }
+}
+
 function poolingWorld(): GameWorld {
   return new GameWorld({
     pooling: {
@@ -39,6 +56,23 @@ function poolingWorld(): GameWorld {
       },
     },
   });
+}
+
+function prewarmedWorld(system: SpawnSystem): GameWorld {
+  const world = new GameWorld({
+    tickFrameProvider: quietProvider,
+    pooling: {
+      entityTypes: {
+        unit: {
+          factory: () => new Unit(),
+          pool: { initialSize: 2 },
+        },
+      },
+    },
+  });
+  world.registerSystems([system], []);
+  world.start();
+  return world;
 }
 
 describe('entity and pool state helpers', () => {
@@ -133,11 +167,6 @@ describe('entity and pool state helpers', () => {
     if (restoredPools === null) {
       throw new Error('expected pools');
     }
-    const byId = new Map<number, Unit>();
-    for (const id of owned) {
-      const entity = StateHelpers.spawnWithId(restored, id, () => new Unit());
-      byId.set(id, entity);
-    }
 
     const reader = new BinaryStateReader(bytes);
     StateHelpers.readPools(reader, restored);
@@ -148,34 +177,62 @@ describe('entity and pool state helpers', () => {
     });
     expect(again).toEqual(bytes);
 
-    expect(restored.entityManager.getEntity(second.id)).toBe(
-      byId.get(second.id)
-    );
+    expect(restored.entityManager.getEntity(second.id)?.id).toBe(second.id);
     expect(restored.entityManager.getEntity(first.id)).toBeUndefined();
     expect(restored.entityManager.getEntity(third.id)).toBeUndefined();
 
     const spawned = restoredPools.spawn<Unit>('unit', { hp: 9 });
     expect(spawned.id).toBe(third.id);
-    expect(spawned).toBe(byId.get(third.id));
     expect(spawned.hp).toBe(9);
     const after = restoredPools.spawn<Unit>('unit', { hp: 4 });
     expect(after.id).toBe(first.id);
   });
 
-  it('rejects a pool restore when an owned entity is missing', () => {
-    const source = poolingWorld();
+  it('discards prewarm and continues tick-for-tick after readPools', () => {
+    const sourceSystem = new SpawnSystem();
+    const source = prewarmedWorld(sourceSystem);
     const pools = source.pools;
     if (pools === null) {
       throw new Error('expected pools');
     }
-    const unit = pools.spawn<Unit>('unit', { hp: 1 });
+    const live = pools.spawn<Unit>('unit', { hp: 4 });
+    new Entity();
+    expect(source.getEntityIdCounter()).toBe(3);
+
     const bytes = finish((writer) => {
       StateHelpers.writePools(writer, source);
+      StateHelpers.writeEntityIds(writer, source);
     });
-    const restored = poolingWorld();
+
+    source.processAllTicks(1);
+    source.processAllTicks(2);
+    const continued = sourceSystem.spawned.map((unit) => ({
+      id: unit.id,
+      hp: unit.hp,
+    }));
+    expect(continued.map((unit) => unit.id)).toEqual([1, 4]);
+
+    const restoredSystem = new SpawnSystem();
+    const restored = prewarmedWorld(restoredSystem);
+    const restoredPools = restored.pools;
+    if (restoredPools === null) {
+      throw new Error('expected pools');
+    }
+    expect(restoredPools.ownedIds('unit').length).toBeGreaterThan(0);
+
     const reader = new BinaryStateReader(bytes);
-    expect(() => StateHelpers.readPools(reader, restored)).toThrow(
-      `readPools: missing entity ${String(unit.id)} for pool 'unit'`
-    );
+    StateHelpers.readPools(reader, restored);
+    StateHelpers.readEntityIds(reader, restored);
+    reader.done();
+
+    expect(restored.getEntityIdCounter()).toBe(3);
+    expect(restored.entityManager.getEntity(live.id)?.id).toBe(live.id);
+    expect(restoredPools.freeListIds('unit')).toEqual([1]);
+
+    restored.processAllTicks(1);
+    restored.processAllTicks(2);
+    expect(
+      restoredSystem.spawned.map((unit) => ({ id: unit.id, hp: unit.hp }))
+    ).toEqual(continued);
   });
 });

@@ -359,8 +359,8 @@ Attach `InterpolationComponent` on any entity that needs render smoothing alongs
 | `ignorePhysics`      | `u8`  | `Uint8Array`     | 1 = skip all physics, 0 = active     |
 | `useGravity`         | `u8`  | `Uint8Array`     | 1 = GravitySystem applies gravity, 0 = ignore (default) |
 | `gravityMultiplier`  | `i64` | `BigInt64Array`  | Per-body scale on world gravity (default `FP._1`) |
-| `lastX`              | `f64` | `Float64Array`   | Cached float X position               |
-| `lastZ`              | `f64` | `Float64Array`   | Cached float Z position               |
+| `lastX`              | `f64` | `Float64Array`   | Cached float X. Presentation only; do not read in simulation |
+| `lastZ`              | `f64` | `Float64Array`   | Cached float Z. Presentation only; do not read in simulation |
 
 ## PhysicsWorldConfig
 
@@ -447,7 +447,7 @@ import { SpatialHashGrid, NarrowPhase, segmentVsAABB } from '@phalanx-engine/phy
 import type { CollisionManifold, RayHit, Vec3FP, AABB } from '@phalanx-engine/physics';
 
 // Systems
-import { PhysicsSystem, GravitySystem, InterpolationSystem } from '@phalanx-engine/physics';
+import { PhysicsSystem, GravitySystem, InterpolationSystem, CollisionSystem } from '@phalanx-engine/physics';
 import type { InterpolatedTransformSample } from '@phalanx-engine/physics';
 
 // Facade

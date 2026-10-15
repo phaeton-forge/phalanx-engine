@@ -1,6 +1,10 @@
 import type { GameWorld } from '@phalanx-engine/ecs';
 import { FixedPoint } from '@phalanx-engine/math';
-import { PhysicsSystem, type BroadphaseCenter } from '@phalanx-engine/physics';
+import {
+  CollisionSystem,
+  PhysicsSystem,
+  type BroadphaseCenter,
+} from '@phalanx-engine/physics';
 import type { StateReader, StateWriter } from '../state/StateIO.js';
 import {
   assertSectionVersion,
@@ -15,6 +19,9 @@ const PHYSICS_KEY = 'physics';
  * from `context.physics`.
  */
 const PHYSICS_SYSTEM_KEY = 'physicsSystem';
+
+/** A registered `CollisionSystem` with its own grid. */
+const COLLISION_SYSTEM_KEY = 'collisionSystem';
 
 interface BroadphaseOwner {
   getBroadphaseCenters(): readonly BroadphaseCenter[];
@@ -61,11 +68,7 @@ function spatialGridOf(owner: BroadphaseOwner): object | null {
 
 /**
  * Physics facade on `context.physics`, then a registered `PhysicsSystem`
- * when that system has a different grid.
- *
- * `CollisionSystem` has the same hooks but is not exported from
- * `@phalanx-engine/physics`, so a world that uses only that system is not
- * discovered here.
+ * or `CollisionSystem` when that system has a different grid.
  */
 function collectBroadphases(world: GameWorld): NamedBroadphase[] {
   const found: NamedBroadphase[] = [];
@@ -85,6 +88,11 @@ function collectBroadphases(world: GameWorld): NamedBroadphase[] {
   const physicsSystem = world.getSystem(PhysicsSystem);
   if (physicsSystem !== undefined && isBroadphaseOwner(physicsSystem)) {
     remember(PHYSICS_SYSTEM_KEY, physicsSystem);
+  }
+
+  const collisionSystem = world.getSystem(CollisionSystem);
+  if (collisionSystem !== undefined && isBroadphaseOwner(collisionSystem)) {
+    remember(COLLISION_SYSTEM_KEY, collisionSystem);
   }
 
   return found;

@@ -61,29 +61,35 @@ ctx.tickFrameProvider, random: ctx.random, ... })` and calls
 ## State helpers
 
 Call these inside the game's own `GameState`, in this order on restore:
-recreate entities (`spawnWithId`, then `readPools`), `readSoAStores`,
+`spawnWithId` for non-pooled entities, `readPools`, `readSoAStores`,
 `readEntityIds`, `readRandom`, `readBroadphase`.
 
 - SoA: `section(<schema name>, 1)` and rows in ascending entity id.
   `defineSoASchema` must be given an explicit unique name. `f32` / `f64`
   fields are skipped. A missing row throws
-  `readSoAStore: missing entity <id> in <schema>`. A zero-row section whose
-  store is missing (the source removed the last entity) is registered empty
-  with `getOrCreateSoAStore`.
-- Entity ids: the counter only. `spawnWithId` builds one entity with that
-  exact id and then `addEntity`s it.
+  `readSoAStore: missing entity <id> in <schema>`. A row the section did
+  not list throws `readSoAStore: extra entity <id> in <schema>`. A
+  zero-row section whose store is missing (the source removed the last
+  entity) is registered empty with `getOrCreateSoAStore`.
+- Entity ids: the counter only. `spawnWithId` builds one non-pooled entity
+  with that exact id and then `addEntity`s it. `readEntityIds` runs after
+  the rows so prewarm and pool allocation cannot leave the counter high.
 - Pools: registration order, owned ids in creation order, free list from
-  oldest release to newest. `readPools` calls `PoolManager.restore` and
-  does not run the pool factory. Recreate every owned entity with
-  `spawnWithId` first, on a world that has not prewarmed those pools.
+  oldest release to newest. `readPools` discards prewarmed free entities
+  (`dispose`, not registered), then `PoolManager.createForRestore` builds
+  each owned id with the raw factory (no hooks). Checked-out entities are
+  registered. Free-list entities get `onDespawn` again on that new
+  instance; keep the hook idempotent.
 - RNG: four int32 words from `getState` / `setState`. An `IRandom` without
   `getState` throws. Do not use `getGenerator`.
-- Broadphase: `getCenters()` for the `PhysicsWorld` on `context.physics`
-  (and a registered `PhysicsSystem` only when it is a different grid).
-  Each center stores entity id, and `x` / `z` / `radius` as raw base plus
-  that value's precision. `readBroadphase` calls `restoreBroadphase`.
-  `rebuildPhysics` rebuilds from current transforms and is valid only
-  before the first resolving step.
+- Broadphase: `getCenters()` for the `PhysicsWorld` on `context.physics`,
+  plus a registered `PhysicsSystem` or `CollisionSystem` when that system
+  has a different grid (`physicsSystem` / `collisionSystem`). Each center
+  stores entity id, and `x` / `z` / `radius` as raw base plus that value's
+  precision. `readBroadphase` calls `restoreBroadphase`, which also writes
+  `lastX` / `lastZ` via `FP.ToFloat`. Do not read those fields in
+  simulation. `rebuildPhysics` rebuilds from current transforms and is
+  valid only before the first resolving step.
 
 ## Canonical state bytes
 

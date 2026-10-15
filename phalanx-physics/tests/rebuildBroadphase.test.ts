@@ -220,6 +220,13 @@ describe('broadphase snapshot hooks', () => {
     expect(FP.Eq(centers[0]?.radius ?? FP._0, FP._1)).toBe(true);
 
     system.restoreBroadphase([...centers].reverse());
+    const displayIndex = physicsStore.indexOf(1);
+    expect(physicsStore.arrays.lastX[displayIndex]).toBe(
+      FP.ToFloat(FP.FromInt(2))
+    );
+    expect(physicsStore.arrays.lastZ[displayIndex]).toBe(
+      FP.ToFloat(FP.FromInt(6))
+    );
     const restored = system.getBroadphaseCenters();
     expect(restored).toHaveLength(1);
     expect(restored[0]?.entityId).toBe(1);
@@ -357,6 +364,9 @@ describe('broadphase snapshot hooks', () => {
     expect(FP.Eq(rebuilt.x, moved.x)).toBe(false);
 
     physicsWorld.restoreBroadphase(saved);
+    const displayIndex = physicsStore.indexOf(1);
+    expect(physicsStore.arrays.lastX[displayIndex]).toBe(FP.ToFloat(moved.x));
+    expect(physicsStore.arrays.lastZ[displayIndex]).toBe(FP.ToFloat(moved.z));
     expect([
       ...physicsWorld.spatialGrid.queryRadius(FP._0, FP._0, reach),
     ]).toEqual(liveQuery);

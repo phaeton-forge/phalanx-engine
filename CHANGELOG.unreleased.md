@@ -54,10 +54,18 @@ Entries collected per package until the synchronized 0.3.0 release
   and is valid for a collision-free world. `writeAbilities` /
   `readAbilities` remain Task 5. A zero-row SoA section recreates a missing
   empty store (`getOrCreateSoAStore`); a nonempty section with no row still
-  throws `readSoAStore: missing entity <id> in <schema>`. The package and
-  its ecs/physics dependency graph emit NodeNext ESM so
+  throws `readSoAStore: missing entity <id> in <schema>`. A row the
+  section omitted throws `readSoAStore: extra entity <id> in <schema>`.
+  `readPools` discards prewarmed free entities, constructs owned ids with
+  `PoolManager.createForRestore`, and calls `onDespawn` again for free
+  entities. `readEntityIds` then restores the counter. Broadphase restore
+  writes `lastX` / `lastZ` from the saved centers; games must not read
+  those fields in simulation. `CollisionSystem` is discovered under the
+  key `collisionSystem`. Physics is an optional peer; math stays a peer.
+  The package and its ecs/physics dependency graph emit NodeNext ESM so
   `import('@phalanx-engine/runtime')` loads under native Node. The runtime
-  test script imports `dist/index.js` after vitest.
+  test script imports `dist/index.js` after vitest. The empty-store SoA
+  change landed in the same commit as the NodeNext emit.
 
 ## @phalanx-engine/ecs
 
@@ -70,6 +78,9 @@ Entries collected per package until the synchronized 0.3.0 release
   next allocation can collide.
 - `SoAComponent.useEntityManager(null)` clears the context, the same as
   `resetContext()`.
+- `PoolManager.createForRestore(typeKey)` runs the raw factory with no
+  spawn or despawn hooks. `discardPrewarmed` disposes a free, unregistered
+  prewarm list. `restore` discards that list before adopting the snapshot.
 - `PoolManager.restore(typeKey, entitiesInCreationOrder, freeListIds)`
   replaces that pool's owned set and free list without creating entities.
   The next `spawn` pops the same id the free list would have returned.
@@ -122,6 +133,10 @@ Entries collected per package until the synchronized 0.3.0 release
 
 - Built output is NodeNext ESM: relative specifiers end in `.js`, and
   directory imports (`./components`, `./systems`) point at `index.js`.
+- `CollisionSystem` is exported from the package entry.
+  `restoreBroadphase` writes `lastX` / `lastZ` with `FP.ToFloat` of the
+  saved centers. Those fields are presentation caches; simulation must
+  not read them.
 - `SpatialHashGrid.getCenters`, `PhysicsSystem` / `CollisionSystem` /
   `PhysicsWorld.getBroadphaseCenters`, and `rebuildBroadphase` (clear and
   re-insert from current transforms in ascending entity id; no collision

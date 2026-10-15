@@ -659,11 +659,26 @@ export class PhysicsSystem extends GameSystem {
    * Replace the broadphase with saved centers.
    *
    * Clears the grid, then inserts in ascending entity id using each
-   * center's position and radius. Does not read transforms and does not
-   * write `lastX` / `lastZ`.
+   * center's position and radius. Does not read transforms. Writes
+   * `lastX` / `lastZ` from those centers (`FP.ToFloat`) so the first
+   * rendered frame does not jump from a stale display cache. Those
+   * fields are presentation only; simulation must not read them.
    */
   public restoreBroadphase(centers: readonly BroadphaseCenter[]): void {
     this.spatialGrid.restoreBroadphase(centers);
+    this.writeDisplayCenters(centers);
+  }
+
+  /** Presentation caches. Not simulation state. */
+  private writeDisplayCenters(centers: readonly BroadphaseCenter[]): void {
+    const lastX = this.physicsStore.arrays.lastX;
+    const lastZ = this.physicsStore.arrays.lastZ;
+    for (const center of centers) {
+      const index = this.physicsStore.indexOf(center.entityId);
+      if (index === -1) continue;
+      lastX[index] = FP.ToFloat(center.x);
+      lastZ[index] = FP.ToFloat(center.z);
+    }
   }
 
   /** Expose the EventBus for external subscription (e.g. PhysicsWorld facade) */
