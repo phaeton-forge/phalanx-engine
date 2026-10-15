@@ -451,6 +451,10 @@ world.processAllTicks(2);
 
 Use `pipeline: 'effects-retain-cues'` to assert on `abilities.gameplayCueBuffer` before cleanup. Pass a non-empty `cues` map (e.g. a `NoopCue` factory in test helpers) when you need `GAMEPLAY_CUE_EVENT` dispatch in tests.
 
+## Runtime snapshot
+
+`InstanceIdCounter.set(n)` accepts any integer `>= 0` (a restore may move the mark down). `abilities.exportRuntimeState()` / `importRuntimeState(state)` copy the instance-id counter, the activation queue, `currentTick`, and resolved activations. The cue buffer is not included and `importRuntimeState` does not clear it.
+
 ## Related skills
 
 - `phalanx-ecs` — GameWorld, entities, systems, lockstep

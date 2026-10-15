@@ -1,0 +1,275 @@
+import { FixedPoint } from '@phalanx-engine/math';
+import type { ProvidedTarget } from '../types';
+import type {
+  AbilityActivationRequest,
+  AbilitySystemRuntime,
+  ResolvedAbilityActivationRecord,
+} from './AbilitySystemRuntime';
+
+/**
+ * Snapshot of the per-world ability runtime.
+ *
+ * The gameplay cue buffer is presentation-only and is intentionally absent.
+ * `resolvedActivationsThisTick` is empty between ticks; it is still stored
+ * so a snapshot taken mid-pipeline round-trips.
+ */
+export interface AbilityRuntimeState {
+  readonly instanceId: number;
+  readonly currentTick: number;
+  readonly activationRequests: readonly AbilityActivationRequest[];
+  readonly resolvedActivationsThisTick: readonly ResolvedAbilityActivationRecord[];
+}
+
+export function exportAbilityRuntimeState(
+  runtime: AbilitySystemRuntime
+): AbilityRuntimeState {
+  return {
+    instanceId: runtime.instanceIdCounter.current,
+    currentTick: runtime.currentTick,
+    activationRequests: runtime.activationRequests.map(copyActivationRequest),
+    resolvedActivationsThisTick: runtime.resolvedActivationsThisTick.map(
+      copyResolvedActivation
+    ),
+  };
+}
+
+/**
+ * Replace sim-relevant runtime fields. Leaves `gameplayCueBuffer` as it is.
+ *
+ * @throws If `state` is missing a field or a field has the wrong shape.
+ */
+export function importAbilityRuntimeState(
+  runtime: AbilitySystemRuntime,
+  state: AbilityRuntimeState
+): void {
+  const parsed = parseAbilityRuntimeState(state);
+  runtime.instanceIdCounter.set(parsed.instanceId);
+  runtime.currentTick = parsed.currentTick;
+  runtime.activationRequests = parsed.activationRequests;
+  runtime.resolvedActivationsThisTick = parsed.resolvedActivationsThisTick;
+}
+
+function copyActivationRequest(
+  request: AbilityActivationRequest
+): AbilityActivationRequest {
+  const copy: AbilityActivationRequest = {
+    casterEntityId: request.casterEntityId,
+    abilityId: request.abilityId,
+    enqueueTick: request.enqueueTick,
+  };
+  if (request.providedTarget !== undefined) {
+    copy.providedTarget = copyProvidedTarget(request.providedTarget);
+  }
+  return copy;
+}
+
+function copyResolvedActivation(
+  record: ResolvedAbilityActivationRecord
+): ResolvedAbilityActivationRecord {
+  const copy: ResolvedAbilityActivationRecord = {
+    abilityId: record.abilityId,
+    casterEntityId: record.casterEntityId,
+    resolvedTargets: [...record.resolvedTargets],
+    tick: record.tick,
+  };
+  if (record.providedTarget !== undefined) {
+    copy.providedTarget = copyProvidedTarget(record.providedTarget);
+  }
+  if (record.hookId !== undefined) {
+    copy.hookId = record.hookId;
+  }
+  return copy;
+}
+
+function copyProvidedTarget(target: ProvidedTarget): ProvidedTarget {
+  const copy: ProvidedTarget = {};
+  if (target.entityId !== undefined) {
+    copy.entityId = target.entityId;
+  }
+  if (target.x !== undefined) {
+    copy.x = target.x;
+  }
+  if (target.z !== undefined) {
+    copy.z = target.z;
+  }
+  return copy;
+}
+
+interface ParsedAbilityRuntimeState {
+  instanceId: number;
+  currentTick: number;
+  activationRequests: AbilityActivationRequest[];
+  resolvedActivationsThisTick: ResolvedAbilityActivationRecord[];
+}
+
+function parseAbilityRuntimeState(state: unknown): ParsedAbilityRuntimeState {
+  if (!isRecord(state)) {
+    throw new Error('AbilityRuntimeState must be an object');
+  }
+  const instanceId = state['instanceId'];
+  const currentTick = state['currentTick'];
+  const requests = state['activationRequests'];
+  const resolved = state['resolvedActivationsThisTick'];
+  if (!isNonNegativeInteger(instanceId)) {
+    throw new Error('AbilityRuntimeState.instanceId must be an integer >= 0');
+  }
+  if (!isTick(currentTick)) {
+    throw new Error('AbilityRuntimeState.currentTick must be an integer >= -1');
+  }
+  if (!Array.isArray(requests)) {
+    throw new Error('AbilityRuntimeState.activationRequests must be an array');
+  }
+  if (!Array.isArray(resolved)) {
+    throw new Error(
+      'AbilityRuntimeState.resolvedActivationsThisTick must be an array'
+    );
+  }
+  return {
+    instanceId,
+    currentTick,
+    activationRequests: requests.map((request, index) =>
+      readActivationRequest(request, index)
+    ),
+    resolvedActivationsThisTick: resolved.map((record, index) =>
+      readResolvedActivation(record, index)
+    ),
+  };
+}
+
+function readActivationRequest(
+  value: unknown,
+  index: number
+): AbilityActivationRequest {
+  const label = `AbilityRuntimeState.activationRequests[${index}]`;
+  if (!isRecord(value)) {
+    throw new Error(`${label} must be an object`);
+  }
+  const casterEntityId = value['casterEntityId'];
+  const abilityId = value['abilityId'];
+  const enqueueTick = value['enqueueTick'];
+  if (!isNonNegativeInteger(casterEntityId)) {
+    throw new Error(`${label}.casterEntityId must be an integer >= 0`);
+  }
+  if (typeof abilityId !== 'string') {
+    throw new Error(`${label}.abilityId must be a string`);
+  }
+  if (!isTick(enqueueTick)) {
+    throw new Error(`${label}.enqueueTick must be an integer >= -1`);
+  }
+  const request: AbilityActivationRequest = {
+    casterEntityId,
+    abilityId,
+    enqueueTick,
+  };
+  const providedTarget = readProvidedTarget(
+    value['providedTarget'],
+    `${label}.providedTarget`
+  );
+  if (providedTarget !== undefined) {
+    request.providedTarget = providedTarget;
+  }
+  return request;
+}
+
+function readResolvedActivation(
+  value: unknown,
+  index: number
+): ResolvedAbilityActivationRecord {
+  const label = `AbilityRuntimeState.resolvedActivationsThisTick[${index}]`;
+  if (!isRecord(value)) {
+    throw new Error(`${label} must be an object`);
+  }
+  const abilityId = value['abilityId'];
+  const casterEntityId = value['casterEntityId'];
+  const tick = value['tick'];
+  const targets = value['resolvedTargets'];
+  if (typeof abilityId !== 'string') {
+    throw new Error(`${label}.abilityId must be a string`);
+  }
+  if (!isNonNegativeInteger(casterEntityId)) {
+    throw new Error(`${label}.casterEntityId must be an integer >= 0`);
+  }
+  if (!isTick(tick)) {
+    throw new Error(`${label}.tick must be an integer >= -1`);
+  }
+  if (!Array.isArray(targets)) {
+    throw new Error(`${label}.resolvedTargets must be an array`);
+  }
+  const resolvedTargets: number[] = [];
+  for (const id of targets) {
+    if (!isNonNegativeInteger(id)) {
+      throw new Error(`${label}.resolvedTargets must contain integers >= 0`);
+    }
+    resolvedTargets.push(id);
+  }
+  const record: ResolvedAbilityActivationRecord = {
+    abilityId,
+    casterEntityId,
+    resolvedTargets,
+    tick,
+  };
+  const providedTarget = readProvidedTarget(
+    value['providedTarget'],
+    `${label}.providedTarget`
+  );
+  if (providedTarget !== undefined) {
+    record.providedTarget = providedTarget;
+  }
+  const hookId = value['hookId'];
+  if (hookId !== undefined) {
+    if (typeof hookId !== 'string') {
+      throw new Error(`${label}.hookId must be a string`);
+    }
+    record.hookId = hookId;
+  }
+  return record;
+}
+
+function readProvidedTarget(
+  value: unknown,
+  label: string
+): ProvidedTarget | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!isRecord(value)) {
+    throw new Error(`${label} must be an object`);
+  }
+  const copy: ProvidedTarget = {};
+  const entityId = value['entityId'];
+  if (entityId !== undefined) {
+    if (!isNonNegativeInteger(entityId)) {
+      throw new Error(`${label}.entityId must be an integer >= 0`);
+    }
+    copy.entityId = entityId;
+  }
+  const x = value['x'];
+  if (x !== undefined) {
+    if (!(x instanceof FixedPoint)) {
+      throw new Error(`${label}.x must be a FixedPoint`);
+    }
+    copy.x = x;
+  }
+  const z = value['z'];
+  if (z !== undefined) {
+    if (!(z instanceof FixedPoint)) {
+      throw new Error(`${label}.z must be a FixedPoint`);
+    }
+    copy.z = z;
+  }
+  return copy;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
+function isTick(value: unknown): value is number {
+  return (
+    typeof value === 'number' && Number.isSafeInteger(value) && value >= -1
+  );
+}

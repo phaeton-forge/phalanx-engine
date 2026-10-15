@@ -13,6 +13,7 @@ export type { PhysicsBodyConfig } from './types';
 
 // Collision
 export { SpatialHashGrid } from './collision/SpatialHashGrid';
+export type { BroadphaseCenter } from './collision/SpatialHashGrid';
 export { NarrowPhase } from './collision/NarrowPhase';
 export type { CollisionManifold } from './collision/CollisionManifold';
 export { segmentVsAABB } from './collision/Raycast';

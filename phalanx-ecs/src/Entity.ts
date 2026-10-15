@@ -11,6 +11,35 @@ export function resetEntityIdCounter(): void {
 }
 
 /**
+ * Current high-water mark of the module-global entity id counter.
+ *
+ * `0` means no id has been allocated. The next {@link Entity} or
+ * {@link nextEntityId} call returns `current + 1`.
+ */
+export function getEntityIdCounter(): number {
+  return entityIdCounter;
+}
+
+/**
+ * Restore the module-global entity id counter.
+ *
+ * The value is the last allocated id (the high-water mark), not the next
+ * id. The following allocation returns `value + 1`. Any integer `>= 0`
+ * is accepted, including a value below the current mark, so a snapshot
+ * can restore an earlier counter.
+ *
+ * @throws If `value` is not a safe integer `>= 0`.
+ */
+export function setEntityIdCounter(value: number): void {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error(
+      `setEntityIdCounter: value must be an integer >= 0, got ${String(value)}`
+    );
+  }
+  entityIdCounter = value;
+}
+
+/**
  * Allocate and return the next sequential entity ID from the global counter.
  * Primarily used by Entity construction and specialized callers that need a
  * deterministic ID allocation without constructing an Entity directly.

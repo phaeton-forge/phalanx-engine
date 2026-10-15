@@ -44,3 +44,42 @@ Entries collected per package until the synchronized 0.3.0 release
   `simVersion` mismatch still rejects. `StateWriter.str` rejects unpaired
   UTF-16 surrogates (including canonical config keys and values), and
   `StateReader.str` keeps a leading U+FEFF.
+
+## @phalanx-engine/ecs
+
+- Snapshot accessors (Task 3): `getEntityIdCounter` / `setEntityIdCounter`
+  (module functions and `GameWorld` delegates), `SoAComponent.currentEntityManager()`,
+  and pool `typeKeys` / `ownedIds` / `freeListIds`. Allocation order, the
+  constructor reset, and pool acquire/release behavior are unchanged.
+
+## @phalanx-engine/math
+
+- `DeterministicRandom` now lives here (`xoroshiro128plus`). `getState()`
+  returns four integer words; `setState` / `fromState` continue that
+  sequence. Deprecated `float`, `floatRange`, and `boolean` stay as wrappers.
+  No new float APIs.
+
+## @phalanx-engine/client
+
+- `DeterministicRandom` is re-exported from `@phalanx-engine/math` under the
+  same name. Instance methods are unchanged.
+
+## @phalanx-engine/server
+
+- `DeterministicRandom` subclasses the math implementation. `fromBigInt`
+  is unchanged. `generateSeed` uses an ESM `node:crypto` import instead of
+  `require`.
+
+## @phalanx-engine/abilities
+
+- `InstanceIdCounter.set(n)` restores any integer `>= 0`.
+  `AbilitySystem.exportRuntimeState` / `importRuntimeState` copy the
+  instance-id counter, activation queue, current tick, and resolved
+  activations. The cue buffer is not part of that snapshot.
+
+## @phalanx-engine/physics
+
+- `SpatialHashGrid.getCenters`, `PhysicsSystem` / `CollisionSystem` /
+  `PhysicsWorld.getBroadphaseCenters`, and `rebuildBroadphase` (clear and
+  re-insert from current transforms in ascending entity id; no collision
+  resolution). The live physics step still rebuilds only before resolution.

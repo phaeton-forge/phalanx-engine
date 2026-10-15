@@ -8,7 +8,9 @@ metadata:
 
 # Phalanx Runtime Skill
 
-> **Status: Tasks 1–2 implemented; the rest is still a skeleton.**
+> **Status: Tasks 1–3 implemented; the rest is still a skeleton.**
+> Task 3 is engine hooks (ecs id counter, SoA context, pools, math RNG
+> state, ability runtime export, broadphase centers), not runtime classes.
 > `BinaryStateWriter` / `BinaryStateReader`, `encodeSnapshot` /
 > `decodeSnapshot`, `digestBytes`, `canonicalConfigBytes`, `configHash` and
 > `checkSnapshotCompatibility` are live. Later members throw

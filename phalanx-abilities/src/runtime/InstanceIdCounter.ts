@@ -21,4 +21,20 @@ export class InstanceIdCounter {
   public get current(): number {
     return this.value;
   }
+
+  /**
+   * Restore the high-water mark. Any integer `>= 0` is accepted, including
+   * a value below the current mark, so a snapshot can move the counter
+   * backwards. The next {@link next} call returns `value + 1`.
+   *
+   * @throws If `value` is not a safe integer `>= 0`.
+   */
+  public set(value: number): void {
+    if (!Number.isSafeInteger(value) || value < 0) {
+      throw new Error(
+        `InstanceIdCounter.set: value must be an integer >= 0, got ${String(value)}`
+      );
+    }
+    this.value = value;
+  }
 }

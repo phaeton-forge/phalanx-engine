@@ -566,6 +566,10 @@ Typical bot/webhook flow:
 
 Do not expose `createPrivateRoomForHost` as an unauthenticated browser endpoint. Browser clients should continue using the Socket.IO `room-create` flow, while trusted server integrations should authenticate the external request before creating rooms.
 
+## DeterministicRandom
+
+`DeterministicRandom` subclasses `@phalanx-engine/math`. `int` / `intRange`, `fork`, `fromBigInt`, and `generateSeed` behave as before. `generateSeed` now imports `node:crypto` (the old `require('crypto')` path does not run under ESM). `getState()`, `setState(state)`, and `DeterministicRandom.fromState(state)` save and continue the `xoroshiro128plus` sequence (four integer words).
+
 ## Related Packages
 
 - [@phalanx-engine/client](../phalanx-client) - Client library for connecting to Phalanx servers

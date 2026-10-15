@@ -12,7 +12,11 @@ import type { EntityManager } from './EntityManager';
 import type { SystemContext } from './SystemContext';
 import type { GameSystem } from './GameSystem';
 import type { IRandom } from './IRandom';
-import { resetEntityIdCounter } from './Entity';
+import {
+  getEntityIdCounter,
+  resetEntityIdCounter,
+  setEntityIdCounter,
+} from './Entity';
 import {
   isBeforeTick,
   isAfterTick,
@@ -205,6 +209,20 @@ export class GameWorld {
       this._debugProvider = null;
       this._debugPanelConfig = undefined;
     }
+  }
+
+  /**
+   * Module-global entity id high-water mark. See {@link getEntityIdCounter}.
+   * Several worlds in one process must save and restore this around each
+   * entry into a world; constructing a world still resets it to `0`.
+   */
+  public getEntityIdCounter(): number {
+    return getEntityIdCounter();
+  }
+
+  /** See {@link setEntityIdCounter}. */
+  public setEntityIdCounter(value: number): void {
+    setEntityIdCounter(value);
   }
 
   // ── Pause / Resume ───────────────────────────────────────────────────
@@ -502,7 +520,9 @@ export class GameWorld {
     SoAComponent.resetContext();
   }
 
-  private resolveConfiguredRandom(config: GameWorldConfig): IRandom | undefined {
+  private resolveConfiguredRandom(
+    config: GameWorldConfig
+  ): IRandom | undefined {
     if (config.random) {
       return config.random;
     }

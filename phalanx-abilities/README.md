@@ -587,6 +587,8 @@ createAbilitySystem(world: GameWorld, config: CreateAbilitySystemConfig): Abilit
 | `hasTag` / `addTag` / `removeTag` | Tag queries and ad-hoc tags |
 | `removeEffectsByTag` / `removeEffectsByDefId` | Flag instances for removal next tick |
 | `tickSystems` | Register on `GameWorld` |
+| `exportRuntimeState()` / `importRuntimeState(state)` | Copy or restore the instance-id counter, activation queue, current tick, and resolved activations. The cue buffer is not included and is left untouched. |
+| `instanceIdCounter` | High-water mark. `InstanceIdCounter.set(n)` accepts any integer `>= 0`. |
 
 Lower-level access: `AbilitySystemFacade` is exported for advanced wiring; most games use `createAbilitySystem` only.
 

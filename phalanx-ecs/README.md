@@ -661,6 +661,28 @@ export class CombatSystem extends GameSystem {
 
 **Rule of thumb:** if every client will compute the same result from the same game state, call the system directly. If the action originates from a specific player's input, send it through the network.
 
+## Snapshot accessors
+
+Additive reads and writes for process-global sim registers. Existing allocation order is unchanged. `new GameWorld()` still resets the entity id counter to `0`.
+
+```typescript
+import {
+  getEntityIdCounter,
+  setEntityIdCounter,
+  SoAComponent,
+} from '@phalanx-engine/ecs';
+
+const highWater = world.getEntityIdCounter(); // same as getEntityIdCounter()
+world.setEntityIdCounter(highWater); // next entity id is highWater + 1
+const manager = SoAComponent.currentEntityManager(); // null after resetContext()
+
+const typeKeys = world.pools?.typeKeys() ?? []; // registration order
+const owned = world.pools?.ownedIds(typeKeys[0]); // creation order
+const freeList = world.pools?.freeListIds(typeKeys[0]); // oldest release first; acquire pops the last
+```
+
+`setEntityIdCounter` throws if the value is not an integer `>= 0`. Pool `ownedIds` include checked-out entities and the free list. `drain()` still drops free-list objects.
+
 ## License
 
 MIT

@@ -2,7 +2,10 @@ import { GameSystem, type EventBus, type SoAComponentStore, type SystemContext }
 import { FP, type FixedPoint } from '@phalanx-engine/math';
 import { PhysicsSoASchema } from '../components/PhysicsBodyComponent';
 import { TransformSoASchema } from '../components/TransformComponent';
-import { SpatialHashGrid } from '../collision/SpatialHashGrid';
+import {
+  SpatialHashGrid,
+  type BroadphaseCenter,
+} from '../collision/SpatialHashGrid';
 import { NarrowPhase } from '../collision/NarrowPhase';
 import type { CollisionManifold } from '../collision/CollisionManifold';
 import { PhysicsEvents } from '../events';
@@ -619,6 +622,34 @@ export class PhysicsSystem extends GameSystem {
   /** Direct access to the spatial grid for custom queries (e.g. range finding) */
   public getSpatialGrid(): SpatialHashGrid {
     return this.spatialGrid;
+  }
+
+  /**
+   * Centers cached in the broadphase, ascending by entity id.
+   * After resolution these are the pre-separation positions.
+   */
+  public getBroadphaseCenters(): readonly BroadphaseCenter[] {
+    return this.spatialGrid.getCenters();
+  }
+
+  /**
+   * Clear the grid and re-insert every body from its current transform,
+   * in ascending entity id. Uses the same insert path as a physics
+   * sub-step, including the `lastX` / `lastZ` display caches.
+   *
+   * Does not integrate velocity and does not resolve collisions. The live
+   * step still rebuilds before resolution and does not rebuild again after;
+   * call this only when a transform rebuild is the intended grid.
+   *
+   * @throws If {@link init} has not run.
+   */
+  public rebuildBroadphase(): void {
+    if (!this.physicsStore || !this.transformStore) {
+      throw new Error(
+        'PhysicsSystem.rebuildBroadphase: call init() before rebuilding the broadphase'
+      );
+    }
+    this.rebuildSpatialGrid();
   }
 
   /** Expose the EventBus for external subscription (e.g. PhysicsWorld facade) */

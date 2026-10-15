@@ -12,6 +12,13 @@ import { resolvePoolConfig } from './types';
  */
 export class EntityPool<T extends Entity = Entity> {
   private readonly available: T[] = [];
+  /**
+   * Entities this pool created and still references: checked-out entities and
+   * the free list. Insertion order is creation order. `drain()` drops the
+   * free-list entries so those objects can be collected, matching the
+   * previous behavior of clearing `available` without retaining them.
+   */
+  private readonly owned = new Set<T>();
   private readonly entityFactory: () => T;
   private readonly config: ResolvedPoolConfig;
 
@@ -64,7 +71,11 @@ export class EntityPool<T extends Entity = Entity> {
   release(entity: T): void {
     this._releaseCount++;
 
-    if (this.config.maxSize > 0 && this.available.length >= this.config.maxSize) {
+    if (
+      this.config.maxSize > 0 &&
+      this.available.length >= this.config.maxSize
+    ) {
+      this.owned.delete(entity);
       entity.dispose();
       return;
     }
@@ -76,7 +87,10 @@ export class EntityPool<T extends Entity = Entity> {
   prewarm(count: number): void {
     const toCreate = count - this.available.length;
     for (let i = 0; i < toCreate; i++) {
-      if (this.config.maxSize > 0 && this.available.length >= this.config.maxSize) {
+      if (
+        this.config.maxSize > 0 &&
+        this.available.length >= this.config.maxSize
+      ) {
         break;
       }
       this.available.push(this.createEntity());
@@ -85,7 +99,35 @@ export class EntityPool<T extends Entity = Entity> {
 
   /** Remove all pooled entities without disposing them. */
   drain(): void {
+    for (const entity of this.available) {
+      this.owned.delete(entity);
+    }
     this.available.length = 0;
+  }
+
+  /**
+   * Ids of entities this pool still owns, in creation order.
+   * Includes checked-out entities and the free list. Excludes entities
+   * dropped by {@link drain} or disposed because `maxSize` was exceeded.
+   */
+  public ownedIds(): readonly number[] {
+    const ids: number[] = [];
+    for (const entity of this.owned) {
+      ids.push(entity.id);
+    }
+    return ids;
+  }
+
+  /**
+   * Free-list ids from oldest release to newest.
+   * {@link acquire} pops the last id.
+   */
+  public freeListIds(): readonly number[] {
+    const ids: number[] = [];
+    for (const entity of this.available) {
+      ids.push(entity.id);
+    }
+    return ids;
   }
 
   get availableCount(): number {
@@ -105,13 +147,17 @@ export class EntityPool<T extends Entity = Entity> {
   private createEntity(): T {
     const entity = this.entityFactory();
     this._totalCreated++;
+    this.owned.add(entity);
     return entity;
   }
 
   private growBatch(): void {
     const batchSize = this.config.growthBatchSize;
     for (let i = 0; i < batchSize; i++) {
-      if (this.config.maxSize > 0 && this.available.length >= this.config.maxSize) {
+      if (
+        this.config.maxSize > 0 &&
+        this.available.length >= this.config.maxSize
+      ) {
         break;
       }
       this.available.push(this.createEntity());

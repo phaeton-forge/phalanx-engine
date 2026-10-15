@@ -71,7 +71,9 @@ export class PoolManager {
   despawn(entity: Entity): void {
     const typeKey = entity._poolTypeKey;
     if (!typeKey) {
-      throw new Error('despawn() called on an entity that was not created by PoolManager');
+      throw new Error(
+        'despawn() called on an entity that was not created by PoolManager'
+      );
     }
     if (entity._inPool) {
       return; // double-despawn guard
@@ -124,6 +126,39 @@ export class PoolManager {
   /** Get stats for a specific pool. */
   getPoolStats(typeKey: string): PoolStats | undefined {
     return this.pools.get(typeKey)?.stats;
+  }
+
+  /**
+   * Registered pool type keys in registration order.
+   * That order is the order `entityTypes` was registered and is part of
+   * the snapshot; callers must not sort it.
+   */
+  public typeKeys(): readonly string[] {
+    return [...this.pools.keys()];
+  }
+
+  /**
+   * Owned entity ids for `typeKey`, in creation order.
+   * See {@link EntityPool.ownedIds}.
+   */
+  public ownedIds(typeKey: string): readonly number[] {
+    return this.requirePool(typeKey).ownedIds();
+  }
+
+  /**
+   * Free-list ids for `typeKey`, oldest release first.
+   * The next {@link spawn} pops the last id. See {@link EntityPool.freeListIds}.
+   */
+  public freeListIds(typeKey: string): readonly number[] {
+    return this.requirePool(typeKey).freeListIds();
+  }
+
+  private requirePool(typeKey: string): EntityPool<Entity> {
+    const pool = this.pools.get(typeKey);
+    if (!pool) {
+      throw new Error(`Pool '${typeKey}' is not registered`);
+    }
+    return pool;
   }
 
   /** Entity game-teardown first, mechanical component cleanup last (inverse of spawn). */

@@ -47,7 +47,8 @@
     "README.md"
   ],
   "dependencies": {
-    "@hastom/fixed-point": "^4.3.1"
+    "@hastom/fixed-point": "^4.3.1",
+    "pure-rand": "^7.0.1"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

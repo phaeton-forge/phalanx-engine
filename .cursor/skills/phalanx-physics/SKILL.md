@@ -408,6 +408,10 @@ const grid = new SpatialHashGrid(FP.FromFloat(8));
 grid.insert(entityId, posX, posZ, radius);
 grid.queryPairs();
 grid.queryRadius(cx, cz, r);
+grid.getCenters(); // cached XZ centers, ascending entity id
+
+physicsWorld.getBroadphaseCenters();
+physicsWorld.rebuildBroadphase(); // from current transforms; does not resolve
 ```
 
 ### Narrow Phase — NarrowPhase

@@ -9,6 +9,19 @@ import { FP, type FixedPoint } from '@phalanx-engine/math';
  *
  * Zero-GC design: reuses internal arrays between calls.
  */
+/**
+ * Fixed-point center cached when a body was inserted into the broadphase.
+ *
+ * After collision resolution the transform may have moved; this center is
+ * the pre-separation position the grid still queries against. `x` and `z`
+ * are copies, so mutating them does not change the grid.
+ */
+export interface BroadphaseCenter {
+  readonly entityId: number;
+  readonly x: FixedPoint;
+  readonly z: FixedPoint;
+}
+
 export class SpatialHashGrid {
   private readonly cellSize: FixedPoint;
   private readonly cells: Map<string, number[]> = new Map();
@@ -163,6 +176,35 @@ export class SpatialHashGrid {
 
     this._radiusResult.sort((a, b) => a - b);
     return this._radiusResult;
+  }
+
+  /**
+   * Cached centers in ascending entity id.
+   *
+   * These are the positions stored at {@link insert} / {@link update}, not
+   * a live read of the transform. Empty when the grid has been {@link clear}ed.
+   */
+  public getCenters(): readonly BroadphaseCenter[] {
+    const ids: number[] = [];
+    for (const id of this.entityPosX.keys()) {
+      ids.push(id);
+    }
+    ids.sort((a, b) => a - b);
+
+    const centers: BroadphaseCenter[] = [];
+    for (const entityId of ids) {
+      const x = this.entityPosX.get(entityId);
+      const z = this.entityPosZ.get(entityId);
+      if (x === undefined || z === undefined) {
+        continue;
+      }
+      centers.push({
+        entityId,
+        x: FP.FromRaw(FP.ToRaw(x)),
+        z: FP.FromRaw(FP.ToRaw(z)),
+      });
+    }
+    return centers;
   }
 
   /**

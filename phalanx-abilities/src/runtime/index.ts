@@ -9,6 +9,7 @@ export type {
   AbilitySystemRuntime,
   ResolvedAbilityActivationRecord,
 } from './AbilitySystemRuntime';
+export type { AbilityRuntimeState } from './AbilityRuntimeState';
 export type {
   GameplayCueBuffer,
   GameplayCueBufferView,
