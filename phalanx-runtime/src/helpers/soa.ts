@@ -1,0 +1,316 @@
+import type {
+  GameWorld,
+  SoAComponentStore,
+  SoAFieldType,
+  SoASchemaDefinition,
+  TypedArrayLike,
+} from '@phalanx-engine/ecs';
+import type { StateReader, StateWriter } from '../state/StateIO.js';
+import {
+  assertSectionVersion,
+  HELPER_SECTION_VERSION,
+} from './sectionVersion.js';
+
+/**
+ * Structural view of a `SoASchema`.
+ *
+ * `SoASchema<S>` is invariant in `S`, so a heterogeneous list is not a
+ * `readonly SoASchema[]`. Lookup uses the schema symbol; field order comes
+ * from the store registered under that symbol.
+ */
+interface SoASchemaRef {
+  readonly type: symbol;
+}
+
+/**
+ * `defineSoASchema` without a name uses this symbol description.
+ * It is not an explicit schema name.
+ */
+const IMPLICIT_SCHEMA_NAME = 'SoASchema';
+
+/**
+ * Symbol description passed to `defineSoASchema(definition, name)`.
+ * Throws when the name was omitted (description `SoASchema`) or is empty.
+ */
+function requireSchemaName(
+  schema: { readonly type: symbol },
+  helper: string
+): string {
+  const name = schema.type.description;
+  if (
+    name === undefined ||
+    name.length === 0 ||
+    name === IMPLICIT_SCHEMA_NAME
+  ) {
+    throw new Error(
+      `${helper}: schema has no explicit name; call defineSoASchema(definition, 'Name')`
+    );
+  }
+  return name;
+}
+
+function assertUniqueSchemaNames(names: readonly string[]): void {
+  const seen = new Set<string>();
+  for (const name of names) {
+    if (seen.has(name)) {
+      throw new Error(`writeSoAStores: duplicate schema name '${name}'`);
+    }
+    seen.add(name);
+  }
+}
+
+function isPersistedField(fieldType: SoAFieldType): boolean {
+  return fieldType !== 'f32' && fieldType !== 'f64';
+}
+
+/**
+ * `store.arrays` is a mapped type. Field names are runtime strings, so the
+ * lookup goes through a string index. The store still holds one typed array
+ * per schema field.
+ */
+function fieldArray<S extends SoASchemaDefinition>(
+  store: SoAComponentStore<S>,
+  fieldName: string
+): TypedArrayLike {
+  // Mapped SoA array objects are keyed by field name at runtime.
+  const arrays = store.arrays as Record<string, TypedArrayLike>;
+  const array = arrays[fieldName];
+  if (array === undefined) {
+    throw new Error(`writeSoAStore: missing array for field ${fieldName}`);
+  }
+  return array;
+}
+
+function fieldTypeOf(fieldTypes: object, fieldName: string): SoAFieldType {
+  // `S` has no string index signature; the table is still a field-name map.
+  const types = fieldTypes as {
+    readonly [field: string]: SoAFieldType | undefined;
+  };
+  const fieldType = types[fieldName];
+  if (fieldType === undefined) {
+    throw new Error(`writeSoAStore: unknown field ${fieldName}`);
+  }
+  return fieldType;
+}
+
+function valueAt(array: TypedArrayLike, index: number): bigint | number {
+  const value = array[index];
+  if (value === undefined) {
+    throw new Error('writeSoAStore: field index out of range');
+  }
+  return value;
+}
+
+function writeField(
+  w: StateWriter,
+  fieldType: SoAFieldType,
+  value: bigint | number
+): void {
+  switch (fieldType) {
+    case 'i64':
+      if (typeof value !== 'bigint') {
+        throw new Error('writeSoAStore: expected a bigint for an i64 field');
+      }
+      w.i64(value);
+      return;
+    case 'i32':
+      if (typeof value !== 'number') {
+        throw new Error('writeSoAStore: expected a number for an i32 field');
+      }
+      w.i32(value);
+      return;
+    case 'u32':
+      if (typeof value !== 'number') {
+        throw new Error('writeSoAStore: expected a number for a u32 field');
+      }
+      w.u32(value);
+      return;
+    case 'u8':
+      if (typeof value !== 'number') {
+        throw new Error('writeSoAStore: expected a number for a u8 field');
+      }
+      w.u8(value);
+      return;
+    case 'f32':
+    case 'f64':
+      return;
+    default: {
+      const unexpected: never = fieldType;
+      throw new Error(
+        `writeSoAStore: unsupported field type ${String(unexpected)}`
+      );
+    }
+  }
+}
+
+function assignField(
+  array: TypedArrayLike,
+  index: number,
+  value: bigint | number
+): void {
+  if (array instanceof BigInt64Array) {
+    if (typeof value !== 'bigint') {
+      throw new Error('readSoAStore: expected a bigint for an i64 field');
+    }
+    array[index] = value;
+    return;
+  }
+  if (typeof value !== 'number') {
+    throw new Error('readSoAStore: expected a number for an integer field');
+  }
+  array[index] = value;
+}
+
+function readField(r: StateReader, fieldType: SoAFieldType): bigint | number {
+  switch (fieldType) {
+    case 'i64':
+      return r.i64();
+    case 'i32':
+      return r.i32();
+    case 'u32':
+      return r.u32();
+    case 'u8':
+      return r.u8();
+    case 'f32':
+    case 'f64':
+      throw new Error('readSoAStore: float fields are not stored');
+    default: {
+      const unexpected: never = fieldType;
+      throw new Error(
+        `readSoAStore: unsupported field type ${String(unexpected)}`
+      );
+    }
+  }
+}
+
+function writeRow<S extends SoASchemaDefinition>(
+  w: StateWriter,
+  store: SoAComponentStore<S>,
+  entityId: number
+): void {
+  const index = store.indexOf(entityId);
+  if (index === -1) {
+    throw new Error(`writeSoAStore: missing entity ${String(entityId)}`);
+  }
+  w.u32(entityId);
+  for (const fieldName of store.schema.fieldNames) {
+    const fieldType = fieldTypeOf(store.schema.fieldTypes, fieldName);
+    if (!isPersistedField(fieldType)) continue;
+    writeField(w, fieldType, valueAt(fieldArray(store, fieldName), index));
+  }
+}
+
+function readRow<S extends SoASchemaDefinition>(
+  r: StateReader,
+  store: SoAComponentStore<S>,
+  schemaName: string,
+  seen: Set<number>
+): void {
+  const entityId = r.u32();
+  if (seen.has(entityId)) {
+    throw new Error(
+      `readSoAStore: duplicate entity ${String(entityId)} in ${schemaName}`
+    );
+  }
+  seen.add(entityId);
+  const index = store.indexOf(entityId);
+  if (index === -1) {
+    throw new Error(
+      `readSoAStore: missing entity ${String(entityId)} in ${schemaName}`
+    );
+  }
+  for (const fieldName of store.schema.fieldNames) {
+    const fieldType = fieldTypeOf(store.schema.fieldTypes, fieldName);
+    if (!isPersistedField(fieldType)) continue;
+    assignField(fieldArray(store, fieldName), index, readField(r, fieldType));
+  }
+}
+
+/**
+ * `section(<schema name>, 1)`, `varint(rows)`, then per entity id ascending:
+ * `u32 id` and every non-float field in schema declaration order.
+ *
+ * `f32` / `f64` fields are skipped. They are presentation caches
+ * (`PhysicsBody.lastX` / `lastZ`), not simulation state.
+ *
+ * Throws if the schema has no explicit, unique name. Uniqueness across a
+ * list is checked by {@link writeSoAStores}.
+ */
+export function writeSoAStore<S extends SoASchemaDefinition>(
+  w: StateWriter,
+  store: SoAComponentStore<S>
+): void {
+  const name = requireSchemaName(store.schema, 'writeSoAStore');
+  w.section(name, HELPER_SECTION_VERSION, (section) => {
+    section.list(store.entityIds(), (entityId, row) => {
+      writeRow(row, store, entityId);
+    });
+  });
+}
+
+/**
+ * Overwrites existing rows by entity id.
+ *
+ * Entities must already exist: their constructors create the SoA rows.
+ * Call this after `spawnWithId` / pool restore and before `readEntityIds`.
+ *
+ * @throws If a saved id has no row, or the section version is not 1.
+ */
+export function readSoAStore<S extends SoASchemaDefinition>(
+  r: StateReader,
+  store: SoAComponentStore<S>
+): void {
+  const name = requireSchemaName(store.schema, 'readSoAStore');
+  const seen = new Set<number>();
+  r.section(name, (section, version) => {
+    assertSectionVersion('readSoAStore', version);
+    section.list((row) => {
+      readRow(row, store, name, seen);
+      return 0;
+    });
+  });
+}
+
+function prepareStores(
+  world: GameWorld,
+  schemas: readonly SoASchemaRef[],
+  helper: string
+): SoAComponentStore<SoASchemaDefinition>[] {
+  const named = schemas.map((schema) => ({
+    name: requireSchemaName(schema, helper),
+    store: world.entityManager.getSoAStoreByType(schema.type),
+  }));
+  assertUniqueSchemaNames(named.map((item) => item.name));
+  const stores: SoAComponentStore<SoASchemaDefinition>[] = [];
+  for (const item of named) {
+    if (item.store === undefined) {
+      throw new Error(`${helper}: no store for schema ${item.name}`);
+    }
+    stores.push(item.store);
+  }
+  return stores;
+}
+
+/** `writeSoAStore` for each schema, in the given order. */
+export function writeSoAStores(
+  w: StateWriter,
+  world: GameWorld,
+  schemas: readonly SoASchemaRef[]
+): void {
+  const stores = prepareStores(world, schemas, 'writeSoAStores');
+  for (const store of stores) {
+    writeSoAStore(w, store);
+  }
+}
+
+/** `readSoAStore` for each schema, in the given order. */
+export function readSoAStores(
+  r: StateReader,
+  world: GameWorld,
+  schemas: readonly SoASchemaRef[]
+): void {
+  const stores = prepareStores(world, schemas, 'readSoAStores');
+  for (const store of stores) {
+    readSoAStore(r, store);
+  }
+}

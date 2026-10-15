@@ -44,6 +44,15 @@ Entries collected per package until the synchronized 0.3.0 release
   `simVersion` mismatch still rejects. `StateWriter.str` rejects unpaired
   UTF-16 surrogates (including canonical config keys and values), and
   `StateReader.str` keeps a leading U+FEFF.
+- State helpers (Task 4): `StateHelpers` saves and restores SoA rows
+  (explicit schema names; `f32` / `f64` fields skipped), the entity id
+  counter, `spawnWithId`, pool owned ids and free lists (registration
+  order), `DeterministicRandom.getState` (four int32 words via `setState`,
+  not `getGenerator`), and broadphase centers (`x`, `z`, and `radius`,
+  each with its own precision) through `writeBroadphase` /
+  `readBroadphase`. `rebuildPhysics` only rebuilds from current transforms
+  and is valid for a collision-free world. `writeAbilities` /
+  `readAbilities` remain Task 5.
 
 ## @phalanx-engine/ecs
 

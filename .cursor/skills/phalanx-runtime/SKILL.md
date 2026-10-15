@@ -1,6 +1,6 @@
 ---
 name: phalanx-runtime
-description: Describe a Phalanx game as one GameDefinition and run it with MatchRunner from @phalanx-engine/runtime (engine 0.3). Use when defining games with defineGame, implementing the GameState save/restore contract, writing BotPolicy bots, choosing simMode 'client' vs 'server', snapshots, replays, reconnect, or Transport/LocalTransport. Canonical state bytes (Task 2) are implemented; later tasks are still a skeleton.
+description: Describe a Phalanx game as one GameDefinition and run it with MatchRunner from @phalanx-engine/runtime (engine 0.3). Use when defining games with defineGame, implementing the GameState save/restore contract, writing BotPolicy bots, choosing simMode 'client' vs 'server', snapshots, replays, reconnect, or Transport/LocalTransport. Canonical state bytes and StateHelpers (except GAS) are implemented; later tasks are still a skeleton.
 metadata:
   author: phaeton2040-AI
   version: '0.1'
@@ -8,9 +8,10 @@ metadata:
 
 # Phalanx Runtime Skill
 
-> **Status: Tasks 1–3 implemented; the rest is still a skeleton.**
+> **Status: Tasks 1–4 implemented; later tasks are still a skeleton.**
 > Task 3 is engine hooks (ecs id counter, SoA context, pools, math RNG
-> state, ability runtime export, broadphase centers), not runtime classes.
+> state, ability runtime export, broadphase centers). Task 4 is
+> `StateHelpers` except `writeAbilities` / `readAbilities` (Task 5).
 > `BinaryStateWriter` / `BinaryStateReader`, `encodeSnapshot` /
 > `decodeSnapshot`, `digestBytes`, `canonicalConfigBytes`, `configHash` and
 > `checkSnapshotCompatibility` are live. Later members throw
@@ -56,6 +57,31 @@ ctx.tickFrameProvider, random: ctx.random, ... })` and calls
 8. Match configs are JSON-safe with integer numbers only.
    `configHash(config)` is `digestBytes(canonicalConfigBytes(config))`:
    object keys sorted by UTF-16 code unit, safe integers only.
+
+## State helpers
+
+Call these inside the game's own `GameState`, in this order on restore:
+recreate entities (`spawnWithId`, then `readPools`), `readSoAStores`,
+`readEntityIds`, `readRandom`, `readBroadphase`.
+
+- SoA: `section(<schema name>, 1)` and rows in ascending entity id.
+  `defineSoASchema` must be given an explicit unique name. `f32` / `f64`
+  fields are skipped. A missing row throws
+  `readSoAStore: missing entity <id> in <schema>`.
+- Entity ids: the counter only. `spawnWithId` builds one entity with that
+  exact id and then `addEntity`s it.
+- Pools: registration order, owned ids in creation order, free list from
+  oldest release to newest. `readPools` calls `PoolManager.restore` and
+  does not run the pool factory. Recreate every owned entity with
+  `spawnWithId` first, on a world that has not prewarmed those pools.
+- RNG: four int32 words from `getState` / `setState`. An `IRandom` without
+  `getState` throws. Do not use `getGenerator`.
+- Broadphase: `getCenters()` for the `PhysicsWorld` on `context.physics`
+  (and a registered `PhysicsSystem` only when it is a different grid).
+  Each center stores entity id, and `x` / `z` / `radius` as raw base plus
+  that value's precision. `readBroadphase` calls `restoreBroadphase`.
+  `rebuildPhysics` rebuilds from current transforms and is valid only
+  before the first resolving step.
 
 ## Canonical state bytes
 

@@ -12,6 +12,10 @@
       "import": "./dist/index.js"
     }
   },
+  "dependencies": {
+    "@phalanx-engine/ecs": "workspace:*",
+    "@phalanx-engine/physics": "workspace:*"
+  },
   "scripts": {
     "build": "tsc",
     "clean": "rm -rf dist",
