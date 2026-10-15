@@ -1,4 +1,4 @@
-import type { IComponent } from './Component';
+import type { IComponent } from './Component.js';
 
 let entityIdCounter = 0;
 

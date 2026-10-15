@@ -294,6 +294,65 @@ describe('SoA state helpers', () => {
     expect(bytes).toEqual(expected);
   });
 
+  it('restores a zero-row store after the last entity is removed', () => {
+    const FlagSchema = defineSoASchema({ n: 'i32' }, 'Flag');
+
+    class FlagComponent extends SoAComponent<typeof FlagSchema.definition> {
+      public readonly type = Symbol('Flag');
+
+      public constructor(entityId: number) {
+        super(FlagSchema, entityId, { n: 1 });
+      }
+    }
+
+    class FlagEntity extends Entity {
+      public constructor() {
+        super();
+        this.addComponent(new FlagComponent(this.id));
+      }
+    }
+
+    const source = new GameWorld({});
+    const entity = new FlagEntity();
+    source.entityManager.addEntity(entity);
+    source.entityManager.removeEntity(entity);
+    const emptied = source.entityManager.getSoAStore(FlagSchema);
+    expect(emptied).toBeDefined();
+    expect(emptied?.entityIds()).toEqual([]);
+
+    const bytes = finish((writer) => {
+      StateHelpers.writeSoAStores(writer, source, [FlagSchema]);
+    });
+
+    const restored = new GameWorld({});
+    expect(restored.entityManager.getSoAStore(FlagSchema)).toBeUndefined();
+    const reader = new BinaryStateReader(bytes);
+    StateHelpers.readSoAStores(reader, restored, [FlagSchema]);
+    reader.done();
+
+    const again = finish((writer) => {
+      StateHelpers.writeSoAStores(writer, restored, [FlagSchema]);
+    });
+    expect(again).toEqual(bytes);
+    expect(restored.entityManager.getSoAStore(FlagSchema)?.entityIds()).toEqual(
+      []
+    );
+  });
+
+  it('keeps the missing-row error when a nonempty section has no store', () => {
+    const schema = defineSoASchema({ a: 'u8' }, 'Lone');
+    const source = new GameWorld({});
+    source.entityManager.getOrCreateSoAStore(schema).add(7, { a: 1 });
+    const bytes = finish((writer) => {
+      StateHelpers.writeSoAStores(writer, source, [schema]);
+    });
+    const restored = new GameWorld({});
+    const reader = new BinaryStateReader(bytes);
+    expect(() =>
+      StateHelpers.readSoAStores(reader, restored, [schema])
+    ).toThrow('readSoAStore: missing entity 7 in Lone');
+  });
+
   it('throws when a saved entity has no row', () => {
     const source = buildWorld();
     const bytes = finish((writer) => {

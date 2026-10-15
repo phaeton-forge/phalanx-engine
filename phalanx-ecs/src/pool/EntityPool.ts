@@ -1,6 +1,6 @@
-import type { Entity } from '../Entity';
-import type { PoolConfig, PoolStats, ResolvedPoolConfig } from './types';
-import { resolvePoolConfig } from './types';
+import type { Entity } from '../Entity.js';
+import type { PoolConfig, PoolStats, ResolvedPoolConfig } from './types.js';
+import { resolvePoolConfig } from './types.js';
 
 /**
  * Pure storage, growth, and stats container for pooled entities.

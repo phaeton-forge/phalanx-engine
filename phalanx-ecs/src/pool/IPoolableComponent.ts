@@ -1,4 +1,4 @@
-import type { IComponent } from '../Component';
+import type { IComponent } from '../Component.js';
 
 /**
  * Engine-called lifecycle hooks for components owned by pooled entities.

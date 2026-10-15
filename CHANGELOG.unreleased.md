@@ -52,7 +52,12 @@ Entries collected per package until the synchronized 0.3.0 release
   each with its own precision) through `writeBroadphase` /
   `readBroadphase`. `rebuildPhysics` only rebuilds from current transforms
   and is valid for a collision-free world. `writeAbilities` /
-  `readAbilities` remain Task 5.
+  `readAbilities` remain Task 5. A zero-row SoA section recreates a missing
+  empty store (`getOrCreateSoAStore`); a nonempty section with no row still
+  throws `readSoAStore: missing entity <id> in <schema>`. The package and
+  its ecs/physics dependency graph emit NodeNext ESM so
+  `import('@phalanx-engine/runtime')` loads under native Node. The runtime
+  test script imports `dist/index.js` after vitest.
 
 ## @phalanx-engine/ecs
 
@@ -68,6 +73,9 @@ Entries collected per package until the synchronized 0.3.0 release
 - `PoolManager.restore(typeKey, entitiesInCreationOrder, freeListIds)`
   replaces that pool's owned set and free list without creating entities.
   The next `spawn` pops the same id the free list would have returned.
+- Built output is NodeNext ESM: relative specifiers end in `.js`, and
+  directory imports (`./pool`, `./debug`) point at `index.js`, so Node can
+  load the package without a bundler.
 - An entity disposed outside `despawn` / `release` is dropped from the
   pool's owned set and free list, so a snapshot does not keep the dead id.
   `destroy()` only marks the entity. Snapshot reads and the next `acquire`
@@ -112,6 +120,8 @@ Entries collected per package until the synchronized 0.3.0 release
 
 ## @phalanx-engine/physics
 
+- Built output is NodeNext ESM: relative specifiers end in `.js`, and
+  directory imports (`./components`, `./systems`) point at `index.js`.
 - `SpatialHashGrid.getCenters`, `PhysicsSystem` / `CollisionSystem` /
   `PhysicsWorld.getBroadphaseCenters`, and `rebuildBroadphase` (clear and
   re-insert from current transforms in ascending entity id; no collision

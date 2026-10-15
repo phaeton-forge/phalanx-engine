@@ -21,7 +21,7 @@ import type {
   Unsubscribe,
   CommandsBatch,
   PauseHandler,
-} from './ITickFrameProvider';
+} from './ITickFrameProvider.js';
 
 export interface TickFrameManagerConfig {
   /** Target ticks per second (default: 60) */

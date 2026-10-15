@@ -2,6 +2,7 @@ import type {
   GameWorld,
   SoAComponentStore,
   SoAFieldType,
+  SoASchema,
   SoASchemaDefinition,
   TypedArrayLike,
 } from '@phalanx-engine/ecs';
@@ -15,11 +16,22 @@ import {
  * Structural view of a `SoASchema`.
  *
  * `SoASchema<S>` is invariant in `S`, so a heterogeneous list is not a
- * `readonly SoASchema[]`. Lookup uses the schema symbol; field order comes
- * from the store registered under that symbol.
+ * `readonly SoASchema[]`. These fields look a store up by symbol and, when
+ * a saved section has no rows, register an empty one.
  */
 interface SoASchemaRef {
   readonly type: symbol;
+  readonly definition: SoASchemaDefinition;
+  readonly fieldNames: readonly string[];
+  readonly fieldTypes: SoASchemaDefinition;
+}
+
+/**
+ * Callers pass `defineSoASchema()` values. The public parameter stays
+ * structural because `SoASchema<S>` is invariant in `S`.
+ */
+function schemaForCreate(schema: SoASchemaRef): SoASchema<SoASchemaDefinition> {
+  return schema as SoASchema<SoASchemaDefinition>;
 }
 
 /**
@@ -253,6 +265,9 @@ export function writeSoAStore<S extends SoASchemaDefinition>(
  *
  * Entities must already exist: their constructors create the SoA rows.
  * Call this after `spawnWithId` / pool restore and before `readEntityIds`.
+ * A zero-row section does not need those rows. Pass the schema to
+ * {@link readSoAStores}, which registers an empty store when this world
+ * has not created one yet.
  *
  * @throws If a saved id has no row, or the section version is not 1.
  */
@@ -274,19 +289,33 @@ export function readSoAStore<S extends SoASchemaDefinition>(
 function prepareStores(
   world: GameWorld,
   schemas: readonly SoASchemaRef[],
-  helper: string
+  helper: string,
+  createMissing: boolean
 ): SoAComponentStore<SoASchemaDefinition>[] {
   const named = schemas.map((schema) => ({
     name: requireSchemaName(schema, helper),
-    store: world.entityManager.getSoAStoreByType(schema.type),
+    schema,
+    store: world.entityManager.getSoAStoreByType<SoASchemaDefinition>(
+      schema.type
+    ),
   }));
   assertUniqueSchemaNames(named.map((item) => item.name));
   const stores: SoAComponentStore<SoASchemaDefinition>[] = [];
   for (const item of named) {
-    if (item.store === undefined) {
+    if (item.store !== undefined) {
+      stores.push(item.store);
+      continue;
+    }
+    if (!createMissing) {
       throw new Error(`${helper}: no store for schema ${item.name}`);
     }
-    stores.push(item.store);
+    // Removing the last entity leaves the source store registered and
+    // empty. A fresh world has not constructed that component, so the
+    // store does not exist until this call. Nonempty sections still fail
+    // in readRow when a saved id has no row.
+    stores.push(
+      world.entityManager.getOrCreateSoAStore(schemaForCreate(item.schema))
+    );
   }
   return stores;
 }
@@ -297,19 +326,25 @@ export function writeSoAStores(
   world: GameWorld,
   schemas: readonly SoASchemaRef[]
 ): void {
-  const stores = prepareStores(world, schemas, 'writeSoAStores');
+  const stores = prepareStores(world, schemas, 'writeSoAStores', false);
   for (const store of stores) {
     writeSoAStore(w, store);
   }
 }
 
-/** `readSoAStore` for each schema, in the given order. */
+/**
+ * `readSoAStore` for each schema, in the given order.
+ *
+ * A missing store is created empty so a zero-row section round-trips into
+ * a fresh world. A nonempty section whose entity has no row still throws
+ * `readSoAStore: missing entity <id> in <schema>`.
+ */
 export function readSoAStores(
   r: StateReader,
   world: GameWorld,
   schemas: readonly SoASchemaRef[]
 ): void {
-  const stores = prepareStores(world, schemas, 'readSoAStores');
+  const stores = prepareStores(world, schemas, 'readSoAStores', true);
   for (const store of stores) {
     readSoAStore(r, store);
   }

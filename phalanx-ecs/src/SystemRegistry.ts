@@ -1,7 +1,7 @@
-import { EntityManager } from './EntityManager';
-import { EventBus } from './EventBus';
-import { SystemContext } from './SystemContext';
-import type { GameSystem } from './GameSystem';
+import { EntityManager } from './EntityManager.js';
+import { EventBus } from './EventBus.js';
+import { SystemContext } from './SystemContext.js';
+import type { GameSystem } from './GameSystem.js';
 
 /**
  * SystemRegistry - Manages game systems lifecycle

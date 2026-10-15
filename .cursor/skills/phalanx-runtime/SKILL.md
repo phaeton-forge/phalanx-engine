@@ -67,7 +67,9 @@ recreate entities (`spawnWithId`, then `readPools`), `readSoAStores`,
 - SoA: `section(<schema name>, 1)` and rows in ascending entity id.
   `defineSoASchema` must be given an explicit unique name. `f32` / `f64`
   fields are skipped. A missing row throws
-  `readSoAStore: missing entity <id> in <schema>`.
+  `readSoAStore: missing entity <id> in <schema>`. A zero-row section whose
+  store is missing (the source removed the last entity) is registered empty
+  with `getOrCreateSoAStore`.
 - Entity ids: the counter only. `spawnWithId` builds one entity with that
   exact id and then `addEntity`s it.
 - Pools: registration order, owned ids in creation order, free list from

@@ -1,5 +1,5 @@
 import type { FixedPoint } from '@phalanx-engine/math';
-import type { CollisionManifold } from './collision/CollisionManifold';
+import type { CollisionManifold } from './collision/CollisionManifold.js';
 
 /**
  * Bitmask-based collision filtering.

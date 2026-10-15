@@ -26,7 +26,7 @@
  * ```
  */
 
-import type { IRandom } from './IRandom';
+import type { IRandom } from './IRandom.js';
 
 /**
  * Commands grouped by player ID

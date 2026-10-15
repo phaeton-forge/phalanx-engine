@@ -1,15 +1,15 @@
-export type { IPoolable } from './IPoolable';
-export type { IPoolableEntity, SpawnArgsOf } from './IPoolableEntity';
-export type { IPoolableComponent } from './IPoolableComponent';
-export { isPoolableComponent } from './IPoolableComponent';
+export type { IPoolable } from './IPoolable.js';
+export type { IPoolableEntity, SpawnArgsOf } from './IPoolableEntity.js';
+export type { IPoolableComponent } from './IPoolableComponent.js';
+export { isPoolableComponent } from './IPoolableComponent.js';
 export type {
   PoolConfig,
   PoolStats,
   EntityTypeConfig,
   PoolingConfig,
   ResolvedPoolConfig,
-} from './types';
-export { resolvePoolConfig } from './types';
-export { ObjectPool } from './ObjectPool';
-export { EntityPool } from './EntityPool';
-export { PoolManager } from './PoolManager';
+} from './types.js';
+export { resolvePoolConfig } from './types.js';
+export { ObjectPool } from './ObjectPool.js';
+export { EntityPool } from './EntityPool.js';
+export { PoolManager } from './PoolManager.js';

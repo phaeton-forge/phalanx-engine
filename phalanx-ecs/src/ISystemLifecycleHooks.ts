@@ -1,4 +1,4 @@
-import type { CommandsBatch } from './ITickFrameProvider';
+import type { CommandsBatch } from './ITickFrameProvider.js';
 
 /**
  * Optional lifecycle interfaces for GameSystem subclasses.

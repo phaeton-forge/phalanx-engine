@@ -1,5 +1,5 @@
-export { DebugDataProvider } from './DebugDataProvider';
-export { DebugPanel } from './DebugPanel';
+export { DebugDataProvider } from './DebugDataProvider.js';
+export { DebugPanel } from './DebugPanel.js';
 export type {
   DebugSnapshot,
   DebugEntitySnapshot,
@@ -8,4 +8,4 @@ export type {
   DebugPoolSnapshot,
   DebugDataProviderConfig,
   DebugPanelConfig,
-} from './types';
+} from './types.js';

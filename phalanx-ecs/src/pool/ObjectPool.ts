@@ -1,6 +1,6 @@
-import type { IPoolable } from './IPoolable';
-import type { PoolConfig, PoolStats, ResolvedPoolConfig } from './types';
-import { resolvePoolConfig } from './types';
+import type { IPoolable } from './IPoolable.js';
+import type { PoolConfig, PoolStats, ResolvedPoolConfig } from './types.js';
+import { resolvePoolConfig } from './types.js';
 
 /**
  * Generic object pool for any IPoolable type.

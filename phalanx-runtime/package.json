@@ -21,7 +21,7 @@
     "clean": "rm -rf dist",
     "rebuild": "npm run clean && npm run build",
     "typecheck": "tsc -p tsconfig.test.json",
-    "test": "tsc -p tsconfig.test.json && vitest run",
+    "test": "tsc -p tsconfig.test.json && vitest run && node --input-type=module -e \"await import('./dist/index.js')\"",
     "prepublishOnly": "npm run build"
   },
   "peerDependencies": {

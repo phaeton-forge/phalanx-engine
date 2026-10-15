@@ -1,6 +1,6 @@
-import type { EntityManager } from '../EntityManager';
-import type { PoolManager } from '../pool/PoolManager';
-import { calculateSchemaByteSize } from '../SoASchema';
+import type { EntityManager } from '../EntityManager.js';
+import type { PoolManager } from '../pool/PoolManager.js';
+import { calculateSchemaByteSize } from '../SoASchema.js';
 import type {
   DebugSnapshot,
   DebugEntitySnapshot,
@@ -8,7 +8,7 @@ import type {
   DebugSoAStoreSnapshot,
   DebugPoolSnapshot,
   DebugDataProviderConfig,
-} from './types';
+} from './types.js';
 
 /** Default push interval in milliseconds */
 const DEFAULT_UPDATE_INTERVAL = 500;

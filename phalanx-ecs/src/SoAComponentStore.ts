@@ -42,7 +42,7 @@ import {
   type SoAArraysOf,
   type TypedArrayLike,
   TYPED_ARRAY_CONSTRUCTORS,
-} from './SoASchema';
+} from './SoASchema.js';
 
 /** Default initial capacity for stores */
 const DEFAULT_INITIAL_CAPACITY = 256;

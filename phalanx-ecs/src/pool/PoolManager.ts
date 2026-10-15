@@ -1,9 +1,9 @@
-import type { Entity } from '../Entity';
-import type { EntityManager } from '../EntityManager';
-import type { IPoolableEntity, SpawnArgsOf } from './IPoolableEntity';
-import { isPoolableComponent } from './IPoolableComponent';
-import { EntityPool } from './EntityPool';
-import type { EntityTypeConfig, PoolStats } from './types';
+import type { Entity } from '../Entity.js';
+import type { EntityManager } from '../EntityManager.js';
+import type { IPoolableEntity, SpawnArgsOf } from './IPoolableEntity.js';
+import { isPoolableComponent } from './IPoolableComponent.js';
+import { EntityPool } from './EntityPool.js';
+import type { EntityTypeConfig, PoolStats } from './types.js';
 
 /**
  * Central manager for entity pools. One PoolManager per GameWorld.

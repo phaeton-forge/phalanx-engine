@@ -51,7 +51,9 @@ export const MyGame = defineGame({
   `GameState`. SoA rows (explicit schema names; `f32` / `f64` skipped),
   the entity id counter, `spawnWithId`, pool membership, RNG state and
   broadphase centers are implemented. GAS helpers are still Task 5.
-  Recreate entities before `readSoAStores`. Restore broadphase with
+  Recreate entities before `readSoAStores`. A zero-row section registers
+  a missing empty store; a saved id with no row still throws. Restore
+  broadphase with
   `readBroadphase` (pre-separation centers, including radius and each
   value's precision). `rebuildPhysics` is only for a collision-free world.
 - **`BotPolicy`**: a bot is a command producer for its slot, not a

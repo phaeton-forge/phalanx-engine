@@ -1,10 +1,10 @@
-import type { SystemContext } from './SystemContext';
-import type { EventBus } from './EventBus';
-import type { EntityManager } from './EntityManager';
-import type { IAbilitySystem } from './IAbilitySystem';
-import type { IPhysicsWorld } from './IPhysicsWorld';
-import type { PoolManager } from './pool/PoolManager';
-import type { IRandom } from './IRandom';
+import type { SystemContext } from './SystemContext.js';
+import type { EventBus } from './EventBus.js';
+import type { EntityManager } from './EntityManager.js';
+import type { IAbilitySystem } from './IAbilitySystem.js';
+import type { IPhysicsWorld } from './IPhysicsWorld.js';
+import type { PoolManager } from './pool/PoolManager.js';
+import type { IRandom } from './IRandom.js';
 
 /**
  * GameSystem - Abstract base class for all game systems

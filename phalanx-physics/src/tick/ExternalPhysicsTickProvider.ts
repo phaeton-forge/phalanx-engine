@@ -1,4 +1,4 @@
-import type { IPhysicsTickProvider } from './IPhysicsTickProvider';
+import type { IPhysicsTickProvider } from './IPhysicsTickProvider.js';
 
 export class ExternalPhysicsTickProvider implements IPhysicsTickProvider {
   private onStepFn: (() => void) | null = null;

@@ -1,5 +1,5 @@
-import type { PoolStats } from '../pool/types';
-import type { SoAFieldType } from '../SoASchema';
+import type { PoolStats } from '../pool/types.js';
+import type { SoAFieldType } from '../SoASchema.js';
 
 /**
  * Serialised snapshot of a single IComponent attached to an entity.

@@ -1,4 +1,4 @@
-import type {GameSystem} from "./GameSystem";
+import type {GameSystem} from "./GameSystem.js";
 
 /**
  * Minimal ability-system contract known to phalanx-ecs.

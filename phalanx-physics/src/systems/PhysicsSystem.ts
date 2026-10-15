@@ -1,16 +1,16 @@
 import { GameSystem, type EventBus, type SoAComponentStore, type SystemContext } from '@phalanx-engine/ecs';
 import { FP, type FixedPoint } from '@phalanx-engine/math';
-import { PhysicsSoASchema } from '../components/PhysicsBodyComponent';
-import { TransformSoASchema } from '../components/TransformComponent';
+import { PhysicsSoASchema } from '../components/PhysicsBodyComponent.js';
+import { TransformSoASchema } from '../components/TransformComponent.js';
 import {
   SpatialHashGrid,
   type BroadphaseCenter,
-} from '../collision/SpatialHashGrid';
-import { NarrowPhase } from '../collision/NarrowPhase';
-import type { CollisionManifold } from '../collision/CollisionManifold';
-import { PhysicsEvents } from '../events';
-import type { PhysicsConfig, CollisionEvent, BoundsExitEvent } from '../types';
-import type { IPhysicsTickProvider } from '../tick/IPhysicsTickProvider';
+} from '../collision/SpatialHashGrid.js';
+import { NarrowPhase } from '../collision/NarrowPhase.js';
+import type { CollisionManifold } from '../collision/CollisionManifold.js';
+import { PhysicsEvents } from '../events.js';
+import type { PhysicsConfig, CollisionEvent, BoundsExitEvent } from '../types.js';
+import type { IPhysicsTickProvider } from '../tick/IPhysicsTickProvider.js';
 
 const SEPARATION_HALF = FP.FromFloat(0.5);
 
