@@ -408,10 +408,12 @@ const grid = new SpatialHashGrid(FP.FromFloat(8));
 grid.insert(entityId, posX, posZ, radius);
 grid.queryPairs();
 grid.queryRadius(cx, cz, r);
-grid.getCenters(); // cached XZ centers, ascending entity id
+grid.getCenters(); // cached XZ centers and radius, ascending entity id
+grid.restoreBroadphase(grid.getCenters()); // clear, then insert saved centers
 
 physicsWorld.getBroadphaseCenters();
-physicsWorld.rebuildBroadphase(); // from current transforms; does not resolve
+physicsWorld.restoreBroadphase(savedCenters); // snapshot restore
+physicsWorld.rebuildBroadphase(); // transforms only; collision-free world
 ```
 
 ### Narrow Phase — NarrowPhase

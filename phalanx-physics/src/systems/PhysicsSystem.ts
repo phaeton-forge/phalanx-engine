@@ -626,7 +626,7 @@ export class PhysicsSystem extends GameSystem {
 
   /**
    * Centers cached in the broadphase, ascending by entity id.
-   * After resolution these are the pre-separation positions.
+   * After resolution these are the pre-separation positions and radii.
    */
   public getBroadphaseCenters(): readonly BroadphaseCenter[] {
     return this.spatialGrid.getCenters();
@@ -637,9 +637,12 @@ export class PhysicsSystem extends GameSystem {
    * in ascending entity id. Uses the same insert path as a physics
    * sub-step, including the `lastX` / `lastZ` display caches.
    *
-   * Does not integrate velocity and does not resolve collisions. The live
-   * step still rebuilds before resolution and does not rebuild again after;
-   * call this only when a transform rebuild is the intended grid.
+   * Does not integrate velocity and does not resolve collisions. Valid
+   * only for a collision-free world: the live step rebuilds before
+   * resolution and does not rebuild again, so after a hit the cached
+   * centers stay at the pre-separation positions while transforms have
+   * moved. A snapshot restore must call {@link restoreBroadphase} with
+   * the saved centers.
    *
    * @throws If {@link init} has not run.
    */
@@ -650,6 +653,17 @@ export class PhysicsSystem extends GameSystem {
       );
     }
     this.rebuildSpatialGrid();
+  }
+
+  /**
+   * Replace the broadphase with saved centers.
+   *
+   * Clears the grid, then inserts in ascending entity id using each
+   * center's position and radius. Does not read transforms and does not
+   * write `lastX` / `lastZ`.
+   */
+  public restoreBroadphase(centers: readonly BroadphaseCenter[]): void {
+    this.spatialGrid.restoreBroadphase(centers);
   }
 
   /** Expose the EventBus for external subscription (e.g. PhysicsWorld facade) */

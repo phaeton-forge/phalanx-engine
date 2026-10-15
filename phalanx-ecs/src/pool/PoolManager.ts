@@ -153,6 +153,31 @@ export class PoolManager {
     return this.requirePool(typeKey).freeListIds();
   }
 
+  /**
+   * Replace the owned set and free list of `typeKey`.
+   *
+   * `entitiesInCreationOrder` is the entities the pool should reference,
+   * in creation order. `freeListIds` lists the free ones from oldest
+   * release to newest; the next {@link spawn} pops the last id. Entities
+   * whose ids are absent from `freeListIds` stay checked out.
+   *
+   * Does not create entities or change ids. The caller supplies the
+   * instances the snapshot described.
+   *
+   * @throws If `typeKey` is not registered, or the id lists are inconsistent.
+   */
+  public restore(
+    typeKey: string,
+    entitiesInCreationOrder: readonly Entity[],
+    freeListIds: readonly number[]
+  ): void {
+    const pool = this.requirePool(typeKey);
+    pool.adopt(entitiesInCreationOrder, freeListIds);
+    for (const entity of entitiesInCreationOrder) {
+      entity._poolTypeKey = typeKey;
+    }
+  }
+
   private requirePool(typeKey: string): EntityPool<Entity> {
     const pool = this.pools.get(typeKey);
     if (!pool) {

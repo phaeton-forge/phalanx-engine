@@ -94,4 +94,61 @@ describe('pool state accessors', () => {
     expect(manager.freeListIds('unit')).toEqual(owned);
     expect(() => manager.ownedIds('missing')).toThrow(/not registered/);
   });
+
+  it('restore puts a non-empty free list back so the next spawn id matches', () => {
+    const manager = new PoolManager(new EntityManager());
+    manager.registerEntityType('unit', {
+      factory: () => new UnitEntity(),
+    });
+    const first = manager.spawn<UnitEntity>('unit', { hp: 1 });
+    const second = manager.spawn<UnitEntity>('unit', { hp: 2 });
+    const third = manager.spawn<UnitEntity>('unit', { hp: 3 });
+    manager.despawn(first);
+    manager.despawn(third);
+
+    const free = manager.freeListIds('unit');
+    expect(free).toEqual([first.id, third.id]);
+    const expectedId = free[free.length - 1];
+
+    const restored = new PoolManager(new EntityManager());
+    restored.registerEntityType('unit', {
+      factory: () => new UnitEntity(),
+    });
+    restored.restore('unit', [first, second, third], free);
+
+    const spawned = restored.spawn<UnitEntity>('unit', { hp: 9 });
+    expect(spawned.id).toBe(expectedId);
+    expect(spawned).toBe(third);
+    expect(spawned.hp).toBe(9);
+
+    const next = restored.spawn<UnitEntity>('unit', { hp: 4 });
+    expect(next.id).toBe(first.id);
+    expect(() => restored.restore('missing', [], [])).toThrow(/not registered/);
+  });
+
+  it('drops an entity disposed outside despawn', () => {
+    const manager = new PoolManager(new EntityManager());
+    manager.registerEntityType('unit', {
+      factory: () => new UnitEntity(),
+    });
+    const live = manager.spawn<UnitEntity>('unit', { hp: 1 });
+    const dead = manager.spawn<UnitEntity>('unit', { hp: 2 });
+    const deadId = dead.id;
+    dead.dispose();
+
+    expect(dead.isDestroyed).toBe(true);
+    expect(manager.ownedIds('unit')).toEqual([live.id]);
+    expect(manager.ownedIds('unit')).not.toContain(deadId);
+
+    manager.despawn(live);
+    const freedId = live.id;
+    live.dispose();
+    expect(manager.ownedIds('unit')).toEqual([]);
+    expect(manager.freeListIds('unit')).toEqual([]);
+    expect(manager.freeListIds('unit')).not.toContain(freedId);
+
+    const spawned = manager.spawn<UnitEntity>('unit', { hp: 3 });
+    expect(spawned.id).not.toBe(freedId);
+    expect(spawned.id).not.toBe(deadId);
+  });
 });

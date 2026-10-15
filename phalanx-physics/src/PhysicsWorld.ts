@@ -178,10 +178,21 @@ export class PhysicsWorld {
   /**
    * Clear the physics broadphase and re-insert bodies from their current
    * transforms, in ascending entity id. Does not resolve collisions.
-   * See {@link PhysicsSystem.rebuildBroadphase}.
+   *
+   * Valid only for a collision-free world. After resolution the live grid
+   * still holds pre-separation centers, so restoring a snapshot must use
+   * {@link restoreBroadphase}. See {@link PhysicsSystem.rebuildBroadphase}.
    */
   public rebuildBroadphase(): void {
     this.physicsSystem.rebuildBroadphase();
+  }
+
+  /**
+   * Replace the physics broadphase with saved centers.
+   * See {@link PhysicsSystem.restoreBroadphase}.
+   */
+  public restoreBroadphase(centers: readonly BroadphaseCenter[]): void {
+    this.physicsSystem.restoreBroadphase(centers);
   }
 
   /**

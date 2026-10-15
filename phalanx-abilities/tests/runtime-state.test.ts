@@ -180,4 +180,48 @@ describe('ability runtime state', () => {
     expect(abilities.instanceIdCounter).toBe(0);
     expect(abilities.pendingActivationCount).toBe(0);
   });
+
+  it('importRuntimeState rejects an ability id that is not registered', () => {
+    const { abilities } = createWorld();
+    expect(() =>
+      abilities.importRuntimeState({
+        instanceId: 3,
+        currentTick: 1,
+        activationRequests: [
+          {
+            casterEntityId: 1,
+            abilityId: 'Ability.Missing',
+            enqueueTick: 1,
+          },
+        ],
+        resolvedActivationsThisTick: [],
+      })
+    ).toThrow(/not registered/);
+    expect(abilities.instanceIdCounter).toBe(0);
+    expect(abilities.pendingActivationCount).toBe(0);
+  });
+
+  it('importRuntimeState accepts a FixedPoint from another math copy', () => {
+    const { abilities } = createWorld();
+    const foreign = {
+      base: FP.ToRaw(FP.FromInt(4)),
+      precision: 5n,
+      eq: () => false,
+    };
+    abilities.importRuntimeState({
+      instanceId: 1,
+      currentTick: 0,
+      activationRequests: [
+        {
+          casterEntityId: 1,
+          abilityId: 'Ability.Wait',
+          enqueueTick: 0,
+          providedTarget: { x: foreign as never },
+        },
+      ],
+      resolvedActivationsThisTick: [],
+    });
+    const exported = abilities.exportRuntimeState();
+    expect(exported.activationRequests[0]?.providedTarget?.x).toBe(foreign);
+  });
 });

@@ -96,7 +96,12 @@ export interface AbilitySystem extends IAbilitySystem {
   /**
    * Replace the per-world runtime from {@link exportRuntimeState}.
    * Does not touch the cue buffer. Throws if `state` is not a valid
-   * snapshot of that runtime.
+   * snapshot of that runtime, or if an `abilityId` is not in this world's
+   * ability registry.
+   *
+   * `state.instanceId` must be >= every live effect instance id. A lower
+   * integer is stored; keeping it above the live ids is the caller's
+   * responsibility.
    */
   importRuntimeState(state: AbilityRuntimeState): void;
   initComponent(init?: AbilitySystemComponentInit): AbilitySystemComponent;
@@ -181,7 +186,7 @@ class AbilitySystemImpl implements AbilitySystem {
   }
 
   public importRuntimeState(state: AbilityRuntimeState): void {
-    importAbilityRuntimeState(this.runtime, state);
+    importAbilityRuntimeState(this.runtime, state, this.registries.abilities);
   }
 
   public constructor(

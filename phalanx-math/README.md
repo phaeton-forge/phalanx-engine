@@ -182,7 +182,7 @@ const continued = DeterministicRandom.fromState(saved);
 rng.setState(saved);
 ```
 
-`getState()` does not draw. `fromState` / `setState` continue the same sequence. `float`, `floatRange`, and `boolean` remain as deprecated wrappers so existing call sites keep compiling. New simulation code uses `int` / `intRange` only.
+`getState()` does not draw. `fromState` / `setState` continue the same sequence. `float`, `floatRange`, and `boolean` remain as deprecated wrappers so existing call sites keep compiling. New simulation code uses `int` / `intRange` only. `getGenerator` / `setGenerator` are deprecated in favour of `getState` / `setState` / `fromState` (`pure-rand`'s generator type stays off new call sites).
 
 ## Why Fixed-Point?
 

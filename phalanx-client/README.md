@@ -1161,7 +1161,7 @@ game.addCommand('move', { x: 100, y: 200 });
 
 ## DeterministicRandom
 
-`DeterministicRandom` is re-exported from `@phalanx-engine/math` under the same name. Existing methods are unchanged, including the deprecated `float`, `floatRange`, and `boolean` wrappers. `getState()`, `setState(state)`, and `DeterministicRandom.fromState(state)` read and restore the `xoroshiro128plus` state (four integer words) without changing the draw sequence of a given seed.
+`DeterministicRandom` is re-exported from `@phalanx-engine/math` under the same name. Existing methods are unchanged, including the deprecated `float`, `floatRange`, and `boolean` wrappers. `getState()`, `setState(state)`, and `DeterministicRandom.fromState(state)` read and restore the `xoroshiro128plus` state (four integer words) without changing the draw sequence of a given seed. `getGenerator` / `setGenerator` are deprecated in favour of those state methods.
 
 ## License
 

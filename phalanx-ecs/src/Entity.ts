@@ -28,6 +28,10 @@ export function getEntityIdCounter(): number {
  * is accepted, including a value below the current mark, so a snapshot
  * can restore an earlier counter.
  *
+ * The caller must pass a value greater than or equal to every live entity
+ * id. A lower integer is stored, and the next allocation can then collide
+ * with an id that is still in use. That bound is the caller's responsibility.
+ *
  * @throws If `value` is not a safe integer `>= 0`.
  */
 export function setEntityIdCounter(value: number): void {
@@ -66,6 +70,12 @@ export class Entity {
 
   /** @internal True while the entity sits despawned inside a pool. Managed by PoolManager. */
   public _inPool: boolean = false;
+
+  /**
+   * @internal Set by the owning entity pool so {@link dispose} can drop
+   * that pool's reference. Cleared before the callback runs.
+   */
+  public _onDispose?: () => void;
 
   constructor() {
     this._id = ++entityIdCounter;
@@ -166,5 +176,8 @@ export class Entity {
   public dispose(): void {
     this._isDestroyed = true;
     this.components.clear();
+    const notify = this._onDispose;
+    this._onDispose = undefined;
+    notify?.();
   }
 }

@@ -453,9 +453,11 @@ resetEntityIdCounter();
 // Snapshot restore. The value is the last allocated id.
 setEntityIdCounter(savedHighWater);
 const manager = SoAComponent.currentEntityManager();
-world.pools?.ownedIds('unit'); // creation order
+world.pools?.ownedIds('unit'); // creation order; omits disposed entities
 world.pools?.freeListIds('unit'); // oldest first; spawn pops the last
+world.pools?.restore('unit', entitiesInCreationOrder, freeListIds);
 getEntityIdCounter();
+SoAComponent.useEntityManager(null); // same clear as resetContext()
 ```
 
 ### 6. Create Systems

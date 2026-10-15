@@ -453,7 +453,7 @@ Use `pipeline: 'effects-retain-cues'` to assert on `abilities.gameplayCueBuffer`
 
 ## Runtime snapshot
 
-`InstanceIdCounter.set(n)` accepts any integer `>= 0` (a restore may move the mark down). `abilities.exportRuntimeState()` / `importRuntimeState(state)` copy the instance-id counter, the activation queue, `currentTick`, and resolved activations. The cue buffer is not included and `importRuntimeState` does not clear it.
+`InstanceIdCounter.set(n)` accepts any integer `>= 0` (a restore may move the mark down). The caller must pass a value `>=` every live effect instance id. `abilities.exportRuntimeState()` / `importRuntimeState(state)` copy the instance-id counter, the activation queue, `currentTick`, and resolved activations. Both methods are required on `AbilitySystem`. `importRuntimeState` rejects an unregistered `abilityId`, does not clear the cue buffer, and accepts a FixedPoint by shape (`base` and `precision` bigints) so a second copy of `@phalanx-engine/math` still restores.
 
 ## Related skills
 

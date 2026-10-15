@@ -166,15 +166,20 @@ export class DeterministicRandom {
   }
 
   /**
-   * Get current generator for serialization
-   * Note: pure-rand generators are immutable, so this returns a copy
+   * Get the current pure-rand generator.
+   *
+   * @deprecated Prefer {@link getState}. This leaks `pure-rand`'s
+   * `RandomGenerator` into the public math API.
    */
   getGenerator(): prand.RandomGenerator {
     return this.rng;
   }
 
   /**
-   * Set generator from previously saved state
+   * Replace the generator with a previously saved pure-rand generator.
+   *
+   * @deprecated Prefer {@link setState} or {@link fromState}. Accepting a
+   * `pure-rand` `RandomGenerator` leaks that type into the public math API.
    * @param generator - Previously saved generator
    */
   setGenerator(generator: prand.RandomGenerator): void {

@@ -35,36 +35,30 @@ export class EntityPool<T extends Entity = Entity> {
   /**
    * Get an entity from the pool.
    * Reused entities keep their original IDs to preserve SoA row mappings.
+   * A disposed free-list entry is dropped instead of revived.
    */
   acquire(): T {
     this._acquireCount++;
 
-    let entity: T;
-    let fromPool = false;
-
-    if (this.available.length > 0) {
-      entity = this.available.pop()!;
-      fromPool = true;
-    } else {
-      this._missCount++;
-
-      if (this.config.growthStrategy === 'grow') {
-        this.growBatch();
-      }
-
-      if (this.available.length > 0) {
-        entity = this.available.pop()!;
-        fromPool = true;
-      } else {
-        entity = this.createEntity();
-      }
+    const reused = this.takeAvailable();
+    if (reused) {
+      reused._revive();
+      return reused;
     }
 
-    if (fromPool) {
-      entity._revive();
+    this._missCount++;
+
+    if (this.config.growthStrategy === 'grow') {
+      this.growBatch();
     }
 
-    return entity;
+    const grown = this.takeAvailable();
+    if (grown) {
+      grown._revive();
+      return grown;
+    }
+
+    return this.createEntity();
   }
 
   /** Return an entity to the pool. */
@@ -108,11 +102,16 @@ export class EntityPool<T extends Entity = Entity> {
   /**
    * Ids of entities this pool still owns, in creation order.
    * Includes checked-out entities and the free list. Excludes entities
-   * dropped by {@link drain} or disposed because `maxSize` was exceeded.
+   * dropped by {@link drain}, disposed because `maxSize` was exceeded,
+   * or disposed outside {@link release}.
    */
   public ownedIds(): readonly number[] {
     const ids: number[] = [];
     for (const entity of this.owned) {
+      if (entity.isDestroyed) {
+        this.forget(entity);
+        continue;
+      }
       ids.push(entity.id);
     }
     return ids;
@@ -120,14 +119,74 @@ export class EntityPool<T extends Entity = Entity> {
 
   /**
    * Free-list ids from oldest release to newest.
-   * {@link acquire} pops the last id.
+   * {@link acquire} pops the last id. Disposed entries are omitted.
    */
   public freeListIds(): readonly number[] {
+    for (let i = this.available.length - 1; i >= 0; i--) {
+      const entity = this.available[i];
+      if (entity?.isDestroyed) {
+        this.forget(entity);
+      }
+    }
     const ids: number[] = [];
     for (const entity of this.available) {
       ids.push(entity.id);
     }
     return ids;
+  }
+
+  /**
+   * Replace the owned set and the free list.
+   *
+   * `entitiesInCreationOrder` is every entity this pool should reference,
+   * in creation order. `freeListIds` is the free subset, oldest release
+   * first; the next {@link acquire} pops the last id. Ids absent from the
+   * free list stay checked out. Does not construct entities or change ids.
+   *
+   * @throws If an id is duplicated, an entity is already destroyed, or a
+   * free-list id is not in `entitiesInCreationOrder`.
+   */
+  public adopt(
+    entitiesInCreationOrder: readonly T[],
+    freeListIds: readonly number[]
+  ): void {
+    const byId = new Map<number, T>();
+    for (const entity of entitiesInCreationOrder) {
+      if (byId.has(entity.id)) {
+        throw new Error(`EntityPool.adopt: duplicate entity id ${entity.id}`);
+      }
+      if (entity.isDestroyed) {
+        throw new Error(`EntityPool.adopt: entity ${entity.id} is destroyed`);
+      }
+      byId.set(entity.id, entity);
+    }
+
+    const free: T[] = [];
+    const freeIds = new Set<number>();
+    for (const id of freeListIds) {
+      if (freeIds.has(id)) {
+        throw new Error(`EntityPool.adopt: duplicate free-list id ${id}`);
+      }
+      const entity = byId.get(id);
+      if (!entity) {
+        throw new Error(
+          `EntityPool.adopt: free-list id ${id} is not in the owned entities`
+        );
+      }
+      freeIds.add(id);
+      free.push(entity);
+    }
+
+    this.owned.clear();
+    this.available.length = 0;
+    for (const entity of entitiesInCreationOrder) {
+      this.attach(entity);
+      entity._inPool = freeIds.has(entity.id);
+      this.owned.add(entity);
+    }
+    for (const entity of free) {
+      this.available.push(entity);
+    }
   }
 
   get availableCount(): number {
@@ -146,9 +205,39 @@ export class EntityPool<T extends Entity = Entity> {
 
   private createEntity(): T {
     const entity = this.entityFactory();
+    this.attach(entity);
     this._totalCreated++;
     this.owned.add(entity);
     return entity;
+  }
+
+  /** Pop the newest live free-list entity. Disposed entries are dropped. */
+  private takeAvailable(): T | undefined {
+    while (this.available.length > 0) {
+      const entity = this.available.pop();
+      if (!entity || entity.isDestroyed) {
+        if (entity) {
+          this.owned.delete(entity);
+        }
+        continue;
+      }
+      return entity;
+    }
+    return undefined;
+  }
+
+  private attach(entity: T): void {
+    entity._onDispose = () => {
+      this.forget(entity);
+    };
+  }
+
+  private forget(entity: T): void {
+    this.owned.delete(entity);
+    const index = this.available.indexOf(entity);
+    if (index !== -1) {
+      this.available.splice(index, 1);
+    }
   }
 
   private growBatch(): void {

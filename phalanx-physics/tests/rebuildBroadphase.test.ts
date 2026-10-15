@@ -114,6 +114,7 @@ describe('broadphase snapshot hooks', () => {
       }
       expect(FP.Eq(left.x, right.x)).toBe(true);
       expect(FP.Eq(left.z, right.z)).toBe(true);
+      expect(FP.Eq(left.radius, right.radius)).toBe(true);
       if (i > 0) {
         const previous = rebuiltCenters[i - 1];
         expect(previous).toBeDefined();
@@ -216,10 +217,113 @@ describe('broadphase snapshot hooks', () => {
     expect(centers[0]?.entityId).toBe(1);
     expect(FP.Eq(centers[0]?.x ?? FP._0, FP.FromInt(2))).toBe(true);
     expect(FP.Eq(centers[0]?.z ?? FP._0, FP.FromInt(6))).toBe(true);
+    expect(FP.Eq(centers[0]?.radius ?? FP._0, FP._1)).toBe(true);
+
+    system.restoreBroadphase([...centers].reverse());
+    const restored = system.getBroadphaseCenters();
+    expect(restored).toHaveLength(1);
+    expect(restored[0]?.entityId).toBe(1);
+    expect(FP.Eq(restored[0]?.radius ?? FP._0, FP._1)).toBe(true);
   });
 
   it('rebuildBroadphase throws before init', () => {
     const physicsWorld = new PhysicsWorld();
     expect(() => physicsWorld.rebuildBroadphase()).toThrow(/init/);
+  });
+
+  it('restoreBroadphase replays saved radius so queryRadius matches', () => {
+    const cellSize = FP.FromInt(4);
+    const live = new SpatialHashGrid(cellSize);
+    live.insert(3, FP.FromInt(10), FP.FromInt(1), FP.FromInt(6));
+    live.insert(1, FP.FromInt(0), FP.FromInt(0), FP._1);
+    live.insert(2, FP.FromInt(5), FP.FromInt(-2), FP.FromInt(3));
+
+    const centers = live.getCenters();
+    expect(centers.map((center) => center.entityId)).toEqual([1, 2, 3]);
+    const wide = centers[2];
+    expect(wide).toBeDefined();
+    if (!wide) {
+      throw new Error('missing wide center');
+    }
+    expect(FP.Eq(wide.radius, FP.FromInt(6))).toBe(true);
+
+    const probeX = FP.FromInt(8);
+    const reach = FP.FromInt(4);
+    const liveRadius = [...live.queryRadius(probeX, FP._0, reach)];
+    const livePairs = copyPairs(live.queryPairs());
+
+    const restored = new SpatialHashGrid(cellSize);
+    restored.restoreBroadphase([...centers].reverse());
+    expect([...restored.queryRadius(probeX, FP._0, reach)]).toEqual(
+      liveRadius
+    );
+    expect(copyPairs(restored.queryPairs())).toEqual(livePairs);
+    expect(() =>
+      restored.restoreBroadphase([
+        centers[0] ?? wide,
+        centers[0] ?? wide,
+      ])
+    ).toThrow(/duplicate/);
+  });
+
+  it('after resolution, saved centers restore queryRadius and a transform rebuild does not', () => {
+    const cellSize = FP.FromInt(4);
+    const physicsWorld = new PhysicsWorld({
+      gridCellSize: cellSize,
+      subSteps: 1,
+    });
+    const { physicsSystem } = physicsWorld.getSystems();
+    physicsSystem.init(context);
+
+    const physicsStore = entityManager.getOrCreateSoAStore(PhysicsSoASchema);
+    const transformStore =
+      entityManager.getOrCreateSoAStore(TransformSoASchema);
+    addBody(physicsStore, 1);
+    addBody(physicsStore, 2);
+    addTransformRow(transformStore, 1, 0, 0);
+    addTransformRow(transformStore, 2, 1, 0);
+
+    physicsSystem.step();
+
+    const saved = physicsWorld.getBroadphaseCenters();
+    const reach = FP.FromInt(2);
+    const liveQuery = [
+      ...physicsWorld.spatialGrid.queryRadius(FP._0, FP._0, reach),
+    ];
+    const moved = saved.find((center) => center.entityId === 1);
+    expect(moved).toBeDefined();
+    if (!moved) {
+      throw new Error('missing cached center');
+    }
+    const transformIndex = transformStore.indexOf(1);
+    const transformX = FP.FromRaw(
+      transformStore.arrays.fpPositionX[transformIndex] ?? 0n
+    );
+    expect(FP.Eq(moved.x, transformX)).toBe(false);
+
+    physicsWorld.rebuildBroadphase();
+    const rebuilt = physicsWorld
+      .getBroadphaseCenters()
+      .find((center) => center.entityId === 1);
+    expect(rebuilt).toBeDefined();
+    if (!rebuilt) {
+      throw new Error('missing rebuilt center');
+    }
+    expect(FP.Eq(rebuilt.x, moved.x)).toBe(false);
+
+    physicsWorld.restoreBroadphase(saved);
+    expect([
+      ...physicsWorld.spatialGrid.queryRadius(FP._0, FP._0, reach),
+    ]).toEqual(liveQuery);
+    const roundTrip = physicsWorld
+      .getBroadphaseCenters()
+      .find((center) => center.entityId === 1);
+    expect(roundTrip).toBeDefined();
+    if (!roundTrip) {
+      throw new Error('missing restored center');
+    }
+    expect(FP.Eq(roundTrip.x, moved.x)).toBe(true);
+    expect(FP.Eq(roundTrip.z, moved.z)).toBe(true);
+    expect(FP.Eq(roundTrip.radius, moved.radius)).toBe(true);
   });
 });

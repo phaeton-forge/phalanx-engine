@@ -568,7 +568,7 @@ Do not expose `createPrivateRoomForHost` as an unauthenticated browser endpoint.
 
 ## DeterministicRandom
 
-`DeterministicRandom` subclasses `@phalanx-engine/math`. `int` / `intRange`, `fork`, `fromBigInt`, and `generateSeed` behave as before. `generateSeed` now imports `node:crypto` (the old `require('crypto')` path does not run under ESM). `getState()`, `setState(state)`, and `DeterministicRandom.fromState(state)` save and continue the `xoroshiro128plus` sequence (four integer words).
+`DeterministicRandom` subclasses `@phalanx-engine/math`. `int` / `intRange`, `fork`, `fromBigInt`, and `generateSeed` behave as before. `generateSeed` now imports `node:crypto` (the old `require('crypto')` path does not run under ESM). `getState()`, `setState(state)`, and `DeterministicRandom.fromState(state)` save and continue the `xoroshiro128plus` sequence (four integer words). `getGenerator` / `setGenerator` are deprecated in favour of those state methods.
 
 ## Related Packages
 
