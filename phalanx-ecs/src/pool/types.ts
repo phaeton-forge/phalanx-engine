@@ -1,5 +1,5 @@
-import type { Entity } from '../Entity';
-import type { IPoolableEntity } from './IPoolableEntity';
+import type { Entity } from '../Entity.js';
+import type { IPoolableEntity } from './IPoolableEntity.js';
 
 export interface PoolConfig {
   /** Initial number of pre-allocated objects. Default: 0 */

@@ -1,8 +1,8 @@
-import type { IComponent } from './Component';
-import type { IPoolableComponent } from './pool/IPoolableComponent';
-import type { SoASchemaDefinition, SoASchema, SoAFieldsOf } from './SoASchema';
-import type { SoAComponentStore } from './SoAComponentStore';
-import type { EntityManager } from './EntityManager';
+import type { IComponent } from './Component.js';
+import type { IPoolableComponent } from './pool/IPoolableComponent.js';
+import type { SoASchemaDefinition, SoASchema, SoAFieldsOf } from './SoASchema.js';
+import type { SoAComponentStore } from './SoAComponentStore.js';
+import type { EntityManager } from './EntityManager.js';
 
 /** Default initial capacity for lazily created SoA stores */
 const DEFAULT_STORE_CAPACITY = 1024;

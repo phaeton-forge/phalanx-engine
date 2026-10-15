@@ -1,6 +1,6 @@
-import type { Entity } from '../Entity';
-import type { PoolConfig, PoolStats, ResolvedPoolConfig } from './types';
-import { resolvePoolConfig } from './types';
+import type { Entity } from '../Entity.js';
+import type { PoolConfig, PoolStats, ResolvedPoolConfig } from './types.js';
+import { resolvePoolConfig } from './types.js';
 
 /**
  * Pure storage, growth, and stats container for pooled entities.
@@ -127,6 +127,25 @@ export class EntityPool<T extends Entity = Entity> {
       ids.push(entity.id);
     }
     return ids;
+  }
+
+  /**
+   * Remove every free entity when nothing is checked out.
+   *
+   * The returned instances are no longer referenced by the pool and their
+   * dispose callback is cleared. The caller disposes them. A checked-out
+   * entity makes this throw so a live pool is not silently dropped.
+   */
+  public takeDormant(): T[] {
+    if (this.owned.size !== this.available.length) {
+      throw new Error('EntityPool.takeDormant: pool has checked-out entities');
+    }
+    const dormant = this.available.splice(0, this.available.length);
+    this.owned.clear();
+    for (const entity of dormant) {
+      entity._onDispose = undefined;
+    }
+    return dormant;
   }
 
   /**

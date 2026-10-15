@@ -1,15 +1,15 @@
 import { GameSystem, type SoAComponentStore, type SystemContext } from '@phalanx-engine/ecs';
 import { FP, type FixedPoint } from '@phalanx-engine/math';
-import { PhysicsSoASchema } from '../components/PhysicsBodyComponent';
-import { TransformSoASchema } from '../components/TransformComponent';
+import { PhysicsSoASchema } from '../components/PhysicsBodyComponent.js';
+import { TransformSoASchema } from '../components/TransformComponent.js';
 import {
   SpatialHashGrid,
   type BroadphaseCenter,
-} from '../collision/SpatialHashGrid';
-import { NarrowPhase } from '../collision/NarrowPhase';
-import type { CollisionManifold } from '../collision/CollisionManifold';
-import { PhysicsEvents } from '../events';
-import type { CollisionEvent } from '../types';
+} from '../collision/SpatialHashGrid.js';
+import { NarrowPhase } from '../collision/NarrowPhase.js';
+import type { CollisionManifold } from '../collision/CollisionManifold.js';
+import { PhysicsEvents } from '../events.js';
+import type { CollisionEvent } from '../types.js';
 
 const SEPARATION_HALF = FP.FromFloat(0.5);
 
@@ -83,10 +83,21 @@ export class CollisionSystem extends GameSystem {
 
   /**
    * Replace the broadphase with saved centers (clear, then insert in
-   * ascending entity id). Does not read transforms.
+   * ascending entity id). Does not read transforms. Writes `lastX` /
+   * `lastZ` from those centers (`FP.ToFloat`) so the first rendered
+   * frame matches the restored grid. Those fields are presentation
+   * only; simulation must not read them.
    */
   public restoreBroadphase(centers: readonly BroadphaseCenter[]): void {
     this.spatialGrid.restoreBroadphase(centers);
+    const lastX = this.physicsStore.arrays.lastX;
+    const lastZ = this.physicsStore.arrays.lastZ;
+    for (const center of centers) {
+      const index = this.physicsStore.indexOf(center.entityId);
+      if (index === -1) continue;
+      lastX[index] = FP.ToFloat(center.x);
+      lastZ[index] = FP.ToFloat(center.z);
+    }
   }
 
   public override processTick(_tick: number): void {

@@ -17,8 +17,8 @@ import {
 import {
   INTERPOLATION_COMPONENT_TYPE,
   InterpolationComponent,
-} from '../components';
-import { TRANSFORM_COMPONENT_TYPE, TransformSoASchema } from '../components';
+} from '../components/index.js';
+import { TRANSFORM_COMPONENT_TYPE, TransformSoASchema } from '../components/index.js';
 
 export interface InterpolatedTransformSample {
   position: { x: number; y: number; z: number };

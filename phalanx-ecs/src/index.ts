@@ -6,15 +6,15 @@
  */
 
 // Core ECS
-export { EntityManager } from './EntityManager';
-export { EventBus, globalEventBus } from './EventBus';
-export { SystemRegistry } from './SystemRegistry';
-export { SystemContext } from './SystemContext';
-export { GameSystem } from './GameSystem';
+export { EntityManager } from './EntityManager.js';
+export { EventBus, globalEventBus } from './EventBus.js';
+export { SystemRegistry } from './SystemRegistry.js';
+export { SystemContext } from './SystemContext.js';
+export { GameSystem } from './GameSystem.js';
 
 // GameWorld facade
-export { GameWorld, GameWorldEvents } from './GameWorld';
-export type { GameWorldConfig, GameWorldHooks } from './GameWorld';
+export { GameWorld, GameWorldEvents } from './GameWorld.js';
+export type { GameWorldConfig, GameWorldHooks } from './GameWorld.js';
 
 // Entity and Component
 export {
@@ -23,9 +23,9 @@ export {
   nextEntityId,
   getEntityIdCounter,
   setEntityIdCounter,
-} from './Entity';
-export { IComponent, createComponentTypeRegistry } from './Component';
-export type { IComponent as Component } from './Component';
+} from './Entity.js';
+export { IComponent, createComponentTypeRegistry } from './Component.js';
+export type { IComponent as Component } from './Component.js';
 
 // Object Pooling
 export {
@@ -33,7 +33,7 @@ export {
   EntityPool,
   PoolManager,
   isPoolableComponent,
-} from './pool';
+} from './pool/index.js';
 export type {
   IPoolable,
   IPoolableEntity,
@@ -43,18 +43,18 @@ export type {
   PoolStats,
   EntityTypeConfig,
   PoolingConfig,
-} from './pool';
+} from './pool/index.js';
 
 // SoA (Structure-of-Arrays) high-performance storage
-export { SoAComponentStore } from './SoAComponentStore';
-export type { SoAComponentStoreOptions } from './SoAComponentStore';
-export { SoAComponent } from './SoAComponent';
+export { SoAComponentStore } from './SoAComponentStore.js';
+export type { SoAComponentStoreOptions } from './SoAComponentStore.js';
+export { SoAComponent } from './SoAComponent.js';
 export {
   defineSoASchema,
   calculateSchemaByteSize,
   TYPED_ARRAY_CONSTRUCTORS,
   FIELD_BYTE_SIZES,
-} from './SoASchema';
+} from './SoASchema.js';
 export type {
   SoASchema,
   SoASchemaDefinition,
@@ -64,10 +64,10 @@ export type {
   SoAValueType,
   SoAArrayType,
   TypedArrayLike,
-} from './SoASchema';
+} from './SoASchema.js';
 
 // Debug / Introspection
-export { DebugDataProvider, DebugPanel } from './debug';
+export { DebugDataProvider, DebugPanel } from './debug/index.js';
 export type {
   DebugSnapshot,
   DebugEntitySnapshot,
@@ -76,24 +76,24 @@ export type {
   DebugPoolSnapshot,
   DebugDataProviderConfig,
   DebugPanelConfig,
-} from './debug';
+} from './debug/index.js';
 
 // Optional system lifecycle hook interfaces
-export type { IBeforeTick, IAfterTick, IBeforeFrame, IAfterFrame } from './ISystemLifecycleHooks';
-export { isBeforeTick, isAfterTick, isBeforeFrame, isAfterFrame } from './ISystemLifecycleHooks';
+export type { IBeforeTick, IAfterTick, IBeforeFrame, IAfterFrame } from './ISystemLifecycleHooks.js';
+export { isBeforeTick, isAfterTick, isBeforeFrame, isAfterFrame } from './ISystemLifecycleHooks.js';
 
 // Ability system contract (implemented by phalanx-abilities)
-export type { IAbilitySystem } from './IAbilitySystem';
+export type { IAbilitySystem } from './IAbilitySystem.js';
 
 // Physics world contract (implemented by phalanx-physics)
-export type { IPhysicsWorld, InterpolatedTransformSample } from './IPhysicsWorld';
+export type { IPhysicsWorld, InterpolatedTransformSample } from './IPhysicsWorld.js';
 
 // Match-scoped deterministic RNG contract
-export type { IRandom } from './IRandom';
+export type { IRandom } from './IRandom.js';
 
 // Tick/Frame Management
-export { TickFrameManager } from './TickFrameManager';
-export type { TickFrameManagerConfig } from './TickFrameManager';
+export { TickFrameManager } from './TickFrameManager.js';
+export type { TickFrameManagerConfig } from './TickFrameManager.js';
 export type {
   ITickFrameProvider,
   TickHandler,
@@ -102,4 +102,4 @@ export type {
   CommandsBatch,
   PlayerCommand,
   PauseHandler,
-} from './ITickFrameProvider';
+} from './ITickFrameProvider.js';

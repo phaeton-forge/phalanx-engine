@@ -172,13 +172,17 @@ importers:
         version: 1.6.1(@types/node@20.19.43)(happy-dom@20.10.6)(lightningcss@1.32.0)
 
   phalanx-runtime:
-    devDependencies:
+    dependencies:
       '@phalanx-engine/ecs':
         specifier: workspace:*
         version: link:../phalanx-ecs
+    devDependencies:
       '@phalanx-engine/math':
         specifier: workspace:*
         version: link:../phalanx-math
+      '@phalanx-engine/physics':
+        specifier: workspace:*
+        version: link:../phalanx-physics
       typescript:
         specifier: ~5.9.3
         version: 5.9.3

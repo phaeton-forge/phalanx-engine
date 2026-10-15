@@ -1,22 +1,25 @@
-import { SystemRegistry } from './SystemRegistry';
-import { TickFrameManager } from './TickFrameManager';
-import { SoAComponent } from './SoAComponent';
-import { PoolManager } from './pool/PoolManager';
-import { DebugDataProvider } from './debug/DebugDataProvider';
-import { DebugPanel } from './debug/DebugPanel';
-import type { DebugDataProviderConfig, DebugPanelConfig } from './debug/types';
-import type { PoolingConfig } from './pool/types';
-import type { ITickFrameProvider, Unsubscribe } from './ITickFrameProvider';
-import type { EventBus } from './EventBus';
-import type { EntityManager } from './EntityManager';
-import type { SystemContext } from './SystemContext';
-import type { GameSystem } from './GameSystem';
-import type { IRandom } from './IRandom';
+import { SystemRegistry } from './SystemRegistry.js';
+import { TickFrameManager } from './TickFrameManager.js';
+import { SoAComponent } from './SoAComponent.js';
+import { PoolManager } from './pool/PoolManager.js';
+import { DebugDataProvider } from './debug/DebugDataProvider.js';
+import { DebugPanel } from './debug/DebugPanel.js';
+import type {
+  DebugDataProviderConfig,
+  DebugPanelConfig,
+} from './debug/types.js';
+import type { PoolingConfig } from './pool/types.js';
+import type { ITickFrameProvider, Unsubscribe } from './ITickFrameProvider.js';
+import type { EventBus } from './EventBus.js';
+import type { EntityManager } from './EntityManager.js';
+import type { SystemContext } from './SystemContext.js';
+import type { GameSystem } from './GameSystem.js';
+import type { IRandom } from './IRandom.js';
 import {
   getEntityIdCounter,
   resetEntityIdCounter,
   setEntityIdCounter,
-} from './Entity';
+} from './Entity.js';
 import {
   isBeforeTick,
   isAfterTick,
@@ -26,7 +29,7 @@ import {
   type IAfterTick,
   type IBeforeFrame,
   type IAfterFrame,
-} from './ISystemLifecycleHooks';
+} from './ISystemLifecycleHooks.js';
 
 /**
  * Well-known event names emitted on the GameWorld's EventBus when the
@@ -91,7 +94,7 @@ export interface GameWorldHooks {
   /** Called before tick systems are processed (e.g. snapshot positions, execute commands) */
   beforeTick?: (
     tick: number,
-    commands: import('./ITickFrameProvider').CommandsBatch
+    commands: import('./ITickFrameProvider.js').CommandsBatch
   ) => void;
   /** Called after tick systems have been processed (e.g. capture positions, cleanup) */
   afterTick?: (tick: number) => void;

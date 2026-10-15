@@ -1,7 +1,7 @@
-import type { Entity } from './Entity';
-import { SoAComponentStore } from './SoAComponentStore';
-import type { SoAComponentStoreOptions } from './SoAComponentStore';
-import type { SoASchema, SoASchemaDefinition } from './SoASchema';
+import type { Entity } from './Entity.js';
+import { SoAComponentStore } from './SoAComponentStore.js';
+import type { SoAComponentStoreOptions } from './SoAComponentStore.js';
+import type { SoASchema, SoASchemaDefinition } from './SoASchema.js';
 
 /**
  * EntityManager - Central registry for all game entities

@@ -12,21 +12,31 @@
       "import": "./dist/index.js"
     }
   },
+  "dependencies": {
+    "@phalanx-engine/ecs": "workspace:*"
+  },
   "scripts": {
     "build": "tsc",
     "clean": "rm -rf dist",
     "rebuild": "npm run clean && npm run build",
     "typecheck": "tsc -p tsconfig.test.json",
-    "test": "tsc -p tsconfig.test.json && vitest run",
+    "test": "tsc -p tsconfig.test.json && vitest run && node --input-type=module -e \"await import('./dist/index.js')\"",
     "prepublishOnly": "npm run build"
   },
   "peerDependencies": {
     "@phalanx-engine/ecs": "workspace:^",
-    "@phalanx-engine/math": "workspace:^"
+    "@phalanx-engine/math": "workspace:^",
+    "@phalanx-engine/physics": "workspace:^"
+  },
+  "peerDependenciesMeta": {
+    "@phalanx-engine/physics": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@phalanx-engine/ecs": "workspace:*",
     "@phalanx-engine/math": "workspace:*",
+    "@phalanx-engine/physics": "workspace:*",
     "typescript": "~5.9.3",
     "vitest": "^1.0.0"
   },

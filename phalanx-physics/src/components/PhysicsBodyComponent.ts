@@ -1,6 +1,6 @@
 import { SoAComponent, defineSoASchema } from '@phalanx-engine/ecs';
 import { FP, type FixedPoint, type FPVector3 as FPVector3Type } from '@phalanx-engine/math';
-import type { PhysicsBodyConfig } from '../types';
+import type { PhysicsBodyConfig } from '../types.js';
 
 /**
  * PhysicsBody SoA Schema

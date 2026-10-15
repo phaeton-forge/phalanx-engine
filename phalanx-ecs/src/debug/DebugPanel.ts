@@ -1,11 +1,11 @@
-import type { DebugDataProvider } from './DebugDataProvider';
+import type { DebugDataProvider } from './DebugDataProvider.js';
 import type {
   DebugSnapshot,
   DebugEntitySnapshot,
   DebugSoAStoreSnapshot,
   DebugPoolSnapshot,
   DebugPanelConfig,
-} from './types';
+} from './types.js';
 
 const FONT_MONO = "'Consolas', 'Monaco', 'Courier New', monospace";
 const COLOR_BG = 'rgba(15, 15, 20, 0.92)';

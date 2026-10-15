@@ -1,5 +1,5 @@
 import type { FixedPoint } from '@phalanx-engine/math';
-import type { IPhysicsTickProvider } from './tick/IPhysicsTickProvider';
+import type { IPhysicsTickProvider } from './tick/IPhysicsTickProvider.js';
 
 /**
  * High-level configuration for PhysicsWorld facade.

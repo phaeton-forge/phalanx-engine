@@ -101,6 +101,7 @@ import {
   PhysicsSystem,
   GravitySystem,
   InterpolationSystem,
+  CollisionSystem,
   type InterpolatedTransformSample,
 
   // Raycast / swept-segment (3D collision workaround)
@@ -568,7 +569,7 @@ class PhysicsBodyComponent extends SoAComponent<typeof PhysicsSoASchema.definiti
   useGravity: boolean;           // get/set — opt in to GravitySystem acceleration
   gravityMultiplier: FixedPoint; // get/set — per-body scale on world gravity (default FP._1)
 
-  // Spatial-grid bookkeeping
+  // Spatial-grid bookkeeping (presentation only; do not read in simulation)
   lastX: number;
   lastZ: number;
 }

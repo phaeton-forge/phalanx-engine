@@ -1,19 +1,19 @@
 import { type EventBus } from '@phalanx-engine/ecs';
 import { FP } from '@phalanx-engine/math';
-import { PhysicsSystem } from './systems/PhysicsSystem';
-import { GravitySystem } from './systems/GravitySystem';
-import { InterpolationSystem } from './systems/InterpolationSystem';
-import type { InterpolatedTransformSample } from './systems/InterpolationSystem';
+import { PhysicsSystem } from './systems/PhysicsSystem.js';
+import { GravitySystem } from './systems/GravitySystem.js';
+import { InterpolationSystem } from './systems/InterpolationSystem.js';
+import type { InterpolatedTransformSample } from './systems/InterpolationSystem.js';
 import {
   SpatialHashGrid,
   type BroadphaseCenter,
-} from './collision/SpatialHashGrid';
-import { segmentVsAABB } from './collision/Raycast';
-import type { RayHit, Vec3FP, AABB } from './collision/Raycast';
-import { PhysicsEvents } from './events';
-import type { PhysicsWorldConfig } from './PhysicsWorldConfig';
+} from './collision/SpatialHashGrid.js';
+import { segmentVsAABB } from './collision/Raycast.js';
+import type { RayHit, Vec3FP, AABB } from './collision/Raycast.js';
+import { PhysicsEvents } from './events.js';
+import type { PhysicsWorldConfig } from './PhysicsWorldConfig.js';
 import type { FixedPoint } from '@phalanx-engine/math';
-import type { CollisionEvent, PhysicsConfig, BoundsExitEvent } from './types';
+import type { CollisionEvent, PhysicsConfig, BoundsExitEvent } from './types.js';
 
 /**
  * PhysicsWorld — high-level facade that owns GravitySystem, PhysicsSystem,

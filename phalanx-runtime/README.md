@@ -1,7 +1,8 @@
 # @phalanx-engine/runtime
 
-> **Status: skeleton, implementation in progress.** Contracts and types are
-> final for engine 0.3; most classes throw
+> **Status: Tasks 1–4 implemented.** Contracts and types are final for
+> engine 0.3. `StateHelpers` covers SoA stores, entity ids, pools, RNG and
+> broadphase centers. GAS helpers and the match runner still throw
 > `not implemented: <member> (Task NN)`. The package is `private` until the
 > synchronized 0.3.0 release.
 
@@ -46,8 +47,20 @@ export const MyGame = defineGame({
   engine calls it without knowing the format. Canonical bytes only (no
   floats; FP values as raw `i64`). `restore(save(x))` must re-save to
   identical bytes.
-- **`StateHelpers`**: optional helpers for SoA stores, entity ids, pools,
-  RNG, physics and GAS that a game may call inside its `GameState`.
+- **`StateHelpers`**: optional helpers a game may call inside its
+  `GameState`. SoA rows (explicit schema names; `f32` / `f64` skipped),
+  the entity id counter, `spawnWithId`, pool membership, RNG state and
+  broadphase centers are implemented. GAS helpers are still Task 5.
+  Restore order: `spawnWithId` for non-pooled entities, `readPools`
+  (constructs pooled entities and discards prewarmed free ones; free
+  entities get `onDespawn` again), `readSoAStores`, `readEntityIds`,
+  `readRandom`, `readBroadphase`. A zero-row SoA section registers a
+  missing empty store; a saved id with no row still throws, and a row
+  the section omitted throws `extra entity`. Restore broadphase with
+  `readBroadphase` (pre-separation centers, including radius and each
+  value's precision). That also fills `lastX` / `lastZ` for the first
+  frame. Do not read `lastX` / `lastZ` in simulation. `rebuildPhysics`
+  is only for a collision-free world.
 - **`BotPolicy`**: a bot is a command producer for its slot, not a
   simulation system. Its commands enter the same log as humans'.
 - **`Transport`**: extends ecs `ITickFrameProvider` with `submit` and
@@ -62,8 +75,17 @@ snapshot intervals, …), `botPlayerId` / `isBotPlayerId`, `rejectCommand` /
 `BinaryStateReader` (`list` keeps order, `sortedBy` sorts unique integer
 keys), `encodeSnapshot` / `decodeSnapshot` (header, body, and optional bot
 state and input checkpoint outside the digest), `digestBytes` (xxhash64,
-seed 0), `canonicalConfigBytes` / `configHash`, and
-`checkSnapshotCompatibility`. There is no `f32` or `f64` writer.
+seed 0), `canonicalConfigBytes` / `configHash`,
+`checkSnapshotCompatibility`, and `StateHelpers` except
+`writeAbilities` / `readAbilities`. There is no `f32` or `f64` writer.
+
+`readPools` calls `PoolManager.createForRestore` for each owned id, then
+`restore`. Prewarmed free entities from `world.start()` are discarded
+first. Free-list entities receive `onDespawn` again on the restored
+instance; keep that hook idempotent. `readEntityIds` then installs the
+saved counter. Pool type keys stay in registration order. RNG state is
+`getState` / `setState` (four int32 words). Physics and math are peer
+dependencies; physics is optional.
 
 ## Design docs
 

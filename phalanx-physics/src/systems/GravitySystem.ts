@@ -1,6 +1,6 @@
 import { GameSystem, type SoAComponentStore, type SystemContext } from '@phalanx-engine/ecs';
 import { FP, type FixedPoint } from '@phalanx-engine/math';
-import { PhysicsSoASchema } from '../components/PhysicsBodyComponent';
+import { PhysicsSoASchema } from '../components/PhysicsBodyComponent.js';
 
 /**
  * GravitySystem — applies gravitational ACCELERATION to velocity.

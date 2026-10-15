@@ -1,4 +1,4 @@
-import type { IPhysicsTickProvider } from './IPhysicsTickProvider';
+import type { IPhysicsTickProvider } from './IPhysicsTickProvider.js';
 
 export interface AutonomousProviderOptions {
   /** Max simulation steps before forcing a stop (prevents infinite loops). Default: 10000 */
