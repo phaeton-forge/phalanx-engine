@@ -22,11 +22,8 @@ export interface WorldInitContext {
   /** Match RNG seeded from `config.seed`. */
   readonly random: IRandom;
   /**
-   * `'fresh'`: build the tick-0 world, including the opening roster.
-   * `'restore'`: static content only (systems, pools, registries,
-   * `world.start()`). Do not spawn. `GameState.restore` recreates dynamic
-   * entities by id into that empty world. A spawn here leaves the id
-   * registered and `spawnWithId` throws `entity N already exists`.
+   * `'fresh'`: build the tick-0 world. `'restore'`: build only static
+   * content; `GameState.restore` recreates everything dynamic.
    */
   readonly purpose: 'fresh' | 'restore';
 }

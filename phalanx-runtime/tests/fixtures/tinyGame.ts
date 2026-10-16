@@ -58,16 +58,11 @@ export interface TinyBotCall {
 /** Every hosted `decide` in this process. Tests reset it between runs. */
 export const tinyBotCalls: TinyBotCall[] = [];
 
-/** Opening unit placed by `createWorld` when {@link setTinySeedInitial} is on. */
-export const TINY_OPENING_X = 5n;
-
 let restoreBroken = false;
 let decodeBoom = false;
 let validateBoom = false;
 let tickBoom = false;
 let botBoom = false;
-let seedInitial = false;
-let seedOnRestore = false;
 
 /** Test hook: the next `restore` writes state that does not round-trip. */
 export function setTinyRestoreBroken(broken: boolean): void {
@@ -92,19 +87,6 @@ export function setTinyTickBoom(boom: boolean): void {
 /** Test hook: the walker `decide` throws `bot exploded`. */
 export function setTinyBotBoom(boom: boolean): void {
   botBoom = boom;
-}
-
-/**
- * Test hook: `createWorld` spawns one unit at {@link TINY_OPENING_X} on a
- * fresh world. `alsoOnRestore` spawns it for `purpose: 'restore'` too,
- * which restore must reject.
- */
-export function setTinySeedInitial(
-  enabled: boolean,
-  alsoOnRestore = false
-): void {
-  seedInitial = enabled;
-  seedOnRestore = alsoOnRestore;
 }
 
 export function resetTinyBotCalls(): void {
@@ -325,11 +307,6 @@ export const TinyGame = defineGame({
     const sim = new TinySim(world, ctx.random, config);
     world.registerSystems([new TinyDecaySystem()], []);
     world.start();
-    if (seedInitial && (ctx.purpose === 'fresh' || seedOnRestore)) {
-      world.entityManager.addEntity(
-        new TinyUnit(0, TINY_OPENING_X, INITIAL_HP)
-      );
-    }
     return sim;
   },
   commands: {
