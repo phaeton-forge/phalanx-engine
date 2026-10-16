@@ -51,8 +51,8 @@ Entries collected per package until the synchronized 0.3.0 release
   not `getGenerator`), and broadphase centers (`x`, `z`, and `radius`,
   each with its own precision) through `writeBroadphase` /
   `readBroadphase`. `rebuildPhysics` only rebuilds from current transforms
-  and is valid for a collision-free world. `writeAbilities` /
-  `readAbilities` remain Task 5. A zero-row SoA section recreates a missing
+  and is valid for a collision-free world. Ability helpers are the Task 5
+  bullet below. A zero-row SoA section recreates a missing
   empty store (`getOrCreateSoAStore`); a nonempty section with no row still
   throws `readSoAStore: missing entity <id> in <schema>`. A row the
   section omitted throws `readSoAStore: extra entity <id> in <schema>`.
@@ -68,6 +68,19 @@ Entries collected per package until the synchronized 0.3.0 release
   change landed in the same commit as the NodeNext emit. Every
   `@phalanx-engine/*` package test script now imports its own `dist/index.js`
   the same way, including abilities after its NodeNext migration.
+- State helpers (Task 5): `writeAbilities` / `readAbilities` persist
+  `section('gas', 1)`. The per-world runtime comes from
+  `exportRuntimeState` / `importRuntimeState` (instance-id counter,
+  activation requests, `currentTick`, resolved activations). The cue
+  buffer is omitted. Entities with a GAS component are stored ascending
+  by id, with flags so lazy components are recreated. Attribute `base` /
+  `current` are `i64` and `dirty` is `u8`. The effect queue and
+  `pendingAdd` keep array order. Abilities, tags, ad-hoc tags and grant
+  counts keep insertion order. `setByCaller` keys are sorted; values are
+  a safe integer, bigint, string, boolean, or FixedPoint, and any other
+  type throws. `@phalanx-engine/abilities` is a dependency and a peer.
+  Restore order is `spawnWithId`, `readPools`, `readSoAStores`,
+  `readAbilities`, `readEntityIds`, `readRandom`, `readBroadphase`.
 
 ## @phalanx-engine/ecs
 

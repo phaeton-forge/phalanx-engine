@@ -1,8 +1,8 @@
 # @phalanx-engine/runtime
 
-> **Status: Tasks 1–4 implemented.** Contracts and types are final for
-> engine 0.3. `StateHelpers` covers SoA stores, entity ids, pools, RNG and
-> broadphase centers. GAS helpers and the match runner still throw
+> **Status: Tasks 1–5 implemented.** Contracts and types are final for
+> engine 0.3. `StateHelpers` covers SoA stores, entity ids, pools, RNG,
+> broadphase centers and GAS (abilities). The match runner still throws
 > `not implemented: <member> (Task NN)`. The package is `private` until the
 > synchronized 0.3.0 release.
 
@@ -49,12 +49,12 @@ export const MyGame = defineGame({
   identical bytes.
 - **`StateHelpers`**: optional helpers a game may call inside its
   `GameState`. SoA rows (explicit schema names; `f32` / `f64` skipped),
-  the entity id counter, `spawnWithId`, pool membership, RNG state and
-  broadphase centers are implemented. GAS helpers are still Task 5.
-  Restore order: `spawnWithId` for non-pooled entities, `readPools`
-  (constructs pooled entities and discards prewarmed free ones; free
-  entities get `onDespawn` again), `readSoAStores`, `readEntityIds`,
-  `readRandom`, `readBroadphase`. A zero-row SoA section registers a
+  the entity id counter, `spawnWithId`, pool membership, RNG state,
+  broadphase centers and GAS state are implemented. Restore order:
+  `spawnWithId` for non-pooled entities, `readPools` (constructs pooled
+  entities and discards prewarmed free ones; free entities get `onDespawn`
+  again), `readSoAStores`, `readAbilities`, `readEntityIds`, `readRandom`,
+  `readBroadphase`. A zero-row SoA section registers a
   missing empty store; a saved id with no row still throws, and a row
   the section omitted throws `extra entity`. Restore broadphase with
   `readBroadphase` (pre-separation centers, including radius and each
@@ -76,16 +76,28 @@ snapshot intervals, …), `botPlayerId` / `isBotPlayerId`, `rejectCommand` /
 keys), `encodeSnapshot` / `decodeSnapshot` (header, body, and optional bot
 state and input checkpoint outside the digest), `digestBytes` (xxhash64,
 seed 0), `canonicalConfigBytes` / `configHash`,
-`checkSnapshotCompatibility`, and `StateHelpers` except
-`writeAbilities` / `readAbilities`. There is no `f32` or `f64` writer.
+`checkSnapshotCompatibility`, and `StateHelpers` including
+`writeAbilities` / `readAbilities` (`section('gas', 1)`). There is no
+`f32` or `f64` writer.
+
+`writeAbilities` stores the per-world runtime from `exportRuntimeState`
+(instance-id counter, activation queue, `currentTick`, resolved
+activations). The cue buffer is not included. Each entity that has a GAS
+component is written in ascending id order, with flags so lazy components
+are created on read. Attribute `base` / `current` are raw `i64`s and
+`dirty` is a `u8`. The effect queue and `pendingAdd` keep array order.
+Granted abilities, tags, ad-hoc tags and effect-grant counts keep
+insertion order. `setByCaller` keys are sorted; a value must be a safe
+integer, bigint, string, boolean, or FixedPoint, and any other type
+throws. Cooldowns are effects and tags. There is no `stacks` field.
 
 `readPools` calls `PoolManager.createForRestore` for each owned id, then
 `restore`. Prewarmed free entities from `world.start()` are discarded
 first. Free-list entities receive `onDespawn` again on the restored
 instance; keep that hook idempotent. `readEntityIds` then installs the
 saved counter. Pool type keys stay in registration order. RNG state is
-`getState` / `setState` (four int32 words). Physics and math are peer
-dependencies; physics is optional.
+`getState` / `setState` (four int32 words). Abilities is a dependency and
+a peer. Physics and math are peers; physics is optional.
 
 ## Design docs
 
