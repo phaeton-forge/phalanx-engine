@@ -31,6 +31,7 @@ import {
 import { digestBytes } from '../../src/state/digest.js';
 
 const ENTITY_COUNT = 20;
+const LARGE_EFFECT_COUNT = 200_000;
 const WARMUP_TICKS = 30;
 const CONTINUATION_TICKS = 100;
 
@@ -798,6 +799,63 @@ describe('ability state helpers', () => {
     ).toHaveLength(1);
   });
 
+  it('applies a large effect list without spreading into splice', () => {
+    const source = makeWorld('effects');
+    const entity = new Entity();
+    entity.addComponent(source.abilities.initComponent({}));
+    source.world.entityManager.addEntity(entity);
+    const effects = getActiveEffectsComponent(entity);
+    if (effects === undefined) throw new Error('missing effects');
+    const instance = {
+      instanceId: 0,
+      defId: 'Effect.Burn',
+      sourceEntityId: entity.id,
+      remainingTicks: 3,
+      nextPeriodTick: 1,
+      enteredOnTick: 2,
+      capturedMagnitudes: null,
+    };
+    const pending = {
+      defId: 'Effect.Burn',
+      sourceEntityId: entity.id,
+      setByCaller: null,
+    };
+    for (let index = 0; index < LARGE_EFFECT_COUNT; index += 1) {
+      effects.queue.push(instance);
+      effects.pendingAdd.push(pending);
+    }
+
+    const bytes = saveGas(source.world);
+    const restored = makeWorld('effects');
+    const shell = new Entity();
+    shell.addComponent(restored.abilities.initComponent({}));
+    restored.world.entityManager.addEntity(shell);
+    const restoredEffects = getActiveEffectsComponent(shell);
+    if (restoredEffects === undefined) throw new Error('missing effects');
+    const queue = restoredEffects.queue;
+    const pendingAdd = restoredEffects.pendingAdd;
+
+    expect(() => {
+      loadGas(bytes, restored.world);
+    }).not.toThrow();
+    expect(restoredEffects.queue).toBe(queue);
+    expect(restoredEffects.pendingAdd).toBe(pendingAdd);
+    expect(restoredEffects.queue).toHaveLength(LARGE_EFFECT_COUNT);
+    expect(restoredEffects.pendingAdd).toHaveLength(LARGE_EFFECT_COUNT);
+    const lastEffect = restoredEffects.queue[LARGE_EFFECT_COUNT - 1];
+    const lastPending = restoredEffects.pendingAdd[LARGE_EFFECT_COUNT - 1];
+    if (lastEffect === undefined || lastPending === undefined) {
+      throw new Error('missing restored effect');
+    }
+    expect(lastEffect.remainingTicks).toBe(3);
+    expect(lastEffect.nextPeriodTick).toBe(1);
+    expect(lastEffect.enteredOnTick).toBe(2);
+    expect(lastEffect.capturedMagnitudes).toBeNull();
+    expect(lastPending.defId).toBe('Effect.Burn');
+    expect(lastPending.setByCaller).toBeNull();
+    expect(restoredEffects.queue[0]?.defId).toBe('Effect.Burn');
+  }, 60_000);
+
   it('clears pooled GAS on despawn and continues past respawn', () => {
     const source = pooledGasWorld();
     const pools = source.world.pools;
@@ -874,7 +932,67 @@ describe('ability state helpers', () => {
     if (respawned === undefined) throw new Error('missing respawned entity');
     expect(getActiveEffectsComponent(respawned)?.queue).toHaveLength(1);
   });
+
+  it('matches digests when a bare pooled entity gained GAS components lazily', () => {
+    const source = barePoolWorld();
+    const pools = source.world.pools;
+    if (pools === null) throw new Error('expected pools');
+    const bare = pools.spawn<BareMinion>('bare');
+    expect(bare.hasComponent(AbilitiesComponentType.ActiveEffects)).toBe(false);
+    expect(bare.hasComponent(AbilitiesComponentType.GameplayTags)).toBe(false);
+
+    source.abilities.addTag(bare.id, 'Team.Red');
+    source.abilities.applyEffect(bare.id, 'Effect.Burn', bare.id);
+    source.world.processAllTicks(0);
+    expect(bare.hasComponent(AbilitiesComponentType.ActiveEffects)).toBe(true);
+    expect(bare.hasComponent(AbilitiesComponentType.GameplayTags)).toBe(true);
+    expect(getActiveEffectsComponent(bare)?.queue).toHaveLength(1);
+    expect(getGameplayTagsComponent(bare)?.adHocTags.has('Team.Red')).toBe(
+      true
+    );
+
+    pools.despawn(bare);
+    expect(bare.hasComponent(AbilitiesComponentType.ActiveEffects)).toBe(false);
+    expect(bare.hasComponent(AbilitiesComponentType.GameplayTags)).toBe(false);
+
+    const bytes = saveMatch(source.world);
+    const restored = barePoolWorld();
+    loadMatch(bytes, restored.world);
+    expect(saveMatch(restored.world)).toEqual(bytes);
+
+    const again = pools.spawn<BareMinion>('bare');
+    const restoredPools = restored.world.pools;
+    if (restoredPools === null) throw new Error('expected pools');
+    const restoredAgain = restoredPools.spawn<BareMinion>('bare');
+    expect(again.id).toBe(bare.id);
+    expect(restoredAgain.id).toBe(bare.id);
+    expect(again.hasComponent(AbilitiesComponentType.ActiveEffects)).toBe(
+      false
+    );
+    expect(again.hasComponent(AbilitiesComponentType.GameplayTags)).toBe(false);
+    expect(
+      restoredAgain.hasComponent(AbilitiesComponentType.ActiveEffects)
+    ).toBe(false);
+    expect(
+      restoredAgain.hasComponent(AbilitiesComponentType.GameplayTags)
+    ).toBe(false);
+
+    expect(digestBytes(saveMatch(restored.world))).toBe(
+      digestBytes(saveMatch(source.world))
+    );
+    source.world.processAllTicks(1);
+    restored.world.processAllTicks(1);
+    expect(digestBytes(saveMatch(restored.world))).toBe(
+      digestBytes(saveMatch(source.world))
+    );
+  });
 });
+
+class BareMinion extends Entity implements IPoolableEntity<void> {
+  public onSpawn(_args: void): void {}
+
+  public onDespawn(): void {}
+}
 
 class PooledMinion
   extends Entity
@@ -909,6 +1027,24 @@ class PooledMinion
   }
 
   public onDespawn(): void {}
+}
+
+function barePoolWorld(): { world: GameWorld; abilities: AbilitySystem } {
+  const world = new GameWorld({
+    pooling: {
+      entityTypes: {
+        bare: {
+          factory: () => new BareMinion(),
+        },
+      },
+    },
+  });
+  const abilities = createAbilitySystem(world, {
+    definitions,
+    pipeline: 'full',
+  });
+  world.registerSystems([...abilities.tickSystems], []);
+  return { world, abilities };
 }
 
 function pooledGasWorld(): { world: GameWorld; abilities: AbilitySystem } {

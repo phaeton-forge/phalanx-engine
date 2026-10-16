@@ -138,7 +138,8 @@ function readPoolRecords(r: StateReader): PoolRecord[] {
  * Those hooks already ran when the original entity was prewarmed or
  * despawned. They run again on the restored instance. Keep them
  * idempotent. The ability return-to-pool hook clears the effect queue,
- * pending adds, tags, and grants.
+ * pending adds, tags, and grants, and drops GAS components that were not
+ * part of the factory shell.
  *
  * `readEntityIds` still runs later and installs the saved high-water mark.
  * Prewarm and these allocations both move the counter; the saved mark wins.

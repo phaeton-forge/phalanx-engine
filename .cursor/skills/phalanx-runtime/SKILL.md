@@ -87,11 +87,15 @@ Call these inside the game's own `GameState`, in this order on restore:
   `currentTick`, resolved activations). The cue buffer is omitted.
   Registered entities that have a GAS component are written ascending by
   id, with a flag for which components exist so lazy ones are created on
-  read. Free-list entities are omitted. `createAbilitySystem` clears their
-  effect queue, pending adds, tags, ad-hoc tags, and grants when they
-  return to the pool, and `readPools` runs that hook again. Attribute
-  values and the equipped ability set stay on the component; `onSpawn`
-  must rewrite them. Effect queue and `pendingAdd` stay in array order.
+  read. Free-list entities are omitted. `createAbilitySystem` clears
+  effect queue, pending adds, tags, ad-hoc tags, and grants on the factory
+  shell when an entity returns to the pool, removes GAS components
+  attached after that shell, and `readPools` runs that hook again.
+  Attribute values and the equipped ability set stay on a shell
+  component; `onSpawn` must rewrite them. Effect queue and `pendingAdd`
+  stay in array order. `readAbilities` clears each destination array and
+  pushes entries one at a time so a large list keeps array identity and
+  does not hit the JavaScript argument limit.
   Ability sets, tags, ad-hoc tags and grant counts stay in insertion
   order. `setByCaller` keys are sorted; values are a safe integer, bigint,
   string, boolean, or FixedPoint. Anything else throws. Fixed-point

@@ -157,8 +157,10 @@ function componentFlags(entity: Entity): number {
 /**
  * Registered entities that carry a GAS component.
  *
- * Free-list entities are absent from the manager. Their queue, pending
- * adds, tags, and grants were cleared on the way back to the pool.
+ * Free-list entities are absent from the manager. Shell components had
+ * their queue, pending adds, tags, and grants cleared on the way back to
+ * the pool, and GAS components attached after the factory shell were
+ * removed.
  */
 function gasEntities(world: GameWorld): Entity[] {
   const found: Entity[] = [];
@@ -641,8 +643,18 @@ function applyEffects(
   effects: ActiveEffectsComponent,
   parsed: ParsedEffects
 ): void {
-  effects.queue.splice(0, effects.queue.length, ...parsed.queue);
-  effects.pendingAdd.splice(0, effects.pendingAdd.length, ...parsed.pendingAdd);
+  // Keep the existing arrays. Spreading either list into `splice` throws
+  // once the list exceeds the engine argument limit.
+  effects.queue.length = 0;
+  for (let index = 0; index < parsed.queue.length; index += 1) {
+    const instance = parsed.queue[index];
+    if (instance !== undefined) effects.queue.push(instance);
+  }
+  effects.pendingAdd.length = 0;
+  for (let index = 0; index < parsed.pendingAdd.length; index += 1) {
+    const pending = parsed.pendingAdd[index];
+    if (pending !== undefined) effects.pendingAdd.push(pending);
+  }
 }
 
 function writeTags(w: StateWriter, tags: GameplayTagsComponent): void {

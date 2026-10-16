@@ -84,12 +84,17 @@ seed 0), `canonicalConfigBytes` / `configHash`,
 (instance-id counter, activation queue, `currentTick`, resolved
 activations). The cue buffer is not included. Each registered entity that
 has a GAS component is written in ascending id order, with flags so lazy
-components are created on read. Free-list entities are omitted: returning
-one to the pool clears its effect queue, pending adds, tags, ad-hoc tags,
-and effect-grant counts (`releasePooledAbilityState`). Attribute values
-and the equipped ability set stay on the component, so `onSpawn` must
-rewrite them for the next life. Attribute `base` / `current` are raw
-`i64`s and `dirty` is a `u8`. Fixed-point payloads (`providedTarget`,
+components are created on read. Free-list entities are omitted.
+`releasePooledAbilityState` clears the effect queue, pending adds, tags,
+ad-hoc tags, and effect-grant counts on factory-shell components, and
+removes GAS components that were attached after that shell (a bare pooled
+entity that gained `ActiveEffects` or `GameplayTags` during its life is
+dormant without them). Attribute values and the equipped ability set stay
+on a shell component, so `onSpawn` must rewrite them for the next life.
+`readAbilities` refills `queue` and `pendingAdd` by clearing each array
+and appending entries one at a time, so a large list does not hit the
+JavaScript argument limit and the arrays keep their identity. Attribute
+`base` / `current` are raw `i64`s and `dirty` is a `u8`. Fixed-point payloads (`providedTarget`,
 `capturedMagnitudes`, `setByCaller`) store raw `base` and `precision` as
 `i64`, the same encoding as broadphase centers. The effect queue and
 `pendingAdd` keep array order. Granted abilities, tags, ad-hoc tags and

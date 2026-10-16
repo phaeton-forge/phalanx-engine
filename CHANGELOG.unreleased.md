@@ -86,8 +86,13 @@ Entries collected per package until the synchronized 0.3.0 release
   the section before mutating: an unknown ability id or effect def id
   throws with the entity id, and the instance-id counter must be `>=`
   every queued effect instance id (pending adds have none). A failed read
-  leaves the world unchanged. Free-list entities are omitted because pool
-  despawn clears their queue, pending adds, tags, and grants.
+  leaves the world unchanged. Free-list entities are omitted. Pool
+  despawn clears queue, pending adds, tags, and grants on the factory
+  shell and removes GAS components attached after that shell, so a
+  restored bare entity matches one that never snapshotted.
+  `readAbilities` refills `queue` and `pendingAdd` by clearing each array
+  and pushing entries one at a time. A list of hundreds of thousands of
+  effects does not throw, and the destination arrays keep their identity.
 
 ## @phalanx-engine/ecs
 
@@ -161,12 +166,16 @@ Entries collected per package until the synchronized 0.3.0 release
   and `isEffectRegistered`.
 - Pooled entities lose transient GAS state on despawn.
   `releasePooledAbilityState` clears the effect queue, `pendingAdd`, tags,
-  ad-hoc tags, and effect-grant counts. `createAbilitySystem` registers it
-  as a pool return hook. Attribute values and the equipped ability set
-  stay on the component; `onSpawn` must rewrite tags and attributes the
-  next life needs. The hook also runs on the factory's initial dormant
-  pass, so constructor-seeded tags and pending effects do not survive
-  until `onSpawn`.
+  ad-hoc tags, and effect-grant counts on factory-shell components, and
+  removes `AbilitySystem`, `Attributes`, `ActiveEffects`, and
+  `GameplayTags` components attached after that shell was recorded. A bare
+  pooled entity that gained effects or tags during its life is dormant
+  without those components, matching the shell `readPools` rebuilds.
+  `createAbilitySystem` registers the hook. Attribute values and the
+  equipped ability set stay on a shell component; `onSpawn` must rewrite
+  tags and attributes the next life needs. The hook also runs on the
+  factory's initial dormant pass, so constructor-seeded tags and pending
+  effects do not survive until `onSpawn`.
 - Fixed-point fields on a restored `providedTarget` are recognized by
   shape (`base` and `precision` bigints), not by `instanceof FixedPoint`,
   then reconstructed as a local `FixedPoint` so arithmetic methods exist.
