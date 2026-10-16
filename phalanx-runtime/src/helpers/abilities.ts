@@ -66,10 +66,15 @@ import {
  *
  * Destroyed entities are omitted, matching ability-system queries.
  * Free-list entities are not registered, so they are omitted too. Returning
- * an entity to the pool clears its effect queue, pending adds, tags, and
- * grants (`releasePooledAbilityState`), which is why that omission does
- * not drop simulation state. Attribute values and the equipped ability
- * set stay on the component; `onSpawn` rewrites the next life.
+ * an entity to the pool clears its effect queue and `pendingAdd`, then
+ * copies the factory shell back (`releasePooledAbilityState`): attribute
+ * `base` / `current` / `dirty`, the equipped ability set, and ad-hoc tags
+ * plus effect grants from construction (`initComponent` tags included).
+ * Components attached after that shell are removed. Initial `pendingAdd`
+ * effects are not part of the shell, so `onSpawn` must re-seed those.
+ * A respawn whose `onSpawn` does not rewrite attributes still matches a
+ * restored copy, because restore builds a fresh factory instance and runs
+ * the same hook.
  *
  * `readAbilities` parses and validates the whole section before it mutates
  * the world. An unknown ability id or effect def id throws with the entity

@@ -13,6 +13,7 @@ import {
   AttributesComponent,
   GameplayTagsComponent,
   createAbilitySystem,
+  defineAbility,
   defineAbilitySystem,
   defineAttribute,
   defineEffect,
@@ -41,7 +42,15 @@ const definitions = defineAbilitySystem({
       tagsGranted: ['State.Debuff.Burn'],
     }),
   ],
+  abilities: [
+    defineAbility({
+      id: 'Ability.Hold',
+      target: { kind: 'Self' },
+    }),
+  ],
 });
+
+const HEALTH_RAW = FP.ToRaw(FP.FromInt(100));
 
 class Minion extends Entity implements IPoolableEntity {
   public constructor(abilities: AbilitySystem) {
@@ -50,6 +59,7 @@ class Minion extends Entity implements IPoolableEntity {
       abilities.initComponent({
         tags: ['Team.Red'],
         effects: ['Effect.Burn'],
+        abilities: ['Ability.Hold'],
       })
     );
   }
@@ -65,7 +75,7 @@ describe('pooled GAS reset', () => {
     resetEntityIdCounter();
   });
 
-  it('clears queue, pending adds, tags, and grants when the entity returns to the pool', () => {
+  it('clears transient effects and restores the factory shell', () => {
     const holder: { abilities?: AbilitySystem } = {};
     const world = new GameWorld({
       pooling: {
@@ -92,9 +102,11 @@ describe('pooled GAS reset', () => {
     const component = getAbilitySystemComponent(minion);
     if (component === undefined) throw new Error('missing ability component');
     expect(component.activeEffects.pendingAdd).toHaveLength(0);
-    expect(component.tags.tags.has('Team.Red')).toBe(false);
+    expect(component.tags.tags.has('Team.Red')).toBe(true);
+    expect(component.abilities.has('Ability.Hold')).toBe(true);
+    expect(component.attributes.current[0]).toBe(HEALTH_RAW);
 
-    abilities.addTag(minion.id, 'Team.Red');
+    abilities.addTag(minion.id, 'Team.Blue');
     abilities.applyEffect(minion.id, 'Effect.Burn', minion.id);
     world.processAllTicks(0);
     expect(getActiveEffectsComponent(minion)?.queue).toHaveLength(1);
@@ -105,13 +117,22 @@ describe('pooled GAS reset', () => {
     ).toBe(1);
     abilities.applyEffect(minion.id, 'Effect.Burn', minion.id);
     expect(getActiveEffectsComponent(minion)?.pendingAdd).toHaveLength(1);
+    component.abilities.delete('Ability.Hold');
+    component.attributes.base[0] = 1n;
+    component.attributes.current[0] = 1n;
 
     pools.despawn(minion);
     expect(getActiveEffectsComponent(minion)?.queue).toHaveLength(0);
     expect(getActiveEffectsComponent(minion)?.pendingAdd).toHaveLength(0);
-    expect(getGameplayTagsComponent(minion)?.tags.size).toBe(0);
-    expect(getGameplayTagsComponent(minion)?.adHocTags.size).toBe(0);
+    expect(getGameplayTagsComponent(minion)?.tags.has('Team.Red')).toBe(true);
+    expect(getGameplayTagsComponent(minion)?.tags.has('Team.Blue')).toBe(false);
+    expect(getGameplayTagsComponent(minion)?.adHocTags.has('Team.Red')).toBe(
+      true
+    );
     expect(getGameplayTagsComponent(minion)?.effectGrantCounts.size).toBe(0);
+    expect(component.abilities.has('Ability.Hold')).toBe(true);
+    expect(component.attributes.base[0]).toBe(HEALTH_RAW);
+    expect(component.attributes.current[0]).toBe(HEALTH_RAW);
 
     releasePooledAbilityState(minion);
     expect(getActiveEffectsComponent(minion)?.queue).toHaveLength(0);
@@ -199,7 +220,8 @@ describe('pooled GAS reset', () => {
     expect(getGameplayTagsComponent(shell)?.tags.size).toBe(0);
     expect(getGameplayTagsComponent(shell)?.adHocTags.size).toBe(0);
     expect(getGameplayTagsComponent(shell)?.effectGrantCounts.size).toBe(0);
-    expect(attributes.base[0]).toBe(5n);
+    expect(attributes.base[0]).toBe(0n);
+    expect(attributes.current[0]).toBe(0n);
   });
 });
 

@@ -268,15 +268,16 @@ Pooling is **engine-driven**. Game code calls exactly two APIs:
   - despawn: `removeEntity()` → `entity.onDespawn()` → `component.onDespawn()`
     → return-to-pool hooks → release
 - `createAbilitySystem` registers a return-to-pool hook
-  (`releasePooledAbilityState`). The first call records the factory shell.
-  Later calls clear the effect queue, `pendingAdd`, tags, ad-hoc tags, and
-  effect-grant counts on those components, and remove GAS components
-  attached after the shell (`applyEffect`, `addTag`, standalone
-  attributes). The hook is idempotent and runs again when a restored
-  free-list entity is parked. Attribute values and the equipped ability
-  set stay on a shell component. `onSpawn` must rewrite tags and any
-  attribute values the next life needs: a free-list entity is not in the
-  GAS snapshot.
+  (`releasePooledAbilityState`). The first call records the factory shell
+  (attribute `base` / `current` / `dirty`, the equipped ability set, and
+  ad-hoc tags plus effect grants, including `initComponent` tags). Later
+  calls clear the effect queue and `pendingAdd`, copy that shell back, and
+  remove GAS components attached after it (`applyEffect`, `addTag`,
+  standalone attributes). The hook is idempotent and runs again when a
+  restored free-list entity is parked. Initial `pendingAdd` effects are
+  not in the shell, so `onSpawn` must re-seed those. A free-list entity is
+  not in the GAS snapshot; the shell restore is what keeps a respawn whose
+  `onSpawn` does not rewrite attributes identical to a restored copy.
 - `onSpawn(args)`: typed setter assignments only, **zero allocations**.
   `onDespawn()`: game-level teardown only, **zero allocations**, and **must be
   idempotent**.

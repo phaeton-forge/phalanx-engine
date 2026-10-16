@@ -1,6 +1,6 @@
 ---
 name: phalanx-runtime
-description: Describe a Phalanx game as one GameDefinition and run it with MatchRunner from @phalanx-engine/runtime (engine 0.3). Use when defining games with defineGame, implementing the GameState save/restore contract, writing BotPolicy bots, choosing simMode 'client' vs 'server', snapshots, replays, reconnect, or Transport/LocalTransport. Canonical state bytes and StateHelpers, including GAS, are implemented; later tasks are still a skeleton.
+description: Describe a Phalanx game as one GameDefinition and run it with MatchRunner from @phalanx-engine/runtime (engine 0.3). Use when defining games with defineGame, implementing the GameState save/restore contract, writing BotPolicy bots, choosing simMode 'client' vs 'server', snapshots, replays, reconnect, or Transport/LocalTransport. Canonical state bytes, StateHelpers (including GAS), MatchRunner, LocalTransport and the bot host are implemented. MatchRunner.join is still Task 12.
 metadata:
   author: phaeton2040-AI
   version: '0.1'
@@ -8,15 +8,17 @@ metadata:
 
 # Phalanx Runtime Skill
 
-> **Status: Tasks 1–5 implemented; later tasks are still a skeleton.**
+> **Status: Tasks 1–6 implemented. `MatchRunner.join` is still Task 12.**
 > Task 3 is engine hooks (ecs id counter, SoA context, pools, math RNG
 > state, ability runtime export, broadphase centers). Task 4 is
 > `StateHelpers` except GAS. Task 5 is `writeAbilities` / `readAbilities`.
-> `BinaryStateWriter` / `BinaryStateReader`, `encodeSnapshot` /
-> `decodeSnapshot`, `digestBytes`, `canonicalConfigBytes`, `configHash` and
-> `checkSnapshotCompatibility` are live. Later members throw
-> `NotImplementedError` with `not implemented: <member> (Task NN)`. Check
-> `docs/design/runtime-api.md` § Task map before relying on a member.
+> Task 6 is `MatchRunner` (not `join`), `CommandLog`, `WorldScope`,
+> `BotHost` and in-memory `LocalTransport`. `BinaryStateWriter` /
+> `BinaryStateReader`, `encodeSnapshot` / `decodeSnapshot`, `digestBytes`,
+> `canonicalConfigBytes`, `configHash` and `checkSnapshotCompatibility` are
+> live. Later members throw `NotImplementedError` with
+> `not implemented: <member> (Task NN)`. Check `docs/design/runtime-api.md`
+> § Task map before relying on a member.
 
 ## When to Use This Skill
 
@@ -87,12 +89,15 @@ Call these inside the game's own `GameState`, in this order on restore:
   `currentTick`, resolved activations). The cue buffer is omitted.
   Registered entities that have a GAS component are written ascending by
   id, with a flag for which components exist so lazy ones are created on
-  read. Free-list entities are omitted. `createAbilitySystem` clears
-  effect queue, pending adds, tags, ad-hoc tags, and grants on the factory
-  shell when an entity returns to the pool, removes GAS components
-  attached after that shell, and `readPools` runs that hook again.
-  Attribute values and the equipped ability set stay on a shell
-  component; `onSpawn` must rewrite them. Effect queue and `pendingAdd`
+  read. Free-list entities are omitted. `createAbilitySystem` records the
+  factory shell on the first pool return (attribute `base` / `current` /
+  `dirty`, the equipped ability set, ad-hoc tags and effect grants,
+  including `initComponent` tags). Later returns clear the effect queue
+  and `pendingAdd`, copy that shell back, and remove GAS components
+  attached after it. `readPools` runs the hook again. Initial `pendingAdd`
+  effects are not in the shell, so `onSpawn` must re-seed those. A respawn
+  whose `onSpawn` does not rewrite attributes matches a restored copy.
+  Effect queue and `pendingAdd`
   stay in array order. `readAbilities` clears each destination array and
   pushes entries one at a time so a large list keeps array identity and
   does not hit the JavaScript argument limit.
@@ -114,6 +119,57 @@ Call these inside the game's own `GameState`, in this order on restore:
   `lastX` / `lastZ` via `FP.ToFloat`. Do not read those fields in
   simulation. `rebuildPhysics` rebuilds from current transforms and is
   valid only before the first resolving step.
+
+## Running a match
+
+```ts
+const transport = new LocalTransport({ tickRate: game.tickRate });
+const runner = new MatchRunner(game, config, transport, { side: 'client' });
+runner.start();
+runner.submit({ type: 'move', dx: 1n }); // executes at tick + inputDelayTicks
+```
+
+Tests and replays use `LocalTransport.manual()` and `step(n)`.
+`fastForward(log, { budgetMs, throughTick })` replays through `throughTick`
+inclusive, including empty ticks. `MatchRunner.fromReplay` never calls
+`decide`. Drive it only with `fastForward(replay.log, { throughTick:
+replay.lastTick })`. `start()` throws on a replay runner. Wrap nothing
+yourself: the runner enters the world through `WorldScope`. Two runners
+in one process keep separate entity ids.
+
+Validation runs inside the tick, after `(slot, seq)` sort. A malformed
+envelope is logged and rejected (`'malformed envelope'`); it does not
+throw. A throw from `decode` or `validate` is a rejection too. A throw
+from the tick calls `onError(error, tick)`, sets `status` to `'failed'`,
+stops the transport, and does not advance `tick`. A bot `decide` that
+throws is logged and that slot submits nothing; the match continues, and
+policy state may already be partial. The first non-null outcome is
+emitted once, then `status` is `'ended'` and the transport stops.
+`status` is `'ready' | 'running' | 'ended' | 'failed' | 'disposed'`.
+Live command payloads are canonicalized (UTF-16 key order, finite JSON
+numbers) so a restored log matches the live log. `canonicalConfigBytes`
+still accepts only safe integers. `toReplay()` throws when the command
+log is incomplete (restore onto a runner that did not record that
+history, or truncation). Do not add a base snapshot to the replay.
+`outcome` and digests publish after the completed tick and after hosted
+`decide`. Pause requires `requestPause` / `requestResume` on the
+transport. Catch-up applies buffered batches that land after
+`throughTick`, in order, and drops the ones the replay already covered.
+An already-started `restore` flushes the checkpoint after the transport
+seek. `restore` resets the match RNG to `config.seed` before
+`createWorld`; `GameState.restore` then installs the saved generator. A
+paused transport pauses the rebuilt world. `WorldScope` tracks the
+active scope: entering a different scope saves that scope's live
+registers, and only an immediate re-entry skips install. `LocalTransport`
+rejects a submit more than `maxAheadTicks` past `nextTick` (default 8).
+Its timer waits
+`tickDuration - accumulator`. A snapshot taken
+after `decide` stores bot bytes and the input checkpoint outside the
+digest. `restore` applies bot state and the checkpoint only for slots
+this runner hosts or submits, so a client ignores a server snapshot's
+bot state and checkpoint. `createWorld` must not spawn entities when
+`purpose` is `'restore'`; `GameState.restore` recreates them by id. A
+spawn during `'restore'` throws `spawnWithId: entity N already exists`.
 
 ## Canonical state bytes
 
@@ -180,4 +236,5 @@ class TinyState implements GameState {
 
 - `docs/design/runtime-api.md`: all contracts, review findings, task map.
 - `docs/design/server-sim.md`, `docs/design/reconnect.md`.
-- `phalanx-runtime/tests/fixtures/tinyGame.ts`: a type-checked example.
+- `phalanx-runtime/tests/fixtures/tinyGame.ts`: the Task 6 fixture
+  (`spawn` / `move`, walker bot, SoA position and hp).

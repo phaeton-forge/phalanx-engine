@@ -1,10 +1,11 @@
 /**
  * @phalanx-engine/runtime — isomorphic match runtime (no DOM, no sockets).
  *
- * Status: Tasks 1–5 are implemented (contracts, canonical state bytes,
- * snapshot header, digest, version policy, and `StateHelpers` including GAS).
- * Later tasks still throw `NotImplementedError` naming the task that
- * implements them. Design: docs/design/runtime-api.md.
+ * Status: Tasks 1–6 are implemented (contracts, canonical state bytes,
+ * snapshot header, digest, version policy, `StateHelpers` including GAS,
+ * `MatchRunner`, `LocalTransport`, and the bot host). `MatchRunner.join`
+ * still throws `NotImplementedError` for Task 12. Design:
+ * docs/design/runtime-api.md.
  *
  * @packageDocumentation
  */

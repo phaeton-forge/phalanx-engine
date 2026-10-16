@@ -1,10 +1,11 @@
 # @phalanx-engine/runtime
 
-> **Status: Tasks 1–5 implemented.** Contracts and types are final for
+> **Status: Tasks 1–6 implemented.** Contracts and types are final for
 > engine 0.3. `StateHelpers` covers SoA stores, entity ids, pools, RNG,
-> broadphase centers and GAS (abilities). The match runner still throws
-> `not implemented: <member> (Task NN)`. The package is `private` until the
-> synchronized 0.3.0 release.
+> broadphase centers and GAS (abilities). `MatchRunner` drives a game from
+> any `Transport`, with an in-memory `LocalTransport`, `CommandLog`,
+> `WorldScope` and `BotHost`. `MatchRunner.join` is still Task 12. The
+> package is `private` until the synchronized 0.3.0 release.
 
 Isomorphic match runtime for Phalanx games (no DOM, no sockets). A game
 describes itself as one `GameDefinition`; the engine's `MatchRunner` drives
@@ -76,21 +77,78 @@ snapshot intervals, …), `botPlayerId` / `isBotPlayerId`, `rejectCommand` /
 keys), `encodeSnapshot` / `decodeSnapshot` (header, body, and optional bot
 state and input checkpoint outside the digest), `digestBytes` (xxhash64,
 seed 0), `canonicalConfigBytes` / `configHash`,
-`checkSnapshotCompatibility`, and `StateHelpers` including
-`writeAbilities` / `readAbilities` (`section('gas', 1)`). There is no
-`f32` or `f64` writer.
+`checkSnapshotCompatibility`, `StateHelpers` including
+`writeAbilities` / `readAbilities` (`section('gas', 1)`), and the offline
+runner: `MatchRunner`, `CommandLog`, `WorldScope`, `BotHost` and
+`LocalTransport` (timer or `LocalTransport.manual()` + `step`). There is
+no `f32` or `f64` writer.
+
+`MatchRunner` emits each tick on a runner-owned `ITickFrameProvider`, so
+`createWorld` must call `world.start()`. Commands are sorted by `(slot, seq)`
+and validated inside the tick; rejected entries stay in the log.
+`snapshot` runs after hosted `decide` and stores bot state plus the input
+checkpoint outside the digest. `restore` rebuilds with
+`purpose: 'restore'`, checks the round trip, then applies bot state and
+the checkpoint only for slots this runner hosts or submits. `createWorld`
+must not spawn entities when `purpose` is `'restore'`. `GameState.restore`
+recreates them by id. A spawn during `'restore'` throws
+`spawnWithId: entity N already exists`. A client
+restoring a server snapshot ignores both. `fastForward(entries, { budgetMs,
+throughTick })` is inclusive and runs empty ticks. `fromReplay` never
+calls `decide`. Drive that runner only with
+`fastForward(replay.log, { throughTick: replay.lastTick })`; `start()`
+throws. `WorldScope.run` isolates the entity id counter and the
+SoA entity manager so two matches can share a process.
+
+A malformed envelope is logged and rejected with `'malformed envelope'`
+instead of throwing. Exceptions from `decode` and `validate` become
+rejections too (`error.message`, or `'decode failed'` / `'validate failed'`).
+A throw from the tick itself calls `onError(error, tick)`, sets `status`
+to `'failed'`, stops the transport, and leaves `tick` on the last
+completed tick. The error is rethrown so a manual `step` still surfaces
+it. A bot `decide` that throws is isolated: it is logged with
+`console.error`, that slot submits nothing, and the match continues.
+Policy state may already be partial. The first non-null `outcome` is
+emitted once; `status` becomes `'ended'` and the transport stops.
+`status` is `'ready' | 'running' | 'ended' | 'failed' | 'disposed'`.
+Live log payloads are stored with canonical object-key order so they
+match a checkpoint restored into another runner. The payload codec
+round-trips every finite JSON number. `canonicalConfigBytes` still
+accepts only safe integers. `toReplay()` throws when the command log
+is incomplete: a restore onto a runner that did not record ticks `0..N`,
+or a log truncation. The replay format has no base snapshot.
+`outcome` and the digest are published after the tick has completed
+and after hosted `decide`. A transport without `requestPause` /
+`requestResume` cannot pause the world. Catch-up drops buffered
+batches covered by the replayed range and then runs the rest in order.
+An already-started runner flushes its checkpoint after `restore`.
+`restore` resets the match RNG to `config.seed` before `createWorld`,
+then `GameState.restore` installs the saved generator, and a paused
+transport pauses the rebuilt world. `WorldScope` saves the active
+scope's registers before entering another scope.
+
+`LocalTransport` rejects `submit` when
+`targetTick > nextTick + maxAheadTicks` (default 8) so the pending map
+stays bounded. Each prepared tick seeks a local transport to `tick + 1`
+first, which is where a live clock already sits, so a catch-up submit
+uses the same horizon. The timer waits `tickDuration - accumulator`
+instead of spinning on a zero delay. A throw from the timer handler
+stops the clock and does not reschedule.
 
 `writeAbilities` stores the per-world runtime from `exportRuntimeState`
 (instance-id counter, activation queue, `currentTick`, resolved
 activations). The cue buffer is not included. Each registered entity that
 has a GAS component is written in ascending id order, with flags so lazy
 components are created on read. Free-list entities are omitted.
-`releasePooledAbilityState` clears the effect queue, pending adds, tags,
-ad-hoc tags, and effect-grant counts on factory-shell components, and
-removes GAS components that were attached after that shell (a bare pooled
-entity that gained `ActiveEffects` or `GameplayTags` during its life is
-dormant without them). Attribute values and the equipped ability set stay
-on a shell component, so `onSpawn` must rewrite them for the next life.
+`releasePooledAbilityState` records the factory shell on the first return
+(attribute `base` / `current` / `dirty`, the equipped ability set, and
+ad-hoc tags plus effect grants, including `initComponent` tags). Later
+returns clear the effect queue and `pendingAdd`, copy that shell back,
+and remove GAS components attached after it (a bare pooled entity that
+gained `ActiveEffects` or `GameplayTags` during its life is dormant
+without them). Initial `pendingAdd` effects are not in the shell, so
+`onSpawn` must re-seed those. A respawn whose `onSpawn` does not rewrite
+attributes matches a restored copy.
 `readAbilities` refills `queue` and `pendingAdd` by clearing each array
 and appending entries one at a time, so a large list does not hit the
 JavaScript argument limit and the arrays keep their identity. Attribute

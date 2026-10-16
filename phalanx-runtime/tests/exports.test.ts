@@ -161,10 +161,19 @@ describe('skeletons name their implementing task', () => {
   });
 
   it('Task 06: runner, log, bot host, scope, local transport', () => {
-    expectTask(() => new runtime.CommandLog(), 6);
-    expectTask(() => new runtime.WorldScope(), 6);
-    expectTask(() => new runtime.LocalTransport({ tickRate: 10 }), 6);
-    expectTask(() => runtime.LocalTransport.manual(), 6);
+    expect(new runtime.CommandLog().lastTick).toBe(-1);
+    const scope = new runtime.WorldScope();
+    expect(scope.run(() => 7)).toBe(7);
+    const transport = new runtime.LocalTransport({ tickRate: 10 });
+    expect(transport.kind).toBe('local');
+    expect(transport.isManual).toBe(false);
+    expect(transport.tickRate).toBe(10);
+    transport.dispose();
+    const manual = runtime.LocalTransport.manual();
+    expect(manual.isManual).toBe(true);
+    manual.dispose();
+    expect(runtime.BotHost).toBeTypeOf('function');
+    expect(runtime.MatchRunner).toBeTypeOf('function');
   });
 
   it('Task 12: network join', () => {
