@@ -23,6 +23,7 @@ import {
   TransformComponent,
   TransformSoASchema,
   PHYSICS_BODY_COMPONENT_TYPE,
+  type CollisionEvent,
 } from '@phalanx-engine/physics';
 import {
   bindWorldSingletons,
@@ -32,7 +33,6 @@ import {
   type BotPolicy,
   type BotSlotInfo,
   type CommandRejection,
-  type GameState,
   type JsonValue,
   type MatchConfigBase,
   type SimWorld,
@@ -41,9 +41,16 @@ import {
   type StateWriter,
   type WorldInitContext,
 } from '@phalanx-engine/runtime';
-import { StateHelpers } from '@phalanx-engine/runtime/advanced';
-import type { BotMemory, BotView, GameFacade, UnitView } from './GameFacade.js';
+import type {
+  BotMemory,
+  BotNote,
+  BotView,
+  GameFacade,
+  UnitView,
+} from './GameFacade.js';
 import { decideAggressive, decideDefensive } from '../game/skirmish/bots.js';
+import { poolPhase } from '../game/skirmish/pool.js';
+import { armySpawn, slotSpawn } from '../game/skirmish/roster.js';
 import {
   applySkirmish,
   rejectReason,
@@ -68,9 +75,12 @@ import {
 
 const HEALTH = FP.FromInt(100);
 const POWER = FP.FromInt(10);
+const HEALTH_RAW = FP.ToRaw(HEALTH);
+const POWER_RAW = FP.ToRaw(POWER);
+/** Banner cooldown tag. Kept here so despawn can drop it without allocating. */
+const BANNER_COOLDOWN = 'Cooldown.Ability.Banner';
 const RADIUS = FP.FromInt(1);
 const CELL = FP.FromInt(4);
-const ONE_RAW = FP.ToRaw(FP.FromInt(1));
 const SPEED = FP.FromInt(3);
 const NEG_SPEED = FP.FromInt(-3);
 const VEL: readonly (readonly [FixedPoint, FixedPoint])[] = [
@@ -204,7 +214,14 @@ export interface SkirmishSession {
   throwOnTick?: number;
   throwBot: boolean;
   poolProbe: boolean;
-  legacySpawnWithId: boolean;
+  dirtyAfterRestore: boolean;
+  breakBotRestore: boolean;
+  /** Sim tick on which a tick-inject fires. -1 until the interpreter arms it. */
+  injectTick: number;
+  /** Called after `MatchRunner.restore` returns, once the new world exists. */
+  poke?: () => void;
+  /** Bot memory keyed by peer id, then slot. The canonical dump reads this. */
+  bots: Record<string, Record<string, BotNote>>;
 }
 
 class UnitComponent extends SoAComponent<UnitFields> {
@@ -328,13 +345,53 @@ class PooledUnit extends Entity implements IPoolableEntity<UnitSpawn> {
     if (this.kind === KIND_ARCHER) this.ranged?.write(600000n);
   }
 
-  public onDespawn(): void {}
+  public onDespawn(): void {
+    // Restored live entities never took the prewarm dormant pass, so the
+    // first return-to-pool hook would snapshot whatever health and tags
+    // they died with. Reset to the factory shell first; the hook then
+    // records that, and a respawn matches a peer that never restored.
+    const gas = getAbilitySystemComponent(this);
+    if (gas === undefined) return;
+    const base = gas.attributes.base;
+    const current = gas.attributes.current;
+    const dirty = gas.attributes.dirty;
+    if (base.length > 0 && current.length > 0 && dirty.length > 0) {
+      base[0] = HEALTH_RAW;
+      current[0] = HEALTH_RAW;
+      dirty[0] = 0;
+    }
+    if (base.length > 1 && current.length > 1 && dirty.length > 1) {
+      base[1] = POWER_RAW;
+      current[1] = POWER_RAW;
+      dirty[1] = 0;
+    }
+    gas.activeEffects.queue.length = 0;
+    gas.activeEffects.pendingAdd.length = 0;
+    dropTag(gas.tags, TAG_COOLDOWN);
+    dropTag(gas.tags, TAG_BANNER);
+    dropTag(gas.tags, BANNER_COOLDOWN);
+    if (!gas.abilities.has(ABILITY_STRIKE)) gas.abilities.add(ABILITY_STRIKE);
+    if (!gas.abilities.has(ABILITY_BANNER)) gas.abilities.add(ABILITY_BANNER);
+  }
 
   public move(dir: number): void {
     const velocity = VEL[dir];
     if (velocity === undefined || this.body === null) return;
     this.body.setVelocity(velocity[0], FP._0, velocity[1]);
   }
+}
+
+function dropTag(
+  tags: {
+    readonly adHocTags: { delete(tag: string): void };
+    readonly effectGrantCounts: { delete(tag: string): void };
+    readonly tags: { delete(tag: string): void };
+  },
+  tag: string
+): void {
+  tags.adHocTags.delete(tag);
+  tags.effectGrantCounts.delete(tag);
+  tags.tags.delete(tag);
 }
 
 class AuraSystem extends GameSystem {
@@ -375,26 +432,35 @@ class SkirmishSim
   public readonly api: GameFacade;
   private readonly jobs: RespawnJob[];
   private readonly injectPeer: boolean;
-  private readonly injectAt: number;
   private readonly injectOnRestore: boolean;
   private injected = false;
   private freshSignature = '';
+  private poolCycles = 0;
   private readonly idScratch: number[] = [];
+  private readonly peerId: string;
+  private readonly contactKeys: string[] = [];
+  private contactTotal = 0;
 
   public constructor(
     public readonly world: GameWorld,
     public readonly random: IRandom,
     public readonly config: SkirmishConfig,
     private readonly abilities: AbilitySystem,
-    session: SkirmishSession
+    private readonly session: SkirmishSession
   ) {
+    this.peerId = session.currentPeer;
+    // Notes belong to this world's policies. A restored world must not
+    // keep the previous world's bot dump if restore forgets to rewrite it.
+    session.bots[this.peerId] = {};
     this.probe = session.poolProbe;
     this.throwOnTick = session.throwOnTick;
     this.injectPeer =
       session.inject !== undefined &&
       session.inject.peer === session.currentPeer;
-    this.injectAt = session.inject?.afterTick ?? -1;
     this.injectOnRestore = session.inject?.when === 'restore';
+    session.poke = () => {
+      this.pokeLive();
+    };
     this.jobs = [];
     for (let index = 0; index < JOB_SLOTS; index += 1) {
       this.jobs.push({
@@ -454,7 +520,53 @@ class SkirmishSim
 
   public bodiesTouching(a: number, b: number): boolean {
     if (!this.hasBody(a) || !this.hasBody(b)) return false;
-    return this.near(a, b, 200000n);
+    const lo = a < b ? a : b;
+    const hi = a < b ? b : a;
+    const key = `${String(lo)}:${String(hi)}`;
+    for (let index = 0; index < this.contactKeys.length; index += 1) {
+      if (this.contactKeys[index] === key) return true;
+    }
+    return false;
+  }
+
+  public clearContacts(): void {
+    this.contactKeys.length = 0;
+  }
+
+  /** Test probe: leave live SoA and match RNG different from the snapshot. */
+  public pokeLive(): void {
+    if (!this.session.dirtyAfterRestore) return;
+    const store = this.world.entityManager.getSoAStore(UnitDef.schema);
+    if (store !== undefined) {
+      let first: number | undefined;
+      for (const id of store.entityIds()) {
+        first = id;
+        break;
+      }
+      if (first !== undefined) {
+        const index = store.indexOf(first);
+        const column = store.arrays.homeZ;
+        const value = index < 0 ? undefined : column[index];
+        if (value !== undefined) column[index] = value ^ 1n;
+      }
+    }
+    if (!canRewriteRng(this.random)) return;
+    const words = this.random.getState().slice();
+    const word = words[0];
+    if (word === undefined) return;
+    words[0] = word ^ 1;
+    this.random.setState(words);
+  }
+
+  public noteContact(a: number, b: number): void {
+    const lo = a < b ? a : b;
+    const hi = a < b ? b : a;
+    const key = `${String(lo)}:${String(hi)}`;
+    for (let index = 0; index < this.contactKeys.length; index += 1) {
+      if (this.contactKeys[index] === key) return;
+    }
+    this.contactKeys.push(key);
+    this.contactTotal += 1;
   }
 
   public near(a: number, b: number, rangeRaw: bigint): boolean {
@@ -483,9 +595,14 @@ class SkirmishSim
 
   public spawn(kind: number, slot: number): number {
     const count = this.unitsOf(slot);
-    const x = ONE_RAW * BigInt(slot) + ONE_RAW * BigInt(count);
-    const z = kind === KIND_TOTEM ? ONE_RAW * 3n : 0n;
-    return this.acquire(kind, slot, teamOfSlot(this.config, slot), x, z);
+    const placed = slotSpawn(slot + count, kind);
+    return this.acquire(
+      kind,
+      slot,
+      teamOfSlot(this.config, slot),
+      placed.x,
+      placed.z
+    );
   }
 
   public recall(id: number): void {
@@ -508,14 +625,6 @@ class SkirmishSim
     let count = 0;
     for (const job of this.jobs) if (job.used) count += 1;
     return count;
-  }
-
-  public winner(): number {
-    let team = 0;
-    this.eachLive((id) => {
-      if (this.hp(id) > 0n) team = this.teamOf(id);
-    });
-    return team;
   }
 
   public viewFor(slot: number): BotView {
@@ -584,24 +693,24 @@ class SkirmishSim
 
   public maybeInject(tick: number): void {
     if (!this.injectPeer || this.injectOnRestore || this.injected) return;
-    if (tick !== this.injectAt) return;
+    if (tick !== this.session.injectTick) return;
     this.bumpLowest();
     this.injected = true;
   }
 
   public runProbe(tick: number): void {
-    this.random.int(1);
+    const phase = poolPhase(tick);
+    if (phase === 'done') return;
     const id = this.lowestId();
     if (id === null) return;
-    if (tick === 0) {
+    if (phase === 'capture') {
       this.freshSignature = this.gasSignature(id);
       return;
     }
-    if (tick === 1) {
+    if (phase === 'mutate') {
       this.corrupt(id);
       return;
     }
-    if (tick !== 2) return;
     const kind = this.kindOf(id);
     const slot = this.slotOf(id);
     const team = this.teamOf(id);
@@ -610,6 +719,7 @@ class SkirmishSim
     this.release(id, false);
     const again = this.acquire(kind, slot, team, x, z);
     const now = this.gasSignature(again);
+    this.poolCycles += 1;
     if (now !== this.freshSignature) {
       throw new Error(
         `pool lifecycle diverged: respawn ${now} != fresh ${this.freshSignature}`
@@ -621,6 +731,8 @@ class SkirmishSim
     entities: Record<string, Record<string, Record<string, string>>>;
     rng: string[];
     gas: Record<string, string>;
+    bots: Record<string, Record<string, string>>;
+    contacts: string;
   } {
     const entities: Record<string, Record<string, Record<string, string>>> = {};
     this.eachLive((id) => {
@@ -633,6 +745,9 @@ class SkirmishSim
           homeZ: this.home(id, 'z').toString(),
           x: this.pos(id, 'x').toString(),
           z: this.pos(id, 'z').toString(),
+          vx: this.velocity(id, 'x').toString(),
+          vz: this.velocity(id, 'z').toString(),
+          range: this.rangeOf(id).toString(),
         }),
       };
       const gas = this.gasFields(id);
@@ -640,13 +755,24 @@ class SkirmishSim
       entities[String(id)] = row;
     });
     const runtime = this.abilities.exportRuntimeState();
+    const notes = this.session.bots[this.peerId] ?? {};
+    const bots: Record<string, Record<string, string>> = {};
+    for (const slot of Object.keys(notes).sort()) {
+      const note = notes[slot];
+      if (note === undefined) continue;
+      bots[slot] = { phase: note.phase, target: note.target, rng: note.rng };
+    }
     return {
       entities,
       rng: generatorWords(this.random),
       gas: sortedFields({
         instanceId: String(runtime.instanceId),
         currentTick: String(runtime.currentTick),
+        poolFresh: this.freshSignature,
+        poolCycles: String(this.poolCycles),
       }),
+      bots,
+      contacts: String(this.contactTotal),
     };
   }
 
@@ -675,10 +801,7 @@ class SkirmishSim
 
   private createApi(): GameFacade {
     return {
-      dense: () => this.config.armySize > 16,
-      drawRng: () => {
-        this.random.int(1);
-      },
+      drawRng: () => this.random.int(8),
       eachUnit: (fn) => {
         this.eachLive(fn);
       },
@@ -689,6 +812,7 @@ class SkirmishSim
       hasTag: (id, tag) => this.hasTag(id, tag),
       near: (a, b, range) => this.near(a, b, range),
       bodiesTouching: (a, b) => this.bodiesTouching(a, b),
+      contactCount: () => this.contactTotal,
       applyEffect: (target, effectId, source) => {
         this.abilities.applyEffect(target, effectId, source);
       },
@@ -700,6 +824,9 @@ class SkirmishSim
       },
       livingTeams: () => this.livingTeams(),
       pendingRespawns: () => this.pendingRespawns(),
+      drift: (id, roll, focus) => {
+        this.drift(id, roll, focus);
+      },
     };
   }
 
@@ -771,9 +898,66 @@ class SkirmishSim
     return axis === 'x' ? entity.placed.rawX() : entity.placed.rawZ();
   }
 
+  private rangeOf(id: number): bigint {
+    const store = this.world.entityManager.getSoAStore(RangedDef.schema);
+    if (store === undefined) return 0n;
+    const index = store.indexOf(id);
+    if (index < 0) return 0n;
+    return store.arrays.range[index] ?? 0n;
+  }
+
+  private velocity(id: number, axis: 'x' | 'z'): bigint {
+    const store = this.world.entityManager.getSoAStore(PhysicsSoASchema);
+    if (store === undefined) return 0n;
+    const index = store.indexOf(id);
+    if (index < 0) return 0n;
+    const column =
+      axis === 'x' ? store.arrays.velocityX : store.arrays.velocityZ;
+    return column[index] ?? 0n;
+  }
+
   private hasBody(id: number): boolean {
     const entity = this.world.entityManager.getEntity(id);
     return entity?.hasComponent(PHYSICS_BODY_COMPONENT_TYPE) ?? false;
+  }
+
+  private drift(id: number, roll: number, focus: boolean): void {
+    const store = this.world.entityManager.getSoAStore(UnitDef.schema);
+    if (store === undefined) return;
+    const index = store.indexOf(id);
+    if (index < 0) return;
+    const homeX = store.arrays.homeX[index] ?? 0n;
+    const homeZ = store.arrays.homeZ[index] ?? 0n;
+    store.arrays.homeX[index] = homeX + 1n;
+    store.arrays.homeZ[index] = homeZ + BigInt(roll + 1);
+    const ranged = this.world.entityManager.getSoAStore(RangedDef.schema);
+    const rangedIndex = ranged?.indexOf(id) ?? -1;
+    if (ranged !== undefined && rangedIndex >= 0) {
+      const range = ranged.arrays.range[rangedIndex] ?? 0n;
+      ranged.arrays.range[rangedIndex] = range + BigInt(roll + 1);
+    }
+    this.stampVelocity(id);
+    if (!focus) return;
+    const entity = this.world.entityManager.getEntity(id);
+    if (entity === undefined) return;
+    const gas = getAbilitySystemComponent(entity);
+    const current = gas?.attributes.current[0];
+    const base = gas?.attributes.base[0];
+    if (gas === undefined || current === undefined || base === undefined)
+      return;
+    gas.attributes.base[0] = base + 1n;
+    gas.attributes.current[0] = current + 1n;
+    gas.attributes.dirty[0] = 0;
+  }
+
+  private stampVelocity(id: number): void {
+    const store = this.world.entityManager.getSoAStore(PhysicsSoASchema);
+    if (store === undefined) return;
+    const index = store.indexOf(id);
+    if (index < 0) return;
+    const step = BigInt((this.tickValue % 5) + 1) * 20000n;
+    store.arrays.velocityX[index] = step;
+    store.arrays.velocityZ[index] = step;
   }
 
   private hp(id: number): bigint {
@@ -856,37 +1040,28 @@ class SkirmishSim
   }
 }
 
-class LegacyState implements GameState {
-  public constructor(private readonly sim: SkirmishSim) {}
-
-  public save(writer: StateWriter): void {
-    this.sim.saveJobs(writer);
-    StateHelpers.writePools(writer, this.sim.world);
-    // The default modules are not used here: this path exists to hit
-    // spawnWithId on an id world creation already registered.
-    StateHelpers.writeEntityIds(writer, this.sim.world);
-    StateHelpers.writeRandom(writer, this.sim.random);
+class ClearContacts extends GameSystem {
+  public constructor(private readonly sim: SkirmishSim) {
+    super();
   }
 
-  public restore(_reader: StateReader): void {
-    const live = this.sim.world.entityManager.getAllEntities();
-    const first = live[0];
-    if (first === undefined) {
-      throw new Error('spawnWithId: legacy path found no entity');
-    }
-    StateHelpers.spawnWithId(this.sim.world, first.id, () => new Entity());
+  public override processTick(_tick: number): void {
+    this.sim.clearContacts();
   }
 }
 
 class Policy implements BotPolicy<SkirmishCommand, SkirmishSim> {
   private readonly memory: BotMemory = { target: 0, phase: 0 };
+  private readonly peerId: string;
 
   public constructor(
     private readonly slot: number,
     private readonly rng: IRandom,
     private readonly aggressive: boolean,
     private readonly session: SkirmishSession
-  ) {}
+  ) {
+    this.peerId = session.currentPeer;
+  }
 
   public decide(
     sim: Readonly<SkirmishSim>,
@@ -897,9 +1072,11 @@ class Policy implements BotPolicy<SkirmishCommand, SkirmishSim> {
     }
     const roll = this.rng.int(4);
     const view = sim.viewFor(this.slot);
-    return this.aggressive
+    const commands = this.aggressive
       ? decideAggressive(view, this.memory, roll)
       : decideDefensive(view, this.memory, roll);
+    this.note();
+    return commands;
   }
 
   public save(writer: StateWriter): void {
@@ -908,8 +1085,29 @@ class Policy implements BotPolicy<SkirmishCommand, SkirmishSim> {
   }
 
   public restore(reader: StateReader): void {
-    this.memory.phase = reader.u32();
-    this.memory.target = reader.i32();
+    const phase = reader.u32();
+    const target = reader.i32();
+    if (this.session.breakBotRestore) {
+      this.memory.phase = 0;
+      this.memory.target = 0;
+    } else {
+      this.memory.phase = phase;
+      this.memory.target = target;
+    }
+    this.note();
+  }
+
+  private note(): void {
+    const row = this.session.bots[this.peerId] ?? {};
+    this.session.bots[this.peerId] = row;
+    const words = hasState(this.rng)
+      ? this.rng.getState().map((word) => String(word))
+      : [];
+    row[String(this.slot)] = {
+      phase: String(this.memory.phase),
+      target: String(this.memory.target),
+      rng: words.join(','),
+    };
   }
 }
 
@@ -979,6 +1177,7 @@ export function createSkirmishGame(
       const { gravitySystem, physicsSystem } = physics.getSystems();
       world.registerSystems(
         [
+          new ClearContacts(sim),
           gravitySystem,
           physicsSystem,
           new AuraSystem(sim),
@@ -988,10 +1187,10 @@ export function createSkirmishGame(
         []
       );
       world.start();
-      const spawn =
-        ctx.purpose === 'fresh' ||
-        session.spawnOnRestore ||
-        session.legacySpawnWithId;
+      physics.onCollision((event: CollisionEvent) => {
+        sim.noteContact(event.entityA, event.entityB);
+      });
+      const spawn = ctx.purpose === 'fresh' || session.spawnOnRestore;
       if (spawn) spawnRoster(sim, config);
       return sim;
     },
@@ -1004,9 +1203,7 @@ export function createSkirmishGame(
       },
       encode: (command): JsonValue => command,
     },
-    state: session.legacySpawnWithId
-      ? { formatVersion: 1, bind: (sim) => new LegacyState(sim) }
-      : undefined,
+    state: undefined,
     bots: {
       aggressive: (_config, slot: BotSlotInfo, rng: IRandom) =>
         new Policy(slot.slot, rng, true, session),
@@ -1016,11 +1213,6 @@ export function createSkirmishGame(
     outcome: (sim) => {
       if (sim.tickValue + 1 >= sim.config.tickLimit) {
         return { kind: 'draw', reason: 'tick limit' };
-      }
-      if (sim.probe || sim.config.armySize > 16 || sim.tickValue < 80)
-        return null;
-      if (sim.livingTeams() === 1 && sim.pendingRespawns() === 0) {
-        return { kind: 'win', winnerTeam: sim.winner(), reason: 'last team' };
       }
       return null;
     },
@@ -1041,35 +1233,22 @@ function buildUnit(
 
 function spawnRoster(sim: SkirmishSim, config: SkirmishConfig): void {
   if (config.armySize > 0) {
-    const columns = 22;
     for (let index = 0; index < config.armySize; index += 1) {
-      const column = index % columns;
-      const row = Math.floor(index / columns);
-      const team = index % 2;
-      const slot = team;
-      sim.acquire(
-        KIND_SOLDIER,
-        slot,
-        team,
-        ONE_RAW * BigInt(column * 2),
-        ONE_RAW * BigInt(row * 2)
-      );
+      const placed = armySpawn(index);
+      sim.acquire(KIND_SOLDIER, placed.slot, placed.team, placed.x, placed.z);
     }
     return;
   }
   for (const slot of config.slots) {
-    sim.acquire(
-      KIND_SOLDIER,
-      slot.slot,
-      slot.team,
-      ONE_RAW * BigInt(slot.slot),
-      0n
-    );
+    const placed = slotSpawn(slot.slot, KIND_SOLDIER);
+    sim.acquire(KIND_SOLDIER, slot.slot, slot.team, placed.x, placed.z);
   }
   const first = config.slots[0];
   if (first !== undefined) {
-    sim.acquire(KIND_ARCHER, first.slot, first.team, ONE_RAW * 4n, ONE_RAW);
-    sim.acquire(KIND_TOTEM, first.slot, first.team, 0n, ONE_RAW * 3n);
+    const archer = slotSpawn(first.slot, KIND_ARCHER);
+    const totem = slotSpawn(first.slot, KIND_TOTEM);
+    sim.acquire(KIND_ARCHER, first.slot, first.team, archer.x, archer.z);
+    sim.acquire(KIND_TOTEM, first.slot, first.team, totem.x, totem.z);
   }
 }
 
@@ -1138,5 +1317,15 @@ function hasState(
 ): random is IRandom & { getState(): readonly number[] } {
   if (!('getState' in random)) return false;
   const candidate: unknown = random.getState;
+  return typeof candidate === 'function';
+}
+
+function canRewriteRng(random: IRandom): random is IRandom & {
+  getState(): readonly number[];
+  setState(state: readonly number[]): void;
+} {
+  if (!hasState(random)) return false;
+  if (!('setState' in random)) return false;
+  const candidate: unknown = random.setState;
   return typeof candidate === 'function';
 }

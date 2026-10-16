@@ -13,14 +13,22 @@ export function generateScenario(
   seed: number,
   index: number
 ): Scenario {
-  const ticks = 8 + rng.int(5);
-  const peers = ['A', 'B'];
+  const ticks = 200 + rng.int(401);
+  const peerCount = 2 + rng.int(2);
+  const peers = ['A', 'B', 'C'].slice(0, peerCount);
   const timeline: TimelineEvent[] = [];
   let gone = false;
   let paused = false;
-  const budget = 1 + rng.int(4);
+  let injected = false;
+  const budget = 3 + rng.int(6);
   for (let count = 0; count < budget; count += 1) {
-    const kind = rng.int(5);
+    const kind = rng.int(6);
+    if (kind === 5 && !injected) {
+      const at = 1 + rng.int(Math.max(1, ticks - 2));
+      timeline.push({ at, op: 'inject', peer: 'A', when: 'tick' });
+      injected = true;
+      continue;
+    }
     if (kind === 0 && !gone) {
       const at = rng.int(Math.max(1, ticks - 3));
       timeline.push({ at, op: 'disconnect', peer: 'B' });
@@ -79,37 +87,35 @@ export function generateScenario(
     peers,
     timeline,
     inputs: 'scripted:basic',
-    expect: { converge: true },
+    expect: injected ? { diverges: true } : { converge: true },
   });
 }
 
-/** A timeline that must diverge: +1 hp on peer A after a few ticks. */
+/**
+ * A timeline that must diverge. Eighteen events, so a shrink down to
+ * five is not a no-op. Only the inject changes the oracle result.
+ */
 export function injectScenario(seed: number): Scenario {
+  const timeline: TimelineEvent[] = [
+    { at: 4, op: 'inject', peer: 'A', when: 'tick' },
+  ];
+  for (let index = 0; index < 17; index += 1) {
+    timeline.push({
+      at: index % 12,
+      op: 'malformed',
+      peer: index % 2 === 0 ? 'A' : 'B',
+    });
+  }
   return scenario('inject-desync', {
     suite: 'fuzz',
     tags: ['fuzz', 'inject'],
     seed,
-    ticks: 12,
+    ticks: 16,
     slots: ['human', 'bot:aggressive'],
     peers: ['A', 'B'],
-    timeline: [
-      { at: 2, op: 'disconnect', peer: 'B' },
-      { at: 4, op: 'inject', peer: 'A', when: 'tick' },
-      {
-        op: 'faults',
-        from: 3,
-        to: 7,
-        peer: 'B',
-        delay: [0, 2],
-        dup: 0,
-        reorder: 0,
-        drop: 0,
-      },
-      { at: 6, op: 'reconnect', peer: 'B', via: 'snapshot' },
-      { at: 8, op: 'malformed', peer: 'A' },
-    ],
+    timeline,
     inputs: 'scripted:basic',
-    expect: { converge: true },
+    expect: { diverges: true },
   });
 }
 

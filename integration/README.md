@@ -60,6 +60,10 @@ first diverging tick, a field diff, the seed, the minimized timeline
 and a copy-paste repro command. Perf rows list metric, baseline,
 current and delta. Warn above 10%, fail above 25%. A heap sample at or
 below zero is reported and not gated: GC decides the sign on a short run.
+The baseline records host, CPU and Node. A different machine warns
+instead of failing. Digests hash a canonical state dump (entities, GAS,
+RNG, bot memory). Contact totals stay on the dump for assertions and
+are left out of the hash, because they are not in the snapshot.
 
 ## Add a scenario
 
@@ -73,8 +77,12 @@ substring of an error that must be thrown. `requires` skips the
 scenario when the driver lacks that capability. `knownFailure` records
 an engine bug without failing the run.
 
-A fault `drop` does not resend on the wire. At the end of the range
-the peer catches up from the authoritative log.
+A fault `delay`, `dup` or `reorder` submits the envelope to that peer's
+transport when it is due. A `drop` is not resent; at the end of the
+range the peer catches up from the authoritative log.
+`fault-gate-observable` goes red when the gate delivers everything
+immediately. `oracle-inject` must diverge. `expect.liveReference`
+compares a restored match to a second live run that never restored.
 
 ## Promote a fuzz case
 
@@ -92,10 +100,12 @@ pnpm --filter @phalanx-engine/integration run it -- --load integration/out/repro
 ```
 
 `injectDesync` (off unless a scenario asks for it) bumps one field on
-one peer. The unit test
+one peer. `oracle-inject` is a catalog scenario that must diverge.
+`inject-shrink` starts from 18 events and must shrink to at most five
+while keeping the inject. The fuzzer can emit the same inject. The unit
+test
 `pnpm --filter @phalanx-engine/integration run it:unit -- tests/injectShrink.test.ts`
-checks that the fuzzer finds that desync and shrinks it to at most
-five timeline events.
+checks that shrink.
 
 ## Port the adapter
 

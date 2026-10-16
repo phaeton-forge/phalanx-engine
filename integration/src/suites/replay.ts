@@ -1,6 +1,14 @@
 import type { SimDriver } from '../driver/SimDriver.js';
+import { canonicalDigest } from '../oracle/digest.js';
 import { prng } from '../util/prng.js';
 import { demoSpec } from './spec.js';
+
+/** Replay runners do not host bot policies, so bot notes are not compared. */
+function worldDigest(peer: {
+  stateDump(): Parameters<typeof canonicalDigest>[0];
+}): string {
+  return canonicalDigest({ ...peer.stateDump(), bots: {} });
+}
 
 /** `toReplay` then `fastForward` matches the live run tick for tick. */
 export async function runReplay(driver: SimDriver): Promise<void> {
@@ -13,10 +21,10 @@ export async function runReplay(driver: SimDriver): Promise<void> {
   try {
     const peer = match.createPeer('A', { role: 'authority' });
     const rng = prng(17);
-    for (let clock = 0; clock < 12; clock += 1) {
+    for (let clock = 0; clock < 300; clock += 1) {
       if (rng.int(3) === 0) peer.submit({ type: 'move', dir: rng.int(4) }, 0);
       peer.step(1);
-      digests.push(peer.digest());
+      digests.push(worldDigest(peer));
     }
     replay = peer.toReplay();
   } finally {
@@ -29,7 +37,7 @@ export async function runReplay(driver: SimDriver): Promise<void> {
       cursor += 1;
       const slice = replay.log.filter((entry) => entry.tick === cursor);
       await replayPeer.fastForward(slice, cursor);
-      if (replayPeer.digest() !== digest) {
+      if (worldDigest(replayPeer) !== digest) {
         throw new Error(`replay diverged at tick ${String(cursor)}`);
       }
     }

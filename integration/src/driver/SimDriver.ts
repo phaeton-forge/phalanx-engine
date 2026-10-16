@@ -24,11 +24,21 @@ export interface GameOptions {
   readonly throwBot?: boolean;
   readonly poolProbe?: boolean;
   /**
-   * Restore calls `spawnWithId` for an entity world creation already
-   * registered. Today's advanced helper throws. The default world
-   * restore does not.
+   * Mutation probe. After `restore`, flip a live SoA field and one RNG
+   * word. Models a save/load involution whose trailing `save` leaves
+   * memory dirty while snapshot bytes still match.
    */
-  readonly legacySpawnWithId?: boolean;
+  readonly dirtyAfterRestore?: boolean;
+  /**
+   * Mutation probe. `Policy.restore` consumes the saved bot words and
+   * then drops them. The live dump must notice.
+   */
+  readonly breakBotRestore?: boolean;
+  /**
+   * FaultGate delivers every envelope immediately. The fault-effect
+   * scenario must go red when this is set.
+   */
+  readonly disableFaultGate?: boolean;
 }
 
 export interface MatchSpec {
@@ -79,6 +89,10 @@ export interface StateDump {
   >;
   readonly rng: readonly string[];
   readonly gas: Readonly<Record<string, string>>;
+  /** Bot policy memory and bot RNG, keyed by slot. Outside snapshot bytes. */
+  readonly bots: Readonly<Record<string, Readonly<Record<string, string>>>>;
+  /** Cumulative narrowphase contacts, decimal. */
+  readonly contacts: string;
 }
 
 export interface Peer {
@@ -90,6 +104,12 @@ export interface Peer {
   snapshot(): Uint8Array;
   restore(bytes: Uint8Array): void;
   fastForward(entries: readonly LogEntry[], throughTick: number): Promise<void>;
+  /**
+   * Submit one logged envelope to this peer's transport. Duplicates of
+   * the same `(tick, playerId, seq)` are ignored. Bot envelopes are ignored.
+   */
+  deliver(entry: LogEntry): void;
+  /** Live canonical digest. Not the snapshot-byte hash. */
   digest(): string;
   stateDump(): StateDump;
   status(): 'ready' | 'running' | 'ended' | 'failed' | 'disposed';
@@ -107,6 +127,13 @@ export interface MatchHandle {
   createPeer(id: PeerId, opts: PeerOptions): Peer;
   /** Authoritative command log of the match (the authority peer). */
   log(): readonly LogEntry[];
+  /**
+   * Fire a tick-inject on the next sim tick `tick`. No-op when the
+   * scenario did not ask for one. Timeline clocks and sim ticks differ
+   * while the match is paused, so the interpreter arms the tick it is
+   * about to run.
+   */
+  armInject(tick: number): void;
   dispose(): void;
 }
 
@@ -122,4 +149,8 @@ export interface SimDriver {
   openReplay(replay: ReplayFile): Peer;
   /** Snapshot whose game format version is newer than the running game. */
   incompatibleSnapshot(bytes: Uint8Array): Uint8Array;
+  /** Schema key with two fields of one component swapped. */
+  swapSchemaFields(bytes: Uint8Array): Uint8Array;
+  /** Schema key with one field's type changed. */
+  changeSchemaFieldType(bytes: Uint8Array): Uint8Array;
 }

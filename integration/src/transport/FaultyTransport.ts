@@ -16,24 +16,30 @@ interface Held {
 }
 
 /**
- * Seeded delay / duplicate / reorder / drop in front of a peer.
+ * Seeded delay / duplicate / reorder / drop in front of one peer.
  *
- * The gate only decides *when* a tick may be applied. The interpreter
- * then applies the authoritative log entry once, so a duplicate does not
- * run twice and a reorder cannot apply tick T+1 before tick T.
- * A drop withholds that tick until {@link retransmit}, which is the
- * peer catching up from the authoritative log (not a transport resend).
+ * `releaseDue` returns the envelopes that are allowed onto the wire.
+ * The interpreter submits those to the peer's `LocalTransport`. A drop
+ * stays out of that list; the interpreter later catch-up-replays the
+ * authoritative log. `passthrough` delivers every envelope immediately
+ * and is the mutant the fault-effect scenario is meant to turn red.
  */
 export class FaultGate {
   private held: Held[] = [];
   private dropped: LogEntry[] = [];
   private fault: FaultSpec | null = null;
 
+  public constructor(private readonly passthrough = false) {}
+
   public setFault(spec: FaultSpec | null): void {
     this.fault = spec;
   }
 
   public offer(now: number, entry: LogEntry, rng: Prng): void {
+    if (this.passthrough) {
+      this.held.push({ entry, releaseAt: now });
+      return;
+    }
     const fault = this.fault;
     if (fault !== null && hit(rng, fault.drop)) {
       this.dropped.push(entry);
@@ -72,21 +78,32 @@ export class FaultGate {
     return min;
   }
 
-  public releaseDue(now: number): void {
+  /** Envelopes whose delay has elapsed. Dropped envelopes are not included. */
+  public releaseDue(now: number): LogEntry[] {
+    const due: LogEntry[] = [];
     const rest: Held[] = [];
     for (const item of this.held) {
-      if (item.releaseAt > now) rest.push(item);
+      if (item.releaseAt <= now) due.push(item.entry);
+      else rest.push(item);
     }
     this.held = rest;
+    return due;
+  }
+
+  public hasDrop(): boolean {
+    return this.dropped.length > 0;
   }
 
   /**
-   * End of a fault range. Withheld ticks are released and the interpreter
-   * catches the peer up from the authoritative log (not a wire resend).
+   * End of a fault range. Held envelopes are returned so the caller can
+   * still submit them. Drops are forgotten here; the caller catch-up
+   * replays the log instead of resending them.
    */
-  public retransmit(): void {
-    this.dropped = [];
+  public retransmit(): LogEntry[] {
+    const released = this.held.map((item) => item.entry);
     this.held = [];
+    this.dropped = [];
+    return released;
   }
 }
 

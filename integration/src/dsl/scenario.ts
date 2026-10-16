@@ -3,6 +3,14 @@ import type { GameOptions } from '../driver/SimDriver.js';
 export interface Expectation {
   readonly converge?: boolean;
   readonly failsWith?: string;
+  /** The run must diverge. A completed match is a failure. */
+  readonly diverges?: boolean;
+  /** A delay or drop must leave a replica behind the authority. */
+  readonly faultEffect?: boolean;
+  /** Compare the authority to a second live run that never restores. */
+  readonly liveReference?: boolean;
+  /** Cumulative narrowphase contacts required on the authority. */
+  readonly minContacts?: number;
 }
 
 export type TimelineEvent =
@@ -44,7 +52,12 @@ export type TimelineEvent =
       readonly when?: 'restore' | 'tick';
     }
   | { readonly at: number; readonly op: 'roundTrip'; readonly peer: string }
-  | { readonly at: number; readonly op: 'schemaChange'; readonly peer: string }
+  | {
+      readonly at: number;
+      readonly op: 'schemaChange';
+      readonly peer: string;
+      readonly mode?: 'version' | 'swap' | 'type';
+    }
   | { readonly at: number; readonly op: 'restoreSelf'; readonly peer: string };
 
 export interface Scenario {
@@ -56,7 +69,7 @@ export interface Scenario {
   readonly slots: readonly string[];
   readonly peers: readonly string[];
   readonly timeline: readonly TimelineEvent[];
-  readonly inputs: 'scripted:basic' | 'bots';
+  readonly inputs: 'scripted:basic' | 'scripted:always' | 'bots';
   readonly expect: Expectation;
   readonly knownFailure?: string;
   readonly requires?: readonly (
@@ -156,12 +169,22 @@ export function restartServer(): { readonly op: 'restartServer' } {
 export function parseScenario(value: unknown): Scenario {
   const record = asRecord(value, 'scenario');
   const inputs = record['inputs'];
-  if (inputs !== 'scripted:basic' && inputs !== 'bots') {
-    throw new Error('scenario: inputs must be scripted:basic or bots');
+  if (
+    inputs !== 'scripted:basic' &&
+    inputs !== 'scripted:always' &&
+    inputs !== 'bots'
+  ) {
+    throw new Error(
+      'scenario: inputs must be scripted:basic, scripted:always, or bots'
+    );
   }
   const expect = asRecord(record['expect'], 'scenario.expect');
   const failsWith = expect['failsWith'];
   const converge = expect['converge'];
+  const diverges = expect['diverges'];
+  const faultEffect = expect['faultEffect'];
+  const liveReference = expect['liveReference'];
+  const minContacts = expect['minContacts'];
   return {
     name: asString(record['name'], 'name'),
     suite: asString(record['suite'], 'suite'),
@@ -179,6 +202,18 @@ export function parseScenario(value: unknown): Scenario {
       ...(failsWith === undefined
         ? {}
         : { failsWith: asString(failsWith, 'failsWith') }),
+      ...(diverges === undefined
+        ? {}
+        : { diverges: asBoolean(diverges, 'diverges') }),
+      ...(faultEffect === undefined
+        ? {}
+        : { faultEffect: asBoolean(faultEffect, 'faultEffect') }),
+      ...(liveReference === undefined
+        ? {}
+        : { liveReference: asBoolean(liveReference, 'liveReference') }),
+      ...(minContacts === undefined
+        ? {}
+        : { minContacts: asInt(minContacts, 'minContacts') }),
     },
     ...(record['knownFailure'] === undefined
       ? {}
@@ -253,16 +288,30 @@ function parseEvent(value: unknown): TimelineEvent {
   ) {
     return { at: asInt(record['at'], 'at'), op };
   }
-  if (
-    op === 'malformed' ||
-    op === 'roundTrip' ||
-    op === 'schemaChange' ||
-    op === 'restoreSelf'
-  ) {
+  if (op === 'malformed' || op === 'roundTrip' || op === 'restoreSelf') {
     return {
       at: asInt(record['at'], 'at'),
       op,
       peer: asString(record['peer'], 'peer'),
+    };
+  }
+  if (op === 'schemaChange') {
+    const mode = record['mode'];
+    if (
+      mode !== undefined &&
+      mode !== 'version' &&
+      mode !== 'swap' &&
+      mode !== 'type'
+    ) {
+      throw new Error(
+        'scenario: schemaChange mode must be version, swap, or type'
+      );
+    }
+    return {
+      at: asInt(record['at'], 'at'),
+      op,
+      peer: asString(record['peer'], 'peer'),
+      ...(mode === undefined ? {} : { mode }),
     };
   }
   if (op === 'inject') {
@@ -289,7 +338,9 @@ function parseOptions(value: unknown): GameOptions {
     throwOnTick?: number;
     throwBot?: boolean;
     poolProbe?: boolean;
-    legacySpawnWithId?: boolean;
+    dirtyAfterRestore?: boolean;
+    breakBotRestore?: boolean;
+    disableFaultGate?: boolean;
     injectDesync?: GameOptions['injectDesync'];
   } = {};
   if (record['armySize'] !== undefined)
@@ -311,10 +362,22 @@ function parseOptions(value: unknown): GameOptions {
   if (record['poolProbe'] !== undefined) {
     options.poolProbe = asBoolean(record['poolProbe'], 'poolProbe');
   }
-  if (record['legacySpawnWithId'] !== undefined) {
-    options.legacySpawnWithId = asBoolean(
-      record['legacySpawnWithId'],
-      'legacySpawnWithId'
+  if (record['dirtyAfterRestore'] !== undefined) {
+    options.dirtyAfterRestore = asBoolean(
+      record['dirtyAfterRestore'],
+      'dirtyAfterRestore'
+    );
+  }
+  if (record['breakBotRestore'] !== undefined) {
+    options.breakBotRestore = asBoolean(
+      record['breakBotRestore'],
+      'breakBotRestore'
+    );
+  }
+  if (record['disableFaultGate'] !== undefined) {
+    options.disableFaultGate = asBoolean(
+      record['disableFaultGate'],
+      'disableFaultGate'
     );
   }
   if (record['injectDesync'] !== undefined) {

@@ -5,6 +5,7 @@ import {
   botPlayerId,
   decodeSnapshot,
   encodeSnapshot,
+  isBotPlayerId,
   type LogEntry as EngineLogEntry,
   type ReplayRecord,
 } from '@phalanx-engine/runtime';
@@ -26,12 +27,14 @@ import {
   type SkirmishSession,
 } from '../facade/current.js';
 import type { SkirmishCommand as Command } from '../game/skirmish/types.js';
+import { canonicalDigest } from '../oracle/digest.js';
 import { errorMessage, isJson, type Json } from '../util/json.js';
 
 interface Live {
   readonly runner: MatchRunner<ReturnType<typeof createSkirmishGame>>;
   readonly transport: LocalTransport;
   readonly role: PeerOptions['role'];
+  readonly delivered: Set<string>;
   started: boolean;
   outcomeText: string | null;
 }
@@ -52,23 +55,13 @@ export function createCurrentDriver(): SimDriver {
       return openReplayPeer(replay);
     },
     incompatibleSnapshot(bytes: Uint8Array): Uint8Array {
-      const decoded = decodeSnapshot(bytes);
-      return encodeSnapshot(
-        {
-          engineFormat: decoded.header.engineFormat,
-          gameId: decoded.header.gameId,
-          simVersion: decoded.header.simVersion,
-          formatVersion: decoded.header.formatVersion + 1,
-          configHash: decoded.header.configHash,
-          tick: decoded.header.tick,
-        },
-        decoded.body,
-        {
-          botState: decoded.botState,
-          inputCheckpoint: decoded.inputCheckpoint,
-          componentSchemas: decoded.componentSchemas,
-        }
-      );
+      return mutateSnapshot(bytes, 'version');
+    },
+    swapSchemaFields(bytes: Uint8Array): Uint8Array {
+      return mutateSnapshot(bytes, 'swap');
+    },
+    changeSchemaFieldType(bytes: Uint8Array): Uint8Array {
+      return mutateSnapshot(bytes, 'type');
     },
   };
 }
@@ -83,7 +76,10 @@ function openMatch(spec: MatchSpec): MatchHandle {
     throwOnTick: spec.options.throwOnTick,
     throwBot: spec.options.throwBot === true,
     poolProbe: spec.options.poolProbe === true,
-    legacySpawnWithId: spec.options.legacySpawnWithId === true,
+    dirtyAfterRestore: spec.options.dirtyAfterRestore === true,
+    breakBotRestore: spec.options.breakBotRestore === true,
+    injectTick: -1,
+    bots: {},
   };
   const game = createSkirmishGame(session);
   const config = toConfig(spec);
@@ -118,6 +114,7 @@ function openMatch(spec: MatchSpec): MatchHandle {
         runner,
         transport,
         role: opts.role,
+        delivered: new Set(),
         started: false,
         outcomeText: null,
       };
@@ -136,6 +133,12 @@ function openMatch(spec: MatchSpec): MatchHandle {
     },
     log(): readonly LogEntry[] {
       return remember(authority);
+    },
+    armInject(tick: number): void {
+      if (session.inject === undefined || session.inject.when === 'restore') {
+        return;
+      }
+      session.injectTick = tick;
     },
     dispose(): void {
       for (const peer of peers) peer.dispose();
@@ -160,6 +163,7 @@ function wrapPeer(
       live.runner.submit(asCommand(cmd), slot);
     },
     step(ticks: number): void {
+      session.currentPeer = id;
       if (live.role === 'replay') {
         throw new Error(
           'MatchRunner.fromReplay: drive the runner with fastForward(replay.log, { throughTick: replay.lastTick })'
@@ -183,6 +187,7 @@ function wrapPeer(
     restore(bytes: Uint8Array): void {
       session.currentPeer = id;
       live.runner.restore(bytes);
+      session.poke?.();
     },
     async fastForward(entries, throughTick): Promise<void> {
       session.currentPeer = id;
@@ -191,11 +196,23 @@ function wrapPeer(
         throughTick,
       });
     },
-    digest: () => live.runner.digest(),
-    stateDump: (): StateDump => {
-      const dump = live.runner.sim.stateDump();
-      return dump;
+    deliver(entry): void {
+      if (isBotPlayerId(entry.playerId)) return;
+      const slot = slotOf(entry.playerId);
+      if (slot === null) return;
+      const key = `${String(entry.tick)}:${entry.playerId}:${String(entry.data.q)}`;
+      if (live.delivered.has(key)) return;
+      live.delivered.add(key);
+      if (!live.started) {
+        live.runner.start();
+        live.started = true;
+      }
+      live.transport.submit(entry.tick, slot, [
+        { type: entry.type, data: entry.data },
+      ]);
     },
+    digest: () => canonicalDigest(thisState(live)),
+    stateDump: (): StateDump => thisState(live),
     status: () => live.runner.status,
     outcome: () => live.outcomeText,
     pause(): void {
@@ -225,7 +242,10 @@ function openReplayPeer(replay: ReplayFile): Peer {
     spawnOnRestore: false,
     throwBot: false,
     poolProbe: false,
-    legacySpawnWithId: false,
+    dirtyAfterRestore: false,
+    breakBotRestore: false,
+    injectTick: -1,
+    bots: {},
   };
   const game = createSkirmishGame(session);
   const record = replay as unknown as ReplayRecord<SkirmishConfig>;
@@ -237,6 +257,7 @@ function openReplayPeer(replay: ReplayFile): Peer {
     runner,
     transport,
     role: 'replay',
+    delivered: new Set(),
     started: false,
     outcomeText: null,
   };
@@ -247,6 +268,99 @@ function openReplayPeer(replay: ReplayFile): Peer {
         : `draw:${outcome.reason}`;
   });
   return wrapPeer('replay', live, session, () => undefined);
+}
+
+function thisState(live: Live): StateDump {
+  return live.runner.sim.stateDump();
+}
+
+function slotOf(playerId: string): number | null {
+  if (!playerId.startsWith('local:')) return null;
+  const slot = Number(playerId.slice('local:'.length));
+  if (!Number.isInteger(slot) || slot < 0) return null;
+  return slot;
+}
+
+function mutateSnapshot(
+  bytes: Uint8Array,
+  mode: 'version' | 'swap' | 'type'
+): Uint8Array {
+  const decoded = decodeSnapshot(bytes);
+  const schemas =
+    mode === 'version'
+      ? decoded.componentSchemas
+      : rewriteSchema(decoded.componentSchemas, mode);
+  return encodeSnapshot(
+    {
+      engineFormat: decoded.header.engineFormat,
+      gameId: decoded.header.gameId,
+      simVersion: decoded.header.simVersion,
+      formatVersion:
+        mode === 'version'
+          ? decoded.header.formatVersion + 1
+          : decoded.header.formatVersion,
+      configHash: decoded.header.configHash,
+      tick: decoded.header.tick,
+    },
+    decoded.body,
+    {
+      botState: decoded.botState,
+      inputCheckpoint: decoded.inputCheckpoint,
+      componentSchemas: schemas,
+    }
+  );
+}
+
+function rewriteSchema(
+  key: string | null,
+  mode: 'swap' | 'type'
+): string | null {
+  if (key === null) return null;
+  const parsed: unknown = JSON.parse(key);
+  if (!Array.isArray(parsed)) return key;
+  const components: { name: string; fields: string[][] }[] = [];
+  for (const item of parsed) {
+    if (!isSchemaComponent(item)) return key;
+    const fields: string[][] = [];
+    for (const field of item.fields) {
+      const name = field[0];
+      const typeName = field[1];
+      if (name === undefined || typeName === undefined) continue;
+      fields.push([name, typeName]);
+    }
+    if (item.name === 'SkirmishUnit' && mode === 'swap' && fields.length >= 2) {
+      const first = fields[0];
+      const second = fields[1];
+      if (first !== undefined && second !== undefined) {
+        fields[0] = second;
+        fields[1] = first;
+      }
+    }
+    if (item.name === 'SkirmishUnit' && mode === 'type') {
+      for (const field of fields) {
+        if (field[0] === 'homeZ') field[1] = 'u32';
+      }
+    }
+    components.push({ name: item.name, fields });
+  }
+  return JSON.stringify(components);
+}
+
+function isSchemaComponent(
+  value: unknown
+): value is { name: string; fields: string[][] } {
+  if (typeof value !== 'object' || value === null) return false;
+  const record = value as { name?: unknown; fields?: unknown };
+  if (typeof record.name !== 'string' || !Array.isArray(record.fields)) {
+    return false;
+  }
+  return record.fields.every(
+    (field) =>
+      Array.isArray(field) &&
+      field.length === 2 &&
+      typeof field[0] === 'string' &&
+      typeof field[1] === 'string'
+  );
 }
 
 function toConfig(spec: MatchSpec): SkirmishConfig {

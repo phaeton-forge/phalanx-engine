@@ -22,7 +22,6 @@ import {
  * those systems so damage applied this tick is visible.
  */
 export function tickAura(api: GameFacade): void {
-  if (api.dense()) return;
   api.eachUnit((totem) => {
     if (api.kindOf(totem) !== KIND_TOTEM) return;
     const team = api.teamOf(totem);
@@ -36,12 +35,18 @@ export function tickAura(api: GameFacade): void {
 }
 
 export function tickLifecycle(api: GameFacade, tick: number): void {
-  api.drawRng();
-  if (!api.dense()) {
-    api.eachUnit((id) => {
-      if (api.hp(id) <= 0n) api.kill(id, true);
-    });
-  }
+  const roll = api.drawRng();
+  let count = 0;
+  api.eachUnit(() => {
+    count += 1;
+  });
+  const focus = count === 0 ? -1 : roll % count;
+  let index = 0;
+  api.eachUnit((id) => {
+    api.drift(id, roll, index === focus);
+    index += 1;
+    if (api.hp(id) <= 0n) api.kill(id, true);
+  });
   api.flushRespawns(tick);
 }
 

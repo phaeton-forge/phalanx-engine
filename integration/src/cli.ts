@@ -1,11 +1,19 @@
 import { join } from 'node:path';
 import { PACKAGE_ROOT } from './paths.js';
+import { writeReport } from './report/format.js';
+import type { Report } from './report/types.js';
 import { exitCode, runAll, type RunOptions } from './run.js';
 import { errorMessage } from './util/json.js';
 
 async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2));
-  const report = await runAll(options);
+  let report: Report | undefined;
+  try {
+    report = await runAll(options);
+  } finally {
+    if (report !== undefined) writeReport(report, options.out);
+  }
+  if (report === undefined) return;
   const fails = report.cases.filter((row) => row.status === 'fail').length;
   process.stdout.write(
     `${report.cases.length} cases, ${String(fails)} failed, report ${join(options.out, 'report.md')}\n`

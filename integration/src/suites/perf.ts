@@ -1,10 +1,13 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { cpus, hostname } from 'node:os';
 import { performance } from 'node:perf_hooks';
 import { dirname } from 'node:path';
 import type { SimDriver } from '../driver/SimDriver.js';
 import type { PerfRow } from '../report/types.js';
 import { parseJson } from '../util/json.js';
 import { demoSpec } from './spec.js';
+
+const MEASURED_TICKS = 300;
 
 interface Sample {
   readonly metric: string;
@@ -13,7 +16,16 @@ interface Sample {
 }
 
 interface BaselineFile {
+  readonly host?: string;
+  readonly cpu?: string;
+  readonly node?: string;
   readonly metrics: Readonly<Record<string, number>>;
+}
+
+interface Machine {
+  readonly host: string;
+  readonly cpu: string;
+  readonly node: string;
 }
 
 export function measurePerf(
@@ -36,22 +48,34 @@ export function judgePerf(
 } {
   const rows: PerfRow[] = [];
   let status: 'pass' | 'warn' | 'fail' = 'pass';
+  const machine = thisMachine();
+  const sameHardware =
+    baseline.host === undefined ||
+    (baseline.host === machine.host &&
+      baseline.cpu === machine.cpu &&
+      baseline.node === machine.node);
   for (const sample of samples) {
     const previous = baseline.metrics[sample.metric];
     const row = compare(sample, previous);
     rows.push(row);
     if (update || previous === undefined) continue;
     const next = worseStatus(sample, previous);
+    if (!sameHardware) {
+      if (next !== 'pass') status = 'warn';
+      continue;
+    }
     if (next === 'fail') status = 'fail';
     else if (next === 'warn' && status !== 'fail') status = 'warn';
   }
   const note = update
     ? 'baseline updated'
-    : status === 'pass'
-      ? ''
-      : status === 'warn'
-        ? 'perf moved more than 10%'
-        : 'perf moved more than 25%';
+    : !sameHardware
+      ? 'different hardware; perf compared as a warning'
+      : status === 'pass'
+        ? ''
+        : status === 'warn'
+          ? 'perf moved more than 10%'
+          : 'perf moved more than 25%';
   return { rows, status: update ? 'pass' : status, note };
 }
 
@@ -61,6 +85,16 @@ export function readBaseline(path: string): BaselineFile {
     if (typeof value !== 'object' || value === null || !('metrics' in value)) {
       return { metrics: {} };
     }
+    const host =
+      'host' in value && typeof value.host === 'string'
+        ? value.host
+        : undefined;
+    const cpu =
+      'cpu' in value && typeof value.cpu === 'string' ? value.cpu : undefined;
+    const node =
+      'node' in value && typeof value.node === 'string'
+        ? value.node
+        : undefined;
     const metrics = value.metrics;
     if (
       typeof metrics !== 'object' ||
@@ -76,7 +110,12 @@ export function readBaseline(path: string): BaselineFile {
       if (typeof metric === 'number' && Number.isFinite(metric))
         out[key] = metric;
     }
-    return { metrics: out };
+    return {
+      metrics: out,
+      ...(host === undefined ? {} : { host }),
+      ...(cpu === undefined ? {} : { cpu }),
+      ...(node === undefined ? {} : { node }),
+    };
   } catch {
     return { metrics: {} };
   }
@@ -91,11 +130,20 @@ export function writeBaseline(path: string, samples: readonly Sample[]): void {
     const value = metrics[key];
     if (value !== undefined) sorted[key] = value;
   }
+  const machine = thisMachine();
   writeFileSync(
     path,
-    `${JSON.stringify({ metrics: sorted }, null, 2)}\n`,
+    `${JSON.stringify({ ...machine, metrics: sorted }, null, 2)}\n`,
     'utf8'
   );
+}
+
+function thisMachine(): Machine {
+  return {
+    host: hostname(),
+    cpu: cpus()[0]?.model ?? '',
+    node: process.version,
+  };
 }
 
 function measureCount(driver: SimDriver, count: number): Sample[] {
@@ -131,10 +179,14 @@ function measureOnce(driver: SimDriver, count: number): Sample[] {
     for (let tick = 0; tick < 4; tick += 1) peer.step(1);
     const heapBefore = process.memoryUsage().heapUsed;
     const times: number[] = [];
-    for (let tick = 0; tick < 24; tick += 1) {
+    for (let tick = 0; tick < MEASURED_TICKS; tick += 1) {
       const started = performance.now();
       peer.step(1);
       times.push(performance.now() - started);
+    }
+    const contacts = Number(peer.stateDump().contacts);
+    if (!Number.isFinite(contacts) || contacts <= 0) {
+      throw new Error('perf: physics reported 0 contacts');
     }
     const heapDelta = process.memoryUsage().heapUsed - heapBefore;
     const saveStarted = performance.now();

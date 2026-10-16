@@ -9,6 +9,8 @@ describe('injectDesync fuzz', () => {
   it('finds the desync and shrinks it to at most five events', async () => {
     const driver = createCurrentDriver();
     const scenario = injectScenario(11);
+    expect(scenario.timeline.length).toBeGreaterThanOrEqual(15);
+    expect(scenario.timeline.length).toBeLessThanOrEqual(20);
     await expect(simulate(driver, scenario)).rejects.toThrow(/diverged/);
     const shrunk = await shrinkScenario(scenario, async (candidate) => {
       try {

@@ -9,17 +9,17 @@ export interface FieldDiff {
 }
 
 /**
- * First tick whose digest differs. A later tick may match again (a
- * one-tick perturbation), so this is a forward scan, not a prefix search.
+ * First recorded peer tick whose digest differs from the reference.
+ * Ticks the peer never recorded (it had not joined, or it was
+ * disconnected) are not a divergence. A later tick may match again,
+ * so this is a forward scan, not a prefix search.
  */
 export function firstDivergingTick(
   peer: ReadonlyMap<number, string>,
   reference: ReadonlyMap<number, string>
 ): number | null {
-  const ticks: number[] = [];
-  for (const tick of peer.keys()) ticks.push(tick);
-  ticks.sort((left, right) => left - right);
-  for (const tick of ticks) {
+  const sorted = [...peer.keys()].sort((left, right) => left - right);
+  for (const tick of sorted) {
     if (peer.get(tick) !== reference.get(tick)) return tick;
   }
   return null;
@@ -70,6 +70,14 @@ function flatten(dump: StateDump): Map<string, string> {
   for (const key of Object.keys(dump.gas).sort()) {
     const value = dump.gas[key];
     if (value !== undefined) out.set(`gas/${key}`, value);
+  }
+  for (const slot of Object.keys(dump.bots).sort()) {
+    const fields = dump.bots[slot];
+    if (fields === undefined) continue;
+    for (const field of Object.keys(fields).sort()) {
+      const value = fields[field];
+      if (value !== undefined) out.set(`bot/${slot}/${field}`, value);
+    }
   }
   return out;
 }

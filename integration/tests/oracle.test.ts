@@ -16,4 +16,13 @@ describe('firstDivergingTick', () => {
     expect(firstDivergingTick(peer, reference)).toBe(1);
     expect(firstDivergingTick(reference, reference)).toBeNull();
   });
+
+  it('ignores ticks the peer has not recorded', () => {
+    const peer = new Map([[6, 'same']]);
+    const reference = new Map([
+      [0, 'early'],
+      [6, 'same'],
+    ]);
+    expect(firstDivergingTick(peer, reference)).toBeNull();
+  });
 });

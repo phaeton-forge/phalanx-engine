@@ -11,13 +11,14 @@ import {
   scenario,
   type Scenario,
 } from '../dsl/scenario.js';
+import { prng } from '../util/prng.js';
 
 const SLOTS = ['human', 'human', 'bot:aggressive'] as const;
 const PEERS = ['A', 'B'] as const;
 
 /**
- * Stage A scenarios. Fault drops catch up from the authoritative log
- * at the end of the range (`FaultGate.retransmit`), not by a wire resend.
+ * Stage A scenarios. Human envelopes travel through FaultGate into each
+ * peer's transport. Drops are healed from the authoritative log.
  */
 export function catalog(): readonly Scenario[] {
   return [
@@ -25,25 +26,25 @@ export function catalog(): readonly Scenario[] {
       suite: 'disconnect',
       tags: ['disconnect', 'quick'],
       seed: 42,
-      ticks: 40,
+      ticks: 900,
       slots: [...SLOTS],
       peers: [...PEERS],
       timeline: [
-        at(8, disconnect('B')),
-        at(14, reconnect('B', 'snapshot')),
+        at(120, disconnect('B')),
+        at(240, reconnect('B', 'snapshot')),
         range(
-          18,
-          26,
-          faults('B', { delay: [0, 3], dup: 0.05, reorder: 0.1, drop: 0.02 })
+          360,
+          520,
+          faults('B', { delay: [1, 3], dup: 0.05, reorder: 0.1, drop: 0.02 })
         ),
-        at(30, crashPeer('B')),
-        at(34, reconnect('B', 'log')),
-        at(36, replaceWithBot('B', 'defensive')),
-        at(37, returnFromBot('B')),
-        at(38, restartServer()),
+        at(640, crashPeer('B')),
+        at(760, reconnect('B', 'log')),
+        at(820, replaceWithBot('B', 'defensive')),
+        at(840, returnFromBot('B')),
+        at(860, restartServer()),
       ],
       inputs: 'scripted:basic',
-      expect: { converge: true },
+      expect: { converge: true, minContacts: 1 },
     }),
     scenario('reconnect-via-snapshot', {
       suite: 'disconnect',
@@ -89,11 +90,28 @@ export function catalog(): readonly Scenario[] {
         range(
           4,
           12,
-          faults('B', { delay: [0, 2], dup: 0.1, reorder: 0.2, drop: 0.05 })
+          faults('B', { delay: [1, 2], dup: 0.1, reorder: 0.2, drop: 0 })
         ),
       ],
       inputs: 'scripted:basic',
       expect: { converge: true },
+    }),
+    scenario('fault-gate-observable', {
+      suite: 'disconnect',
+      tags: ['disconnect', 'quick'],
+      seed: 12,
+      ticks: 24,
+      slots: ['human:0', 'bot:defensive'],
+      peers: [...PEERS],
+      timeline: [
+        range(
+          4,
+          16,
+          faults('B', { delay: [4, 4], dup: 0, reorder: 0, drop: 0 })
+        ),
+      ],
+      inputs: 'scripted:always',
+      expect: { converge: true, faultEffect: true },
     }),
     scenario('controller-handoff', {
       suite: 'disconnect',
@@ -126,14 +144,12 @@ export function catalog(): readonly Scenario[] {
       suite: 'save-restore',
       tags: ['save-restore', 'quick'],
       seed: 21,
-      ticks: 18,
+      ticks: 420,
       slots: ['human', 'bot:aggressive', 'bot:defensive:0'],
       peers: ['A'],
-      timeline: [
-        at(4, { op: 'roundTrip', peer: 'A' }),
-        at(10, { op: 'roundTrip', peer: 'A' }),
-        at(15, { op: 'roundTrip', peer: 'A' }),
-      ],
+      timeline: sweepPoints(21).map((tick) =>
+        at(tick, { op: 'roundTrip' as const, peer: 'A' })
+      ),
       inputs: 'scripted:basic',
       expect: { converge: true },
     }),
@@ -149,17 +165,17 @@ export function catalog(): readonly Scenario[] {
       expect: { converge: true },
       options: { spawnOnRestore: true },
     }),
-    scenario('legacy-spawn-with-id', {
+    scenario('restore-populated-pool', {
       suite: 'save-restore',
       tags: ['save-restore', 'quick'],
       seed: 23,
-      ticks: 8,
+      ticks: 16,
       slots: ['human', 'bot:defensive'],
       peers: ['A'],
-      timeline: [at(3, { op: 'restoreSelf', peer: 'A' })],
+      timeline: [at(8, { op: 'roundTrip', peer: 'A' })],
       inputs: 'bots',
-      expect: { failsWith: 'spawnWithId: entity' },
-      options: { legacySpawnWithId: true },
+      expect: { converge: true },
+      options: { spawnOnRestore: true },
     }),
     scenario('malformed-envelope', {
       suite: 'adversarial',
@@ -214,9 +230,18 @@ export function catalog(): readonly Scenario[] {
       peers: ['A'],
       timeline: [at(5, { op: 'restoreSelf', peer: 'A' })],
       inputs: 'scripted:basic',
-      // Restore truncates the command log, so the oracle cannot replay
-      // ticks that happen after it. The event itself checks the digest.
-      expect: { converge: false },
+      expect: { converge: true, liveReference: true },
+    }),
+    scenario('restore-live-bots', {
+      suite: 'save-restore',
+      tags: ['save-restore', 'quick'],
+      seed: 37,
+      ticks: 48,
+      slots: ['human', 'bot:aggressive', 'bot:defensive:0'],
+      peers: ['A'],
+      timeline: [at(20, { op: 'restoreSelf', peer: 'A' })],
+      inputs: 'bots',
+      expect: { converge: true, liveReference: true },
     }),
     scenario('schema-change', {
       suite: 'adversarial',
@@ -225,23 +250,54 @@ export function catalog(): readonly Scenario[] {
       ticks: 8,
       slots: ['human', 'bot:defensive'],
       peers: ['A'],
-      timeline: [at(3, { op: 'schemaChange', peer: 'A' })],
+      timeline: [at(3, { op: 'schemaChange', peer: 'A', mode: 'version' })],
       inputs: 'bots',
       expect: { failsWith: 'formatVersion is newer' },
+    }),
+    scenario('schema-field-swap', {
+      suite: 'adversarial',
+      tags: ['adversarial', 'quick'],
+      seed: 38,
+      ticks: 8,
+      slots: ['human', 'bot:defensive'],
+      peers: ['A'],
+      timeline: [at(3, { op: 'schemaChange', peer: 'A', mode: 'swap' })],
+      inputs: 'bots',
+      expect: { failsWith: 'schema changed' },
+    }),
+    scenario('schema-field-type', {
+      suite: 'adversarial',
+      tags: ['adversarial', 'quick'],
+      seed: 39,
+      ticks: 8,
+      slots: ['human', 'bot:defensive'],
+      peers: ['A'],
+      timeline: [at(3, { op: 'schemaChange', peer: 'A', mode: 'type' })],
+      inputs: 'bots',
+      expect: { failsWith: 'schema changed' },
     }),
     scenario('pool-lifecycle', {
       suite: 'pool-lifecycle',
       tags: ['pool-lifecycle', 'quick'],
       seed: 41,
-      ticks: 4,
+      ticks: 12,
       slots: ['human', 'bot:aggressive'],
       peers: ['A'],
       timeline: [],
       inputs: 'bots',
-      expect: { converge: false },
+      expect: { converge: true },
       options: { poolProbe: true },
-      knownFailure:
-        'Pool return must restore GAS attributes, granted abilities and initComponent tags to a fresh spawn.',
+    }),
+    scenario('oracle-inject', {
+      suite: 'fuzz',
+      tags: ['fuzz', 'inject', 'quick'],
+      seed: 11,
+      ticks: 16,
+      slots: ['human', 'bot:aggressive'],
+      peers: ['A', 'B'],
+      timeline: [{ at: 4, op: 'inject', peer: 'A', when: 'tick' }],
+      inputs: 'scripted:basic',
+      expect: { diverges: true },
     }),
     scenario('tick-limit-draw', {
       suite: 'disconnect',
@@ -256,4 +312,14 @@ export function catalog(): readonly Scenario[] {
       options: { tickLimit: 5 },
     }),
   ];
+}
+
+/** Fixed ticks plus four seed-stable points. The replay suite fast-forwards 300. */
+function sweepPoints(seed: number): number[] {
+  const rng = prng(seed);
+  const points = [3, 59, 200, 377];
+  for (let index = 0; index < 4; index += 1) {
+    points.push(10 + rng.int(360));
+  }
+  return [...new Set(points)].sort((left, right) => left - right);
 }

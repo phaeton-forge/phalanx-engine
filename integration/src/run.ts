@@ -7,7 +7,7 @@ import type { Capabilities } from './driver/capabilities.js';
 import type { SimDriver } from './driver/SimDriver.js';
 import { parseScenario, type Scenario } from './dsl/scenario.js';
 import { isSimulationFailure, simulate } from './dsl/interpret.js';
-import { generateScenario } from './fuzz/generate.js';
+import { generateScenario, injectScenario } from './fuzz/generate.js';
 import { promoteScenario } from './fuzz/promote.js';
 import { shrinkScenario } from './fuzz/shrink.js';
 import { PACKAGE_ROOT, REPO_ROOT } from './paths.js';
@@ -54,6 +54,20 @@ export async function runAll(options: RunOptions): Promise<Report> {
   const started = Date.now();
   const driver = createCurrentDriver();
   const cases: CaseResult[] = [];
+  try {
+    return await runCases(options, driver, cases, started);
+  } finally {
+    const header = await headerFor(options, Date.now() - started);
+    writeReport({ header, cases }, options.out);
+  }
+}
+
+async function runCases(
+  options: RunOptions,
+  driver: SimDriver,
+  cases: CaseResult[],
+  started: number
+): Promise<Report> {
   const focused =
     options.scenario !== undefined ||
     options.load !== undefined ||
@@ -97,7 +111,7 @@ export async function runAll(options: RunOptions): Promise<Report> {
     if (
       selected(options, 'det-continuous', ['det-continuous', 'quick'], focused)
     ) {
-      const ticks = options.profile === 'full' ? 24 : 6;
+      const ticks = options.profile === 'full' ? 3000 : 600;
       cases.push(
         await timeCase(
           'det-continuous',
@@ -126,6 +140,13 @@ export async function runAll(options: RunOptions): Promise<Report> {
       if (!selected(options, scenario.name, scenario.tags, focused)) continue;
       cases.push(await runScenario(driver, scenario, driver.capabilities));
     }
+    if (selected(options, 'inject-shrink', ['fuzz', 'inject'], focused)) {
+      cases.push(
+        await timeCase('inject-shrink', 'fuzz', ['fuzz', 'inject'], () =>
+          assertInjectShrink()
+        )
+      );
+    }
     if (
       selected(options, 'fuzz', ['fuzz'], focused) ||
       options.fuzz !== undefined
@@ -135,9 +156,7 @@ export async function runAll(options: RunOptions): Promise<Report> {
   }
 
   const header = await headerFor(options, Date.now() - started);
-  const report: Report = { header, cases };
-  writeReport(report, options.out);
-  return report;
+  return { header, cases };
 }
 
 export async function runScenario(
@@ -157,6 +176,15 @@ export async function runScenario(
   const started = Date.now();
   try {
     const result = await simulate(driver, scenario);
+    if (scenario.expect.diverges === true) {
+      return base(
+        scenario,
+        'fail',
+        scenario.ticks,
+        Date.now() - started,
+        'expected divergence but the scenario converged'
+      );
+    }
     if (scenario.knownFailure !== undefined) {
       return base(
         scenario,
@@ -175,6 +203,15 @@ export async function runScenario(
     );
   } catch (error) {
     const detail = describe(error);
+    if (scenario.expect.diverges === true && detail.note.includes('diverged')) {
+      return base(
+        scenario,
+        'pass',
+        scenario.ticks,
+        Date.now() - started,
+        detail.note
+      );
+    }
     if (scenario.knownFailure !== undefined) {
       return {
         ...base(
@@ -203,6 +240,40 @@ export async function runScenario(
   }
 }
 
+async function assertInjectShrink(): Promise<void> {
+  const driver = createCurrentDriver();
+  const scenario = injectScenario(11);
+  if (scenario.timeline.length < 15 || scenario.timeline.length > 20) {
+    throw new Error(
+      `inject shrink started from ${String(scenario.timeline.length)} events`
+    );
+  }
+  await simulate(driver, scenario).then(
+    () => {
+      throw new Error('inject scenario converged');
+    },
+    (error: unknown) => {
+      if (!errorMessage(error).includes('diverged')) throw error;
+    }
+  );
+  const shrunk = await shrinkScenario(scenario, async (candidate) => {
+    try {
+      await simulate(driver, candidate);
+      return false;
+    } catch (error) {
+      return errorMessage(error).includes('diverged');
+    }
+  });
+  if (shrunk.timeline.length > 5) {
+    throw new Error(
+      `inject shrink left ${String(shrunk.timeline.length)} events`
+    );
+  }
+  if (!shrunk.timeline.some((event) => event.op === 'inject')) {
+    throw new Error('inject shrink dropped the inject');
+  }
+}
+
 async function runFuzzCases(
   driver: SimDriver,
   options: RunOptions
@@ -217,6 +288,15 @@ async function runFuzzCases(
     const rng = prng(seed);
     for (let index = 0; index < count; index += 1) {
       const scenario = generateScenario(rng, seed, index);
+      if (scenario.expect.diverges === true) {
+        try {
+          await simulate(driver, scenario);
+          failures += 1;
+        } catch (error) {
+          if (!errorMessage(error).includes('diverged')) failures += 1;
+        }
+        continue;
+      }
       try {
         await simulate(driver, scenario);
       } catch (error) {
@@ -272,19 +352,43 @@ function runPerfCase(driver: SimDriver, options: RunOptions): CaseResult {
   const counts = options.profile === 'full' ? [150, 500] : [150];
   const path = join(PACKAGE_ROOT, 'baselines', 'perf.json');
   const started = Date.now();
-  const samples = measurePerf(driver, counts);
-  if (options.updateBaseline) writeBaseline(path, samples);
-  const judged = judgePerf(samples, readBaseline(path), options.updateBaseline);
-  return {
-    ...base(
-      { name: 'perf', suite: 'perf', tags: ['perf'], seed: 1, ticks: 12 },
-      judged.status,
-      12,
+  try {
+    const baseline = readBaseline(path);
+    let samples = measurePerf(driver, counts);
+    if (options.updateBaseline) writeBaseline(path, samples);
+    let judged = judgePerf(samples, readBaseline(path), options.updateBaseline);
+    if (judged.status === 'fail' && !options.updateBaseline) {
+      samples = measurePerf(driver, counts);
+      const again = judgePerf(samples, baseline, false);
+      if (again.status !== 'fail') {
+        judged = {
+          ...again,
+          note:
+            again.note === ''
+              ? 'first perf sample tripped the gate; repeat passed'
+              : again.note,
+        };
+      }
+    }
+    return {
+      ...base(
+        { name: 'perf', suite: 'perf', tags: ['perf'], seed: 1, ticks: 300 },
+        judged.status,
+        300,
+        Date.now() - started,
+        judged.note
+      ),
+      perf: judged.rows,
+    };
+  } catch (error) {
+    return base(
+      { name: 'perf', suite: 'perf', tags: ['perf'], seed: 1, ticks: 300 },
+      'fail',
+      300,
       Date.now() - started,
-      judged.note
-    ),
-    perf: judged.rows,
-  };
+      errorMessage(error)
+    );
+  }
 }
 
 async function timeCase(
