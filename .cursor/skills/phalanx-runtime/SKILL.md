@@ -1,6 +1,6 @@
 ---
 name: phalanx-runtime
-description: Describe a Phalanx game as one GameDefinition and run it with MatchRunner from @phalanx-engine/runtime (engine 0.3). Use when defining games with defineGame, implementing the GameState save/restore contract, writing BotPolicy bots, choosing simMode 'client' vs 'server', snapshots, replays, reconnect, or Transport/LocalTransport. Canonical state bytes and StateHelpers, including GAS, are implemented; later tasks are still a skeleton.
+description: Describe a Phalanx game as one GameDefinition and run it with MatchRunner from @phalanx-engine/runtime (engine 0.3). Use when defining games with defineGame, implementing the GameState save/restore contract, writing BotPolicy bots, choosing simMode 'client' vs 'server', snapshots, replays, reconnect, or Transport/LocalTransport. Canonical state bytes, StateHelpers (including GAS), MatchRunner, LocalTransport and the bot host are implemented. MatchRunner.join is still Task 12.
 metadata:
   author: phaeton2040-AI
   version: '0.1'
@@ -8,15 +8,17 @@ metadata:
 
 # Phalanx Runtime Skill
 
-> **Status: Tasks 1–5 implemented; later tasks are still a skeleton.**
+> **Status: Tasks 1–6 implemented. `MatchRunner.join` is still Task 12.**
 > Task 3 is engine hooks (ecs id counter, SoA context, pools, math RNG
 > state, ability runtime export, broadphase centers). Task 4 is
 > `StateHelpers` except GAS. Task 5 is `writeAbilities` / `readAbilities`.
-> `BinaryStateWriter` / `BinaryStateReader`, `encodeSnapshot` /
-> `decodeSnapshot`, `digestBytes`, `canonicalConfigBytes`, `configHash` and
-> `checkSnapshotCompatibility` are live. Later members throw
-> `NotImplementedError` with `not implemented: <member> (Task NN)`. Check
-> `docs/design/runtime-api.md` § Task map before relying on a member.
+> Task 6 is `MatchRunner` (not `join`), `CommandLog`, `WorldScope`,
+> `BotHost` and in-memory `LocalTransport`. `BinaryStateWriter` /
+> `BinaryStateReader`, `encodeSnapshot` / `decodeSnapshot`, `digestBytes`,
+> `canonicalConfigBytes`, `configHash` and `checkSnapshotCompatibility` are
+> live. Later members throw `NotImplementedError` with
+> `not implemented: <member> (Task NN)`. Check `docs/design/runtime-api.md`
+> § Task map before relying on a member.
 
 ## When to Use This Skill
 
@@ -115,6 +117,26 @@ Call these inside the game's own `GameState`, in this order on restore:
   simulation. `rebuildPhysics` rebuilds from current transforms and is
   valid only before the first resolving step.
 
+## Running a match
+
+```ts
+const transport = new LocalTransport({ tickRate: game.tickRate });
+const runner = new MatchRunner(game, config, transport, { side: 'client' });
+runner.start();
+runner.submit({ type: 'move', dx: 1n }); // executes at tick + inputDelayTicks
+```
+
+Tests and replays use `LocalTransport.manual()` and `step(n)`.
+`fastForward(log, { budgetMs, throughTick })` replays through `throughTick`
+inclusive, including empty ticks. `MatchRunner.fromReplay` never calls
+`decide`. Wrap nothing yourself: the runner enters the world through
+`WorldScope`. Two runners in one process keep separate entity ids.
+
+Validation runs inside the tick, after `(slot, seq)` sort. A snapshot taken
+after `decide` stores bot bytes and the input checkpoint outside the
+digest. `restore` applies those only for slots this runner hosts or
+submits, so a client ignores a server snapshot's bot state and checkpoint.
+
 ## Canonical state bytes
 
 `BinaryStateWriter` / `BinaryStateReader` are the snapshot codec.
@@ -180,4 +202,5 @@ class TinyState implements GameState {
 
 - `docs/design/runtime-api.md`: all contracts, review findings, task map.
 - `docs/design/server-sim.md`, `docs/design/reconnect.md`.
-- `phalanx-runtime/tests/fixtures/tinyGame.ts`: a type-checked example.
+- `phalanx-runtime/tests/fixtures/tinyGame.ts`: the Task 6 fixture
+  (`spawn` / `move`, walker bot, SoA position and hp).

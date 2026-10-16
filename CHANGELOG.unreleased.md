@@ -93,6 +93,20 @@ Entries collected per package until the synchronized 0.3.0 release
   `readAbilities` refills `queue` and `pendingAdd` by clearing each array
   and pushing entries one at a time. A list of hundreds of thousands of
   effects does not throw, and the destination arrays keep their identity.
+- Match runner (Task 6): `MatchRunner` drives one `GameDefinition` from any
+  `Transport` through a runner-owned tick provider and `world.start()`.
+  `CommandLog` stores raw envelopes, including rejected commands and empty
+  ticks. `BotHost` runs the policies for the runner's side, with one
+  `DeterministicRandom` per slot mixed from `(config.seed, slot)`.
+  `WorldScope` isolates the entity id counter and the SoA entity manager.
+  `LocalTransport` is in-memory (timer, or `manual()` + `step`).
+  `submit` targets `tick + inputDelayTicks` and does not validate; decode
+  and validate run inside the tick in `(slot, seq)` order. Snapshots taken
+  after `decide` carry bot state and the input checkpoint outside the
+  digest. `restore` round-trips `GameState` and applies those extras only
+  for slots this runner hosts or submits. `fastForward` takes an inclusive
+  `throughTick`, runs empty ticks, and yields on `budgetMs`. `fromReplay`
+  never calls `decide`. `MatchRunner.join` remains Task 12.
 
 ## @phalanx-engine/ecs
 

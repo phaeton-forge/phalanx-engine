@@ -1,10 +1,11 @@
 # @phalanx-engine/runtime
 
-> **Status: Tasks 1–5 implemented.** Contracts and types are final for
+> **Status: Tasks 1–6 implemented.** Contracts and types are final for
 > engine 0.3. `StateHelpers` covers SoA stores, entity ids, pools, RNG,
-> broadphase centers and GAS (abilities). The match runner still throws
-> `not implemented: <member> (Task NN)`. The package is `private` until the
-> synchronized 0.3.0 release.
+> broadphase centers and GAS (abilities). `MatchRunner` drives a game from
+> any `Transport`, with an in-memory `LocalTransport`, `CommandLog`,
+> `WorldScope` and `BotHost`. `MatchRunner.join` is still Task 12. The
+> package is `private` until the synchronized 0.3.0 release.
 
 Isomorphic match runtime for Phalanx games (no DOM, no sockets). A game
 describes itself as one `GameDefinition`; the engine's `MatchRunner` drives
@@ -76,9 +77,23 @@ snapshot intervals, …), `botPlayerId` / `isBotPlayerId`, `rejectCommand` /
 keys), `encodeSnapshot` / `decodeSnapshot` (header, body, and optional bot
 state and input checkpoint outside the digest), `digestBytes` (xxhash64,
 seed 0), `canonicalConfigBytes` / `configHash`,
-`checkSnapshotCompatibility`, and `StateHelpers` including
-`writeAbilities` / `readAbilities` (`section('gas', 1)`). There is no
-`f32` or `f64` writer.
+`checkSnapshotCompatibility`, `StateHelpers` including
+`writeAbilities` / `readAbilities` (`section('gas', 1)`), and the offline
+runner: `MatchRunner`, `CommandLog`, `WorldScope`, `BotHost` and
+`LocalTransport` (timer or `LocalTransport.manual()` + `step`). There is
+no `f32` or `f64` writer.
+
+`MatchRunner` emits each tick on a runner-owned `ITickFrameProvider`, so
+`createWorld` must call `world.start()`. Commands are sorted by `(slot, seq)`
+and validated inside the tick; rejected entries stay in the log.
+`snapshot` runs after hosted `decide` and stores bot state plus the input
+checkpoint outside the digest. `restore` rebuilds with
+`purpose: 'restore'`, checks the round trip, then applies bot state and
+the checkpoint only for slots this runner hosts or submits. A client
+restoring a server snapshot ignores both. `fastForward(entries, { budgetMs,
+throughTick })` is inclusive and runs empty ticks. `fromReplay` never
+calls `decide`. `WorldScope.run` isolates the entity id counter and the
+SoA entity manager so two matches can share a process.
 
 `writeAbilities` stores the per-world runtime from `exportRuntimeState`
 (instance-id counter, activation queue, `currentTick`, resolved
