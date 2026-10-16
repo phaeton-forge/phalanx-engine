@@ -1,5 +1,5 @@
 import type { FixedPoint } from '@phalanx-engine/math';
-import type { AttributeValue } from './AttributeValue';
+import type { AttributeValue } from './AttributeValue.js';
 
 /**
  * Minimal read-only slice of `AbilitySystemFacade` exposed to a

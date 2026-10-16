@@ -1,4 +1,4 @@
-import type { AbilityHook } from '../types';
+import type { AbilityHook } from '../types/index.js';
 
 export class AbilityHooksRegistry {
   private readonly hooks = new Map<string, AbilityHook>();

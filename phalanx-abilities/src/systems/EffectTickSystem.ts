@@ -10,11 +10,15 @@ import {
   getActiveEffectsComponent,
   getAttributesComponent,
   getGameplayTagsComponent,
-} from '../components';
-import type { AbilitySystemRegistries } from '../registry';
-import { appendGameplayCueEvents } from '../runtime';
-import type { AbilitySystemRuntime } from '../runtime';
-import type { ActiveEffectInstance, EffectDef, ModifierOp } from '../types';
+} from '../components/index.js';
+import type { AbilitySystemRegistries } from '../registry/index.js';
+import { appendGameplayCueEvents } from '../runtime/index.js';
+import type { AbilitySystemRuntime } from '../runtime/index.js';
+import type {
+  ActiveEffectInstance,
+  EffectDef,
+  ModifierOp,
+} from '../types/index.js';
 
 /**
  * Per-tick lifecycle for `Duration` and `Periodic` effects.

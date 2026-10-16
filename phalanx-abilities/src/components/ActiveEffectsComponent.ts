@@ -1,6 +1,6 @@
 import type { IComponent } from '@phalanx-engine/ecs';
-import type { ActiveEffectInstance } from '../types';
-import { AbilitiesComponentType } from './AbilitiesComponentType';
+import type { ActiveEffectInstance } from '../types/index.js';
+import { AbilitiesComponentType } from './AbilitiesComponentType.js';
 
 export interface PendingEffectAdd {
   defId: string;

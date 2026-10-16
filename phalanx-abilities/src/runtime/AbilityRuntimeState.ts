@@ -1,10 +1,10 @@
 import { FixedPoint } from '@phalanx-engine/math';
-import type { ProvidedTarget } from '../types';
+import type { ProvidedTarget } from '../types/index.js';
 import type {
   AbilityActivationRequest,
   AbilitySystemRuntime,
   ResolvedAbilityActivationRecord,
-} from './AbilitySystemRuntime';
+} from './AbilitySystemRuntime.js';
 
 /**
  * Snapshot of the per-world ability runtime.

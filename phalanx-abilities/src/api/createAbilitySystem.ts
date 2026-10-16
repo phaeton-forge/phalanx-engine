@@ -1,11 +1,15 @@
-import type { GameSystem, GameWorld, IAbilitySystem } from '@phalanx-engine/ecs';
+import type {
+  GameSystem,
+  GameWorld,
+  IAbilitySystem,
+} from '@phalanx-engine/ecs';
 import { FP } from '@phalanx-engine/math';
 import type { FixedPoint } from '@phalanx-engine/math';
 import {
   AbilitiesComponentType,
   AbilitySystemComponent,
-} from '../components';
-import type { CueConfig } from '../cues';
+} from '../components/index.js';
+import type { CueConfig } from '../cues/index.js';
 import {
   AbilityActivationSystem,
   AbilityHookExecutorSystem,
@@ -15,26 +19,26 @@ import {
   CuePresentationSystem,
   EffectApplicationSystem,
   EffectTickSystem,
-} from '../systems';
-import { createAbilitySystemRegistries } from '../registry';
-import type { AbilitySystemRegistries } from '../registry';
-import { createAbilitySystemRuntime } from '../runtime';
+} from '../systems/index.js';
+import { createAbilitySystemRegistries } from '../registry/index.js';
+import type { AbilitySystemRegistries } from '../registry/index.js';
+import { createAbilitySystemRuntime } from '../runtime/index.js';
 import type {
   AbilityRuntimeState,
   AbilitySystemRuntime,
   GameplayCueBufferView,
-} from '../runtime';
+} from '../runtime/index.js';
 import {
   exportAbilityRuntimeState,
   importAbilityRuntimeState,
-} from '../runtime/AbilityRuntimeState';
-import type {
-  AbilityHook,
-  ProvidedTarget,
-} from '../types';
-import { AbilitySystemFacade, NO_SOURCE_ENTITY_ID } from './AbilitySystemFacade';
-import type { AttributeValue } from './AbilitySystemFacade';
-import type { AbilitySystemDefinitions } from './defineAbilitySystem';
+} from '../runtime/AbilityRuntimeState.js';
+import type { AbilityHook, ProvidedTarget } from '../types/index.js';
+import {
+  AbilitySystemFacade,
+  NO_SOURCE_ENTITY_ID,
+} from './AbilitySystemFacade.js';
+import type { AttributeValue } from './AbilitySystemFacade.js';
+import type { AbilitySystemDefinitions } from './defineAbilitySystem.js';
 
 export type AbilitySystemPipeline =
   | 'full'
@@ -105,7 +109,11 @@ export interface AbilitySystem extends IAbilitySystem {
    */
   importRuntimeState(state: AbilityRuntimeState): void;
   initComponent(init?: AbilitySystemComponentInit): AbilitySystemComponent;
-  activateAbility(casterEntityId: number, abilityId: string, providedTarget?: ProvidedTarget): boolean;
+  activateAbility(
+    casterEntityId: number,
+    abilityId: string,
+    providedTarget?: ProvidedTarget
+  ): boolean;
   applyEffect(
     targetEntityId: number,
     effectId: string,
@@ -129,7 +137,11 @@ export function createAbilitySystem(
   registerDefinitions(registries, config.definitions);
 
   const runtime = createAbilitySystemRuntime();
-  const facade = new AbilitySystemFacade(world.entityManager, registries, runtime);
+  const facade = new AbilitySystemFacade(
+    world.entityManager,
+    registries,
+    runtime
+  );
 
   if (config.hooks) {
     for (const [hookId, hook] of Object.entries(config.hooks)) {
@@ -206,8 +218,12 @@ class AbilitySystemImpl implements AbilitySystem {
     );
   }
 
-  public initComponent(init: AbilitySystemComponentInit = {}): AbilitySystemComponent {
-    const component = new AbilitySystemComponent(this.registries.attributes.size);
+  public initComponent(
+    init: AbilitySystemComponentInit = {}
+  ): AbilitySystemComponent {
+    const component = new AbilitySystemComponent(
+      this.registries.attributes.size
+    );
     this.seedAttributes(component, init.attributes);
     this.seedAbilities(component, init.abilities);
     this.seedTags(component, init.tags);
@@ -220,7 +236,11 @@ class AbilitySystemImpl implements AbilitySystem {
     abilityId: string,
     providedTarget?: ProvidedTarget
   ): boolean {
-    return this.facade.activateAbility(casterEntityId, abilityId, providedTarget);
+    return this.facade.activateAbility(
+      casterEntityId,
+      abilityId,
+      providedTarget
+    );
   }
 
   public applyEffect(
@@ -229,7 +249,12 @@ class AbilitySystemImpl implements AbilitySystem {
     sourceEntityId: number = NO_SOURCE_ENTITY_ID,
     setByCaller?: ReadonlyMap<string, unknown>
   ): void {
-    this.facade.applyEffect(targetEntityId, effectId, sourceEntityId, setByCaller);
+    this.facade.applyEffect(
+      targetEntityId,
+      effectId,
+      sourceEntityId,
+      setByCaller
+    );
   }
 
   public removeEffectsByTag(entityId: number, grantedTag: string): number {
@@ -244,7 +269,10 @@ class AbilitySystemImpl implements AbilitySystem {
     return this.facade.getAttribute(entityId, attrId);
   }
 
-  public tryGetAttribute(entityId: number, attrId: string): AttributeValue | undefined {
+  public tryGetAttribute(
+    entityId: number,
+    attrId: string
+  ): AttributeValue | undefined {
     return this.facade.tryGetAttribute(entityId, attrId);
   }
 
@@ -277,7 +305,9 @@ class AbilitySystemImpl implements AbilitySystem {
     for (const [attributeId, value] of Object.entries(overrides)) {
       const index = this.registries.attributes.indexOf(attributeId);
       const base = isAttributeValuePair(value) ? value.base : value;
-      const current = isAttributeValuePair(value) ? value.current ?? value.base : value;
+      const current = isAttributeValuePair(value)
+        ? (value.current ?? value.base)
+        : value;
       component.attributes.base[index] = FP.ToRaw(base);
       component.attributes.current[index] = FP.ToRaw(current);
       component.attributes.dirty[index] = 1;
@@ -329,7 +359,7 @@ class AbilitySystemImpl implements AbilitySystem {
         sourceEntityId:
           typeof entry === 'string'
             ? NO_SOURCE_ENTITY_ID
-            : entry.sourceEntityId ?? NO_SOURCE_ENTITY_ID,
+            : (entry.sourceEntityId ?? NO_SOURCE_ENTITY_ID),
         setByCaller: null,
       });
     }

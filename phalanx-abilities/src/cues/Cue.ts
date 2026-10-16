@@ -1,5 +1,5 @@
 import type { EntityManager, EventBus } from '@phalanx-engine/ecs';
-import type { GameplayCueDispatchedEvent } from '../events';
+import type { GameplayCueDispatchedEvent } from '../events/index.js';
 
 /**
  * Narrow, read-only projection of the engine's SystemContext handed to a Cue.
@@ -28,7 +28,10 @@ export interface CueContext {
  */
 export abstract class Cue {
   /** Bind the freshly created cue to the dispatch event + world services. */
-  public abstract onSpawn(event: GameplayCueDispatchedEvent, context: CueContext): void;
+  public abstract onSpawn(
+    event: GameplayCueDispatchedEvent,
+    context: CueContext
+  ): void;
 
   /** Per-frame animation. Default: no-op. */
   public update(_deltaTimeSeconds: number): void {}

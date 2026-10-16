@@ -7,18 +7,18 @@ import {
   getActiveEffectsComponent,
   getAttributesComponent,
   getGameplayTagsComponent,
-} from '../components';
-import { ABILITY_ACTIVATED_EVENT } from '../events';
-import type { AbilityActivatedEvent } from '../events';
-import type { AbilitySystemRegistries } from '../registry';
+} from '../components/index.js';
+import { ABILITY_ACTIVATED_EVENT } from '../events/index.js';
+import type { AbilityActivatedEvent } from '../events/index.js';
+import type { AbilitySystemRegistries } from '../registry/index.js';
 import type {
   AbilityActivationRequest,
   AbilitySystemRuntime,
   ResolvedAbilityActivationRecord,
-} from '../runtime';
-import { TargetResolver } from '../targeting';
-import type { TargetResolutionResult } from '../targeting';
-import type { AbilityDef, ProvidedTarget } from '../types';
+} from '../runtime/index.js';
+import { TargetResolver } from '../targeting/index.js';
+import type { TargetResolutionResult } from '../targeting/index.js';
+import type { AbilityDef, ProvidedTarget } from '../types/index.js';
 
 /**
  * Drains pending {@link AbilityActivationRequest}s from the runtime, runs
@@ -82,7 +82,10 @@ export class AbilityActivationSystem extends GameSystem {
    * Per-tick scratch buffer: caster id → attribute id → cumulative debit.
    * `debit` is stored as raw `FixedPoint` for cheap accumulation.
    */
-  private readonly inFlightCostsByCaster = new Map<number, Map<string, bigint>>();
+  private readonly inFlightCostsByCaster = new Map<
+    number,
+    Map<string, bigint>
+  >();
 
   /**
    * Lazily constructed once the entity manager has been attached (the
@@ -168,7 +171,9 @@ export class AbilityActivationSystem extends GameSystem {
     const abilityDef = this.registries.abilities.tryGet(request.abilityId);
     if (!abilityDef) {
       // Unknown ability id is a programming error, not a runtime miss.
-      throw new Error(`AbilityRegistry does not contain '${request.abilityId}'`);
+      throw new Error(
+        `AbilityRegistry does not contain '${request.abilityId}'`
+      );
     }
 
     const caster = this.entityManager.getEntity(request.casterEntityId);
@@ -187,7 +192,11 @@ export class AbilityActivationSystem extends GameSystem {
     //    cost, no cooldown, no event, no hook. Other failure modes
     //    (missing entity position) throw inside
     //    `resolve` and propagate up via the drain loop's try/finally.
-    const resolution = this.resolveTargets(caster, abilityDef, request.providedTarget);
+    const resolution = this.resolveTargets(
+      caster,
+      abilityDef,
+      request.providedTarget
+    );
     if (resolution.dropped) {
       return;
     }
@@ -344,7 +353,9 @@ export class AbilityActivationSystem extends GameSystem {
         // the affordability check and we let them through unchanged.
         continue;
       }
-      const attributeIndex = this.registries.attributes.indexOfOrMinusOne(modifier.attributeId);
+      const attributeIndex = this.registries.attributes.indexOfOrMinusOne(
+        modifier.attributeId
+      );
       if (attributeIndex === -1) {
         throw new Error(
           `Ability cost effect '${costEffectId}' references unknown attribute '${modifier.attributeId}'`
@@ -423,7 +434,11 @@ export class AbilityActivationSystem extends GameSystem {
    * `throw`, which is appropriate for user code but the system already
    * knows the entity exists.
    */
-  private enqueueEffect(target: Entity, effectId: string, sourceEntityId: number): void {
+  private enqueueEffect(
+    target: Entity,
+    effectId: string,
+    sourceEntityId: number
+  ): void {
     if (!this.registries.effects.has(effectId)) {
       throw new Error(`EffectRegistry does not contain '${effectId}'`);
     }
@@ -515,4 +530,3 @@ export class AbilityActivationSystem extends GameSystem {
     });
   }
 }
-

@@ -1,4 +1,4 @@
-import type { AbilityDef, AttributeDef, EffectDef } from '../types';
+import type { AbilityDef, AttributeDef, EffectDef } from '../types/index.js';
 
 export interface AbilitySystemDefinitions {
   attributes: readonly AttributeDef[];

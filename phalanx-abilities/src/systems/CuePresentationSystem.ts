@@ -1,8 +1,8 @@
 import { GameSystem } from '@phalanx-engine/ecs';
 import type { IAfterFrame, SystemContext } from '@phalanx-engine/ecs';
-import { gameplayCueKey } from '../events';
-import type { GameplayCueDispatchedEvent } from '../events';
-import type { Cue, CueConfig, CueContext } from '../cues';
+import { gameplayCueKey } from '../events/index.js';
+import type { GameplayCueDispatchedEvent } from '../events/index.js';
+import type { Cue, CueConfig, CueContext } from '../cues/index.js';
 
 /**
  * Spawns one short-lived {@link Cue} instance per dispatched cue event and drives
@@ -29,15 +29,18 @@ export class CuePresentationSystem extends GameSystem implements IAfterFrame {
     };
 
     for (const [cueId, factory] of Object.entries(this.cues)) {
-      this.subscribe<GameplayCueDispatchedEvent>(gameplayCueKey(cueId), (event) => {
-        const cue = factory();
-        cue.onSpawn(event, this.cueContext);
-        if (cue.isFinished()) {
-          cue.dispose();
-        } else {
-          this.activeCues.push(cue);
+      this.subscribe<GameplayCueDispatchedEvent>(
+        gameplayCueKey(cueId),
+        (event) => {
+          const cue = factory();
+          cue.onSpawn(event, this.cueContext);
+          if (cue.isFinished()) {
+            cue.dispose();
+          } else {
+            this.activeCues.push(cue);
+          }
         }
-      });
+      );
     }
   }
 

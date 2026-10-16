@@ -5,10 +5,15 @@ import {
   AbilitiesComponentType,
   getActiveEffectsComponent,
   getAttributesComponent,
-} from '../components';
-import type { ActiveEffectsComponent } from '../components';
-import type { AbilitySystemRegistries } from '../registry';
-import type { ActiveEffectInstance, AttributeDef, EffectDef, ModifierOp } from '../types';
+} from '../components/index.js';
+import type { ActiveEffectsComponent } from '../components/index.js';
+import type { AbilitySystemRegistries } from '../registry/index.js';
+import type {
+  ActiveEffectInstance,
+  AttributeDef,
+  EffectDef,
+  ModifierOp,
+} from '../types/index.js';
 
 /**
  * Reusable per-tick buffer reused across entities to avoid per-entity allocations
@@ -63,14 +68,20 @@ export class AttributeAggregationSystem extends GameSystem {
       const resolvedEffectDefs = this.resolveEffectDefs(orderedEffects);
       const resolvedInstances = this.resolvedInstancesBuffer;
 
-      for (let attributeIndex = 0; attributeIndex < attributes.dirty.length; attributeIndex++) {
+      for (
+        let attributeIndex = 0;
+        attributeIndex < attributes.dirty.length;
+        attributeIndex++
+      ) {
         if (attributes.dirty[attributeIndex] === 0) {
           continue;
         }
 
         const attributeDef = attributeDefs[attributeIndex];
         if (!attributeDef) {
-          throw new Error(`AttributeRegistry does not contain index ${attributeIndex}`);
+          throw new Error(
+            `AttributeRegistry does not contain index ${attributeIndex}`
+          );
         }
 
         let value = FP.FromRaw(attributes.base[attributeIndex]);
@@ -96,7 +107,10 @@ export class AttributeAggregationSystem extends GameSystem {
         // Only applies to attributes that have an active clamp; 'none' is left alone.
         if (attributeDef.clamp !== 'none') {
           attributes.base[attributeIndex] = FP.ToRaw(
-            clampAttribute(FP.FromRaw(attributes.base[attributeIndex]), attributeDef),
+            clampAttribute(
+              FP.FromRaw(attributes.base[attributeIndex]),
+              attributeDef
+            )
           );
         }
         attributes.dirty[attributeIndex] = 0;
@@ -155,7 +169,9 @@ export class AttributeAggregationSystem extends GameSystem {
    * Until then, treating their modifiers as always-on would be incorrect and
    * would diverge from the documented Stage 3 contract.
    */
-  private resolveEffectDefs(orderedEffects: readonly ActiveEffectInstance[]): readonly EffectDef[] {
+  private resolveEffectDefs(
+    orderedEffects: readonly ActiveEffectInstance[]
+  ): readonly EffectDef[] {
     const buffer = this.resolvedEffectDefsBuffer;
     const instancesBuffer = this.resolvedInstancesBuffer;
     buffer.length = 0;
@@ -173,7 +189,10 @@ export class AttributeAggregationSystem extends GameSystem {
   }
 }
 
-function byInstanceIdAsc(a: ActiveEffectInstance, b: ActiveEffectInstance): number {
+function byInstanceIdAsc(
+  a: ActiveEffectInstance,
+  b: ActiveEffectInstance
+): number {
   return a.instanceId - b.instanceId;
 }
 

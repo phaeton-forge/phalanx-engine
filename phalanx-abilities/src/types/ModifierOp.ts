@@ -1,5 +1,5 @@
 import type { FixedPoint } from '@phalanx-engine/math';
-import type { MagnitudeCalculation } from './MagnitudeCalculation';
+import type { MagnitudeCalculation } from './MagnitudeCalculation.js';
 
 export type ModifierOp = 'Add' | 'Multiply' | 'Override';
 

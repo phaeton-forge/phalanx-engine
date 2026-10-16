@@ -1,5 +1,5 @@
 import { GameSystem } from '@phalanx-engine/ecs';
-import type { AbilitySystemRuntime } from '../runtime';
+import type { AbilitySystemRuntime } from '../runtime/index.js';
 
 /**
  * Clears the per-world gameplay cue buffer at the end of the abilities
@@ -18,5 +18,3 @@ export class CueBufferCleanupSystem extends GameSystem {
     this.runtime.gameplayCueBuffer.events.length = 0;
   }
 }
-
-

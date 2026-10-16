@@ -1,8 +1,7 @@
-
-import { AbilityHooksRegistry } from './AbilityHooksRegistry';
-import { AbilityRegistry } from './AbilityRegistry';
-import { AttributeRegistry } from './AttributeRegistry';
-import { EffectRegistry } from './EffectRegistry';
+import { AbilityHooksRegistry } from './AbilityHooksRegistry.js';
+import { AbilityRegistry } from './AbilityRegistry.js';
+import { AttributeRegistry } from './AttributeRegistry.js';
+import { EffectRegistry } from './EffectRegistry.js';
 
 /**
  * Bundle of per-world ability-system registries.

@@ -65,7 +65,9 @@ Entries collected per package until the synchronized 0.3.0 release
   The package and its ecs/physics dependency graph emit NodeNext ESM so
   `import('@phalanx-engine/runtime')` loads under native Node. The runtime
   test script imports `dist/index.js` after vitest. The empty-store SoA
-  change landed in the same commit as the NodeNext emit.
+  change landed in the same commit as the NodeNext emit. Every
+  `@phalanx-engine/*` package test script now imports its own `dist/index.js`
+  the same way, including abilities after its NodeNext migration.
 
 ## @phalanx-engine/ecs
 
@@ -115,6 +117,11 @@ Entries collected per package until the synchronized 0.3.0 release
 
 ## @phalanx-engine/abilities
 
+- Built output is NodeNext ESM: relative specifiers end in `.js`, and
+  directory imports (`./api`, `./components`, `./runtime`, and the other
+  barrels) point at `index.js`. Native Node can import
+  `@phalanx-engine/abilities` from `dist` without
+  `ERR_UNSUPPORTED_DIR_IMPORT`.
 - `InstanceIdCounter.set(n)` restores any integer `>= 0`.
   `AbilitySystem.exportRuntimeState` / `importRuntimeState` copy the
   instance-id counter, activation queue, current tick, and resolved

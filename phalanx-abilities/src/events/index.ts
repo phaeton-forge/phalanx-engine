@@ -1,4 +1,4 @@
-export { ABILITY_ACTIVATED_EVENT } from './AbilityEvents';
-export type { AbilityActivatedEvent } from './AbilityEvents';
-export { GAMEPLAY_CUE_EVENT, gameplayCueKey } from './CueEvents';
-export type { GameplayCueDispatchedEvent } from './CueEvents';
+export { ABILITY_ACTIVATED_EVENT } from './AbilityEvents.js';
+export type { AbilityActivatedEvent } from './AbilityEvents.js';
+export { GAMEPLAY_CUE_EVENT, gameplayCueKey } from './CueEvents.js';
+export type { GameplayCueDispatchedEvent } from './CueEvents.js';

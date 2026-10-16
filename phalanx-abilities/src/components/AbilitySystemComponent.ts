@@ -1,8 +1,8 @@
 import type { Entity, IComponent } from '@phalanx-engine/ecs';
-import { AbilitiesComponentType } from './AbilitiesComponentType';
-import { ActiveEffectsComponent } from './ActiveEffectsComponent';
-import { AttributesComponent } from './AttributesComponent';
-import { GameplayTagsComponent } from './GameplayTagsComponent';
+import { AbilitiesComponentType } from './AbilitiesComponentType.js';
+import { ActiveEffectsComponent } from './ActiveEffectsComponent.js';
+import { AttributesComponent } from './AttributesComponent.js';
+import { GameplayTagsComponent } from './GameplayTagsComponent.js';
 
 /**
  * Aggregate gameplay ability state attached to one entity.

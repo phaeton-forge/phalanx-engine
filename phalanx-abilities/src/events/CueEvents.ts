@@ -1,4 +1,4 @@
-import type { CueEvent } from '../types';
+import type { CueEvent } from '../types/index.js';
 
 /** Per-event dispatch payload posted to the world EventBus. */
 export type GameplayCueDispatchedEvent = CueEvent;

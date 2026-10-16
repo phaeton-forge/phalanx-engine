@@ -1,4 +1,4 @@
-import type { TargetSpec } from './TargetSpec';
+import type { TargetSpec } from './TargetSpec.js';
 
 export interface AbilityDef {
   id: string;

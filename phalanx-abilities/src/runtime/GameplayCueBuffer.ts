@@ -1,5 +1,5 @@
-import { getCueIdsForPhase } from '../types';
-import type { CueEvent, CuePhase, EffectCueSpec } from '../types';
+import { getCueIdsForPhase } from '../types/index.js';
+import type { CueEvent, CuePhase, EffectCueSpec } from '../types/index.js';
 
 export interface GameplayCueBuffer {
   readonly events: CueEvent[];
