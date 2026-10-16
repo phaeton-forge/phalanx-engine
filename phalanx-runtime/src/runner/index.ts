@@ -15,5 +15,4 @@ export type {
   PendingCommandBatch,
   SlotSequence,
 } from './InputCheckpoint.js';
-export { WorldScope } from './WorldScope.js';
 export type { ReplayRecord } from './replay.js';

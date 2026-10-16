@@ -1,11 +1,12 @@
 # @phalanx-engine/runtime
 
-> **Status: Tasks 1–6 implemented.** Contracts and types are final for
-> engine 0.3. `StateHelpers` covers SoA stores, entity ids, pools, RNG,
-> broadphase centers and GAS (abilities). `MatchRunner` drives a game from
-> any `Transport`, with an in-memory `LocalTransport`, `CommandLog`,
-> `WorldScope` and `BotHost`. `MatchRunner.join` is still Task 12. The
-> package is `private` until the synchronized 0.3.0 release.
+> **Status: Tasks 1–6 and 6.5a implemented.** Contracts and types are final
+> for engine 0.3. `defineComponent` plus `world.save` / `world.restore`
+> persist the world. Low-level section helpers live in
+> `@phalanx-engine/runtime/advanced`. `MatchRunner` drives a game from any
+> `Transport`, with an in-memory `LocalTransport`, `CommandLog` and
+> `BotHost`. `MatchRunner.join` is still Task 12. The package is `private`
+> until the synchronized 0.3.0 release.
 
 Isomorphic match runtime for Phalanx games (no DOM, no sockets). A game
 describes itself as one `GameDefinition`; the engine's `MatchRunner` drives
@@ -44,24 +45,47 @@ export const MyGame = defineGame({
 });
 ```
 
-- **`GameState { save(w), restore(r) }`**: implemented by the game; the
-  engine calls it without knowing the format. Canonical bytes only (no
-  floats; FP values as raw `i64`). `restore(save(x))` must re-save to
-  identical bytes.
-- **`StateHelpers`**: optional helpers a game may call inside its
-  `GameState`. SoA rows (explicit schema names; `f32` / `f64` skipped),
-  the entity id counter, `spawnWithId`, pool membership, RNG state,
-  broadphase centers and GAS state are implemented. Restore order:
-  `spawnWithId` for non-pooled entities, `readPools` (constructs pooled
-  entities and discards prewarmed free ones; free entities get `onDespawn`
-  again), `readSoAStores`, `readAbilities`, `readEntityIds`, `readRandom`,
-  `readBroadphase`. A zero-row SoA section registers a
-  missing empty store; a saved id with no row still throws, and a row
-  the section omitted throws `extra entity`. Restore broadphase with
-  `readBroadphase` (pre-separation centers, including radius and each
-  value's precision). That also fills `lastX` / `lastZ` for the first
-  frame. Do not read `lastX` / `lastZ` in simulation. `rebuildPhysics`
-  is only for a collision-free world.
+`state` may be omitted. `defineGame` then returns a copy whose state is
+the world modules (`formatVersion` 1). When `state` is present,
+`defineGame` returns that same object.
+
+- **`defineComponent(name, fields, { defaults? })`**: a named SoA schema.
+  Register it with `world.registerComponent` before the first spawn.
+  Registration order is part of `configHash` (an empty list keeps the
+  previous hash). `f32` / `f64` fields are rejected. Names `roster`,
+  `pools`, `entityIds`, `random`, `broadphase` and `gas` are reserved.
+- **`world.save()` / `world.restore(bytes)`**: roster (only when a
+  non-pooled entity exists), pools, SoA stores, abilities (when GAS is
+  attached), the entity id counter, RNG, broadphase centers (when a grid
+  is attached), then optional `bindWorldSingletons` hooks. Section bytes
+  match a manual `StateHelpers` save. `restore` skips a roster id that
+  world creation already spawned and overwrites its rows, then calls
+  `onEnable`. `onEnable` must not overwrite saved fields.
+- **`world.spawn({ Unit: { hp: 48n } })` / `world.despawn(entity)` /
+  `world.each(Unit, (row) => { ... })`**: the same entity id counter as
+  `new Entity()`. `each` walks rows in ascending id. Do not retain the
+  view.
+- **`GameState { save(w), restore(r) }`**: implemented by the game when
+  the default modules are not enough. Canonical bytes only (no floats;
+  FP values as raw `i64`). `restore(save(x))` must re-save to identical
+  bytes.
+- **`@phalanx-engine/runtime/advanced`**: `StateHelpers`, `spawnWithId`,
+  `rebuildBroadphaseFromTransforms` and `WorldScope`. These are not on
+  the package root. SoA rows (explicit schema names; `f32` / `f64`
+  skipped), the entity id counter, pool membership, RNG state, broadphase
+  centers and GAS state are implemented. Restore order: `spawnWithId` for
+  non-pooled entities, `readPools` (constructs pooled entities and
+  discards prewarmed free ones; free entities get `onDespawn` again),
+  `readSoAStores`, `readAbilities`, `readEntityIds`, `readRandom`,
+  `readBroadphase`. A zero-row SoA section registers a missing empty
+  store; a saved id with no row still throws, and a row the section
+  omitted throws `extra entity`. Restore broadphase with `readBroadphase`
+  (pre-separation centers, including radius and each value's precision).
+  That also fills `lastX` / `lastZ` for the first frame. Do not read
+  `lastX` / `lastZ` in simulation.
+  `rebuildBroadphaseFromTransforms` is only for a collision-free world.
+  `spawnWithId` still throws `entity N already exists` when that id is
+  already registered. `world.restore` does not.
 - **`BotPolicy`**: a bot is a command producer for its slot, not a
   simulation system. Its commands enter the same log as humans'.
 - **`Transport`**: extends ecs `ITickFrameProvider` with `submit` and
@@ -77,11 +101,13 @@ snapshot intervals, …), `botPlayerId` / `isBotPlayerId`, `rejectCommand` /
 keys), `encodeSnapshot` / `decodeSnapshot` (header, body, and optional bot
 state and input checkpoint outside the digest), `digestBytes` (xxhash64,
 seed 0), `canonicalConfigBytes` / `configHash`,
-`checkSnapshotCompatibility`, `StateHelpers` including
-`writeAbilities` / `readAbilities` (`section('gas', 1)`), and the offline
-runner: `MatchRunner`, `CommandLog`, `WorldScope`, `BotHost` and
-`LocalTransport` (timer or `LocalTransport.manual()` + `step`). There is
-no `f32` or `f64` writer.
+`checkSnapshotCompatibility`, `defineComponent`, `bindWorldSingletons`,
+and the offline runner: `MatchRunner`, `CommandLog`, `BotHost` and
+`LocalTransport` (timer or `LocalTransport.manual()` + `step`).
+`StateHelpers` (including `writeAbilities` / `readAbilities`,
+`section('gas', 1)`), `spawnWithId`, `rebuildBroadphaseFromTransforms`
+and `WorldScope` are exported from `@phalanx-engine/runtime/advanced`.
+There is no `f32` or `f64` writer.
 
 `MatchRunner` emits each tick on a runner-owned `ITickFrameProvider`, so
 `createWorld` must call `world.start()`. Commands are sorted by `(slot, seq)`
@@ -90,9 +116,9 @@ and validated inside the tick; rejected entries stay in the log.
 checkpoint outside the digest. `restore` rebuilds with
 `purpose: 'restore'`, checks the round trip, then applies bot state and
 the checkpoint only for slots this runner hosts or submits. `createWorld`
-must not spawn entities when `purpose` is `'restore'`. `GameState.restore`
-recreates them by id. A spawn during `'restore'` throws
-`spawnWithId: entity N already exists`. A client
+must not spawn entities when `purpose` is `'restore'` if its
+`GameState` calls `spawnWithId` for those ids. The default world-module
+restore skips an id that already exists. A client
 restoring a server snapshot ignores both. `fastForward(entries, { budgetMs,
 throughTick })` is inclusive and runs empty ticks. `fromReplay` never
 calls `decide`. Drive that runner only with
@@ -105,8 +131,10 @@ instead of throwing. Exceptions from `decode` and `validate` become
 rejections too (`error.message`, or `'decode failed'` / `'validate failed'`).
 A throw from the tick itself calls `onError(error, tick)`, sets `status`
 to `'failed'`, stops the transport, and leaves `tick` on the last
-completed tick. The error is rethrown so a manual `step` still surfaces
-it. A bot `decide` that throws is isolated: it is logged with
+completed tick. `LocalTransport.manual().step()` does not rethrow that
+error; `onError` already received it. A timed transport swallows it
+inside its timer. Any other transport still sees the exception. A bot
+`decide` that throws is isolated: it is logged with
 `console.error`, that slot submits nothing, and the match continues.
 Policy state may already be partial. The first non-null `outcome` is
 emitted once; `status` becomes `'ended'` and the transport stops.
@@ -140,7 +168,7 @@ stops the clock and does not reschedule.
 activations). The cue buffer is not included. Each registered entity that
 has a GAS component is written in ascending id order, with flags so lazy
 components are created on read. Free-list entities are omitted.
-`releasePooledAbilityState` records the factory shell on the first return
+The pool records the factory shell on the first return
 (attribute `base` / `current` / `dirty`, the equipped ability set, and
 ad-hoc tags plus effect grants, including `initComponent` tags). Later
 returns clear the effect queue and `pendingAdd`, copy that shell back,

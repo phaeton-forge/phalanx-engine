@@ -16,37 +16,44 @@ A lightweight, renderer-agnostic Entity-Component-System (ECS) library with opti
 ## Core Components
 
 ### GameWorld (Recommended Entry Point)
+
 - **GameWorld**: High-level facade — creates all core dependencies, wires tick/frame loops, provides convenience accessors
 
 ### Entity Management
+
 - **Entity**: Base class for all game objects (id + components only, no rendering)
 - **EntityManager**: Central registry with efficient component-based queries
 - **IComponent**: Interface for all components
 
 ### System Architecture
+
 - **GameSystem**: Base class for all game systems (convenience accessors for `eventBus`, `entityManager`, `abilities`, `physics`, `pools`)
 - **SystemRegistry**: Low-level system lifecycle and execution order (used internally by GameWorld)
 - **SystemContext**: Dependency injection container (`eventBus`, `entityManager`, optional `abilities` / `physics`, `pools`)
 - **ISystemLifecycleHooks**: Optional `IBeforeTick`, `IAfterTick`, `IBeforeFrame`, `IAfterFrame` interfaces — GameWorld invokes them automatically
 
 ### Event System
+
 - **EventBus**: Decoupled communication between systems
 
 ### Tick/Frame Management
+
 - **TickFrameManager**: Built-in no-op client for single-player games
 - Compatible with PhalanxClient for multiplayer
 
 ### SoA (Structure-of-Arrays) Storage
+
 - **SoAComponent**: Base class for components backed by contiguous typed arrays
 - **SoAComponentStore**: Dense, cache-friendly storage with O(1) entity lookup
 - **defineSoASchema**: Type-safe schema definition for SoA field layout
 
 ### Object Pooling
+
 - **ObjectPool**: Generic LIFO pool for any `IPoolable` object
 - **EntityPool**: Low-level entity storage with stable IDs and growth stats
 - **PoolManager**: Orchestrates spawn/despawn lifecycle and EntityManager registration
 - **IPoolableEntity**: Per-entity `onSpawn(args)` / `onDespawn()` hooks for typed value assignment
-- **IPoolableComponent**: Engine-driven `onSpawn()` / `onDespawn()` hooks for backing storage (SoA rows, visibility)
+- **Component lifecycle**: `onCreate` / `onEnable` / `onDisable` / `onDestroy`. The engine calls them. SoA row reset stays internal.
 
 ## Installation
 
@@ -63,8 +70,8 @@ import { GameWorld } from '@phalanx-engine/ecs';
 
 // Create GameWorld (no rendering dependencies)
 const world = new GameWorld({
-  tickRate: 60,        // optional, default 60
-  maxFrameTime: 0.25,  // optional, default 0.25
+  tickRate: 60, // optional, default 60
+  maxFrameTime: 0.25, // optional, default 0.25
 });
 
 // Create and register your systems
@@ -72,8 +79,8 @@ const movementSystem = new MovementSystem();
 const renderSystem = new RenderSystem();
 
 world.registerSystems(
-  [movementSystem],  // Tick systems (deterministic)
-  [renderSystem]     // Frame systems (visual)
+  [movementSystem], // Tick systems (deterministic)
+  [renderSystem] // Frame systems (visual)
 );
 
 // Start the game loop
@@ -138,7 +145,9 @@ registry.registerSystems(tickSystems, frameSystems);
 
 const tickManager = new TickFrameManager({ tickRate: 60 });
 tickManager.onTick((tick) => registry.processAllTicks(tick));
-tickManager.onFrame((alpha, dt) => { registry.updateAll(dt); });
+tickManager.onFrame((alpha, dt) => {
+  registry.updateAll(dt);
+});
 tickManager.start();
 ```
 
@@ -148,50 +157,52 @@ tickManager.start();
 
 ```typescript
 class GameWorld {
-  constructor(config: GameWorldConfig)
+  constructor(config: GameWorldConfig);
 
   // Convenience accessors
-  get eventBus(): EventBus
-  get entityManager(): EntityManager
-  get context(): SystemContext
-  get pools(): PoolManager | null
-  get paused(): boolean
-  getSystem<T extends GameSystem>(systemClass: new (...args: any[]) => T): T | undefined
+  get eventBus(): EventBus;
+  get entityManager(): EntityManager;
+  get context(): SystemContext;
+  get pools(): PoolManager | null;
+  get paused(): boolean;
+  getSystem<T extends GameSystem>(
+    systemClass: new (...args: any[]) => T
+  ): T | undefined;
 
   // System registration
-  registerSystems(tickSystems: GameSystem[], frameSystems: GameSystem[]): void
-  addFrameSystem(system: GameSystem): void
+  registerSystems(tickSystems: GameSystem[], frameSystems: GameSystem[]): void;
+  addFrameSystem(system: GameSystem): void;
 
   // Tick / Frame delegation
-  processAllTicks(tick: number): void
-  updateAll(dt: number): void
+  processAllTicks(tick: number): void;
+  updateAll(dt: number): void;
 
   // Pause / Resume (delegates to tick/frame provider if available)
-  pause(): void
-  resume(): void
+  pause(): void;
+  resume(): void;
 
   // Lifecycle
-  start(hooks?: GameWorldHooks): void
-  stop(): void
-  dispose(): void
+  start(hooks?: GameWorldHooks): void;
+  stop(): void;
+  dispose(): void;
 }
 
 interface GameWorldConfig {
-  componentTypes?: symbol[]
-  tickRate?: number                    // default 60
-  maxFrameTime?: number                // default 0.25
-  tickFrameProvider?: ITickFrameProvider  // e.g. PhalanxClient
-  pooling?: PoolingConfig              // Object pooling configuration
-  debug?: boolean                      // Enable debug features (default: false)
-  debugConfig?: DebugDataProviderConfig
-  debugPanelConfig?: DebugPanelConfig
+  componentTypes?: symbol[];
+  tickRate?: number; // default 60
+  maxFrameTime?: number; // default 0.25
+  tickFrameProvider?: ITickFrameProvider; // e.g. PhalanxClient
+  pooling?: PoolingConfig; // Object pooling configuration
+  debug?: boolean; // Enable debug features (default: false)
+  debugConfig?: DebugDataProviderConfig;
+  debugPanelConfig?: DebugPanelConfig;
 }
 
 interface GameWorldHooks {
-  beforeTick?(tick: number, commands: CommandsBatch): void
-  afterTick?(tick: number): void
-  beforeFrame?(alpha: number, dt: number): void
-  afterFrame?(alpha: number, dt: number): void
+  beforeTick?(tick: number, commands: CommandsBatch): void;
+  afterTick?(tick: number): void;
+  beforeFrame?(alpha: number, dt: number): void;
+  afterFrame?(alpha: number, dt: number): void;
 }
 ```
 
@@ -199,19 +210,22 @@ interface GameWorldHooks {
 
 ```typescript
 class EntityManager {
-  addEntity(entity: Entity): void
-  removeEntity(entity: Entity): void
-  getEntity(id: number): Entity | undefined
-  getAllEntities(): Entity[]
-  queryEntities(...componentTypes: symbol[]): Entity[]
-  queryEntitiesAny(...componentTypes: symbol[]): Entity[]
-  cleanupDestroyed(): Entity[]
-  count: number
+  addEntity(entity: Entity): void;
+  removeEntity(entity: Entity): void;
+  getEntity(id: number): Entity | undefined;
+  getAllEntities(): Entity[];
+  queryEntities(...componentTypes: symbol[]): Entity[];
+  queryEntitiesAny(...componentTypes: symbol[]): Entity[];
+  cleanupDestroyed(): Entity[];
+  count: number;
 
   // SoA store management
-  getSoAStore<S>(schema: SoASchema<S>): SoAComponentStore<S> | undefined
-  getOrCreateSoAStore<S>(schema: SoASchema<S>, capacity?: number): SoAComponentStore<S>
-  hasSoAStore(schema: SoASchema): boolean
+  getSoAStore<S>(schema: SoASchema<S>): SoAComponentStore<S> | undefined;
+  getOrCreateSoAStore<S>(
+    schema: SoASchema<S>,
+    capacity?: number
+  ): SoAComponentStore<S>;
+  hasSoAStore(schema: SoASchema): boolean;
 }
 ```
 
@@ -219,13 +233,15 @@ class EntityManager {
 
 ```typescript
 class SystemContext {
-  readonly eventBus: EventBus
-  readonly entityManager: EntityManager
-  abilities: IAbilitySystem | undefined   // set by createAbilitySystem() before registerSystems()
-  physics: IPhysicsWorld | undefined      // set by game bootstrap before registerSystems()
-  pools: PoolManager | null               // wired automatically when pooling is configured
+  readonly eventBus: EventBus;
+  readonly entityManager: EntityManager;
+  abilities: IAbilitySystem | undefined; // set by createAbilitySystem() before registerSystems()
+  physics: IPhysicsWorld | undefined; // set by game bootstrap before registerSystems()
+  pools: PoolManager | null; // wired automatically when pooling is configured
 
-  getSystem<T extends GameSystem>(systemClass: new (...args: any[]) => T): T | undefined
+  getSystem<T extends GameSystem>(
+    systemClass: new (...args: any[]) => T
+  ): T | undefined;
 }
 ```
 
@@ -251,14 +267,16 @@ Implemented by `PhysicsWorld` from phalanx-physics. Keeps phalanx-ecs dependency
 
 ```typescript
 interface IPhysicsWorld {
-  getInterpolatedTransform(entityId: number): InterpolatedTransformSample | undefined
-  getEntityPosition(entityId: number): { x: unknown; z: unknown } | undefined
-  applyImpulse(entityId: number, vx: unknown, vz: unknown): void
+  getInterpolatedTransform(
+    entityId: number
+  ): InterpolatedTransformSample | undefined;
+  getEntityPosition(entityId: number): { x: unknown; z: unknown } | undefined;
+  applyImpulse(entityId: number, vx: unknown, vz: unknown): void;
 }
 
 interface InterpolatedTransformSample {
-  position: { x: number; y: number; z: number }
-  rotation: { x: number; y: number; z: number; w: number }
+  position: { x: number; y: number; z: number };
+  rotation: { x: number; y: number; z: number; w: number };
 }
 ```
 
@@ -272,11 +290,20 @@ Frame: IBeforeFrame systems → beforeFrame hook → frame systems → IAfterFra
 ```
 
 ```typescript
-import { GameSystem, type IBeforeTick, type IAfterTick, type IBeforeFrame } from '@phalanx-engine/ecs';
+import {
+  GameSystem,
+  type IBeforeTick,
+  type IAfterTick,
+  type IBeforeFrame,
+} from '@phalanx-engine/ecs';
 
 class MySystem extends GameSystem implements IBeforeTick, IAfterTick {
-  beforeTick(tick: number, commands: CommandsBatch): void { /* snapshot state */ }
-  afterTick(tick: number): void { /* capture state */ }
+  beforeTick(tick: number, commands: CommandsBatch): void {
+    /* snapshot state */
+  }
+  afterTick(tick: number): void {
+    /* capture state */
+  }
 }
 ```
 
@@ -286,12 +313,12 @@ Type guards are also exported: `isBeforeTick`, `isAfterTick`, `isBeforeFrame`, `
 
 ```typescript
 class SystemRegistry {
-  constructor(componentTypes?: symbol[])
-  registerSystems(tickSystems: GameSystem[], frameSystems: GameSystem[]): void
-  processAllTicks(tick: number): void
-  updateAll(deltaTime: number): void
-  getContext(): SystemContext
-  dispose(): void
+  constructor(componentTypes?: symbol[]);
+  registerSystems(tickSystems: GameSystem[], frameSystems: GameSystem[]): void;
+  processAllTicks(tick: number): void;
+  updateAll(deltaTime: number): void;
+  getContext(): SystemContext;
+  dispose(): void;
 }
 ```
 
@@ -299,13 +326,13 @@ class SystemRegistry {
 
 ```typescript
 class EventBus {
-  on<T>(eventType: string, callback: (data: T) => void): UnsubscribeFunction
-  once<T>(eventType: string, callback: (data: T) => void): UnsubscribeFunction
-  off<T>(eventType: string, callback: (data: T) => void): void
-  emit<T>(eventType: string, data: T): void
-  clear(eventType: string): void
-  clearAll(): void
-  listenerCount(eventType: string): number
+  on<T>(eventType: string, callback: (data: T) => void): UnsubscribeFunction;
+  once<T>(eventType: string, callback: (data: T) => void): UnsubscribeFunction;
+  off<T>(eventType: string, callback: (data: T) => void): void;
+  emit<T>(eventType: string, data: T): void;
+  clear(eventType: string): void;
+  clearAll(): void;
+  listenerCount(eventType: string): number;
 }
 ```
 
@@ -313,19 +340,21 @@ class EventBus {
 
 ```typescript
 class TickFrameManager implements ITickFrameProvider {
-  constructor(config?: { tickRate?: number; maxFrameTime?: number })
-  onTick(callback: (tick: number, commands: CommandsBatch) => void): Unsubscribe
-  onFrame(callback: (alpha: number, deltaTime: number) => void): Unsubscribe
-  onPause(handler: PauseHandler): Unsubscribe
-  onResume(handler: PauseHandler): Unsubscribe
-  start(): void
-  stop(): void
-  requestPause(): void
-  requestResume(): void
-  dispose(): void
-  getCurrentTick(): number
-  getTickRate(): number
-  isActive(): boolean
+  constructor(config?: { tickRate?: number; maxFrameTime?: number });
+  onTick(
+    callback: (tick: number, commands: CommandsBatch) => void
+  ): Unsubscribe;
+  onFrame(callback: (alpha: number, deltaTime: number) => void): Unsubscribe;
+  onPause(handler: PauseHandler): Unsubscribe;
+  onResume(handler: PauseHandler): Unsubscribe;
+  start(): void;
+  stop(): void;
+  requestPause(): void;
+  requestResume(): void;
+  dispose(): void;
+  getCurrentTick(): number;
+  getTickRate(): number;
+  isActive(): boolean;
 }
 ```
 
@@ -361,6 +390,7 @@ Phalanx ECS offers two component types. Choose based on your performance and dat
 Simple class-based components that store data in regular object properties.
 
 **Use when:**
+
 - The component is accessed infrequently (e.g., flags, config, UI state)
 - There are few instances (e.g., a single `ResourceComponent` per player)
 - The data is complex or polymorphic (nested objects, arrays, callbacks)
@@ -383,12 +413,14 @@ entity.addComponent(new ArmorComponent(15));
 Components backed by contiguous typed arrays (`Float64Array`, `BigInt64Array`, etc.) for cache-friendly memory layout.
 
 **Use when:**
+
 - The component is iterated every tick in a hot loop (physics, transforms, velocities)
 - There are many instances (hundreds/thousands of entities)
 - The data is flat numeric fields (positions, velocities, radii)
 - You need deterministic fixed-point storage via `BigInt64Array` (`'i64'` fields)
 
 **Avoid when:**
+
 - The data is complex (nested objects, strings, variable-length arrays)
 - There are very few instances — the typed-array overhead isn't worth it
 - The component is rarely queried
@@ -397,16 +429,21 @@ Components backed by contiguous typed arrays (`Float64Array`, `BigInt64Array`, e
 import { SoAComponent, defineSoASchema } from '@phalanx-engine/ecs';
 
 // 1. Define a schema — maps field names to typed-array element types
-const PhysicsSoASchema = defineSoASchema({
-  velocityX: 'i64',   // BigInt64Array — deterministic fixed-point
-  velocityY: 'i64',
-  velocityZ: 'i64',
-  radius: 'i64',
-  isStatic: 'u8',     // Uint8Array — boolean flag
-}, 'PhysicsBody');
+const PhysicsSoASchema = defineSoASchema(
+  {
+    velocityX: 'i64', // BigInt64Array — deterministic fixed-point
+    velocityY: 'i64',
+    velocityZ: 'i64',
+    radius: 'i64',
+    isStatic: 'u8', // Uint8Array — boolean flag
+  },
+  'PhysicsBody'
+);
 
 // 2. Extend SoAComponent
-class PhysicsBodyComponent extends SoAComponent<typeof PhysicsSoASchema.definition> {
+class PhysicsBodyComponent extends SoAComponent<
+  typeof PhysicsSoASchema.definition
+> {
   public readonly type = ComponentType.PhysicsBody;
   static readonly soaSchema = PhysicsSoASchema;
 
@@ -442,7 +479,7 @@ const velocityX = store.arrays.velocityX;
 const fpPositionX = txStore.arrays.fpPositionX;
 for (const entityId of store.entityIds()) {
   const physIdx = store.indexOf(entityId);
-  const txIdx = txStore.indexOf(entityId);  // one Map.get() per entity
+  const txIdx = txStore.indexOf(entityId); // one Map.get() per entity
   if (txIdx === -1) continue;
   fpPositionX[txIdx] += velocityX[physIdx];
 }
@@ -454,14 +491,14 @@ access (spawning, event handlers) but adds overhead in hot loops — each field 
 
 ### SoA Field Types
 
-| Type   | TypedArray       | JS Value  | Use Case                                |
-| ------ | ---------------- | --------- | --------------------------------------- |
-| `f64`  | `Float64Array`   | `number`  | Floating-point values, visual positions |
-| `f32`  | `Float32Array`   | `number`  | Lower-precision floats                  |
-| `i32`  | `Int32Array`     | `number`  | Signed integers                         |
-| `u32`  | `Uint32Array`    | `number`  | Unsigned integers                       |
-| `u8`   | `Uint8Array`     | `number`  | Flags, booleans (0/1)                   |
-| `i64`  | `BigInt64Array`  | `bigint`  | Fixed-point raw values (deterministic)  |
+| Type  | TypedArray      | JS Value | Use Case                                |
+| ----- | --------------- | -------- | --------------------------------------- |
+| `f64` | `Float64Array`  | `number` | Floating-point values, visual positions |
+| `f32` | `Float32Array`  | `number` | Lower-precision floats                  |
+| `i32` | `Int32Array`    | `number` | Signed integers                         |
+| `u32` | `Uint32Array`   | `number` | Unsigned integers                       |
+| `u8`  | `Uint8Array`    | `number` | Flags, booleans (0/1)                   |
+| `i64` | `BigInt64Array` | `bigint` | Fixed-point raw values (deterministic)  |
 
 ### SoA Store Lifecycle
 
@@ -487,16 +524,23 @@ import { ObjectPool } from '@phalanx-engine/ecs';
 import type { IPoolable } from '@phalanx-engine/ecs';
 
 class Particle implements IPoolable {
-  x = 0; y = 0; life = 0;
-  reset(): void { this.x = 0; this.y = 0; this.life = 0; }
+  x = 0;
+  y = 0;
+  life = 0;
+  reset(): void {
+    this.x = 0;
+    this.y = 0;
+    this.life = 0;
+  }
 }
 
 const pool = new ObjectPool(() => new Particle(), { initialSize: 100 });
 pool.prewarm(100);
 
-const p = pool.acquire();  // reuses an existing object or creates new
-p.x = 10; p.life = 60;
-pool.release(p);           // returns to pool, calls reset()
+const p = pool.acquire(); // reuses an existing object or creates new
+p.x = 10;
+p.life = 60;
+pool.release(p); // returns to pool, calls reset()
 ```
 
 ### Entity pooling with GameWorld
@@ -512,7 +556,10 @@ export interface ProjectileSpawnArgs {
   teamId: number;
 }
 
-export class ProjectileEntity extends Entity implements IPoolableEntity<ProjectileSpawnArgs> {
+export class ProjectileEntity
+  extends Entity
+  implements IPoolableEntity<ProjectileSpawnArgs>
+{
   private readonly transform: TransformComponent;
   private readonly projectile: ProjectileComponent;
 
@@ -569,21 +616,29 @@ world.pools!.despawn(projectile);
 const stats = world.pools!.getStats(); // Map<string, PoolStats>
 ```
 
-### IPoolableComponent
+### Component lifecycle
 
-Components that manage backing storage (SoA rows, mesh visibility) implement `IPoolableComponent`. The engine calls these hooks automatically — game code never does:
+`onCreate` runs when the component is added. `onEnable` runs on pool spawn, on `world.spawn`, and again after `world.restore`. `onDisable` runs when a live entity returns to the pool or is despawned. `onDestroy` runs from `dispose`, including pool `drain`.
+
+`onEnable` after restore must not overwrite saved fields. Per-spawn simulation writes belong in the entity `onSpawn`.
+
+SoA rows are reset by internal storage hooks (`SoAComponent.onSpawn` / `onDespawn`). Those hooks are not a public import. Presentation such as mesh visibility belongs in `onEnable` / `onDisable`:
 
 ```typescript
-import type { IPoolableComponent } from '@phalanx-engine/ecs';
+import type { IComponent } from '@phalanx-engine/ecs';
 
-// SoAComponent implements IPoolableComponent generically — subclasses need no changes.
-// Custom render components can toggle visibility in onSpawn/onDespawn:
-
-class MeshComponent implements IPoolableComponent {
-  onSpawn(): void { this.mesh.isVisible = true; }
-  onDespawn(): void { this.mesh.isVisible = false; }
+class MeshComponent implements IComponent {
+  readonly type = MeshType;
+  onEnable(): void {
+    this.mesh.isVisible = true;
+  }
+  onDisable(): void {
+    this.mesh.isVisible = false;
+  }
 }
 ```
+
+`world.save`, `world.restore`, `world.spawn`, `world.despawn` and `world.each` need `@phalanx-engine/runtime` imported first. `registerComponent` records a `defineComponent` result in registration order.
 
 `EntityPool` remains available as a low-level storage primitive; prefer `PoolManager.spawn()` / `despawn()` for gameplay entities.
 
@@ -598,7 +653,7 @@ class MySystem extends GameSystem {
 
     // Optional: resolve other systems or optional services
     const movement = context.getSystem(MovementSystem);
-    const physics = this.physics;   // IPhysicsWorld | undefined
+    const physics = this.physics; // IPhysicsWorld | undefined
     const abilities = this.abilities; // IAbilitySystem | undefined
 
     // Subscribe to events
@@ -630,11 +685,11 @@ class MySystem extends GameSystem {
 
 In a deterministic lockstep game, not every action needs to go through the network. Use this guideline to decide:
 
-| Scenario | Mechanism | Why |
-| --- | --- | --- |
-| **Player commands** (move, attack, place unit) | Network → EventBus | Only player intent crosses the wire; all clients execute the same commands |
+| Scenario                                                                                        | Mechanism                                    | Why                                                                                                                                                                |
+| ----------------------------------------------------------------------------------------------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Player commands** (move, attack, place unit)                                                  | Network → EventBus                           | Only player intent crosses the wire; all clients execute the same commands                                                                                         |
 | **Simulation-internal decisions** (combat chase, resume movement after target dies, AI pathing) | Direct system call via `context.getSystem()` | These are deterministic outcomes computed identically on every client during tick processing — sending them through the network would be redundant and add latency |
-| **Cross-system notifications** (damage dealt, entity spawned, animation trigger) | EventBus (local) | Keeps systems decoupled without network overhead |
+| **Cross-system notifications** (damage dealt, entity spawned, animation trigger)                | EventBus (local)                             | Keeps systems decoupled without network overhead                                                                                                                   |
 
 ### Example: Direct System Call for Combat Movement
 

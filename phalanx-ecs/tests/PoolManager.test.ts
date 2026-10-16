@@ -4,9 +4,9 @@ import {
   EntityManager,
   PoolManager,
   resetEntityIdCounter,
-  type IPoolableComponent,
   type IPoolableEntity,
 } from '../src';
+import type { IPoolableComponent } from '../src/pool/IPoolableComponent.js';
 
 const HookType = Symbol('Hook');
 const OrderType = Symbol('Order');
@@ -32,7 +32,10 @@ class HookRecordingComponent implements IPoolableComponent {
   }
 }
 
-class TestPoolableEntity extends Entity implements IPoolableEntity<{ hp: number }> {
+class TestPoolableEntity
+  extends Entity
+  implements IPoolableEntity<{ hp: number }>
+{
   static entitySpawnArgs: number[] = [];
   static entityDespawnCalls = 0;
   public hp = 0;
@@ -100,7 +103,9 @@ describe('PoolManager', () => {
   });
 
   it('spawn() returns entity registered in EntityManager with args applied', () => {
-    manager.registerEntityType('test', { factory: () => new TestPoolableEntity() });
+    manager.registerEntityType('test', {
+      factory: () => new TestPoolableEntity(),
+    });
 
     const entity = manager.spawn<TestPoolableEntity>('test', { hp: 42 });
 
@@ -137,7 +142,9 @@ describe('PoolManager', () => {
   });
 
   it('spawn → despawn → spawn reuses the same instance with the same ID', () => {
-    manager.registerEntityType('test', { factory: () => new TestPoolableEntity() });
+    manager.registerEntityType('test', {
+      factory: () => new TestPoolableEntity(),
+    });
 
     const first = manager.spawn<TestPoolableEntity>('test', { hp: 10 });
     const firstId = first.id;
@@ -164,7 +171,9 @@ describe('PoolManager', () => {
   });
 
   it('double despawn() is a no-op', () => {
-    manager.registerEntityType('test', { factory: () => new TestPoolableEntity() });
+    manager.registerEntityType('test', {
+      factory: () => new TestPoolableEntity(),
+    });
     const entity = manager.spawn<TestPoolableEntity>('test', { hp: 5 });
 
     manager.despawn(entity);
@@ -175,7 +184,9 @@ describe('PoolManager', () => {
     manager.despawn(entity);
 
     expect(TestPoolableEntity.entityDespawnCalls).toBe(despawnCallsAfterFirst);
-    expect(HookRecordingComponent.despawnCalls).toBe(componentDespawnAfterFirst);
+    expect(HookRecordingComponent.despawnCalls).toBe(
+      componentDespawnAfterFirst
+    );
     expect(manager.getPoolStats('test')!.available).toBe(availableAfterFirst);
   });
 
@@ -186,13 +197,19 @@ describe('PoolManager', () => {
   });
 
   it('spawn() on unregistered typeKey throws', () => {
-    expect(() => manager.spawn('nope')).toThrow("Pool 'nope' is not registered");
+    expect(() => manager.spawn('nope')).toThrow(
+      "Pool 'nope' is not registered"
+    );
   });
 
   it('throws on duplicate registration', () => {
-    manager.registerEntityType('test', { factory: () => new VoidPoolableEntity() });
+    manager.registerEntityType('test', {
+      factory: () => new VoidPoolableEntity(),
+    });
     expect(() => {
-      manager.registerEntityType('test', { factory: () => new VoidPoolableEntity() });
+      manager.registerEntityType('test', {
+        factory: () => new VoidPoolableEntity(),
+      });
     }).toThrow("Pool 'test' is already registered");
   });
 
@@ -229,13 +246,17 @@ describe('PoolManager', () => {
   });
 
   it('prewarm specific pool', () => {
-    manager.registerEntityType('test', { factory: () => new VoidPoolableEntity() });
+    manager.registerEntityType('test', {
+      factory: () => new VoidPoolableEntity(),
+    });
     manager.prewarm('test', 5);
     expect(manager.getPoolStats('test')!.available).toBe(5);
   });
 
   it('prewarm throws for unregistered pool', () => {
-    expect(() => manager.prewarm('nope', 10)).toThrow("Pool 'nope' is not registered");
+    expect(() => manager.prewarm('nope', 10)).toThrow(
+      "Pool 'nope' is not registered"
+    );
   });
 
   it('drainAll clears all pools', () => {
@@ -255,8 +276,12 @@ describe('PoolManager', () => {
   });
 
   it('getStats returns all pool stats', () => {
-    manager.registerEntityType('a', { factory: () => new VoidPoolableEntity() });
-    manager.registerEntityType('b', { factory: () => new VoidPoolableEntity() });
+    manager.registerEntityType('a', {
+      factory: () => new VoidPoolableEntity(),
+    });
+    manager.registerEntityType('b', {
+      factory: () => new VoidPoolableEntity(),
+    });
     manager.spawn('a');
     manager.spawn('b');
 

@@ -219,9 +219,28 @@ export function canonicalConfigBytes(config: unknown): Uint8Array {
   return w.finish();
 }
 
-/** `digestBytes(canonicalConfigBytes(config))`. */
-export function configHash(config: unknown): Digest {
-  return digestBytes(canonicalConfigBytes(config));
+/**
+ * `digestBytes(canonicalConfigBytes(config))`.
+ *
+ * When `componentNames` is non-empty, those names are appended in
+ * registration order (array order, not sorted) before the digest. An
+ * empty list matches the one-argument hash.
+ */
+export function configHash(
+  config: unknown,
+  componentNames?: readonly string[]
+): Digest {
+  const configBytes = canonicalConfigBytes(config);
+  if (componentNames === undefined || componentNames.length === 0) {
+    return digestBytes(configBytes);
+  }
+  const nameBytes = canonicalConfigBytes(componentNames);
+  const combined = new Uint8Array(
+    configBytes.byteLength + nameBytes.byteLength
+  );
+  combined.set(configBytes, 0);
+  combined.set(nameBytes, configBytes.byteLength);
+  return digestBytes(combined);
 }
 
 /**

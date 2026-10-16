@@ -12,7 +12,11 @@ import {
   writePools,
 } from './entities.js';
 import { readRandom, writeRandom } from './random.js';
-import { readBroadphase, rebuildPhysics, writeBroadphase } from './physics.js';
+import {
+  readBroadphase,
+  rebuildBroadphaseFromTransforms,
+  writeBroadphase,
+} from './physics.js';
 import { readAbilities, writeAbilities } from './abilities.js';
 
 /**
@@ -29,15 +33,15 @@ import { readAbilities, writeAbilities } from './abilities.js';
  *  5. `readEntityIds` sets the counter to the saved high-water mark,
  *  6. `readRandom` and game singletons,
  *  7. `readBroadphase`.
- *     `rebuildPhysics` (from the saved transforms) is not that last step:
- *     after a collision the live grid still holds the pre-separation
- *     centers.
+ *     `rebuildBroadphaseFromTransforms` (from the saved transforms) is
+ *     not that last step: after a collision the live grid still holds
+ *     the pre-separation centers.
  * `save` writes the same sections in the same order.
  *
  * `f32` / `f64` SoA fields are presentation caches and are not written.
  * Broadphase centers keep each fixed-point value's own precision.
- * `rebuildPhysics` is only correct for a world that has not resolved a
- * collision since the grid was built.
+ * `rebuildBroadphaseFromTransforms` is only correct for a world that has
+ * not resolved a collision since the grid was built.
  */
 export const StateHelpers = {
   writeSoAStore,
@@ -53,7 +57,7 @@ export const StateHelpers = {
   readRandom,
   writeBroadphase,
   readBroadphase,
-  rebuildPhysics,
+  rebuildBroadphaseFromTransforms,
   writeAbilities,
   readAbilities,
 } as const;

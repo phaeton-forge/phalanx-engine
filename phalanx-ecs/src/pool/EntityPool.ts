@@ -93,12 +93,14 @@ export class EntityPool<T extends Entity = Entity> {
     }
   }
 
-  /** Remove all pooled entities without disposing them. */
+  /**
+   * Dispose every free entity. `onDestroy` runs. Checked-out entities stay.
+   */
   drain(): void {
-    for (const entity of this.available) {
-      this.owned.delete(entity);
+    const parked = this.available.slice();
+    for (const entity of parked) {
+      entity.dispose();
     }
-    this.available.length = 0;
   }
 
   /**

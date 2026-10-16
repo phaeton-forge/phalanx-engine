@@ -208,6 +208,11 @@ export function readBroadphase(r: StateReader, world: GameWorld): void {
   });
 }
 
+/** True when the world has at least one physics grid to snapshot. */
+export function hasBroadphase(world: GameWorld): boolean {
+  return collectBroadphases(world).length > 0;
+}
+
 /**
  * Rebuild every grid from the current transforms.
  *
@@ -216,8 +221,8 @@ export function readBroadphase(r: StateReader, world: GameWorld): void {
  * physics step). After a collision the live grid still holds the
  * pre-separation centers; use {@link readBroadphase} for that.
  */
-export function rebuildPhysics(world: GameWorld): void {
-  const grids = requireBroadphases(world, 'rebuildPhysics');
+export function rebuildBroadphaseFromTransforms(world: GameWorld): void {
+  const grids = requireBroadphases(world, 'rebuildBroadphaseFromTransforms');
   for (const grid of grids) {
     grid.owner.rebuildBroadphase();
   }

@@ -1,14 +1,18 @@
 /**
  * @phalanx-engine/runtime — isomorphic match runtime (no DOM, no sockets).
  *
- * Status: Tasks 1–6 are implemented (contracts, canonical state bytes,
- * snapshot header, digest, version policy, `StateHelpers` including GAS,
- * `MatchRunner`, `LocalTransport`, and the bot host). `MatchRunner.join`
- * still throws `NotImplementedError` for Task 12. Design:
+ * Status: Tasks 1–6 and 6.5a are implemented. Games use `defineComponent`,
+ * `world.save` / `world.restore`, and an optional `defineGame` state.
+ * Low-level `StateHelpers`, `spawnWithId`, `rebuildBroadphaseFromTransforms`,
+ * and `WorldScope` live in `@phalanx-engine/runtime/advanced`.
+ * `MatchRunner.join` still throws `NotImplementedError` for Task 12. Design:
  * docs/design/runtime-api.md.
  *
  * @packageDocumentation
  */
+
+import { setWorldModuleHost } from '@phalanx-engine/ecs';
+import { worldModules } from './world/host.js';
 
 export {
   ENGINE_SNAPSHOT_FORMAT,
@@ -26,6 +30,14 @@ export { NotImplementedError } from './notImplemented.js';
 
 export * from './game/index.js';
 export * from './state/index.js';
-export * from './helpers/index.js';
 export * from './runner/index.js';
 export * from './transport/index.js';
+export { defineComponent } from './world/defineComponent.js';
+export type {
+  DefinedComponent,
+  DefineComponentOptions,
+} from './world/defineComponent.js';
+export { bindWorldSingletons } from './world/singletons.js';
+export type { WorldSingletonHooks } from './world/singletons.js';
+
+setWorldModuleHost(worldModules);

@@ -26,19 +26,17 @@ export {
 } from './Entity.js';
 export { IComponent, createComponentTypeRegistry } from './Component.js';
 export type { IComponent as Component } from './Component.js';
+export type { ComponentLifecycle } from './lifecycle.js';
+export type { ComponentRegistration } from './ComponentRegistration.js';
+export type { WorldModuleHost } from './worldHost.js';
+export { setWorldModuleHost } from './worldHost.js';
 
 // Object Pooling
-export {
-  ObjectPool,
-  EntityPool,
-  PoolManager,
-  isPoolableComponent,
-} from './pool/index.js';
+export { ObjectPool, EntityPool, PoolManager } from './pool/index.js';
 export type {
   IPoolable,
   IPoolableEntity,
   SpawnArgsOf,
-  IPoolableComponent,
   PoolConfig,
   PoolStats,
   EntityTypeConfig,
@@ -79,14 +77,27 @@ export type {
 } from './debug/index.js';
 
 // Optional system lifecycle hook interfaces
-export type { IBeforeTick, IAfterTick, IBeforeFrame, IAfterFrame } from './ISystemLifecycleHooks.js';
-export { isBeforeTick, isAfterTick, isBeforeFrame, isAfterFrame } from './ISystemLifecycleHooks.js';
+export type {
+  IBeforeTick,
+  IAfterTick,
+  IBeforeFrame,
+  IAfterFrame,
+} from './ISystemLifecycleHooks.js';
+export {
+  isBeforeTick,
+  isAfterTick,
+  isBeforeFrame,
+  isAfterFrame,
+} from './ISystemLifecycleHooks.js';
 
 // Ability system contract (implemented by phalanx-abilities)
 export type { IAbilitySystem } from './IAbilitySystem.js';
 
 // Physics world contract (implemented by phalanx-physics)
-export type { IPhysicsWorld, InterpolatedTransformSample } from './IPhysicsWorld.js';
+export type {
+  IPhysicsWorld,
+  InterpolatedTransformSample,
+} from './IPhysicsWorld.js';
 
 // Match-scoped deterministic RNG contract
 export type { IRandom } from './IRandom.js';

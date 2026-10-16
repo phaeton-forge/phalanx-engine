@@ -2,6 +2,7 @@ import type { Entity } from '../Entity.js';
 import type { EntityManager } from '../EntityManager.js';
 import type { IPoolableEntity, SpawnArgsOf } from './IPoolableEntity.js';
 import { isPoolableComponent } from './IPoolableComponent.js';
+import { invokeComponentHooks } from '../lifecycle.js';
 import { EntityPool } from './EntityPool.js';
 import type { EntityTypeConfig, PoolStats } from './types.js';
 
@@ -9,8 +10,8 @@ import type { EntityTypeConfig, PoolStats } from './types.js';
  * Central manager for entity pools. One PoolManager per GameWorld.
  *
  * Orchestrates the full spawn/despawn lifecycle:
- *   spawn:   acquire → component onSpawn() → entity.onSpawn(args) → entityManager.addEntity()
- *   despawn: entityManager.removeEntity() → entity.onDespawn() → component onDespawn()
+ *   spawn:   acquire → storage onSpawn() → entity.onSpawn(args) → addEntity() → onEnable
+ *   despawn: onDisable → removeEntity() → onDespawn() → storage onDespawn()
  *            → return-to-pool hooks → release
  */
 export class PoolManager {
@@ -54,7 +55,10 @@ export class PoolManager {
     this.initialSizes.set(typeKey, config.pool?.initialSize ?? 0);
   }
 
-  /** Acquire → component onSpawn() hooks → entity.onSpawn(args) → entityManager.addEntity(). */
+  /**
+   * Acquire → internal storage reset → `entity.onSpawn(args)` →
+   * `addEntity` → component `onEnable`.
+   */
   spawn<T extends Entity & IPoolableEntity<any>>(
     typeKey: string,
     ...args: SpawnArgsOf<T>
@@ -67,19 +71,21 @@ export class PoolManager {
     const entity = pool.acquire() as T;
     entity._inPool = false;
 
-    // 1. Mechanical restore: SoA rows re-added with constructor defaults, etc.
+    // 1. Mechanical restore: SoA rows re-added with constructor defaults.
     for (const component of entity.getComponents().values()) {
       if (isPoolableComponent(component)) component.onSpawn();
     }
     // 2. Domain init: per-spawn values via typed setters.
     entity.onSpawn(args[0] as any);
-    // 3. Register with the world.
+    // 3. Register with the world, then enable components.
     this.entityManager.addEntity(entity);
+    invokeComponentHooks([...entity.getComponents().values()], 'onEnable');
     return entity;
   }
 
   /**
-   * Register a hook that runs when an entity returns to the pool.
+   * @internal Engine hook. `createAbilitySystem` registers the GAS shell
+   * reset here. Game code uses component `onDisable` / `onDestroy` instead.
    *
    * Called after `onDespawn` hooks and before `release`, including the
    * factory's initial dormant transition. A later registration is appended.
@@ -99,7 +105,10 @@ export class PoolManager {
     this.runDespawnHooks(entity);
   }
 
-  /** entityManager.removeEntity() → onDespawn hooks → return-to-pool hooks → release. */
+  /**
+   * Component `onDisable` → `removeEntity` → despawn hooks →
+   * return-to-pool hooks → release.
+   */
   despawn(entity: Entity): void {
     const typeKey = entity._poolTypeKey;
     if (!typeKey) {
@@ -112,6 +121,7 @@ export class PoolManager {
     }
 
     const pool = this.pools.get(typeKey)!;
+    invokeComponentHooks([...entity.getComponents().values()], 'onDisable');
     this.entityManager.removeEntity(entity);
     this.runDespawnHooks(entity);
     entity._inPool = true;

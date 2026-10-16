@@ -15,6 +15,14 @@ import type { EntityManager } from './EntityManager.js';
 import type { SystemContext } from './SystemContext.js';
 import type { GameSystem } from './GameSystem.js';
 import type { IRandom } from './IRandom.js';
+import type { Entity } from './Entity.js';
+import type { ComponentRegistration } from './ComponentRegistration.js';
+import type {
+  SoAFieldsOf,
+  SoASchema,
+  SoASchemaDefinition,
+} from './SoASchema.js';
+import { requireWorldModules } from './worldHost.js';
 import {
   getEntityIdCounter,
   resetEntityIdCounter,
@@ -158,6 +166,9 @@ export class GameWorld {
 
   // Pause state – when true, both tick and frame pipelines are skipped
   private _paused: boolean = false;
+
+  /** `registerComponent` order. Snapshot schema order and `configHash`. */
+  private readonly _components: ComponentRegistration[] = [];
 
   constructor(config: GameWorldConfig) {
     resetEntityIdCounter();
@@ -329,6 +340,78 @@ export class GameWorld {
   /** System context (for advanced use) */
   public get context(): SystemContext {
     return this.systemRegistry.getContext();
+  }
+
+  /**
+   * Register a `defineComponent` result. Order is registration order:
+   * the SoA store is created now, and that order is folded into
+   * `configHash` by the runtime.
+   */
+  public registerComponent<S extends SoASchemaDefinition>(
+    component: ComponentRegistration<S>
+  ): void {
+    if (this._components.some((existing) => existing.name === component.name)) {
+      throw new Error(
+        `registerComponent: '${component.name}' is already registered`
+      );
+    }
+    // SoASchema is invariant in its field map. The registry only needs the
+    // name, the store key, and create().
+    this._components.push(component as unknown as ComponentRegistration);
+    this.entityManager.getOrCreateSoAStore(component.schema);
+  }
+
+  /** Registered component names in registration order. */
+  public componentNames(): readonly string[] {
+    return this._components.map((component) => component.name);
+  }
+
+  /** Registered components in registration order. */
+  public registeredComponents(): readonly ComponentRegistration[] {
+    return this._components;
+  }
+
+  /**
+   * Canonical simulation bytes: roster (when any non-pooled entity exists),
+   * pools, SoA stores, abilities, the entity id counter, RNG, broadphase,
+   * then optional singleton hooks. Section layout matches `StateHelpers`.
+   */
+  public save(): Uint8Array {
+    return requireWorldModules().save(this);
+  }
+
+  /**
+   * Restore bytes from {@link save}. Ids already spawned by world creation
+   * are kept and overwritten. `onEnable` runs after the bytes are applied.
+   */
+  public restore(bytes: Uint8Array): void {
+    requireWorldModules().restore(this, bytes);
+  }
+
+  /**
+   * Spawn one entity with the named components. Uses the same id counter
+   * as `new Entity()`. The view keys are component names.
+   */
+  public spawn(
+    spec: Readonly<Record<string, Readonly<Record<string, number | bigint>>>>
+  ): Entity {
+    return requireWorldModules().spawn(this, spec);
+  }
+
+  /** Return a pooled entity to its pool, or remove and dispose any other. */
+  public despawn(entity: Entity): void {
+    requireWorldModules().despawn(this, entity);
+  }
+
+  /**
+   * Call `fn` for each live row of `component`, in ascending entity id.
+   * The view is reused. Do not retain it.
+   */
+  public each<S extends SoASchemaDefinition>(
+    component: { readonly schema: SoASchema<S> },
+    fn: (view: SoAFieldsOf<S>) => void
+  ): void {
+    requireWorldModules().each(this, component, fn);
   }
 
   /** Look up a registered system by class */

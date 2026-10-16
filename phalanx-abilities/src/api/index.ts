@@ -10,7 +10,6 @@ export {
   AbilitySystemFacade,
   NO_SOURCE_ENTITY_ID,
 } from './AbilitySystemFacade.js';
-export { releasePooledAbilityState } from './releasePooledAbilityState.js';
 export type { AttributeValue } from './AbilitySystemFacade.js';
 export type {
   AbilitySystem,

@@ -1,5 +1,5 @@
 ---
-description: Entity pooling lifecycle conventions for Phalanx (IPoolableEntity / IPoolableComponent). Apply when working with pools, pooled entities, or components.
+description: Entity pooling lifecycle conventions for Phalanx (IPoolableEntity and component onEnable/onDisable). Apply when working with pools, pooled entities, or components.
 globs:
   - "phalanx-ecs/src/pool/**"
   - "phalanx-ecs/src/Entity.ts"
@@ -33,24 +33,28 @@ Game code calls only `pools.spawn(typeKey, args)` and `pools.despawn(entity)`.
   - `onDespawn()`: game-level teardown only (flags, timers, targets). Must not allocate.
   - The entity author must NOT know or care which components are SoA-backed.
 
-- `IPoolableComponent` — implemented by components with non-local state
-  (SoA store rows, render-graph visibility, external resources). Zero-arg
-  `onSpawn()` / `onDespawn()`, called automatically by `PoolManager`. Game code
-  NEVER calls these.
-  - Plain components whose state lives in their own fields do NOT implement this.
-  - `SoAComponent` implements it generically; subclasses (TransformComponent,
-    PhysicsBodyComponent) inherit it with zero changes.
+- Component lifecycle — `onCreate`, `onEnable`, `onDisable`, `onDestroy`.
+  The engine calls these. Game code does not.
+  - `onEnable` / `onDisable` are the place for presentation (mesh visibility).
+  - Internal storage reset stays on `SoAComponent.onSpawn` / `onDespawn`.
+    `IPoolableComponent` is not a public export.
 
 ## Engine-enforced ordering (do not change)
 
-- Spawn: component `onSpawn()` (restore rows to defaults) → entity `onSpawn(args)`
-  (typed setters) → `entityManager.addEntity()`.
-- Despawn: `entityManager.removeEntity()` → entity `onDespawn()`
-  → component `onDespawn()` → return-to-pool hooks → return to pool.
-- `createAbilitySystem` registers a return-to-pool hook that drops pooled
-  GAS state (effect queue, pending adds, tags, ad-hoc tags, grants). GAS
-  components stay plain data; they do not implement `IPoolableComponent`.
-  Attribute values and the equipped ability set are left for `onSpawn`.
+- `onCreate` runs from `addComponent`.
+- Spawn: internal storage `onSpawn()` (restore rows to defaults) → entity
+  `onSpawn(args)` (typed setters) → `entityManager.addEntity()` → component
+  `onEnable`.
+- Despawn: component `onDisable` → `entityManager.removeEntity()` → entity
+  `onDespawn()` → internal storage `onDespawn()` → return-to-pool hooks →
+  return to pool.
+- `onDestroy` runs from `dispose`, including pool `drain`. The factory's
+  first dormant pass does not call `onDisable`.
+- `createAbilitySystem` registers an internal return-to-pool hook that
+  restores the factory shell: attributes, the granted ability set, and
+  `initComponent` tags, and clears the effect queue, pending adds, and
+  grants. GAS components stay plain data. Initial `pendingAdd` effects are
+  not in the shell, so `onSpawn` must re-seed those.
 - This order must stay identical across all clients — it is part of lockstep
   determinism. Component hook order = component insertion order = constructor
   execution order. Do not introduce nondeterministic iteration.

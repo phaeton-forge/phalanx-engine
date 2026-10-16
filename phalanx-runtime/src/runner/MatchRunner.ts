@@ -233,6 +233,9 @@ export class MatchRunner<G extends AnyGameDefinition> {
     this.scope.run(() => {
       this.boot('fresh');
     });
+    const names =
+      this.simulation === null ? [] : this.simulation.world.componentNames();
+    this.configDigest = configHash(this.config, names);
   }
 
   /** Join (or resume) through a network transport's `join()`. */
@@ -653,7 +656,14 @@ export class MatchRunner<G extends AnyGameDefinition> {
       });
     } catch (error) {
       this.fail(tick, error);
-      throw error;
+      // A stepped LocalTransport must not surface the failure from
+      // `step()`. `onError` already received it. Other transports still
+      // see the exception.
+      if (!(
+        this.transport instanceof LocalTransport && this.transport.isManual
+      )) {
+        throw error;
+      }
     } finally {
       this.executingTick = null;
     }

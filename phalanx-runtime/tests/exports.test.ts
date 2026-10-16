@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as runtime from '../src/index.js';
+import * as advanced from '../src/advanced/index.js';
 
 const VALUE_EXPORTS = [
   // constants & helpers
@@ -29,13 +30,13 @@ const VALUE_EXPORTS = [
   'checkSnapshotCompatibility',
   'SnapshotRejectedError',
   'SnapshotRoundTripError',
-  // helpers
-  'StateHelpers',
+  // world
+  'defineComponent',
+  'bindWorldSingletons',
   // runner
   'MatchRunner',
   'CommandLog',
   'BotHost',
-  'WorldScope',
   // transport
   'LocalTransport',
 ] as const;
@@ -54,7 +55,7 @@ const STATE_HELPERS = [
   'readRandom',
   'writeBroadphase',
   'readBroadphase',
-  'rebuildPhysics',
+  'rebuildBroadphaseFromTransforms',
   'writeAbilities',
   'readAbilities',
 ] as const;
@@ -85,7 +86,20 @@ describe('public exports', () => {
   });
 
   it.each(STATE_HELPERS)('StateHelpers.%s is a function', (name) => {
-    expect(typeof runtime.StateHelpers[name]).toBe('function');
+    expect(typeof advanced.StateHelpers[name]).toBe('function');
+  });
+
+  it('keeps low-level helpers off the root export', () => {
+    expect('StateHelpers' in runtime).toBe(false);
+    expect('WorldScope' in runtime).toBe(false);
+    expect('spawnWithId' in runtime).toBe(false);
+    expect(typeof advanced.spawnWithId).toBe('function');
+    expect(typeof advanced.rebuildBroadphaseFromTransforms).toBe('function');
+    expect(advanced.rebuildBroadphaseFromTransforms).toBe(
+      advanced.StateHelpers.rebuildBroadphaseFromTransforms
+    );
+    const scope = new advanced.WorldScope();
+    expect(scope.run(() => 7)).toBe(7);
   });
 
   it('has the approved constants', () => {
@@ -156,14 +170,12 @@ describe('canonical state bytes', () => {
 
 describe('skeletons name their implementing task', () => {
   it('Task 05: ability helpers are implemented', () => {
-    expect(runtime.StateHelpers.writeAbilities.name).toBe('writeAbilities');
-    expect(runtime.StateHelpers.readAbilities.name).toBe('readAbilities');
+    expect(advanced.StateHelpers.writeAbilities.name).toBe('writeAbilities');
+    expect(advanced.StateHelpers.readAbilities.name).toBe('readAbilities');
   });
 
-  it('Task 06: runner, log, bot host, scope, local transport', () => {
+  it('Task 06: runner, log, bot host, local transport', () => {
     expect(new runtime.CommandLog().lastTick).toBe(-1);
-    const scope = new runtime.WorldScope();
-    expect(scope.run(() => 7)).toBe(7);
     const transport = new runtime.LocalTransport({ tickRate: 10 });
     expect(transport.kind).toBe('local');
     expect(transport.isManual).toBe(false);

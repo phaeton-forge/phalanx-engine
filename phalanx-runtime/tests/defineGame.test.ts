@@ -50,7 +50,6 @@ describe('defineGame', () => {
     ['id', /id must be a non-empty string/],
     ['simVersion', /simVersion must be a non-empty string/],
     ['tickRate', /tickRate must be a positive integer/],
-    ['state', /state \(GameStateSpec\) is required/],
     ['createWorld', /createWorld must be a function/],
     ['commands', /commands must be a CommandSchema object/],
     ['outcome', /outcome must be a function/],
@@ -69,6 +68,14 @@ describe('defineGame', () => {
     expect(() => defineGame(withField('simVersion', ''))).toThrow(
       /game 'smoke': simVersion/
     );
+  });
+
+  it('uses world modules when state is omitted', () => {
+    const def = without('state');
+    const game = defineGame(def);
+    expect(game).not.toBe(def);
+    expect(game.state.formatVersion).toBe(1);
+    expect(typeof game.state.bind).toBe('function');
   });
 
   it('validates the state spec', () => {

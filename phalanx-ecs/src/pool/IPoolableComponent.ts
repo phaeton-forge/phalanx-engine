@@ -1,12 +1,12 @@
 import type { IComponent } from '../Component.js';
 
 /**
- * Engine-called lifecycle hooks for components owned by pooled entities.
- * PoolManager invokes them automatically on spawn/despawn — game code never
- * calls them and entity authors don't need to know which components implement it.
+ * @internal Storage reset for pooled components (SoA rows).
  *
- * Use cases: SoAComponent re-adds/removes its store row; render components
- * toggle visibility.
+ * Game code uses the component lifecycle (`onCreate` / `onEnable` /
+ * `onDisable` / `onDestroy`). `PoolManager` still calls `onSpawn` /
+ * `onDespawn` for components that implement this interface. That call is
+ * not part of the public package export.
  */
 export interface IPoolableComponent extends IComponent {
   /** Restore backing storage to constructor defaults (e.g. re-add the SoA row). */
@@ -17,6 +17,8 @@ export interface IPoolableComponent extends IComponent {
 
 /** Type guard used by PoolManager. */
 export function isPoolableComponent(c: IComponent): c is IPoolableComponent {
-  return typeof (c as IPoolableComponent).onSpawn === 'function'
-    && typeof (c as IPoolableComponent).onDespawn === 'function';
+  return (
+    typeof (c as IPoolableComponent).onSpawn === 'function' &&
+    typeof (c as IPoolableComponent).onDespawn === 'function'
+  );
 }

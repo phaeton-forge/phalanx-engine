@@ -35,9 +35,8 @@ describe('contract types', () => {
     >().toEqualTypeOf<TinyCommand>();
   });
 
-  it('rejects definitions without a state spec', () => {
+  it('accepts a definition whose state is the world modules', () => {
     const { state: _state, ...withoutState } = TinyGame;
-    // @ts-expect-error `state` is required
     expectTypeOf(defineGame).toBeCallableWith(withoutState);
   });
 

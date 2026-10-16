@@ -143,7 +143,7 @@ describe('physics state helpers', () => {
     });
     expect(again).toEqual(bytes);
 
-    StateHelpers.rebuildPhysics(restored.world);
+    StateHelpers.rebuildBroadphaseFromTransforms(restored.world);
     const rebuiltQuery = [
       ...restored.physics.spatialGrid.queryRadius(moved.x, moved.z, FP._0),
     ];
@@ -192,7 +192,7 @@ describe('physics state helpers', () => {
     addDisc(world, 30, 0);
     expect(physics.getBroadphaseCenters()).toEqual([]);
 
-    StateHelpers.rebuildPhysics(world);
+    StateHelpers.rebuildBroadphaseFromTransforms(world);
 
     const centers = physics.getBroadphaseCenters();
     expect(centers.map((center) => center.entityId)).toEqual([1, 2]);
@@ -240,7 +240,9 @@ describe('physics state helpers', () => {
 
   it('throws when the world has no broadphase', () => {
     const world = new GameWorld({});
-    expect(() => StateHelpers.rebuildPhysics(world)).toThrow(/no broadphase/);
+    expect(() => StateHelpers.rebuildBroadphaseFromTransforms(world)).toThrow(
+      /no broadphase/
+    );
     expect(() =>
       finish((writer) => {
         StateHelpers.writeBroadphase(writer, world);

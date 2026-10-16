@@ -15,12 +15,12 @@
     "release:zip": "node release.mjs --targets zip"
   },
   "dependencies": {
-    "@phalanx-engine/abilities": "workspace:*",
-    "@phalanx-engine/client": "workspace:*",
-    "@phalanx-engine/ecs": "workspace:*",
-    "@phalanx-engine/math": "workspace:*",
-    "@phalanx-engine/physics": "workspace:*",
-    "@phalanx-engine/server": "workspace:*",
+    "@phalanx-engine/abilities": "npm:@phalanx-engine/abilities@0.2.3",
+    "@phalanx-engine/client": "npm:@phalanx-engine/client@0.2.3",
+    "@phalanx-engine/ecs": "npm:@phalanx-engine/ecs@0.2.3",
+    "@phalanx-engine/math": "npm:@phalanx-engine/math@0.2.3",
+    "@phalanx-engine/physics": "npm:@phalanx-engine/physics@0.2.3",
+    "@phalanx-engine/server": "npm:@phalanx-engine/server@0.2.3",
     "three": "^0.175.0"
   },
   "devDependencies": {
@@ -30,8 +30,6 @@
     "@types/three": "^0.175.0",
     "archiver": "^7.0.1",
     "concurrently": "^9.1.2",
-    "@phalanx-engine/ecs": "workspace:*",
-    "@phalanx-engine/math": "workspace:*",
     "dotenv": "^16.4.7",
     "tsx": "^4.0.0",
     "typescript": "~5.9.3",

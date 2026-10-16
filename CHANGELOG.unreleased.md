@@ -134,6 +134,16 @@ Entries collected per package until the synchronized 0.3.0 release
   is incomplete. Catch-up raises each local human seq to the delivered
   `q + 1`. Outcome and digest publish after the tick and the bot
   checkpoint. A delivered `(playerId, q)` leaves every pending bucket.
+- World and components (Task 6.5a): `defineComponent`, `world.save` /
+  `world.restore`, `world.spawn` / `world.despawn` / `world.each`.
+  `defineGame.state` is optional; the default state is those modules.
+  Section bytes are unchanged. `configHash` appends component names when
+  the list is non-empty. `world.restore` skips a roster id that already
+  exists. `StateHelpers`, `spawnWithId`,
+  `rebuildBroadphaseFromTransforms` (formerly `rebuildPhysics`) and
+  `WorldScope` moved to `@phalanx-engine/runtime/advanced` with no aliases
+  on the root. A manual `LocalTransport.step()` does not rethrow after
+  `fail()` / `onError`. `defineComponent` rejects `f32` / `f64` fields.
 
 ## @phalanx-engine/ecs
 
@@ -163,6 +173,13 @@ Entries collected per package until the synchronized 0.3.0 release
   pool's owned set and free list, so a snapshot does not keep the dead id.
   `destroy()` only marks the entity. Snapshot reads and the next `acquire`
   keep that instance, its id, and its components.
+- Component lifecycle (Task 6.5a): `onCreate`, `onEnable`, `onDisable`,
+  `onDestroy`. Spawn enables after `addEntity`. Despawn disables before
+  `removeEntity`. `drain` disposes free entities so `onDestroy` runs.
+  `IPoolableComponent`, `isPoolableComponent` and the public story for
+  `addReturnToPoolHook` are internal. `registerComponent`, `componentNames`,
+  `save`, `restore`, `spawn`, `despawn` and `each` are on `GameWorld`;
+  the byte format is installed by importing `@phalanx-engine/runtime`.
 
 ## @phalanx-engine/math
 
@@ -219,9 +236,17 @@ Entries collected per package until the synchronized 0.3.0 release
   whose `onSpawn` does not rewrite attributes matches a restored copy,
   because a free-list entity is omitted and restore builds a fresh factory
   instance. The hook also runs on the factory's initial dormant pass.
+- The pool reset stays installed by `createAbilitySystem` and is no longer
+  a public export. Attributes, the granted ability set, and
+  `initComponent` tags match a fresh spawn after despawn and spawn.
 - Fixed-point fields on a restored `providedTarget` are recognized by
   shape (`base` and `precision` bigints), not by `instanceof FixedPoint`,
   then reconstructed as a local `FixedPoint` so arithmetic methods exist.
+
+## abilities-playground
+
+- `@phalanx-engine/*` dependencies are pinned to published npm `0.2.3`
+  (`npm:` alias) so this package keeps building against the previous API.
 
 ## @phalanx-engine/physics
 

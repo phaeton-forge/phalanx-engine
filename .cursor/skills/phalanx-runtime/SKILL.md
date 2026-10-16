@@ -1,6 +1,6 @@
 ---
 name: phalanx-runtime
-description: Describe a Phalanx game as one GameDefinition and run it with MatchRunner from @phalanx-engine/runtime (engine 0.3). Use when defining games with defineGame, implementing the GameState save/restore contract, writing BotPolicy bots, choosing simMode 'client' vs 'server', snapshots, replays, reconnect, or Transport/LocalTransport. Canonical state bytes, StateHelpers (including GAS), MatchRunner, LocalTransport and the bot host are implemented. MatchRunner.join is still Task 12.
+description: Describe a Phalanx game as one GameDefinition and run it with MatchRunner from @phalanx-engine/runtime (engine 0.3). Use when defining games with defineGame, defineComponent, world.save/restore, writing BotPolicy bots, choosing simMode 'client' vs 'server', snapshots, replays, reconnect, or Transport/LocalTransport. World modules are the default GameState. StateHelpers, spawnWithId, rebuildBroadphaseFromTransforms and WorldScope are in @phalanx-engine/runtime/advanced. MatchRunner.join is still Task 12.
 metadata:
   author: phaeton2040-AI
   version: '0.1'
@@ -8,12 +8,14 @@ metadata:
 
 # Phalanx Runtime Skill
 
-> **Status: Tasks 1–6 implemented. `MatchRunner.join` is still Task 12.**
+> **Status: Tasks 1–6 and 6.5a implemented. `MatchRunner.join` is still Task 12.**
 > Task 3 is engine hooks (ecs id counter, SoA context, pools, math RNG
 > state, ability runtime export, broadphase centers). Task 4 is
 > `StateHelpers` except GAS. Task 5 is `writeAbilities` / `readAbilities`.
 > Task 6 is `MatchRunner` (not `join`), `CommandLog`, `WorldScope`,
-> `BotHost` and in-memory `LocalTransport`. `BinaryStateWriter` /
+> `BotHost` and in-memory `LocalTransport`. Task 6.5a is `defineComponent`,
+> `world.save` / `world.restore`, and the `advanced` subpath.
+> `BinaryStateWriter` /
 > `BinaryStateReader`, `encodeSnapshot` / `decodeSnapshot`, `digestBytes`,
 > `canonicalConfigBytes`, `configHash` and `checkSnapshotCompatibility` are
 > live. Later members throw `NotImplementedError` with
@@ -40,8 +42,9 @@ metadata:
 1. `createWorld(config, ctx)` builds `new GameWorld({ tickFrameProvider:
 ctx.tickFrameProvider, random: ctx.random, ... })` and calls
    `world.start()`. Never call `processAllTicks`.
-2. `ctx.purpose === 'restore'`: build static content only;
-   `GameState.restore` recreates dynamic entities.
+2. `ctx.purpose === 'restore'`: build static content only when a custom
+   `GameState` calls `spawnWithId` for dynamic ids. `world.restore` skips
+   an id that already exists and overwrites its rows.
 3. Commands: `decode` is structural (no sim); `validate` is pure and reads
    the sim; `applyCommand` mutates. Payloads are JSON-safe; send FP raw
    values as decimal strings.
@@ -58,11 +61,33 @@ ctx.tickFrameProvider, random: ctx.random, ... })` and calls
    submits (the input checkpoint), outside the digest.
 8. Match configs are JSON-safe with integer numbers only.
    `configHash(config)` is `digestBytes(canonicalConfigBytes(config))`:
-   object keys sorted by UTF-16 code unit, safe integers only.
+   object keys sorted by UTF-16 code unit, safe integers only. After boot,
+   `MatchRunner` folds `world.componentNames()` into that digest when the
+   list is non-empty. An empty list keeps the one-argument hash.
+
+## World and components
+
+```ts
+import { defineComponent, defineGame } from '@phalanx-engine/runtime';
+
+const Unit = defineComponent('Unit', { hp: 'i64' }, { defaults: { hp: 48n } });
+```
+
+Register with `world.registerComponent(Unit)` before spawn. `world.spawn({
+Unit: { hp: 48n } })`, `world.despawn(entity)` and `world.each(Unit, fn)`
+use the existing entity id counter. `world.save()` / `world.restore(bytes)`
+are the default `defineGame` state when `state` is omitted. Optional
+singleton bytes go through `bindWorldSingletons(world, { onSave, onRestore })`.
+Component hooks are `onCreate`, `onEnable`, `onDisable`, `onDestroy`.
+`onEnable` also runs after restore and must not overwrite saved fields.
+Returning an entity to the pool resets SoA fields to the schema defaults
+and resets GAS attributes, the granted ability set, and `initComponent`
+tags to the factory shell.
 
 ## State helpers
 
-Call these inside the game's own `GameState`, in this order on restore:
+Import them from `@phalanx-engine/runtime/advanced`, not the package root.
+Call these inside a hand-written `GameState`, in this order on restore:
 `spawnWithId` for non-pooled entities, `readPools`, `readSoAStores`,
 `readAbilities`, `readEntityIds`, `readRandom`, `readBroadphase`.
 
@@ -117,8 +142,8 @@ Call these inside the game's own `GameState`, in this order on restore:
   stores entity id, and `x` / `z` / `radius` as raw base plus that value's
   precision. `readBroadphase` calls `restoreBroadphase`, which also writes
   `lastX` / `lastZ` via `FP.ToFloat`. Do not read those fields in
-  simulation. `rebuildPhysics` rebuilds from current transforms and is
-  valid only before the first resolving step.
+  simulation. `rebuildBroadphaseFromTransforms` rebuilds from current
+  transforms and is valid only before the first resolving step.
 
 ## Running a match
 
@@ -158,8 +183,8 @@ transport. Catch-up applies buffered batches that land after
 An already-started `restore` flushes the checkpoint after the transport
 seek. `restore` resets the match RNG to `config.seed` before
 `createWorld`; `GameState.restore` then installs the saved generator. A
-paused transport pauses the rebuilt world. `WorldScope` tracks the
-active scope: entering a different scope saves that scope's live
+paused transport pauses the rebuilt world. `WorldScope` (advanced) tracks
+the active scope: entering a different scope saves that scope's live
 registers, and only an immediate re-entry skips install. `LocalTransport`
 rejects a submit more than `maxAheadTicks` past `nextTick` (default 8).
 Its timer waits
@@ -167,9 +192,12 @@ Its timer waits
 after `decide` stores bot bytes and the input checkpoint outside the
 digest. `restore` applies bot state and the checkpoint only for slots
 this runner hosts or submits, so a client ignores a server snapshot's
-bot state and checkpoint. `createWorld` must not spawn entities when
-`purpose` is `'restore'`; `GameState.restore` recreates them by id. A
-spawn during `'restore'` throws `spawnWithId: entity N already exists`.
+bot state and checkpoint. A custom `GameState` that calls `spawnWithId`
+for an id `createWorld` already made still throws
+`spawnWithId: entity N already exists`. `world.restore` skips that id.
+A throw inside a tick does not escape `LocalTransport.manual().step()`;
+`onError` already ran. A timed transport swallows the same error in its
+timer. Other transports still see it.
 
 ## Canonical state bytes
 

@@ -1,4 +1,5 @@
 import type { IComponent } from './Component.js';
+import { invokeComponentHooks } from './lifecycle.js';
 
 let entityIdCounter = 0;
 
@@ -108,6 +109,7 @@ export class Entity {
    */
   public addComponent<T extends IComponent>(component: T): T {
     this.components.set(component.type, component);
+    invokeComponentHooks([component], 'onCreate');
     return component;
   }
 
@@ -174,6 +176,8 @@ export class Entity {
    * Cleanup resources - called by EntityManager
    */
   public dispose(): void {
+    const components = [...this.components.values()];
+    invokeComponentHooks(components, 'onDestroy');
     this._isDestroyed = true;
     this.components.clear();
     const notify = this._onDispose;

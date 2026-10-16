@@ -24,7 +24,6 @@ import {
   TRANSFORM_COMPONENT_TYPE,
 } from '@phalanx-engine/physics';
 import {
-  StateHelpers,
   defineGame,
   rejectCommand,
   type CommandRejection,
@@ -37,6 +36,7 @@ import {
   type StateWriter,
   type WorldInitContext,
 } from '../../src/index.js';
+import { StateHelpers } from '../../src/advanced/index.js';
 
 const CELL = FP.FromInt(4);
 const HEALTH = FP.FromInt(50);
@@ -207,6 +207,10 @@ export const ArenaGame = defineGame({
       gravity: FP._0,
     });
     world.context.physics = physics;
+    // Store order is the snapshot order. Gravity init would create
+    // PhysicsBody first; the fixture's manual save lists Transform first.
+    world.entityManager.getOrCreateSoAStore(TransformSoASchema);
+    world.entityManager.getOrCreateSoAStore(PhysicsSoASchema);
     const { gravitySystem, physicsSystem } = physics.getSystems();
     world.registerSystems(
       [
