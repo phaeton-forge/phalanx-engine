@@ -121,6 +121,9 @@ Entries collected per package until the synchronized 0.3.0 release
   before the next timer. `fromReplay` is driven only by
   `fastForward(replay.log)`; `start()` throws. `RunnerStatus` is a type
   export.
+- `createWorld` with `purpose: 'restore'` must not spawn. Restore starts
+  from that empty world and recreates dynamic entities by id. A spawn
+  during restore throws `entity N already exists` before `spawnWithId`.
 
 ## @phalanx-engine/ecs
 

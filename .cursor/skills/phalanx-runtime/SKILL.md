@@ -151,8 +151,13 @@ log matches the live log. `LocalTransport` rejects a submit more than
 `maxAheadTicks` past `nextTick` (default 8). Its timer waits
 `tickDuration - accumulator`. A snapshot taken
 after `decide` stores bot bytes and the input checkpoint outside the
-digest. `restore` applies those only for slots this runner hosts or
-submits, so a client ignores a server snapshot's bot state and checkpoint.
+digest. `restore` builds a new world with `purpose: 'restore'` and
+requires it to contain no entities. Spawn the opening roster only when
+`purpose === 'fresh'`. `GameState.restore` recreates dynamic entities by
+id. Spawning during `'restore'` throws `entity N already exists` before
+`spawnWithId`. `restore` applies bot state and the checkpoint only for
+slots this runner hosts or submits, so a client ignores a server
+snapshot's bot state and checkpoint.
 
 ## Canonical state bytes
 

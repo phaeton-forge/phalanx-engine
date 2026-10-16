@@ -20,8 +20,10 @@ import {
   setTinyBotBoom,
   setTinyDecodeBoom,
   setTinyRestoreBroken,
+  setTinySeedInitial,
   setTinyTickBoom,
   setTinyValidateBoom,
+  TINY_OPENING_X,
   tinyBotCalls,
   type TinyCommand,
   type TinyConfig,
@@ -138,6 +140,7 @@ describe('MatchRunner', () => {
     setTinyValidateBoom(false);
     setTinyTickBoom(false);
     setTinyBotBoom(false);
+    setTinySeedInitial(false);
     resetTinyBotCalls();
     while (live.length > 0) live.pop()?.dispose();
   });
@@ -581,6 +584,47 @@ describe('MatchRunner', () => {
     stepTo(restored, 4);
     expect(JSON.stringify(restored.runner.log.entriesAfter(1))).toBe(
       JSON.stringify(liveRun.runner.log.entriesAfter(1))
+    );
+  });
+
+  it('restores when createWorld spawns opening units only on a fresh world', async () => {
+    setTinySeedInitial(true);
+    const liveRun = drive('client', 9);
+    liveRun.runner.start();
+    stepTo(liveRun, 4);
+    const opened = liveRun.runner.sim.unitBySlot(0);
+    expect(opened?.x).toBe(TINY_OPENING_X);
+    expect(opened !== null && opened.hp < 100n).toBe(true);
+    const snapshot = liveRun.runner.snapshot();
+    const atSnapshot = liveRun.runner.digest();
+    stepTo(liveRun, 8);
+    const tail = liveRun.runner.log
+      .entriesAfter(4)
+      .filter((entry) => entry.tick <= 8);
+
+    const restored = drive('client', 9);
+    restored.runner.restore(snapshot);
+    expect(restored.runner.sim.unitBySlot(0)).toEqual(opened);
+    expect(restored.runner.digest()).toBe(atSnapshot);
+    await restored.runner.fastForward(tail, {
+      budgetMs: 1_000,
+      throughTick: 8,
+    });
+    expect(restored.runner.digest()).toBe(liveRun.runner.digest());
+    expect(restored.runner.sim.unitBySlot(0)).toEqual(
+      liveRun.runner.sim.unitBySlot(0)
+    );
+  });
+
+  it('rejects a restore world that already contains spawned entities', () => {
+    setTinySeedInitial(true, true);
+    const liveRun = drive('client', 9);
+    liveRun.runner.start();
+    stepTo(liveRun, 1);
+    const snapshot = liveRun.runner.snapshot();
+    const restored = drive('client', 9);
+    expect(() => restored.runner.restore(snapshot)).toThrow(
+      /purpose 'restore' must not spawn/
     );
   });
 

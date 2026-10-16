@@ -88,7 +88,12 @@ no `f32` or `f64` writer.
 and validated inside the tick; rejected entries stay in the log.
 `snapshot` runs after hosted `decide` and stores bot state plus the input
 checkpoint outside the digest. `restore` rebuilds with
-`purpose: 'restore'`, checks the round trip, then applies bot state and
+`purpose: 'restore'`. That world is static content only: systems, pools,
+registries, and `world.start()`. `createWorld` must not spawn. Dynamic
+entities are recreated by id inside `GameState.restore`. A spawn during
+`purpose: 'restore'` is rejected (`entity N already exists`) before
+`spawnWithId` runs. `restore` then checks the round trip and applies bot
+state and
 the checkpoint only for slots this runner hosts or submits. A client
 restoring a server snapshot ignores both. `fastForward(entries, { budgetMs,
 throughTick })` is inclusive and runs empty ticks. `fromReplay` never

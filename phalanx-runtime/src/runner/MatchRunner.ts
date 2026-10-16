@@ -357,8 +357,10 @@ export class MatchRunner<G extends AnyGameDefinition> {
 
   /**
    * Version policy → fresh `createWorld(config, { purpose: 'restore' })` →
-   * `GameState.restore` → `done()` → round-trip check. Then bot state and
-   * the input checkpoint, but only for slots this runner hosts or submits:
+   * the world must contain no entities → `GameState.restore` → `done()` →
+   * round-trip check. `purpose: 'restore'` is static content only; the
+   * game must not spawn. Bot state and the input checkpoint apply only
+   * for slots this runner hosts or submits:
    * a client restoring a server snapshot ignores both. With no following
    * `fastForward`, `start` re-submits the checkpoint and does not re-run
    * `decide` for the snapshot tick.
@@ -394,6 +396,7 @@ export class MatchRunner<G extends AnyGameDefinition> {
     this.scope.run(() => {
       this.destroySim();
       this.boot('restore');
+      this.assertRestoreWorldClear();
       const reader = new BinaryStateReader(body);
       this.requireGameState().restore(reader);
       reader.done();
@@ -973,6 +976,23 @@ export class MatchRunner<G extends AnyGameDefinition> {
   private ownsPlayer(playerId: string): boolean {
     const slot = this.slotByPlayerId.get(playerId);
     return slot !== undefined && this.ownsSlot(slot);
+  }
+
+  /**
+   * `GameState.restore` recreates dynamic entities by id. Anything
+   * `createWorld` already registered would make `spawnWithId` throw.
+   */
+  private assertRestoreWorldClear(): void {
+    const world = this.simulation?.world;
+    if (world === undefined) return;
+    const first = world.entityManager.getAllEntities()[0];
+    if (first === undefined) return;
+    throw new Error(
+      "MatchRunner.restore: createWorld with purpose 'restore' must not" +
+        ` spawn entities (entity ${String(first.id)} already exists).` +
+        ' Build static content only; GameState.restore recreates dynamic' +
+        ' entities.'
+    );
   }
 
   private ensureLive(): void {
