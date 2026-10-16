@@ -337,6 +337,14 @@ export class BinaryStateReader implements StateReader {
     return out;
   }
 
+  /**
+   * Bytes not yet read. World restore uses this to see whether the next
+   * section is the optional roster without consuming it.
+   */
+  public remainingBytes(): Uint8Array {
+    return this.buf.subarray(this.offset);
+  }
+
   /** Throws if unread bytes remain. */
   public done(): void {
     const unread = this.unreadCount();

@@ -1,6 +1,8 @@
 import type { GameCommand } from './commands.js';
 import type { GameDefinition, SimWorld } from './GameDefinition.js';
 import type { MatchConfigBase } from './MatchConfig.js';
+import type { GameStateSpec } from '../state/GameState.js';
+import { createDefaultWorldState } from '../world/defaultState.js';
 
 function fail(message: string): never {
   throw new Error(`defineGame: ${message}`);
@@ -28,7 +30,11 @@ export function defineGame<
   Cfg extends MatchConfigBase,
   Cmd extends GameCommand,
   Sim extends SimWorld<Cmd>,
->(def: GameDefinition<Cfg, Cmd, Sim>): GameDefinition<Cfg, Cmd, Sim> {
+>(
+  def: Omit<GameDefinition<Cfg, Cmd, Sim>, 'state'> & {
+    readonly state?: GameStateSpec<Sim>;
+  }
+): GameDefinition<Cfg, Cmd, Sim> {
   const raw: unknown = def;
   if (typeof raw !== 'object' || raw === null) {
     fail('definition must be an object');
@@ -57,19 +63,20 @@ export function defineGame<
   }
   requireFunction(def.commands, 'decode', `${label}: commands.decode`);
 
-  const state: unknown = def.state;
-  if (typeof state !== 'object' || state === null) {
-    fail(`${label}: state (GameStateSpec) is required`);
-  }
-  if (!isPositiveInteger(def.state.formatVersion)) {
-    fail(`${label}: state.formatVersion must be a positive integer`);
-  }
-  requireFunction(def.state, 'bind', `${label}: state.bind`);
-
   if (def.bots !== undefined) {
     for (const name of Object.keys(def.bots).sort()) {
       requireFunction(def.bots, name, `${label}: bots.${name}`);
     }
   }
-  return def;
+
+  if (def.state === undefined) {
+    return { ...def, state: createDefaultWorldState<Sim>() };
+  }
+  if (!isPositiveInteger(def.state.formatVersion)) {
+    fail(`${label}: state.formatVersion must be a positive integer`);
+  }
+  requireFunction(def.state, 'bind', `${label}: state.bind`);
+  // `state` is present, so the input is a full definition. Return the
+  // same object `defineGame` was given.
+  return def as GameDefinition<Cfg, Cmd, Sim>;
 }

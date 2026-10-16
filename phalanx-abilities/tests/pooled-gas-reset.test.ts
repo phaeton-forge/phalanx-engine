@@ -20,9 +20,9 @@ import {
   getAbilitySystemComponent,
   getActiveEffectsComponent,
   getGameplayTagsComponent,
-  releasePooledAbilityState,
   type AbilitySystem,
 } from '../src';
+import { releasePooledAbilityState } from '../src/api/releasePooledAbilityState.js';
 
 const definitions = defineAbilitySystem({
   attributes: [
@@ -223,7 +223,104 @@ describe('pooled GAS reset', () => {
     expect(attributes.base[0]).toBe(0n);
     expect(attributes.current[0]).toBe(0n);
   });
+
+  it('matches a fresh spawn after three despawn and spawn cycles', () => {
+    const holder: { abilities?: AbilitySystem } = {};
+    const world = new GameWorld({
+      pooling: {
+        entityTypes: {
+          minion: {
+            factory: () => {
+              const abilities = holder.abilities;
+              if (abilities === undefined) {
+                throw new Error('ability system is not ready');
+              }
+              return new Minion(abilities);
+            },
+          },
+        },
+      },
+    });
+    const abilities = createAbilitySystem(world, {
+      definitions: reuseDefinitions,
+    });
+    holder.abilities = abilities;
+    world.registerSystems([...abilities.tickSystems], []);
+    const pools = world.pools;
+    if (pools === null) throw new Error('expected pools');
+
+    const fresh = pools.spawn<Minion>('minion');
+    const recycled = pools.spawn<Minion>('minion');
+    const freshShell = gasShell(fresh);
+    const wounded = FP.ToRaw(FP.FromInt(32));
+
+    for (let life = 0; life < 3; life += 1) {
+      const component = getAbilitySystemComponent(recycled);
+      if (component === undefined) throw new Error('missing ability component');
+      component.attributes.base[0] = wounded;
+      component.attributes.current[0] = wounded;
+      component.abilities.delete('Ability.Hold');
+      component.abilities.add('Ability.Other');
+      abilities.addTag(recycled.id, 'Team.Blue');
+      abilities.applyEffect(recycled.id, 'Effect.Burn', recycled.id);
+      pools.despawn(recycled);
+      const again = pools.spawn<Minion>('minion');
+      expect(again.id).toBe(recycled.id);
+      expect(gasShell(again)).toEqual(freshShell);
+    }
+    world.dispose();
+  });
 });
+
+const reuseDefinitions = defineAbilitySystem({
+  attributes: [
+    defineAttribute({
+      id: 'Health',
+      default: FP.FromInt(48),
+      min: FP.FromInt(0),
+      max: FP.FromInt(100),
+      clamp: 'both',
+    }),
+  ],
+  effects: [
+    defineEffect({
+      id: 'Effect.Burn',
+      type: 'Duration',
+      durationTicks: 10,
+      tagsGranted: ['State.Debuff.Burn'],
+    }),
+  ],
+  abilities: [
+    defineAbility({
+      id: 'Ability.Hold',
+      target: { kind: 'Self' },
+    }),
+  ],
+});
+
+function gasShell(entity: Entity): {
+  base: bigint[];
+  current: bigint[];
+  abilities: string[];
+  tags: string[];
+  adHoc: string[];
+  grants: number;
+  pending: number;
+  queued: number;
+} {
+  const component = getAbilitySystemComponent(entity);
+  if (component === undefined) throw new Error('missing ability component');
+  return {
+    base: [...component.attributes.base],
+    current: [...component.attributes.current],
+    abilities: [...component.abilities].sort(),
+    tags: [...component.tags.tags].sort(),
+    adHoc: [...component.tags.adHocTags].sort(),
+    grants: component.tags.effectGrantCounts.size,
+    pending: component.activeEffects.pendingAdd.length,
+    queued: component.activeEffects.queue.length,
+  };
+}
 
 class Bare extends Entity implements IPoolableEntity {
   public onSpawn(): void {}

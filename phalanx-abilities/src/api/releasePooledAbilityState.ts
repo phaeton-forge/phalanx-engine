@@ -41,6 +41,8 @@ interface ShellImage {
 const shellByEntity = new WeakMap<Entity, ShellImage>();
 
 /**
+ * @internal Installed by `createAbilitySystem`. Not a public API.
+ *
  * Drop transient GAS state when a pooled entity returns to the pool.
  *
  * The first call records the factory shell: attribute `base` / `current` /

@@ -1,7 +1,5 @@
 export type { IPoolable } from './IPoolable.js';
 export type { IPoolableEntity, SpawnArgsOf } from './IPoolableEntity.js';
-export type { IPoolableComponent } from './IPoolableComponent.js';
-export { isPoolableComponent } from './IPoolableComponent.js';
 export type {
   PoolConfig,
   PoolStats,

@@ -262,22 +262,35 @@ public processTick(): void {
 Pooling is **engine-driven**. Game code calls exactly two APIs:
 `pools.spawn(typeKey, args)` and `pools.despawn(entity)`.
 
-- Never invoke `onSpawn` / `onDespawn` on entities or components yourself.
+- Never invoke `onSpawn` / `onDespawn` / `onEnable` / `onDisable` /
+  `onDestroy` on entities or components yourself.
 - Lifecycle order is fixed and MUST NOT change:
-  - spawn: `component.onSpawn()` → `entity.onSpawn(args)` → `addEntity()`
-  - despawn: `removeEntity()` → `entity.onDespawn()` → `component.onDespawn()`
-    → return-to-pool hooks → release
-- `createAbilitySystem` registers a return-to-pool hook
-  (`releasePooledAbilityState`). The first call records the factory shell
-  (attribute `base` / `current` / `dirty`, the equipped ability set, and
-  ad-hoc tags plus effect grants, including `initComponent` tags). Later
-  calls clear the effect queue and `pendingAdd`, copy that shell back, and
-  remove GAS components attached after it (`applyEffect`, `addTag`,
-  standalone attributes). The hook is idempotent and runs again when a
-  restored free-list entity is parked. Initial `pendingAdd` effects are
-  not in the shell, so `onSpawn` must re-seed those. A free-list entity is
-  not in the GAS snapshot; the shell restore is what keeps a respawn whose
-  `onSpawn` does not rewrite attributes identical to a restored copy.
+  - `onCreate` runs from `addComponent`.
+  - spawn: internal storage `onSpawn()` (SoA rows back to constructor
+    defaults) → `entity.onSpawn(args)` → `addEntity()` → component
+    `onEnable`.
+  - despawn: component `onDisable` → `removeEntity()` → `entity.onDespawn()`
+    → internal storage `onDespawn()` → return-to-pool hooks → release.
+  - `onDestroy` runs from `dispose`, including pool `drain`.
+  - The factory's first dormant pass runs despawn hooks and does not call
+    `onDisable` (the entity was never enabled).
+- `onEnable` also runs after `world.restore`. It must not overwrite saved
+  fields. Per-spawn writes belong in entity `onSpawn`.
+- `addReturnToPoolHook` and `IPoolableComponent` are internal. Game code
+  uses `onEnable` / `onDisable` / `onDestroy`. `SoAComponent.onSpawn` /
+  `onDespawn` stay the storage reset.
+- `createAbilitySystem` registers an internal return-to-pool hook. The
+  first call records the factory shell (attribute `base` / `current` /
+  `dirty`, the equipped ability set, and ad-hoc tags plus effect grants,
+  including `initComponent` tags). Later calls clear the effect queue and
+  `pendingAdd`, copy that shell back, and remove GAS components attached
+  after it (`applyEffect`, `addTag`, standalone attributes). The hook is
+  idempotent and runs again when a restored free-list entity is parked.
+  Initial `pendingAdd` effects are not in the shell, so `onSpawn` must
+  re-seed those. Attributes, the granted ability set, and `initComponent`
+  tags come back from the shell. A free-list entity is not in the GAS
+  snapshot; the shell restore is what keeps a respawn whose `onSpawn` does
+  not rewrite attributes identical to a restored copy.
 - `onSpawn(args)`: typed setter assignments only, **zero allocations**.
   `onDespawn()`: game-level teardown only, **zero allocations**, and **must be
   idempotent**.

@@ -202,10 +202,10 @@ aggregation is exactly the pre-existing `modifier.magnitude` path.
 
 ### Effects
 
-| Type | Behavior |
-|------|----------|
-| `Instant` | Modifies `base` immediately when applied |
-| `Duration` | Stays in `ActiveEffectsComponent.queue` for `durationTicks`; grants tags while active |
+| Type       | Behavior                                                                                |
+| ---------- | --------------------------------------------------------------------------------------- |
+| `Instant`  | Modifies `base` immediately when applied                                                |
+| `Duration` | Stays in `ActiveEffectsComponent.queue` for `durationTicks`; grants tags while active   |
 | `Periodic` | Duration + fires modifiers every `periodTicks`; optional `executePeriodicOnApplication` |
 
 Durations and periods are **whole simulation ticks** (`number`), compared to `runtime.currentTick` — not `FixedPoint` values.
@@ -213,21 +213,30 @@ Durations and periods are **whole simulation ticks** (`number`), compared to `ru
 ### Dynamic magnitudes
 
 A `Modifier` can carry an optional `calculation` — a pure, FP-only function (Unreal GAS
-`ModMagnitudeCalculation` analog) that computes the modifier's *effective* magnitude at
+`ModMagnitudeCalculation` analog) that computes the modifier's _effective_ magnitude at
 effect-application time, instead of always using the static `magnitude`:
 
 ```typescript
-import type { MagnitudeCalcContext, MagnitudeCalculation } from '@phalanx-engine/abilities';
+import type {
+  MagnitudeCalcContext,
+  MagnitudeCalculation,
+} from '@phalanx-engine/abilities';
 
 const levelScaledDamage: MagnitudeCalculation = (ctx: MagnitudeCalcContext) => {
   // Fall back to the static magnitude when there is no source (e.g. world hazard)
   // or it has since despawned — tryGetAttribute returns undefined for both.
-  const level = ctx.abilities.tryGetAttribute(ctx.sourceEntityId, 'AbilityLevel');
+  const level = ctx.abilities.tryGetAttribute(
+    ctx.sourceEntityId,
+    'AbilityLevel'
+  );
   if (!level) {
     return ctx.baseMagnitude;
   }
   // baseMagnitude * (1 + 0.5 * (level - 1))
-  const multiplier = FP.Add(FP.FromInt(1), FP.Mul(FP.FromFloat(0.5), FP.Sub(level.current, FP.FromInt(1))));
+  const multiplier = FP.Add(
+    FP.FromInt(1),
+    FP.Mul(FP.FromFloat(0.5), FP.Sub(level.current, FP.FromInt(1)))
+  );
   return FP.Mul(ctx.baseMagnitude, multiplier);
 };
 
@@ -235,7 +244,12 @@ defineEffect({
   id: 'Effect.AutoAttack.Damage',
   type: 'Instant',
   modifiers: [
-    { attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(-18), calculation: levelScaledDamage },
+    {
+      attributeId: 'Health',
+      op: 'Add',
+      magnitude: FP.FromInt(-18),
+      calculation: levelScaledDamage,
+    },
   ],
 });
 
@@ -245,14 +259,14 @@ abilities.applyEffect(enemyId, 'Effect.AutoAttack.Damage', casterId);
 
 `MagnitudeCalcContext`:
 
-| Field | Meaning |
-|-------|---------|
-| `baseMagnitude` | The modifier's static `magnitude` — use it as a base/default value |
-| `sourceEntityId` | The effect's source entity id, or `NO_SOURCE_ENTITY_ID` (`-1`) when there is none. A despawned source is indistinguishable from a valid id here — don't branch on the id, just read through `abilities` |
-| `targetEntityId` | The entity the effect is being applied to |
-| `abilities` | The same `AbilitySystemFacade` every game system already holds, narrowed to its two read-only methods (`tryGetAttribute`, `hasTag`) — no wrapper object is created for calculations |
-| `setByCaller` | `ReadonlyMap<string, unknown> \| null` — optional per-application payload (SetByCaller analog), passed as the 4th argument to `applyEffect` |
-| `effectId` / `attributeId` | The effect and attribute the modifier belongs to |
+| Field                      | Meaning                                                                                                                                                                                                 |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `baseMagnitude`            | The modifier's static `magnitude` — use it as a base/default value                                                                                                                                      |
+| `sourceEntityId`           | The effect's source entity id, or `NO_SOURCE_ENTITY_ID` (`-1`) when there is none. A despawned source is indistinguishable from a valid id here — don't branch on the id, just read through `abilities` |
+| `targetEntityId`           | The entity the effect is being applied to                                                                                                                                                               |
+| `abilities`                | The same `AbilitySystemFacade` every game system already holds, narrowed to its two read-only methods (`tryGetAttribute`, `hasTag`) — no wrapper object is created for calculations                     |
+| `setByCaller`              | `ReadonlyMap<string, unknown> \| null` — optional per-application payload (SetByCaller analog), passed as the 4th argument to `applyEffect`                                                             |
+| `effectId` / `attributeId` | The effect and attribute the modifier belongs to                                                                                                                                                        |
 
 A calculation reads source/target attributes exactly the way any other game system does:
 `ctx.abilities.tryGetAttribute(entityId, attrId)` returns `undefined` when the entity, its
@@ -406,7 +420,11 @@ defineEffect({
   type: 'Duration',
   durationTicks: 240,
   modifiers: [
-    { attributeId: 'IncomingDamageMultiplier', op: 'Multiply', magnitude: FP.FromFloat(1.25) },
+    {
+      attributeId: 'IncomingDamageMultiplier',
+      op: 'Multiply',
+      magnitude: FP.FromFloat(1.25),
+    },
   ],
   tagsGranted: ['State.Marked'],
 });
@@ -417,7 +435,8 @@ function applyDamageWithMark(
   baseDamage: FixedPoint
 ): void {
   const mult =
-    abilities.tryGetAttribute(targetId, 'IncomingDamageMultiplier')?.current ?? FP.FromInt(1);
+    abilities.tryGetAttribute(targetId, 'IncomingDamageMultiplier')?.current ??
+    FP.FromInt(1);
   const scaled = FP.Mul(baseDamage, mult);
   // apply Instant damage effect or direct Health modifier with `scaled`
 }
@@ -487,7 +506,12 @@ defineEffect({
 **One dispatched cue event = one short-lived `Cue` instance.** Register factories in `createAbilitySystem`:
 
 ```typescript
-import { Cue, type CueConfig, type CueContext, type GameplayCueDispatchedEvent } from '@phalanx-engine/abilities';
+import {
+  Cue,
+  type CueConfig,
+  type CueContext,
+  type GameplayCueDispatchedEvent,
+} from '@phalanx-engine/abilities';
 
 const cues: CueConfig = {
   'Cue.Damage.Sphere': () => new DamageSphereCue(scene),
@@ -497,12 +521,12 @@ const cues: CueConfig = {
 createAbilitySystem(world, { definitions, cues });
 ```
 
-| Type | Role |
-|------|------|
-| `Cue` | Abstract base: `onSpawn`, `update(dt)`, `isFinished()`, `dispose()` |
-| `CueContext` | Read-only `{ entityManager, eventBus }` — no `GameWorld` |
-| `CueFactory` | `() => Cue` — invoked **per dispatch**, not once at init |
-| `CueConfig` | `Readonly<Record<string, CueFactory>>` — map key is the cue id |
+| Type         | Role                                                                |
+| ------------ | ------------------------------------------------------------------- |
+| `Cue`        | Abstract base: `onSpawn`, `update(dt)`, `isFinished()`, `dispose()` |
+| `CueContext` | Read-only `{ entityManager, eventBus }` — no `GameWorld`            |
+| `CueFactory` | `() => Cue` — invoked **per dispatch**, not once at init            |
+| `CueConfig`  | `Readonly<Record<string, CueFactory>>` — map key is the cue id      |
 
 **Two-phase init:** the factory closure captures presentation deps (scene, audio); `onSpawn(event, ctx)` binds the instance to the dispatch event and world services.
 
@@ -569,32 +593,31 @@ A non-empty `cues` map automatically registers `CueDispatchSystem` and `CuePrese
 createAbilitySystem(world: GameWorld, config: CreateAbilitySystemConfig): AbilitySystem
 ```
 
-| Config field | Purpose |
-|--------------|---------|
-| `definitions` | `defineAbilitySystem({ attributes, effects?, abilities? })` |
-| `hooks` | `Record<hookId, AbilityHook>` |
-| `pipeline` | `'full'` (default), `'activation'`, `'effects'`, `'effects-retain-cues'`, `'attributes'` |
-| `cues` | `CueConfig` — `cueId → () => Cue`. Non-empty map registers dispatch + presentation |
+| Config field  | Purpose                                                                                  |
+| ------------- | ---------------------------------------------------------------------------------------- |
+| `definitions` | `defineAbilitySystem({ attributes, effects?, abilities? })`                              |
+| `hooks`       | `Record<hookId, AbilityHook>`                                                            |
+| `pipeline`    | `'full'` (default), `'activation'`, `'effects'`, `'effects-retain-cues'`, `'attributes'` |
+| `cues`        | `CueConfig` — `cueId → () => Cue`. Non-empty map registers dispatch + presentation       |
 
 ### `AbilitySystem` (returned by factory)
 
-| Method | Description |
-|--------|-------------|
-| `initComponent(init?)` | Create `AbilitySystemComponent` with optional seed data |
-| `activateAbility(casterId, abilityId, providedTarget?)` | Queue activation |
-| `applyEffect(targetId, effectId, sourceId?, setByCaller?)` | Queue effect (`sourceId` defaults to `-1`; `setByCaller` is an optional `ReadonlyMap<string, unknown>` forwarded to `Modifier.calculation`) |
-| `getAttribute` / `tryGetAttribute` | Read base/current |
-| `hasTag` / `addTag` / `removeTag` | Tag queries and ad-hoc tags |
-| `removeEffectsByTag` / `removeEffectsByDefId` | Flag instances for removal next tick |
-| `tickSystems` | Register on `GameWorld` |
-| `exportRuntimeState()` / `importRuntimeState(state)` | Copy or restore the instance-id counter, activation queue, current tick, and resolved activations. The cue buffer is not included and is left untouched. `importRuntimeState` rejects an `abilityId` that is not registered. `instanceId` must be `>=` every live effect instance id (caller responsibility). These two methods are required on `AbilitySystem`. |
-| `isAbilityRegistered(id)` / `isEffectRegistered(id)` | Registry membership for this world. `readAbilities` uses them and throws with the entity id when a saved id is missing. |
-| `releasePooledAbilityState(entity)` | On the first call, record the factory shell (attribute `base` / `current` / `dirty`, the equipped ability set, ad-hoc tags and effect grants, including `initComponent` tags). Later calls clear the effect queue and `pendingAdd`, copy that shell back, and remove `AbilitySystem`, `Attributes`, `ActiveEffects`, and `GameplayTags` components attached after the shell. `createAbilitySystem` registers this on the pool. Idempotent. Initial `pendingAdd` effects are not restored. |
-| `instanceIdCounter` | High-water mark. `InstanceIdCounter.set(n)` accepts any integer `>= 0`. The caller must keep it `>=` every live effect instance id. |
+| Method                                                     | Description                                                                                                                                                                                                                                                                                                                                                      |
+| ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `initComponent(init?)`                                     | Create `AbilitySystemComponent` with optional seed data                                                                                                                                                                                                                                                                                                          |
+| `activateAbility(casterId, abilityId, providedTarget?)`    | Queue activation                                                                                                                                                                                                                                                                                                                                                 |
+| `applyEffect(targetId, effectId, sourceId?, setByCaller?)` | Queue effect (`sourceId` defaults to `-1`; `setByCaller` is an optional `ReadonlyMap<string, unknown>` forwarded to `Modifier.calculation`)                                                                                                                                                                                                                      |
+| `getAttribute` / `tryGetAttribute`                         | Read base/current                                                                                                                                                                                                                                                                                                                                                |
+| `hasTag` / `addTag` / `removeTag`                          | Tag queries and ad-hoc tags                                                                                                                                                                                                                                                                                                                                      |
+| `removeEffectsByTag` / `removeEffectsByDefId`              | Flag instances for removal next tick                                                                                                                                                                                                                                                                                                                             |
+| `tickSystems`                                              | Register on `GameWorld`                                                                                                                                                                                                                                                                                                                                          |
+| `exportRuntimeState()` / `importRuntimeState(state)`       | Copy or restore the instance-id counter, activation queue, current tick, and resolved activations. The cue buffer is not included and is left untouched. `importRuntimeState` rejects an `abilityId` that is not registered. `instanceId` must be `>=` every live effect instance id (caller responsibility). These two methods are required on `AbilitySystem`. |
+| `isAbilityRegistered(id)` / `isEffectRegistered(id)`       | Registry membership for this world. `readAbilities` uses them and throws with the entity id when a saved id is missing.                                                                                                                                                                                                                                          |
+| `instanceIdCounter`                                        | High-water mark. `InstanceIdCounter.set(n)` accepts any integer `>= 0`. The caller must keep it `>=` every live effect instance id.                                                                                                                                                                                                                              |
 
 ### Pooling
 
-A pooled entity loses transient GAS state when it returns to the pool. The reset runs on the factory's initial dormant pass, on `pools.despawn`, and again when a snapshot restore parks a free-list entity. The first call records the factory shell: attribute `base` / `current` / `dirty`, the equipped ability set, and ad-hoc tags plus effect grants as the factory left them (`initComponent` tags included). Later calls clear the effect queue and `pendingAdd`, copy that image back, and remove GAS components attached during the life (`applyEffect`, `addTag`, or a standalone `AttributesComponent` on a bare entity). Initial `pendingAdd` effects are not part of the shell, so `onSpawn` must re-seed those. A bare entity is component-free again once it is dormant. A free-list entity is not written by `writeAbilities`. Restore builds a fresh factory instance and runs the hook again, so a respawn whose `onSpawn` does not rewrite attributes matches a respawn that never snapshotted.
+A pooled entity loses transient GAS state when it returns to the pool. `createAbilitySystem` installs that reset on the pool. It runs on the factory's initial dormant pass, on `pools.despawn`, and again when a snapshot restore parks a free-list entity. The first call records the factory shell: attribute `base` / `current` / `dirty`, the equipped ability set, and ad-hoc tags plus effect grants as the factory left them (`initComponent` tags included). Later calls clear the effect queue and `pendingAdd`, copy that image back, and remove GAS components attached during the life (`applyEffect`, `addTag`, or a standalone `AttributesComponent` on a bare entity). Initial `pendingAdd` effects are not part of the shell, so `onSpawn` must re-seed those. Attributes, the granted ability set, and `initComponent` tags match a fresh spawn after despawn. A bare entity is component-free again once it is dormant. A free-list entity is not written by `writeAbilities`. Restore builds a fresh factory instance and runs the hook again, so a respawn whose `onSpawn` does not rewrite attributes matches a respawn that never snapshotted. The reset function is internal.
 
 Lower-level access: `AbilitySystemFacade` is exported for advanced wiring; most games use `createAbilitySystem` only.
 

@@ -74,16 +74,20 @@ export type AnyGameDefinition = GameDefinition<MatchConfigBase, GameCommand, Sim
 export type ConfigOf<G>; export type CommandOf<G>; export type SimOf<G>;
 
 export function defineGame<Cfg, Cmd, Sim>(
-  def: GameDefinition<Cfg, Cmd, Sim>
+  def: Omit<GameDefinition<Cfg, Cmd, Sim>, 'state'> & {
+    readonly state?: GameStateSpec<Sim>;
+  }
 ): GameDefinition<Cfg, Cmd, Sim>;
 ```
 
-`defineGame` returns `def` unchanged and throws `defineGame: …` errors when
-`id` / `simVersion` are not non-empty strings, `tickRate` is not a positive
-integer, `createWorld` / `outcome` are not functions, `commands` lacks a
-`types` array or a `decode` function, `state` is missing or lacks a
-positive-integer `formatVersion` or a `bind` function, or a `bots` entry is
-not a function.
+`defineGame` throws `defineGame: …` errors when `id` / `simVersion` are not
+non-empty strings, `tickRate` is not a positive integer, `createWorld` /
+`outcome` are not functions, `commands` lacks a `types` array or a `decode`
+function, a provided `state` lacks a positive-integer `formatVersion` or a
+`bind` function, or a `bots` entry is not a function. When `state` is
+present it returns that same object. When `state` is omitted it returns a
+copy whose state is the world modules (`formatVersion` 1): `save` / `restore`
+call `world.save` / `world.restore`.
 
 **World construction rule.** `createWorld` MUST build its `GameWorld` with
 `{ tickFrameProvider: ctx.tickFrameProvider, random: ctx.random }` and call
@@ -363,7 +367,14 @@ export function encodeSnapshot(
 export function decodeSnapshot(bytes: SnapshotBytes): DecodedSnapshot;
 export function digestBytes(bytes: Uint8Array): Digest;
 export function canonicalConfigBytes(config: unknown): Uint8Array;
-export function configHash(config: unknown): Digest;
+export interface ComponentSchemaHash {
+  readonly name: string;
+  readonly fields: readonly (readonly [string, string])[];
+}
+export function configHash(
+  config: unknown,
+  components?: readonly ComponentSchemaHash[]
+): Digest;
 export function checkSnapshotCompatibility(
   header: SnapshotHeader,
   expected: ExpectedSnapshotIdentity,
@@ -388,7 +399,9 @@ Task 2 implements this exact byte layout (all through `BinaryStateWriter`):
    `varint formatVersion`, `str configHash`, `varint tick`, `str digest`;
 3. `bytes body` (the `GameState.save()` output);
 4. `bool hasBotState`, then `bytes botState` if true;
-5. `bool hasInputCheckpoint`, then `bytes inputCheckpoint` if true.
+5. `bool hasInputCheckpoint`, then `bytes inputCheckpoint` if true;
+6. `bool hasComponentSchemas`, then `str componentSchemas` if true.
+   Outside the digest. Empty when the writer registered no components.
 
 `encodeSnapshot(header, body, extras?)` takes both extra sections in a
 `SnapshotExtras` object. Neither is covered by `header.digest`. A runner
@@ -416,9 +429,51 @@ A reject throws `SnapshotRejectedError(reason)`. `migrations[v]` is the step fro
 
 ## 6. StateHelpers (optional)
 
-`src/helpers/StateHelpers.ts`. A plain `as const` object, not a TS
-`namespace`. The engine never calls these itself; a game MAY call them
-inside its own `save` / `restore`.
+Task 6.5a moved this object to `@phalanx-engine/runtime/advanced`. It is
+not exported from the package root. Games use `defineComponent` and
+`world.save` / `world.restore` instead. The section byte layout is
+unchanged.
+
+`defineComponent(name, fields, { defaults? })` registers a named SoA
+schema. `world.registerComponent` order is deterministic and, when
+non-empty, is folded into `configHash` together with each field's name
+and type in declaration order. `f32` / `f64` fields throw (those columns
+are skipped in snapshots). Any other type outside `i32`, `u32`, `u8`,
+`i64`, `f32`, `f64` throws at `defineComponent` and lists the allowed
+types. The name `SoASchema` is reserved, along with the world-module
+section names. `registerComponent` also registers the component type, so
+`queryEntities` finds entities spawned with it. A failed `world.spawn`
+disposes the partial entity and removes the SoA rows already inserted.
+`world.each` resolves the dense index on every access and throws if that
+entity was removed. Restore calls `onComponentAdded` when a kept entity
+gains a component, and `onDestroy` plus `onComponentRemoved` when one is
+dropped. `world.spawn({ Name: values })`, `world.despawn(entity)` and
+`world.each(component, fn)` use the existing entity id counter. The object
+passed to `each` is one reused view; do not store it. Importing
+`@phalanx-engine/runtime` calls `setWorldModuleHost` once. Without that
+import, `save` / `restore` / `spawn` / `despawn` / `each` throw.
+`world.restore` returns checked-out pooled entities and removes entities
+absent from the roster before reading sections. Missing roster ids are
+empty shells. Component membership comes from the SoA sections, not from
+the full registry. A roster id that already exists is kept, its rows are
+overwritten, then component `onEnable` runs. A snapshot whose registered
+fields differ from the booted world fails before the body is applied:
+`component 'Unit' schema changed: expected x:i32,hp:u32, got hp:u32,x:i32`.
+The schema text rides in the snapshot envelope, outside the body digest,
+so section bytes stay the same. `spawnWithId` itself
+still throws when the id is registered. `bindWorldSingletons` appends
+optional game sections after broadphase.
+
+Component lifecycle is `onCreate` (add), `onEnable` (pool spawn, `world.spawn`,
+and after restore), `onDisable` (return to pool or despawn) and `onDestroy`
+(`dispose`, including pool drain). Pool return resets SoA fields to schema
+defaults and GAS attributes, the granted ability set, and `initComponent`
+tags to the factory shell. `addReturnToPoolHook` and `IPoolableComponent`
+are internal.
+
+`src/helpers/StateHelpers.ts`, re-exported from `src/advanced/index.ts`.
+A plain `as const` object, not a TS `namespace`. The engine's world
+modules call these; a hand-written `GameState` MAY call them too.
 
 ```ts
 export const StateHelpers: {
@@ -449,7 +504,7 @@ export const StateHelpers: {
   writeBroadphase(w: StateWriter, world: GameWorld): void;
   readBroadphase(r: StateReader, world: GameWorld): void;
   /** From current transforms. Wrong after a collision; see finding 6. */
-  rebuildPhysics(world: GameWorld): void;
+  rebuildBroadphaseFromTransforms(world: GameWorld): void;
   writeAbilities(w: StateWriter, world: GameWorld): void; // Task 5
   readAbilities(r: StateReader, world: GameWorld): void;
 };
@@ -462,7 +517,7 @@ export const StateHelpers: {
 2. Overwrite row and component values (`readSoAStores`, `readAbilities`).
 3. `readEntityIds` sets the counter to the saved high-water mark.
 4. `readRandom` and game singletons, then `readBroadphase`.
-   `rebuildPhysics` (from the saved transforms) does not reproduce the grid
+   `rebuildBroadphaseFromTransforms` (from the saved transforms) does not reproduce the grid
    after a collision.
 
 `save` writes the same sections in the same order.
@@ -1020,7 +1075,7 @@ the correction lands.
   after resolution would change query results for existing games. Task 3
   exposes the cached fixed-point centers (both grids). Task 4's
   `writeBroadphase` / `readBroadphase` persist and re-insert them.
-  `rebuildPhysics` rebuilds from the current transforms and is correct only
+  `rebuildBroadphaseFromTransforms` (formerly `rebuildPhysics`) rebuilds from the current transforms and is correct only
   before the first resolving step. `phalanx-physics/tests/impulseCollision.test.ts`
   locks the live behaviour: after one step, `queryRadius` at the
   post-separation transform does not contain the body. Task 4 adds the
@@ -1158,7 +1213,7 @@ Literal instructions for each task; they override the original task text.
 - **Task 4 (SoA/entity/RNG/physics helpers).** Require explicit unique
   schema names; implement `spawnWithId` and `writePools` / `readPools`; skip
   f32/f64 fields; follow the normative restore order. `readBroadphase`
-  restores the pre-separation centers; `rebuildPhysics` is only for a world
+  restores the pre-separation centers; `rebuildBroadphaseFromTransforms` is only for a world
   that has not resolved a collision yet. Continuation test: two overlapping
   bodies, one `step`, snapshot, restore, `queryRadius` matches the live
   grid and differs from a rebuild off the saved transforms.

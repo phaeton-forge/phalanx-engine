@@ -981,10 +981,10 @@ import type {
 // Object Pooling
 import { ObjectPool, EntityPool, PoolManager } from '@phalanx-engine/ecs';
 import type {
-  IPoolable, IPoolableEntity, IPoolableComponent, SpawnArgsOf,
+  IPoolable, IPoolableEntity, SpawnArgsOf,
   PoolConfig, PoolStats, EntityTypeConfig, PoolingConfig,
+  ComponentLifecycle, ComponentRegistration,
 } from '@phalanx-engine/ecs';
-import { isPoolableComponent } from '@phalanx-engine/ecs';
 
 // Debug / Introspection
 import { DebugDataProvider, DebugPanel } from '@phalanx-engine/ecs';
@@ -1053,8 +1053,9 @@ import type {
 - Use `PoolManager.spawn()` / `despawn()` for gameplay entities — registers with `EntityManager` automatically
 - Attach all components once in the entity constructor; never reattach/detach SoA wrappers manually
 - Implement `IPoolableEntity<TSpawnArgs>` on pooled entities: `onSpawn(args)` assigns per-spawn values via typed setters; `onDespawn()` clears game state
-- `SoAComponent` implements `IPoolableComponent` generically — rows are removed while dormant and restored on spawn
-- Custom render components can implement `IPoolableComponent` for visibility toggling
+- Component `onEnable` runs after `addEntity`; `onDisable` runs before `removeEntity`. `onDestroy` runs from `dispose`, including pool drain. Use those for presentation. Do not import `IPoolableComponent`
+- SoA rows are removed while dormant and restored to constructor defaults on spawn by internal storage hooks
+- Pool return also restores GAS attributes, the granted ability set, and `initComponent` tags to the factory shell
 - Prewarm pools at game start with `prewarmAll()` to avoid allocation spikes during gameplay
 - Check `pool.stats` for diagnostics (acquireCount, releaseCount, missCount)
 

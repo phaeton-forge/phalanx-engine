@@ -10,7 +10,6 @@ import {
 } from '@phalanx-engine/ecs';
 import type { IRandom } from '@phalanx-engine/ecs';
 import {
-  StateHelpers,
   defineGame,
   rejectCommand,
   type BotPolicy,
@@ -26,6 +25,7 @@ import {
   type StateWriter,
   type WorldInitContext,
 } from '../../src/index.js';
+import { StateHelpers } from '../../src/advanced/index.js';
 
 const TINY_UNIT_SCHEMA = defineSoASchema(
   {

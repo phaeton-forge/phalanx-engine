@@ -15,6 +15,7 @@ export type {
   SnapshotHeader,
   DecodedSnapshot,
   SnapshotExtras,
+  ComponentSchemaHash,
   VersionDecision,
   CompatibilityResult,
   ExpectedSnapshotIdentity,

@@ -529,7 +529,7 @@ describe('MatchRunner', () => {
     });
     handle.runner.start();
     setTinyTickBoom(true);
-    expect(() => handle.transport.step(1)).toThrow(/tick exploded/);
+    handle.transport.step(1);
     expect(handle.runner.status).toBe('failed');
     expect(handle.runner.tick).toBe(-1);
     expect(errors).toEqual([{ tick: 0, message: 'tick exploded' }]);
@@ -537,6 +537,34 @@ describe('MatchRunner', () => {
     handle.transport.step(2);
     expect(handle.runner.tick).toBe(-1);
     expect(() => handle.runner.start()).toThrow(/failed/);
+  });
+
+  it('propagates tick failures from fastForward and replay', async () => {
+    const handle = drive();
+    handle.runner.start();
+    setTinyTickBoom(true);
+    await expect(
+      handle.runner.fastForward([], { budgetMs: 1000, throughTick: 0 })
+    ).rejects.toThrow(/tick exploded/);
+    expect(handle.runner.status).toBe('failed');
+    setTinyTickBoom(false);
+
+    const recorded = drive();
+    recorded.runner.start();
+    stepTo(recorded, 2);
+    const replay = recorded.runner.toReplay();
+    const replayed = MatchRunner.fromReplay(TinyGame, {
+      ...replay,
+      finalDigest: '0'.repeat(16),
+    });
+    live.push(replayed);
+    await expect(
+      replayed.fastForward(replay.log, {
+        budgetMs: 1000,
+        throughTick: replay.lastTick,
+      })
+    ).rejects.toThrow(/final digest mismatch/);
+    expect(replayed.status).toBe('failed');
   });
 
   it('logs a bot decide error and still finishes the tick', () => {
@@ -771,12 +799,9 @@ describe('MatchRunner', () => {
 
   it('drops a late-delivered command from every pending tick', () => {
     const scripted = new ScriptedTransport();
-    const runner = new MatchRunner(
-      TinyGame,
-      configFor('client', 9),
-      scripted,
-      { localSlots: [0] }
-    );
+    const runner = new MatchRunner(TinyGame, configFor('client', 9), scripted, {
+      localSlots: [0],
+    });
     live.push(runner);
     const submitted: { type: string; data?: unknown }[] = [];
     scripted.onSubmit = (_tick, _slot, commands) => {
