@@ -10,11 +10,11 @@ Make missiles look like they have a real soft engine exhaust: a warm nozzle glow
 
 ## Choices locked in
 
-| Topic        | Choice                                                                    |
-| ------------ | ------------------------------------------------------------------------- |
-| Look         | Soft realistic (warm orange/white core, subtle glow, gray drifting smoke) |
-| Smoke linger | Medium (~1.5–2.5s after particles spawn)                                  |
-| Architecture | Cue-based VFX (`MissileExhaustCue`), plus mesh nozzle upgrade             |
+| Topic | Choice |
+| --- | --- |
+| Look | Soft realistic (warm orange/white core, subtle glow, gray drifting smoke) |
+| Smoke linger | Medium (~1.5–2.5s after particles spawn) |
+| Architecture | Cue-based VFX (`MissileExhaustCue`), plus mesh nozzle upgrade |
 
 ## Non-goals
 
@@ -82,14 +82,14 @@ Determinism boundary: all `Math.random` (and similar) lives only in cue/mesh pre
 
 ## Lifecycle & edge cases
 
-| Case                     | Behavior                                                                             |
-| ------------------------ | ------------------------------------------------------------------------------------ |
-| Normal flight            | Emit + flicker while missile `active` and mesh/transform resolvable                  |
-| Soft-deactivate / impact | Stop emitting; keep fading smoke until empty                                         |
-| Entity missing on spawn  | Mark finished immediately (same spirit as impact cue with no point)                  |
-| Pooled respawn           | Each spawn buffers a **new** cue. Finished cues must not follow a recycled entity id |
-| Volleys                  | One cue instance per missile; fixed particle capacity bounds cost                    |
-| Cue dispose              | Never dispose missile mesh flame/light — owned by `MeshComponent`                    |
+| Case | Behavior |
+| --- | --- |
+| Normal flight | Emit + flicker while missile `active` and mesh/transform resolvable |
+| Soft-deactivate / impact | Stop emitting; keep fading smoke until empty |
+| Entity missing on spawn | Mark finished immediately (same spirit as impact cue with no point) |
+| Pooled respawn | Each spawn buffers a **new** cue. Finished cues must not follow a recycled entity id |
+| Volleys | One cue instance per missile; fixed particle capacity bounds cost |
+| Cue dispose | Never dispose missile mesh flame/light — owned by `MeshComponent` |
 
 ## Testing
 

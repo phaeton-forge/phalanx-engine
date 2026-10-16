@@ -25,39 +25,32 @@ A deterministic, fixed-point physics engine for the [Phalanx Engine](../README.m
 ## Core Components
 
 ### PhysicsWorld (Recommended Entry Point)
-
 - **PhysicsWorld**: High-level facade — creates GravitySystem, PhysicsSystem, and InterpolationSystem, wires collision pipeline, exposes event subscriptions, spatial queries, and `getInterpolatedTransform()`
 
 ### Transform & Interpolation
-
 - **TransformComponent**: SoA-backed fixed-point position and rotation (`TransformSoASchema`, `TRANSFORM_COMPONENT_TYPE`)
 - **InterpolationComponent**: Tick-to-tick transform samples for render smoothing
 - **InterpolationSystem**: Snapshots/captures transform state each tick and interpolates each frame (implements `IBeforeTick`, `IAfterTick`, `IBeforeFrame`)
 
 ### Physics Body
-
 - **PhysicsBodyComponent**: SoA-backed component with velocity, radius, mass, restitution, friction, isStatic, ignorePhysics, useGravity, and gravityMultiplier fields
 - **PhysicsSoASchema**: Schema definition for the SoA storage layout
 
 ### Collision Detection
-
 - **SpatialHashGrid**: Broad-phase spatial partitioning with `queryPairs()` and `queryRadius()`
 - **NarrowPhase**: Static methods for precise collision geometry tests
 
 ### Systems
-
 - **GravitySystem**: Opt-in acceleration along Y for bodies with `useGravity=true` (scaled by `gravityMultiplier`). Register as a **tick system before** `PhysicsSystem`.
 - **PhysicsSystem**: Velocity integration with sub-stepping, world bounds handling, broad/narrow/resolve collision pipeline, `step()` / `applyImpulse()` / `applyImpulse3D()` / `isSettled()` / `setCollisionFilter()` API. Created and owned by `PhysicsWorld`; retrieve it via `physicsWorld.getSystems().physicsSystem` to register with `GameWorld`.
 - **InterpolationSystem**: Tick/frame lifecycle hooks for transform interpolation. Register as a **frame system** via `physicsWorld.getSystems().interpolationSystem`.
 
 ### Tick Providers
-
 - **IPhysicsTickProvider**: Interface for custom tick scheduling strategies
 - **AutonomousPhysicsTickProvider**: Runs physics loop via `setImmediate` (Node.js) or `setTimeout(0)` (browser) until settled or `maxSteps` reached — ideal for turn-based games
 - **ExternalPhysicsTickProvider**: Delegates tick control to the caller (e.g. BabylonJS `onBeforeRenderObservable` or unit tests)
 
 ### Events
-
 - **PhysicsEvents.COLLISION**: Emitted when two bodies collide
 - **PhysicsEvents.TRIGGER_ENTER**: Emitted when a trigger overlap starts
 - **PhysicsEvents.TRIGGER_EXIT**: Emitted when a trigger overlap ends
@@ -137,11 +130,7 @@ import {
 ## Quick Start
 
 ```typescript
-import {
-  GameWorld,
-  GameSystem,
-  createComponentTypeRegistry,
-} from '@phalanx-engine/ecs';
+import { GameWorld, GameSystem, createComponentTypeRegistry } from '@phalanx-engine/ecs';
 import {
   PhysicsWorld,
   PhysicsBodyComponent,
@@ -160,33 +149,20 @@ export const ComponentType = createComponentTypeRegistry({
   PhysicsBody: 'PhysicsBody',
 });
 (ComponentType as Record<string, symbol>).Transform = TRANSFORM_COMPONENT_TYPE;
-(ComponentType as Record<string, symbol>).Interpolation =
-  INTERPOLATION_COMPONENT_TYPE;
-(ComponentType as Record<string, symbol>).PhysicsBody =
-  PHYSICS_BODY_COMPONENT_TYPE;
+(ComponentType as Record<string, symbol>).Interpolation = INTERPOLATION_COMPONENT_TYPE;
+(ComponentType as Record<string, symbol>).PhysicsBody = PHYSICS_BODY_COMPONENT_TYPE;
 
 // Minimal placeholder systems — replace with your real ones.
 class MovementSystem extends GameSystem {
-  public override processTick(_tick: number): void {
-    /* set velocities here */
-  }
+  public override processTick(_tick: number): void { /* set velocities here */ }
 }
 class RenderSystem extends GameSystem {
   public override update(_dt: number): void {
     const sample = this.physics?.getInterpolatedTransform(entityId);
     if (sample) {
-      mesh.position.set(
-        sample.position.x,
-        sample.position.y,
-        sample.position.z
-      );
+      mesh.position.set(sample.position.x, sample.position.y, sample.position.z);
       // sample.rotation is a float quaternion { x, y, z, w } — apply it as-is.
-      mesh.quaternion.set(
-        sample.rotation.x,
-        sample.rotation.y,
-        sample.rotation.z,
-        sample.rotation.w
-      );
+      mesh.quaternion.set(sample.rotation.x, sample.rotation.y, sample.rotation.z, sample.rotation.w);
     }
   }
 }
@@ -208,11 +184,10 @@ const physicsWorld = new PhysicsWorld({
 world.context.physics = physicsWorld;
 
 // 3. Register systems with GameWorld (order matters)
-const { gravitySystem, physicsSystem, interpolationSystem } =
-  physicsWorld.getSystems();
+const { gravitySystem, physicsSystem, interpolationSystem } = physicsWorld.getSystems();
 world.registerSystems(
   [movementSystem, gravitySystem, physicsSystem], // tick: gravity before physics
-  [interpolationSystem, renderSystem] // frame: InterpolationSystem before render
+  [interpolationSystem, renderSystem],            // frame: InterpolationSystem before render
 );
 
 world.start();
@@ -223,9 +198,7 @@ const fpPosition = FPVector3.FromFloat(0, 0, 0);
 const fpRotation = FPQuaternion.Identity();
 entity.addComponent(new TransformComponent(entity.id, fpPosition, fpRotation));
 entity.addComponent(new InterpolationComponent(fpPosition, fpRotation));
-entity.addComponent(
-  new PhysicsBodyComponent(entity.id, { radius: FP.FromFloat(1.0) })
-);
+entity.addComponent(new PhysicsBodyComponent(entity.id, { radius: FP.FromFloat(1.0) }));
 world.entityManager.addEntity(entity as any);
 
 // 5. Subscribe to collision events (must be called after world.start())
@@ -263,10 +236,8 @@ physicsWorld = new PhysicsWorld({
   subSteps: 3,
   ejectOnBoundsExit: true,
   worldBounds: {
-    minX: FP.FromFloat(-8),
-    maxX: FP.FromFloat(8),
-    minZ: FP.FromFloat(-8),
-    maxZ: FP.FromFloat(8),
+    minX: FP.FromFloat(-8), maxX: FP.FromFloat(8),
+    minZ: FP.FromFloat(-8), maxZ: FP.FromFloat(8),
   },
   tickProvider: provider,
 });
@@ -277,7 +248,7 @@ function onFlick(entityId: number, dirX: number, dirZ: number, power: number) {
   physicsWorld.applyImpulse(
     entityId,
     FP.FromFloat(dirX * speed),
-    FP.FromFloat(dirZ * speed)
+    FP.FromFloat(dirZ * speed),
   );
 }
 
@@ -289,11 +260,11 @@ physicsWorld.onBoundsExit(({ entityId }) => {
 
 ### Tick Provider Options
 
-| Provider                        | Use Case                                                      |
-| ------------------------------- | ------------------------------------------------------------- |
-| _(none / default)_              | GameWorld `processTick()` drives simulation — real-time games |
-| `AutonomousPhysicsTickProvider` | Runs until settled or `maxSteps` — turn-based physics         |
-| `ExternalPhysicsTickProvider`   | Caller invokes `tick()` manually — BabylonJS rAF, unit tests  |
+| Provider | Use Case |
+|---|---|
+| *(none / default)* | GameWorld `processTick()` drives simulation — real-time games |
+| `AutonomousPhysicsTickProvider` | Runs until settled or `maxSteps` — turn-based physics |
+| `ExternalPhysicsTickProvider` | Caller invokes `tick()` manually — BabylonJS rAF, unit tests |
 
 ## API Reference
 
@@ -304,14 +275,8 @@ class PhysicsWorld {
   constructor(config?: PhysicsWorldConfig);
 
   // System wiring
-  getSystems(): {
-    physicsSystem: PhysicsSystem;
-    gravitySystem: GravitySystem;
-    interpolationSystem: InterpolationSystem;
-  };
-  setCollisionFilter(
-    filter: (entityA: number, entityB: number) => boolean
-  ): void;
+  getSystems(): { physicsSystem: PhysicsSystem; gravitySystem: GravitySystem; interpolationSystem: InterpolationSystem };
+  setCollisionFilter(filter: (entityA: number, entityB: number) => boolean): void;
 
   // Event subscriptions (must be called after GameWorld.start())
   onCollision(callback: (event: CollisionEvent) => void): () => void;
@@ -325,27 +290,14 @@ class PhysicsWorld {
   /** Sets XZ velocity directly (does NOT divide by mass). Historical flick API. */
   applyImpulse(entityId: number, vx: FixedPoint, vz: FixedPoint): void;
   /** True 3D momentum impulse: velocity = impulse / mass on all axes. */
-  applyImpulse3D(
-    entityId: number,
-    ix: FixedPoint,
-    iy: FixedPoint,
-    iz: FixedPoint
-  ): void;
+  applyImpulse3D(entityId: number, ix: FixedPoint, iy: FixedPoint, iz: FixedPoint): void;
   isSettled(threshold?: FixedPoint): boolean;
 
   // Spatial / transform queries
   readonly spatialGrid: SpatialHashGrid;
-  getEntityPosition(
-    entityId: number
-  ): { x: FixedPoint; z: FixedPoint } | undefined;
-  getInterpolatedTransform(
-    entityId: number
-  ): InterpolatedTransformSample | undefined;
-  raycastSegment(
-    prev: Vec3FP,
-    cur: Vec3FP,
-    boxes: ReadonlyArray<AABB>
-  ): RayHit | null;
+  getEntityPosition(entityId: number): { x: FixedPoint; z: FixedPoint } | undefined;
+  getInterpolatedTransform(entityId: number): InterpolatedTransformSample | undefined;
+  raycastSegment(prev: Vec3FP, cur: Vec3FP, boxes: ReadonlyArray<AABB>): RayHit | null;
 
   // Cleanup
   dispose(): void;
@@ -367,24 +319,19 @@ class PhysicsWorld {
 
 ```typescript
 interface PhysicsWorldConfig {
-  gridCellSize?: FixedPoint; // default FP.FromFloat(4)
-  subSteps?: number; // default 3
-  tickRate?: number; // default 20 — used to compute tickDt
-  worldBounds?: {
-    minX: FixedPoint;
-    minZ: FixedPoint;
-    maxX: FixedPoint;
-    maxZ: FixedPoint;
-  };
-  defaultFriction?: FixedPoint; // default FP.FromFloat(0.92) — applied when body friction is 0
-  maxVelocity?: FixedPoint; // default FP.FromFloat(15)
-  pushStrength?: FixedPoint; // default FP.FromFloat(15)
+  gridCellSize?: FixedPoint;     // default FP.FromFloat(4)
+  subSteps?: number;             // default 3
+  tickRate?: number;             // default 20 — used to compute tickDt
+  worldBounds?: { minX: FixedPoint; minZ: FixedPoint; maxX: FixedPoint; maxZ: FixedPoint };
+  defaultFriction?: FixedPoint;  // default FP.FromFloat(0.92) — applied when body friction is 0
+  maxVelocity?: FixedPoint;      // default FP.FromFloat(15)
+  pushStrength?: FixedPoint;     // default FP.FromFloat(15)
   collisionResponse?: 'push' | 'impulse'; // default 'push'
-  restitution?: FixedPoint; // impulse mode only; falls back to per-body restitution
+  restitution?: FixedPoint;      // impulse mode only; falls back to per-body restitution
   tickProvider?: IPhysicsTickProvider;
-  ejectOnBoundsExit?: boolean; // default false
-  settleThreshold?: FixedPoint; // default FP.FromFloat(0.01)
-  gravity?: FixedPoint; // acceleration magnitude, default 0 (disabled)
+  ejectOnBoundsExit?: boolean;   // default false
+  settleThreshold?: FixedPoint;  // default FP.FromFloat(0.01)
+  gravity?: FixedPoint;          // acceleration magnitude, default 0 (disabled)
   gravityAxis?: 'x' | 'y' | 'z'; // default 'y'; only 'y' supported in v1
 }
 ```
@@ -394,10 +341,10 @@ interface PhysicsWorldConfig {
 `collisionResponse` selects how overlapping bodies are resolved. It defaults to
 `'push'`, so existing consumers are unchanged.
 
-| Mode                 | Behavior                                                                                                                                                                                                                                               | Use when                                                                                       |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
-| `'push'` _(default)_ | Positional separation plus a mass-weighted push velocity scaled by `pushStrength`. Does **not** conserve momentum — a fast body slides past a slower one. Cheap and very stable.                                                                       | Crowd/soft separation, characters, projectiles that shouldn't ricochet — most real-time games. |
-| `'impulse'`          | Momentum-conserving elastic collision along the contact normal. Applies the impulse scalar `j = (1 + e) · vₙ / (1/mₐ + 1/m_b)` (`vₙ` = relative velocity along the normal), with a "skip if separating" guard. Restores the "click / knock-away" feel. | Billiards / Chapayev checkers / air-hockey — anything where a strike must transfer momentum.   |
+| Mode | Behavior | Use when |
+|---|---|---|
+| `'push'` *(default)* | Positional separation plus a mass-weighted push velocity scaled by `pushStrength`. Does **not** conserve momentum — a fast body slides past a slower one. Cheap and very stable. | Crowd/soft separation, characters, projectiles that shouldn't ricochet — most real-time games. |
+| `'impulse'` | Momentum-conserving elastic collision along the contact normal. Applies the impulse scalar `j = (1 + e) · vₙ / (1/mₐ + 1/m_b)` (`vₙ` = relative velocity along the normal), with a "skip if separating" guard. Restores the "click / knock-away" feel. | Billiards / Chapayev checkers / air-hockey — anything where a strike must transfer momentum. |
 
 In `'impulse'` mode the restitution coefficient `e` comes from
 `config.restitution` when set, otherwise from the average of the two bodies'
@@ -425,10 +372,10 @@ the ground plane.
 
 The engine follows the "one owner per axis" rule to avoid double-integration:
 
-| Concern          | Owner                           | What it does                                                                                                                                                         |
-| ---------------- | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Acceleration** | `GravitySystem`                 | For bodies with `useGravity=true`, decays velocity along the gravity axis each tick: `velocityY -= gravity * tickDt * gravityMultiplier`. **Never writes position.** |
-| **Integration**  | `PhysicsSystem.applyVelocities` | Integrates position from velocity on **all three axes**: `posX/Y/Z += velX/Y/Z * dt`. This is the _only_ position integrator.                                        |
+| Concern | Owner | What it does |
+|---|---|---|
+| **Acceleration** | `GravitySystem` | For bodies with `useGravity=true`, decays velocity along the gravity axis each tick: `velocityY -= gravity * tickDt * gravityMultiplier`. **Never writes position.** |
+| **Integration** | `PhysicsSystem.applyVelocities` | Integrates position from velocity on **all three axes**: `posX/Y/Z += velX/Y/Z * dt`. This is the *only* position integrator. |
 
 Because `PhysicsSystem` already integrates X/Z, gravity is restricted to the Y
 axis — applying it to X/Z would double-integrate those axes (the body would move
@@ -446,9 +393,9 @@ Per-body opt-in, set via `PhysicsBodyConfig` (defaults: `useGravity=false`, `gra
 ```typescript
 new PhysicsBodyComponent(entity.id, {
   radius: FP.FromFloat(0.2),
-  mass: FP._1, // with mass 1, applyImpulse3D args equal desired velocity
-  friction: FP._1, // no XZ damping for a projectile
-  useGravity: true, // GravitySystem will pull it down
+  mass: FP._1,         // with mass 1, applyImpulse3D args equal desired velocity
+  friction: FP._1,     // no XZ damping for a projectile
+  useGravity: true,    // GravitySystem will pull it down
   gravityMultiplier: FP.FromFloat(2), // optional per-body scale on world gravity
 });
 ```
@@ -471,12 +418,7 @@ cede an axis from `PhysicsSystem`.
 ```typescript
 // Launch shrapnel up and out; GravitySystem arcs it back down.
 // With mass = 1, these impulse values equal the resulting velocity.
-physicsWorld.applyImpulse3D(
-  shrapnelId,
-  FP.FromFloat(6),
-  FP.FromFloat(8),
-  FP.FromFloat(-3)
-);
+physicsWorld.applyImpulse3D(shrapnelId, FP.FromFloat(6), FP.FromFloat(8), FP.FromFloat(-3));
 ```
 
 ### System ordering
@@ -485,11 +427,10 @@ Register **`GravitySystem` before `PhysicsSystem`** so the tick's acceleration i
 applied before that tick's integration (semi-implicit Euler):
 
 ```typescript
-const { gravitySystem, physicsSystem, interpolationSystem } =
-  physicsWorld.getSystems();
+const { gravitySystem, physicsSystem, interpolationSystem } = physicsWorld.getSystems();
 world.registerSystems(
-  [movementSystem, gravitySystem, physicsSystem /* landing systems… */],
-  [interpolationSystem, renderSystem]
+  [movementSystem, gravitySystem, physicsSystem, /* landing systems… */],
+  [interpolationSystem, renderSystem],
 );
 ```
 
@@ -523,11 +464,7 @@ outward surface normal, or `null` if nothing was hit.
 import { PhysicsWorld } from '@phalanx-engine/physics';
 import type { Vec3FP, AABB, RayHit } from '@phalanx-engine/physics';
 
-const hit: RayHit | null = physicsWorld.raycastSegment(
-  prevPos,
-  curPos,
-  buildingBoxes
-);
+const hit: RayHit | null = physicsWorld.raycastSegment(prevPos, curPos, buildingBoxes);
 if (hit) {
   // hit.t     — parametric distance along the segment, 0 at prev, 1 at cur
   // hit.point — impact position (= lerp(prev, cur, t)), fixed-point
@@ -574,22 +511,16 @@ detail rather than the only 3D path.
 ### `TransformComponent`
 
 ```typescript
-class TransformComponent extends SoAComponent<
-  typeof TransformSoASchema.definition
-> {
+class TransformComponent extends SoAComponent<typeof TransformSoASchema.definition> {
   static readonly soaSchema: typeof TransformSoASchema;
   readonly type: symbol; // TRANSFORM_COMPONENT_TYPE
 
-  constructor(
-    entityId: number,
-    initialPosition?: FPVector3,
-    initialRotation?: FPQuaternion
-  );
+  constructor(entityId: number, initialPosition?: FPVector3, initialRotation?: FPQuaternion);
 
-  fpPosition: FPVector3; // get/set — authoritative fixed-point position
-  fpRotation: FPQuaternion; // get/set — authoritative rotation quaternion
-  fpRotationEuler: FPVector3; // get/set — computed Euler view (radians, XYZ order)
-  fpRotationY: FixedPoint; // get/set — convenience Y-yaw (radians)
+  fpPosition: FPVector3;        // get/set — authoritative fixed-point position
+  fpRotation: FPQuaternion;     // get/set — authoritative rotation quaternion
+  fpRotationEuler: FPVector3;   // get/set — computed Euler view (radians, XYZ order)
+  fpRotationY: FixedPoint;      // get/set — convenience Y-yaw (radians)
 }
 ```
 
@@ -605,7 +536,7 @@ class InterpolationComponent implements IComponent {
 
   constructor(initialPosition?: FPVector3, initialRotation?: FPQuaternion);
 
-  snapshot(): void; // copy current → previous (called by InterpolationSystem before tick)
+  snapshot(): void;  // copy current → previous (called by InterpolationSystem before tick)
   capture(fpPosition: FPVector3, fpRotation: FPQuaternion): void; // capture authoritative state after tick
 }
 ```
@@ -615,16 +546,14 @@ Attach alongside `TransformComponent` on any entity that needs render interpolat
 ### `PhysicsBodyComponent`
 
 ```typescript
-class PhysicsBodyComponent extends SoAComponent<
-  typeof PhysicsSoASchema.definition
-> {
+class PhysicsBodyComponent extends SoAComponent<typeof PhysicsSoASchema.definition> {
   static readonly soaSchema: typeof PhysicsSoASchema;
   readonly type: symbol; // PHYSICS_BODY_COMPONENT_TYPE
 
   constructor(entityId: number, config: PhysicsBodyConfig);
 
   // Velocity
-  velocity: FPVector3; // get/set (returns cached object)
+  velocity: FPVector3;                                       // get/set (returns cached object)
   setVelocity(x: FixedPoint, y: FixedPoint, z: FixedPoint): void;
   addVelocity(velocity: FPVector3): void;
   stopVelocity(): void;
@@ -636,8 +565,8 @@ class PhysicsBodyComponent extends SoAComponent<
   readonly restitution: FixedPoint;
   readonly friction: FixedPoint;
   readonly isStatic: boolean;
-  ignorePhysics: boolean; // get/set
-  useGravity: boolean; // get/set — opt in to GravitySystem acceleration
+  ignorePhysics: boolean;        // get/set
+  useGravity: boolean;           // get/set — opt in to GravitySystem acceleration
   gravityMultiplier: FixedPoint; // get/set — per-body scale on world gravity (default FP._1)
 
   // Spatial-grid bookkeeping (presentation only; do not read in simulation)
@@ -647,11 +576,11 @@ class PhysicsBodyComponent extends SoAComponent<
 
 interface PhysicsBodyConfig {
   radius: FixedPoint;
-  mass?: FixedPoint; // default FP._1 — scales applyImpulse3D (v = i / mass)
-  isStatic?: boolean; // default false
-  restitution?: FixedPoint; // default FP.FromFloat(0.5)
-  friction?: FixedPoint; // default FP._0
-  useGravity?: boolean; // default false — opt in to GravitySystem acceleration
+  mass?: FixedPoint;             // default FP._1 — scales applyImpulse3D (v = i / mass)
+  isStatic?: boolean;            // default false
+  restitution?: FixedPoint;      // default FP.FromFloat(0.5)
+  friction?: FixedPoint;         // default FP._0
+  useGravity?: boolean;          // default false — opt in to GravitySystem acceleration
   gravityMultiplier?: FixedPoint; // default FP._1 — scales gravity when useGravity is true
 }
 ```
@@ -705,18 +634,12 @@ class ExternalPhysicsTickProvider implements IPhysicsTickProvider {
 
 ```typescript
 const PhysicsEvents = {
-  COLLISION: 'physics:collision',
+  COLLISION:     'physics:collision',
   TRIGGER_ENTER: 'physics:trigger:enter',
-  TRIGGER_EXIT: 'physics:trigger:exit',
-  BOUNDS_EXIT: 'physics:bounds:exit',
+  TRIGGER_EXIT:  'physics:trigger:exit',
+  BOUNDS_EXIT:   'physics:bounds:exit',
 } as const;
 
-interface CollisionEvent {
-  entityA: number;
-  entityB: number;
-  manifold: CollisionManifold;
-}
-interface BoundsExitEvent {
-  entityId: number;
-}
+interface CollisionEvent { entityA: number; entityB: number; manifold: CollisionManifold; }
+interface BoundsExitEvent { entityId: number; }
 ```

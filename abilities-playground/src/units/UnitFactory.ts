@@ -22,7 +22,7 @@ export class UnitFactory {
   spawnBattleUnit(
     type: UnitType,
     teamId: TeamId,
-    pos: { x: number; y: number; z: number }
+    pos: { x: number; y: number; z: number },
   ): Entity {
     const def = UNIT_DEFINITIONS[type];
     const refs = createUnitRenderRefs(this.scene, def, teamId);
@@ -38,14 +38,14 @@ export class UnitFactory {
     refs.root.position.set(pos.x, pos.y, pos.z);
 
     const spawnRotation = FPQuaternion.ToFloat(
-      teamId === 0 ? FPQuaternion.Identity() : FPQuaternion.FromYaw(FP.Pi)
+      teamId === 0 ? FPQuaternion.Identity() : FPQuaternion.FromYaw(FP.Pi),
     );
 
     refs.root.quaternion.set(
       spawnRotation.x,
       spawnRotation.y,
       spawnRotation.z,
-      spawnRotation.w
+      spawnRotation.w,
     );
 
     entity.addComponent(
@@ -56,18 +56,14 @@ export class UnitFactory {
         },
         abilities: def.abilities,
         tags: [`Team.${teamId}`],
-      })
+      }),
     );
     return entity;
   }
 
   /** Cosmetic transparent preview for the formation grid (no components). */
   createFormationPreview(type: UnitType, teamId: TeamId): THREE.Object3D {
-    const refs = createUnitRenderRefs(
-      this.scene,
-      UNIT_DEFINITIONS[type],
-      teamId
-    );
+    const refs = createUnitRenderRefs(this.scene, UNIT_DEFINITIONS[type], teamId);
     // A static preview never rotates, so parenting the ring to the root is safe
     // and lets it move with (and be dimmed alongside) the preview.
     if (refs.auraRing) refs.root.add(refs.auraRing);
@@ -82,7 +78,10 @@ export class UnitFactory {
 
 function dimObject(root: THREE.Object3D): void {
   root.traverse((child: THREE.Object3D) => {
-    if (!(child instanceof THREE.Mesh) && !(child instanceof THREE.Points)) {
+    if (
+      !(child instanceof THREE.Mesh) &&
+      !(child instanceof THREE.Points)
+    ) {
       return;
     }
     const materials = Array.isArray(child.material)

@@ -106,12 +106,7 @@ export class MatchmakingService {
   /**
    * Add a player to the matchmaking queue
    */
-  joinQueue(
-    playerId: string,
-    username: string,
-    socket: Socket,
-    gameType?: string
-  ): void {
+  joinQueue(playerId: string, username: string, socket: Socket, gameType?: string): void {
     // Check not already in any queue
     if (this.isInAnyQueue(playerId)) {
       socket.emit('error', { message: 'Already in queue' });

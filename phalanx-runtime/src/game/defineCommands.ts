@@ -249,7 +249,7 @@ function decodeCommand<Cmd extends GameCommand>(
   }
   const record = raw as Record<string, unknown>;
   const type = record['type'];
-  if (typeof type !== 'string') return rejectCommand('missing field');
+  if (typeof type !== 'string') return rejectCommand("missing field 'type'");
   const command = byName.get(type);
   if (command === undefined) return rejectCommand('unknown command');
   const allowed = new Set<string>([
@@ -257,14 +257,14 @@ function decodeCommand<Cmd extends GameCommand>(
     ...command.fields.map((f) => f.name),
   ]);
   for (const key of Object.keys(record)) {
-    if (!allowed.has(key)) return rejectCommand('unexpected field');
+    if (!allowed.has(key)) return rejectCommand(`unexpected field '${key}'`);
   }
   const value: { [key: string]: string | number | boolean | bigint } = {
     type,
   };
   for (const field of command.fields) {
     if (!Object.prototype.hasOwnProperty.call(record, field.name)) {
-      return rejectCommand('missing field');
+      return rejectCommand(`missing field '${field.name}'`);
     }
     const decoded = decodeField(field, record[field.name]);
     if (isCommandRejection(decoded)) return decoded;
@@ -280,47 +280,54 @@ function decodeField(
 ): string | number | boolean | bigint | CommandRejection {
   switch (field.type) {
     case 'i32':
-      return decodeInt(field.name, raw, I32_MIN, I32_MAX);
+      return decodeInt(field, raw, I32_MIN, I32_MAX);
     case 'u32':
-      return decodeInt(field.name, raw, 0, U32_MAX);
+      return decodeInt(field, raw, 0, U32_MAX);
     case 'u8':
-      return decodeInt(field.name, raw, 0, 255);
+      return decodeInt(field, raw, 0, 255);
     case 'entity':
-      return decodeInt(field.name, raw, 0, Number.MAX_SAFE_INTEGER);
+      return decodeInt(field, raw, 0, Number.MAX_SAFE_INTEGER);
     case 'i64':
-      return decodeI64(field.name, raw);
+      return decodeI64(field, raw);
     case 'bool':
-      if (typeof raw !== 'boolean') return rejectCommand('invalid field');
+      if (typeof raw !== 'boolean') return invalidField(field);
       return raw;
     case 'string':
       if (typeof raw !== 'string' || raw.length > field.maxLength) {
-        return rejectCommand('invalid field');
+        return invalidField(field);
       }
       return raw;
     default:
-      return rejectCommand('invalid field');
+      return invalidField(field);
   }
 }
 
+function invalidField(field: ParsedField): CommandRejection {
+  return rejectCommand(`invalid field '${field.name}' (${field.token})`);
+}
+
 function decodeInt(
-  _name: string,
+  field: ParsedField,
   raw: unknown,
   min: number,
   max: number
 ): number | CommandRejection {
   if (typeof raw !== 'number' || !Number.isInteger(raw)) {
-    return rejectCommand('invalid field');
+    return invalidField(field);
   }
-  if (raw < min || raw > max) return rejectCommand('invalid field');
+  if (raw < min || raw > max) return invalidField(field);
   return raw;
 }
 
-function decodeI64(_name: string, raw: unknown): bigint | CommandRejection {
+function decodeI64(
+  field: ParsedField,
+  raw: unknown
+): bigint | CommandRejection {
   if (typeof raw !== 'string' || !/^-?(0|[1-9][0-9]*)$/.test(raw)) {
-    return rejectCommand('invalid field');
+    return invalidField(field);
   }
   const value = BigInt(raw);
-  if (value < I64_MIN || value > I64_MAX) return rejectCommand('invalid field');
+  if (value < I64_MIN || value > I64_MAX) return invalidField(field);
   return value;
 }
 

@@ -15,6 +15,8 @@ Before proceeding, load this knowledge file for complete context. Use Glob with 
 
 - `SNOWFLAKE_BEST_PRACTICES.md` — Snowflake query patterns (wildcards, string filtering, one-query-per-invocation)
 
+
+
 ## Your Responsibilities
 
 1. **Write SQL queries** — Construct efficient, correct queries based on the tables identified by the data model explorer
@@ -163,7 +165,7 @@ Based on findings, categorize the likely cause: data delay, logging issue, produ
 
 ## **CRITICAL** Response Format — output your findings using the template below.
 
-[Summarize your key findings in <= 5 sentences. _Bold_ the most important number or fact.]
+[Summarize your key findings in <= 5 sentences. *Bold* the most important number or fact.]
 
 Assumptions:
 

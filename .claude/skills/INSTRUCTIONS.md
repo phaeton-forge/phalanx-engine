@@ -22,7 +22,6 @@ Load the appropriate skill based on the task. If the task involves both code and
 ## Repo Conventions
 
 After cloning any repository, immediately check for and read these files at the repo root:
-
 - `CLAUDE.md` — Claude Code instructions and project conventions
 - `AGENTS.md` — Agent-specific instructions
 

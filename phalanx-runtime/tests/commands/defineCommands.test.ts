@@ -121,6 +121,24 @@ describe('defineCommands', () => {
       const decoded = commands.decode(raw, slot);
       expect(decoded).toMatchObject({ rejected: true });
     }
+    expect(
+      commands.decode(
+        {
+          type: 'move',
+          dx: '01',
+          flag: true,
+          who: 0,
+          n: 0,
+          u: 0,
+          b: 0,
+          name: '',
+        },
+        slot
+      )
+    ).toMatchObject({
+      rejected: true,
+      reason: "invalid field 'dx' (i64)",
+    });
   });
 
   it('changes configHash when the command schema changes', () => {

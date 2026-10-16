@@ -65,12 +65,7 @@ describe('GoogleOAuthAdapter', () => {
     it('should allow custom scopes', () => {
       const adapter = new GoogleOAuthAdapter({
         ...mockGoogleConfig,
-        scopes: [
-          'openid',
-          'profile',
-          'email',
-          'https://www.googleapis.com/auth/calendar',
-        ],
+        scopes: ['openid', 'profile', 'email', 'https://www.googleapis.com/auth/calendar'],
       });
       const url = adapter.getLoginUrl();
       expect(url).toContain('googleapis.com%2Fauth%2Fcalendar');
@@ -83,9 +78,7 @@ describe('GoogleOAuthAdapter', () => {
       const url = adapter.getLoginUrl();
 
       expect(url).toContain('https://accounts.google.com/o/oauth2/v2/auth');
-      expect(url).toContain(
-        'client_id=test-client-id.apps.googleusercontent.com'
-      );
+      expect(url).toContain('client_id=test-client-id.apps.googleusercontent.com');
       expect(url).toContain('response_type=code');
       expect(url).toContain('redirect_uri=');
     });
@@ -110,9 +103,7 @@ describe('GoogleOAuthAdapter', () => {
       const adapter = new GoogleOAuthAdapter(mockGoogleConfig);
       adapter.getLoginUrl();
 
-      expect(
-        mockSessionStorage.getItem('phalanx_google_verifier')
-      ).not.toBeNull();
+      expect(mockSessionStorage.getItem('phalanx_google_verifier')).not.toBeNull();
       expect(mockSessionStorage.getItem('phalanx_google_state')).not.toBeNull();
       expect(mockSessionStorage.getItem('phalanx_google_nonce')).not.toBeNull();
     });

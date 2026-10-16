@@ -28,7 +28,4 @@ export {
   FPVector3,
 } from '@phalanx-engine/math';
 
-export type {
-  FPVector2 as FPVector2Interface,
-  FPVector3 as FPVector3Interface,
-} from '@phalanx-engine/math';
+export type { FPVector2 as FPVector2Interface, FPVector3 as FPVector3Interface } from '@phalanx-engine/math';

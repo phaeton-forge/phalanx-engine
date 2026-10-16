@@ -1,7 +1,4 @@
-import {
-  defaultKeyValueStorage,
-  type KeyValueStorage,
-} from './KeyValueStorage.js';
+import { defaultKeyValueStorage, type KeyValueStorage } from './KeyValueStorage.js';
 
 /**
  * Generate a fresh anonymous player id. Format mirrors the legacy
@@ -35,3 +32,4 @@ export function loadOrCreateGuestPlayerId(
   storage.setItem(storageKey, fresh);
   return fresh;
 }
+

@@ -109,7 +109,9 @@ function encoded(command: TinyCommand): {
 }
 
 class ScriptedTransport implements Transport {
-  public readonly kind = 'relay-lockstep' as const;
+  public constructor(
+    public readonly kind: 'relay-lockstep' | 'server-peer' = 'relay-lockstep'
+  ) {}
   private readonly ticks: TickHandler[] = [];
   private readonly frames: FrameHandler[] = [];
   public onSubmit:
@@ -451,12 +453,44 @@ describe('MatchRunner', () => {
     expect(resumed.runner.digest()).toBe(expectedDigest);
 
     resetTinyBotCalls();
-    const client = drive('client', 9, 'server');
-    client.runner.restore(saved);
-    client.runner.start();
-    stepTo(client, 15);
-    expect(botX(client.runner.sim)).not.toBe(expectedX);
+    const scripted = new ScriptedTransport('server-peer');
+    const client = new MatchRunner(
+      TinyGame,
+      configFor('client', 9, 'server'),
+      scripted
+    );
+    live.push(client);
+    client.restore(saved);
+    client.start();
+    for (let tick = 11; tick <= 15; tick += 1) {
+      scripted.emitTick(tick, { tick, commands: {} });
+    }
+    expect(botX(client.sim)).not.toBe(expectedX);
     expect(tinyBotCalls).toEqual([]);
+  });
+
+  it('rejects a server bot when the match has no server peer', () => {
+    const handle = drive('client', 1, 'server');
+    expect(() => handle.runner.start()).toThrow(
+      "MatchRunner: slot 1 runsOn 'server' but this match has no server peer"
+    );
+  });
+
+  it('rejects setController from a client of a server match', () => {
+    const scripted = new ScriptedTransport('server-peer');
+    const client = new MatchRunner(
+      TinyGame,
+      configFor('client', 1, 'server'),
+      scripted
+    );
+    live.push(client);
+    const reasons: string[] = [];
+    client.onRejected((_entry, reason) => {
+      reasons.push(reason);
+    });
+    client.start();
+    client.setController(0, 'bot', { policy: 'walker', fromTick: 1 });
+    expect(reasons).toEqual(['not authoritative']);
   });
 
   it('matches the next live decision after a log tail past the snapshot', async () => {

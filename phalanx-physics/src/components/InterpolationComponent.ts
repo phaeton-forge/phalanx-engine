@@ -22,33 +22,12 @@ export const INTERPOLATION_COMPONENT_TYPE: symbol = Symbol('Interpolation');
 export class InterpolationComponent implements IComponent {
   public readonly type = INTERPOLATION_COMPONENT_TYPE;
 
-  public readonly previousFpPosition: FPVector3Type = {
-    x: FP._0,
-    y: FP._0,
-    z: FP._0,
-  };
-  public readonly currentFpPosition: FPVector3Type = {
-    x: FP._0,
-    y: FP._0,
-    z: FP._0,
-  };
-  public readonly previousFpRotation: FPQuaternionType = {
-    x: FP._0,
-    y: FP._0,
-    z: FP._0,
-    w: FP._1,
-  };
-  public readonly currentFpRotation: FPQuaternionType = {
-    x: FP._0,
-    y: FP._0,
-    z: FP._0,
-    w: FP._1,
-  };
+  public readonly previousFpPosition: FPVector3Type = { x: FP._0, y: FP._0, z: FP._0 };
+  public readonly currentFpPosition: FPVector3Type = { x: FP._0, y: FP._0, z: FP._0 };
+  public readonly previousFpRotation: FPQuaternionType = { x: FP._0, y: FP._0, z: FP._0, w: FP._1 };
+  public readonly currentFpRotation: FPQuaternionType = { x: FP._0, y: FP._0, z: FP._0, w: FP._1 };
 
-  constructor(
-    initialPosition?: FPVector3Type,
-    initialRotation?: FPQuaternionType
-  ) {
+  constructor(initialPosition?: FPVector3Type, initialRotation?: FPQuaternionType) {
     if (initialPosition) {
       this.copyFpVector3(this.previousFpPosition, initialPosition);
       this.copyFpVector3(this.currentFpPosition, initialPosition);
@@ -66,10 +45,7 @@ export class InterpolationComponent implements IComponent {
   }
 
   /** Capture authoritative transform state after a simulation tick. */
-  public capture(
-    fpPosition: FPVector3Type,
-    fpRotation: FPQuaternionType
-  ): void {
+  public capture(fpPosition: FPVector3Type, fpRotation: FPQuaternionType): void {
     this.copyFpVector3(this.currentFpPosition, fpPosition);
     this.copyFpQuaternion(this.currentFpRotation, fpRotation);
   }
@@ -80,10 +56,7 @@ export class InterpolationComponent implements IComponent {
     target.z = source.z;
   }
 
-  private copyFpQuaternion(
-    target: FPQuaternionType,
-    source: FPQuaternionType
-  ): void {
+  private copyFpQuaternion(target: FPQuaternionType, source: FPQuaternionType): void {
     target.x = source.x;
     target.y = source.y;
     target.z = source.z;

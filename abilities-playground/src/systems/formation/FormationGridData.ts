@@ -314,7 +314,9 @@ export class FormationGridData {
             isOrigin &&
             grid.placedUnits.some(
               (u) =>
-                u.gridX === gridX && u.gridZ === checkZ && u.unitType === 'sau'
+                u.gridX === gridX &&
+                u.gridZ === checkZ &&
+                u.unitType === 'sau'
             )
           ) {
             return { x: gridX, z: checkZ };

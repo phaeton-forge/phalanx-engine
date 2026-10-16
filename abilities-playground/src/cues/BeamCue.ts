@@ -2,16 +2,8 @@ import * as THREE from 'three';
 import type { Entity } from '@phalanx-engine/ecs';
 import { FPVector3 } from '@phalanx-engine/math';
 import { Cue, getGameplayTagsComponent } from '@phalanx-engine/abilities';
-import type {
-  CueContext,
-  GameplayCueDispatchedEvent,
-} from '@phalanx-engine/abilities';
-import {
-  ComponentType,
-  MeshComponent,
-  StatsComponent,
-  TransformComponent,
-} from '../components';
+import type { CueContext, GameplayCueDispatchedEvent } from '@phalanx-engine/abilities';
+import { ComponentType, MeshComponent, StatsComponent, TransformComponent } from '../components';
 
 const BEAM_HEIGHT_OFFSET = 2.8;
 const SPARK_COUNT = 6;
@@ -57,10 +49,7 @@ export class BeamCue extends Cue {
 
     const geometry = new THREE.BufferGeometry();
     // Two vertices (source + target), xyz each.
-    geometry.setAttribute(
-      'position',
-      new THREE.Float32BufferAttribute(new Float32Array(6), 3)
-    );
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(new Float32Array(6), 3));
     this.beamLine = new THREE.Line(geometry, this.beamMaterial);
     this.beamLine.renderOrder = 9000;
     this.scene.add(this.beamLine);
@@ -96,12 +85,8 @@ export class BeamCue extends Cue {
       return;
     }
 
-    const sourceStats = source.getComponent<StatsComponent>(
-      ComponentType.UnitStats
-    );
-    const targetStats = target.getComponent<StatsComponent>(
-      ComponentType.UnitStats
-    );
+    const sourceStats = source.getComponent<StatsComponent>(ComponentType.UnitStats);
+    const targetStats = target.getComponent<StatsComponent>(ComponentType.UnitStats);
     if (!sourceStats?.alive || !targetStats?.alive) {
       this.done = true;
       return;
@@ -152,9 +137,7 @@ export class BeamCue extends Cue {
   }
 
   private getBeamAnchor(entity: Entity): THREE.Vector3 | null {
-    const transform = entity.getComponent<TransformComponent>(
-      ComponentType.Transform
-    );
+    const transform = entity.getComponent<TransformComponent>(ComponentType.Transform);
     if (transform) {
       const p = FPVector3.ToFloat(transform.fpPosition);
       return new THREE.Vector3(p.x, p.y + BEAM_HEIGHT_OFFSET, p.z);
@@ -170,9 +153,7 @@ export class BeamCue extends Cue {
   }
 
   private updateBeamGeometry(from: THREE.Vector3, to: THREE.Vector3): void {
-    const positions = this.beamLine!.geometry.getAttribute(
-      'position'
-    ) as THREE.BufferAttribute;
+    const positions = this.beamLine!.geometry.getAttribute('position') as THREE.BufferAttribute;
     positions.setXYZ(0, from.x, from.y, from.z);
     positions.setXYZ(1, to.x, to.y, to.z);
     positions.needsUpdate = true;
@@ -188,11 +169,10 @@ export class BeamCue extends Cue {
       spark.position.set(
         from.x + (to.x - from.x) * t,
         from.y + (to.y - from.y) * t,
-        from.z + (to.z - from.z) * t
+        from.z + (to.z - from.z) * t,
       );
 
-      const pulse =
-        0.35 + 0.65 * Math.abs(Math.sin(this.elapsed * 12 + i * 1.7));
+      const pulse = 0.35 + 0.65 * Math.abs(Math.sin(this.elapsed * 12 + i * 1.7));
       this.sparkMaterials[i]!.opacity = pulse;
       spark.scale.setScalar(0.6 + pulse * 0.5);
     }

@@ -1,6 +1,5 @@
 /** Server URL — override with VITE_SERVER_URL for deployed clients. */
-const PRODUCTION_SERVER_URL =
-  'https://abilities-playground-backend.onrender.com';
+const PRODUCTION_SERVER_URL = 'https://abilities-playground-backend.onrender.com';
 const DEVELOPMENT_SERVER_URL = 'http://localhost:3001';
 
 export const SERVER_URL =

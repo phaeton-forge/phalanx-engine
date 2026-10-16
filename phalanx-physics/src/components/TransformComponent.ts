@@ -26,7 +26,7 @@ export const TransformSoASchema = defineSoASchema(
     fpRotationZ: 'i64',
     fpRotationW: 'i64',
   },
-  'Transform'
+  'Transform',
 );
 
 /**
@@ -50,28 +50,17 @@ export const TRANSFORM_COMPONENT_TYPE: symbol = Symbol('Transform');
  * store.arrays.fpPositionX[idx] = FP.ToRaw(newX);
  * ```
  */
-export class TransformComponent extends SoAComponent<
-  typeof TransformSoASchema.definition
-> {
+export class TransformComponent extends SoAComponent<typeof TransformSoASchema.definition> {
   public readonly type = TRANSFORM_COMPONENT_TYPE;
   public static readonly soaSchema = TransformSoASchema;
 
-  private readonly _fpPosition: FPVector3Type = {
-    x: FP._0,
-    y: FP._0,
-    z: FP._0,
-  };
-  private readonly _fpRotation: FPQuaternionType = {
-    x: FP._0,
-    y: FP._0,
-    z: FP._0,
-    w: FP._1,
-  };
+  private readonly _fpPosition: FPVector3Type = { x: FP._0, y: FP._0, z: FP._0 };
+  private readonly _fpRotation: FPQuaternionType = { x: FP._0, y: FP._0, z: FP._0, w: FP._1 };
 
   constructor(
     entityId: number,
     initialPosition?: FPVector3Type,
-    initialRotation?: FPQuaternionType
+    initialRotation?: FPQuaternionType,
   ) {
     const position = initialPosition ?? FPVector3.Zero;
     const rotation = initialRotation ?? FPQuaternion.Identity();
@@ -148,10 +137,7 @@ export class TransformComponent extends SoAComponent<
     const q = this.fpRotation;
     const two = FP.FromInt(2);
     const sinY = FP.Mul(two, FP.Add(FP.Mul(q.w, q.y), FP.Mul(q.x, q.z)));
-    const cosY = FP.Sub(
-      FP._1,
-      FP.Mul(two, FP.Add(FP.Mul(q.y, q.y), FP.Mul(q.z, q.z)))
-    );
+    const cosY = FP.Sub(FP._1, FP.Mul(two, FP.Add(FP.Mul(q.y, q.y), FP.Mul(q.z, q.z))));
     return FP.Atan2(sinY, cosY);
   }
 

@@ -67,10 +67,7 @@ export class Phalanx extends EventEmitter {
    * Create HTTP or HTTPS server based on TLS configuration
    */
   private createServer(): HttpServer | HttpsServer {
-    const requestHandler = async (
-      req: IncomingMessage,
-      res: ServerResponse
-    ) => {
+    const requestHandler = async (req: IncomingMessage, res: ServerResponse) => {
       // Handle CORS preflight
       if (req.method === 'OPTIONS') {
         this.setCorsHeaders(res, req);
@@ -131,10 +128,7 @@ export class Phalanx extends EventEmitter {
         };
 
         console.log('[Phalanx] Starting with TLS enabled (WSS)');
-        return createHttpsServer(
-          tlsOptions,
-          (req, res) => void requestHandler(req, res)
-        );
+        return createHttpsServer(tlsOptions, (req, res) => void requestHandler(req, res));
       } catch (error) {
         const message =
           error instanceof Error ? error.message : 'Unknown error';
@@ -179,21 +173,16 @@ export class Phalanx extends EventEmitter {
   /**
    * Handle OAuth token exchange request
    */
-  private async handleTokenExchange(
-    req: IncomingMessage,
-    res: ServerResponse
-  ): Promise<void> {
+  private async handleTokenExchange(req: IncomingMessage, res: ServerResponse): Promise<void> {
     this.setCorsHeaders(res, req);
 
     if (!this.oauthExchange) {
       res.writeHead(503, { 'Content-Type': 'application/json' });
-      res.end(
-        JSON.stringify({
-          success: false,
-          error: 'OAuth not configured',
-          errorCode: 'not_configured',
-        })
-      );
+      res.end(JSON.stringify({
+        success: false,
+        error: 'OAuth not configured',
+        errorCode: 'not_configured'
+      }));
       return;
     }
 
@@ -203,41 +192,29 @@ export class Phalanx extends EventEmitter {
       const request = JSON.parse(body) as TokenExchangeRequest;
 
       // Validate required fields
-      if (
-        !request.code ||
-        !request.codeVerifier ||
-        !request.redirectUri ||
-        !request.provider
-      ) {
+      if (!request.code || !request.codeVerifier || !request.redirectUri || !request.provider) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
-        res.end(
-          JSON.stringify({
-            success: false,
-            error:
-              'Missing required fields: code, codeVerifier, redirectUri, provider',
-            errorCode: 'invalid_request',
-          })
-        );
+        res.end(JSON.stringify({
+          success: false,
+          error: 'Missing required fields: code, codeVerifier, redirectUri, provider',
+          errorCode: 'invalid_request'
+        }));
         return;
       }
 
       // Exchange the code for tokens
       const result = await this.oauthExchange.exchangeCode(request);
 
-      res.writeHead(result.success ? 200 : 400, {
-        'Content-Type': 'application/json',
-      });
+      res.writeHead(result.success ? 200 : 400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(result));
     } catch (error) {
       console.error('[Phalanx] Token exchange error:', error);
       res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(
-        JSON.stringify({
-          success: false,
-          error: 'Internal server error',
-          errorCode: 'server_error',
-        })
-      );
+      res.end(JSON.stringify({
+        success: false,
+        error: 'Internal server error',
+        errorCode: 'server_error'
+      }));
     }
   }
 
@@ -282,9 +259,7 @@ export class Phalanx extends EventEmitter {
       this.setupAuthMiddleware();
       console.log('[Phalanx] Authentication enabled');
       if (this.config.auth.google?.clientSecret) {
-        console.log(
-          '[Phalanx] OAuth token exchange endpoint available at /auth/token'
-        );
+        console.log('[Phalanx] OAuth token exchange endpoint available at /auth/token');
       }
     } else {
       console.log('[Phalanx] Authentication disabled (development mode)');
@@ -303,17 +278,14 @@ export class Phalanx extends EventEmitter {
       this.config,
       (event: string, ...args: unknown[]) => this.emit(event, ...args),
       (gameType: string) => this.matchmaking!.resolveGameTypeConfig(gameType),
-      (playerId: string) => this.matchmaking!.isInAnyQueue(playerId)
+      (playerId: string) => this.matchmaking!.isInAnyQueue(playerId),
     );
 
     // Wire up match-ended event to prune finished matches from both services
-    this.on(
-      'match-ended' as PhalanxEventType,
-      ((matchId: string) => {
-        this.matchmaking?.removeMatch(matchId);
-        this.privateRooms?.removeMatch(matchId);
-      }) as PhalanxEventHandlers[PhalanxEventType]
-    );
+    this.on('match-ended' as PhalanxEventType, ((matchId: string) => {
+      this.matchmaking?.removeMatch(matchId);
+      this.privateRooms?.removeMatch(matchId);
+    }) as PhalanxEventHandlers[PhalanxEventType]);
 
     // Setup socket handlers
     this.setupSocketHandlers();
@@ -351,7 +323,7 @@ export class Phalanx extends EventEmitter {
     return this.privateRooms.createRoomForDisconnectedHost(
       params.playerId,
       params.username ?? params.playerId,
-      params.gameType
+      params.gameType,
     );
   }
 
@@ -407,7 +379,9 @@ export class Phalanx extends EventEmitter {
       if (!token) {
         // Allow anonymous if configured
         if (this.config.auth?.allowAnonymous) {
-          console.log(`[Phalanx] Anonymous connection allowed: ${socket.id}`);
+          console.log(
+            `[Phalanx] Anonymous connection allowed: ${socket.id}`
+          );
           (socket.data as SocketData).authenticated = false;
           return next();
         }
@@ -451,7 +425,9 @@ export class Phalanx extends EventEmitter {
       // This replaces tick-ack - any message = player is alive
       socket.onAny(() => {
         if (playerId && (socket.data as SocketData).matchId) {
-          const gameRoom = this.findMatch((socket.data as SocketData).matchId!);
+          const gameRoom = this.findMatch(
+            (socket.data as SocketData).matchId!
+          );
           if (gameRoom) {
             gameRoom.updatePlayerActivity(playerId);
           }
@@ -464,12 +440,7 @@ export class Phalanx extends EventEmitter {
         (data: { playerId: string; username?: string; gameType?: string }) => {
           playerId = data.playerId;
           const username = data.username ?? data.playerId;
-          this.matchmaking!.joinQueue(
-            playerId,
-            username,
-            socket,
-            data.gameType
-          );
+          this.matchmaking!.joinQueue(playerId, username, socket, data.gameType);
         }
       );
 
@@ -486,12 +457,7 @@ export class Phalanx extends EventEmitter {
         (data: { playerId: string; username?: string; gameType?: string }) => {
           playerId = data.playerId;
           const username = data.username ?? data.playerId;
-          this.privateRooms!.createRoom(
-            playerId,
-            username,
-            socket,
-            data.gameType
-          );
+          this.privateRooms!.createRoom(playerId, username, socket, data.gameType);
         }
       );
 
@@ -553,7 +519,7 @@ export class Phalanx extends EventEmitter {
         const recovered = this.privateRooms!.recoverRoom(
           data.playerId,
           socket,
-          data.code
+          data.code,
         );
         if (recovered) {
           playerId = data.playerId;
@@ -746,10 +712,7 @@ export class Phalanx extends EventEmitter {
    * Find a GameRoom by matchId across both matchmaking and private room services.
    */
   private findMatch(matchId: string): GameRoom | undefined {
-    return (
-      this.matchmaking?.getMatch(matchId) ??
-      this.privateRooms?.getMatch(matchId)
-    );
+    return this.matchmaking?.getMatch(matchId) ?? this.privateRooms?.getMatch(matchId);
   }
 
   /**
@@ -777,8 +740,7 @@ export class Phalanx extends EventEmitter {
    */
   getActiveMatches(): MatchInfo[] {
     const matchmakingMatches = this.matchmaking?.getActiveMatches() ?? [];
-    const privateMatches =
-      this.privateRooms?.getActiveMatches().map((m) => m.getMatchInfo()) ?? [];
+    const privateMatches = this.privateRooms?.getActiveMatches().map((m) => m.getMatchInfo()) ?? [];
     return [...matchmakingMatches, ...privateMatches];
   }
 

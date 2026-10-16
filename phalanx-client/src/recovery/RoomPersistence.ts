@@ -1,7 +1,4 @@
-import {
-  defaultKeyValueStorage,
-  type KeyValueStorage,
-} from './KeyValueStorage.js';
+import { defaultKeyValueStorage, type KeyValueStorage } from './KeyValueStorage.js';
 
 /**
  * RoomPersistence — survives an active private-room session across:
@@ -105,3 +102,4 @@ export class RoomPersistence {
     }
   }
 }
+

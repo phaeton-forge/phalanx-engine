@@ -17,7 +17,7 @@ import {
 
 const MAX_TURN_PER_TICK = FP.FromFloat(UNIT_TURN_SPEED_RADIANS_PER_TICK);
 const MAX_TURRET_TURN_PER_TICK = FP.FromFloat(
-  TURRET_TURN_SPEED_RADIANS_PER_TICK
+  TURRET_TURN_SPEED_RADIANS_PER_TICK,
 );
 const TWO = FP.FromInt(2);
 const TEAM0_DEFAULT_YAW = FP._0;
@@ -39,7 +39,7 @@ function normalizeAngle(radians: FixedPoint): FixedPoint {
 function rotateTowardY(
   current: FixedPoint,
   target: FixedPoint,
-  maxDelta: FixedPoint
+  maxDelta: FixedPoint,
 ): FixedPoint {
   const normalizedTarget = normalizeAngle(target);
   const delta = normalizeAngle(FP.Sub(normalizedTarget, current));
@@ -53,9 +53,7 @@ function rotateTowardY(
 }
 
 export class RotationSystem extends GameSystem {
-  private transformStore!: SoAComponentStore<
-    typeof TransformSoASchema.definition
-  >;
+  private transformStore!: SoAComponentStore<typeof TransformSoASchema.definition>;
 
   /** Scratch: set by {@link updateFacing}; valid only when {@link hasFacing} is true. */
   private hasFacing = false;
@@ -64,8 +62,7 @@ export class RotationSystem extends GameSystem {
 
   public override init(context: SystemContext): void {
     super.init(context);
-    this.transformStore =
-      this.entityManager.getOrCreateSoAStore(TransformSoASchema);
+    this.transformStore = this.entityManager.getOrCreateSoAStore(TransformSoASchema);
   }
 
   private readRotationY(unitIndex: number): FixedPoint {
@@ -93,14 +90,12 @@ export class RotationSystem extends GameSystem {
       ComponentType.Team,
       ComponentType.TargetState,
       ComponentType.UnitStats,
-      ComponentType.Transform
+      ComponentType.Transform,
     );
 
     for (const unit of units) {
       const stats = unit.getComponent<StatsComponent>(ComponentType.UnitStats);
-      const targetState = unit.getComponent<TargetStateComponent>(
-        ComponentType.TargetState
-      );
+      const targetState = unit.getComponent<TargetStateComponent>(ComponentType.TargetState);
       const team = unit.getComponent<TeamComponent>(ComponentType.Team);
       if (!stats?.alive || !targetState || !team) continue;
 
@@ -118,7 +113,7 @@ export class RotationSystem extends GameSystem {
         turret.yaw = rotateTowardY(
           turret.yaw,
           relativeYaw,
-          MAX_TURRET_TURN_PER_TICK
+          MAX_TURRET_TURN_PER_TICK,
         );
         continue;
       }
@@ -130,7 +125,7 @@ export class RotationSystem extends GameSystem {
           : TEAM1_DEFAULT_YAW;
       this.writeRotationY(
         unitIndex,
-        rotateTowardY(currentY, desiredY, MAX_TURN_PER_TICK)
+        rotateTowardY(currentY, desiredY, MAX_TURN_PER_TICK),
       );
 
       // Out of range (or no target): recenter the turret so the barrel lines up
@@ -149,7 +144,7 @@ export class RotationSystem extends GameSystem {
   private updateFacing(
     targetState: TargetStateComponent,
     stats: StatsComponent,
-    ownIndex: number
+    ownIndex: number,
   ): void {
     this.hasFacing = false;
 
@@ -162,11 +157,11 @@ export class RotationSystem extends GameSystem {
     const ownZ = FP.FromRaw(this.transformStore.arrays.fpPositionZ[ownIndex]);
     const dx = FP.Sub(
       FP.FromRaw(this.transformStore.arrays.fpPositionX[targetIndex]),
-      ownX
+      ownX,
     );
     const dz = FP.Sub(
       FP.FromRaw(this.transformStore.arrays.fpPositionZ[targetIndex]),
-      ownZ
+      ownZ,
     );
 
     const distanceSq = FP.Add(FP.Mul(dx, dx), FP.Mul(dz, dz));

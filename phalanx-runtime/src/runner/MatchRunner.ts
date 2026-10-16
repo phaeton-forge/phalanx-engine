@@ -352,6 +352,7 @@ export class MatchRunner<G extends AnyGameDefinition> {
       throw new Error('MatchRunner.start: match has ended');
     }
     if (this.started) return;
+    this.assertServerBotsHavePeer();
     this.started = true;
     this.flushUnsent();
     if (this.transport instanceof LocalTransport) this.transport.start();
@@ -490,6 +491,7 @@ export class MatchRunner<G extends AnyGameDefinition> {
     ) {
       this.holdCheckpoint(decodeInputCheckpoint(decoded.inputCheckpoint));
     }
+    this.syncSystemSeq();
     if (this.transport instanceof LocalTransport) {
       this.transport.clearPending();
       this.transport.seek(decoded.header.tick + 1);
@@ -717,8 +719,8 @@ export class MatchRunner<G extends AnyGameDefinition> {
       });
     } catch (error) {
       this.fail(tick, error);
-      // A live manual step reports the failure through onError and does
-      // not rethrow from step(). fastForward, replay, and catch-up still
+      // A live stepped transport reports the failure through onError and
+      // does not rethrow from step(). fastForward, replay, and catch-up still
       // propagate, including a final-digest mismatch.
       if (!this.isLiveManualStep()) {
         throw error;
@@ -766,7 +768,7 @@ export class MatchRunner<G extends AnyGameDefinition> {
     if (this.phase === 'ended') this.stop();
   }
 
-  /** True only for a transport-driven step of `LocalTransport.manual()`. */
+  /** True only for a transport-driven step of `LocalTransport.stepped()`. */
   private isLiveManualStep(): boolean {
     return (
       this.transport instanceof LocalTransport &&
@@ -927,8 +929,12 @@ export class MatchRunner<G extends AnyGameDefinition> {
       reject('missing policy');
       return;
     }
+    const runsOn = this.runsOnForController(slot);
+    if (!this.botHost.hostsRunsOn(runsOn)) {
+      reject('not authoritative');
+      return;
+    }
     const level = info.kind === 'bot' ? info.level : 0;
-    const runsOn: BotHostSide = this.side === 'server' ? 'server' : 'local';
     const payload: { [key: string]: JsonValue } = {
       level,
       mode,
@@ -944,6 +950,48 @@ export class MatchRunner<G extends AnyGameDefinition> {
     };
     this.systemSeq += 1;
     this.remember(entry);
+  }
+
+  /**
+   * A server peer is this runner (`side: 'server'`) or a transport whose
+   * kind is `server-peer`. Relay and local matches have none.
+   */
+  private hasServerPeer(): boolean {
+    return this.side === 'server' || this.transport.kind === 'server-peer';
+  }
+
+  /** Bot slots keep their configured host. Human handovers use the server when one exists. */
+  private runsOnForController(slot: number): BotHostSide {
+    const slotConfig = this.config.slots[slot];
+    if (slotConfig !== undefined && slotConfig.kind === 'bot') {
+      return slotConfig.runsOn;
+    }
+    return this.hasServerPeer() ? 'server' : 'local';
+  }
+
+  private assertServerBotsHavePeer(): void {
+    if (this.hasServerPeer()) return;
+    for (const slot of this.config.slots) {
+      if (slot.kind === 'bot' && slot.runsOn === 'server') {
+        throw new Error(
+          `MatchRunner: slot ${String(slot.slot)} runsOn 'server' but this match has no server peer`
+        );
+      }
+    }
+  }
+
+  /** Next system `q` is past every system record still in the log or checkpoint. */
+  private syncSystemSeq(): void {
+    let max = -1;
+    const consider = (entry: LogEntry): void => {
+      if (entry.playerId !== SYSTEM_PLAYER_ID) return;
+      if (entry.data.q > max) max = entry.data.q;
+    };
+    for (const entry of this.commandLog.entriesAfter(-1)) consider(entry);
+    for (const entries of this.pendingByTick.values()) {
+      for (const entry of entries) consider(entry);
+    }
+    this.systemSeq = max + 1;
   }
 
   private resetModes(): void {

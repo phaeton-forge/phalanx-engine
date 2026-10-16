@@ -1,10 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { FP } from '@phalanx-engine/math';
-import {
-  segmentVsAABB,
-  type AABB,
-  type Vec3FP,
-} from '../src/collision/Raycast';
+import { segmentVsAABB, type AABB, type Vec3FP } from '../src/collision/Raycast';
 import { PhysicsWorld } from '../src/PhysicsWorld';
 
 function vec(x: number, y: number, z: number): Vec3FP {
@@ -12,20 +8,12 @@ function vec(x: number, y: number, z: number): Vec3FP {
 }
 
 function box(
-  minX: number,
-  minY: number,
-  minZ: number,
-  maxX: number,
-  maxY: number,
-  maxZ: number
+  minX: number, minY: number, minZ: number,
+  maxX: number, maxY: number, maxZ: number,
 ): AABB {
   return {
-    minX: FP.FromFloat(minX),
-    minY: FP.FromFloat(minY),
-    minZ: FP.FromFloat(minZ),
-    maxX: FP.FromFloat(maxX),
-    maxY: FP.FromFloat(maxY),
-    maxZ: FP.FromFloat(maxZ),
+    minX: FP.FromFloat(minX), minY: FP.FromFloat(minY), minZ: FP.FromFloat(minZ),
+    maxX: FP.FromFloat(maxX), maxY: FP.FromFloat(maxY), maxZ: FP.FromFloat(maxZ),
   };
 }
 
@@ -84,18 +72,9 @@ describe('segmentVsAABB', () => {
     const hit = segmentVsAABB(prev, cur, UNIT);
     expect(hit).not.toBeNull();
     const t = hit!.t;
-    expect(FP.ToFloat(hit!.point.x)).toBeCloseTo(
-      FP.ToFloat(FP.Lerp(prev.x, cur.x, t)),
-      5
-    );
-    expect(FP.ToFloat(hit!.point.y)).toBeCloseTo(
-      FP.ToFloat(FP.Lerp(prev.y, cur.y, t)),
-      5
-    );
-    expect(FP.ToFloat(hit!.point.z)).toBeCloseTo(
-      FP.ToFloat(FP.Lerp(prev.z, cur.z, t)),
-      5
-    );
+    expect(FP.ToFloat(hit!.point.x)).toBeCloseTo(FP.ToFloat(FP.Lerp(prev.x, cur.x, t)), 5);
+    expect(FP.ToFloat(hit!.point.y)).toBeCloseTo(FP.ToFloat(FP.Lerp(prev.y, cur.y, t)), 5);
+    expect(FP.ToFloat(hit!.point.z)).toBeCloseTo(FP.ToFloat(FP.Lerp(prev.z, cur.z, t)), 5);
   });
 
   it('zero-length segment outside the box → null', () => {

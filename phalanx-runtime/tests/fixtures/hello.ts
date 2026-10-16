@@ -1,18 +1,18 @@
-import {
-  defineCommands,
-  defineComponent,
-  defineGame,
-  runLocalMatch,
-} from '@phalanx-engine/engine';
-
-const Unit = defineComponent('Unit', { x: 'i64' });
-const commands = defineCommands({ move: { dx: 'i64' } });
+import * as engine from '@phalanx-engine/engine';
+const Unit = engine.defineComponent('Unit', { x: 'i64' });
+const commands = engine.defineCommands({ move: { dx: 'i64' } });
 const pace = [{ type: 'move' as const, dx: 1n }];
-const game = defineGame({
+class Drift extends engine.GameSystem {
+  public processTick(): void {
+    this.world.each(Unit, (unit) => (unit.x += 0n));
+  }
+}
+const game = engine.defineGame({
   id: 'hello',
   simVersion: '1',
   tickRate: 10,
   components: [Unit],
+  systems: [() => new Drift()],
   commands,
   onStart(ctx) {
     if (ctx.purpose === 'fresh') ctx.world.spawn({ Unit: { x: 0n } });
@@ -26,7 +26,7 @@ const game = defineGame({
   checkOutcome: () => null,
 });
 export function playHello(): readonly [bigint, bigint] {
-  const match = runLocalMatch(game, {
+  const match = engine.runLocalMatch(game, {
     seed: 1,
     stepped: true,
     slots: [{ kind: 'human' }, { kind: 'bot', policy: 'walker' }],

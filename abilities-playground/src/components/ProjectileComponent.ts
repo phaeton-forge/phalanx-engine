@@ -3,9 +3,7 @@ import { ComponentType } from './Component.ts';
 import { FP, type FPVector2 as FPVector2Type } from '@phalanx-engine/math';
 import { PROJECTILE_LIFETIME_SECONDS } from '../config/constants';
 
-export const PROJECTILE_DEFAULT_LIFETIME = FP.FromFloat(
-  PROJECTILE_LIFETIME_SECONDS
-);
+export const PROJECTILE_DEFAULT_LIFETIME = FP.FromFloat(PROJECTILE_LIFETIME_SECONDS);
 
 export class ProjectileComponent implements IComponent {
   public readonly type = ComponentType.Projectile;

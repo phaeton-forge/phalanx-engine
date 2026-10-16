@@ -1,11 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import {
-  Entity,
-  EntityManager,
-  EventBus,
-  SoAComponent,
-  SystemContext,
-} from '@phalanx-engine/ecs';
+import { Entity, EntityManager, EventBus, SoAComponent, SystemContext } from '@phalanx-engine/ecs';
 import { FP, FPVector3, FPQuaternion } from '@phalanx-engine/math';
 import {
   TransformComponent,
@@ -64,7 +58,7 @@ describe('RotationSystem', () => {
     const transform = new TransformComponent(
       entity.id,
       FPVector3.FromFloat(options.position.x, 0, options.position.z),
-      FPQuaternion.FromAxisAngle(FPVector3.Up, FP.FromFloat(options.rotationY))
+      FPQuaternion.FromAxisAngle(FPVector3.Up, FP.FromFloat(options.rotationY)),
     );
     const targetState = new TargetStateComponent();
     targetState.targetEntityId = options.targetEntityId;
@@ -90,7 +84,7 @@ describe('RotationSystem', () => {
 
   function turretYaw(entity: Entity): number {
     return FP.ToFloat(
-      entity.getComponent<TurretComponent>(ComponentType.Turret)!.yaw
+      entity.getComponent<TurretComponent>(ComponentType.Turret)!.yaw,
     );
   }
 
@@ -157,9 +151,7 @@ describe('RotationSystem', () => {
       targetEntityId: target.id,
     });
 
-    const ticksToFaceTarget = Math.ceil(
-      Math.PI / UNIT_TURN_SPEED_RADIANS_PER_TICK
-    );
+    const ticksToFaceTarget = Math.ceil(Math.PI / UNIT_TURN_SPEED_RADIANS_PER_TICK);
     for (let i = 0; i < ticksToFaceTarget; i++) {
       system.processTick();
     }
@@ -255,7 +247,7 @@ describe('RotationSystem', () => {
 
       expect(readRotationY(unit.id)).toBeCloseTo(
         UNIT_TURN_SPEED_RADIANS_PER_TICK,
-        2
+        2,
       );
       expect(turretYaw(unit)).toBeCloseTo(0, 5);
     });
@@ -282,7 +274,7 @@ describe('RotationSystem', () => {
       expect(readStoredQuaternion(unit.id)).toEqual(hullBefore);
       expect(turretYaw(unit)).toBeCloseTo(
         TURRET_TURN_SPEED_RADIANS_PER_TICK,
-        2
+        2,
       );
     });
 
@@ -302,7 +294,9 @@ describe('RotationSystem', () => {
         hasTurret: true,
       });
 
-      const ticks = Math.ceil(Math.PI / 2 / TURRET_TURN_SPEED_RADIANS_PER_TICK);
+      const ticks = Math.ceil(
+        Math.PI / 2 / TURRET_TURN_SPEED_RADIANS_PER_TICK,
+      );
       for (let i = 0; i < ticks; i++) system.processTick();
 
       // Target sits at +X: yaw = atan2(dx, dz) = +PI/2 relative to a hull that
@@ -333,7 +327,7 @@ describe('RotationSystem', () => {
       expect(traversed).toBeGreaterThan(0);
 
       unit.getComponent<TargetStateComponent>(
-        ComponentType.TargetState
+        ComponentType.TargetState,
       )!.targetEntityId = null;
       system.processTick();
 

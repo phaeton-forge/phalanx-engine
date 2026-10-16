@@ -13,10 +13,7 @@ import type { RecoverTimeoutBudget } from './recovery/NetworkQuality.js';
 
 // Re-export DesyncEvent for convenience
 export type { DesyncEvent };
-export type {
-  RoomRecoveryStatusEvent,
-  RoomTerminatedEvent,
-} from './recovery/RoomRecoveryController.js';
+export type { RoomRecoveryStatusEvent, RoomTerminatedEvent } from './recovery/RoomRecoveryController.js';
 
 /**
  * Configuration for pause/resume behavior
@@ -431,7 +428,10 @@ export interface PhalanxError {
  * Connection state of the client
  */
 export type ConnectionState =
-  'disconnected' | 'connecting' | 'connected' | 'reconnecting';
+  | 'disconnected'
+  | 'connecting'
+  | 'connected'
+  | 'reconnecting';
 
 /**
  * Client state (overall lifecycle)

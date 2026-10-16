@@ -34,10 +34,9 @@ export class AutonomousPhysicsTickProvider implements IPhysicsTickProvider {
   }
 
   private schedule(): void {
-    const next =
-      typeof setImmediate !== 'undefined'
-        ? (fn: () => void) => setImmediate(fn)
-        : (fn: () => void) => setTimeout(fn, 0);
+    const next = typeof setImmediate !== 'undefined'
+      ? (fn: () => void) => setImmediate(fn)
+      : (fn: () => void) => setTimeout(fn, 0);
     next(() => this.tick());
   }
 

@@ -10,9 +10,7 @@ describe('AutonomousPhysicsTickProvider', () => {
       onSettled,
     });
 
-    provider.start(() => {
-      stepCount++;
-    });
+    provider.start(() => { stepCount++; });
 
     // Wait for async execution to complete
     await new Promise<void>((resolve) => {
@@ -39,9 +37,7 @@ describe('AutonomousPhysicsTickProvider', () => {
       onSettled,
     });
 
-    provider.start(() => {
-      stepCount++;
-    });
+    provider.start(() => { stepCount++; });
 
     await new Promise<void>((resolve) => {
       const check = () => {

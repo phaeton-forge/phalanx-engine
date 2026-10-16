@@ -9,7 +9,7 @@ export const MISSILE_EXHAUST_CUE_ID = 'Cue.Missile.Exhaust';
 export function dispatchMissileExhaustCue(
   world: GameWorld,
   missileId: number,
-  tick: number
+  tick: number,
 ): void {
   const event: GameplayCueDispatchedEvent = {
     tick,

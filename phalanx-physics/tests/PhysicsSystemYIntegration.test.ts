@@ -13,9 +13,7 @@ import { TransformSoASchema } from '../src/components/TransformComponent';
 import type { PhysicsConfig } from '../src/types';
 import { addTransformRow } from './testTransformHelpers';
 
-function createPhysicsConfig(
-  overrides?: Partial<PhysicsConfig>
-): PhysicsConfig {
+function createPhysicsConfig(overrides?: Partial<PhysicsConfig>): PhysicsConfig {
   return {
     tickDt: FP.FromFloat(0.05),
     subSteps: 1,
@@ -47,8 +45,7 @@ describe('PhysicsSystem Y integration', () => {
     const system = new PhysicsSystem(createPhysicsConfig(overrides));
     system.init(context);
     const physicsStore = entityManager.getOrCreateSoAStore(PhysicsSoASchema);
-    const transformStore =
-      entityManager.getOrCreateSoAStore(TransformSoASchema);
+    const transformStore = entityManager.getOrCreateSoAStore(TransformSoASchema);
     return { system, physicsStore, transformStore };
   }
 
@@ -56,10 +53,8 @@ describe('PhysicsSystem Y integration', () => {
     physicsStore: SoAComponentStore<typeof PhysicsSoASchema.definition>,
     transformStore: SoAComponentStore<typeof TransformSoASchema.definition>,
     entityId: number,
-    velX: number,
-    velY: number,
-    velZ: number,
-    posY = 0
+    velX: number, velY: number, velZ: number,
+    posY = 0,
   ): void {
     physicsStore.add(entityId, {
       velocityX: FP.ToRaw(FP.FromFloat(velX)),
@@ -86,19 +81,13 @@ describe('PhysicsSystem Y integration', () => {
     const txIdx = transformStore.indexOf(1);
 
     system.processTick(1);
-    expect(
-      FP.ToFloat(FP.FromRaw(transformStore.arrays.fpPositionY[txIdx]))
-    ).toBeCloseTo(0.4, 4);
+    expect(FP.ToFloat(FP.FromRaw(transformStore.arrays.fpPositionY[txIdx]))).toBeCloseTo(0.4, 4);
 
     system.processTick(2);
-    expect(
-      FP.ToFloat(FP.FromRaw(transformStore.arrays.fpPositionY[txIdx]))
-    ).toBeCloseTo(0.8, 4);
+    expect(FP.ToFloat(FP.FromRaw(transformStore.arrays.fpPositionY[txIdx]))).toBeCloseTo(0.8, 4);
 
     system.processTick(3);
-    expect(
-      FP.ToFloat(FP.FromRaw(transformStore.arrays.fpPositionY[txIdx]))
-    ).toBeCloseTo(1.2, 4);
+    expect(FP.ToFloat(FP.FromRaw(transformStore.arrays.fpPositionY[txIdx]))).toBeCloseTo(1.2, 4);
   });
 
   it('sub-steps Y integration consistently with XZ', () => {
@@ -110,9 +99,7 @@ describe('PhysicsSystem Y integration', () => {
     system.processTick(1);
     // 3-digit tolerance: fixed-point sub-step dt = 0.05/3 is not exactly
     // representable, so accumulated ΔY has a small (~1e-4) rounding error.
-    expect(
-      FP.ToFloat(FP.FromRaw(transformStore.arrays.fpPositionY[txIdx]))
-    ).toBeCloseTo(0.3, 3);
+    expect(FP.ToFloat(FP.FromRaw(transformStore.arrays.fpPositionY[txIdx]))).toBeCloseTo(0.3, 3);
   });
 
   it('regression: body with velocityY=0 does not move on Y', () => {
@@ -123,16 +110,10 @@ describe('PhysicsSystem Y integration', () => {
     system.processTick(1);
 
     // Y stays fixed even though XZ move.
-    expect(
-      FP.ToFloat(FP.FromRaw(transformStore.arrays.fpPositionY[txIdx]))
-    ).toBeCloseTo(42, 5);
+    expect(FP.ToFloat(FP.FromRaw(transformStore.arrays.fpPositionY[txIdx]))).toBeCloseTo(42, 5);
     // XZ still integrate normally.
-    expect(
-      FP.ToFloat(FP.FromRaw(transformStore.arrays.fpPositionX[txIdx]))
-    ).toBeCloseTo(0.5, 4);
-    expect(
-      FP.ToFloat(FP.FromRaw(transformStore.arrays.fpPositionZ[txIdx]))
-    ).toBeCloseTo(0.25, 4);
+    expect(FP.ToFloat(FP.FromRaw(transformStore.arrays.fpPositionX[txIdx]))).toBeCloseTo(0.5, 4);
+    expect(FP.ToFloat(FP.FromRaw(transformStore.arrays.fpPositionZ[txIdx]))).toBeCloseTo(0.25, 4);
   });
 
   it('static bodies do not integrate on Y', () => {
@@ -144,8 +125,6 @@ describe('PhysicsSystem Y integration', () => {
 
     system.processTick(1);
 
-    expect(
-      FP.ToFloat(FP.FromRaw(transformStore.arrays.fpPositionY[txIdx]))
-    ).toBeCloseTo(10, 5);
+    expect(FP.ToFloat(FP.FromRaw(transformStore.arrays.fpPositionY[txIdx]))).toBeCloseTo(10, 5);
   });
 });

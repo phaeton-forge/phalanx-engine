@@ -176,9 +176,7 @@ describe('Ready Handshake Protocol', () => {
       const { client1, client2 } = await setupTwoPlayerMatch();
 
       const readyPromise = new Promise<{ playerId: string }>((resolve) => {
-        client2.on('player-ready', (data: { playerId: string }) =>
-          resolve(data)
-        );
+        client2.on('player-ready', (data: { playerId: string }) => resolve(data));
       });
 
       client1.emit('client-ready');
@@ -279,13 +277,11 @@ describe('Ready Handshake Protocol', () => {
       const recoveredClient2 = createClient();
       await connectClient(recoveredClient2);
 
-      const reconnectStatePromise = new Promise<{ state: string }>(
-        (resolve) => {
-          recoveredClient2.on('reconnect-state', (data: { state: string }) =>
-            resolve(data)
-          );
-        }
-      );
+      const reconnectStatePromise = new Promise<{ state: string }>((resolve) => {
+        recoveredClient2.on('reconnect-state', (data: { state: string }) =>
+          resolve(data)
+        );
+      });
       recoveredClient2.emit('reconnect-match', {
         playerId: 'player2',
         matchId,
@@ -324,13 +320,11 @@ describe('Ready Handshake Protocol', () => {
 
       client1.emit('client-ready');
 
-      const rejectedAckPromise = new Promise<{ accepted: boolean }>(
-        (resolve) => {
-          client1.once('submit-commands-ack', (data: { accepted: boolean }) =>
-            resolve(data)
-          );
-        }
-      );
+      const rejectedAckPromise = new Promise<{ accepted: boolean }>((resolve) => {
+        client1.once('submit-commands-ack', (data: { accepted: boolean }) =>
+          resolve(data)
+        );
+      });
       client1.emit('submit-commands', {
         tick: 0,
         commands: [{ type: 'select', data: { entityId: 1 } }],
@@ -347,13 +341,11 @@ describe('Ready Handshake Protocol', () => {
             resolve(data)
         );
       });
-      const acceptedAckPromise = new Promise<{ accepted: boolean }>(
-        (resolve) => {
-          client1.once('submit-commands-ack', (data: { accepted: boolean }) =>
-            resolve(data)
-          );
-        }
-      );
+      const acceptedAckPromise = new Promise<{ accepted: boolean }>((resolve) => {
+        client1.once('submit-commands-ack', (data: { accepted: boolean }) =>
+          resolve(data)
+        );
+      });
 
       client2.emit('client-ready');
       client1.emit('submit-commands', {

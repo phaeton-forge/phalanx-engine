@@ -9,9 +9,7 @@ const DEFAULT_CORS_ORIGINS = [
 ] as const;
 
 async function main(): Promise<void> {
-  console.log(
-    `[abilities-playground] Starting Phalanx server on port ${PORT}...`
-  );
+  console.log(`[abilities-playground] Starting Phalanx server on port ${PORT}...`);
 
   const phalanx = new Phalanx({
     port: PORT,

@@ -9,7 +9,7 @@ const PARKED_POSITION = FP.FromFloat(1e9);
 
 export function despawnProjectile(
   pools: PoolManager | null,
-  projectile: ProjectileEntity | MissileEntity
+  projectile: ProjectileEntity | MissileEntity,
 ): void {
   pools?.despawn(projectile);
 }
@@ -22,7 +22,7 @@ export interface SoftDeactivateProjectileOptions {
 export function softDeactivateProjectile(
   entityManager: EntityManager,
   projectile: ProjectileEntity | MissileEntity,
-  options?: SoftDeactivateProjectileOptions
+  options?: SoftDeactivateProjectileOptions,
 ): void {
   projectile.active = false;
 
@@ -30,8 +30,7 @@ export function softDeactivateProjectile(
   if (mesh) mesh.root.visible = false;
 
   if (!options?.keepTransform) {
-    const transformStore =
-      entityManager.getOrCreateSoAStore(TransformSoASchema);
+    const transformStore = entityManager.getOrCreateSoAStore(TransformSoASchema);
     const tIdx = transformStore.indexOf(projectile.id);
     if (tIdx !== -1) {
       const parked = FP.ToRaw(PARKED_POSITION);

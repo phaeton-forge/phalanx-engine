@@ -99,6 +99,14 @@ describe('public exports', () => {
     expect('WorldScope' in runtime).toBe(false);
     expect('spawnWithId' in runtime).toBe(false);
     expect(typeof advanced.spawnWithId).toBe('function');
+    expect(typeof advanced.PoolManager).toBe('function');
+    expect(typeof advanced.SoAComponentStore).toBe('function');
+    expect(typeof advanced.TickFrameManager).toBe('function');
+    expect(typeof advanced.DebugPanel).toBe('function');
+    expect(typeof advanced.setWorldModuleHost).toBe('function');
+    expect(typeof advanced.setEntityIdCounter).toBe('function');
+    expect(typeof advanced.nextEntityId).toBe('function');
+    expect(advanced.TYPED_ARRAY_CONSTRUCTORS.i64).toBe(BigInt64Array);
     expect(typeof advanced.rebuildBroadphaseFromTransforms).toBe('function');
     expect(advanced.rebuildBroadphaseFromTransforms).toBe(
       advanced.StateHelpers.rebuildBroadphaseFromTransforms

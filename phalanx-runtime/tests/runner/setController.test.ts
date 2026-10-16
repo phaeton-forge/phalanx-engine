@@ -152,4 +152,70 @@ describe('setController', () => {
     expect(replayDigests.get(6)).toBe(digests.get(6));
     expect(replayDigests.get(10)).toBe(digests.get(10));
   });
+
+  it('keeps system seq unique after restore', () => {
+    const { runner, transport } = open();
+    keep(runner);
+    runner.start();
+    transport.step(4);
+    runner.setController(0, 'bot', { policy: 'walker', fromTick: 5 });
+    transport.step(1);
+    const bytes = runner.snapshot();
+
+    const copyTransport = LocalTransport.stepped();
+    const copy = keep(
+      new MatchRunner(TinyGame, config(), copyTransport, {
+        hashEveryTicks: 1,
+      })
+    );
+    copy.restore(bytes);
+    copy.setController(0, 'human', { fromTick: 6 });
+    copy.start();
+    copyTransport.step(3);
+
+    const seqs = copy.log
+      .entriesAfter(-1)
+      .filter((entry) => entry.playerId === 'system')
+      .map((entry) => entry.data.q);
+    expect(seqs).toEqual([0, 1]);
+    expect(new Set(seqs).size).toBe(seqs.length);
+  });
+
+  it('stamps runsOn from the server peer, not the caller side alone', () => {
+    const transport = LocalTransport.stepped();
+    const runner = keep(
+      new MatchRunner(
+        TinyGame,
+        {
+          ...config(),
+          side: 'server',
+          slots: [
+            ...config().slots,
+            {
+              slot: 1,
+              team: 1,
+              kind: 'bot',
+              policy: 'walker',
+              level: 0,
+              runsOn: 'server',
+              color: 2,
+            },
+          ],
+        },
+        transport
+      )
+    );
+    runner.start();
+    runner.setController(0, 'bot', { policy: 'walker', fromTick: 1 });
+    transport.step(2);
+    const system = runner.log
+      .entriesAfter(-1)
+      .filter((entry) => entry.type === 'setController');
+    expect(system).toHaveLength(1);
+    expect(system[0]?.data.p).toMatchObject({
+      slot: 0,
+      mode: 'bot',
+      runsOn: 'server',
+    });
+  });
 });

@@ -5,6 +5,11 @@
  *
  * `InterpolatedTransformSample` is exported by both ecs and physics. The
  * physics type is the one games read from `getInterpolatedTransform`.
+ *
+ * Low-level ecs symbols (`setWorldModuleHost`, `setEntityIdCounter`,
+ * `nextEntityId`, `PoolManager`, `SoAComponentStore`, `TickFrameManager`,
+ * `TYPED_ARRAY_CONSTRUCTORS`, `DebugPanel`) are on
+ * `@phalanx-engine/runtime/advanced`, not here.
  */
 export * from '@phalanx-engine/runtime';
 export * from '@phalanx-engine/abilities';
@@ -21,28 +26,20 @@ export {
   GameWorldEvents,
   Entity,
   resetEntityIdCounter,
-  nextEntityId,
   getEntityIdCounter,
-  setEntityIdCounter,
   IComponent,
   createComponentTypeRegistry,
-  setWorldModuleHost,
   ObjectPool,
   EntityPool,
-  PoolManager,
-  SoAComponentStore,
   SoAComponent,
   defineSoASchema,
   calculateSchemaByteSize,
-  TYPED_ARRAY_CONSTRUCTORS,
   FIELD_BYTE_SIZES,
   DebugDataProvider,
-  DebugPanel,
   isBeforeTick,
   isAfterTick,
   isBeforeFrame,
   isAfterFrame,
-  TickFrameManager,
 } from '@phalanx-engine/ecs';
 export type {
   GameWorldConfig,
@@ -73,7 +70,6 @@ export type {
   DebugSoAStoreSnapshot,
   DebugPoolSnapshot,
   DebugDataProviderConfig,
-  DebugPanelConfig,
   IBeforeTick,
   IAfterTick,
   IBeforeFrame,
@@ -81,7 +77,6 @@ export type {
   IAbilitySystem,
   IPhysicsWorld,
   IRandom,
-  TickFrameManagerConfig,
   ITickFrameProvider,
   TickHandler,
   FrameHandler,

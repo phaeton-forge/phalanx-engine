@@ -36,14 +36,12 @@ function normalizeAngle(radians: number): number {
 }
 
 export class RenderSyncSystem extends GameSystem {
-  private get _abilities(): AbilitySystem {
-    return this.abilities as AbilitySystem;
-  }
+  private get _abilities(): AbilitySystem { return this.abilities as AbilitySystem; }
 
   public override update(deltaTime: number): void {
     const meshEntities = this.entityManager.queryEntities(
       ComponentType.Mesh,
-      ComponentType.Interpolation
+      ComponentType.Interpolation,
     );
 
     for (const entity of meshEntities) {
@@ -55,13 +53,13 @@ export class RenderSyncSystem extends GameSystem {
         entityMesh.root.position.set(
           interpolated.position.x,
           interpolated.position.y,
-          interpolated.position.z
+          interpolated.position.z,
         );
         entityMesh.root.quaternion.set(
           interpolated.rotation.x,
           interpolated.rotation.y,
           interpolated.rotation.z,
-          interpolated.rotation.w
+          interpolated.rotation.w,
         );
       }
     }
@@ -70,28 +68,18 @@ export class RenderSyncSystem extends GameSystem {
       ComponentType.HealthBar,
       ComponentType.Mesh,
       ComponentType.Team,
-      ComponentType.UnitStats
+      ComponentType.UnitStats,
     );
 
     for (const entity of units) {
-      const healthBar = entity.getComponent<HealthBarComponent>(
-        ComponentType.HealthBar
-      );
+      const healthBar = entity.getComponent<HealthBarComponent>(ComponentType.HealthBar);
       const entityMesh = entity.getComponent<MeshComponent>(ComponentType.Mesh);
-      const stats = entity.getComponent<StatsComponent>(
-        ComponentType.UnitStats
-      );
+      const stats = entity.getComponent<StatsComponent>(ComponentType.UnitStats);
       const team = entity.getComponent<TeamComponent>(ComponentType.Team);
       if (!healthBar || !entityMesh || !stats || !team) continue;
 
-      const health = this._abilities.tryGetAttribute(
-        entity.id,
-        'Health'
-      )?.current;
-      const maxHealth = this._abilities.tryGetAttribute(
-        entity.id,
-        'MaxHealth'
-      )?.base;
+      const health = this._abilities.tryGetAttribute(entity.id, 'Health')?.current;
+      const maxHealth = this._abilities.tryGetAttribute(entity.id, 'MaxHealth')?.base;
       const healthRatio =
         health && maxHealth && FP.Gt(maxHealth, FP._0)
           ? Math.max(0, Math.min(1, FP.ToFloat(FP.Div(health, maxHealth))))
@@ -100,7 +88,7 @@ export class RenderSyncSystem extends GameSystem {
       healthBar.root.position.set(
         entityMesh.root.position.x,
         entityMesh.root.position.y + 7,
-        entityMesh.root.position.z
+        entityMesh.root.position.z,
       );
       healthBar.root.rotation.y = team.teamId === 0 ? 0 : Math.PI;
       healthBar.fill.scale.x = healthRatio;
@@ -108,15 +96,13 @@ export class RenderSyncSystem extends GameSystem {
       entityMesh.root.visible = stats.alive;
       healthBar.root.visible = stats.alive;
 
-      const aura = entity.getComponent<HealAuraComponent>(
-        ComponentType.HealAura
-      );
+      const aura = entity.getComponent<HealAuraComponent>(ComponentType.HealAura);
 
       if (aura?.auraRing) {
         aura.auraRing.position.set(
           entityMesh.root.position.x,
           AURA_RING_GROUND_Y,
-          entityMesh.root.position.z
+          entityMesh.root.position.z,
         );
         aura.auraRing.visible = stats.alive;
       }
@@ -134,14 +120,15 @@ export class RenderSyncSystem extends GameSystem {
   private syncTurrets(deltaTime: number): void {
     const turretedUnits = this.entityManager.queryEntities(
       ComponentType.Mesh,
-      ComponentType.Turret
+      ComponentType.Turret,
     );
 
     for (const entity of turretedUnits) {
       const entityMesh = entity.getComponent<MeshComponent>(ComponentType.Mesh);
       const turret = entity.getComponent<TurretComponent>(ComponentType.Turret);
       const node = entityMesh?.root.userData.turret as
-        THREE.Object3D | undefined;
+        | THREE.Object3D
+        | undefined;
       if (!turret || !node) continue;
 
       const restYaw = (node.userData.restLocalYaw as number | undefined) ?? 0;

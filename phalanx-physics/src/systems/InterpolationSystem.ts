@@ -18,10 +18,7 @@ import {
   INTERPOLATION_COMPONENT_TYPE,
   InterpolationComponent,
 } from '../components/index.js';
-import {
-  TRANSFORM_COMPONENT_TYPE,
-  TransformSoASchema,
-} from '../components/index.js';
+import { TRANSFORM_COMPONENT_TYPE, TransformSoASchema } from '../components/index.js';
 
 export interface InterpolatedTransformSample {
   position: { x: number; y: number; z: number };
@@ -42,20 +39,14 @@ export class InterpolationSystem
   extends GameSystem
   implements IBeforeTick, IAfterTick, IBeforeFrame
 {
-  private transformStore!: SoAComponentStore<
-    typeof TransformSoASchema.definition
-  >;
-  private readonly interpolatedSamples = new Map<
-    number,
-    InterpolatedTransformSample
-  >();
+  private transformStore!: SoAComponentStore<typeof TransformSoASchema.definition>;
+  private readonly interpolatedSamples = new Map<number, InterpolatedTransformSample>();
   /** Entities captured at least once while present in the interpolation query. */
   private readonly capturedEntities = new Set<number>();
 
   public override init(context: SystemContext): void {
     super.init(context);
-    this.transformStore =
-      this.entityManager.getOrCreateSoAStore(TransformSoASchema);
+    this.transformStore = this.entityManager.getOrCreateSoAStore(TransformSoASchema);
   }
 
   public beforeTick(_tick: number, _commands: CommandsBatch): void {
@@ -71,29 +62,23 @@ export class InterpolationSystem
   }
 
   public snapshot(): void {
-    const entities = this.entityManager.queryEntities(
-      INTERPOLATION_COMPONENT_TYPE
-    );
+    const entities = this.entityManager.queryEntities(INTERPOLATION_COMPONENT_TYPE);
     for (const entity of entities) {
-      entity
-        .getComponent<InterpolationComponent>(INTERPOLATION_COMPONENT_TYPE)
-        ?.snapshot();
+      entity.getComponent<InterpolationComponent>(INTERPOLATION_COMPONENT_TYPE)?.snapshot();
     }
   }
 
   public capture(): void {
     const entities = this.entityManager.queryEntities(
       INTERPOLATION_COMPONENT_TYPE,
-      TRANSFORM_COMPONENT_TYPE
+      TRANSFORM_COMPONENT_TYPE,
     );
     const activeEntityIds = new Set<number>();
 
     for (const entity of entities) {
       activeEntityIds.add(entity.id);
 
-      const interpolation = entity.getComponent<InterpolationComponent>(
-        INTERPOLATION_COMPONENT_TYPE
-      );
+      const interpolation = entity.getComponent<InterpolationComponent>(INTERPOLATION_COMPONENT_TYPE);
       const transformIndex = this.transformStore.indexOf(entity.id);
       if (!interpolation || transformIndex === -1) continue;
 
@@ -125,26 +110,20 @@ export class InterpolationSystem
 
     const entities = this.entityManager.queryEntities(
       INTERPOLATION_COMPONENT_TYPE,
-      TRANSFORM_COMPONENT_TYPE
+      TRANSFORM_COMPONENT_TYPE,
     );
 
     for (const entity of entities) {
-      const interpolation = entity.getComponent<InterpolationComponent>(
-        INTERPOLATION_COMPONENT_TYPE
-      );
+      const interpolation = entity.getComponent<InterpolationComponent>(INTERPOLATION_COMPONENT_TYPE);
       if (!interpolation) continue;
 
-      const previousPosition = FPVector3.ToFloat(
-        interpolation.previousFpPosition
-      );
-      const currentPosition = FPVector3.ToFloat(
-        interpolation.currentFpPosition
-      );
+      const previousPosition = FPVector3.ToFloat(interpolation.previousFpPosition);
+      const currentPosition = FPVector3.ToFloat(interpolation.currentFpPosition);
 
       const interpolatedRotation = FPQuaternion.Slerp(
         interpolation.previousFpRotation,
         interpolation.currentFpRotation,
-        fpAlpha
+        fpAlpha,
       );
 
       this.interpolatedSamples.set(entity.id, {
@@ -158,9 +137,7 @@ export class InterpolationSystem
     }
   }
 
-  public getInterpolatedTransform(
-    entityId: number
-  ): InterpolatedTransformSample | undefined {
+  public getInterpolatedTransform(entityId: number): InterpolatedTransformSample | undefined {
     return this.interpolatedSamples.get(entityId);
   }
 

@@ -1,8 +1,4 @@
-import {
-  GameSystem,
-  type SoAComponentStore,
-  type SystemContext,
-} from '@phalanx-engine/ecs';
+import { GameSystem, type SoAComponentStore, type SystemContext } from '@phalanx-engine/ecs';
 import { FP, type FixedPoint } from '@phalanx-engine/math';
 import { PhysicsSoASchema } from '../components/PhysicsBodyComponent.js';
 import { TransformSoASchema } from '../components/TransformComponent.js';
@@ -26,13 +22,10 @@ const SEPARATION_HALF = FP.FromFloat(0.5);
  */
 export class CollisionSystem extends GameSystem {
   private physicsStore!: SoAComponentStore<typeof PhysicsSoASchema.definition>;
-  private transformStore!: SoAComponentStore<
-    typeof TransformSoASchema.definition
-  >;
+  private transformStore!: SoAComponentStore<typeof TransformSoASchema.definition>;
   private readonly spatialGrid: SpatialHashGrid;
   private pushStrength: FixedPoint;
-  private collisionFilter:
-    ((entityA: number, entityB: number) => boolean) | null = null;
+  private collisionFilter: ((entityA: number, entityB: number) => boolean) | null = null;
 
   constructor(gridCellSize: FixedPoint, pushStrength?: FixedPoint) {
     super();
@@ -44,18 +37,14 @@ export class CollisionSystem extends GameSystem {
    * Set an optional collision filter. Return false to skip a pair.
    * Useful for game-specific rules like team-based collision filtering.
    */
-  public setCollisionFilter(
-    filter: (entityA: number, entityB: number) => boolean
-  ): void {
+  public setCollisionFilter(filter: (entityA: number, entityB: number) => boolean): void {
     this.collisionFilter = filter;
   }
 
   public override init(context: SystemContext): void {
     super.init(context);
-    this.physicsStore =
-      this.entityManager.getOrCreateSoAStore(PhysicsSoASchema);
-    this.transformStore =
-      this.entityManager.getOrCreateSoAStore(TransformSoASchema);
+    this.physicsStore = this.entityManager.getOrCreateSoAStore(PhysicsSoASchema);
+    this.transformStore = this.entityManager.getOrCreateSoAStore(TransformSoASchema);
   }
 
   /** Expose the spatial grid for external queries (e.g. range queries) */
@@ -168,10 +157,7 @@ export class CollisionSystem extends GameSystem {
       if (physIndexA === -1 || physIndexB === -1) continue;
 
       // Skip entities with ignorePhysics flag
-      if (
-        physIgnorePhysics[physIndexA] === 1 ||
-        physIgnorePhysics[physIndexB] === 1
-      ) {
+      if (physIgnorePhysics[physIndexA] === 1 || physIgnorePhysics[physIndexB] === 1) {
         continue;
       }
 
@@ -195,14 +181,9 @@ export class CollisionSystem extends GameSystem {
 
       // Narrow-phase: circle vs circle
       const manifold = NarrowPhase.circleVsCircle(
-        posAX,
-        posAZ,
-        radiusA,
-        posBX,
-        posBZ,
-        radiusB,
-        entityIdA,
-        entityIdB
+        posAX, posAZ, radiusA,
+        posBX, posBZ, radiusB,
+        entityIdA, entityIdB
       );
 
       if (!manifold) continue;
@@ -210,16 +191,11 @@ export class CollisionSystem extends GameSystem {
       // Resolve collision
       this.resolveCollision(
         manifold,
-        physIndexA,
-        physIndexB,
-        transformIndexA,
-        transformIndexB,
-        physVelocityX,
-        physVelocityZ,
-        physMass,
-        physIsStatic,
-        fpPosXArr,
-        fpPosZArr
+        physIndexA, physIndexB,
+        transformIndexA, transformIndexB,
+        physVelocityX, physVelocityZ,
+        physMass, physIsStatic,
+        fpPosXArr, fpPosZArr,
       );
 
       // Emit collision event
@@ -237,16 +213,11 @@ export class CollisionSystem extends GameSystem {
    */
   private resolveCollision(
     manifold: CollisionManifold,
-    physIndexA: number,
-    physIndexB: number,
-    transformIndexA: number,
-    transformIndexB: number,
-    physVelocityX: BigInt64Array,
-    physVelocityZ: BigInt64Array,
-    physMass: BigInt64Array,
-    physIsStatic: Uint8Array,
-    fpPosXArr: BigInt64Array,
-    fpPosZArr: BigInt64Array
+    physIndexA: number, physIndexB: number,
+    transformIndexA: number, transformIndexB: number,
+    physVelocityX: BigInt64Array, physVelocityZ: BigInt64Array,
+    physMass: BigInt64Array, physIsStatic: Uint8Array,
+    fpPosXArr: BigInt64Array, fpPosZArr: BigInt64Array,
   ): void {
     const isStaticA = physIsStatic[physIndexA] === 1;
     const isStaticB = physIsStatic[physIndexB] === 1;
@@ -264,16 +235,8 @@ export class CollisionSystem extends GameSystem {
     const pushForce = FP.Mul(overlap, this.pushStrength);
 
     // Mass ratios
-    const ratioA = isStaticA
-      ? FP._0
-      : isStaticB
-        ? FP._1
-        : FP.Div(massB, totalMass);
-    const ratioB = isStaticB
-      ? FP._0
-      : isStaticA
-        ? FP._1
-        : FP.Div(massA, totalMass);
+    const ratioA = isStaticA ? FP._0 : (isStaticB ? FP._1 : FP.Div(massB, totalMass));
+    const ratioB = isStaticB ? FP._0 : (isStaticA ? FP._1 : FP.Div(massA, totalMass));
 
     // Apply push velocities
     if (!isStaticA) {

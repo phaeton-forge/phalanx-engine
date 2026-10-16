@@ -41,8 +41,7 @@ export function getRecoverTimeoutMs(
 ): number {
   if (typeof navigator === 'undefined') return budget.defaultMs;
   const nav = navigator as NavigatorWithConnection;
-  const connection =
-    nav.connection ?? nav.mozConnection ?? nav.webkitConnection;
+  const connection = nav.connection ?? nav.mozConnection ?? nav.webkitConnection;
 
   if (
     connection?.effectiveType === 'slow-2g' ||
@@ -61,3 +60,4 @@ export function getRecoverTimeoutMs(
   }
   return budget.defaultMs;
 }
+

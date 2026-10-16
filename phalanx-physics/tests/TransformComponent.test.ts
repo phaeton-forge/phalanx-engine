@@ -57,15 +57,8 @@ describe('TransformComponent', () => {
     const entity = new Entity();
     entityManager.addEntity(entity);
     const initialPosition = FPVector3.FromFloat(1, 2, 3);
-    const initialRotation = FPQuaternion.FromAxisAngle(
-      FPVector3.Up,
-      FP.FromFloat(1.5)
-    );
-    const transform = new TransformComponent(
-      entity.id,
-      initialPosition,
-      initialRotation
-    );
+    const initialRotation = FPQuaternion.FromAxisAngle(FPVector3.Up, FP.FromFloat(1.5));
+    const transform = new TransformComponent(entity.id, initialPosition, initialRotation);
     entity.addComponent(transform);
 
     expect(FP.ToFloat(transform.fpPosition.x)).toBeCloseTo(1);
@@ -83,13 +76,9 @@ describe('TransformComponent', () => {
 
     const store = entityManager.getOrCreateSoAStore(TransformSoASchema);
     const idx = store.indexOf(entity.id);
-    expect(FP.ToFloat(FP.FromRaw(store.arrays.fpPositionX[idx]))).toBeCloseTo(
-      4
-    );
+    expect(FP.ToFloat(FP.FromRaw(store.arrays.fpPositionX[idx]))).toBeCloseTo(4);
     // Stored rotation w component must remain a valid (non-zero) quaternion.
-    expect(
-      FP.ToFloat(FP.FromRaw(store.arrays.fpRotationW[idx]))
-    ).not.toBeCloseTo(0);
+    expect(FP.ToFloat(FP.FromRaw(store.arrays.fpRotationW[idx]))).not.toBeCloseTo(0);
   });
 
   it('round-trips fpRotation through the SoA store without loss', () => {
@@ -131,9 +120,7 @@ describe('TransformComponent', () => {
     expect(FP.Eq(forward.z, FP.Neg(FP._1))).toBe(true);
 
     const yaw = FP.ToFloat(transform.fpRotationY);
-    expect(
-      Math.atan2(FP.ToFloat(forward.x), FP.ToFloat(forward.z))
-    ).toBeCloseTo(yaw, 2);
+    expect(Math.atan2(FP.ToFloat(forward.x), FP.ToFloat(forward.z))).toBeCloseTo(yaw, 2);
   });
 
   it('does not expose visual position or rotation APIs', () => {

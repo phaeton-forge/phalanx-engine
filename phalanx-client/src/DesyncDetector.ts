@@ -101,10 +101,7 @@ export class DesyncDetector extends EventEmitter<DesyncDetectorEvents> {
    * @param remoteHashes - Hashes from all players (playerId -> hash)
    * @returns true if all hashes match, false if desync detected
    */
-  compareWithRemote(
-    tick: number,
-    remoteHashes: Record<string, string>
-  ): boolean {
+  compareWithRemote(tick: number, remoteHashes: Record<string, string>): boolean {
     const localHash = this.hashHistory.get(tick);
     if (!localHash) {
       // Can't compare - no local hash for this tick

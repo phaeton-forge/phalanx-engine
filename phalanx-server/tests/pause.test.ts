@@ -107,10 +107,7 @@ describe('Game Pause Functionality', () => {
     it('should allow player to pause the game', async () => {
       const { client1 } = await setupTwoPlayerMatch();
 
-      const pausePromise = new Promise<{
-        requestedBy: string;
-        lastTick: number;
-      }>((resolve) => {
+      const pausePromise = new Promise<{ requestedBy: string; lastTick: number }>((resolve) => {
         client1.on('game-paused', (data) => resolve(data));
       });
 
@@ -133,10 +130,7 @@ describe('Game Pause Functionality', () => {
 
       client1.emit('pause-game');
 
-      const [pause1, pause2] = await Promise.all([
-        pausePromise1,
-        pausePromise2,
-      ]);
+      const [pause1, pause2] = await Promise.all([pausePromise1, pausePromise2]);
       expect(pause1.requestedBy).toBe('player1');
       expect(pause2.requestedBy).toBe('player1');
     });
@@ -181,10 +175,7 @@ describe('Game Pause Functionality', () => {
 
       client2.emit('resume-game');
 
-      const [resume1, resume2] = await Promise.all([
-        resumePromise1,
-        resumePromise2,
-      ]);
+      const [resume1, resume2] = await Promise.all([resumePromise1, resumePromise2]);
       expect(resume1.requestedBy).toBe('player2');
       expect(resume2.requestedBy).toBe('player2');
     });
@@ -554,3 +545,10 @@ describe('Game Pause Functionality', () => {
     });
   });
 });
+
+
+
+
+
+
+

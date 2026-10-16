@@ -44,6 +44,12 @@ current mode, an unknown slot, or a `fromTick` outside
 `(current, current + inputDelayTicks]` is rejected via `onRejected` and is
 not logged. A human command for a bot-controlled slot is rejected with
 `slot controlled by bot`. Handover to a bot seeds RNG with `botSlotSeed(seed, slot)`.
+The payload `runsOn` comes from the bot slot, or is `server` when this runner
+has a server peer (`side: 'server'` or transport kind `server-peer`) and
+`local` otherwise. A peer that does not host that `runsOn` rejects the call
+with `not authoritative`. After `restore`, the next system `q` is one past
+the highest system `q` in the log and the input checkpoint. `start` throws
+when a slot has `runsOn: 'server'` and the match has no server peer.
 
 `GameSystem.world` is the world. `each` passes one reused view; do not store
 it; a write after despawn throws. Importing `@phalanx-engine/runtime` installs

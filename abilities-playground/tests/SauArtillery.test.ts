@@ -30,7 +30,10 @@ import {
   SAU_SHRAPNEL_COUNT,
   SAU_MIN_ENGAGEMENT_RANGE,
 } from '../src/config/abilityDefinitions';
-import { SAU_SHRAPNEL_CONE, SAU_SHRAPNEL_SPEED } from '../src/config/constants';
+import {
+  SAU_SHRAPNEL_CONE,
+  SAU_SHRAPNEL_SPEED,
+} from '../src/config/constants';
 
 function makeManager(): EntityManager {
   const entityManager = new EntityManager();
@@ -52,7 +55,10 @@ function addTransformUnit(
 ): Entity {
   const entity = new Entity();
   entity.addComponent(
-    new TransformComponent(entity.id, FPVector3.FromFloat(pos.x, pos.y, pos.z))
+    new TransformComponent(
+      entity.id,
+      FPVector3.FromFloat(pos.x, pos.y, pos.z)
+    )
   );
   entity.addComponent(new TeamComponent(teamId));
   entityManager.addEntity(entity);

@@ -32,29 +32,23 @@ export class TargetingSystem extends GameSystem {
       ComponentType.TargetState,
       ComponentType.UnitStats,
       ComponentType.UnitType,
-      ComponentType.Transform
+      ComponentType.Transform,
     );
 
     for (const unit of units) {
       const stats = unit.getComponent<StatsComponent>(ComponentType.UnitStats);
       const targetState = unit.getComponent<TargetStateComponent>(
-        ComponentType.TargetState
+        ComponentType.TargetState,
       );
       const team = unit.getComponent<TeamComponent>(ComponentType.Team);
-      const unitType = unit.getComponent<UnitTypeComponent>(
-        ComponentType.UnitType
-      );
+      const unitType = unit.getComponent<UnitTypeComponent>(ComponentType.UnitType);
       if (!stats?.alive || !targetState || !team || !unitType) continue;
 
       const unitIndex = this.transformStore.indexOf(unit.id);
       if (unitIndex === -1) continue;
 
-      const unitX = FP.FromRaw(
-        this.transformStore.arrays.fpPositionX[unitIndex]
-      );
-      const unitZ = FP.FromRaw(
-        this.transformStore.arrays.fpPositionZ[unitIndex]
-      );
+      const unitX = FP.FromRaw(this.transformStore.arrays.fpPositionX[unitIndex]);
+      const unitZ = FP.FromRaw(this.transformStore.arrays.fpPositionZ[unitIndex]);
       const detectionRadius = unitType.detectionRadius;
       const detectionRadiusSq = FP.Mul(detectionRadius, detectionRadius);
 
@@ -67,10 +61,10 @@ export class TargetingSystem extends GameSystem {
         if (!candidate) continue;
 
         const candidateStats = candidate.getComponent<StatsComponent>(
-          ComponentType.UnitStats
+          ComponentType.UnitStats,
         );
         const candidateTeam = candidate.getComponent<TeamComponent>(
-          ComponentType.Team
+          ComponentType.Team,
         );
         if (!candidateStats?.alive || candidateTeam?.teamId === team.teamId) {
           continue;
@@ -81,11 +75,11 @@ export class TargetingSystem extends GameSystem {
 
         const dx = FP.Sub(
           FP.FromRaw(this.transformStore.arrays.fpPositionX[candidateIndex]),
-          unitX
+          unitX,
         );
         const dz = FP.Sub(
           FP.FromRaw(this.transformStore.arrays.fpPositionZ[candidateIndex]),
-          unitZ
+          unitZ,
         );
         const distanceSq = FP.Add(FP.Mul(dx, dx), FP.Mul(dz, dz));
         if (FP.Gt(distanceSq, detectionRadiusSq)) continue;

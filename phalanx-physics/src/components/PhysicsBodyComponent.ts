@@ -1,9 +1,5 @@
 import { SoAComponent, defineSoASchema } from '@phalanx-engine/ecs';
-import {
-  FP,
-  type FixedPoint,
-  type FPVector3 as FPVector3Type,
-} from '@phalanx-engine/math';
+import { FP, type FixedPoint, type FPVector3 as FPVector3Type } from '@phalanx-engine/math';
 import type { PhysicsBodyConfig } from '../types.js';
 
 /**
@@ -12,24 +8,21 @@ import type { PhysicsBodyConfig } from '../types.js';
  * Stores physics simulation data using fixed-point math for determinism.
  * All i64 fields store raw FixedPoint base values (BigInt64Array).
  */
-export const PhysicsSoASchema = defineSoASchema(
-  {
-    velocityX: 'i64',
-    velocityY: 'i64',
-    velocityZ: 'i64',
-    radius: 'i64',
-    mass: 'i64',
-    restitution: 'i64',
-    friction: 'i64',
-    isStatic: 'u8',
-    ignorePhysics: 'u8',
-    useGravity: 'u8',
-    gravityMultiplier: 'i64',
-    lastX: 'f64',
-    lastZ: 'f64',
-  },
-  'PhysicsBody'
-);
+export const PhysicsSoASchema = defineSoASchema({
+  velocityX: 'i64',
+  velocityY: 'i64',
+  velocityZ: 'i64',
+  radius: 'i64',
+  mass: 'i64',
+  restitution: 'i64',
+  friction: 'i64',
+  isStatic: 'u8',
+  ignorePhysics: 'u8',
+  useGravity: 'u8',
+  gravityMultiplier: 'i64',
+  lastX: 'f64',
+  lastZ: 'f64',
+}, 'PhysicsBody');
 
 /**
  * Unique symbol identifying PhysicsBody components.
@@ -51,9 +44,7 @@ export const PHYSICS_BODY_COMPONENT_TYPE: symbol = Symbol('PhysicsBody');
  * store.arrays.velocityX[idx] = FP.ToRaw(newVel);
  * ```
  */
-export class PhysicsBodyComponent extends SoAComponent<
-  typeof PhysicsSoASchema.definition
-> {
+export class PhysicsBodyComponent extends SoAComponent<typeof PhysicsSoASchema.definition> {
   public readonly type = PHYSICS_BODY_COMPONENT_TYPE;
   static readonly soaSchema = PhysicsSoASchema;
 

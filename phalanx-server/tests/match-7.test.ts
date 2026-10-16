@@ -331,12 +331,8 @@ describe('LOCKSTEP-1: Independent Tick Counters Per Match', () => {
     });
 
     const match1GameStart = Promise.all([
-      new Promise<void>((resolve) => {
-        client1.once('game-start', () => resolve());
-      }),
-      new Promise<void>((resolve) => {
-        client2.once('game-start', () => resolve());
-      }),
+      new Promise<void>((resolve) => { client1.once('game-start', () => resolve()); }),
+      new Promise<void>((resolve) => { client2.once('game-start', () => resolve()); }),
     ]);
 
     // Start first match
@@ -355,12 +351,8 @@ describe('LOCKSTEP-1: Independent Tick Counters Per Match', () => {
     });
 
     const match2GameStart = Promise.all([
-      new Promise<void>((resolve) => {
-        client3.once('game-start', () => resolve());
-      }),
-      new Promise<void>((resolve) => {
-        client4.once('game-start', () => resolve());
-      }),
+      new Promise<void>((resolve) => { client3.once('game-start', () => resolve()); }),
+      new Promise<void>((resolve) => { client4.once('game-start', () => resolve()); }),
     ]);
 
     // Start second match (delayed)
@@ -437,12 +429,8 @@ describe('LOCKSTEP-1: Configurable Tick Rate', () => {
     });
 
     const gameStartPromise = Promise.all([
-      new Promise<void>((resolve) => {
-        client1.once('game-start', () => resolve());
-      }),
-      new Promise<void>((resolve) => {
-        client2.once('game-start', () => resolve());
-      }),
+      new Promise<void>((resolve) => { client1.once('game-start', () => resolve()); }),
+      new Promise<void>((resolve) => { client2.once('game-start', () => resolve()); }),
     ]);
 
     client1.emit('queue-join', { playerId: 'player1', username: 'alice' });

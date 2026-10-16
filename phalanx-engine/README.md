@@ -15,6 +15,8 @@ It re-exports `@phalanx-engine/runtime`, `@phalanx-engine/ecs`,
 `@phalanx-engine/abilities`, `@phalanx-engine/physics` and
 `@phalanx-engine/math`.
 
-`StateHelpers`, `spawnWithId`, `SaveHandler`, `CommandSchema` and
-`WorldScope` are not included. Those live in
-`@phalanx-engine/runtime/advanced`.
+`StateHelpers`, `spawnWithId`, `SaveHandler`, `CommandSchema`,
+`WorldScope`, `setWorldModuleHost`, `setEntityIdCounter`, `nextEntityId`,
+`PoolManager`, `SoAComponentStore`, `TickFrameManager`,
+`TYPED_ARRAY_CONSTRUCTORS` and `DebugPanel` are not included. Those live
+in `@phalanx-engine/runtime/advanced`.

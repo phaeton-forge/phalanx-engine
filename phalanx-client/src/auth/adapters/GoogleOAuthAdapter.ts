@@ -330,7 +330,8 @@ export class GoogleOAuthAdapter implements AuthAdapter {
     } catch (error) {
       return {
         valid: false,
-        error: error instanceof Error ? error.message : 'Token exchange failed',
+        error:
+          error instanceof Error ? error.message : 'Token exchange failed',
         errorCode: 'token_exchange_failed',
       };
     }
@@ -464,7 +465,9 @@ export class GoogleOAuthAdapter implements AuthAdapter {
 
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.error || error.message || 'Token exchange failed');
+      throw new Error(
+        error.error || error.message || 'Token exchange failed'
+      );
     }
 
     const result = await response.json();
@@ -594,6 +597,7 @@ export class GoogleOAuthAdapter implements AuthAdapter {
     crypto.getRandomValues(array);
     return this.base64UrlEncode(array);
   }
+
 
   /**
    * Generate a random string for state/nonce.

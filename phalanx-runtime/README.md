@@ -182,9 +182,8 @@ instead of throwing. Exceptions from `decode` and `validate` become
 rejections too (`error.message`, or `'decode failed'` / `'validate failed'`).
 A throw from the tick itself calls `onError(error, tick)`, sets `status`
 to `'failed'`, stops the transport, and leaves `tick` on the last
-completed tick. `LocalTransport.manual().step()` does not rethrow that
-error; `onError` already received it. `LocalTransport.stepped().step()` is
-that path. `fastForward`, replay, and catch-up
+completed tick. `LocalTransport.stepped().step()` does not rethrow that
+error; `onError` already received it. `fastForward`, replay, and catch-up
 still propagate it, including a final-digest mismatch. A timed transport swallows it
 inside its timer. Any other transport still sees the exception. A bot
 `decide` that throws is isolated: it is logged with

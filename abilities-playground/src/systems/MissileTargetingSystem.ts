@@ -37,7 +37,7 @@ export class MissileTargetingSystem extends GameSystem {
   public override processTick(): void {
     const missiles = this.entityManager.queryEntities(
       ComponentType.Missile,
-      ComponentType.Transform
+      ComponentType.Transform,
     );
 
     for (const missile of missiles) {
@@ -58,7 +58,7 @@ export class MissileTargetingSystem extends GameSystem {
           missile.id,
           mc,
           FP_MISSILE_CRUISE_TURN,
-          'direct'
+          'direct',
         );
       }
     }
@@ -86,7 +86,7 @@ export class MissileTargetingSystem extends GameSystem {
     missileId: number,
     mc: MissileComponent,
     turn: FixedPoint,
-    aimMode: AimMode
+    aimMode: AimMode,
   ): void {
     const target = this.buildTargetQuaternion(missileId, mc, aimMode);
     if (!target) return;
@@ -101,7 +101,7 @@ export class MissileTargetingSystem extends GameSystem {
   private buildTargetQuaternion(
     missileId: number,
     mc: MissileComponent,
-    aimMode: AimMode
+    aimMode: AimMode,
   ): FPQuaternionType | null {
     const tIdx = this.transformStore.indexOf(missileId);
     const ttIdx = this.entityManager.getEntity(mc.targetEntityId)

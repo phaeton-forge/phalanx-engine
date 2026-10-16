@@ -14,9 +14,7 @@ import { ExternalPhysicsTickProvider } from '../src/tick/ExternalPhysicsTickProv
 import type { PhysicsConfig } from '../src/types';
 import { addTransformRow } from './testTransformHelpers';
 
-function createPhysicsConfig(
-  overrides?: Partial<PhysicsConfig>
-): PhysicsConfig {
+function createPhysicsConfig(overrides?: Partial<PhysicsConfig>): PhysicsConfig {
   return {
     tickDt: FP.FromFloat(0.05),
     subSteps: 1,
@@ -50,8 +48,7 @@ describe('step()', () => {
     system.init(context);
 
     const physicsStore = entityManager.getOrCreateSoAStore(PhysicsSoASchema);
-    const transformStore =
-      entityManager.getOrCreateSoAStore(TransformSoASchema);
+    const transformStore = entityManager.getOrCreateSoAStore(TransformSoASchema);
 
     return { system, physicsStore, transformStore };
   }
@@ -63,7 +60,7 @@ describe('step()', () => {
     posX: number,
     posZ: number,
     velX: number = 0,
-    velZ: number = 0
+    velZ: number = 0,
   ): void {
     physicsStore.add(entityId, {
       velocityX: FP.ToRaw(FP.FromFloat(velX)),
@@ -180,17 +177,13 @@ describe('step()', () => {
     system.processTick(1);
 
     const txIdx = transformStore.indexOf(1);
-    const posX = FP.ToFloat(
-      FP.FromRaw(transformStore.arrays.fpPositionX[txIdx])
-    );
+    const posX = FP.ToFloat(FP.FromRaw(transformStore.arrays.fpPositionX[txIdx]));
     expect(posX).toBeCloseTo(0, 5); // unchanged
 
     // But provider.tick() should advance simulation
     provider.tick();
 
-    const posXAfter = FP.ToFloat(
-      FP.FromRaw(transformStore.arrays.fpPositionX[txIdx])
-    );
+    const posXAfter = FP.ToFloat(FP.FromRaw(transformStore.arrays.fpPositionX[txIdx]));
     expect(posXAfter).toBeCloseTo(0.5, 1); // vel=10, dt=0.05
   });
 
@@ -201,9 +194,7 @@ describe('step()', () => {
     system.step();
 
     const txIdx = transformStore.indexOf(1);
-    const posX = FP.ToFloat(
-      FP.FromRaw(transformStore.arrays.fpPositionX[txIdx])
-    );
+    const posX = FP.ToFloat(FP.FromRaw(transformStore.arrays.fpPositionX[txIdx]));
     expect(posX).toBeCloseTo(0.5, 1);
   });
 });

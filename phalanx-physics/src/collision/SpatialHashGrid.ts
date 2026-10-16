@@ -65,12 +65,7 @@ export class SpatialHashGrid {
   /**
    * Insert an entity into all cells it overlaps.
    */
-  public insert(
-    entityId: number,
-    posX: FixedPoint,
-    posZ: FixedPoint,
-    radius: FixedPoint
-  ): void {
+  public insert(entityId: number, posX: FixedPoint, posZ: FixedPoint, radius: FixedPoint): void {
     const cellKeys = this.getCoveredCells(posX, posZ, radius);
     this.entityCells.set(entityId, cellKeys);
     // Store the center position for exact distance filtering in queryRadius.
@@ -118,12 +113,7 @@ export class SpatialHashGrid {
   /**
    * Update an entity's position in the grid (remove + re-insert).
    */
-  public update(
-    entityId: number,
-    posX: FixedPoint,
-    posZ: FixedPoint,
-    radius: FixedPoint
-  ): void {
+  public update(entityId: number, posX: FixedPoint, posZ: FixedPoint, radius: FixedPoint): void {
     this.remove(entityId);
     this.insert(entityId, posX, posZ, radius);
   }
@@ -176,11 +166,7 @@ export class SpatialHashGrid {
    * added); this matches "units within range of a point" semantics used by
    * auras, AoE, and range finding.
    */
-  public queryRadius(
-    posX: FixedPoint,
-    posZ: FixedPoint,
-    radius: FixedPoint
-  ): number[] {
+  public queryRadius(posX: FixedPoint, posZ: FixedPoint, radius: FixedPoint): number[] {
     this._radiusResult.length = 0;
     const seen = new Set<number>();
     const radiusSq = FP.Mul(radius, radius);
@@ -284,11 +270,7 @@ export class SpatialHashGrid {
   /**
    * Compute all cell keys that a circle at (posX, posZ) with radius overlaps.
    */
-  private getCoveredCells(
-    posX: FixedPoint,
-    posZ: FixedPoint,
-    radius: FixedPoint
-  ): string[] {
+  private getCoveredCells(posX: FixedPoint, posZ: FixedPoint, radius: FixedPoint): string[] {
     const minX = FP.Sub(posX, radius);
     const maxX = FP.Add(posX, radius);
     const minZ = FP.Sub(posZ, radius);

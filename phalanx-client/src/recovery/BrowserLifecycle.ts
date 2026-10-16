@@ -88,3 +88,4 @@ export function waitForOnlineEvent(timeoutMs: number): Promise<void> {
     window.addEventListener('online', onOnline);
   });
 }
+

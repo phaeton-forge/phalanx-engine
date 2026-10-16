@@ -65,8 +65,7 @@ export class MissileLauncherSystem extends GameSystem {
       const type = rocket.getComponent<UnitTypeComponent>(
         ComponentType.UnitType
       );
-      if (!stats?.alive || !team || !type || type.kind !== UnitType.Rocket)
-        continue;
+      if (!stats?.alive || !team || !type || type.kind !== UnitType.Rocket) continue;
 
       // Cooldown is owned by the ability system; skip while the cooldown tag
       // is present so we neither enqueue nor re-check targets uselessly.

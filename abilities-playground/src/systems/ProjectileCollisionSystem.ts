@@ -1,14 +1,15 @@
 import { GameSystem, type SystemContext } from '@phalanx-engine/ecs';
 import { PhysicsEvents, type CollisionEvent } from '@phalanx-engine/physics';
-import { ComponentType, StatsComponent, TeamComponent } from '../components';
+import {
+  ComponentType,
+  StatsComponent,
+  TeamComponent,
+} from '../components';
 import { ProjectileComponent } from '../components/ProjectileComponent';
 import { PROJECTILE_DESPAWN_DELAY_TICKS } from '../config/constants';
 import type { ProjectileEntity } from '../entities/Projectile.ts';
 import type { MissileEntity } from '../entities/Missile';
-import {
-  GameEvents,
-  type ProjectileDespawnRequestedEvent,
-} from '../events/GameEvents';
+import { GameEvents, type ProjectileDespawnRequestedEvent } from '../events/GameEvents';
 import { softDeactivateProjectile } from './projectileDespawn';
 
 export class ProjectileCollisionSystem extends GameSystem {
@@ -39,21 +40,18 @@ export class ProjectileCollisionSystem extends GameSystem {
 
     if (aProjectile === bProjectile) return;
 
-    const projectile = (aProjectile ? entityA : entityB) as
-      ProjectileEntity | MissileEntity;
+    const projectile = (
+      aProjectile ? entityA : entityB
+    ) as ProjectileEntity | MissileEntity;
     const other = aProjectile ? entityB : entityA;
 
     if (!projectile.active) return;
 
-    const otherStats = other.getComponent<StatsComponent>(
-      ComponentType.UnitStats
-    );
+    const otherStats = other.getComponent<StatsComponent>(ComponentType.UnitStats);
 
     if (!otherStats?.alive) return;
 
-    const projectileTeam = projectile.getComponent<TeamComponent>(
-      ComponentType.Team
-    );
+    const projectileTeam = projectile.getComponent<TeamComponent>(ComponentType.Team);
     const otherTeam = other.getComponent<TeamComponent>(ComponentType.Team);
 
     if (
@@ -64,9 +62,7 @@ export class ProjectileCollisionSystem extends GameSystem {
       return;
     }
 
-    const projectileComp = projectile.getComponent<ProjectileComponent>(
-      ComponentType.Projectile
-    );
+    const projectileComp = projectile.getComponent<ProjectileComponent>(ComponentType.Projectile);
     const effectId = projectileComp?.damageEffectId ?? 'Effect.Damage.Sphere';
     this.abilities?.applyEffect(other.id, effectId, projectile.id);
 
@@ -75,10 +71,7 @@ export class ProjectileCollisionSystem extends GameSystem {
     softDeactivateProjectile(this.entityManager, projectile);
     this.eventBus.emit<ProjectileDespawnRequestedEvent>(
       GameEvents.PROJECTILE_DESPAWN_REQUESTED,
-      {
-        projectileId: projectile.id,
-        dueTick: tick + PROJECTILE_DESPAWN_DELAY_TICKS,
-      }
+      { projectileId: projectile.id, dueTick: tick + PROJECTILE_DESPAWN_DELAY_TICKS },
     );
   }
 }

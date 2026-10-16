@@ -226,9 +226,7 @@ export class PrivateRoomService {
 
     this.rooms.set(code, room);
 
-    console.log(
-      `[PrivateRoom] Room ${code} created by disconnected host ${playerId}`
-    );
+    console.log(`[PrivateRoom] Room ${code} created by disconnected host ${playerId}`);
     return { code, reused: false };
   }
 
@@ -398,7 +396,7 @@ export class PrivateRoomService {
         } satisfies RoomRecoveredEvent);
         match.handleReconnect(playerId, socket.id);
         console.log(
-          `[PrivateRoom] Player ${playerId} recovered into match ${matchId} via code ${normalizedCode}`
+          `[PrivateRoom] Player ${playerId} recovered into match ${matchId} via code ${normalizedCode}`,
         );
         return true;
       }
@@ -442,6 +440,7 @@ export class PrivateRoomService {
       match.handleDisconnect(socketId);
     }
   }
+
 
   /**
    * Get a match created by this service (for command routing etc.)

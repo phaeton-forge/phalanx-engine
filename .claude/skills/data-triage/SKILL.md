@@ -13,6 +13,8 @@ SELECT current_timestamp()::string AS current_time
 
 If the user's query has ambiguity around the day or year (e.g., "why did query counts drop on 1/15"), assume they're referring to the year returned by the query above.
 
+
+
 ### Data Questions (Snowflake — Default)
 
 You have a few specialized skills and subagents available to you. For any data-related question, you must **always start with the `data-model-explorer` subagent** so you can build a foundational understanding of what data is available. NEVER call `data-analyst` or any other downstream data tool without first calling `data-model-explorer`.

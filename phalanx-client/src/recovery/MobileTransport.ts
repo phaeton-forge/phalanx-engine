@@ -19,14 +19,11 @@ export function isMobileBrowser(): boolean {
   );
 }
 
-const DESKTOP_TRANSPORTS = [
-  'websocket',
-] as const satisfies readonly SocketTransport[];
-const MOBILE_TRANSPORTS = [
-  'polling',
-] as const satisfies readonly SocketTransport[];
+const DESKTOP_TRANSPORTS = ['websocket'] as const satisfies readonly SocketTransport[];
+const MOBILE_TRANSPORTS = ['polling'] as const satisfies readonly SocketTransport[];
 
 /** Resolve the auto-defaulted transport list for the current UA. */
 export function pickMobileFriendlyTransports(): readonly SocketTransport[] {
   return isMobileBrowser() ? MOBILE_TRANSPORTS : DESKTOP_TRANSPORTS;
 }
+

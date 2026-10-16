@@ -3,10 +3,7 @@ import { FPVector3, FP } from '@phalanx-engine/math';
 import { PhysicsSoASchema } from '@phalanx-engine/physics';
 import type { EntityManager } from '@phalanx-engine/ecs';
 import { Cue } from '@phalanx-engine/abilities';
-import type {
-  CueContext,
-  GameplayCueDispatchedEvent,
-} from '@phalanx-engine/abilities';
+import type { CueContext, GameplayCueDispatchedEvent } from '@phalanx-engine/abilities';
 import { ComponentType, TransformComponent } from '../components';
 import { easeOutCubic } from './vfxHelpers';
 
@@ -69,9 +66,7 @@ export class DamageSphereCue extends Cue {
     const particleCount = 90;
     const positions = new Float32Array(particleCount * 3);
     for (let i = 0; i < particleCount; i++) {
-      let x = 0,
-        y = 0,
-        z = 0;
+      let x = 0, y = 0, z = 0;
       do {
         x = Math.random() * 2 - 1;
         y = Math.random() * 2 - 1;
@@ -83,10 +78,7 @@ export class DamageSphereCue extends Cue {
     }
 
     this.geometry = new THREE.BufferGeometry();
-    this.geometry.setAttribute(
-      'position',
-      new THREE.BufferAttribute(positions, 3)
-    );
+    this.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
 
     this.material = new THREE.PointsMaterial({
       color: new THREE.Color('#ff5a3d'),
@@ -109,18 +101,14 @@ export class DamageSphereCue extends Cue {
 
   private tryGetImpactPoint(
     entityManager: EntityManager,
-    event: GameplayCueDispatchedEvent
+    event: GameplayCueDispatchedEvent,
   ): THREE.Vector3 | null {
     const source = entityManager.getEntity(event.sourceEntityId);
     const target = entityManager.getEntity(event.targetEntityId);
     if (!source || !target) return null;
 
-    const sourceTransform = source.getComponent<TransformComponent>(
-      ComponentType.Transform
-    );
-    const targetTransform = target.getComponent<TransformComponent>(
-      ComponentType.Transform
-    );
+    const sourceTransform = source.getComponent<TransformComponent>(ComponentType.Transform);
+    const targetTransform = target.getComponent<TransformComponent>(ComponentType.Transform);
     if (!sourceTransform || !targetTransform) return null;
 
     const src = FPVector3.ToFloat(sourceTransform.fpPosition);
@@ -129,22 +117,13 @@ export class DamageSphereCue extends Cue {
     const physStore = entityManager.getOrCreateSoAStore(PhysicsSoASchema);
     const physIdx = physStore.indexOf(target.id);
     const targetRadius =
-      physIdx === -1
-        ? 1
-        : FP.ToFloat(FP.FromRaw(physStore.arrays.radius[physIdx]));
+      physIdx === -1 ? 1 : FP.ToFloat(FP.FromRaw(physStore.arrays.radius[physIdx]));
 
-    const normal = new THREE.Vector3(
-      src.x - tgt.x,
-      src.y - tgt.y,
-      src.z - tgt.z
-    );
+    const normal = new THREE.Vector3(src.x - tgt.x, src.y - tgt.y, src.z - tgt.z);
     const lenSq = normal.lengthSq();
     if (lenSq < 1e-8) return new THREE.Vector3(tgt.x, tgt.y, tgt.z);
     normal.multiplyScalar(1 / Math.sqrt(lenSq));
 
-    return new THREE.Vector3(tgt.x, tgt.y, tgt.z).addScaledVector(
-      normal,
-      targetRadius * 1.05 + 0.05
-    );
+    return new THREE.Vector3(tgt.x, tgt.y, tgt.z).addScaledVector(normal, targetRadius * 1.05 + 0.05);
   }
 }

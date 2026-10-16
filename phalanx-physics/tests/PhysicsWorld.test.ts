@@ -1,21 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import {
-  Entity,
-  EntityManager,
-  EventBus,
-  SoAComponent,
-  SystemContext,
-} from '@phalanx-engine/ecs';
+import { Entity, EntityManager, EventBus, SoAComponent, SystemContext } from '@phalanx-engine/ecs';
 import { FPVector3, FPQuaternion } from '@phalanx-engine/math';
 import { FP } from '@phalanx-engine/math';
 import { PhysicsWorld } from '../src/PhysicsWorld';
 import { PhysicsSystem } from '../src/systems/PhysicsSystem';
 import { GravitySystem } from '../src/systems/GravitySystem';
 import { InterpolationSystem } from '../src/systems/InterpolationSystem';
-import {
-  TransformComponent,
-  TRANSFORM_COMPONENT_TYPE,
-} from '../src/components/TransformComponent';
+import { TransformComponent, TRANSFORM_COMPONENT_TYPE } from '../src/components/TransformComponent';
 import {
   InterpolationComponent,
   INTERPOLATION_COMPONENT_TYPE,
@@ -85,23 +76,12 @@ describe('PhysicsWorld', () => {
       lastZ: 0,
     });
 
-    physicsWorld.applyImpulse3D(
-      1,
-      FP.FromFloat(1),
-      FP.FromFloat(2),
-      FP.FromFloat(3)
-    );
+    physicsWorld.applyImpulse3D(1, FP.FromFloat(1), FP.FromFloat(2), FP.FromFloat(3));
 
     const idx = physicsStore.indexOf(1);
-    expect(
-      FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityX[idx]))
-    ).toBeCloseTo(1, 4);
-    expect(
-      FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityY[idx]))
-    ).toBeCloseTo(2, 4);
-    expect(
-      FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityZ[idx]))
-    ).toBeCloseTo(3, 4);
+    expect(FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityX[idx]))).toBeCloseTo(1, 4);
+    expect(FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityY[idx]))).toBeCloseTo(2, 4);
+    expect(FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityZ[idx]))).toBeCloseTo(3, 4);
   });
 
   it('getInterpolatedTransform delegates to the owned interpolation system', () => {
@@ -113,12 +93,9 @@ describe('PhysicsWorld', () => {
     const transform = new TransformComponent(
       entity.id,
       FPVector3.FromFloat(0, 0, 0),
-      FPQuaternion.Identity()
+      FPQuaternion.Identity(),
     );
-    const interpolation = new InterpolationComponent(
-      transform.fpPosition,
-      transform.fpRotation
-    );
+    const interpolation = new InterpolationComponent(transform.fpPosition, transform.fpRotation);
     entity.addComponent(transform);
     entity.addComponent(interpolation);
     entityManager.addEntity(entity);

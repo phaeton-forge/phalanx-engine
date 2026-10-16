@@ -21,25 +21,23 @@
 
 ## File map
 
-| File                                                          | Responsibility                                        |
-| ------------------------------------------------------------- | ----------------------------------------------------- |
-| `abilities-playground/src/components/UnitComponents.ts`       | Soft nozzle glow + `userData` refs in `createMissile` |
-| `abilities-playground/src/cues/missileExhaustCue.ts`          | Long-lived exhaust cue (smoke + flicker)              |
-| `abilities-playground/src/cues/index.ts`                      | Export cue                                            |
-| `abilities-playground/src/core/SimulationContainer.ts`        | Register `'Cue.Missile.Exhaust'` factory              |
-| `abilities-playground/src/hooks/MissileVolley.ts`             | Dispatch exhaust cue per spawned missile              |
-| `abilities-playground/src/hooks/dispatchMissileExhaustCue.ts` | Small helper to emit the exhaust cue event            |
+| File | Responsibility |
+| --- | --- |
+| `abilities-playground/src/components/UnitComponents.ts` | Soft nozzle glow + `userData` refs in `createMissile` |
+| `abilities-playground/src/cues/missileExhaustCue.ts` | Long-lived exhaust cue (smoke + flicker) |
+| `abilities-playground/src/cues/index.ts` | Export cue |
+| `abilities-playground/src/core/SimulationContainer.ts` | Register `'Cue.Missile.Exhaust'` factory |
+| `abilities-playground/src/hooks/MissileVolley.ts` | Dispatch exhaust cue per spawned missile |
+| `abilities-playground/src/hooks/dispatchMissileExhaustCue.ts` | Small helper to emit the exhaust cue event |
 
 ---
 
 ### Task 1: Soft nozzle glow on missile mesh
 
 **Files:**
-
 - Modify: `abilities-playground/src/components/UnitComponents.ts` (`createMissile`, ~lines 212–243)
 
 **Interfaces:**
-
 - Consumes: existing `MeshComponent.createMissile(): MeshComponent`, `MeshComponent.initScene(scene)`
 - Produces: `group.userData` shape used by Task 2:
   - `flameCore: THREE.Mesh`
@@ -134,13 +132,11 @@ git commit -m "feat(missiles): add soft nozzle glow meshes and engine light"
 ### Task 2: `MissileExhaustCue` (smoke + flicker)
 
 **Files:**
-
 - Create: `abilities-playground/src/cues/missileExhaustCue.ts`
 - Modify: `abilities-playground/src/cues/index.ts`
 - Modify: `abilities-playground/src/core/SimulationContainer.ts` (cues map + import)
 
 **Interfaces:**
-
 - Consumes: `group.userData.flameCore|flameOuter|engineLight` from Task 1; `Cue` / `CueContext` / `GameplayCueDispatchedEvent` from `@phalanx-engine/abilities`; `ComponentType.Mesh`, `MeshComponent`, `TransformComponent`
 - Produces: `export class MissileExhaustCue extends Cue` with constructor `(scene: THREE.Scene)`; cue id string `'Cue.Missile.Exhaust'` for Task 3
 
@@ -234,7 +230,7 @@ export class MissileExhaustCue extends Cue {
     this.geometry = new THREE.BufferGeometry();
     this.geometry.setAttribute(
       'position',
-      new THREE.BufferAttribute(this.positions, 3)
+      new THREE.BufferAttribute(this.positions, 3),
     );
     this.geometry.setDrawRange(0, 0);
 
@@ -318,7 +314,7 @@ export class MissileExhaustCue extends Cue {
     }
 
     const transform = entity.getComponent<TransformComponent>(
-      ComponentType.Transform
+      ComponentType.Transform,
     );
     if (!transform) return false;
     const p = FPVector3.ToFloat(transform.fpPosition);
@@ -327,8 +323,7 @@ export class MissileExhaustCue extends Cue {
   }
 
   private spawnParticle(): void {
-    if (!this.positions || !this.velocities || !this.ages || !this.lifetimes)
-      return;
+    if (!this.positions || !this.velocities || !this.ages || !this.lifetimes) return;
     if (this.aliveCount >= PARTICLE_CAPACITY) return;
 
     const i = this.aliveCount++;
@@ -347,13 +342,7 @@ export class MissileExhaustCue extends Cue {
   }
 
   private ageParticles(dt: number): void {
-    if (
-      !this.positions ||
-      !this.velocities ||
-      !this.ages ||
-      !this.lifetimes ||
-      !this.geometry
-    ) {
+    if (!this.positions || !this.velocities || !this.ages || !this.lifetimes || !this.geometry) {
       return;
     }
 
@@ -366,10 +355,8 @@ export class MissileExhaustCue extends Cue {
       const ro = read * 3;
       const wo = write * 3;
       this.positions[wo] = this.positions[ro]! + this.velocities[ro]! * dt;
-      this.positions[wo + 1] =
-        this.positions[ro + 1]! + this.velocities[ro + 1]! * dt;
-      this.positions[wo + 2] =
-        this.positions[ro + 2]! + this.velocities[ro + 2]! * dt;
+      this.positions[wo + 1] = this.positions[ro + 1]! + this.velocities[ro + 1]! * dt;
+      this.positions[wo + 2] = this.positions[ro + 2]! + this.velocities[ro + 2]! * dt;
       this.velocities[wo] = this.velocities[ro]!;
       this.velocities[wo + 1] = this.velocities[ro + 1]!;
       this.velocities[wo + 2] = this.velocities[ro + 2]!;
@@ -392,10 +379,8 @@ export class MissileExhaustCue extends Cue {
 
   private flickerNozzle(): void {
     const pulse = 0.85 + 0.15 * Math.sin(this.elapsed * 18 + Math.random());
-    const coreMat = this.flameCore?.material as
-      THREE.MeshBasicMaterial | undefined;
-    const outerMat = this.flameOuter?.material as
-      THREE.MeshBasicMaterial | undefined;
+    const coreMat = this.flameCore?.material as THREE.MeshBasicMaterial | undefined;
+    const outerMat = this.flameOuter?.material as THREE.MeshBasicMaterial | undefined;
     if (coreMat) coreMat.opacity = BASE_CORE_OPACITY * pulse;
     if (outerMat) outerMat.opacity = BASE_OUTER_OPACITY * (0.9 + 0.1 * pulse);
     if (this.engineLight) {
@@ -405,10 +390,8 @@ export class MissileExhaustCue extends Cue {
   }
 
   private restoreNozzleDefaults(lightOn: boolean): void {
-    const coreMat = this.flameCore?.material as
-      THREE.MeshBasicMaterial | undefined;
-    const outerMat = this.flameOuter?.material as
-      THREE.MeshBasicMaterial | undefined;
+    const coreMat = this.flameCore?.material as THREE.MeshBasicMaterial | undefined;
+    const outerMat = this.flameOuter?.material as THREE.MeshBasicMaterial | undefined;
     if (coreMat) coreMat.opacity = BASE_CORE_OPACITY;
     if (outerMat) outerMat.opacity = BASE_OUTER_OPACITY;
     if (this.engineLight) {
@@ -420,7 +403,6 @@ export class MissileExhaustCue extends Cue {
 ```
 
 **Implementation notes:**
-
 - Per-particle opacity via a single `PointsMaterial` is approximate; acceptable for soft smoke (no custom shader).
 - `ComponentType.Transform` must match the playground export used by `BeamCue.getBeamAnchor`.
 
@@ -460,12 +442,10 @@ git commit -m "feat(missiles): add MissileExhaustCue for smoke trails and nozzle
 ### Task 3: Dispatch exhaust cue on missile spawn
 
 **Files:**
-
 - Create: `abilities-playground/src/hooks/dispatchMissileExhaustCue.ts`
 - Modify: `abilities-playground/src/hooks/MissileVolley.ts`
 
 **Interfaces:**
-
 - Consumes: `MissileExhaustCue` registration from Task 2; `pools.spawn` returns `MissileEntity`
 - Produces: each spawned missile immediately dispatches `{ cueId: 'Cue.Missile.Exhaust', sourceEntityId: missile.id, ... }` on the world event bus
 
@@ -485,7 +465,7 @@ export const MISSILE_EXHAUST_CUE_ID = 'Cue.Missile.Exhaust';
 export function dispatchMissileExhaustCue(
   world: GameWorld,
   missileId: number,
-  tick: number
+  tick: number,
 ): void {
   const event: GameplayCueDispatchedEvent = {
     tick,
@@ -528,7 +508,6 @@ npm run dev
 ```
 
 In-game checklist:
-
 - Soft warm nozzle glow on flying missiles
 - Gray smoke trails that linger ~1.5–2.5s
 - Impact cue still plays
@@ -545,18 +524,18 @@ git commit -m "feat(missiles): dispatch exhaust cue when volley missiles spawn"
 
 ## Spec coverage checklist
 
-| Spec requirement                                          | Task                          |
-| --------------------------------------------------------- | ----------------------------- |
-| Soft realistic layered nozzle + PointLight                | Task 1                        |
-| `userData` refs for cue flicker                           | Task 1                        |
-| `MissileExhaustCue` with world-space smoke, 1.5–2.5s life | Task 2                        |
-| Soft flicker, stop emit on inactive, fade then finish     | Task 2                        |
-| Register cue factory + export                             | Task 2                        |
-| Dispatch on spawn                                         | Task 3                        |
-| Non-deterministic smoke only in presentation              | Tasks 2–3                     |
-| No sim/FP changes                                         | All tasks (presentation-only) |
-| Cue does not dispose mesh flame/light                     | Task 2 `dispose`              |
-| Verify visually in playground                             | Task 3                        |
+| Spec requirement | Task |
+| --- | --- |
+| Soft realistic layered nozzle + PointLight | Task 1 |
+| `userData` refs for cue flicker | Task 1 |
+| `MissileExhaustCue` with world-space smoke, 1.5–2.5s life | Task 2 |
+| Soft flicker, stop emit on inactive, fade then finish | Task 2 |
+| Register cue factory + export | Task 2 |
+| Dispatch on spawn | Task 3 |
+| Non-deterministic smoke only in presentation | Tasks 2–3 |
+| No sim/FP changes | All tasks (presentation-only) |
+| Cue does not dispose mesh flame/light | Task 2 `dispose` |
+| Verify visually in playground | Task 3 |
 
 ## Self-review notes
 

@@ -42,8 +42,7 @@ describe('getEntityPosition', () => {
     const system = new PhysicsSystem(createPhysicsConfig());
     system.init(context);
     const physicsStore = entityManager.getOrCreateSoAStore(PhysicsSoASchema);
-    const transformStore =
-      entityManager.getOrCreateSoAStore(TransformSoASchema);
+    const transformStore = entityManager.getOrCreateSoAStore(TransformSoASchema);
 
     physicsStore.add(1, {
       velocityX: FP.ToRaw(FP._0),
@@ -75,8 +74,7 @@ describe('getEntityPosition', () => {
     physicsSystem.init(context);
 
     const physicsStore = entityManager.getOrCreateSoAStore(PhysicsSoASchema);
-    const transformStore =
-      entityManager.getOrCreateSoAStore(TransformSoASchema);
+    const transformStore = entityManager.getOrCreateSoAStore(TransformSoASchema);
 
     physicsStore.add(2, {
       velocityX: FP.ToRaw(FP._0),

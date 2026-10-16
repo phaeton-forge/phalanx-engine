@@ -173,6 +173,11 @@ Entries collected per package until the synchronized 0.3.0 release
   `onTick`. `setController(slot, mode, { fromTick?, policy? })` logs a
   system command (player id `system`) applied at the start of `fromTick`,
   before game commands, on live play, restore, fast-forward and replay.
+  `runsOn` is taken from the bot slot, or is `server` when the runner has a
+  server peer and `local` otherwise; a peer that does not host it rejects
+  with `not authoritative`. `restore` sets the next system `q` to one past
+  the max system `q` in the log and checkpoint. `start` throws if a slot
+  has `runsOn: 'server'` and the match has no server peer.
   `inputDelayTicks` defaults to 2; `gameId` and `simVersion` are filled
   from the definition. `ENGINE_SNAPSHOT_FORMAT` is 2 (format 1 is rejected).
   Initial GAS `pendingAdd` effects are reseeded by `onEnable`; restore

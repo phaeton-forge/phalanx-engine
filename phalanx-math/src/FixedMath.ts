@@ -417,16 +417,16 @@ export const FPVector2 = {
   // ============ Constants ============
 
   /** Zero vector */
-  Zero: { x: FP._0, y: FP._0 },
+  Zero: { x: FP._0, y: FP._0 } as FPVector2,
 
   /** One vector (1, 1) */
-  One: { x: FP._1, y: FP._1 },
+  One: { x: FP._1, y: FP._1 } as FPVector2,
 
   /** Up direction (0, 1) - Unity convention */
-  Up: { x: FP._0, y: FP._1 },
+  Up: { x: FP._0, y: FP._1 } as FPVector2,
 
   /** Right direction (1, 0) - Unity convention */
-  Right: { x: FP._1, y: FP._0 },
+  Right: { x: FP._1, y: FP._0 } as FPVector2,
 
   // ============ Operations ============
 
@@ -537,19 +537,19 @@ export const FPVector3 = {
   // ============ Constants ============
 
   /** Zero vector */
-  Zero: { x: FP._0, y: FP._0, z: FP._0 },
+  Zero: { x: FP._0, y: FP._0, z: FP._0 } as FPVector3,
 
   /** One vector (1, 1, 1) */
-  One: { x: FP._1, y: FP._1, z: FP._1 },
+  One: { x: FP._1, y: FP._1, z: FP._1 } as FPVector3,
 
   /** Up direction (0, 1, 0) - Unity convention */
-  Up: { x: FP._0, y: FP._1, z: FP._0 },
+  Up: { x: FP._0, y: FP._1, z: FP._0 } as FPVector3,
 
   /** Right direction (1, 0, 0) - Unity convention */
-  Right: { x: FP._1, y: FP._0, z: FP._0 },
+  Right: { x: FP._1, y: FP._0, z: FP._0 } as FPVector3,
 
   /** Forward direction (0, 0, 1) - Unity convention */
-  Forward: { x: FP._0, y: FP._0, z: FP._1 },
+  Forward: { x: FP._0, y: FP._0, z: FP._1 } as FPVector3,
 
   // ============ Operations ============
 
