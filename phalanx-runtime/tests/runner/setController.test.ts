@@ -181,6 +181,42 @@ describe('setController', () => {
     expect(new Set(seqs).size).toBe(seqs.length);
   });
 
+  it('does not reuse a system q applied before the snapshot', () => {
+    const { runner, transport } = open();
+    keep(runner);
+    runner.start();
+    transport.step(4);
+    runner.setController(0, 'bot', { policy: 'walker', fromTick: 5 });
+    transport.step(3);
+    expect(runner.tick).toBe(6);
+    const history = runner.log
+      .entriesAfter(-1)
+      .filter((entry) => entry.playerId === 'system');
+    expect(history.map((entry) => entry.data.q)).toEqual([0]);
+    const bytes = runner.snapshot();
+
+    const copyTransport = LocalTransport.stepped();
+    const copy = keep(
+      new MatchRunner(TinyGame, config(), copyTransport, {
+        hashEveryTicks: 1,
+      })
+    );
+    copy.restore(bytes);
+    copy.setController(0, 'human', { fromTick: 8 });
+    copy.start();
+    copyTransport.step(2);
+
+    const fresh = copy.log
+      .entriesAfter(-1)
+      .filter((entry) => entry.playerId === 'system');
+    const merged = [...history, ...fresh].map(
+      (entry) => `${String(entry.tick)}/${String(entry.data.q)}`
+    );
+    expect(fresh.length).toBe(1);
+    expect(new Set(merged).size).toBe(merged.length);
+    expect(merged).toEqual(['5/0', '8/1']);
+  });
+
   it('stamps runsOn from the server peer, not the caller side alone', () => {
     const transport = LocalTransport.stepped();
     const runner = keep(

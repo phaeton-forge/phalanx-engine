@@ -25,7 +25,6 @@ export {
   GameWorld,
   GameWorldEvents,
   Entity,
-  resetEntityIdCounter,
   getEntityIdCounter,
   IComponent,
   createComponentTypeRegistry,

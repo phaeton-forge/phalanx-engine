@@ -491,7 +491,6 @@ export class MatchRunner<G extends AnyGameDefinition> {
     ) {
       this.holdCheckpoint(decodeInputCheckpoint(decoded.inputCheckpoint));
     }
-    this.syncSystemSeq();
     if (this.transport instanceof LocalTransport) {
       this.transport.clearPending();
       this.transport.seek(decoded.header.tick + 1);
@@ -738,6 +737,7 @@ export class MatchRunner<G extends AnyGameDefinition> {
     this.commandLog.appendTick(tick, entries);
     this.noteDelivered(entries);
     this.noteLocalSeq(entries);
+    this.noteSystemSeq(entries);
     this.applyEntries(tick, entries);
     this.provider.emitTick(tick);
     const outcome = this.definition.checkOutcome(this.sim);
@@ -980,20 +980,6 @@ export class MatchRunner<G extends AnyGameDefinition> {
     }
   }
 
-  /** Next system `q` is past every system record still in the log or checkpoint. */
-  private syncSystemSeq(): void {
-    let max = -1;
-    const consider = (entry: LogEntry): void => {
-      if (entry.playerId !== SYSTEM_PLAYER_ID) return;
-      if (entry.data.q > max) max = entry.data.q;
-    };
-    for (const entry of this.commandLog.entriesAfter(-1)) consider(entry);
-    for (const entries of this.pendingByTick.values()) {
-      for (const entry of entries) consider(entry);
-    }
-    this.systemSeq = max + 1;
-  }
-
   private resetModes(): void {
     this.modes.clear();
     for (const slot of this.config.slots) {
@@ -1195,6 +1181,18 @@ export class MatchRunner<G extends AnyGameDefinition> {
     }
   }
 
+  /**
+   * A replayed system command may sit at or past the restored counter
+   * (the log tail after the snapshot). The next assignment stays above it.
+   */
+  private noteSystemSeq(entries: readonly LogEntry[]): void {
+    for (const entry of entries) {
+      if (entry.playerId !== SYSTEM_PLAYER_ID) continue;
+      const next = entry.data.q + 1;
+      if (next > this.systemSeq) this.systemSeq = next;
+    }
+  }
+
   /** Catch-up applies logged human commands without going through `enqueue`. */
   private noteLocalSeq(entries: readonly LogEntry[]): void {
     for (const entry of entries) {
@@ -1222,6 +1220,7 @@ export class MatchRunner<G extends AnyGameDefinition> {
     for (const seq of checkpoint.nextSeq) {
       if (this.ownsSlot(seq.slot)) this.nextSeq.set(seq.slot, seq.nextSeq);
     }
+    this.systemSeq = checkpoint.systemSeq;
     this.unsent = unsent;
   }
 
@@ -1270,6 +1269,7 @@ export class MatchRunner<G extends AnyGameDefinition> {
     const inputCheckpoint = encodeInputCheckpoint({
       pending: this.pendingBatches(),
       nextSeq: this.sequenceSnapshot(),
+      systemSeq: this.systemSeq,
     });
     return encodeSnapshot(
       {

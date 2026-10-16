@@ -47,8 +47,8 @@ not logged. A human command for a bot-controlled slot is rejected with
 The payload `runsOn` comes from the bot slot, or is `server` when this runner
 has a server peer (`side: 'server'` or transport kind `server-peer`) and
 `local` otherwise. A peer that does not host that `runsOn` rejects the call
-with `not authoritative`. After `restore`, the next system `q` is one past
-the highest system `q` in the log and the input checkpoint. `start` throws
+with `not authoritative`. The input checkpoint stores the next system `q` outside the digest, so a
+new runner restored after an applied controller change does not reuse it. `start` throws
 when a slot has `runsOn: 'server'` and the match has no server peer.
 
 `GameSystem.world` is the world. `each` passes one reused view; do not store

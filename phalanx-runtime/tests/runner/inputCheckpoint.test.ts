@@ -22,8 +22,10 @@ function roundTrip(payload: JsonValue): JsonValue {
   const checkpoint: InputCheckpoint = {
     pending: [{ tick: 3, entries: [entry(payload)] }],
     nextSeq: [{ slot: 0, nextSeq: 2 }],
+    systemSeq: 4,
   };
   const decoded = decodeInputCheckpoint(encodeInputCheckpoint(checkpoint));
+  expect(decoded.systemSeq).toBe(4);
   return decoded.pending[0]?.entries[0]?.data.p ?? null;
 }
 
