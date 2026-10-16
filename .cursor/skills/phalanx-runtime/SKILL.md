@@ -85,14 +85,23 @@ Call these inside the game's own `GameState`, in this order on restore:
 - GAS: `section('gas', 1)`. Per-world runtime via `exportRuntimeState` /
   `importRuntimeState` (instance id counter, activation requests,
   `currentTick`, resolved activations). The cue buffer is omitted.
-  Entities that have a GAS component are written ascending by id, with a
-  flag for which components exist so lazy ones are created on read.
-  Effect queue and `pendingAdd` stay in array order. Ability sets, tags,
-  ad-hoc tags and grant counts stay in insertion order. `setByCaller` keys
-  are sorted; values are a safe integer, bigint, string, boolean, or
-  FixedPoint. Anything else throws. `dirty` is stored. There is no
-  `stacks` field and no cooldown component. Continuation tests compare
-  `digestBytes` of the helper bytes, not `StateHasher`.
+  Registered entities that have a GAS component are written ascending by
+  id, with a flag for which components exist so lazy ones are created on
+  read. Free-list entities are omitted. `createAbilitySystem` clears their
+  effect queue, pending adds, tags, ad-hoc tags, and grants when they
+  return to the pool, and `readPools` runs that hook again. Attribute
+  values and the equipped ability set stay on the component; `onSpawn`
+  must rewrite them. Effect queue and `pendingAdd` stay in array order.
+  Ability sets, tags, ad-hoc tags and grant counts stay in insertion
+  order. `setByCaller` keys are sorted; values are a safe integer, bigint,
+  string, boolean, or FixedPoint. Anything else throws. Fixed-point
+  `base` and `precision` are both `i64`, matching broadphase centers.
+  `readAbilities` parses the section before it mutates. An unknown ability
+  id or effect def id throws with the entity id. The instance-id counter
+  must be `>=` every queued effect instance id (pending adds have none).
+  `dirty` is stored. There is no `stacks` field and no cooldown component.
+  Continuation tests compare `digestBytes` of the helper bytes, not
+  `StateHasher`.
 - Broadphase: `getCenters()` for the `PhysicsWorld` on `context.physics`,
   plus a registered `PhysicsSystem` or `CollisionSystem` when that system
   has a different grid (`physicsSystem` / `collisionSystem`). Each center

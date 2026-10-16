@@ -266,7 +266,14 @@ Pooling is **engine-driven**. Game code calls exactly two APIs:
 - Lifecycle order is fixed and MUST NOT change:
   - spawn: `component.onSpawn()` → `entity.onSpawn(args)` → `addEntity()`
   - despawn: `removeEntity()` → `entity.onDespawn()` → `component.onDespawn()`
-    → release
+    → return-to-pool hooks → release
+- `createAbilitySystem` registers a return-to-pool hook
+  (`releasePooledAbilityState`). It clears the effect queue, `pendingAdd`,
+  tags, ad-hoc tags, and effect-grant counts. The hook is idempotent and
+  runs again when a restored free-list entity is parked. Attribute values
+  and the equipped ability set stay on the component. `onSpawn` must
+  rewrite tags and any attribute values the next life needs: a free-list
+  entity is not in the GAS snapshot.
 - `onSpawn(args)`: typed setter assignments only, **zero allocations**.
   `onDespawn()`: game-level teardown only, **zero allocations**, and **must be
   idempotent**.

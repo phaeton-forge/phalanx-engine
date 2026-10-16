@@ -37,6 +37,7 @@ import {
   AbilitySystemFacade,
   NO_SOURCE_ENTITY_ID,
 } from './AbilitySystemFacade.js';
+import { releasePooledAbilityState } from './releasePooledAbilityState.js';
 import type { AttributeValue } from './AbilitySystemFacade.js';
 import type { AbilitySystemDefinitions } from './defineAbilitySystem.js';
 
@@ -105,9 +106,13 @@ export interface AbilitySystem extends IAbilitySystem {
    *
    * `state.instanceId` must be >= every live effect instance id. A lower
    * integer is stored; keeping it above the live ids is the caller's
-   * responsibility.
+   * responsibility. `readAbilities` enforces that bound before it applies.
    */
   importRuntimeState(state: AbilityRuntimeState): void;
+  /** True when `abilityId` is in this world's ability registry. */
+  isAbilityRegistered(abilityId: string): boolean;
+  /** True when `effectId` is in this world's effect registry. */
+  isEffectRegistered(effectId: string): boolean;
   initComponent(init?: AbilitySystemComponentInit): AbilitySystemComponent;
   activateAbility(
     casterEntityId: number,
@@ -166,6 +171,12 @@ export function createAbilitySystem(
   // read this.abilities during system initialisation.
   world.context.abilities = abilitySystem;
 
+  // Free-list entities are omitted from the GAS snapshot. Clearing here
+  // makes a respawn after restore match a respawn that never snapshotted.
+  if (world.pools !== null) {
+    world.pools.addReturnToPoolHook(releasePooledAbilityState);
+  }
+
   return abilitySystem;
 }
 
@@ -199,6 +210,14 @@ class AbilitySystemImpl implements AbilitySystem {
 
   public importRuntimeState(state: AbilityRuntimeState): void {
     importAbilityRuntimeState(this.runtime, state, this.registries.abilities);
+  }
+
+  public isAbilityRegistered(abilityId: string): boolean {
+    return this.registries.abilities.has(abilityId);
+  }
+
+  public isEffectRegistered(effectId: string): boolean {
+    return this.registries.effects.has(effectId);
   }
 
   public constructor(

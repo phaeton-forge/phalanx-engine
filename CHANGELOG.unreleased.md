@@ -81,6 +81,13 @@ Entries collected per package until the synchronized 0.3.0 release
   type throws. `@phalanx-engine/abilities` is a dependency and a peer.
   Restore order is `spawnWithId`, `readPools`, `readSoAStores`,
   `readAbilities`, `readEntityIds`, `readRandom`, `readBroadphase`.
+  Fixed-point payloads in the GAS section store `base` and `precision` as
+  `i64`, matching broadphase centers. `readAbilities` parses and validates
+  the section before mutating: an unknown ability id or effect def id
+  throws with the entity id, and the instance-id counter must be `>=`
+  every queued effect instance id (pending adds have none). A failed read
+  leaves the world unchanged. Free-list entities are omitted because pool
+  despawn clears their queue, pending adds, tags, and grants.
 
 ## @phalanx-engine/ecs
 
@@ -99,6 +106,10 @@ Entries collected per package until the synchronized 0.3.0 release
 - `PoolManager.restore(typeKey, entitiesInCreationOrder, freeListIds)`
   replaces that pool's owned set and free list without creating entities.
   The next `spawn` pops the same id the free list would have returned.
+- `PoolManager.addReturnToPoolHook` runs after entity and component
+  despawn hooks (factory dormant pass, `despawn`, and
+  `runDormantHooks`). `readPools` parks a free-list entity through
+  `runDormantHooks`.
 - Built output is NodeNext ESM: relative specifiers end in `.js`, and
   directory imports (`./pool`, `./debug`) point at `index.js`, so Node can
   load the package without a bundler.
@@ -145,6 +156,17 @@ Entries collected per package until the synchronized 0.3.0 release
 - `importRuntimeState` rejects an `abilityId` that is not in the ability
   registry. `instanceId` must be `>=` every live effect instance id; that
   bound is the caller's responsibility (a lower integer is still stored).
+  `readAbilities` enforces the bound before it applies a snapshot.
+- **Interface change:** `AbilitySystem` now requires `isAbilityRegistered`
+  and `isEffectRegistered`.
+- Pooled entities lose transient GAS state on despawn.
+  `releasePooledAbilityState` clears the effect queue, `pendingAdd`, tags,
+  ad-hoc tags, and effect-grant counts. `createAbilitySystem` registers it
+  as a pool return hook. Attribute values and the equipped ability set
+  stay on the component; `onSpawn` must rewrite tags and attributes the
+  next life needs. The hook also runs on the factory's initial dormant
+  pass, so constructor-seeded tags and pending effects do not survive
+  until `onSpawn`.
 - Fixed-point fields on a restored `providedTarget` are recognized by
   shape (`base` and `precision` bigints), not by `instanceof FixedPoint`,
   then reconstructed as a local `FixedPoint` so arithmetic methods exist.

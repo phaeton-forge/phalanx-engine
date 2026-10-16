@@ -1,8 +1,4 @@
-import {
-  isPoolableComponent,
-  type Entity,
-  type GameWorld,
-} from '@phalanx-engine/ecs';
+import type { Entity, GameWorld } from '@phalanx-engine/ecs';
 import type { StateReader, StateWriter } from '../state/StateIO.js';
 import {
   assertSectionVersion,
@@ -135,11 +131,14 @@ function readPoolRecords(r: StateReader): PoolRecord[] {
  * (`dispose`, never `addEntity`) before the saved ids are allocated.
  * Each owned id is then constructed with `PoolManager.createForRestore`
  * (the raw factory: no `onSpawn` / `onDespawn`). Checked-out entities are
- * registered. Free-list entities are not, and `onDespawn` runs for them
- * so they match a despawned pool entry.
+ * registered. Free-list entities are not. `runDormantHooks` runs for them
+ * (`onDespawn`, component hooks, and return-to-pool hooks) so they match
+ * a despawned pool entry.
  *
- * That `onDespawn` already ran when the original entity was prewarmed or
- * despawned. It runs again on the restored instance. Keep it idempotent.
+ * Those hooks already ran when the original entity was prewarmed or
+ * despawned. They run again on the restored instance. Keep them
+ * idempotent. The ability return-to-pool hook clears the effect queue,
+ * pending adds, tags, and grants.
  *
  * `readEntityIds` still runs later and installs the saved high-water mark.
  * Prewarm and these allocations both move the counter; the saved mark wins.
@@ -218,20 +217,16 @@ function createPooledEntity(
 /**
  * Match despawn membership for a restored free-list entity: drop its SoA
  * row and run dormant hooks. `PoolManager.restore` already recorded the
- * free-list order, so this does not call `release`. `onDespawn` runs here
- * even though the saved entity was already dormant.
+ * free-list order, so this does not call `release`. Hooks run here even
+ * though the saved entity was already dormant.
  */
 function parkFreeEntity(world: GameWorld, entity: Entity): void {
   if (world.entityManager.getEntity(entity.id) !== undefined) {
     world.entityManager.removeEntity(entity);
   }
-  const hooks = entity as Entity & { onDespawn?: () => void };
-  if (typeof hooks.onDespawn === 'function') {
-    hooks.onDespawn();
+  const pools = world.pools;
+  if (pools === null) {
+    throw new Error('readPools: world has no pools');
   }
-  for (const component of entity.getComponents().values()) {
-    if (isPoolableComponent(component)) {
-      component.onDespawn();
-    }
-  }
+  pools.runDormantHooks(entity);
 }

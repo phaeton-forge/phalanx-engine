@@ -82,19 +82,35 @@ seed 0), `canonicalConfigBytes` / `configHash`,
 
 `writeAbilities` stores the per-world runtime from `exportRuntimeState`
 (instance-id counter, activation queue, `currentTick`, resolved
-activations). The cue buffer is not included. Each entity that has a GAS
-component is written in ascending id order, with flags so lazy components
-are created on read. Attribute `base` / `current` are raw `i64`s and
-`dirty` is a `u8`. The effect queue and `pendingAdd` keep array order.
-Granted abilities, tags, ad-hoc tags and effect-grant counts keep
-insertion order. `setByCaller` keys are sorted; a value must be a safe
-integer, bigint, string, boolean, or FixedPoint, and any other type
-throws. Cooldowns are effects and tags. There is no `stacks` field.
+activations). The cue buffer is not included. Each registered entity that
+has a GAS component is written in ascending id order, with flags so lazy
+components are created on read. Free-list entities are omitted: returning
+one to the pool clears its effect queue, pending adds, tags, ad-hoc tags,
+and effect-grant counts (`releasePooledAbilityState`). Attribute values
+and the equipped ability set stay on the component, so `onSpawn` must
+rewrite them for the next life. Attribute `base` / `current` are raw
+`i64`s and `dirty` is a `u8`. Fixed-point payloads (`providedTarget`,
+`capturedMagnitudes`, `setByCaller`) store raw `base` and `precision` as
+`i64`, the same encoding as broadphase centers. The effect queue and
+`pendingAdd` keep array order. Granted abilities, tags, ad-hoc tags and
+effect-grant counts keep insertion order. `setByCaller` keys are sorted;
+a value must be a safe integer, bigint, string, boolean, or FixedPoint,
+and any other type throws. Cooldowns are effects and tags. There is no
+`stacks` field.
+
+`readAbilities` parses and validates the whole `gas` section before it
+changes the world. An ability id or effect def id that is not in this
+world's registries throws, and the message includes the entity id. The
+instance-id counter must be `>=` every instance id in an effect queue.
+Pending adds have no instance id, so they do not raise that floor. A
+failed read leaves the world as it was.
 
 `readPools` calls `PoolManager.createForRestore` for each owned id, then
 `restore`. Prewarmed free entities from `world.start()` are discarded
-first. Free-list entities receive `onDespawn` again on the restored
-instance; keep that hook idempotent. `readEntityIds` then installs the
+first. Free-list entities receive dormant hooks again on the restored
+instance (`onDespawn`, component hooks, and return-to-pool hooks,
+including the GAS reset); keep those hooks idempotent. `readEntityIds`
+then installs the
 saved counter. Pool type keys stay in registration order. RNG state is
 `getState` / `setState` (four int32 words). Abilities is a dependency and
 a peer. Physics and math are peers; physics is optional.

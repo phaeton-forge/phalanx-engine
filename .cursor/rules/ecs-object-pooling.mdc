@@ -45,8 +45,12 @@ Game code calls only `pools.spawn(typeKey, args)` and `pools.despawn(entity)`.
 
 - Spawn: component `onSpawn()` (restore rows to defaults) → entity `onSpawn(args)`
   (typed setters) → `entityManager.addEntity()`.
-- Despawn (exact inverse): `entityManager.removeEntity()` → entity `onDespawn()`
-  → component `onDespawn()` → return to pool.
+- Despawn: `entityManager.removeEntity()` → entity `onDespawn()`
+  → component `onDespawn()` → return-to-pool hooks → return to pool.
+- `createAbilitySystem` registers a return-to-pool hook that drops pooled
+  GAS state (effect queue, pending adds, tags, ad-hoc tags, grants). GAS
+  components stay plain data; they do not implement `IPoolableComponent`.
+  Attribute values and the equipped ability set are left for `onSpawn`.
 - This order must stay identical across all clients — it is part of lockstep
   determinism. Component hook order = component insertion order = constructor
   execution order. Do not introduce nondeterministic iteration.

@@ -453,7 +453,9 @@ Use `pipeline: 'effects-retain-cues'` to assert on `abilities.gameplayCueBuffer`
 
 ## Runtime snapshot
 
-`InstanceIdCounter.set(n)` accepts any integer `>= 0` (a restore may move the mark down). The caller must pass a value `>=` every live effect instance id. `abilities.exportRuntimeState()` / `importRuntimeState(state)` copy the instance-id counter, the activation queue, `currentTick`, and resolved activations. Both methods are required on `AbilitySystem`. `importRuntimeState` rejects an unregistered `abilityId`, does not clear the cue buffer, and accepts a FixedPoint by shape (`base` and `precision` bigints), then builds a local `FixedPoint` so a second copy of `@phalanx-engine/math` still restores and `FP.Sub` works.
+`InstanceIdCounter.set(n)` accepts any integer `>= 0` (a restore may move the mark down). The caller must pass a value `>=` every live effect instance id. `abilities.exportRuntimeState()` / `importRuntimeState(state)` copy the instance-id counter, the activation queue, `currentTick`, and resolved activations. Both methods are required on `AbilitySystem`. `importRuntimeState` rejects an unregistered `abilityId`, does not clear the cue buffer, and accepts a FixedPoint by shape (`base` and `precision` bigints), then builds a local `FixedPoint` so a second copy of `@phalanx-engine/math` still restores and `FP.Sub` works. `isAbilityRegistered` / `isEffectRegistered` query this world's registries.
+
+Pooled entities lose transient GAS state on despawn. `createAbilitySystem` registers `releasePooledAbilityState` on the pool: the effect queue, `pendingAdd`, tags, ad-hoc tags, and effect-grant counts are cleared when the entity returns to the pool (including the factory's initial dormant pass, so constructor-seeded tags and pending effects do not survive until `onSpawn`). The hook is idempotent and runs again for a restored free-list entity. Attribute values and the equipped ability set stay on the component. Re-seed tags and any attribute values the next life needs from `onSpawn`, because a free-list entity is not in the GAS snapshot.
 
 ## Related skills
 

@@ -14,7 +14,7 @@ import type {
   ProvidedTarget,
   ResolvedAbilityActivationRecord,
 } from '@phalanx-engine/abilities';
-import { FP, type FixedPoint } from '@phalanx-engine/math';
+import { FixedPoint } from '@phalanx-engine/math';
 import type { StateReader, StateWriter } from '../state/StateIO.js';
 import {
   assertSectionVersion,
@@ -48,9 +48,10 @@ import {
  *   The task notes keep that order instead of sorting by tag string.
  * - `AbilitySystemComponent.abilities` in Set insertion order.
  * - `setByCaller` keys sorted by UTF-16 code unit. Values: safe integer,
- *   bigint, string, boolean, or a FixedPoint (`base` + precision). Any
- *   other value throws. Null and undefined payloads share one absent tag
- *   and come back as `null`.
+ *   bigint, string, boolean, or a FixedPoint (raw `base` and `precision`,
+ *   both `i64`, the same encoding as broadphase centers). Any other value
+ *   throws. Null and undefined payloads share one absent tag and come
+ *   back as `null`.
  *
  * Skipped (presentation, scratch, or definitions re-registered by
  * `createWorld`):
@@ -64,6 +65,16 @@ import {
  *   duration effects plus tags.
  *
  * Destroyed entities are omitted, matching ability-system queries.
+ * Free-list entities are not registered, so they are omitted too. Returning
+ * an entity to the pool clears its effect queue, pending adds, tags, and
+ * grants (`releasePooledAbilityState`), which is why that omission does
+ * not drop simulation state. Attribute values and the equipped ability
+ * set stay on the component; `onSpawn` rewrites the next life.
+ *
+ * `readAbilities` parses and validates the whole section before it mutates
+ * the world. An unknown ability id or effect def id throws with the entity
+ * id. The instance-id counter must be >= every queued effect instance id.
+ * Pending adds have no instance id, so they do not raise that floor.
  */
 
 const GAS_SECTION = 'gas';
@@ -99,6 +110,8 @@ const VALUE_FP = 5;
 interface AbilityStateIO {
   exportRuntimeState(): AbilityRuntimeState;
   importRuntimeState(state: AbilityRuntimeState): void;
+  isAbilityRegistered(abilityId: string): boolean;
+  isEffectRegistered(effectId: string): boolean;
 }
 
 interface FixedPointShape {
@@ -118,7 +131,9 @@ function hasAbilityStateIO(value: object): value is AbilityStateIO {
   const record = value as Record<string, unknown>;
   return (
     typeof record['exportRuntimeState'] === 'function' &&
-    typeof record['importRuntimeState'] === 'function'
+    typeof record['importRuntimeState'] === 'function' &&
+    typeof record['isAbilityRegistered'] === 'function' &&
+    typeof record['isEffectRegistered'] === 'function'
   );
 }
 
@@ -139,6 +154,12 @@ function componentFlags(entity: Entity): number {
   return flags;
 }
 
+/**
+ * Registered entities that carry a GAS component.
+ *
+ * Free-list entities are absent from the manager. Their queue, pending
+ * adds, tags, and grants were cleared on the way back to the pool.
+ */
 function gasEntities(world: GameWorld): Entity[] {
   const found: Entity[] = [];
   for (const entity of world.entityManager.getAllEntities()) {
@@ -173,21 +194,31 @@ function asFixedPoint(value: unknown): FixedPointShape | undefined {
   return { base, precision };
 }
 
+/**
+ * Raw base and the value's own precision, both `i64`.
+ *
+ * Same encoding as `writeBroadphase`. `FP.FromRaw` would default a missing
+ * precision to 5 and is not used here.
+ */
 function writeFixedPoint(w: StateWriter, fp: FixedPointShape): void {
-  const precision = Number(fp.precision);
-  if (!Number.isSafeInteger(precision) || precision < 0) {
+  if (fp.precision < 0n) {
     throw new Error(
       'writeAbilities: fixed-point precision is not a non-negative integer'
     );
   }
   w.i64(fp.base);
-  w.varint(precision);
+  w.i64(fp.precision);
 }
 
 function readFixedPoint(r: StateReader): FixedPoint {
   const base = r.i64();
-  const precision = r.varint();
-  return FP.FromRaw(base, precision);
+  const precision = r.i64();
+  if (precision < 0n) {
+    throw new Error(
+      'readAbilities: fixed-point precision is not a non-negative integer'
+    );
+  }
+  return new FixedPoint(base, precision);
 }
 
 function requireFixedPoint(value: unknown, label: string): FixedPointShape {
@@ -339,25 +370,54 @@ function writeAttributes(
   }
 }
 
-function readAttributeValues(
+interface ParsedAttributes {
+  readonly count: number;
+  readonly base: bigint[];
+  readonly current: bigint[];
+  readonly dirty: number[];
+}
+
+function readParsedAttributes(
   r: StateReader,
-  attributes: AttributesComponent,
-  count: number,
-  entityId: number
-): void {
+  entityId: number,
+  existing: AttributesComponent | undefined
+): ParsedAttributes {
+  const count = r.varint();
   if (
-    attributes.base.length !== count ||
-    attributes.current.length !== count ||
-    attributes.dirty.length !== count
+    existing !== undefined &&
+    (existing.base.length !== count ||
+      existing.current.length !== count ||
+      existing.dirty.length !== count)
   ) {
     throw new Error(
-      `readAbilities: attribute count ${String(count)} does not match component length ${String(attributes.base.length)} on entity ${String(entityId)}`
+      `readAbilities: attribute count ${String(count)} does not match component length ${String(existing.base.length)} on entity ${String(entityId)}`
     );
   }
+  const base: bigint[] = [];
+  const current: bigint[] = [];
+  const dirty: number[] = [];
   for (let index = 0; index < count; index += 1) {
-    attributes.base[index] = r.i64();
-    attributes.current[index] = r.i64();
-    attributes.dirty[index] = r.u8();
+    base.push(r.i64());
+    current.push(r.i64());
+    dirty.push(r.u8());
+  }
+  return { count, base, current, dirty };
+}
+
+function applyAttributes(
+  attributes: AttributesComponent,
+  parsed: ParsedAttributes
+): void {
+  for (let index = 0; index < parsed.count; index += 1) {
+    const base = parsed.base[index];
+    const current = parsed.current[index];
+    const dirty = parsed.dirty[index];
+    if (base === undefined || current === undefined || dirty === undefined) {
+      throw new Error('readAbilities: attribute index out of range');
+    }
+    attributes.base[index] = base;
+    attributes.current[index] = current;
+    attributes.dirty[index] = dirty;
   }
 }
 
@@ -402,7 +462,35 @@ function writeActiveEffect(
   writeCapturedMagnitudes(w, instance.capturedMagnitudes);
 }
 
-function readActiveEffect(r: StateReader): ActiveEffectInstance {
+function assertRegisteredEffect(
+  abilities: AbilityStateIO,
+  defId: string,
+  entityId: number
+): void {
+  if (!abilities.isEffectRegistered(defId)) {
+    throw new Error(
+      `readAbilities: effect '${defId}' is not registered on entity ${String(entityId)}`
+    );
+  }
+}
+
+function assertRegisteredAbility(
+  abilities: AbilityStateIO,
+  abilityId: string,
+  entityId: number
+): void {
+  if (!abilities.isAbilityRegistered(abilityId)) {
+    throw new Error(
+      `readAbilities: ability '${abilityId}' is not registered on entity ${String(entityId)}`
+    );
+  }
+}
+
+function readActiveEffect(
+  r: StateReader,
+  entityId: number,
+  abilities: AbilityStateIO
+): ActiveEffectInstance {
   const instance: ActiveEffectInstance = {
     instanceId: r.varint(),
     defId: r.str(),
@@ -412,6 +500,7 @@ function readActiveEffect(r: StateReader): ActiveEffectInstance {
     enteredOnTick: r.i32(),
     capturedMagnitudes: readCapturedMagnitudes(r),
   };
+  assertRegisteredEffect(abilities, instance.defId, entityId);
   return instance;
 }
 
@@ -525,20 +614,35 @@ function writeActiveEffects(
   });
 }
 
-function readActiveEffects(
+interface ParsedEffects {
+  readonly queue: ActiveEffectInstance[];
+  readonly pendingAdd: PendingEffectAdd[];
+}
+
+function readParsedEffects(
   r: StateReader,
-  effects: ActiveEffectsComponent
-): void {
-  const queue = r.list((item) => readActiveEffect(item));
-  const pending = r.list((item): PendingEffectAdd => {
+  entityId: number,
+  abilities: AbilityStateIO
+): ParsedEffects {
+  const queue = r.list((item) => readActiveEffect(item, entityId, abilities));
+  const pendingAdd = r.list((item): PendingEffectAdd => {
+    const defId = item.str();
+    assertRegisteredEffect(abilities, defId, entityId);
     return {
-      defId: item.str(),
+      defId,
       sourceEntityId: item.i32(),
       setByCaller: readSetByCaller(item),
     };
   });
-  effects.queue.splice(0, effects.queue.length, ...queue);
-  effects.pendingAdd.splice(0, effects.pendingAdd.length, ...pending);
+  return { queue, pendingAdd };
+}
+
+function applyEffects(
+  effects: ActiveEffectsComponent,
+  parsed: ParsedEffects
+): void {
+  effects.queue.splice(0, effects.queue.length, ...parsed.queue);
+  effects.pendingAdd.splice(0, effects.pendingAdd.length, ...parsed.pendingAdd);
 }
 
 function writeTags(w: StateWriter, tags: GameplayTagsComponent): void {
@@ -554,20 +658,31 @@ function writeTags(w: StateWriter, tags: GameplayTagsComponent): void {
   });
 }
 
-function readTags(r: StateReader, tags: GameplayTagsComponent): void {
-  const tagList = r.list((item) => item.str());
-  const adHoc = r.list((item) => item.str());
+interface ParsedTags {
+  readonly tags: string[];
+  readonly adHocTags: string[];
+  readonly grants: { readonly tag: string; readonly count: number }[];
+}
+
+function readParsedTags(r: StateReader): ParsedTags {
+  const tags = r.list((item) => item.str());
+  const adHocTags = r.list((item) => item.str());
   const grants = r.list((item) => {
     const tag = item.str();
     return { tag, count: item.varint() };
   });
+  return { tags, adHocTags, grants };
+}
+
+function applyTags(tags: GameplayTagsComponent, parsed: ParsedTags): void {
   tags.tags.clear();
   tags.adHocTags.clear();
   tags.effectGrantCounts.clear();
-  for (const tag of tagList) tags.tags.add(tag);
-  for (const tag of adHoc) tags.adHocTags.add(tag);
-  for (const grant of grants)
+  for (const tag of parsed.tags) tags.tags.add(tag);
+  for (const tag of parsed.adHocTags) tags.adHocTags.add(tag);
+  for (const grant of parsed.grants) {
     tags.effectGrantCounts.set(grant.tag, grant.count);
+  }
 }
 
 function writeAbilitySystem(
@@ -582,75 +697,40 @@ function writeAbilitySystem(
   writeTags(w, component.tags);
 }
 
-function readAbilitySystem(
+interface ParsedAbilitySystem {
+  readonly abilityIds: string[];
+  readonly attributes: ParsedAttributes;
+  readonly effects: ParsedEffects;
+  readonly tags: ParsedTags;
+}
+
+function readParsedAbilitySystem(
   r: StateReader,
   entity: Entity,
-  world: GameWorld
-): void {
-  const abilityIds = r.list((item) => item.str());
-  const count = r.varint();
-  let component = entity.getComponent<AbilitySystemComponent>(
+  abilities: AbilityStateIO
+): ParsedAbilitySystem {
+  const abilityIds = r.list((item) => {
+    const abilityId = item.str();
+    assertRegisteredAbility(abilities, abilityId, entity.id);
+    return abilityId;
+  });
+  const existing = entity.getComponent<AbilitySystemComponent>(
     AbilitiesComponentType.AbilitySystem
   );
-  if (component === undefined) {
-    component = new AbilitySystemComponent(count);
-    entity.addComponent(component);
-    world.entityManager.onComponentAdded(entity, component.type);
-  }
-  readAttributeValues(r, component.attributes, count, entity.id);
-  readActiveEffects(r, component.activeEffects);
-  readTags(r, component.tags);
-  component.abilities.clear();
-  for (const abilityId of abilityIds) component.abilities.add(abilityId);
+  const attributes = readParsedAttributes(r, entity.id, existing?.attributes);
+  const effects = readParsedEffects(r, entity.id, abilities);
+  const tags = readParsedTags(r);
+  return { abilityIds, attributes, effects, tags };
 }
 
-function readStandaloneAttributes(
+function readParsedStandaloneAttributes(
   r: StateReader,
-  entity: Entity,
-  world: GameWorld
-): void {
-  const count = r.varint();
-  let attributes = entity.getComponent<AttributesComponent>(
+  entity: Entity
+): ParsedAttributes {
+  const existing = entity.getComponent<AttributesComponent>(
     AbilitiesComponentType.Attributes
   );
-  if (attributes === undefined) {
-    attributes = new AttributesComponent(count);
-    entity.addComponent(attributes);
-    world.entityManager.onComponentAdded(entity, attributes.type);
-  }
-  readAttributeValues(r, attributes, count, entity.id);
-}
-
-function readStandaloneEffects(
-  r: StateReader,
-  entity: Entity,
-  world: GameWorld
-): void {
-  let effects = entity.getComponent<ActiveEffectsComponent>(
-    AbilitiesComponentType.ActiveEffects
-  );
-  if (effects === undefined) {
-    effects = new ActiveEffectsComponent();
-    entity.addComponent(effects);
-    world.entityManager.onComponentAdded(entity, effects.type);
-  }
-  readActiveEffects(r, effects);
-}
-
-function readStandaloneTags(
-  r: StateReader,
-  entity: Entity,
-  world: GameWorld
-): void {
-  let tags = entity.getComponent<GameplayTagsComponent>(
-    AbilitiesComponentType.GameplayTags
-  );
-  if (tags === undefined) {
-    tags = new GameplayTagsComponent();
-    entity.addComponent(tags);
-    world.entityManager.onComponentAdded(entity, tags.type);
-  }
-  readTags(r, tags);
+  return readParsedAttributes(r, entity.id, existing);
 }
 
 function writeEntityGas(w: StateWriter, entity: Entity): void {
@@ -703,11 +783,26 @@ function writeEntityGas(w: StateWriter, entity: Entity): void {
   }
 }
 
-function readEntityGas(
+interface ParsedEntityGas {
+  readonly entityId: number;
+  readonly flags: number;
+  readonly abilitySystem?: ParsedAbilitySystem;
+  readonly attributes?: ParsedAttributes;
+  readonly effects?: ParsedEffects;
+  readonly tags?: ParsedTags;
+}
+
+interface ParsedGas {
+  readonly runtime: AbilityRuntimeState;
+  readonly entities: ParsedEntityGas[];
+}
+
+function readParsedEntity(
   r: StateReader,
   world: GameWorld,
+  abilities: AbilityStateIO,
   seen: Set<number>
-): void {
+): ParsedEntityGas {
   const entityId = r.u32();
   if (seen.has(entityId)) {
     throw new Error(`readAbilities: duplicate entity ${String(entityId)}`);
@@ -729,12 +824,24 @@ function readEntityGas(
       `readAbilities: extra ${flagNames(extra)} on entity ${String(entityId)}`
     );
   }
-  if ((flags & HAS_ABILITY_SYSTEM) !== 0) readAbilitySystem(r, entity, world);
-  if ((flags & HAS_ATTRIBUTES) !== 0)
-    readStandaloneAttributes(r, entity, world);
-  if ((flags & HAS_ACTIVE_EFFECTS) !== 0)
-    readStandaloneEffects(r, entity, world);
-  if ((flags & HAS_GAMEPLAY_TAGS) !== 0) readStandaloneTags(r, entity, world);
+  // Property order is the byte order: ability system, then each standalone.
+  return {
+    entityId,
+    flags,
+    abilitySystem:
+      (flags & HAS_ABILITY_SYSTEM) !== 0
+        ? readParsedAbilitySystem(r, entity, abilities)
+        : undefined,
+    attributes:
+      (flags & HAS_ATTRIBUTES) !== 0
+        ? readParsedStandaloneAttributes(r, entity)
+        : undefined,
+    effects:
+      (flags & HAS_ACTIVE_EFFECTS) !== 0
+        ? readParsedEffects(r, entityId, abilities)
+        : undefined,
+    tags: (flags & HAS_GAMEPLAY_TAGS) !== 0 ? readParsedTags(r) : undefined,
+  };
 }
 
 /** `section('gas', 1)`: per-world runtime, then GAS entities by id. */
@@ -753,26 +860,156 @@ export function writeAbilities(w: StateWriter, world: GameWorld): void {
 }
 
 /**
- * Restores {@link writeAbilities}.
- *
- * Entities must already exist (`spawnWithId` / `readPools`). Components the
- * snapshot lists and the entity does not have yet are created. A component
- * the snapshot omits, or an entity the snapshot omits, throws.
+ * The counter must cover every effect instance id already in a queue.
+ * Pending adds do not carry an instance id; the next drain allocates one.
  */
-export function readAbilities(r: StateReader, world: GameWorld): void {
-  const abilities = abilityStateIO(world, 'readAbilities');
-  const seen = new Set<number>();
-  r.section(GAS_SECTION, (section, version) => {
-    assertSectionVersion('readAbilities', version);
-    abilities.importRuntimeState(readRuntime(section));
-    section.list((item) => {
-      readEntityGas(item, world, seen);
-      return 0;
-    });
-  });
+function assertInstanceIdBound(parsed: ParsedGas): void {
+  let max = -1;
+  let entityId = -1;
+  for (const entity of parsed.entities) {
+    const queues = [entity.abilitySystem?.effects.queue, entity.effects?.queue];
+    for (const queue of queues) {
+      if (queue === undefined) continue;
+      for (const effect of queue) {
+        if (effect.instanceId > max) {
+          max = effect.instanceId;
+          entityId = entity.entityId;
+        }
+      }
+    }
+  }
+  if (max >= 0 && parsed.runtime.instanceId < max) {
+    throw new Error(
+      `readAbilities: instanceId ${String(parsed.runtime.instanceId)} is below effect instance ${String(max)} on entity ${String(entityId)}`
+    );
+  }
+}
+
+function assertNoExtraGasEntities(
+  world: GameWorld,
+  seen: ReadonlySet<number>
+): void {
   for (const entity of gasEntities(world)) {
     if (!seen.has(entity.id)) {
       throw new Error(`readAbilities: extra entity ${String(entity.id)}`);
     }
+  }
+}
+
+function applyAbilitySystem(
+  world: GameWorld,
+  entity: Entity,
+  parsed: ParsedAbilitySystem
+): void {
+  let component = entity.getComponent<AbilitySystemComponent>(
+    AbilitiesComponentType.AbilitySystem
+  );
+  if (component === undefined) {
+    component = new AbilitySystemComponent(parsed.attributes.count);
+    entity.addComponent(component);
+    world.entityManager.onComponentAdded(entity, component.type);
+  }
+  applyAttributes(component.attributes, parsed.attributes);
+  applyEffects(component.activeEffects, parsed.effects);
+  applyTags(component.tags, parsed.tags);
+  component.abilities.clear();
+  for (const abilityId of parsed.abilityIds) {
+    component.abilities.add(abilityId);
+  }
+}
+
+function applyStandaloneAttributes(
+  world: GameWorld,
+  entity: Entity,
+  parsed: ParsedAttributes
+): void {
+  let attributes = entity.getComponent<AttributesComponent>(
+    AbilitiesComponentType.Attributes
+  );
+  if (attributes === undefined) {
+    attributes = new AttributesComponent(parsed.count);
+    entity.addComponent(attributes);
+    world.entityManager.onComponentAdded(entity, attributes.type);
+  }
+  applyAttributes(attributes, parsed);
+}
+
+function applyStandaloneEffects(
+  world: GameWorld,
+  entity: Entity,
+  parsed: ParsedEffects
+): void {
+  let effects = entity.getComponent<ActiveEffectsComponent>(
+    AbilitiesComponentType.ActiveEffects
+  );
+  if (effects === undefined) {
+    effects = new ActiveEffectsComponent();
+    entity.addComponent(effects);
+    world.entityManager.onComponentAdded(entity, effects.type);
+  }
+  applyEffects(effects, parsed);
+}
+
+function applyStandaloneTags(
+  world: GameWorld,
+  entity: Entity,
+  parsed: ParsedTags
+): void {
+  let tags = entity.getComponent<GameplayTagsComponent>(
+    AbilitiesComponentType.GameplayTags
+  );
+  if (tags === undefined) {
+    tags = new GameplayTagsComponent();
+    entity.addComponent(tags);
+    world.entityManager.onComponentAdded(entity, tags.type);
+  }
+  applyTags(tags, parsed);
+}
+
+function applyEntityGas(world: GameWorld, parsed: ParsedEntityGas): void {
+  const entity = world.entityManager.getEntity(parsed.entityId);
+  if (entity === undefined) {
+    throw new Error(`readAbilities: missing entity ${String(parsed.entityId)}`);
+  }
+  if (parsed.abilitySystem !== undefined) {
+    applyAbilitySystem(world, entity, parsed.abilitySystem);
+  }
+  if (parsed.attributes !== undefined) {
+    applyStandaloneAttributes(world, entity, parsed.attributes);
+  }
+  if (parsed.effects !== undefined) {
+    applyStandaloneEffects(world, entity, parsed.effects);
+  }
+  if (parsed.tags !== undefined) {
+    applyStandaloneTags(world, entity, parsed.tags);
+  }
+}
+
+/**
+ * Restores {@link writeAbilities}.
+ *
+ * The section is parsed and checked before any component or runtime field
+ * changes. Entities must already exist (`spawnWithId` / `readPools`).
+ * Components the snapshot lists and the entity does not have yet are
+ * created. A component the snapshot omits, or an entity the snapshot
+ * omits, throws. Ability ids and effect def ids must be in this world's
+ * registries. The instance-id counter must be >= every queued instance id.
+ */
+export function readAbilities(r: StateReader, world: GameWorld): void {
+  const abilities = abilityStateIO(world, 'readAbilities');
+  const seen = new Set<number>();
+  const parsed = r.section(GAS_SECTION, (section, version): ParsedGas => {
+    assertSectionVersion('readAbilities', version);
+    const runtime = readRuntime(section);
+    const entities = section.list((item) =>
+      readParsedEntity(item, world, abilities, seen)
+    );
+    return { runtime, entities };
+  });
+  assertInstanceIdBound(parsed);
+  assertNoExtraGasEntities(world, seen);
+  abilities.importRuntimeState(parsed.runtime);
+  for (const entity of parsed.entities) {
+    applyEntityGas(world, entity);
   }
 }

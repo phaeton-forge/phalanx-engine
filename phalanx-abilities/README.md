@@ -588,7 +588,13 @@ createAbilitySystem(world: GameWorld, config: CreateAbilitySystemConfig): Abilit
 | `removeEffectsByTag` / `removeEffectsByDefId` | Flag instances for removal next tick |
 | `tickSystems` | Register on `GameWorld` |
 | `exportRuntimeState()` / `importRuntimeState(state)` | Copy or restore the instance-id counter, activation queue, current tick, and resolved activations. The cue buffer is not included and is left untouched. `importRuntimeState` rejects an `abilityId` that is not registered. `instanceId` must be `>=` every live effect instance id (caller responsibility). These two methods are required on `AbilitySystem`. |
+| `isAbilityRegistered(id)` / `isEffectRegistered(id)` | Registry membership for this world. `readAbilities` uses them and throws with the entity id when a saved id is missing. |
+| `releasePooledAbilityState(entity)` | Clear the effect queue, `pendingAdd`, tags, ad-hoc tags, and effect-grant counts. `createAbilitySystem` registers this on the pool. Idempotent. Attribute values and the equipped ability set are left in place. |
 | `instanceIdCounter` | High-water mark. `InstanceIdCounter.set(n)` accepts any integer `>= 0`. The caller must keep it `>=` every live effect instance id. |
+
+### Pooling
+
+A pooled entity loses transient GAS state when it returns to the pool. The clear runs on the factory's initial dormant pass, on `pools.despawn`, and again when a snapshot restore parks a free-list entity. Constructor-seeded tags and pending effects therefore do not survive until `onSpawn`. Re-seed tags, and any attribute values the next life needs, from `onSpawn`. The equipped ability set and attribute buffers stay on the component. A free-list entity is not written by `writeAbilities`; the clear is what keeps a respawn after restore identical to a respawn that never snapshotted.
 
 Lower-level access: `AbilitySystemFacade` is exported for advanced wiring; most games use `createAbilitySystem` only.
 

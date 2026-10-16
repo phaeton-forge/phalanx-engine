@@ -4,6 +4,7 @@ import {
   GameWorld,
   SoAComponent,
   resetEntityIdCounter,
+  type IPoolableEntity,
 } from '@phalanx-engine/ecs';
 import { FP } from '@phalanx-engine/math';
 import {
@@ -389,6 +390,12 @@ describe('ability state helpers', () => {
     );
     component.tags.effectGrantCounts.set('State.Debuff.Burn', 2);
     component.tags.effectGrantCounts.set('State.Buff.Shield', 1);
+    abilities.importRuntimeState({
+      instanceId: 9,
+      currentTick: -1,
+      activationRequests: [],
+      resolvedActivationsThisTick: [],
+    });
 
     const bytes = saveGas(world);
     const restored = makeWorld();
@@ -617,4 +624,331 @@ describe('ability state helpers', () => {
       getActiveEffectsComponent(at(copies, 13))?.queue.length
     ).toBeGreaterThan(0);
   });
+
+  it('rejects an ability id or effect def id that is not registered', () => {
+    const queued = makeWorld();
+    const queuedEntity = new Entity();
+    queuedEntity.addComponent(queued.abilities.initComponent({}));
+    queued.world.entityManager.addEntity(queuedEntity);
+    const queuedEffects =
+      getAbilitySystemComponent(queuedEntity)?.activeEffects;
+    if (queuedEffects === undefined) throw new Error('missing effects');
+    queuedEffects.queue.push({
+      instanceId: 1,
+      defId: 'Effect.Missing',
+      remainingTicks: 4,
+      nextPeriodTick: 0,
+      sourceEntityId: -1,
+      enteredOnTick: 0,
+      capturedMagnitudes: null,
+    });
+    queued.abilities.importRuntimeState({
+      instanceId: 1,
+      currentTick: -1,
+      activationRequests: [],
+      resolvedActivationsThisTick: [],
+    });
+    const queuedBytes = saveGas(queued.world);
+    const queuedRestore = makeWorld();
+    const queuedShell = new Entity();
+    queuedShell.addComponent(queuedRestore.abilities.initComponent({}));
+    queuedRestore.world.entityManager.addEntity(queuedShell);
+    expect(() => loadGas(queuedBytes, queuedRestore.world)).toThrow(
+      /readAbilities: effect 'Effect.Missing' is not registered on entity 1/
+    );
+
+    const pending = makeWorld();
+    const pendingEntity = new Entity();
+    pendingEntity.addComponent(pending.abilities.initComponent({}));
+    pending.world.entityManager.addEntity(pendingEntity);
+    pending.abilities.applyEffect(pendingEntity.id, 'Effect.Burn', -1);
+    const pendingEffects =
+      getAbilitySystemComponent(pendingEntity)?.activeEffects;
+    const pendingEntry = pendingEffects?.pendingAdd[0];
+    if (pendingEntry === undefined) throw new Error('missing pending add');
+    pendingEntry.defId = 'Effect.AlsoMissing';
+    const pendingBytes = saveGas(pending.world);
+    const pendingRestore = makeWorld();
+    const pendingShell = new Entity();
+    pendingShell.addComponent(pendingRestore.abilities.initComponent({}));
+    pendingRestore.world.entityManager.addEntity(pendingShell);
+    expect(() => loadGas(pendingBytes, pendingRestore.world)).toThrow(
+      /readAbilities: effect 'Effect.AlsoMissing' is not registered on entity 1/
+    );
+
+    const granted = makeWorld();
+    const grantedEntity = new Entity();
+    grantedEntity.addComponent(
+      granted.abilities.initComponent({ abilities: ['Ability.Strike'] })
+    );
+    granted.world.entityManager.addEntity(grantedEntity);
+    getAbilitySystemComponent(grantedEntity)?.abilities.add('Ability.Missing');
+    const grantedBytes = saveGas(granted.world);
+    const grantedRestore = makeWorld();
+    const grantedShell = new Entity();
+    grantedShell.addComponent(grantedRestore.abilities.initComponent({}));
+    grantedRestore.world.entityManager.addEntity(grantedShell);
+    expect(() => loadGas(grantedBytes, grantedRestore.world)).toThrow(
+      /readAbilities: ability 'Ability.Missing' is not registered on entity 1/
+    );
+  });
+
+  it('does not apply the section when a later entity fails validation', () => {
+    const source = makeWorld();
+    source.abilities.importRuntimeState({
+      instanceId: 4,
+      currentTick: -1,
+      activationRequests: [],
+      resolvedActivationsThisTick: [],
+    });
+    const first = new Entity();
+    first.addComponent(
+      source.abilities.initComponent({
+        attributes: { Health: FP.FromInt(11) },
+        abilities: ['Ability.Strike'],
+      })
+    );
+    source.world.entityManager.addEntity(first);
+    const second = new Entity();
+    second.addComponent(
+      source.abilities.initComponent({ abilities: ['Ability.Burn'] })
+    );
+    source.world.entityManager.addEntity(second);
+    getAbilitySystemComponent(second)?.abilities.add('Ability.Missing');
+    const bytes = saveGas(source.world);
+
+    const restored = makeWorld();
+    const shellA = new Entity();
+    shellA.addComponent(
+      restored.abilities.initComponent({
+        attributes: { Health: FP.FromInt(99) },
+      })
+    );
+    restored.world.entityManager.addEntity(shellA);
+    const shellB = new Entity();
+    shellB.addComponent(restored.abilities.initComponent({}));
+    restored.world.entityManager.addEntity(shellB);
+
+    expect(() => loadGas(bytes, restored.world)).toThrow(
+      /readAbilities: ability 'Ability.Missing' is not registered on entity 2/
+    );
+    expect(
+      FP.Eq(
+        restored.abilities.getAttribute(shellA.id, 'Health').base,
+        FP.FromInt(99)
+      )
+    ).toBe(true);
+    expect(restored.abilities.instanceIdCounter).toBe(0);
+    expect(
+      getAbilitySystemComponent(shellB)?.abilities.has('Ability.Missing')
+    ).toBe(false);
+    expect(
+      getAbilitySystemComponent(shellA)?.abilities.has('Ability.Strike')
+    ).toBe(false);
+  });
+
+  it('rejects an instanceId counter below a queued effect and ignores pending adds', () => {
+    const low = makeWorld();
+    const entity = new Entity();
+    entity.addComponent(low.abilities.initComponent({}));
+    low.world.entityManager.addEntity(entity);
+    const effects = getAbilitySystemComponent(entity)?.activeEffects;
+    if (effects === undefined) throw new Error('missing effects');
+    effects.queue.push({
+      instanceId: 9,
+      defId: 'Effect.Burn',
+      remainingTicks: 3,
+      nextPeriodTick: 0,
+      sourceEntityId: -1,
+      enteredOnTick: 0,
+      capturedMagnitudes: null,
+    });
+    effects.pendingAdd.push({
+      defId: 'Effect.ArmorShred',
+      sourceEntityId: -1,
+      setByCaller: null,
+    });
+    const bytes = saveGas(low.world);
+    const restored = makeWorld();
+    const shell = new Entity();
+    shell.addComponent(restored.abilities.initComponent({}));
+    restored.world.entityManager.addEntity(shell);
+    expect(() => loadGas(bytes, restored.world)).toThrow(
+      /readAbilities: instanceId 0 is below effect instance 9 on entity 1/
+    );
+    expect(getAbilitySystemComponent(shell)?.activeEffects.queue).toHaveLength(
+      0
+    );
+    expect(restored.abilities.instanceIdCounter).toBe(0);
+
+    const pendingOnly = makeWorld();
+    const pendingEntity = new Entity();
+    pendingEntity.addComponent(pendingOnly.abilities.initComponent({}));
+    pendingOnly.world.entityManager.addEntity(pendingEntity);
+    pendingOnly.abilities.applyEffect(pendingEntity.id, 'Effect.Burn', -1);
+    const pendingBytes = saveGas(pendingOnly.world);
+    const pendingRestore = makeWorld();
+    const pendingShell = new Entity();
+    pendingShell.addComponent(pendingRestore.abilities.initComponent({}));
+    pendingRestore.world.entityManager.addEntity(pendingShell);
+    loadGas(pendingBytes, pendingRestore.world);
+    expect(pendingRestore.abilities.instanceIdCounter).toBe(0);
+    expect(
+      getAbilitySystemComponent(pendingShell)?.activeEffects.pendingAdd
+    ).toHaveLength(1);
+  });
+
+  it('clears pooled GAS on despawn and continues past respawn', () => {
+    const source = pooledGasWorld();
+    const pools = source.world.pools;
+    if (pools === null) throw new Error('expected pools');
+    const live = pools.spawn<PooledMinion>('minion', { health: 90 });
+    const freed = pools.spawn<PooledMinion>('minion', { health: 70 });
+    expect(
+      getAbilitySystemComponent(freed)?.abilities.has('Ability.Burn')
+    ).toBe(true);
+    expect(getActiveEffectsComponent(freed)?.pendingAdd).toHaveLength(0);
+
+    for (let count = 0; count < 6; count += 1) {
+      source.abilities.applyEffect(freed.id, 'Effect.Burn', live.id);
+    }
+    source.abilities.applyEffect(live.id, 'Effect.ArmorShred', live.id);
+    source.world.processAllTicks(0);
+    expect(getActiveEffectsComponent(freed)?.queue).toHaveLength(6);
+    expect(
+      getGameplayTagsComponent(freed)?.effectGrantCounts.get(
+        'State.Debuff.Burn'
+      )
+    ).toBe(6);
+    source.abilities.applyEffect(freed.id, 'Effect.ArmorShred', live.id);
+    expect(getActiveEffectsComponent(freed)?.pendingAdd).toHaveLength(1);
+
+    pools.despawn(freed);
+    expect(getActiveEffectsComponent(freed)?.queue).toHaveLength(0);
+    expect(getActiveEffectsComponent(freed)?.pendingAdd).toHaveLength(0);
+    expect(getGameplayTagsComponent(freed)?.tags.size).toBe(0);
+    expect(getGameplayTagsComponent(freed)?.adHocTags.size).toBe(0);
+    expect(getGameplayTagsComponent(freed)?.effectGrantCounts.size).toBe(0);
+    expect(
+      getAbilitySystemComponent(freed)?.abilities.has('Ability.Burn')
+    ).toBe(true);
+
+    const bytes = saveMatch(source.world);
+    const restored = pooledGasWorld();
+    loadMatch(bytes, restored.world);
+    expect(saveMatch(restored.world)).toEqual(bytes);
+    expect(restored.world.entityManager.getEntity(freed.id)).toBeUndefined();
+    expect(getActiveEffectsComponent(live)?.queue).toHaveLength(1);
+
+    const restoredLive = restored.world.entityManager.getEntity(live.id);
+    if (restoredLive === undefined) throw new Error('missing live entity');
+    expect(getActiveEffectsComponent(restoredLive)?.queue).toHaveLength(1);
+
+    for (let tick = 1; tick <= 15; tick += 1) {
+      if (tick === 1) {
+        const again = pools.spawn<PooledMinion>('minion', { health: 80 });
+        const restoredPools = restored.world.pools;
+        if (restoredPools === null) throw new Error('expected pools');
+        const restoredAgain = restoredPools.spawn<PooledMinion>('minion', {
+          health: 80,
+        });
+        expect(again.id).toBe(freed.id);
+        expect(restoredAgain.id).toBe(freed.id);
+        expect(getActiveEffectsComponent(again)?.queue).toHaveLength(0);
+        expect(getActiveEffectsComponent(restoredAgain)?.queue).toHaveLength(0);
+        source.abilities.applyEffect(again.id, 'Effect.Burn', live.id);
+        restored.abilities.applyEffect(
+          restoredAgain.id,
+          'Effect.Burn',
+          live.id
+        );
+      }
+      source.world.processAllTicks(tick);
+      restored.world.processAllTicks(tick);
+      expect(digestBytes(saveMatch(restored.world))).toBe(
+        digestBytes(saveMatch(source.world))
+      );
+    }
+
+    const respawned = source.world.entityManager.getEntity(freed.id);
+    if (respawned === undefined) throw new Error('missing respawned entity');
+    expect(getActiveEffectsComponent(respawned)?.queue).toHaveLength(1);
+  });
 });
+
+class PooledMinion
+  extends Entity
+  implements IPoolableEntity<{ health: number }>
+{
+  public constructor(abilities: AbilitySystem) {
+    super();
+    this.addComponent(
+      abilities.initComponent({
+        abilities: ['Ability.Burn', 'Ability.Strike'],
+        attributes: {
+          Health: FP.FromInt(100),
+          Armor: FP.FromInt(10),
+        },
+        tags: ['Team.Red'],
+        effects: ['Effect.Shield'],
+      })
+    );
+  }
+
+  public onSpawn(args: { health: number }): void {
+    const component = getAbilitySystemComponent(this);
+    if (component === undefined) {
+      throw new Error('missing ability component');
+    }
+    const raw = FP.ToRaw(FP.FromInt(args.health));
+    component.attributes.base[0] = raw;
+    component.attributes.current[0] = raw;
+    component.attributes.dirty[0] = 1;
+    component.tags.tags.add('Team.Red');
+    component.tags.adHocTags.add('Team.Red');
+  }
+
+  public onDespawn(): void {}
+}
+
+function pooledGasWorld(): { world: GameWorld; abilities: AbilitySystem } {
+  const holder: { abilities?: AbilitySystem } = {};
+  const world = new GameWorld({
+    pooling: {
+      entityTypes: {
+        minion: {
+          factory: () => {
+            const abilities = holder.abilities;
+            if (abilities === undefined) {
+              throw new Error('ability system is not ready');
+            }
+            return new PooledMinion(abilities);
+          },
+        },
+      },
+    },
+  });
+  const abilities = createAbilitySystem(world, {
+    definitions,
+    pipeline: 'full',
+  });
+  holder.abilities = abilities;
+  world.registerSystems([...abilities.tickSystems], []);
+  return { world, abilities };
+}
+
+function saveMatch(world: GameWorld): Uint8Array {
+  return finish((writer) => {
+    StateHelpers.writePools(writer, world);
+    StateHelpers.writeAbilities(writer, world);
+    StateHelpers.writeEntityIds(writer, world);
+  });
+}
+
+function loadMatch(bytes: Uint8Array, world: GameWorld): void {
+  const reader = new BinaryStateReader(bytes);
+  StateHelpers.readPools(reader, world);
+  StateHelpers.readAbilities(reader, world);
+  StateHelpers.readEntityIds(reader, world);
+  reader.done();
+}
