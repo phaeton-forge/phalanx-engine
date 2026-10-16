@@ -22,7 +22,7 @@ class ArmorComponent implements IComponent {
 
 const TestSoASchema = defineSoASchema(
   { posX: 'f64', posY: 'f64', flags: 'u8' },
-  'TestTransform',
+  'TestTransform'
 );
 
 class TestSoAComponent extends SoAComponent<typeof TestSoASchema.definition> {

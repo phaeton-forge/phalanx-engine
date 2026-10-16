@@ -45,7 +45,7 @@ export interface CommandsBatch {
  */
 export interface PlayerCommand {
   type: string;
-  data?: any;
+  data?: unknown;
   playerId?: string;
 }
 
@@ -139,4 +139,3 @@ export interface ITickFrameProvider {
    */
   onResume?(handler: PauseHandler): Unsubscribe;
 }
-

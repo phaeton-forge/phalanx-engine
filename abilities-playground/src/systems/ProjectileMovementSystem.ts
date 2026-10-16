@@ -1,4 +1,8 @@
-import { GameSystem, type SoAComponentStore, type SystemContext } from '@phalanx-engine/ecs';
+import {
+  GameSystem,
+  type SoAComponentStore,
+  type SystemContext,
+} from '@phalanx-engine/ecs';
 import { PhysicsSoASchema, TransformSoASchema } from '@phalanx-engine/physics';
 import { FP } from '@phalanx-engine/math';
 import { networkConfig, PROJECTILE_SPEED } from '../config/constants';
@@ -12,12 +16,16 @@ const FP_PROJECTILE_SPEED = FP.FromFloat(PROJECTILE_SPEED);
 
 export class ProjectileMovementSystem extends GameSystem {
   private physicsStore!: SoAComponentStore<typeof PhysicsSoASchema.definition>;
-  private transformStore!: SoAComponentStore<typeof TransformSoASchema.definition>;
+  private transformStore!: SoAComponentStore<
+    typeof TransformSoASchema.definition
+  >;
 
   public override init(context: SystemContext): void {
     super.init(context);
-    this.physicsStore = this.entityManager.getOrCreateSoAStore(PhysicsSoASchema);
-    this.transformStore = this.entityManager.getOrCreateSoAStore(TransformSoASchema);
+    this.physicsStore =
+      this.entityManager.getOrCreateSoAStore(PhysicsSoASchema);
+    this.transformStore =
+      this.entityManager.getOrCreateSoAStore(TransformSoASchema);
   }
 
   public override processTick(): void {
@@ -26,7 +34,7 @@ export class ProjectileMovementSystem extends GameSystem {
 
     const projectiles = this.entityManager.queryEntities(
       ComponentType.Projectile,
-      ComponentType.Transform,
+      ComponentType.Transform
     ) as ProjectileEntity[];
 
     for (const projectile of projectiles) {
@@ -34,11 +42,14 @@ export class ProjectileMovementSystem extends GameSystem {
       if (projectile.hasComponent(ComponentType.Missile)) continue;
 
       const projectileComponent = projectile.getComponent<ProjectileComponent>(
-        ComponentType.Projectile,
+        ComponentType.Projectile
       );
       if (!projectileComponent) continue;
 
-      projectileComponent.lifeTime = FP.Sub(projectileComponent.lifeTime, FP_TICK_TIMESTEP);
+      projectileComponent.lifeTime = FP.Sub(
+        projectileComponent.lifeTime,
+        FP_TICK_TIMESTEP
+      );
 
       if (FP.Lte(projectileComponent.lifeTime, FP._0)) {
         this.releaseProjectile(projectile);
@@ -51,8 +62,12 @@ export class ProjectileMovementSystem extends GameSystem {
       if (transformIndex === -1 || physicsIndex === -1) continue;
 
       const direction2 = projectileComponent.fpDirection2;
-      velocityX[physicsIndex] = FP.ToRaw(FP.Mul(direction2.x, FP_PROJECTILE_SPEED));
-      velocityZ[physicsIndex] = FP.ToRaw(FP.Mul(direction2.y, FP_PROJECTILE_SPEED));
+      velocityX[physicsIndex] = FP.ToRaw(
+        FP.Mul(direction2.x, FP_PROJECTILE_SPEED)
+      );
+      velocityZ[physicsIndex] = FP.ToRaw(
+        FP.Mul(direction2.y, FP_PROJECTILE_SPEED)
+      );
     }
   }
 

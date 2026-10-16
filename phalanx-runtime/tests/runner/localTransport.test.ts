@@ -3,7 +3,7 @@ import { LocalTransport } from '../../src/transport/LocalTransport.js';
 
 describe('LocalTransport', () => {
   it('delivers a bound submit on its target tick under the player id', () => {
-    const transport = LocalTransport.manual();
+    const transport = LocalTransport.stepped();
     transport.bindSlots([{ slot: 0, playerId: 'local:0' }]);
     transport.submit(1, 0, [
       { type: 'spawn', data: { q: 0, p: { type: 'spawn', x: '3' } } },
@@ -20,10 +20,10 @@ describe('LocalTransport', () => {
 
   it('refuses step on a timed transport and a submit for a past tick', () => {
     const timed = new LocalTransport({ tickRate: 10 });
-    expect(() => timed.step()).toThrow(/manual/);
+    expect(() => timed.step()).toThrow(/stepped/);
     timed.dispose();
 
-    const transport = LocalTransport.manual();
+    const transport = LocalTransport.stepped();
     transport.bindSlots([{ slot: 0, playerId: 'local:0' }]);
     transport.seek(4);
     expect(() =>
@@ -36,7 +36,7 @@ describe('LocalTransport', () => {
   });
 
   it('rejects a submit past maxAheadTicks', () => {
-    const transport = LocalTransport.manual();
+    const transport = LocalTransport.stepped();
     transport.bindSlots([{ slot: 0, playerId: 'local:0' }]);
     const command = {
       type: 'move',
@@ -73,7 +73,7 @@ describe('LocalTransport', () => {
   });
 
   it('keeps __proto__ and constructor as own command keys', () => {
-    const transport = LocalTransport.manual();
+    const transport = LocalTransport.stepped();
     transport.bindSlots([
       { slot: 0, playerId: '__proto__' },
       { slot: 1, playerId: 'constructor' },
@@ -141,7 +141,7 @@ describe('LocalTransport', () => {
   });
 
   it('pause blocks step until resume', () => {
-    const transport = LocalTransport.manual();
+    const transport = LocalTransport.stepped();
     const ticks: number[] = [];
     transport.onTick((tick) => {
       ticks.push(tick);

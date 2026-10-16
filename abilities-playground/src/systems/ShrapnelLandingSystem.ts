@@ -7,11 +7,7 @@ import {
 import { PhysicsWorld } from '@phalanx-engine/physics';
 import type { TransformComponent } from '@phalanx-engine/physics';
 import { FP, type FixedPoint } from '@phalanx-engine/math';
-import {
-  ComponentType,
-  StatsComponent,
-  TeamComponent,
-} from '../components';
+import { ComponentType, StatsComponent, TeamComponent } from '../components';
 import { ShrapnelPayloadComponent } from '../components/ShrapnelPayloadComponent';
 import type { ShrapnelEntity } from '../entities/Shrapnel';
 import { SAU_FRIENDLY_FIRE } from '../config/abilityDefinitions';
@@ -153,7 +149,8 @@ export class ShrapnelLandingSystem extends GameSystem {
       if (!stats?.alive) continue;
 
       const team = entity.getComponent<TeamComponent>(ComponentType.Team);
-      if (!SAU_FRIENDLY_FIRE && team && team.teamId === payload.teamId) continue;
+      if (!SAU_FRIENDLY_FIRE && team && team.teamId === payload.teamId)
+        continue;
 
       const pos = physics.getEntityPosition(id);
       if (pos) {
@@ -163,7 +160,11 @@ export class ShrapnelLandingSystem extends GameSystem {
         if (FP.Gt(d2, radiusSq)) continue;
       }
 
-      abilities.applyEffect(id, payload.secondaryEffectId, payload.sourceEntityId);
+      abilities.applyEffect(
+        id,
+        payload.secondaryEffectId,
+        payload.sourceEntityId
+      );
     }
   }
 

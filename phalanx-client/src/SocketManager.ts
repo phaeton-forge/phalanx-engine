@@ -208,7 +208,11 @@ export class SocketManager {
   /**
    * Update player credentials (after auth)
    */
-  updateCredentials(playerId: string, username: string, authToken?: string): void {
+  updateCredentials(
+    playerId: string,
+    username: string,
+    authToken?: string
+  ): void {
     this.config.playerId = playerId;
     this.config.username = username;
     this.config.authToken = authToken;
@@ -337,7 +341,7 @@ export class SocketManager {
    */
   async recoverRoom(
     code: string,
-    timeoutMs: number = this.config.recoverRoomTimeoutMs,
+    timeoutMs: number = this.config.recoverRoomTimeoutMs
   ): Promise<RoomRecoveredEvent> {
     this.ensureConnected();
 
@@ -597,23 +601,27 @@ export class SocketManager {
   private setupEventHandlers(): void {
     if (!this.socket) return;
 
-    if (this.config.debug) {    }
+    if (this.config.debug) {
+    }
 
     // Match found
     this.socket.on('match-found', (data: MatchFoundEvent) => {
-      if (this.config.debug) {      }
+      if (this.config.debug) {
+      }
       this.callbacks.onMatchFound(data);
     });
 
     // Game start
     this.socket.on('game-start', (data: GameStartEvent) => {
-      if (this.config.debug) {      }
+      if (this.config.debug) {
+      }
       this.callbacks.onGameStart(data);
     });
 
     // Countdown
     this.socket.on('countdown', (data: CountdownEvent) => {
-      if (this.config.debug) {      }
+      if (this.config.debug) {
+      }
       this.callbacks.onCountdown(data);
     });
 
@@ -755,7 +763,6 @@ export class SocketManager {
     }
   }
 
-
   /**
    * Replay `payload` through every listener currently registered for
    * `event` on the local socket.
@@ -785,7 +792,7 @@ export class SocketManager {
         if (this.config.debug) {
           console.error(
             `[SocketManager] synthetic "${event}" listener threw:`,
-            err,
+            err
           );
         }
       }

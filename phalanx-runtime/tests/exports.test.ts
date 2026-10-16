@@ -12,11 +12,13 @@ const VALUE_EXPORTS = [
   'DEFAULT_HASH_EVERY_TICKS',
   'DEFAULT_INPUT_DELAY_TICKS',
   'BOT_PLAYER_ID_PREFIX',
+  'SYSTEM_PLAYER_ID',
   'botPlayerId',
   'isBotPlayerId',
   'NotImplementedError',
   // game
   'defineGame',
+  'defineCommands',
   'rejectCommand',
   'isCommandRejection',
   // state
@@ -35,6 +37,9 @@ const VALUE_EXPORTS = [
   'bindWorldSingletons',
   // runner
   'MatchRunner',
+  'ReplayPlayer',
+  'runLocalMatch',
+  'botSlotSeed',
   'CommandLog',
   'BotHost',
   // transport
@@ -103,7 +108,7 @@ describe('public exports', () => {
   });
 
   it('has the approved constants', () => {
-    expect(runtime.ENGINE_SNAPSHOT_FORMAT).toBe(1);
+    expect(runtime.ENGINE_SNAPSHOT_FORMAT).toBe(2);
     expect(runtime.SNAPSHOT_MAGIC).toBe('PHXS');
     expect(runtime.DEFAULT_SERVER_SNAPSHOT_EVERY_TICKS).toBe(1000);
     expect(runtime.DEFAULT_CLIENT_SNAPSHOT_EVERY_TICKS).toBe(300);
@@ -178,12 +183,12 @@ describe('skeletons name their implementing task', () => {
     expect(new runtime.CommandLog().lastTick).toBe(-1);
     const transport = new runtime.LocalTransport({ tickRate: 10 });
     expect(transport.kind).toBe('local');
-    expect(transport.isManual).toBe(false);
+    expect(transport.isStepped).toBe(false);
     expect(transport.tickRate).toBe(10);
     transport.dispose();
-    const manual = runtime.LocalTransport.manual();
-    expect(manual.isManual).toBe(true);
-    manual.dispose();
+    const stepped = runtime.LocalTransport.stepped();
+    expect(stepped.isStepped).toBe(true);
+    stepped.dispose();
     expect(runtime.BotHost).toBeTypeOf('function');
     expect(runtime.MatchRunner).toBeTypeOf('function');
   });

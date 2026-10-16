@@ -52,7 +52,10 @@ class TestCue extends Cue {
   }
 }
 
-function runPresentationFrame(world: GameWorld, deltaTimeSeconds = 1 / 60): void {
+function runPresentationFrame(
+  world: GameWorld,
+  deltaTimeSeconds = 1 / 60
+): void {
   world.getSystem(CuePresentationSystem)?.afterFrame(0, deltaTimeSeconds);
 }
 
@@ -103,7 +106,9 @@ describe('CuePresentationSystem', () => {
 
     expect(factory).toHaveBeenCalledTimes(2);
     expect(spawned).toHaveLength(2);
-    expect(spawned.every((cue) => cue.onSpawnCalls === 1 && !cue.disposed)).toBe(true);
+    expect(
+      spawned.every((cue) => cue.onSpawnCalls === 1 && !cue.disposed)
+    ).toBe(true);
     world.dispose();
   });
 
@@ -124,7 +129,9 @@ describe('CuePresentationSystem', () => {
     });
 
     const contextEvents: string[] = [];
-    cue.lastContext!.eventBus.on('Cue.Context.Test', () => contextEvents.push('ok'));
+    cue.lastContext!.eventBus.on('Cue.Context.Test', () =>
+      contextEvents.push('ok')
+    );
     cue.lastContext!.eventBus.emit('Cue.Context.Test', {});
     expect(contextEvents).toEqual(['ok']);
     expect(cue.lastContext!.entityManager.getEntity(targetId)).toBeDefined();
@@ -236,7 +243,9 @@ describe('CuePresentationSystem', () => {
         defineEffect({
           id: 'Effect.Retained',
           type: 'Instant',
-          modifiers: [{ attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(-1) }],
+          modifiers: [
+            { attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(-1) },
+          ],
           cues: ['Cue.Retained'],
         }),
       ],

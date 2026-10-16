@@ -16,7 +16,7 @@ describe('extraRequestHandler', () => {
       port: TEST_PORT,
       extraRequestHandler: async (
         req: IncomingMessage,
-        res: ServerResponse,
+        res: ServerResponse
       ): Promise<boolean> => {
         if (req.url === '/custom') {
           res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -54,7 +54,9 @@ describe('extraRequestHandler', () => {
     });
     await server.start();
 
-    const response = await fetch(`http://localhost:${TEST_PORT}/does-not-exist`);
+    const response = await fetch(
+      `http://localhost:${TEST_PORT}/does-not-exist`
+    );
     expect(response.status).toBe(404);
   });
 
@@ -73,5 +75,3 @@ describe('extraRequestHandler', () => {
     expect(body.error).toBe('Internal server error');
   });
 });
-
-

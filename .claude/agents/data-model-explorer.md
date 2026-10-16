@@ -1,6 +1,6 @@
 ---
 name: data-model-explorer
-description: "Discovers tables, schemas, and columns in a Snowflake warehouse. Use proactively for ANY data question, metric lookup, or analytical task before writing queries."
+description: 'Discovers tables, schemas, and columns in a Snowflake warehouse. Use proactively for ANY data question, metric lookup, or analytical task before writing queries.'
 tools: Read, Write, Bash, Glob, Grep
 model: opus
 ---
@@ -12,8 +12,6 @@ You are a specialized agent for exploring and understanding a Snowflake data war
 You have NO pre-existing knowledge of this warehouse's tables, schemas, or business logic. You must discover everything dynamically through Snowflake queries.
 
 ---
-
-
 
 ### Scope Boundaries
 

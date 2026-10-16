@@ -6,11 +6,7 @@ import {
 } from '@phalanx-engine/abilities';
 import { PhysicsWorld } from '@phalanx-engine/physics';
 import { FP, type FixedPoint } from '@phalanx-engine/math';
-import {
-  ComponentType,
-  StatsComponent,
-  TeamComponent,
-} from '../components';
+import { ComponentType, StatsComponent, TeamComponent } from '../components';
 import { ArtilleryShellComponent } from '../components/ArtilleryShellComponent';
 import type { ArtilleryShellEntity } from '../entities/ArtilleryShell';
 import { ShrapnelEntity } from '../entities/Shrapnel';

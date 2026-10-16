@@ -8,7 +8,7 @@ import {
   createTestWorld,
   spawnEntity,
 } from './helpers';
-import {GameWorld} from "@phalanx-engine/ecs";
+import { GameWorld } from '@phalanx-engine/ecs';
 
 // ---------------------------------------------------------------------------
 // Stage 4 — Periodic effects.
@@ -60,41 +60,41 @@ describe('Periodic effects', () => {
     });
     const entity = spawnEntity(world, abilities);
     world.processAllTicks(1);
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
-      100
-    );
+    expect(
+      FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)
+    ).toBe(100);
 
     abilities.applyEffect(entity.id, 'Effect.DoT.Bleed', entity.id);
     // Tick 2: apply tick — instance queued, nextPeriodTick = 7. Tag granted.
     world.processAllTicks(2);
     expect(abilities.hasTag(entity.id, 'State.Debuff.Bleed')).toBe(true);
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
-      100
-    );
+    expect(
+      FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)
+    ).toBe(100);
 
     // Ticks 3..6: still before first firing.
     for (let t = 3; t <= 6; t++) {
       world.processAllTicks(t);
-      expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
-        100
-      );
+      expect(
+        FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)
+      ).toBe(100);
     }
 
     // Tick 7: first firing. -3 Health.
     world.processAllTicks(7);
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
-      97
-    );
+    expect(
+      FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)
+    ).toBe(97);
 
     // Tick 12: second firing.
     for (let t = 8; t <= 11; t++) world.processAllTicks(t);
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
-      97
-    );
+    expect(
+      FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)
+    ).toBe(97);
     world.processAllTicks(12);
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
-      94
-    );
+    expect(
+      FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)
+    ).toBe(94);
 
     // Tick 17, 22 — but 22 falls AFTER expiry (apply tick 2, duration 20 =>
     // remainingTicks goes 20→19 at t=3 ... →0 at t=22; expires that tick).
@@ -102,27 +102,26 @@ describe('Periodic effects', () => {
     // firing on tick 22 still happens.
     for (let t = 13; t <= 16; t++) world.processAllTicks(t);
     world.processAllTicks(17);
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
-      91
-    );
+    expect(
+      FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)
+    ).toBe(91);
 
     for (let t = 18; t <= 21; t++) world.processAllTicks(t);
     world.processAllTicks(22);
     // Fourth firing fired, then countdown expired the instance, tag revoked.
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
-      88
-    );
+    expect(
+      FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)
+    ).toBe(88);
     expect(abilities.hasTag(entity.id, 'State.Debuff.Bleed')).toBe(false);
 
     // No more firings after expiry.
     for (let t = 23; t <= 30; t++) world.processAllTicks(t);
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
-      88
-    );
+    expect(
+      FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)
+    ).toBe(88);
 
     world.dispose();
   });
-
 
   it('without executePeriodicOnApplication fires durationTicks/periodTicks times exactly', () => {
     // Sanity-count firings via Override: each firing sets Health to a known
@@ -151,9 +150,9 @@ describe('Periodic effects', () => {
     // reaches 0 on tick 14. Firings: 6, 10, 14 — three firings = 12/4.
     for (let t = 2; t <= 20; t++) world.processAllTicks(t);
 
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
-      97
-    );
+    expect(
+      FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)
+    ).toBe(97);
 
     world.dispose();
   });
@@ -189,16 +188,16 @@ describe('Periodic effects', () => {
     world.processAllTicks(5);
     world.processAllTicks(6);
     expect(queue[0].nextPeriodTick).toBe(10);
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
-      99
-    );
+    expect(
+      FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)
+    ).toBe(99);
 
     // After tick 10 (second firing): nextPeriodTick = 14.
     for (let t = 7; t <= 10; t++) world.processAllTicks(t);
     expect(queue[0].nextPeriodTick).toBe(14);
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
-      98
-    );
+    expect(
+      FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)
+    ).toBe(98);
 
     world.dispose();
   });
@@ -227,9 +226,9 @@ describe('Periodic effects', () => {
     world.processAllTicks(2); // apply tick, nextPeriodTick = 7
     for (let t = 3; t <= 7; t++) world.processAllTicks(t);
     // One firing at tick 7.
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
-      95
-    );
+    expect(
+      FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)
+    ).toBe(95);
 
     // Cancel before the next firing window. removeEffectsByTag sets
     // remainingTicks=0 on the matched instance.
@@ -239,16 +238,16 @@ describe('Periodic effects', () => {
     // Tick 8 runs EffectTickSystem: periodic fire skipped (remainingTicks=0),
     // countdown skipped, expiry pass harvests the instance, tag revoked.
     world.processAllTicks(8);
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
-      95
-    );
+    expect(
+      FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)
+    ).toBe(95);
     expect(abilities.hasTag(entity.id, 'State.Debuff.DoT')).toBe(false);
 
     // No further firings.
     for (let t = 9; t <= 30; t++) world.processAllTicks(t);
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
-      95
-    );
+    expect(
+      FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)
+    ).toBe(95);
 
     world.dispose();
   });
@@ -339,26 +338,26 @@ describe('Periodic effects', () => {
     // Apply tick 2; firings at 5, 8, 11; expires at tick 11 (lands on final
     // firing thanks to fire-before-countdown).
     for (let t = 2; t <= 4; t++) world.processAllTicks(t);
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
-      100
-    );
+    expect(
+      FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)
+    ).toBe(100);
 
     world.processAllTicks(5);
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
-      50
-    );
+    expect(
+      FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)
+    ).toBe(50);
     world.processAllTicks(6);
     world.processAllTicks(7);
     world.processAllTicks(8);
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
-      25
-    );
+    expect(
+      FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)
+    ).toBe(25);
     world.processAllTicks(9);
     world.processAllTicks(10);
     world.processAllTicks(11);
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
-      12.5
-    );
+    expect(
+      FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)
+    ).toBe(12.5);
 
     world.dispose();
   });
@@ -389,24 +388,24 @@ describe('Periodic effects', () => {
     abilities.applyEffect(entity.id, 'Effect.Bookends', entity.id);
     // Apply tick = 2. on-application fires once (-7 -> 93). nextPeriodTick = 6.
     world.processAllTicks(2);
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
-      93
-    );
+    expect(
+      FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)
+    ).toBe(93);
     expect(abilities.hasTag(entity.id, 'State.Debuff.Bookends')).toBe(true);
 
     world.processAllTicks(3);
     world.processAllTicks(4);
     world.processAllTicks(5);
     // No firing yet.
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
-      93
-    );
+    expect(
+      FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)
+    ).toBe(93);
 
     // Tick 6: second firing (-7 -> 86), countdown 1→0, expire, tag off.
     world.processAllTicks(6);
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
-      86
-    );
+    expect(
+      FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)
+    ).toBe(86);
     expect(abilities.hasTag(entity.id, 'State.Debuff.Bookends')).toBe(false);
 
     world.dispose();
@@ -451,9 +450,9 @@ describe('Periodic effects', () => {
     //     fire-before-countdown lets the boundary fire happen). => 3 hits.
     //   Fast fires at 5,8,11,14,17,20,23,26,29,32 => 10 hits.
     // Total Health delta: -13 => 87.
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(
-      87
-    );
+    expect(
+      FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)
+    ).toBe(87);
 
     world.dispose();
   });
@@ -462,9 +461,9 @@ describe('Periodic effects', () => {
 function activeEffectsOf(world: GameWorld, entityId: number) {
   const entity = world.entityManager.getEntity(entityId);
   if (!entity) throw new Error(`entity ${entityId} missing`);
-  const component =
-    entity.getComponent<AbilitySystemComponent>(AbilitiesComponentType.AbilitySystem)
-      ?.activeEffects;
+  const component = entity.getComponent<AbilitySystemComponent>(
+    AbilitiesComponentType.AbilitySystem
+  )?.activeEffects;
   if (!component) throw new Error(`ability effects missing on ${entityId}`);
   return component;
 }

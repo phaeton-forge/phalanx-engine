@@ -33,7 +33,11 @@ export class ObjectPool<T extends IPoolable> {
         // Batch create with maxSize respect
         const batch = this.config.growthBatchSize;
         for (let i = 0; i < batch; i++) {
-          if (this.config.maxSize > 0 && this.available.length >= this.config.maxSize) break;
+          if (
+            this.config.maxSize > 0 &&
+            this.available.length >= this.config.maxSize
+          )
+            break;
           const obj = this.factory();
           obj.reset();
           this._totalCreated++;
@@ -60,7 +64,10 @@ export class ObjectPool<T extends IPoolable> {
     obj.reset();
 
     // Respect maxSize (0 = unlimited)
-    if (this.config.maxSize === 0 || this.available.length < this.config.maxSize) {
+    if (
+      this.config.maxSize === 0 ||
+      this.available.length < this.config.maxSize
+    ) {
       this.available.push(obj);
     }
   }
@@ -69,7 +76,11 @@ export class ObjectPool<T extends IPoolable> {
   prewarm(count: number): void {
     const toCreate = count - this.available.length;
     for (let i = 0; i < toCreate; i++) {
-      if (this.config.maxSize > 0 && this.available.length >= this.config.maxSize) break;
+      if (
+        this.config.maxSize > 0 &&
+        this.available.length >= this.config.maxSize
+      )
+        break;
       const obj = this.factory();
       obj.reset();
       this._totalCreated++;

@@ -11,6 +11,7 @@ For any data question, metric lookup, or analytical task, delegate to the `data-
 2. Follow its workflow (data-model-explorer → data-analyst)
 
 For file-based data processing (CSV, JSON, Excel, Parquet):
+
 - Install needed packages (pandas, matplotlib, seaborn, scipy)
 - Write and iterate on analysis code
 - Save outputs to workspace files (charts to `/tmp/data_*.png`, results to `/tmp/`)

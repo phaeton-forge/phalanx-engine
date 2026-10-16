@@ -97,8 +97,8 @@ For npm package setup and per-library docs, see [Installation](#installation) an
 
 > 🚧 More examples are coming soon.
 
-| Example                                          | Status    | Description                                                                 |
-| ------------------------------------------------ | --------- | --------------------------------------------------------------------------- |
+| Example                                          | Status    | Description                                                               |
+| ------------------------------------------------ | --------- | ------------------------------------------------------------------------- |
 | [`abilities-playground`](./abilities-playground) | Available | Local multiplayer sandbox — see [Quick Start](#quick-start) for run steps |
 
 ## Packages

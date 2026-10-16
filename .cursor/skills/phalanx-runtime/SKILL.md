@@ -1,6 +1,6 @@
 ---
 name: phalanx-runtime
-description: Describe a Phalanx game as one GameDefinition and run it with MatchRunner from @phalanx-engine/runtime (engine 0.3). Use when defining games with defineGame, defineComponent, world.save/restore, writing BotPolicy bots, choosing simMode 'client' vs 'server', snapshots, replays, reconnect, or Transport/LocalTransport. World modules are the default GameState. StateHelpers, spawnWithId, rebuildBroadphaseFromTransforms and WorldScope are in @phalanx-engine/runtime/advanced. MatchRunner.join is still Task 12.
+description: Describe a Phalanx game as one GameDefinition and run it with MatchRunner from @phalanx-engine/runtime (engine 0.3). Use when defining games with defineGame, defineCommands, defineComponent, onCommand, runLocalMatch, ReplayPlayer, setController, world.save/restore, writing BotPolicy bots, choosing side 'client' vs 'server', snapshots, replays, reconnect, or Transport/LocalTransport. World modules are the default save handler. StateHelpers, spawnWithId, rebuildBroadphaseFromTransforms and WorldScope are in @phalanx-engine/runtime/advanced. MatchRunner.join is still Task 12.
 metadata:
   author: phaeton2040-AI
   version: '0.1'
@@ -8,7 +8,7 @@ metadata:
 
 # Phalanx Runtime Skill
 
-> **Status: Tasks 1–6 and 6.5a implemented. `MatchRunner.join` is still Task 12.**
+> **Status: Tasks 1–6, 6.5a and 6.5b implemented. `MatchRunner.join` is still Task 12.**
 > Task 3 is engine hooks (ecs id counter, SoA context, pools, math RNG
 > state, ability runtime export, broadphase centers). Task 4 is
 > `StateHelpers` except GAS. Task 5 is `writeAbilities` / `readAbilities`.
@@ -24,10 +24,10 @@ metadata:
 
 ## When to Use This Skill
 
-- Defining a game for engine 0.3 (`defineGame`, `GameDefinition`).
-- Implementing `GameState` (snapshots, reconnect, server simulation).
+- Defining a game for engine 0.3 (`defineComponent`, `defineCommands`, `defineGame`, `runLocalMatch`).
+- Custom snapshots (`save: { handler }`, advanced `SaveHandler`).
 - Writing bots as command producers (`BotPolicy`).
-- Choosing `simMode: 'client' | 'server'` and slots (`SlotConfig`).
+- Choosing `side: 'client' | 'server'` and slots (`SlotConfig`). `runsOn` is independent of `side`.
 
 ## Modes
 
@@ -39,21 +39,23 @@ metadata:
 
 ## Rules
 
-1. `createWorld(config, ctx)` builds `new GameWorld({ tickFrameProvider:
-ctx.tickFrameProvider, random: ctx.random, ... })` and calls
-   `world.start()`. Never call `processAllTicks`.
-2. `ctx.purpose === 'restore'`: build static content only when a custom
-   `GameState` calls `spawnWithId` for dynamic ids. `world.restore` skips
-   an id that already exists and overwrites its rows.
-3. Commands: `decode` is structural (no sim); `validate` is pure and reads
-   the sim; `applyCommand` mutates. Payloads are JSON-safe; send FP raw
-   values as decimal strings.
-4. `GameState.save` uses only `StateWriter` primitives; no floats, no
+1. `onStart(ctx)` uses the engine-owned `ctx.world`. Call `ctx.open()`
+   before spawning pooled entities. The engine calls it if you return
+   without doing so. Never call `processAllTicks`.
+2. `ctx.purpose === 'restore'`: spawn only what a custom save handler
+   will overwrite. `spawnWithId` throws `spawnWithId: entity N already exists`
+   for an id that is already registered. `world.restore` skips that id
+   and overwrites its rows.
+3. `defineCommands` builds `decode`, `encode` and `types`. `decode` never
+   throws. `onCommand` is a function or an exhaustive per-type map. The
+   game does not parse `StampedCommand` by hand. `i64` is a decimal string
+   on the wire.
+4. A custom `SaveHandler.save` uses only `StateWriter` primitives; no floats, no
    `JSON.stringify`. Use `list` for containers whose order the simulation
    observes and `sortedBy` for id-keyed containers.
 5. `restore(save(x))` must re-save to identical bytes, and a restored world
    must produce the same digest as the original every tick.
-6. Bot state is NOT `GameState`. Use `BotPolicy.save/restore`. A finished
+6. Bot state is outside the digest. Use `BotPolicy.save/restore`. A finished
    replay never runs the bot. Local resume does: with a log tail, `decide`
    runs during catch-up and submits only commands past `throughTick`.
 7. A bot's `decide(sim, tick)` must not mutate `sim`; its commands run at

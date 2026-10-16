@@ -70,7 +70,9 @@ export class OAuthExchangeService {
   /**
    * Exchange an authorization code for tokens.
    */
-  async exchangeCode(request: TokenExchangeRequest): Promise<TokenExchangeResponse> {
+  async exchangeCode(
+    request: TokenExchangeRequest
+  ): Promise<TokenExchangeResponse> {
     switch (request.provider) {
       case 'google':
         return this.exchangeGoogleCode(request);
@@ -86,7 +88,9 @@ export class OAuthExchangeService {
   /**
    * Exchange a Google authorization code for tokens.
    */
-  private async exchangeGoogleCode(request: TokenExchangeRequest): Promise<TokenExchangeResponse> {
+  private async exchangeGoogleCode(
+    request: TokenExchangeRequest
+  ): Promise<TokenExchangeResponse> {
     if (!this.config.google?.clientId) {
       return {
         success: false,
@@ -124,7 +128,8 @@ export class OAuthExchangeService {
         console.error('[OAuthExchange] Google token exchange failed:', error);
         return {
           success: false,
-          error: error.error_description || error.error || 'Token exchange failed',
+          error:
+            error.error_description || error.error || 'Token exchange failed',
           errorCode: error.error || 'exchange_failed',
         };
       }

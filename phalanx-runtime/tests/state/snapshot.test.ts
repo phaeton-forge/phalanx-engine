@@ -252,7 +252,22 @@ describe('version policy matrix', () => {
     ).toEqual({ decision: 'reject', reason: 'magic mismatch' });
     expect(
       checkSnapshotCompatibility(header({ engineFormat: 2 }), expected)
-    ).toEqual({ decision: 'reject', reason: 'engineFormat mismatch' });
+    ).toEqual({
+      decision: 'reject',
+      reason: 'unsupported engine snapshot format 2; expected 1',
+    });
+  });
+
+  it('rejects engine snapshot format 1 with a version error', () => {
+    expect(
+      checkSnapshotCompatibility(header({ engineFormat: 1 }), {
+        ...expected,
+        engineFormat: 2,
+      })
+    ).toEqual({
+      decision: 'reject',
+      reason: 'unsupported engine snapshot format 1; expected 2',
+    });
   });
 
   it('rejects gameId or configHash mismatches', () => {

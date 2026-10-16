@@ -1,21 +1,21 @@
 # @phalanx-engine/runtime
 
-> **Status: Tasks 1–6 and 6.5a implemented.** Contracts and types are final
-> for engine 0.3. `defineComponent` plus `world.save` / `world.restore`
-> persist the world. Low-level section helpers live in
-> `@phalanx-engine/runtime/advanced`. `MatchRunner` drives a game from any
-> `Transport`, with an in-memory `LocalTransport`, `CommandLog` and
-> `BotHost`. `MatchRunner.join` is still Task 12. The package is `private`
-> until the synchronized 0.3.0 release.
+> **Status: Tasks 1–6, 6.5a and 6.5b implemented.** A game is
+> `defineComponent` + `defineCommands` + `defineGame` + `runLocalMatch`.
+> The engine owns the world. Low-level section helpers live in
+> `@phalanx-engine/runtime/advanced`. `MatchRunner.join` is still Task 12.
+> The package is `private` until the synchronized 0.3.0 release.
 
 Isomorphic match runtime for Phalanx games (no DOM, no sockets). A game
-describes itself as one `GameDefinition`; the engine's `MatchRunner` drives
-it from any `Transport`, records the command log, computes state digests and
-takes and restores snapshots through the game's own `GameState`.
+describes itself as one `GameDefinition`; `MatchRunner` drives it from any
+`Transport`, records the command log, computes state digests and restores
+snapshots. The game-facing imports are re-exported from
+`@phalanx-engine/engine`.
 
 ## Two modes
 
-Chosen per match by `MatchConfigBase.simMode`:
+Chosen per match by `MatchConfigBase.side` (the local peer). `runsOn` on a
+bot slot is independent of `side`: a client match can watch server bots.
 
 - **`client`**: only devices simulate (offline with local bots, or relay
   lockstep). Reconnect uses a local snapshot every 300 ticks plus the log.
@@ -26,28 +26,50 @@ Chosen per match by `MatchConfigBase.simMode`:
 ## Contracts
 
 ```ts
-import { defineGame, rejectCommand } from '@phalanx-engine/runtime';
+import {
+  defineCommands,
+  defineComponent,
+  defineGame,
+  runLocalMatch,
+} from '@phalanx-engine/engine';
+
+const Unit = defineComponent('Unit', { x: 'i64' });
+const commands = defineCommands({ move: { dx: 'i64' } });
 
 export const MyGame = defineGame({
   id: 'my-game', // = server gameTypes[].gameType
   simVersion: 'my-game-1', // change on any simulation change
   tickRate: 10, // = server tickRate
-  createWorld: (config: MyConfig, ctx) => new MySim(config, ctx),
-  commands: {
-    types: ['move'],
-    decode: (raw, slot) => parseMove(raw) ?? rejectCommand('bad move'),
-    validate: (cmd, slot, sim) => null, // pure, in-sim, every peer
-    encode: (cmd) => ({ type: 'move', x: cmd.x.toString() }),
+  components: [Unit], // registered in this order before onStart
+  commands, // codec + schema; folded into configHash
+  onStart(ctx) {
+    if (ctx.purpose === 'fresh') ctx.world.spawn({ Unit: { x: 0n } });
   },
-  state: { formatVersion: 1, bind: (sim) => new MyState(sim) },
-  bots: { standard: (config, slot, rng) => new MyBot(slot.level, rng) },
-  outcome: (sim) => sim.winner(),
+  onCommand: {
+    move(ctx, stamped) {
+      ctx.world.each(Unit, (unit) => {
+        unit.x += stamped.command.dx;
+      });
+    },
+  },
+  bots: {
+    walker: () => ({ decide: () => [{ type: 'move' as const, dx: 1n }] }),
+  },
+  checkOutcome: () => null,
+});
+
+const match = runLocalMatch(MyGame, {
+  seed: 1,
+  stepped: true,
+  slots: [{ kind: 'human' }, { kind: 'bot', policy: 'walker' }],
 });
 ```
 
-`state` may be omitted. `defineGame` then returns a copy whose state is
-the world modules (`formatVersion` 1). When `state` is present,
-`defineGame` returns that same object.
+`save` may be omitted. `defineGame` then returns a copy whose handler is
+the world modules (`formatVersion` 1). When `save` is present,
+`defineGame` returns that same object. `onCommand` is a function or an
+exhaustive handler map. `defineCommands` rejects a bad payload and does
+not throw. `i64` is a canonical decimal string on the wire.
 
 - **`defineComponent(name, fields, { defaults? })`**: a named SoA schema.
   Register it with `world.registerComponent` before the first spawn.
@@ -75,10 +97,11 @@ the world modules (`formatVersion` 1). When `state` is present,
   it after the callback returns. Each access looks up the entity's current
   row, so despawning a different entity inside the callback does not
   redirect the write. Accessing a row after that entity was removed throws.
-- **`GameState { save(w), restore(r) }`**: implemented by the game when
-  the default modules are not enough. Canonical bytes only (no floats;
-  FP values as raw `i64`). `restore(save(x))` must re-save to identical
-  bytes.
+- **`SaveHandler { save(w), restore(r) }`** (advanced): implemented by
+  the game when the default modules are not enough. Pass it as
+  `save: { formatVersion, handler(sim) }`. Canonical bytes only (no
+  floats; FP values as raw `i64`). `restore(save(x))` must re-save to
+  identical bytes.
 - **`@phalanx-engine/runtime/advanced`**: `StateHelpers`, `spawnWithId`,
   `rebuildBroadphaseFromTransforms` and `WorldScope`. These are not on
   the package root. SoA rows (explicit schema names; `f32` / `f64`
@@ -94,15 +117,16 @@ the world modules (`formatVersion` 1). When `state` is present,
   That also fills `lastX` / `lastZ` for the first frame. Do not read
   `lastX` / `lastZ` in simulation.
   `rebuildBroadphaseFromTransforms` is only for a collision-free world.
-  `spawnWithId` still throws `entity N already exists` when that id is
-  already registered. `world.restore` does not.
+  `spawnWithId` throws `spawnWithId: entity N already exists` when that
+  id is already registered. `world.restore` does not.
 - **`BotPolicy`**: a bot is a command producer for its slot, not a
   simulation system. Its commands enter the same log as humans'.
 - **`Transport`**: extends ecs `ITickFrameProvider` with `submit` and
   optional network methods. `LocalTransport` is the offline transport.
-- **`createWorld`** must construct its `GameWorld` with
-  `{ tickFrameProvider: ctx.tickFrameProvider, random: ctx.random }` and call
-  `world.start()`.
+- **`onStart`** receives the engine-owned world. Call `ctx.open()` before
+  spawning pooled entities (it prewarms and calls `world.start()`). The
+  engine calls `open` if `onStart` returns without it. Return a custom
+  sim object, or return nothing and the engine keeps `{ world }`.
 
 Implemented today: `defineGame`, the constants (`ENGINE_SNAPSHOT_FORMAT`,
 snapshot intervals, …), `botPlayerId` / `isBotPlayerId`, `rejectCommand` /
@@ -112,20 +136,23 @@ keys), `encodeSnapshot` / `decodeSnapshot` (header, body, and optional bot
 state and input checkpoint outside the digest), `digestBytes` (xxhash64,
 seed 0), `canonicalConfigBytes` / `configHash`,
 `checkSnapshotCompatibility`, `defineComponent`, `bindWorldSingletons`,
-and the offline runner: `MatchRunner`, `CommandLog`, `BotHost` and
-`LocalTransport` (timer or `LocalTransport.manual()` + `step`).
+and the offline runner: `MatchRunner`, `ReplayPlayer`, `runLocalMatch`,
+`CommandLog`, `BotHost` and `LocalTransport` (timer or
+`LocalTransport.stepped()` + `step`).
 `StateHelpers` (including `writeAbilities` / `readAbilities`,
 `section('gas', 1)`), `spawnWithId`, `rebuildBroadphaseFromTransforms`
 and `WorldScope` are exported from `@phalanx-engine/runtime/advanced`.
 There is no `f32` or `f64` writer.
 
-`MatchRunner` emits each tick on a runner-owned `ITickFrameProvider`, so
-`createWorld` must call `world.start()`. Commands are sorted by `(slot, seq)`
+`MatchRunner` emits each tick on a runner-owned `ITickFrameProvider`.
+`ctx.open()` calls `world.start()`. Commands are sorted by `(slot, seq)`
 and validated inside the tick; rejected entries stay in the log.
 Importing `@phalanx-engine/runtime` calls `setWorldModuleHost` once and
-installs that host for the process. `GameWorld.save`, `restore`, `spawn`,
-`despawn` and `each` throw until that import has run. `setWorldModuleHost`
-lives on `@phalanx-engine/ecs`; games do not call it.
+installs that host for the process. Without that import, `GameWorld.save`, `restore`, `spawn`, `despawn` and
+`each` throw `GameWorld: world modules are not installed. Import @phalanx-engine/runtime before using save, restore, spawn, despawn, or each.`
+`setWorldModuleHost` lives on `@phalanx-engine/ecs`; games do not call it.
+`each` passes one reused view. Do not store it. A write after that entity
+was despawned throws.
 
 `snapshot` runs after hosted `decide` and stores bot state, the input
 checkpoint, and the registered component schemas outside the digest.
@@ -134,15 +161,20 @@ the body. A field rename, reorder, or type change throws, for example
 `component 'Unit' schema changed: expected x:i32,hp:u32, got hp:u32,x:i32`.
 The SoA section bytes themselves are unchanged. `restore` rebuilds with
 `purpose: 'restore'`, checks the round trip, then applies bot state and
-the checkpoint only for slots this runner hosts or submits. `createWorld`
-must not spawn entities when `purpose` is `'restore'` if its
-`GameState` calls `spawnWithId` for those ids. The default world-module
+the checkpoint only for slots this runner hosts or submits. `onStart`
+must not spawn entities when `purpose` is `'restore'` if a custom save
+handler calls `spawnWithId` for those ids. The default world-module
 restore skips an id that already exists. A client
-restoring a server snapshot ignores both. `fastForward(entries, { budgetMs,
-throughTick })` is inclusive and runs empty ticks. `fromReplay` never
-calls `decide`. Drive that runner only with
-`fastForward(replay.log, { throughTick: replay.lastTick })`; `start()`
-throws. `WorldScope.run` isolates the entity id counter and the
+restoring a server snapshot ignores both. `side` is omitted from
+`configHash`, so the two peers share a hash. `fastForward(entries, { budgetMs,
+throughTick })` is inclusive and runs empty ticks. `ReplayPlayer.from`
+never calls `decide` and has no `start` or `submit`. Drive it with
+`play({ budgetMs })` or `fastForward(throughTick)`. A final-digest
+mismatch throws. `runner.setController(slot, 'human' | 'bot', { fromTick?, policy? })`
+records a system command (player id `system`), applied at the start of
+`fromTick` before game commands. The default `fromTick` is
+`tick + inputDelayTicks`. `inputDelayTicks` defaults to 2. `gameId` and
+`simVersion` are filled from the definition. `WorldScope.run` isolates the entity id counter and the
 SoA entity manager so two matches can share a process.
 
 A malformed envelope is logged and rejected with `'malformed envelope'`
@@ -151,12 +183,13 @@ rejections too (`error.message`, or `'decode failed'` / `'validate failed'`).
 A throw from the tick itself calls `onError(error, tick)`, sets `status`
 to `'failed'`, stops the transport, and leaves `tick` on the last
 completed tick. `LocalTransport.manual().step()` does not rethrow that
-error; `onError` already received it. `fastForward`, replay, and catch-up
+error; `onError` already received it. `LocalTransport.stepped().step()` is
+that path. `fastForward`, replay, and catch-up
 still propagate it, including a final-digest mismatch. A timed transport swallows it
 inside its timer. Any other transport still sees the exception. A bot
 `decide` that throws is isolated: it is logged with
 `console.error`, that slot submits nothing, and the match continues.
-Policy state may already be partial. The first non-null `outcome` is
+Policy state may already be partial. The first non-null `checkOutcome` result is
 emitted once; `status` becomes `'ended'` and the transport stops.
 `status` is `'ready' | 'running' | 'ended' | 'failed' | 'disposed'`.
 Live log payloads are stored with canonical object-key order so they
@@ -165,13 +198,13 @@ round-trips every finite JSON number. `canonicalConfigBytes` still
 accepts only safe integers. `toReplay()` throws when the command log
 is incomplete: a restore onto a runner that did not record ticks `0..N`,
 or a log truncation. The replay format has no base snapshot.
-`outcome` and the digest are published after the tick has completed
+`checkOutcome` and the digest are published after the tick has completed
 and after hosted `decide`. A transport without `requestPause` /
 `requestResume` cannot pause the world. Catch-up drops buffered
 batches covered by the replayed range and then runs the rest in order.
 An already-started runner flushes its checkpoint after `restore`.
-`restore` resets the match RNG to `config.seed` before `createWorld`,
-then `GameState.restore` installs the saved generator, and a paused
+`restore` resets the match RNG to `config.seed` before `onStart`,
+then the save handler installs the saved generator, and a paused
 transport pauses the rebuilt world. `WorldScope` saves the active
 scope's registers before entering another scope.
 
@@ -194,8 +227,10 @@ ad-hoc tags plus effect grants, including `initComponent` tags). Later
 returns clear the effect queue and `pendingAdd`, copy that shell back,
 and remove GAS components attached after it (a bare pooled entity that
 gained `ActiveEffects` or `GameplayTags` during its life is dormant
-without them). Initial `pendingAdd` effects are not in the shell, so
-`onSpawn` must re-seed those. A respawn whose `onSpawn` does not rewrite
+without them). Initial `pendingAdd` effects are captured before that
+clear. The next `onEnable` copies them back. `world.restore` calls
+`onEnable('restore')`, which does not reseed, because the snapshot
+already wrote `pendingAdd`. A respawn whose `onSpawn` does not rewrite
 attributes matches a restored copy.
 `readAbilities` refills `queue` and `pendingAdd` by clearing each array
 and appending entries one at a time, so a large list does not hit the

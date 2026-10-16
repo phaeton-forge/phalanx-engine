@@ -230,7 +230,10 @@ export class EntityManager {
 
       // Find the smallest current value across all arrays
       for (let i = 0; i < arrays.length; i++) {
-        if (pointers[i] < arrays[i].length && arrays[i][pointers[i]] < minValue) {
+        if (
+          pointers[i] < arrays[i].length &&
+          arrays[i][pointers[i]] < minValue
+        ) {
           minValue = arrays[i][pointers[i]];
           minIndex = i;
         }
@@ -245,7 +248,10 @@ export class EntityManager {
 
       // Advance all pointers that point to this value
       for (let i = 0; i < arrays.length; i++) {
-        if (pointers[i] < arrays[i].length && arrays[i][pointers[i]] === minValue) {
+        if (
+          pointers[i] < arrays[i].length &&
+          arrays[i][pointers[i]] === minValue
+        ) {
           pointers[i]++;
         }
       }
@@ -358,7 +364,8 @@ export class EntityManager {
     schema: SoASchema<S>,
     initialCapacityOrOptions: number | SoAComponentStoreOptions = 1024
   ): SoAComponentStore<S> {
-    const existing = this.soaStores.get(schema.type) as SoAComponentStore<S> | undefined;
+    const existing = this.soaStores.get(schema.type) as
+      SoAComponentStore<S> | undefined;
     if (existing) {
       return existing;
     }

@@ -1,11 +1,77 @@
 # `@phalanx-engine/runtime` API (engine 0.3)
 
+## Task 6.5b (current)
+
+This section supersedes earlier names in this document. The code wins where
+they still disagree.
+
+A game is `defineComponent` + `defineCommands` + `defineGame` + `runLocalMatch`.
+There is no hand-written command codec and no `SimWorld.applyCommand`.
+
+| Removed                    | Replacement                                                                      |
+| -------------------------- | -------------------------------------------------------------------------------- |
+| `createWorld`              | `onStart(ctx)`; the engine owns `GameWorld`. `ctx.open()` prewarms and starts it |
+| `applyCommand`             | `onCommand` (function or exhaustive handler map)                                 |
+| `outcome`                  | `checkOutcome`                                                                   |
+| `GameState` / `state.bind` | `SaveHandler` and `save: { handler }` in `@phalanx-engine/runtime/advanced`      |
+| `CommandSchema`            | `defineCommands`; the hand-written type stays in `advanced`                      |
+| `LocalTransport.manual`    | `LocalTransport.stepped`                                                         |
+| `simMode` + runner `side`  | one `side` on the match config. `runsOn` is not required to equal `side`         |
+| `MatchRunner.fromReplay`   | `ReplayPlayer.from`                                                              |
+
+`defineCommands` field types: `i32`, `u32`, `u8`, `i64`, `bool`, `entity`,
+`string` (default max length 64). `decode` returns a rejection and does not
+throw. `encode` uses canonical key order. `i64` is a decimal string on the
+wire. The command schema is appended to `configHash` after component records.
+`side` is not part of `configHash`. `ENGINE_SNAPSHOT_FORMAT` is 2; a format-1
+snapshot fails with `unsupported engine snapshot format 1; expected 2`.
+
+`runLocalMatch(def, { seed, slots, stepped?, inputDelayTicks? })` returns
+`{ runner, transport, step }`. Short slots (`{ kind: 'human' }`,
+`{ kind: 'bot', policy }`) are expanded. `inputDelayTicks` defaults to 2.
+`gameId` and `simVersion` are filled from the definition; a provided mismatch
+is still rejected.
+
+`ReplayPlayer.from(def, replay)` exposes `play({ budgetMs })`,
+`fastForward(throughTick)`, `digest()`, `tick` and `onTick`. It has no
+`start` or `submit`. A final-digest mismatch throws.
+
+`runner.setController(slot, 'human' | 'bot', { fromTick?, policy? })` logs a
+system command (player id `system`, not a game command). It is applied at the
+start of `fromTick` (default `tick + inputDelayTicks`), before game commands,
+on live play, restore, `ReplayPlayer` and `fastForward`. Switching to the
+current mode, an unknown slot, or a `fromTick` outside
+`(current, current + inputDelayTicks]` is rejected via `onRejected` and is
+not logged. A human command for a bot-controlled slot is rejected with
+`slot controlled by bot`. Handover to a bot seeds RNG with `botSlotSeed(seed, slot)`.
+
+`GameSystem.world` is the world. `each` passes one reused view; do not store
+it; a write after despawn throws. Importing `@phalanx-engine/runtime` installs
+the world-module host. Without it, save/restore/spawn/despawn/each throw
+`GameWorld: world modules are not installed. Import @phalanx-engine/runtime before using save, restore, spawn, despawn, or each.`
+
+`@phalanx-engine/engine` re-exports the game-facing surface of runtime, ecs,
+abilities, physics and math. It does not export `advanced`.
+
+Initial GAS `pendingAdd` effects are captured on the first pool return and
+copied back by `AbilitySystemComponent.onEnable`. `world.restore` calls
+`onEnable('restore')` and does not reseed.
+
+`spawnWithId` throws `spawnWithId: entity N already exists` when that id is
+already registered.
+
+Sections below this one were written in Tasks 1–6.5a. Where they still say
+`createWorld`, `applyCommand`, `outcome`, `GameState`, `state.bind`,
+`simMode`, `LocalTransport.manual` or `MatchRunner.fromReplay`, use the table
+above.
+
 Status: contracts and skeleton committed in Task 1. Every signature below is
 copied from `phalanx-runtime/src`; when the two differ, the code wins and
 this document has a bug. Skeleton members throw
 `not implemented: <member> (Task NN)` (`NotImplementedError`) until the task
-in the [task map](#task-map) lands. Implemented now: `defineGame`, the
-constants, `botPlayerId` / `isBotPlayerId`, `rejectCommand` /
+in the [task map](#task-map) lands. Implemented now: `defineGame`,
+`defineCommands`, `runLocalMatch`, `ReplayPlayer`, the constants,
+`botPlayerId` / `isBotPlayerId`, `botSlotSeed`, `rejectCommand` /
 `isCommandRejection`.
 
 Related: [server-sim.md](./server-sim.md), [reconnect.md](./reconnect.md).

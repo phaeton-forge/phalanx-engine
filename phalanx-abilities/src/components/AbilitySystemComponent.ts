@@ -1,6 +1,9 @@
 import type { Entity, IComponent } from '@phalanx-engine/ecs';
 import { AbilitiesComponentType } from './AbilitiesComponentType.js';
-import { ActiveEffectsComponent } from './ActiveEffectsComponent.js';
+import {
+  ActiveEffectsComponent,
+  type PendingEffectAdd,
+} from './ActiveEffectsComponent.js';
 import { AttributesComponent } from './AttributesComponent.js';
 import { GameplayTagsComponent } from './GameplayTagsComponent.js';
 
@@ -16,11 +19,52 @@ export class AbilitySystemComponent implements IComponent {
   public readonly activeEffects: ActiveEffectsComponent;
   public readonly tags: GameplayTagsComponent;
   public readonly abilities = new Set<string>();
+  /** Copied on the first return to the pool, before `pendingAdd` is cleared. */
+  private initialPending: PendingEffectAdd[] | null = null;
+  /** Set when the pool clears `pendingAdd`. The next live `onEnable` reseeds. */
+  private reseedPending = false;
 
   public constructor(attributeCount: number) {
     this.attributes = new AttributesComponent(attributeCount);
     this.activeEffects = new ActiveEffectsComponent();
     this.tags = new GameplayTagsComponent();
+  }
+
+  /**
+   * Remember the factory `pendingAdd` list. Later pool returns clear it;
+   * {@link onEnable} copies this image back. A `'restore'` enable does not,
+   * because the snapshot already wrote the saved queue.
+   */
+  public captureInitialPending(): void {
+    if (this.initialPending !== null) return;
+    this.initialPending = this.activeEffects.pendingAdd.map((entry) => ({
+      defId: entry.defId,
+      sourceEntityId: entry.sourceEntityId,
+      setByCaller: entry.setByCaller ?? null,
+    }));
+  }
+
+  /** Ask the next non-restore `onEnable` to copy the captured pending list. */
+  public requestReseed(): void {
+    this.reseedPending = true;
+  }
+
+  public onEnable(reason?: 'restore'): void {
+    if (reason === 'restore') {
+      this.reseedPending = false;
+      return;
+    }
+    if (!this.reseedPending) return;
+    this.reseedPending = false;
+    const initial = this.initialPending;
+    if (initial === null) return;
+    for (const entry of initial) {
+      this.activeEffects.pendingAdd.push({
+        defId: entry.defId,
+        sourceEntityId: entry.sourceEntityId,
+        setByCaller: entry.setByCaller ?? null,
+      });
+    }
   }
 }
 

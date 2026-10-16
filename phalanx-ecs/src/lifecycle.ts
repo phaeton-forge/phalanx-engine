@@ -10,7 +10,8 @@
  */
 export interface ComponentLifecycle {
   onCreate?(): void;
-  onEnable?(): void;
+  /** `'restore'` means snapshot bytes were just applied. Do not reseed. */
+  onEnable?(reason?: 'restore'): void;
   onDisable?(): void;
   onDestroy?(): void;
 }
@@ -19,19 +20,25 @@ export type ComponentLifecycleHook = keyof ComponentLifecycle;
 
 export function invokeComponentHook(
   component: object,
-  hook: ComponentLifecycleHook
+  hook: ComponentLifecycleHook,
+  reason?: 'restore'
 ): void {
   const record = component as Record<string, unknown>;
   const fn = record[hook];
   if (typeof fn !== 'function') return;
+  if (hook === 'onEnable') {
+    (fn as (enableReason?: 'restore') => void).call(component, reason);
+    return;
+  }
   (fn as () => void).call(component);
 }
 
 export function invokeComponentHooks(
   components: Iterable<object>,
-  hook: ComponentLifecycleHook
+  hook: ComponentLifecycleHook,
+  reason?: 'restore'
 ): void {
   for (const component of components) {
-    invokeComponentHook(component, hook);
+    invokeComponentHook(component, hook, reason);
   }
 }

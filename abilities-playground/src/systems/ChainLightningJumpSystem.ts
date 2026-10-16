@@ -1,4 +1,8 @@
-import { GameSystem, type Entity, type SystemContext } from '@phalanx-engine/ecs';
+import {
+  GameSystem,
+  type Entity,
+  type SystemContext,
+} from '@phalanx-engine/ecs';
 import type { AbilitySystem } from '@phalanx-engine/abilities';
 import { ComponentType, StatsComponent } from '../components';
 import {

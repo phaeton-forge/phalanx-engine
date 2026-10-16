@@ -11,13 +11,16 @@ import {
 } from '../components';
 
 export class DeathSystem extends GameSystem {
-  private get _abilities(): AbilitySystem { return this.abilities as AbilitySystem; }
+  private get _abilities(): AbilitySystem {
+    return this.abilities as AbilitySystem;
+  }
   private physicsStore!: SoAComponentStore<typeof PhysicsSoASchema.definition>;
   private readonly pendingDespawnTickByEntityId = new Map<number, number>();
 
   public override init(context: SystemContext): void {
     super.init(context);
-    this.physicsStore = this.entityManager.getOrCreateSoAStore(PhysicsSoASchema);
+    this.physicsStore =
+      this.entityManager.getOrCreateSoAStore(PhysicsSoASchema);
   }
 
   public override processTick(tick: number): void {
@@ -32,7 +35,10 @@ export class DeathSystem extends GameSystem {
     let team0Alive = false;
     let team1Alive = false;
 
-    const units = this.entityManager.queryEntities(ComponentType.UnitStats, ComponentType.Team);
+    const units = this.entityManager.queryEntities(
+      ComponentType.UnitStats,
+      ComponentType.Team
+    );
 
     for (const unit of units) {
       const stats = unit.getComponent<StatsComponent>(ComponentType.UnitStats);
@@ -41,7 +47,10 @@ export class DeathSystem extends GameSystem {
       if (!stats || !team) continue;
 
       if (stats.alive) {
-        const health = this._abilities.tryGetAttribute(unit.id, 'Health')?.current;
+        const health = this._abilities.tryGetAttribute(
+          unit.id,
+          'Health'
+        )?.current;
 
         if (health && FP.Lte(health, FP._0)) {
           this.killUnit(unit.id, stats, tick);
@@ -51,8 +60,7 @@ export class DeathSystem extends GameSystem {
       if (stats.alive) {
         if (team.teamId === 0) {
           team0Alive = true;
-        }
-        else {
+        } else {
           team1Alive = true;
         }
       }
@@ -69,7 +77,11 @@ export class DeathSystem extends GameSystem {
     }
   }
 
-  private killUnit(entityId: number, stats: StatsComponent, tick: number): void {
+  private killUnit(
+    entityId: number,
+    stats: StatsComponent,
+    tick: number
+  ): void {
     stats.alive = false;
 
     const physIdx = this.physicsStore.indexOf(entityId);
@@ -100,7 +112,11 @@ export class DeathSystem extends GameSystem {
   }
 
   private getSimulationState(): SimulationStateComponent | undefined {
-    const [entity] = this.entityManager.queryEntities(ComponentType.SimulationState);
-    return entity?.getComponent<SimulationStateComponent>(ComponentType.SimulationState);
+    const [entity] = this.entityManager.queryEntities(
+      ComponentType.SimulationState
+    );
+    return entity?.getComponent<SimulationStateComponent>(
+      ComponentType.SimulationState
+    );
   }
 }

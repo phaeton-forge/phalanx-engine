@@ -176,7 +176,6 @@ describe('2.6.1: TLS/WSS Transport', () => {
 
       expect(connected).toBe(true);
     });
-
   });
 
   describe('TLS error handling', () => {

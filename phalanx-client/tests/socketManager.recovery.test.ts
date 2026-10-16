@@ -47,9 +47,10 @@ const baseConfig: SocketManagerConfig = {
   debug: false,
 };
 
-function createSocketManager(
-  callbacks: Partial<SocketManagerCallbacks>
-): { manager: SocketManager; mockSocket: MockSocket } {
+function createSocketManager(callbacks: Partial<SocketManagerCallbacks>): {
+  manager: SocketManager;
+  mockSocket: MockSocket;
+} {
   const mockSocket = createMockSocket();
   const onGameStart = vi.fn();
 

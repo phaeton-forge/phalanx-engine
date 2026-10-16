@@ -17,7 +17,9 @@ import { addTransformRow } from './testTransformHelpers';
 const TICK_DT = FP.FromFloat(0.05);
 const GRAVITY = FP.FromFloat(10);
 
-function createPhysicsConfig(overrides?: Partial<PhysicsConfig>): PhysicsConfig {
+function createPhysicsConfig(
+  overrides?: Partial<PhysicsConfig>
+): PhysicsConfig {
   return {
     tickDt: TICK_DT,
     subSteps: 1,
@@ -33,7 +35,13 @@ function addBody(
   physicsStore: SoAComponentStore<typeof PhysicsSoASchema.definition>,
   transformStore: SoAComponentStore<typeof TransformSoASchema.definition>,
   entityId: number,
-  opts: { velX?: number; velY?: number; velZ?: number; useGravity?: boolean; posY?: number } = {},
+  opts: {
+    velX?: number;
+    velY?: number;
+    velZ?: number;
+    useGravity?: boolean;
+    posY?: number;
+  } = {}
 ): void {
   physicsStore.add(entityId, {
     velocityX: FP.ToRaw(FP.FromFloat(opts.velX ?? 0)),
@@ -73,7 +81,8 @@ describe('GravitySystem', () => {
     const gravitySystem = new GravitySystem(gravity, gravityAxis, TICK_DT);
     gravitySystem.init(context);
     const physicsStore = entityManager.getOrCreateSoAStore(PhysicsSoASchema);
-    const transformStore = entityManager.getOrCreateSoAStore(TransformSoASchema);
+    const transformStore =
+      entityManager.getOrCreateSoAStore(TransformSoASchema);
     return { gravitySystem, physicsStore, transformStore };
   }
 
@@ -85,13 +94,19 @@ describe('GravitySystem', () => {
     const deltaPerTick = FP.ToFloat(FP.Mul(GRAVITY, TICK_DT)); // 10 * 0.05 = 0.5
 
     gravitySystem.processTick(1);
-    expect(FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityY[idx]))).toBeCloseTo(-deltaPerTick, 5);
+    expect(
+      FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityY[idx]))
+    ).toBeCloseTo(-deltaPerTick, 5);
 
     gravitySystem.processTick(2);
-    expect(FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityY[idx]))).toBeCloseTo(-2 * deltaPerTick, 5);
+    expect(
+      FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityY[idx]))
+    ).toBeCloseTo(-2 * deltaPerTick, 5);
 
     gravitySystem.processTick(3);
-    expect(FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityY[idx]))).toBeCloseTo(-3 * deltaPerTick, 5);
+    expect(
+      FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityY[idx]))
+    ).toBeCloseTo(-3 * deltaPerTick, 5);
   });
 
   it('scales gravity by per-body gravityMultiplier', () => {
@@ -103,7 +118,9 @@ describe('GravitySystem', () => {
     const deltaPerTick = FP.ToFloat(FP.Mul(GRAVITY, TICK_DT)); // 0.5
 
     gravitySystem.processTick(1);
-    expect(FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityY[idx]))).toBeCloseTo(-2 * deltaPerTick, 5);
+    expect(
+      FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityY[idx]))
+    ).toBeCloseTo(-2 * deltaPerTick, 5);
   });
 
   it('applies no gravity when gravityMultiplier is 0', () => {
@@ -114,18 +131,28 @@ describe('GravitySystem', () => {
 
     gravitySystem.processTick(1);
 
-    expect(FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityY[idx]))).toBeCloseTo(3, 5);
+    expect(
+      FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityY[idx]))
+    ).toBeCloseTo(3, 5);
   });
 
   it('does not change X/Z velocities', () => {
     const { gravitySystem, physicsStore, transformStore } = setup();
-    addBody(physicsStore, transformStore, 1, { velX: 7, velZ: -4, useGravity: true });
+    addBody(physicsStore, transformStore, 1, {
+      velX: 7,
+      velZ: -4,
+      useGravity: true,
+    });
     const idx = physicsStore.indexOf(1);
 
     gravitySystem.processTick(1);
 
-    expect(FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityX[idx]))).toBeCloseTo(7, 5);
-    expect(FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityZ[idx]))).toBeCloseTo(-4, 5);
+    expect(
+      FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityX[idx]))
+    ).toBeCloseTo(7, 5);
+    expect(
+      FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityZ[idx]))
+    ).toBeCloseTo(-4, 5);
   });
 
   it('leaves velocityY untouched for a useGravity=false body', () => {
@@ -135,19 +162,25 @@ describe('GravitySystem', () => {
 
     gravitySystem.processTick(1);
 
-    expect(FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityY[idx]))).toBeCloseTo(3, 5);
+    expect(
+      FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityY[idx]))
+    ).toBeCloseTo(3, 5);
   });
 
-  it('does NOT change positionY (integration is PhysicsSystem\'s job)', () => {
+  it("does NOT change positionY (integration is PhysicsSystem's job)", () => {
     const { gravitySystem, physicsStore, transformStore } = setup();
     addBody(physicsStore, transformStore, 1, { useGravity: true, posY: 100 });
     const txIdx = transformStore.indexOf(1);
 
     // GravitySystem alone: velocity changes, position does not.
     gravitySystem.processTick(1);
-    expect(FP.ToFloat(FP.FromRaw(transformStore.arrays.fpPositionY[txIdx]))).toBeCloseTo(100, 5);
+    expect(
+      FP.ToFloat(FP.FromRaw(transformStore.arrays.fpPositionY[txIdx]))
+    ).toBeCloseTo(100, 5);
 
-    const velY = FP.FromRaw(physicsStore.arrays.velocityY[physicsStore.indexOf(1)]);
+    const velY = FP.FromRaw(
+      physicsStore.arrays.velocityY[physicsStore.indexOf(1)]
+    );
     expect(FP.ToFloat(velY)).toBeCloseTo(-0.5, 5);
 
     // Now PhysicsSystem integrates the accumulated velocity into position.
@@ -156,7 +189,9 @@ describe('GravitySystem', () => {
     physicsSystem.processTick(1);
 
     // pos.y += velY * dt = 100 + (-0.5 * 0.05) = 99.975
-    expect(FP.ToFloat(FP.FromRaw(transformStore.arrays.fpPositionY[txIdx]))).toBeCloseTo(99.975, 4);
+    expect(
+      FP.ToFloat(FP.FromRaw(transformStore.arrays.fpPositionY[txIdx]))
+    ).toBeCloseTo(99.975, 4);
   });
 
   it('skips static bodies: velocityY and positionY stay unchanged', () => {
@@ -169,9 +204,13 @@ describe('GravitySystem', () => {
     gravitySystem.processTick(1);
 
     // Static + useGravity is a clean no-op: no velocity accumulation...
-    expect(FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityY[idx]))).toBeCloseTo(0, 5);
+    expect(
+      FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityY[idx]))
+    ).toBeCloseTo(0, 5);
     // ...and no position change.
-    expect(FP.ToFloat(FP.FromRaw(transformStore.arrays.fpPositionY[txIdx]))).toBeCloseTo(50, 5);
+    expect(
+      FP.ToFloat(FP.FromRaw(transformStore.arrays.fpPositionY[txIdx]))
+    ).toBeCloseTo(50, 5);
   });
 
   it('is a no-op when gravity is 0', () => {
@@ -181,10 +220,12 @@ describe('GravitySystem', () => {
 
     gravitySystem.processTick(1);
 
-    expect(FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityY[idx]))).toBeCloseTo(2, 5);
+    expect(
+      FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityY[idx]))
+    ).toBeCloseTo(2, 5);
   });
 
-  it('throws when gravityAxis is not \'y\'', () => {
+  it("throws when gravityAxis is not 'y'", () => {
     expect(() => new GravitySystem(GRAVITY, 'x', TICK_DT)).toThrow();
     expect(() => new GravitySystem(GRAVITY, 'z', TICK_DT)).toThrow();
   });

@@ -1,7 +1,10 @@
 import { GameSystem, type SystemContext } from '@phalanx-engine/ecs';
 import type { ProjectileEntity } from '../entities/Projectile';
 import type { MissileEntity } from '../entities/Missile';
-import { GameEvents, type ProjectileDespawnRequestedEvent } from '../events/GameEvents';
+import {
+  GameEvents,
+  type ProjectileDespawnRequestedEvent,
+} from '../events/GameEvents';
 import { despawnProjectile } from './projectileDespawn';
 
 export class ProjectileDespawnQueueSystem extends GameSystem {
@@ -13,7 +16,7 @@ export class ProjectileDespawnQueueSystem extends GameSystem {
       GameEvents.PROJECTILE_DESPAWN_REQUESTED,
       ({ projectileId, dueTick }) => {
         this.queueDespawn(projectileId, dueTick);
-      },
+      }
     );
   }
 
@@ -22,13 +25,12 @@ export class ProjectileDespawnQueueSystem extends GameSystem {
   }
 
   public override processTick(tick: number): void {
-    for (const [projectileId, dueTick] of this.pendingDespawnTickByProjectileId) {
+    for (const [projectileId, dueTick] of this
+      .pendingDespawnTickByProjectileId) {
       if (tick < dueTick) continue;
 
       const entity = this.entityManager.getEntity(projectileId) as
-        | ProjectileEntity
-        | MissileEntity
-        | undefined;
+        ProjectileEntity | MissileEntity | undefined;
       if (entity) {
         despawnProjectile(this.pools, entity);
       }

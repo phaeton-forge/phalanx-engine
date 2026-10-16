@@ -17,7 +17,11 @@ import {
   TRANSFORM_COMPONENT_TYPE,
   INTERPOLATION_COMPONENT_TYPE,
 } from '@phalanx-engine/physics';
-import { ComponentType, MeshComponent, MissileComponent } from '../src/components';
+import {
+  ComponentType,
+  MeshComponent,
+  MissileComponent,
+} from '../src/components';
 import { StatsComponent } from '../src/components/UnitComponents';
 import { MissileEntity } from '../src/entities/Missile';
 import { MissileMovementSystem } from '../src/systems/MissileMovementSystem';
@@ -30,7 +34,7 @@ import {
 
 function readRotation(
   transformStore: ReturnType<EntityManager['getOrCreateSoAStore']>,
-  entityId: number,
+  entityId: number
 ): FPQuaternionType {
   const index = transformStore.indexOf(entityId);
   return {
@@ -43,7 +47,7 @@ function readRotation(
 
 function addEntityWithTransform(
   entityManager: EntityManager,
-  entity: Entity,
+  entity: Entity
 ): void {
   entityManager.addEntity(entity);
   entityManager.onComponentAdded(entity, TRANSFORM_COMPONENT_TYPE);
@@ -52,7 +56,7 @@ function addEntityWithTransform(
 function addTarget(entityManager: EntityManager, position: FPVector3): Entity {
   const target = new Entity();
   target.addComponent(
-    new TransformComponent(target.id, position, FPQuaternion.Identity()),
+    new TransformComponent(target.id, position, FPQuaternion.Identity())
   );
   target.addComponent(new StatsComponent({ stopRange: 18 }));
   addEntityWithTransform(entityManager, target);
@@ -96,8 +100,8 @@ describe('Missile FP quaternion migration', () => {
         new TransformComponent(
           target.id,
           FPVector3.FromFloat(10, 0, 0),
-          FPQuaternion.Identity(),
-        ),
+          FPQuaternion.Identity()
+        )
       );
       addEntityWithTransform(entityManager, target);
 
@@ -106,8 +110,8 @@ describe('Missile FP quaternion migration', () => {
         new TransformComponent(
           missile.id,
           FPVector3.FromFloat(0, 0, 0),
-          FPQuaternion.Identity(),
-        ),
+          FPQuaternion.Identity()
+        )
       );
       const mc = new MissileComponent();
       mc.phase = 'approach';
@@ -117,7 +121,7 @@ describe('Missile FP quaternion migration', () => {
       entityManager.onComponentAdded(missile, ComponentType.Missile);
 
       const initialYaw = FP.ToFloat(
-        FPQuaternion.ToEulerXYZ(readRotation(transformStore, missile.id)).y,
+        FPQuaternion.ToEulerXYZ(readRotation(transformStore, missile.id)).y
       );
       expect(initialYaw).toBeCloseTo(0, 2);
 
@@ -158,7 +162,7 @@ describe('Missile FP quaternion migration', () => {
       expect(interpolation).toBeDefined();
       expect(FP.ToFloat(interpolation!.currentFpRotation.w)).toBeCloseTo(
         FP.ToFloat(rotation.w),
-        3,
+        3
       );
     });
 
@@ -183,12 +187,12 @@ describe('Missile FP quaternion migration', () => {
       const mc = missile.getComponent<MissileComponent>(ComponentType.Missile)!;
       const launcherForward = FPQuaternion.RotateVector(
         launcherRotation,
-        FPVector3.Forward,
+        FPVector3.Forward
       );
       const launchFlat = { x: mc.launchSpreadX, y: FP._0, z: mc.launchSpreadZ };
       const dot = FP.Add(
         FP.Mul(launchFlat.x, launcherForward.x),
-        FP.Mul(launchFlat.z, launcherForward.z),
+        FP.Mul(launchFlat.z, launcherForward.z)
       );
       expect(FP.ToFloat(dot)).toBeGreaterThanOrEqual(0);
     });
@@ -212,11 +216,13 @@ describe('Missile FP quaternion migration', () => {
       entityManager.onComponentAdded(missile, PHYSICS_BODY_COMPONENT_TYPE);
       entityManager.onComponentAdded(missile, ComponentType.Missile);
 
-      const transform = missile.getComponent<TransformComponent>(TRANSFORM_COMPONENT_TYPE)!;
+      const transform = missile.getComponent<TransformComponent>(
+        TRANSFORM_COMPONENT_TYPE
+      )!;
       transform.fpPosition = FPVector3.FromFloat(0, 0, 0);
       transform.fpRotation = FPQuaternion.FromAxisAngle(
         FPVector3.Right,
-        FP.FromFloat(-Math.PI / 4),
+        FP.FromFloat(-Math.PI / 4)
       );
 
       const mc = missile.getComponent<MissileComponent>(ComponentType.Missile)!;
@@ -227,13 +233,21 @@ describe('Missile FP quaternion migration', () => {
       missile.active = true;
 
       const idx = transformStore.indexOf(missile.id);
-      const startX = FP.ToFloat(FP.FromRaw(transformStore.arrays.fpPositionX[idx]));
-      const startY = FP.ToFloat(FP.FromRaw(transformStore.arrays.fpPositionY[idx]));
+      const startX = FP.ToFloat(
+        FP.FromRaw(transformStore.arrays.fpPositionX[idx])
+      );
+      const startY = FP.ToFloat(
+        FP.FromRaw(transformStore.arrays.fpPositionY[idx])
+      );
 
       movementSystem.processTick(0);
 
-      const endX = FP.ToFloat(FP.FromRaw(transformStore.arrays.fpPositionX[idx]));
-      const endY = FP.ToFloat(FP.FromRaw(transformStore.arrays.fpPositionY[idx]));
+      const endX = FP.ToFloat(
+        FP.FromRaw(transformStore.arrays.fpPositionX[idx])
+      );
+      const endY = FP.ToFloat(
+        FP.FromRaw(transformStore.arrays.fpPositionY[idx])
+      );
       expect(endX).toBeGreaterThan(startX);
       expect(endY).toBeGreaterThanOrEqual(startY);
     });
@@ -241,7 +255,7 @@ describe('Missile FP quaternion migration', () => {
     it('skips launch and enters attack when the target is within attack range', () => {
       const target = addTarget(
         entityManager,
-        FPVector3.FromFloat(MISSILE_ATTACK_RANGE - 5, 0, 0),
+        FPVector3.FromFloat(MISSILE_ATTACK_RANGE - 5, 0, 0)
       );
 
       const missile = new MissileEntity();
@@ -250,7 +264,9 @@ describe('Missile FP quaternion migration', () => {
       entityManager.onComponentAdded(missile, PHYSICS_BODY_COMPONENT_TYPE);
       entityManager.onComponentAdded(missile, ComponentType.Missile);
 
-      const transform = missile.getComponent<TransformComponent>(TRANSFORM_COMPONENT_TYPE)!;
+      const transform = missile.getComponent<TransformComponent>(
+        TRANSFORM_COMPONENT_TYPE
+      )!;
       transform.fpPosition = FPVector3.FromFloat(0, 0, 0);
       transform.fpRotation = FPQuaternion.Identity();
 
@@ -269,7 +285,7 @@ describe('Missile FP quaternion migration', () => {
     it('flies the full launch arc for a target beyond attack range', () => {
       const target = addTarget(
         entityManager,
-        FPVector3.FromFloat(MISSILE_MIN_ENGAGEMENT_RANGE - 5, 0, 0),
+        FPVector3.FromFloat(MISSILE_MIN_ENGAGEMENT_RANGE - 5, 0, 0)
       );
 
       const missile = new MissileEntity();
@@ -278,7 +294,9 @@ describe('Missile FP quaternion migration', () => {
       entityManager.onComponentAdded(missile, PHYSICS_BODY_COMPONENT_TYPE);
       entityManager.onComponentAdded(missile, ComponentType.Missile);
 
-      const transform = missile.getComponent<TransformComponent>(TRANSFORM_COMPONENT_TYPE)!;
+      const transform = missile.getComponent<TransformComponent>(
+        TRANSFORM_COMPONENT_TYPE
+      )!;
       transform.fpPosition = FPVector3.FromFloat(0, 0, 0);
       transform.fpRotation = FPQuaternion.Identity();
 

@@ -36,12 +36,12 @@ interface SlotBinding {
  * Persistence (IndexedDB) is added by Task 7 as an injected `MatchStore`.
  *
  * {@link MatchRunner} calls {@link bindSlots} so echoed batches are keyed
- * by player id. {@link manual} does not start a timer; tests advance it
+ * by player id. {@link stepped} does not start a timer; tests advance it
  * with {@link step}.
  */
 export class LocalTransport implements Transport {
   public readonly kind: TransportKind = 'local';
-  public readonly isManual: boolean;
+  public readonly isStepped: boolean;
   private readonly tickRateValue: number;
   private readonly tickDuration: number;
   private readonly maxFrameTime: number;
@@ -60,7 +60,7 @@ export class LocalTransport implements Transport {
   private pauseHandlers: PauseHandler[] = [];
   private resumeHandlers: PauseHandler[] = [];
 
-  public constructor(options: LocalTransportOptions, manual = false) {
+  public constructor(options: LocalTransportOptions, stepped = false) {
     if (!Number.isInteger(options.tickRate) || options.tickRate <= 0) {
       throw new Error(
         `LocalTransport: tickRate must be a positive integer, got ${String(options.tickRate)}`
@@ -78,7 +78,7 @@ export class LocalTransport implements Transport {
         `LocalTransport: maxAheadTicks must be an integer >= 0, got ${String(options.maxAheadTicks)}`
       );
     }
-    this.isManual = manual;
+    this.isStepped = stepped;
     this.tickRateValue = options.tickRate;
     this.tickDuration = 1 / options.tickRate;
     this.maxFrameTime = maxFrameTime;
@@ -86,18 +86,20 @@ export class LocalTransport implements Transport {
   }
 
   /** Clock-less transport for tests and replays; advance with {@link step}. */
-  public static manual(): LocalTransport {
+  public static stepped(): LocalTransport {
     return new LocalTransport({ tickRate: 1 }, true);
   }
 
-  /** Configured tick rate. Manual transports do not drive a clock from it. */
+  /** Configured tick rate. A stepped transport does not drive a clock from it. */
   public get tickRate(): number {
     return this.tickRateValue;
   }
 
   /**
    * Player id echoed in `commands-batch` for each slot. The runner binds
-   * every human and bot slot before the first submit.
+   * every human and bot slot before the first submit. A later
+   * {@link assignPlayerId} changes the id stamped on commands submitted
+   * after a controller change.
    */
   public bindSlots(slots: readonly SlotBinding[]): void {
     this.playerIdBySlot.clear();
@@ -111,11 +113,24 @@ export class LocalTransport implements Transport {
     }
   }
 
-  /** Manual mode only: emit `count` ticks synchronously (default 1). */
-  public step(count = 1): void {
-    if (!this.isManual) {
+  /**
+   * Stamp later submits for `slot` with `playerId`. Commands already queued
+   * keep the id they were stamped with.
+   */
+  public assignPlayerId(slot: number, playerId: string): void {
+    if (!this.playerIdBySlot.has(slot)) {
       throw new Error(
-        'LocalTransport.step: only a manual transport can be stepped'
+        `LocalTransport.assignPlayerId: slot ${String(slot)} is not bound`
+      );
+    }
+    this.playerIdBySlot.set(slot, playerId);
+  }
+
+  /** Stepped mode only: emit `count` ticks synchronously (default 1). */
+  public step(count = 1): void {
+    if (!this.isStepped) {
+      throw new Error(
+        'LocalTransport.step: only a stepped transport can be stepped'
       );
     }
     if (!Number.isInteger(count) || count < 0) {
@@ -189,7 +204,7 @@ export class LocalTransport implements Transport {
   /** Start the timer. Manual transports record the request and do not tick. */
   public start(): void {
     this.clockStarted = true;
-    if (this.isManual || this.paused || this.running) return;
+    if (this.isStepped || this.paused || this.running) return;
     this.running = true;
     this.lastTime = hostNowSeconds();
     this.accumulator = 0;
@@ -229,7 +244,7 @@ export class LocalTransport implements Transport {
     if (!this.paused) return;
     this.paused = false;
     for (const handler of this.resumeHandlers.slice()) handler();
-    if (this.clockStarted && !this.isManual) this.start();
+    if (this.clockStarted && !this.isStepped) this.start();
   }
 
   public onPause(handler: PauseHandler): Unsubscribe {
@@ -268,12 +283,17 @@ export class LocalTransport implements Transport {
     const commands = emptyCommands();
     const bySlot = this.pending.get(tick);
     if (bySlot !== undefined) {
-      const slots = [...bySlot.keys()].sort((a, b) => a - b);
+      const slots = [...bySlot.keys()].sort((left, right) => left - right);
       for (const slot of slots) {
-        const playerId = this.playerIdBySlot.get(slot);
         const queued = bySlot.get(slot);
-        if (playerId === undefined || queued === undefined) continue;
-        commands[playerId] = queued.slice();
+        if (queued === undefined) continue;
+        for (const command of queued) {
+          const playerId = command.playerId;
+          if (playerId === undefined) continue;
+          const list = commands[playerId];
+          if (list === undefined) commands[playerId] = [command];
+          else list.push(command);
+        }
       }
       this.pending.delete(tick);
     }

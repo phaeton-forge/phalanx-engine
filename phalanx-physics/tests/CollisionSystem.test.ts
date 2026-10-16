@@ -14,7 +14,9 @@ import { PhysicsEvents } from '../src/events';
 import type { PhysicsConfig, CollisionEvent } from '../src/types';
 import { addTransformRow } from './testTransformHelpers';
 
-function createPhysicsConfig(overrides?: Partial<PhysicsConfig>): PhysicsConfig {
+function createPhysicsConfig(
+  overrides?: Partial<PhysicsConfig>
+): PhysicsConfig {
   return {
     tickDt: FP.FromFloat(0.05),
     subSteps: 1,
@@ -56,7 +58,8 @@ describe('Collision (via PhysicsSystem)', () => {
     system.init(context);
 
     const physicsStore = entityManager.getOrCreateSoAStore(PhysicsSoASchema);
-    const transformStore = entityManager.getOrCreateSoAStore(TransformSoASchema);
+    const transformStore =
+      entityManager.getOrCreateSoAStore(TransformSoASchema);
 
     return { system, physicsStore, transformStore };
   }
@@ -65,9 +68,10 @@ describe('Collision (via PhysicsSystem)', () => {
     physicsStore: SoAComponentStore<typeof PhysicsSoASchema.definition>,
     transformStore: SoAComponentStore<typeof TransformSoASchema.definition>,
     entityId: number,
-    posX: number, posZ: number,
+    posX: number,
+    posZ: number,
     radius: number = 1,
-    isStatic: boolean = false,
+    isStatic: boolean = false
   ): void {
     physicsStore.add(entityId, {
       velocityX: FP.ToRaw(FP._0),
@@ -97,8 +101,12 @@ describe('Collision (via PhysicsSystem)', () => {
 
     const idx1 = transformStore.indexOf(1);
     const idx2 = transformStore.indexOf(2);
-    const pos1X = FP.ToFloat(FP.FromRaw(transformStore.arrays.fpPositionX[idx1]));
-    const pos2X = FP.ToFloat(FP.FromRaw(transformStore.arrays.fpPositionX[idx2]));
+    const pos1X = FP.ToFloat(
+      FP.FromRaw(transformStore.arrays.fpPositionX[idx1])
+    );
+    const pos2X = FP.ToFloat(
+      FP.FromRaw(transformStore.arrays.fpPositionX[idx2])
+    );
 
     // They should be pushed apart: entity 1 moves left, entity 2 moves right
     expect(pos1X).toBeLessThan(0);
@@ -114,8 +122,12 @@ describe('Collision (via PhysicsSystem)', () => {
 
     const idx1 = transformStore.indexOf(1);
     const idx2 = transformStore.indexOf(2);
-    const pos1X = FP.ToFloat(FP.FromRaw(transformStore.arrays.fpPositionX[idx1]));
-    const pos2X = FP.ToFloat(FP.FromRaw(transformStore.arrays.fpPositionX[idx2]));
+    const pos1X = FP.ToFloat(
+      FP.FromRaw(transformStore.arrays.fpPositionX[idx1])
+    );
+    const pos2X = FP.ToFloat(
+      FP.FromRaw(transformStore.arrays.fpPositionX[idx2])
+    );
 
     // Static entity should not move
     expect(pos1X).toBeCloseTo(0, 1);

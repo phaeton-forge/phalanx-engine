@@ -1,3 +1,4 @@
+import type { GameWorld } from './GameWorld.js';
 import type { SystemContext } from './SystemContext.js';
 import type { EventBus } from './EventBus.js';
 import type { EntityManager } from './EntityManager.js';
@@ -25,6 +26,11 @@ import type { IRandom } from './IRandom.js';
 export abstract class GameSystem {
   /** Shared system dependencies (assigned in init) */
   protected context!: SystemContext;
+
+  /** Convenience accessor for the world that owns this system. */
+  protected get world(): GameWorld {
+    return this.context.world;
+  }
 
   /** Convenience accessor for EventBus */
   protected get eventBus(): EventBus {
@@ -156,6 +162,3 @@ export abstract class GameSystem {
     this.unsubscribers = [];
   }
 }
-
-
-

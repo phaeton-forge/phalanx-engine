@@ -71,13 +71,9 @@ export type {
   SocketManagerCallbacks,
 } from './SocketManager.js';
 
-
 // Deterministic random number generator
 export { DeterministicRandom } from './DeterministicRandom.js';
-export {
-  deriveMatchRandomSeed,
-  resolveMatchRandomSeed,
-} from './matchSeed.js';
+export { deriveMatchRandomSeed, resolveMatchRandomSeed } from './matchSeed.js';
 
 // Fixed-point math (deterministic across all platforms)
 export { FP, FPVector2, FPVector3, FixedPoint } from './FixedMath.js';

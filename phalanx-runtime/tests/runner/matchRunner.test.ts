@@ -44,13 +44,17 @@ interface Drive {
 
 const live: MatchRunner<typeof TinyGame>[] = [];
 
-function configFor(side: 'client' | 'server', seed = 7): TinyConfig {
+function configFor(
+  side: 'client' | 'server',
+  seed = 7,
+  botRunsOn: 'local' | 'server' = side === 'server' ? 'server' : 'local'
+): TinyConfig {
   return {
     matchId: 'm',
     gameId: 'tiny',
     simVersion: 'tiny-1',
     seed,
-    simMode: side,
+    side,
     inputDelayTicks: DELAY,
     arenaSize: ARENA,
     slots: [
@@ -61,7 +65,7 @@ function configFor(side: 'client' | 'server', seed = 7): TinyConfig {
         kind: 'bot',
         policy: 'walker',
         level: 1,
-        runsOn: side === 'server' ? 'server' : 'local',
+        runsOn: botRunsOn,
         color: 2,
       },
     ],
@@ -69,16 +73,15 @@ function configFor(side: 'client' | 'server', seed = 7): TinyConfig {
 }
 
 function drive(
-  simMode: 'client' | 'server' = 'client',
+  side: 'client' | 'server' = 'client',
   seed = 7,
-  side: 'client' | 'server' = simMode
+  botRunsOn?: 'local' | 'server'
 ): Drive {
-  const transport = LocalTransport.manual();
+  const transport = LocalTransport.stepped();
   const runner = new MatchRunner(
     TinyGame,
-    configFor(simMode, seed),
-    transport,
-    { side }
+    configFor(side, seed, botRunsOn),
+    transport
   );
   live.push(runner);
   return { runner, transport };
@@ -184,7 +187,7 @@ describe('MatchRunner', () => {
 
     const replay = first.runner.toReplay();
     resetTinyBotCalls();
-    const second = MatchRunner.fromReplay(TinyGame, replay);
+    const second = MatchRunner.openReplay(TinyGame, replay);
     live.push(second);
     const again: string[] = [];
     second.onRejected((_entry, reason) => {
@@ -378,7 +381,7 @@ describe('MatchRunner', () => {
     expect(replay.finalDigest).toBe(finalDigest);
     expect(replay.lastTick).toBe(1000);
     resetTinyBotCalls();
-    const replayed = MatchRunner.fromReplay(TinyGame, replay);
+    const replayed = MatchRunner.openReplay(TinyGame, replay);
     live.push(replayed);
     await replayed.fastForward(replay.log, {
       budgetMs: 50,
@@ -448,7 +451,7 @@ describe('MatchRunner', () => {
     expect(resumed.runner.digest()).toBe(expectedDigest);
 
     resetTinyBotCalls();
-    const client = drive('server', 9, 'client');
+    const client = drive('client', 9, 'server');
     client.runner.restore(saved);
     client.runner.start();
     stepTo(client, 15);
@@ -553,7 +556,7 @@ describe('MatchRunner', () => {
     recorded.runner.start();
     stepTo(recorded, 2);
     const replay = recorded.runner.toReplay();
-    const replayed = MatchRunner.fromReplay(TinyGame, {
+    const replayed = MatchRunner.openReplay(TinyGame, {
       ...replay,
       finalDigest: '0'.repeat(16),
     });
@@ -588,7 +591,7 @@ describe('MatchRunner', () => {
   });
 
   it('emits outcome once and stops', () => {
-    const transport = LocalTransport.manual();
+    const transport = LocalTransport.stepped();
     const runner = new MatchRunner(
       TinyGame,
       { ...configFor('client', 1), arenaSize: 1 },
@@ -765,7 +768,7 @@ describe('MatchRunner', () => {
   });
 
   it('publishes outcome and digest after the tick and bot checkpoint', () => {
-    const transport = LocalTransport.manual();
+    const transport = LocalTransport.stepped();
     const runner = new MatchRunner(
       TinyGame,
       { ...configFor('client', 1), arenaSize: 1 },
@@ -859,8 +862,8 @@ describe('MatchRunner', () => {
     handle.runner.start();
     stepTo(handle, 1);
     const replay = handle.runner.toReplay();
-    const replayed = MatchRunner.fromReplay(TinyGame, replay);
+    const replayed = MatchRunner.openReplay(TinyGame, replay);
     live.push(replayed);
-    expect(() => replayed.start()).toThrow(/fastForward\(replay\.log/);
+    expect(() => replayed.start()).toThrow(/ReplayPlayer/);
   });
 });

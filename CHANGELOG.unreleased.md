@@ -157,6 +157,29 @@ Entries collected per package until the synchronized 0.3.0 release
   notifies the entity manager when a kept entity gains or loses a
   component, and runs `onDestroy` when a component is dropped.
 
+- Task 6.5b: the game API is `defineComponent` + `defineCommands` +
+  `defineGame` + `runLocalMatch`. Migration (no aliases):
+  `createWorld` → `onStart`, `applyCommand` → `onCommand`,
+  `outcome` → `checkOutcome`, `GameState` → `SaveHandler` (advanced),
+  `state.bind` → `save: { handler }` (advanced),
+  `LocalTransport.manual` → `LocalTransport.stepped`,
+  `simMode` and the runner `side` option → one `side` on the match config
+  (`runsOn` stays independent; `side` is omitted from `configHash`),
+  `MatchRunner.fromReplay` → `ReplayPlayer.from`. `defineCommands` generates
+  decode/encode (never throws on bad input; `i64` is a decimal string) and
+  the command schema is part of `configHash`. `onCommand` is a function or
+  an exhaustive handler map. `runLocalMatch` expands short slots.
+  `ReplayPlayer` exposes `play`, `fastForward`, `digest`, `tick` and
+  `onTick`. `setController(slot, mode, { fromTick?, policy? })` logs a
+  system command (player id `system`) applied at the start of `fromTick`,
+  before game commands, on live play, restore, fast-forward and replay.
+  `inputDelayTicks` defaults to 2; `gameId` and `simVersion` are filled
+  from the definition. `ENGINE_SNAPSHOT_FORMAT` is 2 (format 1 is rejected).
+  Initial GAS `pendingAdd` effects are reseeded by `onEnable`; restore
+  passes `'restore'` and does not reseed. New package
+  `@phalanx-engine/engine` (private, not version-bumped) re-exports the
+  game-facing surface. `CommandSchema` and `SaveHandler` are advanced-only.
+
 ## @phalanx-engine/ecs
 
 - Snapshot accessors (Task 3): `getEntityIdCounter` / `setEntityIdCounter`

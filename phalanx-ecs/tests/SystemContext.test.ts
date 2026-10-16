@@ -127,7 +127,9 @@ describe('SystemContext shared services', () => {
 
   it('throws when context.random is accessed without configuration', () => {
     const world = new GameWorld({});
-    expect(() => world.random).toThrow(/SystemContext.random is not configured/);
+    expect(() => world.random).toThrow(
+      /SystemContext.random is not configured/
+    );
   });
 
   it('resets entity id counter on construction', () => {
@@ -152,9 +154,9 @@ describe('SystemContext shared services', () => {
       onFrame: () => () => {},
     };
 
-    expect(
-      () => new GameWorld({ tickFrameProvider: provider })
-    ).toThrow(/waitForGameStart\(\) before constructing GameWorld/);
+    expect(() => new GameWorld({ tickFrameProvider: provider })).toThrow(
+      /waitForGameStart\(\) before constructing GameWorld/
+    );
   });
 
   it('does not run ability tick systems twice when they are registered explicitly', () => {

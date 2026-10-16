@@ -22,9 +22,10 @@ export interface IComponent {
 export function createComponentTypeRegistry<T extends Record<string, string>>(
   types: T
 ): { [K in keyof T]: symbol } {
-  const registry: any = {};
-  for (const key in types) {
-    registry[key] = Symbol(types[key]);
+  const registry: { [K in keyof T]?: symbol } = {};
+  for (const key of Object.keys(types) as (keyof T)[]) {
+    const name = types[key];
+    registry[key] = Symbol(name);
   }
-  return registry;
+  return registry as { [K in keyof T]: symbol };
 }

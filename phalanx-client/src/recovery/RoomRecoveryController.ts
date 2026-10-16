@@ -40,11 +40,7 @@ export interface RecoveryClientPort {
  * strings without re-implementing the state machine.
  */
 export type RoomRecoveryPhase =
-  | 'idle'
-  | 'recovering'
-  | 'waiting-network'
-  | 'retrying'
-  | 'gave-up';
+  'idle' | 'recovering' | 'waiting-network' | 'retrying' | 'gave-up';
 
 export interface RoomRecoveryStatusEvent {
   phase: RoomRecoveryPhase;
@@ -286,7 +282,10 @@ export class RoomRecoveryController {
       if (!this.client.isConnected()) {
         await this.client.connect();
       }
-      await this.client.recoverRoom(code, getRecoverTimeoutMs(this.recoverBudget));
+      await this.client.recoverRoom(
+        code,
+        getRecoverTimeoutMs(this.recoverBudget)
+      );
 
       this.recoverAttempt = 0;
       this.emit('recoveryStatus', { phase: 'idle' });
@@ -478,4 +477,3 @@ export class RoomRecoveryController {
     await delay(NETWORK_STABILIZE_DELAY_MS);
   }
 }
-

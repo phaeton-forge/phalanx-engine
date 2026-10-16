@@ -865,14 +865,14 @@ describe('ability state helpers', () => {
     expect(
       getAbilitySystemComponent(freed)?.abilities.has('Ability.Burn')
     ).toBe(true);
-    expect(getActiveEffectsComponent(freed)?.pendingAdd).toHaveLength(0);
+    expect(getActiveEffectsComponent(freed)?.pendingAdd).toHaveLength(1);
 
     for (let count = 0; count < 6; count += 1) {
       source.abilities.applyEffect(freed.id, 'Effect.Burn', live.id);
     }
     source.abilities.applyEffect(live.id, 'Effect.ArmorShred', live.id);
     source.world.processAllTicks(0);
-    expect(getActiveEffectsComponent(freed)?.queue).toHaveLength(6);
+    expect(getActiveEffectsComponent(freed)?.queue).toHaveLength(7);
     expect(
       getGameplayTagsComponent(freed)?.effectGrantCounts.get(
         'State.Debuff.Burn'
@@ -898,11 +898,11 @@ describe('ability state helpers', () => {
     loadMatch(bytes, restored.world);
     expect(saveMatch(restored.world)).toEqual(bytes);
     expect(restored.world.entityManager.getEntity(freed.id)).toBeUndefined();
-    expect(getActiveEffectsComponent(live)?.queue).toHaveLength(1);
+    expect(getActiveEffectsComponent(live)?.queue).toHaveLength(2);
 
     const restoredLive = restored.world.entityManager.getEntity(live.id);
     if (restoredLive === undefined) throw new Error('missing live entity');
-    expect(getActiveEffectsComponent(restoredLive)?.queue).toHaveLength(1);
+    expect(getActiveEffectsComponent(restoredLive)?.queue).toHaveLength(2);
 
     for (let tick = 1; tick <= 15; tick += 1) {
       if (tick === 1) {
@@ -932,7 +932,7 @@ describe('ability state helpers', () => {
 
     const respawned = source.world.entityManager.getEntity(freed.id);
     if (respawned === undefined) throw new Error('missing respawned entity');
-    expect(getActiveEffectsComponent(respawned)?.queue).toHaveLength(1);
+    expect(getActiveEffectsComponent(respawned)?.queue).toHaveLength(2);
   });
 
   it('matches digests when a bare pooled entity gained GAS components lazily', () => {

@@ -250,29 +250,50 @@ export function canonicalConfigBytes(config: unknown): Uint8Array {
 }
 
 /**
- * `digestBytes(canonicalConfigBytes(config))`.
+ * One command in declaration order. `fields` is declaration order, not
+ * sorted. A string field's type token is `string` or `string(maxLength)`.
+ */
+export interface CommandSchemaHash {
+  readonly name: string;
+  readonly fields: readonly (readonly [string, string])[];
+}
+
+/**
+ * `digestBytes` of the canonical config, then component records, then
+ * command records.
  *
- * When `components` is non-empty, each record is appended in registration
- * order (array order, not sorted). A record is the component name plus
- * its field names and types in declaration order. An empty list matches
- * the one-argument hash. Swapping two fields, or changing `u32` to `i32`,
- * changes the digest.
+ * Component records are appended only when the list is non-empty, in
+ * registration order. Each record is the component name plus its field
+ * names and types in declaration order. Command records are appended
+ * only when that list is non-empty, in declaration order. An empty list
+ * does not change the digest. Swapping two fields, or changing `u32` to
+ * `i32`, changes the digest. A command schema change does too.
  */
 export function configHash(
   config: unknown,
-  components?: readonly ComponentSchemaHash[]
+  components?: readonly ComponentSchemaHash[],
+  commands?: readonly CommandSchemaHash[]
 ): Digest {
-  const configBytes = canonicalConfigBytes(config);
-  if (components === undefined || components.length === 0) {
-    return digestBytes(configBytes);
+  const parts: Uint8Array[] = [canonicalConfigBytes(config)];
+  if (components !== undefined && components.length > 0) {
+    parts.push(canonicalConfigBytes(components));
   }
-  const componentBytes = canonicalConfigBytes(components);
-  const combined = new Uint8Array(
-    configBytes.byteLength + componentBytes.byteLength
-  );
-  combined.set(configBytes, 0);
-  combined.set(componentBytes, configBytes.byteLength);
-  return digestBytes(combined);
+  if (commands !== undefined && commands.length > 0) {
+    parts.push(canonicalConfigBytes(commands));
+  }
+  return digestBytes(concatBytes(parts));
+}
+
+function concatBytes(parts: readonly Uint8Array[]): Uint8Array {
+  let length = 0;
+  for (const part of parts) length += part.byteLength;
+  const combined = new Uint8Array(length);
+  let offset = 0;
+  for (const part of parts) {
+    combined.set(part, offset);
+    offset += part.byteLength;
+  }
+  return combined;
 }
 
 /**
@@ -343,7 +364,10 @@ export function checkSnapshotCompatibility(
     return { decision: 'reject', reason: 'magic mismatch' };
   }
   if (header.engineFormat !== expected.engineFormat) {
-    return { decision: 'reject', reason: 'engineFormat mismatch' };
+    return {
+      decision: 'reject',
+      reason: `unsupported engine snapshot format ${String(header.engineFormat)}; expected ${String(expected.engineFormat)}`,
+    };
   }
   if (header.gameId !== expected.gameId) {
     return { decision: 'reject', reason: 'gameId mismatch' };

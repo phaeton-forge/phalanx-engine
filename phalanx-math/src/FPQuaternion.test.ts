@@ -47,7 +47,12 @@ describe('FPQuaternion', () => {
   it('Slerp takes the shortest arc when dot < 0', () => {
     const a = FPQuaternion.FromAxisAngle(FPVector3.Up, FP.FromFloat(0.2));
     // b is the same rotation expressed with negated components -> dot(a, b) < 0.
-    const b = FPQuaternion.Create(FP.Neg(a.x), FP.Neg(a.y), FP.Neg(a.z), FP.Neg(a.w));
+    const b = FPQuaternion.Create(
+      FP.Neg(a.x),
+      FP.Neg(a.y),
+      FP.Neg(a.z),
+      FP.Neg(a.w)
+    );
 
     const mid = FPQuaternion.Slerp(a, b, FP.FromFloat(0.5));
     // Shortest arc between a and -a is a itself (no large detour through 180°).
@@ -134,7 +139,14 @@ describe('FPQuaternion', () => {
   });
 
   it('Mul(q, Inverse(q)) equals Identity at cardinal yaws including PI', () => {
-    for (const yaw of [0, Math.PI / 2, Math.PI, -Math.PI, Math.PI - 0.02, Math.PI + 0.03]) {
+    for (const yaw of [
+      0,
+      Math.PI / 2,
+      Math.PI,
+      -Math.PI,
+      Math.PI - 0.02,
+      Math.PI + 0.03,
+    ]) {
       const q = FPQuaternion.FromYaw(FP.FromFloat(yaw));
       const product = FPQuaternion.Mul(q, FPQuaternion.Inverse(q));
       expect(FP.ToFloat(product.x)).toBeCloseTo(0, 4);
@@ -154,8 +166,14 @@ describe('FPQuaternion', () => {
   it('Sin/Cos stay accurate at obtuse angles after range reduction', () => {
     for (const deg of [70, 110, 160]) {
       const rad = (deg * Math.PI) / 180;
-      expect(FP.ToFloat(FP.Sin(FP.FromFloat(rad)))).toBeCloseTo(Math.sin(rad), 3);
-      expect(FP.ToFloat(FP.Cos(FP.FromFloat(rad)))).toBeCloseTo(Math.cos(rad), 3);
+      expect(FP.ToFloat(FP.Sin(FP.FromFloat(rad)))).toBeCloseTo(
+        Math.sin(rad),
+        3
+      );
+      expect(FP.ToFloat(FP.Cos(FP.FromFloat(rad)))).toBeCloseTo(
+        Math.cos(rad),
+        3
+      );
     }
   });
 

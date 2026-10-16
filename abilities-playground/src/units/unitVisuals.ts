@@ -4,7 +4,10 @@ import type { TeamId } from '../components';
 import type { UnitDefinition } from './UnitDefinition';
 import type { UnitType } from './UnitType';
 import { bindPlasmaTankEffects } from './plasmaTankEffects';
-import { createPlasmaTankModelInstance, isSharedModelGeometry } from './plasmaTankModel';
+import {
+  createPlasmaTankModelInstance,
+  isSharedModelGeometry,
+} from './plasmaTankModel';
 
 /**
  * Resolve a unit's body color from its team's pastel palette, keyed by unit type.
@@ -325,7 +328,14 @@ function createSauBody(
 
   // Hover platform + skirt.
   add(new THREE.BoxGeometry(4.5, 0.34, 2.05), platformMat, -0.1, 0.66, 0);
-  add(new THREE.BoxGeometry(4.5, 0.2, 2.05), darkMat, -0.1, HOVER_Y - 0.4, 0, false);
+  add(
+    new THREE.BoxGeometry(4.5, 0.2, 2.05),
+    darkMat,
+    -0.1,
+    HOVER_Y - 0.4,
+    0,
+    false
+  );
 
   // Hull stack.
   add(new THREE.BoxGeometry(4.4, 1.0, 1.95), hullLoMat, -0.1, HOVER_Y, 0);
@@ -341,8 +351,20 @@ function createSauBody(
   add(new THREE.BoxGeometry(0.9, 0.6, 1.6), detailMat, -2.05, HOVER_Y + 0.6, 0);
 
   // Turret.
-  add(new THREE.BoxGeometry(2.4, 0.78, 1.8), turretMat, -0.25, HOVER_Y + 1.27, 0);
-  add(new THREE.BoxGeometry(2.0, 0.12, 1.45), detailMat, -0.25, HOVER_Y + 1.7, 0);
+  add(
+    new THREE.BoxGeometry(2.4, 0.78, 1.8),
+    turretMat,
+    -0.25,
+    HOVER_Y + 1.27,
+    0
+  );
+  add(
+    new THREE.BoxGeometry(2.0, 0.12, 1.45),
+    detailMat,
+    -0.25,
+    HOVER_Y + 1.7,
+    0
+  );
   const cupola = add(
     new THREE.CylinderGeometry(0.3, 0.32, 0.34, 16),
     detailMat,

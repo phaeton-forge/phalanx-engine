@@ -25,7 +25,9 @@ describe('ability definition registries', () => {
       defineEffect({
         id: 'Effect.Damage',
         type: 'Instant',
-        modifiers: [{ attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(-10) }],
+        modifiers: [
+          { attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(-10) },
+        ],
         cues: ['Cue.Damage.Hit'],
       })
     );
@@ -39,7 +41,7 @@ describe('ability definition registries', () => {
       })
     );
 
-    registries.hooks.register('Hook.Attack', ctx => {
+    registries.hooks.register('Hook.Attack', (ctx) => {
       expect(ctx.abilityId).toBe('Ability.Attack');
     });
 
@@ -65,12 +67,18 @@ describe('ability definition registries', () => {
 
     expect(firstWorldRegistries.effects.has('Effect.Cooldown')).toBe(true);
     expect(secondWorldRegistries.effects.has('Effect.Cooldown')).toBe(false);
-    expect(firstWorldRegistries.effects.get('Effect.Cooldown').modifiers).toEqual([]);
+    expect(
+      firstWorldRegistries.effects.get('Effect.Cooldown').modifiers
+    ).toEqual([]);
   });
 
   it('rejects duplicate definitions deterministically', () => {
     const registries = createAbilitySystemRegistries();
-    const effect = defineEffect({ id: 'Effect.Marked', type: 'Duration', durationTicks: 60 });
+    const effect = defineEffect({
+      id: 'Effect.Marked',
+      type: 'Duration',
+      durationTicks: 60,
+    });
 
     registries.effects.register(effect);
 

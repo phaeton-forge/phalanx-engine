@@ -9,7 +9,12 @@ import {
   PhysicsSoASchema,
   TransformSoASchema,
 } from '@phalanx-engine/physics';
-import { FP, FPVector3, FPQuaternion, type FixedPoint } from '@phalanx-engine/math';
+import {
+  FP,
+  FPVector3,
+  FPQuaternion,
+  type FixedPoint,
+} from '@phalanx-engine/math';
 import {
   networkConfig,
   MISSILE_SPEED,
@@ -183,9 +188,15 @@ export class MissileMovementSystem extends GameSystem {
     const my = FP.FromRaw(this.transformStore.arrays.fpPositionY[tIdx]);
     const mz = FP.FromRaw(this.transformStore.arrays.fpPositionZ[tIdx]);
 
-    this.transformStore.arrays.fpPositionX[tIdx] = FP.ToRaw(FP.Add(mx, delta.x));
-    this.transformStore.arrays.fpPositionY[tIdx] = FP.ToRaw(FP.Add(my, delta.y));
-    this.transformStore.arrays.fpPositionZ[tIdx] = FP.ToRaw(FP.Add(mz, delta.z));
+    this.transformStore.arrays.fpPositionX[tIdx] = FP.ToRaw(
+      FP.Add(mx, delta.x)
+    );
+    this.transformStore.arrays.fpPositionY[tIdx] = FP.ToRaw(
+      FP.Add(my, delta.y)
+    );
+    this.transformStore.arrays.fpPositionZ[tIdx] = FP.ToRaw(
+      FP.Add(mz, delta.z)
+    );
   }
 
   private tickLaunch(
@@ -304,7 +315,9 @@ export class MissileMovementSystem extends GameSystem {
 
     this.bufferMissileImpactCue(missile.id, tick);
 
-    softDeactivateProjectile(this.entityManager, missile, { keepTransform: true });
+    softDeactivateProjectile(this.entityManager, missile, {
+      keepTransform: true,
+    });
 
     this.eventBus.emit<ProjectileDespawnRequestedEvent>(
       GameEvents.PROJECTILE_DESPAWN_REQUESTED,
@@ -352,7 +365,9 @@ export class MissileMovementSystem extends GameSystem {
     const effectId = projectileComp?.damageEffectId ?? 'Effect.Damage.Missile';
     this.abilities?.applyEffect(target.id, effectId, missile.id);
 
-    softDeactivateProjectile(this.entityManager, missile, { keepTransform: true });
+    softDeactivateProjectile(this.entityManager, missile, {
+      keepTransform: true,
+    });
     this.eventBus.emit<ProjectileDespawnRequestedEvent>(
       GameEvents.PROJECTILE_DESPAWN_REQUESTED,
       {

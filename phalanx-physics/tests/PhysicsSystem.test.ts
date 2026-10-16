@@ -14,7 +14,9 @@ import { PhysicsEvents } from '../src/events';
 import type { PhysicsConfig, CollisionEvent } from '../src/types';
 import { addTransformRow } from './testTransformHelpers';
 
-function createPhysicsConfig(overrides?: Partial<PhysicsConfig>): PhysicsConfig {
+function createPhysicsConfig(
+  overrides?: Partial<PhysicsConfig>
+): PhysicsConfig {
   return {
     tickDt: FP.FromFloat(0.05),
     subSteps: 1,
@@ -52,7 +54,8 @@ describe('PhysicsSystem', () => {
     system.init(context);
 
     const physicsStore = entityManager.getOrCreateSoAStore(PhysicsSoASchema);
-    const transformStore = entityManager.getOrCreateSoAStore(TransformSoASchema);
+    const transformStore =
+      entityManager.getOrCreateSoAStore(TransformSoASchema);
 
     return { system, physicsStore, transformStore };
   }
@@ -61,9 +64,11 @@ describe('PhysicsSystem', () => {
     physicsStore: SoAComponentStore<typeof PhysicsSoASchema.definition>,
     transformStore: SoAComponentStore<typeof TransformSoASchema.definition>,
     entityId: number,
-    posX: number, posZ: number,
-    velX: number = 0, velZ: number = 0,
-    isStatic: boolean = false,
+    posX: number,
+    posZ: number,
+    velX: number = 0,
+    velZ: number = 0,
+    isStatic: boolean = false
   ): void {
     physicsStore.add(entityId, {
       velocityX: FP.ToRaw(FP.FromFloat(velX)),
@@ -117,7 +122,9 @@ describe('PhysicsSystem', () => {
     system.processTick(1);
 
     const txIdx = transformStore.indexOf(1);
-    const posX = FP.ToFloat(FP.FromRaw(transformStore.arrays.fpPositionX[txIdx]));
+    const posX = FP.ToFloat(
+      FP.FromRaw(transformStore.arrays.fpPositionX[txIdx])
+    );
     expect(posX).toBeCloseTo(0, 1);
   });
 
@@ -156,7 +163,9 @@ describe('PhysicsSystem', () => {
   it('sub-stepping divides dt correctly', () => {
     // With 2 sub-steps and dt=0.05, each sub-step is 0.025
     // vel=10, total displacement = 10 * 0.025 * 2 = 0.5
-    const { system, physicsStore, transformStore } = setupSystem({ subSteps: 2 });
+    const { system, physicsStore, transformStore } = setupSystem({
+      subSteps: 2,
+    });
     addEntity(physicsStore, transformStore, 1, 0, 0, 10, 0);
 
     // Set friction to 1.0 (no damping) to isolate integration behavior
@@ -185,8 +194,12 @@ describe('PhysicsSystem', () => {
 
     const idx1 = transformStore.indexOf(1);
     const idx2 = transformStore.indexOf(2);
-    const pos1X = FP.ToFloat(FP.FromRaw(transformStore.arrays.fpPositionX[idx1]));
-    const pos2X = FP.ToFloat(FP.FromRaw(transformStore.arrays.fpPositionX[idx2]));
+    const pos1X = FP.ToFloat(
+      FP.FromRaw(transformStore.arrays.fpPositionX[idx1])
+    );
+    const pos2X = FP.ToFloat(
+      FP.FromRaw(transformStore.arrays.fpPositionX[idx2])
+    );
 
     // After collision resolution, entity 1 should be to the left of entity 2
     expect(pos1X).toBeLessThan(pos2X);
@@ -202,8 +215,12 @@ describe('PhysicsSystem', () => {
 
     const idx1 = transformStore.indexOf(1);
     const idx2 = transformStore.indexOf(2);
-    const pos1X = FP.ToFloat(FP.FromRaw(transformStore.arrays.fpPositionX[idx1]));
-    const pos2X = FP.ToFloat(FP.FromRaw(transformStore.arrays.fpPositionX[idx2]));
+    const pos1X = FP.ToFloat(
+      FP.FromRaw(transformStore.arrays.fpPositionX[idx1])
+    );
+    const pos2X = FP.ToFloat(
+      FP.FromRaw(transformStore.arrays.fpPositionX[idx2])
+    );
 
     // They should be pushed apart
     expect(pos1X).toBeLessThan(0);

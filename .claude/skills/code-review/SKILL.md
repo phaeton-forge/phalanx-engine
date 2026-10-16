@@ -36,6 +36,7 @@ Skip style/formatting unless it materially impacts readability. Do not nitpick n
 For each issue found:
 
 #### [Issue Title]
+
 - **Severity**: blocking | non-blocking
 - **Location**: `file_path:line_number`
 - **Description**: What the issue is and why it matters

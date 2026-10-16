@@ -1,4 +1,9 @@
-import { GameSystem, type EventBus, type SoAComponentStore, type SystemContext } from '@phalanx-engine/ecs';
+import {
+  GameSystem,
+  type EventBus,
+  type SoAComponentStore,
+  type SystemContext,
+} from '@phalanx-engine/ecs';
 import { FP, type FixedPoint } from '@phalanx-engine/math';
 import { PhysicsSoASchema } from '../components/PhysicsBodyComponent.js';
 import { TransformSoASchema } from '../components/TransformComponent.js';
@@ -9,7 +14,11 @@ import {
 import { NarrowPhase } from '../collision/NarrowPhase.js';
 import type { CollisionManifold } from '../collision/CollisionManifold.js';
 import { PhysicsEvents } from '../events.js';
-import type { PhysicsConfig, CollisionEvent, BoundsExitEvent } from '../types.js';
+import type {
+  PhysicsConfig,
+  CollisionEvent,
+  BoundsExitEvent,
+} from '../types.js';
 import type { IPhysicsTickProvider } from '../tick/IPhysicsTickProvider.js';
 
 const SEPARATION_HALF = FP.FromFloat(0.5);
@@ -28,10 +37,13 @@ const SEPARATION_HALF = FP.FromFloat(0.5);
  */
 export class PhysicsSystem extends GameSystem {
   private physicsStore!: SoAComponentStore<typeof PhysicsSoASchema.definition>;
-  private transformStore!: SoAComponentStore<typeof TransformSoASchema.definition>;
+  private transformStore!: SoAComponentStore<
+    typeof TransformSoASchema.definition
+  >;
   private config: PhysicsConfig;
   private readonly spatialGrid: SpatialHashGrid;
-  private collisionFilter: ((entityA: number, entityB: number) => boolean) | null = null;
+  private collisionFilter:
+    ((entityA: number, entityB: number) => boolean) | null = null;
   private externalTickProvider: IPhysicsTickProvider | null = null;
   private providerStarted = false;
 
@@ -43,8 +55,10 @@ export class PhysicsSystem extends GameSystem {
 
   public override init(context: SystemContext): void {
     super.init(context);
-    this.physicsStore = this.entityManager.getOrCreateSoAStore(PhysicsSoASchema);
-    this.transformStore = this.entityManager.getOrCreateSoAStore(TransformSoASchema);
+    this.physicsStore =
+      this.entityManager.getOrCreateSoAStore(PhysicsSoASchema);
+    this.transformStore =
+      this.entityManager.getOrCreateSoAStore(TransformSoASchema);
     this.tryStartProvider();
   }
 
@@ -58,7 +72,8 @@ export class PhysicsSystem extends GameSystem {
       !this.physicsStore ||
       !this.transformStore ||
       !this.externalTickProvider
-    ) return;
+    )
+      return;
     this.providerStarted = true;
     this.externalTickProvider.start(() => this.step());
   }
@@ -67,7 +82,9 @@ export class PhysicsSystem extends GameSystem {
    * Set an optional collision filter. Return false to skip a pair.
    * Useful for game-specific rules like team-based collision filtering.
    */
-  public setCollisionFilter(filter: (entityA: number, entityB: number) => boolean): void {
+  public setCollisionFilter(
+    filter: (entityA: number, entityB: number) => boolean
+  ): void {
     this.collisionFilter = filter;
   }
 
@@ -76,7 +93,10 @@ export class PhysicsSystem extends GameSystem {
    * Called by processTick() in default mode, or directly by a custom IPhysicsTickProvider.
    */
   public step(): void {
-    const subDt = FP.Div(this.config.tickDt, FP.FromFloat(this.config.subSteps));
+    const subDt = FP.Div(
+      this.config.tickDt,
+      FP.FromFloat(this.config.subSteps)
+    );
     for (let i = 0; i < this.config.subSteps; i++) {
       this.applyVelocities(subDt);
       this.rebuildSpatialGrid();
@@ -124,7 +144,12 @@ export class PhysicsSystem extends GameSystem {
    * @param iy        Impulse along Y axis (FixedPoint)
    * @param iz        Impulse along Z axis (FixedPoint)
    */
-  public applyImpulse3D(entityId: number, ix: FixedPoint, iy: FixedPoint, iz: FixedPoint): void {
+  public applyImpulse3D(
+    entityId: number,
+    ix: FixedPoint,
+    iy: FixedPoint,
+    iz: FixedPoint
+  ): void {
     const physIndex = this.physicsStore.indexOf(entityId);
     if (physIndex === -1) return;
     this.physicsStore.arrays.ignorePhysics[physIndex] = 0; // re-enable if previously ejected
@@ -160,7 +185,10 @@ export class PhysicsSystem extends GameSystem {
       const vx = FP.FromRaw(velX[i]);
       const vy = FP.FromRaw(velY[i]);
       const vz = FP.FromRaw(velZ[i]);
-      const velMagSq = FP.Add(FP.Add(FP.Mul(vx, vx), FP.Mul(vy, vy)), FP.Mul(vz, vz));
+      const velMagSq = FP.Add(
+        FP.Add(FP.Mul(vx, vx), FP.Mul(vy, vy)),
+        FP.Mul(vz, vz)
+      );
       if (FP.Gt(velMagSq, threshSq)) return false;
     }
     return true;
@@ -220,8 +248,10 @@ export class PhysicsSystem extends GameSystem {
       // Clamp to world bounds if configured
       if (bounds) {
         const outOfBounds =
-          FP.Lt(newPosX, bounds.minX) || FP.Gt(newPosX, bounds.maxX) ||
-          FP.Lt(newPosZ, bounds.minZ) || FP.Gt(newPosZ, bounds.maxZ);
+          FP.Lt(newPosX, bounds.minX) ||
+          FP.Gt(newPosX, bounds.maxX) ||
+          FP.Lt(newPosZ, bounds.minZ) ||
+          FP.Gt(newPosZ, bounds.maxZ);
 
         if (outOfBounds && this.config.ejectOnBoundsExit) {
           this.physicsStore.arrays.ignorePhysics[physIndex] = 1;
@@ -308,7 +338,10 @@ export class PhysicsSystem extends GameSystem {
       if (physIndexA === -1 || physIndexB === -1) continue;
 
       // Skip entities with ignorePhysics flag
-      if (physIgnorePhysics[physIndexA] === 1 || physIgnorePhysics[physIndexB] === 1) {
+      if (
+        physIgnorePhysics[physIndexA] === 1 ||
+        physIgnorePhysics[physIndexB] === 1
+      ) {
         continue;
       }
 
@@ -332,9 +365,14 @@ export class PhysicsSystem extends GameSystem {
 
       // Narrow-phase: circle vs circle
       const manifold = NarrowPhase.circleVsCircle(
-        posAX, posAZ, radiusA,
-        posBX, posBZ, radiusB,
-        entityIdA, entityIdB
+        posAX,
+        posAZ,
+        radiusA,
+        posBX,
+        posBZ,
+        radiusB,
+        entityIdA,
+        entityIdB
       );
 
       if (!manifold) continue;
@@ -342,9 +380,10 @@ export class PhysicsSystem extends GameSystem {
       // Compute restitution: average of both bodies, default to 1.0 if both unset
       const restitutionA = FP.FromRaw(physRestitution[physIndexA]);
       const restitutionB = FP.FromRaw(physRestitution[physIndexB]);
-      const restitution = (FP.Eq(restitutionA, FP._0) && FP.Eq(restitutionB, FP._0))
-        ? FP._1
-        : FP.Div(FP.Add(restitutionA, restitutionB), FP.FromFloat(2));
+      const restitution =
+        FP.Eq(restitutionA, FP._0) && FP.Eq(restitutionB, FP._0)
+          ? FP._1
+          : FP.Div(FP.Add(restitutionA, restitutionB), FP.FromFloat(2));
 
       // Resolve collision using the configured response model.
       if (this.config.collisionResponse === 'impulse') {
@@ -352,21 +391,31 @@ export class PhysicsSystem extends GameSystem {
         this.resolveImpulse(
           manifold,
           e,
-          physIndexA, physIndexB,
-          transformIndexA, transformIndexB,
-          physVelocityX, physVelocityZ,
-          physMass, physIsStatic,
-          fpPosXArr, fpPosZArr,
+          physIndexA,
+          physIndexB,
+          transformIndexA,
+          transformIndexB,
+          physVelocityX,
+          physVelocityZ,
+          physMass,
+          physIsStatic,
+          fpPosXArr,
+          fpPosZArr
         );
       } else {
         this.resolveCollision(
           manifold,
           restitution,
-          physIndexA, physIndexB,
-          transformIndexA, transformIndexB,
-          physVelocityX, physVelocityZ,
-          physMass, physIsStatic,
-          fpPosXArr, fpPosZArr,
+          physIndexA,
+          physIndexB,
+          transformIndexA,
+          transformIndexB,
+          physVelocityX,
+          physVelocityZ,
+          physMass,
+          physIsStatic,
+          fpPosXArr,
+          fpPosZArr
         );
       }
 
@@ -386,11 +435,16 @@ export class PhysicsSystem extends GameSystem {
   private resolveCollision(
     manifold: CollisionManifold,
     restitution: FixedPoint,
-    physIndexA: number, physIndexB: number,
-    transformIndexA: number, transformIndexB: number,
-    physVelocityX: BigInt64Array, physVelocityZ: BigInt64Array,
-    physMass: BigInt64Array, physIsStatic: Uint8Array,
-    fpPosXArr: BigInt64Array, fpPosZArr: BigInt64Array,
+    physIndexA: number,
+    physIndexB: number,
+    transformIndexA: number,
+    transformIndexB: number,
+    physVelocityX: BigInt64Array,
+    physVelocityZ: BigInt64Array,
+    physMass: BigInt64Array,
+    physIsStatic: Uint8Array,
+    fpPosXArr: BigInt64Array,
+    fpPosZArr: BigInt64Array
   ): void {
     const isStaticA = physIsStatic[physIndexA] === 1;
     const isStaticB = physIsStatic[physIndexB] === 1;
@@ -405,11 +459,22 @@ export class PhysicsSystem extends GameSystem {
     const nx = manifold.normalX;
     const nz = manifold.normalZ;
     const overlap = manifold.penetration;
-    const pushForce = FP.Mul(FP.Mul(overlap, this.config.pushStrength), restitution);
+    const pushForce = FP.Mul(
+      FP.Mul(overlap, this.config.pushStrength),
+      restitution
+    );
 
     // Mass ratios
-    const ratioA = isStaticA ? FP._0 : (isStaticB ? FP._1 : FP.Div(massB, totalMass));
-    const ratioB = isStaticB ? FP._0 : (isStaticA ? FP._1 : FP.Div(massA, totalMass));
+    const ratioA = isStaticA
+      ? FP._0
+      : isStaticB
+        ? FP._1
+        : FP.Div(massB, totalMass);
+    const ratioB = isStaticB
+      ? FP._0
+      : isStaticA
+        ? FP._1
+        : FP.Div(massA, totalMass);
 
     // Apply push velocities
     if (!isStaticA) {
@@ -467,11 +532,16 @@ export class PhysicsSystem extends GameSystem {
   private resolveImpulse(
     manifold: CollisionManifold,
     restitution: FixedPoint,
-    physIndexA: number, physIndexB: number,
-    transformIndexA: number, transformIndexB: number,
-    physVelocityX: BigInt64Array, physVelocityZ: BigInt64Array,
-    physMass: BigInt64Array, physIsStatic: Uint8Array,
-    fpPosXArr: BigInt64Array, fpPosZArr: BigInt64Array,
+    physIndexA: number,
+    physIndexB: number,
+    transformIndexA: number,
+    transformIndexB: number,
+    physVelocityX: BigInt64Array,
+    physVelocityZ: BigInt64Array,
+    physMass: BigInt64Array,
+    physIsStatic: Uint8Array,
+    fpPosXArr: BigInt64Array,
+    fpPosZArr: BigInt64Array
   ): void {
     const isStaticA = physIsStatic[physIndexA] === 1;
     const isStaticB = physIsStatic[physIndexB] === 1;
@@ -487,8 +557,10 @@ export class PhysicsSystem extends GameSystem {
     // divide-by-zero on FP.Div(1, 0).
     const massA = FP.FromRaw(physMass[physIndexA]);
     const massB = FP.FromRaw(physMass[physIndexB]);
-    const invMassA = (isStaticA || FP.Lte(massA, FP._0)) ? FP._0 : FP.Div(FP._1, massA);
-    const invMassB = (isStaticB || FP.Lte(massB, FP._0)) ? FP._0 : FP.Div(FP._1, massB);
+    const invMassA =
+      isStaticA || FP.Lte(massA, FP._0) ? FP._0 : FP.Div(FP._1, massA);
+    const invMassB =
+      isStaticB || FP.Lte(massB, FP._0) ? FP._0 : FP.Div(FP._1, massB);
     const invMassSum = FP.Add(invMassA, invMassB);
     if (FP.Lte(invMassSum, FP._0)) return;
 
@@ -505,13 +577,45 @@ export class PhysicsSystem extends GameSystem {
     // Positional separation (split the overlap evenly among dynamic bodies).
     const overlap = manifold.penetration;
     if (isStaticA) {
-      this.separateBody(transformIndexB, nx, nz, overlap, fpPosXArr, fpPosZArr, true);
+      this.separateBody(
+        transformIndexB,
+        nx,
+        nz,
+        overlap,
+        fpPosXArr,
+        fpPosZArr,
+        true
+      );
     } else if (isStaticB) {
-      this.separateBody(transformIndexA, nx, nz, overlap, fpPosXArr, fpPosZArr, false);
+      this.separateBody(
+        transformIndexA,
+        nx,
+        nz,
+        overlap,
+        fpPosXArr,
+        fpPosZArr,
+        false
+      );
     } else {
       const half = FP.Mul(overlap, SEPARATION_HALF);
-      this.separateBody(transformIndexA, nx, nz, half, fpPosXArr, fpPosZArr, false);
-      this.separateBody(transformIndexB, nx, nz, half, fpPosXArr, fpPosZArr, true);
+      this.separateBody(
+        transformIndexA,
+        nx,
+        nz,
+        half,
+        fpPosXArr,
+        fpPosZArr,
+        false
+      );
+      this.separateBody(
+        transformIndexB,
+        nx,
+        nz,
+        half,
+        fpPosXArr,
+        fpPosZArr,
+        true
+      );
     }
 
     // Bodies separating already — skip the impulse (do not "suck" them together).
@@ -536,10 +640,12 @@ export class PhysicsSystem extends GameSystem {
   /** Move one body along the contact normal by `amount` (dir=+1 for B side, -1 for A side). */
   private separateBody(
     transformIndex: number,
-    nx: FixedPoint, nz: FixedPoint,
+    nx: FixedPoint,
+    nz: FixedPoint,
     amount: FixedPoint,
-    fpPosXArr: BigInt64Array, fpPosZArr: BigInt64Array,
-    positive: boolean,
+    fpPosXArr: BigInt64Array,
+    fpPosZArr: BigInt64Array,
+    positive: boolean
   ): void {
     const posX = FP.FromRaw(fpPosXArr[transformIndex]);
     const posZ = FP.FromRaw(fpPosZArr[transformIndex]);
@@ -572,22 +678,31 @@ export class PhysicsSystem extends GameSystem {
 
       // Read per-entity friction; fall back to default if zero/unset
       const frictionRaw = physFriction[physIndex];
-      const friction = frictionRaw === 0n
-        ? this.config.defaultFriction
-        : FP.FromRaw(frictionRaw);
+      const friction =
+        frictionRaw === 0n
+          ? this.config.defaultFriction
+          : FP.FromRaw(frictionRaw);
 
-      physVelocityX[physIndex] = FP.ToRaw(FP.Mul(FP.FromRaw(physVelocityX[physIndex]), friction));
-      physVelocityZ[physIndex] = FP.ToRaw(FP.Mul(FP.FromRaw(physVelocityZ[physIndex]), friction));
+      physVelocityX[physIndex] = FP.ToRaw(
+        FP.Mul(FP.FromRaw(physVelocityX[physIndex]), friction)
+      );
+      physVelocityZ[physIndex] = FP.ToRaw(
+        FP.Mul(FP.FromRaw(physVelocityZ[physIndex]), friction)
+      );
     }
   }
 
   /** Expose the physics SoA store for external use */
-  public getPhysicsStore(): SoAComponentStore<typeof PhysicsSoASchema.definition> {
+  public getPhysicsStore(): SoAComponentStore<
+    typeof PhysicsSoASchema.definition
+  > {
     return this.physicsStore;
   }
 
   /** Expose the transform SoA store */
-  public getTransformStore(): SoAComponentStore<typeof TransformSoASchema.definition> {
+  public getTransformStore(): SoAComponentStore<
+    typeof TransformSoASchema.definition
+  > {
     return this.transformStore;
   }
 

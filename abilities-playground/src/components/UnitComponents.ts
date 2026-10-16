@@ -233,7 +233,7 @@ export class MeshComponent implements IPoolableComponent {
         color: 0xdddddd,
         metalness: 0.5,
         roughness: 0.35,
-      }),
+      })
     );
     body.rotation.x = Math.PI / 2;
     body.castShadow = true;
@@ -243,7 +243,7 @@ export class MeshComponent implements IPoolableComponent {
       height: number,
       color: number,
       opacity: number,
-      emissiveIntensity: number,
+      emissiveIntensity: number
     ): THREE.Mesh => {
       const flame = new THREE.Mesh(
         new THREE.ConeGeometry(radius, height, 12),
@@ -258,7 +258,7 @@ export class MeshComponent implements IPoolableComponent {
           blending: THREE.AdditiveBlending,
           depthWrite: false,
           toneMapped: false,
-        }),
+        })
       );
       flame.rotation.x = -Math.PI / 2;
       flame.position.z = -(bodyLength / 2 + height / 2);

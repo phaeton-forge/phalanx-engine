@@ -16,6 +16,7 @@ Do NOT use unauthenticated `git clone https://github.com/...` — use `gh repo c
 ## Forking Workflow
 
 When you don't have write access to a repository (push fails with 403/permission denied):
+
 1. Fork it: `gh repo fork --remote=true` (this adds your fork as the `origin` remote and renames the original to `upstream`)
 2. Push your branch to the fork: `git push -u origin <branch-name>`
 3. Open a PR from your fork to the upstream repo: `gh pr create --repo <upstream-owner>/<repo>`

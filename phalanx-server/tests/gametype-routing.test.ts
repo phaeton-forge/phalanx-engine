@@ -63,10 +63,26 @@ describe('Per-gameType queue isolation', () => {
         })
     );
 
-    c1.emit('queue-join', { playerId: 'p1', username: 'P1', gameType: 'ranked' });
-    c2.emit('queue-join', { playerId: 'p2', username: 'P2', gameType: 'ranked' });
-    c3.emit('queue-join', { playerId: 'p3', username: 'P3', gameType: 'casual' });
-    c4.emit('queue-join', { playerId: 'p4', username: 'P4', gameType: 'casual' });
+    c1.emit('queue-join', {
+      playerId: 'p1',
+      username: 'P1',
+      gameType: 'ranked',
+    });
+    c2.emit('queue-join', {
+      playerId: 'p2',
+      username: 'P2',
+      gameType: 'ranked',
+    });
+    c3.emit('queue-join', {
+      playerId: 'p3',
+      username: 'P3',
+      gameType: 'casual',
+    });
+    c4.emit('queue-join', {
+      playerId: 'p4',
+      username: 'P4',
+      gameType: 'casual',
+    });
 
     const matches = await Promise.all(matchPromises);
 
@@ -91,8 +107,16 @@ describe('Per-gameType queue isolation', () => {
     );
 
     // 'bogus' is not configured, both should fall back to 'default'
-    c1.emit('queue-join', { playerId: 'p1', username: 'P1', gameType: 'bogus' });
-    c2.emit('queue-join', { playerId: 'p2', username: 'P2', gameType: 'bogus' });
+    c1.emit('queue-join', {
+      playerId: 'p1',
+      username: 'P1',
+      gameType: 'bogus',
+    });
+    c2.emit('queue-join', {
+      playerId: 'p2',
+      username: 'P2',
+      gameType: 'bogus',
+    });
 
     const matches = await Promise.all(matchPromises);
     expect(matches[0].matchId).toBe(matches[1].matchId);
@@ -131,8 +155,12 @@ describe('Event-mode immediate commands-batch broadcast', () => {
 
     // Wait for match-found + game-start + client-ready
     const gameStartP = Promise.all([
-      new Promise<void>((resolve) => socket1.once('game-start', () => resolve())),
-      new Promise<void>((resolve) => socket2.once('game-start', () => resolve())),
+      new Promise<void>((resolve) =>
+        socket1.once('game-start', () => resolve())
+      ),
+      new Promise<void>((resolve) =>
+        socket2.once('game-start', () => resolve())
+      ),
     ]);
 
     await new Promise<void>((resolve) => {
@@ -215,8 +243,12 @@ describe('Event-mode turnTimeoutMs ends match', () => {
     ]);
 
     const gameStartP = Promise.all([
-      new Promise<void>((resolve) => socket1.once('game-start', () => resolve())),
-      new Promise<void>((resolve) => socket2.once('game-start', () => resolve())),
+      new Promise<void>((resolve) =>
+        socket1.once('game-start', () => resolve())
+      ),
+      new Promise<void>((resolve) =>
+        socket2.once('game-start', () => resolve())
+      ),
     ]);
 
     await new Promise<void>((resolve) => {

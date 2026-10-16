@@ -1,6 +1,9 @@
 import type { EventBus } from './EventBus.js';
 import type { EntityManager } from './EntityManager.js';
 import type { GameSystem } from './GameSystem.js';
+
+type SystemConstructor = abstract new (...args: never[]) => GameSystem;
+import type { GameWorld } from './GameWorld.js';
 import type { IAbilitySystem } from './IAbilitySystem.js';
 import type { IPhysicsWorld } from './IPhysicsWorld.js';
 import type { PoolManager } from './pool/PoolManager.js';
@@ -31,8 +34,14 @@ export class SystemContext {
   /** Entity manager for component queries */
   public readonly entityManager: EntityManager;
 
+  /**
+   * The world that owns this context. Assigned by `GameWorld` after the
+   * registry exists. Systems read it through `GameSystem.world`.
+   */
+  public world!: GameWorld;
+
   /** Internal registry of all systems for getSystem() lookup */
-  private systemRegistry: Map<Function, GameSystem> = new Map();
+  private systemRegistry = new Map<SystemConstructor, GameSystem>();
 
   /**
    * The ability system for this game world.
@@ -59,10 +68,7 @@ export class SystemContext {
 
   private _random: IRandom | undefined;
 
-  constructor(
-    eventBus: EventBus,
-    entityManager: EntityManager
-  ) {
+  constructor(eventBus: EventBus, entityManager: EntityManager) {
     this.eventBus = eventBus;
     this.entityManager = entityManager;
   }
@@ -90,7 +96,9 @@ export class SystemContext {
    * Called by SystemRegistry during system initialization
    */
   public registerSystem(system: GameSystem): void {
-    this.systemRegistry.set(system.constructor, system);
+    // `constructor` is typed as `Function`. The map key is the class
+    // `getSystem` receives.
+    this.systemRegistry.set(system.constructor as SystemConstructor, system);
   }
 
   /**
@@ -100,7 +108,9 @@ export class SystemContext {
    * @param systemClass The system class/constructor
    * @returns The system instance, or undefined if not found
    */
-  public getSystem<T extends GameSystem>(systemClass: new (...args: any[]) => T): T | undefined {
+  public getSystem<T extends GameSystem>(
+    systemClass: abstract new (...args: never[]) => T
+  ): T | undefined {
     return this.systemRegistry.get(systemClass) as T | undefined;
   }
 }

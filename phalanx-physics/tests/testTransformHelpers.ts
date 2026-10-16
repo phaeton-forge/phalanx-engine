@@ -8,7 +8,7 @@ export function addTransformRow(
   entityId: number,
   posX: number,
   posZ: number,
-  posY = 0,
+  posY = 0
 ): void {
   transformStore.add(entityId, {
     fpPositionX: FP.ToRaw(FP.FromFloat(posX)),

@@ -1,6 +1,7 @@
 import { defineConfig, loadEnv } from 'vite';
 
-const PRODUCTION_SERVER_URL = 'https://abilities-playground-backend.onrender.com';
+const PRODUCTION_SERVER_URL =
+  'https://abilities-playground-backend.onrender.com';
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');

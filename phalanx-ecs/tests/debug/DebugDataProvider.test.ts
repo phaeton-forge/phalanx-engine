@@ -31,10 +31,12 @@ class ArmorComponent implements IComponent {
 
 const PhysicsSoASchema = defineSoASchema(
   { velocityX: 'i64', velocityY: 'i64', radius: 'f64', isStatic: 'u8' },
-  'PhysicsBody',
+  'PhysicsBody'
 );
 
-class PhysicsBodyComponent extends SoAComponent<typeof PhysicsSoASchema.definition> {
+class PhysicsBodyComponent extends SoAComponent<
+  typeof PhysicsSoASchema.definition
+> {
   public readonly type = Symbol('PhysicsBody');
   static readonly soaSchema = PhysicsSoASchema;
 
@@ -53,7 +55,7 @@ class PhysicsBodyComponent extends SoAComponent<typeof PhysicsSoASchema.definiti
 function createProvider(
   em: EntityManager,
   pools: PoolManager | null = null,
-  interval = 0,
+  interval = 0
 ): DebugDataProvider {
   return new DebugDataProvider(em, pools, { updateInterval: interval });
 }
@@ -114,13 +116,13 @@ describe('DebugDataProvider', () => {
       expect(snap.entities[0].components).toHaveLength(2);
 
       const healthSnap = snap.entities[0].components.find(
-        (c) => c.typeName === 'Health',
+        (c) => c.typeName === 'Health'
       );
       expect(healthSnap).toBeDefined();
       expect(healthSnap!.data.hp).toBe(75);
 
       const armorSnap = snap.entities[0].components.find(
-        (c) => c.typeName === 'Armor',
+        (c) => c.typeName === 'Armor'
       );
       expect(armorSnap).toBeDefined();
       expect(armorSnap!.data.armor).toBe(20);
@@ -136,7 +138,12 @@ describe('DebugDataProvider', () => {
       expect(snap.soaStores).toHaveLength(1);
       const store = snap.soaStores[0];
       expect(store.name).toBe('PhysicsBody');
-      expect(store.fieldNames).toEqual(['velocityX', 'velocityY', 'radius', 'isStatic']);
+      expect(store.fieldNames).toEqual([
+        'velocityX',
+        'velocityY',
+        'radius',
+        'isStatic',
+      ]);
       expect(store.fieldTypes.velocityX).toBe('i64');
       expect(store.fieldTypes.radius).toBe('f64');
       expect(store.fieldTypes.isStatic).toBe('u8');

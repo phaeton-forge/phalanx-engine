@@ -11,7 +11,10 @@ import {
 } from '@phalanx-engine/physics';
 import { MeshComponent, TeamComponent } from '../components';
 import type { TeamId } from '../components';
-import { SHRAPNEL_GRAVITY_MULTIPLIER, SHRAPNEL_MASS } from '../config/constants';
+import {
+  SHRAPNEL_GRAVITY_MULTIPLIER,
+  SHRAPNEL_MASS,
+} from '../config/constants';
 import { ShrapnelPayloadComponent } from '../components/ShrapnelPayloadComponent';
 
 /** Physics radius of a shrapnel fragment (small; landing is by ground sweep). */

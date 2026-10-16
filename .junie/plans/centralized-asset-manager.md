@@ -5,6 +5,7 @@ sessionId: session-260701-141657-w6s5
 # Requirements
 
 ### Overview & Goals
+
 Today the Chapayev game downloads its 3D assets ad‑hoc, scattered across several rendering modules: each of `BoardMesh.ts`, `CheckerMesh.ts`, and `SceneSetup.ts` creates its own `new THREE.TextureLoader()` and independently issues texture requests, and the HDR environment is loaded separately via `EXRLoader`. There is no single place that knows what needs to be downloaded, no way to know when everything is ready, and no loading feedback for the user — the scene simply pops textures in as they arrive.
 
 This change introduces a **centralized AssetManager** that owns the download of all textures (the wood JPG maps for board, deck, and both checker sets), the EXR HDR environment map, **and every mp3 sound file** (hit/movement/rim/fall-off variants + background music), and a **loading indicator** (spinner) that is displayed until every asset has finished downloading.
@@ -12,6 +13,7 @@ This change introduces a **centralized AssetManager** that owns the download of 
 ### Scope
 
 **In Scope**
+
 - A single `AssetManager` that centralizes downloading of all GPU textures, the HDR environment map, and all mp3 sound files, backed by one `THREE.LoadingManager`.
 - A central asset manifest listing every texture/EXR path **and every mp3 sound path** (replacing the hardcoded paths currently duplicated across rendering files and `SoundSystem.ts`).
 - Refactoring `BoardMesh.ts`, `CheckerMesh.ts`, and `SceneSetup.ts` to consume already‑downloaded textures from the AssetManager cache instead of creating their own loaders.
@@ -20,17 +22,20 @@ This change introduces a **centralized AssetManager** that owns the download of 
 - Wiring the preload + loader into the startup flow in `main.ts` so assets are fully downloaded before the game scene is built.
 
 **Out of Scope**
+
 - Any change to how audio is **decoded/unlocked** — the iOS Safari gesture-driven `AudioContext` unlock and `decodeAudioData` flow in `SoundSystem` stays exactly as-is; only the raw byte download moves to the AssetManager.
 - Playback logic (BGM cross-fade, movement/sliding sounds, volume/gain nodes) is unchanged.
 - No visual redesign of the game itself; the loader is a minimal themed spinner, no percentage.
 - No changes to networking, matchmaking, or gameplay logic.
 
 ### User Stories
+
 - As a player, when I open the game I see a loading spinner instead of a half‑textured scene, so I know the game is preparing.
 - As a player, I only see the interactive board once all textures and the environment map are downloaded, so the scene never pops in visibly.
 - As a developer, I have one place (`AssetManager` + manifest) that defines and downloads all visual assets, so adding or changing a texture no longer means touching multiple loaders.
 
 ### Functional Requirements
+
 - All textures currently loaded in `BoardMesh`, `CheckerMesh`, and `SceneSetup`, the EXR HDR env map, **and all mp3 sound files** are downloaded through the AssetManager.
 - The loading indicator appears at startup, before the 3D scene becomes visible.
 - The indicator remains visible until the AssetManager reports that every asset (textures + EXR + mp3s) finished downloading, then is removed/hidden.
@@ -38,6 +43,7 @@ This change introduces a **centralized AssetManager** that owns the download of 
 - If an asset fails to download, startup still proceeds (the game does not hang forever on the spinner) and the failure is logged, consistent with existing error handling in `main.ts` (`reportStartupError`).
 
 ### Non-Functional Requirements
+
 - No duplicate downloads: each texture/mp3 URL is requested exactly once and reused (e.g. `hit_04.mp3` is used for both hit and rim-hit).
 - Works across all existing platform adapters (Telegram/Yandex/Capacitor/Standalone) since the loader is plain HTML overlay in `#ui-root`, consistent with the existing UI layer.
 - Keeps the existing `firstFrameRendered` → `adapter.ready()` contract intact.
@@ -45,6 +51,7 @@ This change introduces a **centralized AssetManager** that owns the download of 
 # Technical Design
 
 ### Current Implementation
+
 - **Texture loading is decentralized.** `chapaev/src/rendering/BoardMesh.ts` (deck + board square maps), `chapaev/src/rendering/CheckerMesh.ts` (bright/dark checker maps, cached per team in a `materialCache`), and `chapaev/src/rendering/SceneSetup.ts` (table maps + EXR HDR via `EXRLoader` + `PMREMGenerator`) each construct their own `new THREE.TextureLoader()` and call `.load(publicAssetUrl(...))`.
 - **URL resolution** goes through `chapaev/src/publicAssetUrl.ts` for all `public/` assets.
 - **Startup flow:** `chapaev/src/main.ts` `bootstrap()` detects platform, then constructs `new Game(canvas, adapter, mode)`. The `Game` constructor immediately calls `setupScene(canvas)` (which kicks off texture/EXR loads) and `game.start()`. `game.firstFrameRendered` resolves after the first rendered frame; `main.ts` then calls `adapter.ready()` to hide the platform splash.
@@ -52,6 +59,7 @@ This change introduces a **centralized AssetManager** that owns the download of 
 - **Assets on disk:** `chapaev/public/textures/{deck,boards,bright-checker,dark-checker,env}/...` (JPG maps + one `.exr`), enumerated during investigation.
 
 ### Key Decisions
+
 - **Single `THREE.LoadingManager` inside an `AssetManager`** (confirmed). The manager owns shared `TextureLoader` + `EXRLoader` **+ `FileLoader`** instances bound to one `LoadingManager`; its `onLoad`/`onError` callbacks resolve a `preloadAll()` promise, and consumers read finished assets from a cache map. This is the idiomatic three.js approach and gives an accurate "all done" signal for the loader.
 - **Indeterminate spinner, no percentage** (confirmed). Simpler UX; avoids the jitter of three.js progress counts (which grow as items register).
 - **Textures + HDR env + mp3s** (confirmed). All three asset kinds route through the AssetManager.
@@ -60,6 +68,7 @@ This change introduces a **centralized AssetManager** that owns the download of 
 - **Per‑use texture settings via cloning.** Some maps are reused with different `repeat`/`wrapping` (e.g. table uses `repeat 6`, deck uses `repeat 2`, both reference `boards/Wood076...`). The cache stores one downloaded texture per URL; call sites that need different tiling `.clone()` the cached texture (clone shares the GPU image, so no re‑download) and set `wrapS/wrapT/repeat/colorSpace` locally.
 
 ### Proposed Changes
+
 1. **`chapaev/src/rendering/AssetManifest.ts` (new)** — export a typed manifest of every texture/EXR path (grouped: `deck`, `board`, `brightChecker`, `darkChecker`, `env`) **plus an `AUDIO_MANIFEST` listing every mp3 path** (hit/movement/rim/fall-off/bgm), using the same relative paths currently hardcoded in the rendering modules and `SoundSystem.ts`. Single source of truth for what gets downloaded.
 2. **`chapaev/src/rendering/AssetManager.ts` (new)** — a small class/singleton:
    - Holds one `THREE.LoadingManager`, a shared `THREE.TextureLoader`, an `EXRLoader`, **and a `THREE.FileLoader` (responseType `arraybuffer`) for mp3 bytes**.
@@ -75,25 +84,30 @@ This change introduces a **centralized AssetManager** that owns the download of 
 6. **`chapaev/src/main.ts`** — in `bootstrap()`, after adapter init: create + `show()` the loader overlay, `await assetManager.preloadAll()`, then construct `Game` and `game.start()`, and `hide()` the loader (either right after preload or gated on `firstFrameRendered` for a seamless handoff). Errors from preload are funneled through the existing `reportStartupError`/catch path so the spinner never hangs indefinitely.
 
 ### Data Models / Contracts
+
 ```ts
 // AssetManifest.ts
-export interface TextureAsset { path: string; colorSpace?: 'srgb' | 'linear'; }
+export interface TextureAsset {
+  path: string;
+  colorSpace?: 'srgb' | 'linear';
+}
 export const TEXTURE_MANIFEST: readonly TextureAsset[];
-export const ENV_MAP_PATH: string;               // '.../IndoorEnvironmentHDRI013_2K_HDR.exr'
-export const AUDIO_MANIFEST: readonly string[];  // all mp3 paths (hit/movement/rim/fall-off/bgm)
+export const ENV_MAP_PATH: string; // '.../IndoorEnvironmentHDRI013_2K_HDR.exr'
+export const AUDIO_MANIFEST: readonly string[]; // all mp3 paths (hit/movement/rim/fall-off/bgm)
 
 // AssetManager.ts
 export class AssetManager {
   preloadAll(): Promise<void>;
-  getTexture(path: string): THREE.Texture;      // cached, throws if missing
-  getEnvTexture(): THREE.DataTexture;           // cached EXR
-  getAudioBuffer(path: string): ArrayBuffer;    // cached raw mp3 bytes (via FileLoader)
+  getTexture(path: string): THREE.Texture; // cached, throws if missing
+  getEnvTexture(): THREE.DataTexture; // cached EXR
+  getAudioBuffer(path: string): ArrayBuffer; // cached raw mp3 bytes (via FileLoader)
   dispose(): void;
 }
-export const assetManager: AssetManager;         // shared singleton
+export const assetManager: AssetManager; // shared singleton
 ```
 
 ### Components
+
 - **AssetManager (new, logic):** owns `LoadingManager` + loaders + cache; single download authority.
 - **AssetManifest (new, data):** declarative list of asset paths.
 - **LoaderOverlay (new, UI):** spinner overlay in `#ui-root`.
@@ -102,6 +116,7 @@ export const assetManager: AssetManager;         // shared singleton
 - **main.ts (existing, modified):** orchestrates preload + loader show/hide around `Game` construction.
 
 ### File Structure
+
 ```
 chapaev/src/
   rendering/
@@ -120,6 +135,7 @@ chapaev/src/
 ```
 
 ### Architecture Diagram
+
 ```mermaid
 graph TD
   Main[main.ts bootstrap] -->|show| Loader[LoaderOverlay spinner]
@@ -136,8 +152,9 @@ graph TD
 ```
 
 ### Risks
+
 - **Shared texture settings.** Reusing one cached texture with different `repeat`/`wrapping` requires `.clone()` at call sites that tile differently (table vs deck vs board). Mitigation: clone shares the underlying image (no extra download) and set wrap/repeat/colorSpace per use.
-- **EXR + PMREM ordering.** PMREM env‑map generation needs the renderer created in `setupScene`; keep generation there, only move the *download* to AssetManager. Mitigation: `getEnvTexture()` returns the already‑downloaded EXR, consumed synchronously in the existing PMREM block.
+- **EXR + PMREM ordering.** PMREM env‑map generation needs the renderer created in `setupScene`; keep generation there, only move the _download_ to AssetManager. Mitigation: `getEnvTexture()` returns the already‑downloaded EXR, consumed synchronously in the existing PMREM block.
 - **Headless/test paths.** `AimingVisuals.ts` builds procedural canvas/DataTextures with a headless fallback; leave those untouched (not downloaded assets).
 - **Spinner hang on failure.** Ensure `preloadAll()` rejects/settles on `onError` so `main.ts` always proceeds and hides the loader.
 - **Audio decode timing (iOS Safari).** Downloading mp3 bytes early must NOT trigger decode before the user-gesture `AudioContext` unlock. Mitigation: AssetManager only fetches raw `ArrayBuffer`s; `SoundSystem` keeps its existing `fetched`→`addUnlockListeners()`→`decodeBuffers()` sequence, just sourcing the bytes from the cache.
@@ -145,7 +162,8 @@ graph TD
 
 # Delivery Steps
 
-###   Step 1: Add central asset manifest and AssetManager
+### Step 1: Add central asset manifest and AssetManager
+
 A single AssetManager downloads all textures, the EXR HDR env map, and all mp3 sound files through one THREE.LoadingManager and exposes them from a cache.
 
 - Create `chapaev/src/rendering/AssetManifest.ts` listing every texture path (deck, board, bright-checker, dark-checker), the EXR env path, and an `AUDIO_MANIFEST` of every mp3 path (hit/movement/rim/fall-off/bgm), mirroring the paths currently hardcoded in the rendering modules and `SoundSystem.ts`, with color-space hints for color maps.
@@ -155,7 +173,8 @@ A single AssetManager downloads all textures, the EXR HDR env map, and all mp3 s
   - `dispose()` and a shared singleton export.
 - Export the new modules from `chapaev/src/rendering/index.ts`.
 
-###   Step 2: Refactor rendering modules to consume the cache
+### Step 2: Refactor rendering modules to consume the cache
+
 BoardMesh, CheckerMesh, and SceneSetup use already-downloaded textures from AssetManager instead of creating their own loaders.
 
 - `BoardMesh.ts`: replace `new THREE.TextureLoader().load(...)` calls with `assetManager.getTexture(...)`; clone + set `repeat 2,2`/wrapping for the deck maps and keep board-square settings/color-space.
@@ -163,7 +182,8 @@ BoardMesh, CheckerMesh, and SceneSetup use already-downloaded textures from Asse
 - `SceneSetup.ts`: pull table maps from the cache (clone + `repeat 6`, wrapping, aoMap uv1 unchanged) and replace the async `EXRLoader().load(...)` callback with `assetManager.getEnvTexture()` fed synchronously into the existing `PMREMGenerator` block.
 - Verify no rendering module still constructs its own `TextureLoader`/`EXRLoader` for these assets.
 
-###   Step 3: Route mp3 sound loading through the AssetManager
+### Step 3: Route mp3 sound loading through the AssetManager
+
 SoundSystem no longer fetches mp3 bytes itself — it reads them from the AssetManager cache while keeping its decode/unlock/playback flow intact.
 
 - Move the mp3 path constants (`HIT_SOUND_PATHS`, `MOVEMENT_SOUND_PATH`, `RIM_HIT_SOUND_PATH`, `FALL_OFF_SOUND_PATHS`, `BGM_SOUND_PATHS`) into (or re-export them from) `AssetManifest.ts` so AssetManager and `SoundSystem` share one source of truth.
@@ -171,14 +191,16 @@ SoundSystem no longer fetches mp3 bytes itself — it reads them from the AssetM
 - Keep the existing `addUnlockListeners()` → `decodeBuffers()` (`decodeAudioData` + `.slice(0)`) gesture-driven flow, master gains, BGM start, and iOS silent-mode hint fully unchanged.
 - Verify `SoundSystem` no longer issues its own `fetch` for mp3s.
 
-###   Step 4: Add loading spinner overlay
+### Step 4: Add loading spinner overlay
+
 A themed indeterminate spinner overlay is available in the UI layer and can be shown/hidden.
 
 - Create `chapaev/src/ui/LoaderOverlay.ts` that appends a spinner (+ optional "Loading…" label) into `#ui-root` and exposes `show()`/`hide()`.
 - Add spinner keyframes and overlay styles to `chapaev/src/ui/styles/ui.css`, consistent with existing panel styling and safe-area vars.
 - Keep it independent of `UIManager`'s `Screen` enum so it can exist before the game is constructed.
 
-###   Step 5: Wire preload + loader into startup
+### Step 5: Wire preload + loader into startup
+
 On startup the spinner shows, all assets download, then the game scene is built and the spinner hides.
 
 - In `chapaev/src/main.ts` `bootstrap()`, after adapter init and i18n: create and `show()` the `LoaderOverlay`, then `await assetManager.preloadAll()`.

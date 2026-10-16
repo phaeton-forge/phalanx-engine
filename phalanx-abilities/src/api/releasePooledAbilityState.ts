@@ -69,7 +69,9 @@ export function releasePooledAbilityState(entity: Entity): void {
   if ((shell.flags & SHELL_ABILITY_SYSTEM) !== 0) {
     const ability = getAbilitySystemComponent(entity);
     if (ability !== undefined) {
+      ability.captureInitialPending();
       clearEffects(ability.activeEffects);
+      ability.requestReseed();
       restoreAbility(ability, shell);
     }
   } else if (entity.hasComponent(AbilitiesComponentType.AbilitySystem)) {

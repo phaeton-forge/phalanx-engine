@@ -5,9 +5,7 @@ export type {
   RoomPersistenceConfig,
 } from './RoomPersistence.js';
 
-export {
-  RoomRecoveryController,
-} from './RoomRecoveryController.js';
+export { RoomRecoveryController } from './RoomRecoveryController.js';
 export type {
   RoomRecoveryConfig,
   RoomRecoveryStatusEvent,
@@ -22,7 +20,10 @@ export {
   isOnline,
   waitForOnlineEvent,
 } from './BrowserLifecycle.js';
-export type { BrowserLifecycleHandle, BrowserLifecycleHandlers } from './BrowserLifecycle.js';
+export type {
+  BrowserLifecycleHandle,
+  BrowserLifecycleHandlers,
+} from './BrowserLifecycle.js';
 
 export {
   getRecoverTimeoutMs,
@@ -30,7 +31,10 @@ export {
 } from './NetworkQuality.js';
 export type { RecoverTimeoutBudget } from './NetworkQuality.js';
 
-export { isMobileBrowser, pickMobileFriendlyTransports } from './MobileTransport.js';
+export {
+  isMobileBrowser,
+  pickMobileFriendlyTransports,
+} from './MobileTransport.js';
 
 export { loadOrCreateGuestPlayerId } from './GuestPlayerIdStore.js';
 
@@ -40,4 +44,3 @@ export {
   defaultKeyValueStorage,
 } from './KeyValueStorage.js';
 export type { KeyValueStorage } from './KeyValueStorage.js';
-

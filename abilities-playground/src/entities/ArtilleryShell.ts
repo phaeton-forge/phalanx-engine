@@ -1,5 +1,8 @@
 import { Entity, type IPoolableEntity } from '@phalanx-engine/ecs';
-import type { FixedPoint, FPVector3 as FPVector3Type } from '@phalanx-engine/math';
+import type {
+  FixedPoint,
+  FPVector3 as FPVector3Type,
+} from '@phalanx-engine/math';
 import { TransformComponent } from '@phalanx-engine/physics';
 import {
   ArtilleryShellComponent,

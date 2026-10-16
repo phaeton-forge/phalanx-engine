@@ -1,5 +1,6 @@
 import type {
   CommandsBatch,
+  ComponentRegistration,
   FrameHandler,
   IRandom,
   ITickFrameProvider,
@@ -8,28 +9,41 @@ import type {
   Unsubscribe,
 } from '@phalanx-engine/ecs';
 import { DeterministicRandom } from '@phalanx-engine/math';
+import { GameWorld } from '@phalanx-engine/ecs';
 import {
   DEFAULT_HASH_EVERY_TICKS,
+  DEFAULT_INPUT_DELAY_TICKS,
   ENGINE_SNAPSHOT_FORMAT,
   REPLAY_FORMAT,
+  SYSTEM_PLAYER_ID,
   botPlayerId,
+  isBotPlayerId,
 } from '../constants.js';
 import {
   isCommandRejection,
   type CommandEnvelope,
   type JsonValue,
+  type StampedCommand,
 } from '../game/commands.js';
 import type {
   AnyGameDefinition,
   CommandOf,
   ConfigOf,
+  GameContext,
   MatchOutcome,
   SimOf,
+  StartContext,
 } from '../game/GameDefinition.js';
-import type { BotSlotInfo, SlotConfig, SlotInfo } from '../game/MatchConfig.js';
+import type {
+  BotHostSide,
+  BotSlotInfo,
+  MatchConfigBase,
+  SlotConfig,
+  SlotInfo,
+} from '../game/MatchConfig.js';
 import { notImplemented } from '../notImplemented.js';
 import { BinaryStateReader, BinaryStateWriter } from '../state/BinaryState.js';
-import type { GameState, StateMigration } from '../state/GameState.js';
+import type { SaveHandler, StateMigration } from '../state/GameState.js';
 import {
   SnapshotRejectedError,
   SnapshotRoundTripError,
@@ -42,6 +56,8 @@ import {
   digestBytes,
   encodeSnapshot,
   schemaMismatchMessage,
+  type CommandSchemaHash,
+  type ComponentSchemaHash,
   type Digest,
   type SnapshotBytes,
 } from '../state/snapshot.js';
@@ -74,8 +90,6 @@ export type RunnerStatus =
   'ready' | 'running' | 'ended' | 'failed' | 'disposed';
 
 export interface RunnerOptions {
-  /** Default `'client'`. SimHost uses `'server'`. */
-  readonly side?: RunnerSide;
   /**
    * Human slots whose input `submit` accepts. Default: every human slot for
    * a `'local'` transport; `TransportJoin.localSlots` for network ones.
@@ -117,7 +131,8 @@ interface TickPlan {
  *  1. take the batch of T from the transport, append it to the log;
  *  2. map `playerId` → slot via the config, drop unknown ids;
  *  3. sort by (slot, seq); for each: `commands.decode` → `commands.validate`
- *     → `sim.applyCommand`; rejected entries stay in the log;
+ *     → `onCommand`; rejected entries stay in the log;
+ *     system commands (`setController`) run before game commands;
  *  4. emit T on the runner-owned `tickFrameProvider` → the world's standard
  *     `start()` pipeline runs the tick systems;
  *  5. hosted bots `decide(sim, T)` while the match is still active, submitted
@@ -129,6 +144,8 @@ export class MatchRunner<G extends AnyGameDefinition> {
   private readonly config: ConfigOf<G>;
   private readonly transport: Transport;
   private readonly side: RunnerSide;
+  private readonly modes = new Map<number, 'human' | 'bot'>();
+  private systemSeq = 0;
   private readonly hashEveryTicks: number;
   private readonly roundTripCheck: boolean;
   private readonly localSlots: readonly number[];
@@ -156,7 +173,8 @@ export class MatchRunner<G extends AnyGameDefinition> {
   private readonly pendingByTick = new Map<number, LogEntry[]>();
   private readonly nextSeq = new Map<number, number>();
   private simulation: SimOf<G> | null = null;
-  private gameState: GameState | null = null;
+  private gameState: SaveHandler | null = null;
+  private bootPurpose: 'fresh' | 'restore' = 'fresh';
   private completedTick = -1;
   private executingTick: number | null = null;
   private started = false;
@@ -178,39 +196,44 @@ export class MatchRunner<G extends AnyGameDefinition> {
 
   public constructor(
     definition: G,
-    config: ConfigOf<G>,
+    config: ConfigInput<G>,
     transport: Transport,
     options?: RunnerOptions
   ) {
     this.definition = definition;
-    this.config = config;
+    this.config = normalizeConfig(definition, config);
     this.transport = transport;
-    this.side = options?.side ?? 'client';
+    this.side = this.config.side;
     this.hashEveryTicks = resolveHashEvery(options?.hashEveryTicks);
     this.roundTripCheck = options?.roundTripCheck ?? true;
-    this.configDigest = configHash(config);
-    validateConfig(definition, config);
-    this.localSlots = resolveLocalSlots(config, transport, options?.localSlots);
+    this.configDigest = hashMatchConfig(this.config);
+    validateConfig(definition, this.config);
+    this.resetModes();
+    this.localSlots = resolveLocalSlots(
+      this.config,
+      transport,
+      options?.localSlots
+    );
     this.localSlotSet = new Set(this.localSlots);
     this.commandTypes = new Set(definition.commands.types);
     indexSlots(
-      config.slots,
+      this.config.slots,
       this.slotByPlayerId,
       this.playerIdBySlot,
       this.slotInfo
     );
-    this.random = new DeterministicRandom(config.seed >>> 0);
+    this.random = new DeterministicRandom(this.config.seed >>> 0);
     this.provider = new RunnerProvider(this.random, transport);
-    this.botHost = new BotHost(definition, config, this.side);
+    this.botHost = new BotHost(definition, this.config, this.side);
     this.botSlotSet = new Set(this.botHost.slots);
     if (transport instanceof LocalTransport) {
-      if (!transport.isManual && transport.tickRate !== definition.tickRate) {
+      if (!transport.isStepped && transport.tickRate !== definition.tickRate) {
         throw new Error(
           `MatchRunner: LocalTransport tickRate ${String(transport.tickRate)} does not match game tickRate ${String(definition.tickRate)}`
         );
       }
       transport.bindSlots(
-        config.slots.map((slot) => ({
+        this.config.slots.map((slot) => ({
           slot: slot.slot,
           playerId:
             slot.kind === 'human' ? slot.playerId : botPlayerId(slot.slot),
@@ -243,7 +266,11 @@ export class MatchRunner<G extends AnyGameDefinition> {
         ? []
         : componentSchemaHashes(this.simulation.world);
     this.componentSchemaKey = componentSchemaKey(schemas);
-    this.configDigest = configHash(this.config, schemas);
+    this.configDigest = hashMatchConfig(
+      this.config,
+      schemas,
+      this.definition.commands.schema
+    );
   }
 
   /** Join (or resume) through a network transport's `join()`. */
@@ -261,7 +288,11 @@ export class MatchRunner<G extends AnyGameDefinition> {
    * throughTick: replay.lastTick })`. `start()` throws: a replay has no
    * live clock.
    */
-  public static fromReplay<GDef extends AnyGameDefinition>(
+  /**
+   * Runner positioned at tick `-1` in replay mode. `ReplayPlayer.from` is
+   * the public entry. Hosted policies are never asked to `decide`.
+   */
+  public static openReplay<GDef extends AnyGameDefinition>(
     definition: GDef,
     replay: ReplayRecord<ConfigOf<GDef>>,
     options?: RunnerOptions
@@ -270,7 +301,7 @@ export class MatchRunner<G extends AnyGameDefinition> {
     const runner = new MatchRunner(
       definition,
       replay.config,
-      LocalTransport.manual(),
+      LocalTransport.stepped(),
       options
     );
     runner.replayMode = true;
@@ -308,7 +339,7 @@ export class MatchRunner<G extends AnyGameDefinition> {
   public start(): void {
     if (this.replayMode) {
       throw new Error(
-        'MatchRunner.fromReplay: drive the runner with fastForward(replay.log, { throughTick: replay.lastTick })'
+        'ReplayPlayer: drive the player with play() or fastForward(throughTick)'
       );
     }
     if (this.stopped) {
@@ -355,7 +386,12 @@ export class MatchRunner<G extends AnyGameDefinition> {
     this.ensureLive();
     const resolved = this.resolveHumanSlot(slot);
     const issuedAt = this.executingTick ?? this.completedTick;
-    this.enqueue(resolved, command, issuedAt + this.config.inputDelayTicks);
+    this.enqueue(
+      resolved,
+      command,
+      issuedAt + this.config.inputDelayTicks,
+      this.humanPlayerId(resolved)
+    );
   }
 
   /**
@@ -399,10 +435,10 @@ export class MatchRunner<G extends AnyGameDefinition> {
         engineFormat: ENGINE_SNAPSHOT_FORMAT,
         gameId: this.definition.id,
         simVersion: this.definition.simVersion,
-        formatVersion: this.definition.state.formatVersion,
+        formatVersion: this.definition.save.formatVersion,
         configHash: this.configDigest,
       },
-      this.definition.state.migrate
+      this.definition.save.migrate
     );
     if (decision.decision === 'reject') {
       throw new SnapshotRejectedError(
@@ -414,10 +450,11 @@ export class MatchRunner<G extends AnyGameDefinition> {
         ? migrateBody(
             decoded.body,
             decoded.header.formatVersion,
-            this.definition.state.formatVersion,
-            this.definition.state.migrate ?? {}
+            this.definition.save.formatVersion,
+            this.definition.save.migrate ?? {}
           )
         : decoded.body;
+    this.resetModes();
     this.scope.run(() => {
       this.destroySim();
       this.random.setState(
@@ -446,6 +483,7 @@ export class MatchRunner<G extends AnyGameDefinition> {
       this.botHost.restore(reader);
       reader.done();
     }
+    this.syncHostedModes();
     if (
       decoded.inputCheckpoint !== null &&
       decoded.inputCheckpoint.byteLength > 0
@@ -487,9 +525,13 @@ export class MatchRunner<G extends AnyGameDefinition> {
     if (this.fastForwarding) {
       throw new Error('MatchRunner.fastForward: already running');
     }
-    if (!Number.isFinite(options.budgetMs)) {
+    if (
+      typeof options.budgetMs !== 'number' ||
+      Number.isNaN(options.budgetMs) ||
+      options.budgetMs < 0
+    ) {
       throw new Error(
-        'MatchRunner.fastForward: budgetMs must be a finite number'
+        'MatchRunner.fastForward: budgetMs must be a non-negative number'
       );
     }
     if (!Number.isInteger(options.throughTick)) {
@@ -615,9 +657,12 @@ export class MatchRunner<G extends AnyGameDefinition> {
   private onTransportTick(tick: number, batch: CommandsBatch): void {
     if (this.stopped || this.phase !== 'active') return;
     if (!this.started) {
-      if (this.transport instanceof LocalTransport && this.transport.isManual) {
+      if (
+        this.transport instanceof LocalTransport &&
+        this.transport.isStepped
+      ) {
         throw new Error(
-          'MatchRunner: call start() before stepping a manual transport'
+          'MatchRunner: call start() before stepping a stepped transport'
         );
       }
       return;
@@ -639,8 +684,9 @@ export class MatchRunner<G extends AnyGameDefinition> {
   }
 
   private runTick(tick: number, batch: CommandsBatch, plan: TickPlan): void {
-    const entries = entriesFromBatch(tick, batch, this.slotByPlayerId);
-    this.runPreparedTick(tick, entries, plan);
+    const game = entriesFromBatch(tick, batch, this.slotByPlayerId);
+    const system = this.systemEntriesFor(tick);
+    this.runPreparedTick(tick, [...system, ...game], plan);
   }
 
   /** Tick body when the log entries are already known (fast-forward). */
@@ -692,7 +738,7 @@ export class MatchRunner<G extends AnyGameDefinition> {
     this.noteLocalSeq(entries);
     this.applyEntries(tick, entries);
     this.provider.emitTick(tick);
-    const outcome = this.definition.outcome(this.sim);
+    const outcome = this.definition.checkOutcome(this.sim);
     const endedNow = outcome !== null && this.phase === 'active';
     if (endedNow) this.phase = 'ended';
     if (plan.decide && this.phase === 'active') {
@@ -706,7 +752,7 @@ export class MatchRunner<G extends AnyGameDefinition> {
       digest = this.computeDigest();
       if (replayCheck && digest !== this.replayDigest) {
         throw new Error(
-          `MatchRunner.fromReplay: final digest mismatch at tick ${String(tick)}`
+          `ReplayPlayer: final digest mismatch at tick ${String(tick)}`
         );
       }
     }
@@ -724,7 +770,7 @@ export class MatchRunner<G extends AnyGameDefinition> {
   private isLiveManualStep(): boolean {
     return (
       this.transport instanceof LocalTransport &&
-      this.transport.isManual &&
+      this.transport.isStepped &&
       !this.fastForwarding &&
       !this.replayMode
     );
@@ -745,18 +791,36 @@ export class MatchRunner<G extends AnyGameDefinition> {
           this.allocateSeq(decision.slot);
           continue;
         }
-        this.enqueue(decision.slot, command, target);
+        this.enqueue(
+          decision.slot,
+          command,
+          target,
+          botPlayerId(decision.slot)
+        );
       }
     }
   }
 
   private applyEntries(tick: number, entries: readonly LogEntry[]): void {
     for (const entry of entries) {
+      if (entry.playerId === SYSTEM_PLAYER_ID) {
+        this.applySystem(entry);
+        continue;
+      }
       const slot = this.slotByPlayerId.get(entry.playerId);
       const info = slot === undefined ? undefined : this.slotInfo.get(slot);
       if (slot === undefined || info === undefined) continue;
       if (entry.malformed === true) {
         this.rejectedListeners.emit(entry, 'malformed envelope');
+        continue;
+      }
+      const mode = this.modes.get(slot);
+      if (mode === 'bot' && !isBotPlayerId(entry.playerId)) {
+        this.rejectedListeners.emit(entry, 'slot controlled by bot');
+        continue;
+      }
+      if (mode === 'human' && isBotPlayerId(entry.playerId)) {
+        this.rejectedListeners.emit(entry, 'slot controlled by human');
         continue;
       }
       const decoded = (() => {
@@ -797,19 +861,220 @@ export class MatchRunner<G extends AnyGameDefinition> {
           continue;
         }
       }
-      this.sim.applyCommand({
+      const stamped: StampedCommand<CommandOf<G>> = {
         tick,
         slot,
         seq: entry.data.q,
-        command: decoded,
-      });
+        command: decoded as CommandOf<G>,
+      };
+      if (!this.dispatchCommand(stamped)) {
+        this.rejectedListeners.emit(entry, 'no handler');
+      }
     }
+  }
+
+  /**
+   * Schedule a controller change. Applied at the start of `fromTick`,
+   * before game commands, on live play, restore, fast-forward and replay.
+   * Invalid requests are reported through `onRejected` and are not logged.
+   */
+  public setController(
+    slot: number,
+    mode: 'human' | 'bot',
+    options?: { readonly fromTick?: number; readonly policy?: string }
+  ): void {
+    this.ensureLive();
+    const now = this.executingTick ?? this.completedTick;
+    const fromTick = options?.fromTick ?? now + this.config.inputDelayTicks;
+    const reject = (reason: string): void => {
+      this.rejectedListeners.emit(
+        {
+          tick: Number.isInteger(fromTick) && fromTick >= 0 ? fromTick : now,
+          playerId: SYSTEM_PLAYER_ID,
+          type: 'setController',
+          data: {
+            q: 0,
+            p: { slot, mode },
+          },
+        },
+        reason
+      );
+    };
+    if (this.replayMode) {
+      reject('replay cannot change controller');
+      return;
+    }
+    const info = this.config.slots[slot];
+    if (info === undefined || info.slot !== slot) {
+      reject('unknown slot');
+      return;
+    }
+    if (
+      !Number.isInteger(fromTick) ||
+      fromTick <= now ||
+      fromTick > now + this.config.inputDelayTicks
+    ) {
+      reject('fromTick out of range');
+      return;
+    }
+    if (this.scheduledMode(slot, fromTick) === mode) {
+      reject(mode === 'bot' ? 'slot is already bot' : 'slot is already human');
+      return;
+    }
+    const policy =
+      options?.policy ?? (info.kind === 'bot' ? info.policy : undefined);
+    if (mode === 'bot' && (policy === undefined || policy.length === 0)) {
+      reject('missing policy');
+      return;
+    }
+    const level = info.kind === 'bot' ? info.level : 0;
+    const runsOn: BotHostSide = this.side === 'server' ? 'server' : 'local';
+    const payload: { [key: string]: JsonValue } = {
+      level,
+      mode,
+      runsOn,
+      slot,
+    };
+    if (policy !== undefined) payload['policy'] = policy;
+    const entry: LogEntry = {
+      tick: fromTick,
+      playerId: SYSTEM_PLAYER_ID,
+      type: 'setController',
+      data: { q: this.systemSeq, p: canonicalJsonValue(payload) },
+    };
+    this.systemSeq += 1;
+    this.remember(entry);
+  }
+
+  private resetModes(): void {
+    this.modes.clear();
+    for (const slot of this.config.slots) {
+      this.modes.set(slot.slot, slot.kind);
+    }
+  }
+
+  /**
+   * After a bot-state restore, mode follows the hosted set for slots this
+   * runner actually runs. A client ignores server bot bytes and keeps the
+   * config mode.
+   */
+  private syncHostedModes(): void {
+    for (const slot of this.config.slots) {
+      if (slot.kind === 'bot' && !this.botHost.hostsRunsOn(slot.runsOn)) {
+        continue;
+      }
+      if (slot.kind === 'human') {
+        const own: BotHostSide = this.side === 'server' ? 'server' : 'local';
+        if (!this.botHost.hostsRunsOn(own)) continue;
+      }
+      this.modes.set(slot.slot, this.botHost.has(slot.slot) ? 'bot' : 'human');
+    }
+  }
+
+  private systemEntriesFor(tick: number): LogEntry[] {
+    const pending = this.pendingByTick.get(tick);
+    if (pending === undefined) return [];
+    return pending.filter((entry) => entry.playerId === SYSTEM_PLAYER_ID);
+  }
+
+  /** Mode at `atTick` after every pending controller change up to that tick. */
+  private scheduledMode(slot: number, atTick: number): 'human' | 'bot' {
+    let mode = this.modes.get(slot) ?? 'human';
+    const pending: LogEntry[] = [];
+    for (const [tick, entries] of this.pendingByTick) {
+      if (tick > atTick) continue;
+      for (const entry of entries) {
+        if (entry.playerId === SYSTEM_PLAYER_ID) pending.push(entry);
+      }
+    }
+    pending.sort(
+      (left, right) => left.tick - right.tick || left.data.q - right.data.q
+    );
+    for (const entry of pending) {
+      const parsed = parseSystemPayload(entry.data.p);
+      if (parsed === null || parsed.slot !== slot) continue;
+      mode = parsed.mode;
+    }
+    return mode;
+  }
+
+  private applySystem(entry: LogEntry): void {
+    const parsed = parseSystemPayload(entry.data.p);
+    if (parsed === null) {
+      this.rejectedListeners.emit(entry, 'malformed system command');
+      return;
+    }
+    this.modes.set(parsed.slot, parsed.mode);
+    if (!this.botHost.hostsRunsOn(parsed.runsOn)) return;
+    if (parsed.mode === 'bot') {
+      const policy = parsed.policy;
+      if (policy === undefined) {
+        this.rejectedListeners.emit(entry, 'missing policy');
+        return;
+      }
+      const config = this.config.slots[parsed.slot];
+      this.botHost.adopt({
+        slot: parsed.slot,
+        team: config === undefined ? 0 : config.team,
+        policy,
+        level: parsed.level,
+        runsOn: parsed.runsOn,
+      });
+      return;
+    }
+    this.botHost.release(parsed.slot);
+  }
+
+  private dispatchCommand(stamped: StampedCommand<CommandOf<G>>): boolean {
+    // AnyGameDefinition stores onCommand as object (a function or a map).
+    const onCommand: unknown = this.definition.onCommand;
+    const ctx: GameContext<SimOf<G>, ConfigOf<G>> = {
+      world: this.sim.world,
+      rng: this.random,
+      config: this.config,
+      slots: [...this.slotInfo.values()].sort(
+        (left, right) => left.slot - right.slot
+      ),
+      purpose: this.bootPurpose,
+      sim: this.sim,
+    };
+    if (typeof onCommand === 'function') {
+      (
+        onCommand as (
+          context: GameContext<SimOf<G>, ConfigOf<G>>,
+          command: StampedCommand<CommandOf<G>>
+        ) => void
+      )(ctx, stamped);
+      return true;
+    }
+    if (typeof onCommand !== 'object' || onCommand === null) return false;
+    // The map is exhaustive at defineGame time. Indexing by the decoded
+    // type is the runtime half of that check.
+    const handlers: Readonly<Record<string, unknown>> = onCommand as Readonly<
+      Record<string, unknown>
+    >;
+    const handler = handlers[stamped.command.type];
+    if (typeof handler !== 'function') return false;
+    (
+      handler as (
+        context: GameContext<SimOf<G>, ConfigOf<G>>,
+        command: StampedCommand<CommandOf<G>>
+      ) => void
+    )(ctx, stamped);
+    return true;
+  }
+
+  private humanPlayerId(slot: number): string {
+    const info = this.config.slots[slot];
+    if (info !== undefined && info.kind === 'human') return info.playerId;
+    return this.playerIdBySlot.get(slot) ?? `local:${String(slot)}`;
   }
 
   private enqueue(
     slot: number,
     command: CommandOf<G>,
-    targetTick: number
+    targetTick: number,
+    playerId: string
   ): void {
     if (!Number.isInteger(targetTick) || targetTick < 0) {
       throw new Error(
@@ -817,8 +1082,11 @@ export class MatchRunner<G extends AnyGameDefinition> {
       );
     }
     const seq = this.allocateSeq(slot);
-    const entry = this.entryFor(slot, command, seq, targetTick);
+    const entry = this.entryFor(slot, command, seq, targetTick, playerId);
     this.remember(entry);
+    if (this.transport instanceof LocalTransport) {
+      this.transport.assignPlayerId(slot, playerId);
+    }
     this.transport.submit(targetTick, slot, [
       { type: entry.type, data: entry.data },
     ]);
@@ -831,15 +1099,12 @@ export class MatchRunner<G extends AnyGameDefinition> {
   }
 
   private entryFor(
-    slot: number,
+    _slot: number,
     command: CommandOf<G>,
     seq: number,
-    tick: number
+    tick: number,
+    playerId: string
   ): LogEntry {
-    const playerId = this.playerIdBySlot.get(slot);
-    if (playerId === undefined) {
-      throw new Error(`MatchRunner: no player id for slot ${String(slot)}`);
-    }
     const encode = this.definition.commands.encode?.bind(
       this.definition.commands
     );
@@ -896,8 +1161,9 @@ export class MatchRunner<G extends AnyGameDefinition> {
   private holdCheckpoint(checkpoint: InputCheckpoint): void {
     const unsent: LogEntry[] = [];
     for (const batch of checkpoint.pending) {
-      const entries = batch.entries.filter((entry) =>
-        this.ownsPlayer(entry.playerId)
+      const entries = batch.entries.filter(
+        (entry) =>
+          entry.playerId === SYSTEM_PLAYER_ID || this.ownsPlayer(entry.playerId)
       );
       if (entries.length === 0) continue;
       for (const entry of entries) {
@@ -934,8 +1200,12 @@ export class MatchRunner<G extends AnyGameDefinition> {
     if (entries === null) return;
     this.unsent = null;
     for (const entry of entries) {
+      if (entry.playerId === SYSTEM_PLAYER_ID) continue;
       const slot = this.slotByPlayerId.get(entry.playerId);
       if (slot === undefined) continue;
+      if (this.transport instanceof LocalTransport) {
+        this.transport.assignPlayerId(slot, entry.playerId);
+      }
       this.transport.submit(entry.tick, slot, [
         { type: entry.type, data: entry.data },
       ]);
@@ -958,7 +1228,7 @@ export class MatchRunner<G extends AnyGameDefinition> {
         engineFormat: ENGINE_SNAPSHOT_FORMAT,
         gameId: this.definition.id,
         simVersion: this.definition.simVersion,
-        formatVersion: this.definition.state.formatVersion,
+        formatVersion: this.definition.save.formatVersion,
         configHash: this.configDigest,
         tick: this.completedTick,
       },
@@ -995,15 +1265,48 @@ export class MatchRunner<G extends AnyGameDefinition> {
   }
 
   private boot(purpose: 'fresh' | 'restore'): void {
-    // `G extends AnyGameDefinition` types these methods as the constraint,
-    // which erases the concrete sim. The value is the game's own sim.
-    const sim = this.definition.createWorld(this.config, {
+    this.bootPurpose = purpose;
+    const world = new GameWorld({
       tickFrameProvider: this.provider,
       random: this.random,
+      tickRate: this.definition.tickRate,
+      pooling: this.definition.pooling,
+    });
+    for (const component of this.definition.components ?? []) {
+      // GameComponent is the structural shape of a defineComponent result.
+      // SoASchema is invariant, so the registry's parameter is a wider
+      // ComponentRegistration than the value's schema.
+      world.registerComponent(component as unknown as ComponentRegistration);
+    }
+    let opened = false;
+    const startCtx: StartContext<ConfigOf<G>> = {
+      world,
+      rng: this.random,
+      config: this.config,
+      slots: [...this.slotInfo.values()].sort(
+        (left, right) => left.slot - right.slot
+      ),
       purpose,
-    }) as SimOf<G>;
+      open: () => {
+        if (opened) return;
+        opened = true;
+        const systems = (this.definition.systems ?? []).map((create) =>
+          create()
+        );
+        const frames = (this.definition.frameSystems ?? []).map((create) =>
+          create()
+        );
+        if (systems.length > 0 || frames.length > 0) {
+          world.registerSystems(systems, frames);
+        }
+        world.start();
+      },
+    };
+    const returned = this.definition.onStart?.(startCtx);
+    if (!opened) startCtx.open();
+    const sim = (returned === undefined ? { world } : returned) as SimOf<G>;
     this.simulation = sim;
-    this.gameState = this.definition.state.bind(sim);
+    this.gameState = this.definition.save.handler(sim);
   }
 
   private destroySim(): void {
@@ -1015,7 +1318,7 @@ export class MatchRunner<G extends AnyGameDefinition> {
     sim.world.dispose();
   }
 
-  private requireGameState(): GameState {
+  private requireGameState(): SaveHandler {
     if (this.gameState === null) {
       throw new Error('MatchRunner: simulation is disposed');
     }
@@ -1163,6 +1466,19 @@ function remove<T>(handlers: T[], handler: T): void {
   if (index !== -1) handlers.splice(index, 1);
 }
 
+/**
+ * `side` names the local peer. It is not part of the shared match, so a
+ * client and a server of one match accept each other's snapshots.
+ */
+function hashMatchConfig(
+  config: MatchConfigBase,
+  components?: readonly ComponentSchemaHash[],
+  commands?: readonly CommandSchemaHash[]
+): Digest {
+  const { side: _side, ...shared } = config;
+  return configHash(shared, components, commands);
+}
+
 function resolveHashEvery(value: number | undefined): number {
   const every = value ?? DEFAULT_HASH_EVERY_TICKS;
   if (!Number.isInteger(every) || every < 1) {
@@ -1171,6 +1487,81 @@ function resolveHashEvery(value: number | undefined): number {
     );
   }
   return every;
+}
+
+/** Runner input. Identity fields and the input delay are filled when omitted. */
+export type ConfigInput<G extends AnyGameDefinition> = Omit<
+  ConfigOf<G>,
+  'gameId' | 'simVersion' | 'inputDelayTicks' | 'matchId'
+> & {
+  readonly matchId?: string;
+  readonly gameId?: string;
+  readonly simVersion?: string;
+  readonly inputDelayTicks?: number;
+};
+
+function normalizeConfig<G extends AnyGameDefinition>(
+  definition: G,
+  config: ConfigInput<G>
+): ConfigOf<G> {
+  const matchId = config.matchId ?? 'local';
+  const gameId = config.gameId ?? definition.id;
+  if (gameId !== definition.id) {
+    throw new Error(
+      `MatchRunner: config.gameId '${gameId}' does not match game '${definition.id}'`
+    );
+  }
+  const simVersion = config.simVersion ?? definition.simVersion;
+  if (simVersion !== definition.simVersion) {
+    throw new Error(
+      `MatchRunner: config.simVersion '${simVersion}' does not match '${definition.simVersion}'`
+    );
+  }
+  const inputDelayTicks = config.inputDelayTicks ?? DEFAULT_INPUT_DELAY_TICKS;
+  // Game configs add fields. The filled identity is the normalized config.
+  return {
+    ...config,
+    matchId,
+    gameId,
+    simVersion,
+    inputDelayTicks,
+  } as ConfigOf<G>;
+}
+
+interface SystemPayload {
+  readonly slot: number;
+  readonly mode: 'human' | 'bot';
+  readonly level: number;
+  readonly runsOn: BotHostSide;
+  readonly policy?: string;
+}
+
+function parseSystemPayload(raw: JsonValue): SystemPayload | null {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    return null;
+  }
+  const record = raw as { readonly [key: string]: JsonValue | undefined };
+  const slot = record['slot'];
+  const mode = record['mode'];
+  const level = record['level'];
+  const runsOn = record['runsOn'];
+  const policy = record['policy'];
+  if (typeof slot !== 'number' || !Number.isInteger(slot) || slot < 0) {
+    return null;
+  }
+  if (mode !== 'human' && mode !== 'bot') return null;
+  if (typeof level !== 'number' || !Number.isInteger(level) || level < 0) {
+    return null;
+  }
+  if (runsOn !== 'local' && runsOn !== 'server') return null;
+  if (policy !== undefined && typeof policy !== 'string') return null;
+  if (mode === 'bot' && (typeof policy !== 'string' || policy.length === 0)) {
+    return null;
+  }
+  if (policy === undefined) {
+    return { slot, mode, level, runsOn };
+  }
+  return { slot, mode, level, runsOn, policy };
 }
 
 function validateConfig<G extends AnyGameDefinition>(
@@ -1210,14 +1601,6 @@ function validateConfig<G extends AnyGameDefinition>(
       throw new Error(
         'MatchRunner: slots must be contiguous and sorted from 0'
       );
-    }
-    if (slot.kind === 'bot') {
-      const expected = config.simMode === 'server' ? 'server' : 'local';
-      if (slot.runsOn !== expected) {
-        throw new Error(
-          `MatchRunner: bot slot ${String(slot.slot)} runsOn '${slot.runsOn}' is invalid for simMode '${config.simMode}'`
-        );
-      }
     }
   }
 }
@@ -1263,6 +1646,10 @@ function indexSlots(
     slotByPlayerId.set(playerId, slot.slot);
     playerIdBySlot.set(slot.slot, playerId);
     slotInfo.set(slot.slot, toSlotInfo(slot, playerId));
+    if (slot.kind === 'human') {
+      const botId = botPlayerId(slot.slot);
+      if (!slotByPlayerId.has(botId)) slotByPlayerId.set(botId, slot.slot);
+    }
   }
 }
 

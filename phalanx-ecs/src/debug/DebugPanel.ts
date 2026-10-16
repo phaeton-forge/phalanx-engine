@@ -177,8 +177,8 @@ export class DebugPanel {
 
     this.mouseMoveHandler = (e: MouseEvent) => {
       if (!this.dragging) return;
-      this.root.style.left = (e.clientX - this.dragOffsetX) + 'px';
-      this.root.style.top = (e.clientY - this.dragOffsetY) + 'px';
+      this.root.style.left = e.clientX - this.dragOffsetX + 'px';
+      this.root.style.top = e.clientY - this.dragOffsetY + 'px';
       this.root.style.right = 'auto';
     };
 
@@ -216,15 +216,27 @@ export class DebugPanel {
     // Section collapse handlers
     this.entitiesHeader.addEventListener('click', () => {
       this.entitiesSectionCollapsed = !this.entitiesSectionCollapsed;
-      this.applySectionCollapse(this.entitiesHeader, this.entitiesBody, this.entitiesSectionCollapsed);
+      this.applySectionCollapse(
+        this.entitiesHeader,
+        this.entitiesBody,
+        this.entitiesSectionCollapsed
+      );
     });
     this.soaHeader.addEventListener('click', () => {
       this.soaSectionCollapsed = !this.soaSectionCollapsed;
-      this.applySectionCollapse(this.soaHeader, this.soaBody, this.soaSectionCollapsed);
+      this.applySectionCollapse(
+        this.soaHeader,
+        this.soaBody,
+        this.soaSectionCollapsed
+      );
     });
     this.poolHeader.addEventListener('click', () => {
       this.poolSectionCollapsed = !this.poolSectionCollapsed;
-      this.applySectionCollapse(this.poolHeader, this.poolBody, this.poolSectionCollapsed);
+      this.applySectionCollapse(
+        this.poolHeader,
+        this.poolBody,
+        this.poolSectionCollapsed
+      );
     });
   }
 
@@ -296,7 +308,9 @@ export class DebugPanel {
       row.style.fontSize = '11px';
       row.style.borderBottom = '1px solid rgba(255,255,255,0.05)';
 
-      const componentNames = entity.components.map((c) => c.typeName).join(', ');
+      const componentNames = entity.components
+        .map((c) => c.typeName)
+        .join(', ');
       const label = document.createElement('span');
       label.textContent = `[ID: ${entity.id}] ${componentNames}`;
       row.appendChild(label);
@@ -379,9 +393,10 @@ export class DebugPanel {
       storeDiv.appendChild(layoutEl);
 
       // Count/capacity with utilisation
-      const utilPct = store.capacity > 0
-        ? ((store.count / store.capacity) * 100).toFixed(0)
-        : '0';
+      const utilPct =
+        store.capacity > 0
+          ? ((store.count / store.capacity) * 100).toFixed(0)
+          : '0';
       const capacityEl = document.createElement('div');
       capacityEl.style.fontSize = '11px';
       capacityEl.textContent = `Count: ${store.count}/${store.capacity} (${utilPct}% utilised)`;
@@ -464,7 +479,14 @@ export class DebugPanel {
     // Header
     const thead = document.createElement('thead');
     const headerRow = document.createElement('tr');
-    const columns = ['typeKey', 'available', 'totalCreated', 'acquireCount', 'releaseCount', 'missCount'];
+    const columns = [
+      'typeKey',
+      'available',
+      'totalCreated',
+      'acquireCount',
+      'releaseCount',
+      'missCount',
+    ];
     for (const col of columns) {
       const th = document.createElement('th');
       th.style.textAlign = 'left';
@@ -523,10 +545,10 @@ export class DebugPanel {
   private applySectionCollapse(
     header: HTMLDivElement,
     body: HTMLDivElement,
-    isCollapsed: boolean,
+    isCollapsed: boolean
   ): void {
     body.style.display = isCollapsed ? 'none' : 'block';
-    const arrow = header.querySelector('[data-role="arrow"]') as HTMLSpanElement | null;
+    const arrow = header.querySelector('[data-role="arrow"]');
     if (arrow) {
       arrow.textContent = isCollapsed ? '\u25B6' : '\u25BC';
     }

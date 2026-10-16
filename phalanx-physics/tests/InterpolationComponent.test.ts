@@ -19,8 +19,14 @@ describe('InterpolationComponent', () => {
 
   it('initializes position and rotation samples from constructor arguments', () => {
     const initialPosition = FPVector3.FromFloat(1, 2, 3);
-    const initialRotation = FPQuaternion.FromAxisAngle(FPVector3.Up, FP.FromFloat(1.5));
-    const interpolation = new InterpolationComponent(initialPosition, initialRotation);
+    const initialRotation = FPQuaternion.FromAxisAngle(
+      FPVector3.Up,
+      FP.FromFloat(1.5)
+    );
+    const interpolation = new InterpolationComponent(
+      initialPosition,
+      initialRotation
+    );
 
     expect(FP.ToFloat(interpolation.previousFpPosition.x)).toBeCloseTo(1);
     expect(FP.ToFloat(interpolation.currentFpPosition.z)).toBeCloseTo(3);
@@ -31,7 +37,10 @@ describe('InterpolationComponent', () => {
   it('snapshot copies current position and rotation into previous', () => {
     const interpolation = new InterpolationComponent();
     const currentPosition = FPVector3.FromFloat(4, 5, 6);
-    const currentRotation = FPQuaternion.FromAxisAngle(FPVector3.Up, FP.FromFloat(0.5));
+    const currentRotation = FPQuaternion.FromAxisAngle(
+      FPVector3.Up,
+      FP.FromFloat(0.5)
+    );
     interpolation.capture(currentPosition, currentRotation);
 
     interpolation.snapshot();
@@ -46,10 +55,13 @@ describe('InterpolationComponent', () => {
   it('capture updates only current position and rotation', () => {
     const interpolation = new InterpolationComponent(
       FPVector3.FromFloat(0, 0, 0),
-      FPQuaternion.Identity(),
+      FPQuaternion.Identity()
     );
     const nextPosition = FPVector3.FromFloat(7, 8, 9);
-    const nextRotation = FPQuaternion.FromAxisAngle(FPVector3.Up, FP.FromFloat(1.25));
+    const nextRotation = FPQuaternion.FromAxisAngle(
+      FPVector3.Up,
+      FP.FromFloat(1.25)
+    );
 
     interpolation.capture(nextPosition, nextRotation);
 

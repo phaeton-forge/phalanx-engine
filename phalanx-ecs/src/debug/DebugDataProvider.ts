@@ -1,6 +1,6 @@
 import type { EntityManager } from '../EntityManager.js';
 import type { PoolManager } from '../pool/PoolManager.js';
-import { calculateSchemaByteSize } from '../SoASchema.js';
+import { calculateSchemaByteSize, type SoASchema } from '../SoASchema.js';
 import type {
   DebugSnapshot,
   DebugEntitySnapshot,
@@ -14,6 +14,15 @@ import type {
 const DEFAULT_UPDATE_INTERVAL = 500;
 
 type SnapshotCallback = (snapshot: DebugSnapshot) => void;
+
+/** Schema-erased SoA store used by the debug snapshot collector. */
+interface DebugSoAStore {
+  readonly schema: SoASchema;
+  readonly count: number;
+  readonly capacity: number;
+  entityIds(): readonly number[];
+  get(entityId: number): Record<string, number | bigint> | undefined;
+}
 
 /**
  * DebugDataProvider — centralised observable that collects ECS debug snapshots.
@@ -55,7 +64,7 @@ export class DebugDataProvider {
   constructor(
     entityManager: EntityManager,
     pools: PoolManager | null,
-    config?: DebugDataProviderConfig,
+    config?: DebugDataProviderConfig
   ) {
     this.entityManager = entityManager;
     this.pools = pools;
@@ -178,14 +187,20 @@ export class DebugDataProvider {
     const stores = this.entityManager.getAllSoAStores();
     const result: DebugSoAStoreSnapshot[] = [];
 
-    for (const store of stores.values()) {
+    for (const raw of stores.values()) {
+      // The registry erases each store's schema generic. The view restores a
+      // concrete schema so debug snapshots do not touch `any`.
+      const store = raw as unknown as DebugSoAStore;
       const schema = store.schema;
 
       const entities: DebugSoAStoreSnapshot['entities'] = [];
       for (const entityId of store.entityIds()) {
         const fields = store.get(entityId);
         if (fields) {
-          entities.push({ entityId, fields: fields as Record<string, number | bigint> });
+          entities.push({
+            entityId,
+            fields,
+          });
         }
       }
 

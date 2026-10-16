@@ -36,7 +36,10 @@ export type SoAFieldType = 'f32' | 'f64' | 'i32' | 'u32' | 'u8' | 'i64';
 /**
  * Maps SoA field types to their TypedArray constructors
  */
-export const TYPED_ARRAY_CONSTRUCTORS: Record<SoAFieldType, new (length: number) => TypedArrayLike> = {
+export const TYPED_ARRAY_CONSTRUCTORS: Record<
+  SoAFieldType,
+  new (length: number) => TypedArrayLike
+> = {
   f32: Float32Array,
   f64: Float64Array,
   i32: Int32Array,
@@ -76,20 +79,26 @@ export type SoASchemaDefinition = Record<string, SoAFieldType>;
 /**
  * Extracts the JavaScript value type from a SoA field type
  */
-export type SoAValueType<T extends SoAFieldType> =
-  T extends 'i64' ? bigint : number;
+export type SoAValueType<T extends SoAFieldType> = T extends 'i64'
+  ? bigint
+  : number;
 
 /**
  * Extracts the TypedArray type from a SoA field type
  */
-export type SoAArrayType<T extends SoAFieldType> =
-  T extends 'f32' ? Float32Array :
-  T extends 'f64' ? Float64Array :
-  T extends 'i32' ? Int32Array :
-  T extends 'u32' ? Uint32Array :
-  T extends 'u8' ? Uint8Array :
-  T extends 'i64' ? BigInt64Array :
-  never;
+export type SoAArrayType<T extends SoAFieldType> = T extends 'f32'
+  ? Float32Array
+  : T extends 'f64'
+    ? Float64Array
+    : T extends 'i32'
+      ? Int32Array
+      : T extends 'u32'
+        ? Uint32Array
+        : T extends 'u8'
+          ? Uint8Array
+          : T extends 'i64'
+            ? BigInt64Array
+            : never;
 
 /**
  * Maps a schema definition to a typed object with field values
@@ -108,7 +117,9 @@ export type SoAArraysOf<S extends SoASchemaDefinition> = {
 /**
  * A defined SoA schema with runtime metadata
  */
-export interface SoASchema<S extends SoASchemaDefinition = SoASchemaDefinition> {
+export interface SoASchema<
+  S extends SoASchemaDefinition = SoASchemaDefinition,
+> {
   /** The original schema definition */
   readonly definition: S;
   /** Ordered list of field names */

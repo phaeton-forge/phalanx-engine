@@ -286,8 +286,10 @@ Pooling is **engine-driven**. Game code calls exactly two APIs:
   `pendingAdd`, copy that shell back, and remove GAS components attached
   after it (`applyEffect`, `addTag`, standalone attributes). The hook is
   idempotent and runs again when a restored free-list entity is parked.
-  Initial `pendingAdd` effects are not in the shell, so `onSpawn` must
-  re-seed those. Attributes, the granted ability set, and `initComponent`
+  Initial `pendingAdd` effects are not in the shell.
+  `AbilitySystemComponent.onEnable` copies them back after a pool spawn.
+  `world.restore` calls `onEnable('restore')`, which does not reseed, so
+  the snapshot's pending list is kept. Attributes, the granted ability set, and `initComponent`
   tags come back from the shell. A free-list entity is not in the GAS
   snapshot; the shell restore is what keeps a respawn whose `onSpawn` does
   not rewrite attributes identical to a restored copy.

@@ -1,7 +1,10 @@
 import * as THREE from 'three';
 import { FPVector3 } from '@phalanx-engine/math';
 import { Cue } from '@phalanx-engine/abilities';
-import type { CueContext, GameplayCueDispatchedEvent } from '@phalanx-engine/abilities';
+import type {
+  CueContext,
+  GameplayCueDispatchedEvent,
+} from '@phalanx-engine/abilities';
 import { ComponentType, TransformComponent } from '../components';
 import { clamp01, easeOutCubic } from './vfxHelpers';
 
@@ -36,7 +39,9 @@ export class HealCrossCue extends Cue {
       return;
     }
 
-    const transform = targetEntity.getComponent<TransformComponent>(ComponentType.Transform);
+    const transform = targetEntity.getComponent<TransformComponent>(
+      ComponentType.Transform
+    );
     if (!transform) {
       this.done = true;
       return;
@@ -104,4 +109,3 @@ export class HealCrossCue extends Cue {
     this.scene.add(this.group);
   }
 }
-

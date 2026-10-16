@@ -67,4 +67,3 @@ export function defaultKeyValueStorage(): KeyValueStorage {
   if (typeof localStorage !== 'undefined') return new LocalStorageAdapter();
   return new MemoryKeyValueStorage();
 }
-

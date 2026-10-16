@@ -1,23 +1,26 @@
 import { describe, expect, it } from 'vitest';
-import { defineGame, type GameDefinition } from '../src/index.js';
+import {
+  defineCommands,
+  defineGame,
+  type GameDefinition,
+} from '../src/index.js';
+
+function commands() {
+  return defineCommands({ noop: {} });
+}
 
 function validDefinition(): GameDefinition {
   return {
     id: 'smoke',
     simVersion: 'smoke-1',
     tickRate: 10,
-    createWorld: () => {
-      throw new Error('not used');
-    },
-    commands: {
-      types: ['noop'],
-      decode: () => ({ type: 'noop' }),
-    },
-    state: {
+    commands: commands(),
+    onCommand: { noop() {} },
+    checkOutcome: () => null,
+    save: {
       formatVersion: 1,
-      bind: () => ({ save: () => {}, restore: () => {} }),
+      handler: () => ({ save: () => {}, restore: () => {} }),
     },
-    outcome: () => null,
   };
 }
 
@@ -32,10 +35,19 @@ function without(field: string): GameDefinition {
   return def as unknown as GameDefinition;
 }
 
+/**
+ * The wide `GameDefinition` stores `onCommand` as `object` so a concrete
+ * handler map stays assignable to `AnyGameDefinition`. These cases feed
+ * that value, including malformed ones, into the runtime validator.
+ */
+function check(def: object | null): GameDefinition {
+  return defineGame(def as never);
+}
+
 describe('defineGame', () => {
-  it('returns the very same definition object', () => {
+  it('returns the very same definition object when save is present', () => {
     const def = validDefinition();
-    expect(defineGame(def)).toBe(def);
+    expect(check(def)).toBe(def);
   });
 
   it('accepts optional bots', () => {
@@ -43,68 +55,78 @@ describe('defineGame', () => {
       ...validDefinition(),
       bots: { idle: () => ({ decide: () => [] }) },
     };
-    expect(defineGame(def)).toBe(def);
+    expect(check(def)).toBe(def);
   });
 
   it.each([
     ['id', /id must be a non-empty string/],
     ['simVersion', /simVersion must be a non-empty string/],
     ['tickRate', /tickRate must be a positive integer/],
-    ['createWorld', /createWorld must be a function/],
-    ['commands', /commands must be a CommandSchema object/],
-    ['outcome', /outcome must be a function/],
+    ['commands', /commands must be a defineCommands\(\) result/],
+    ['onCommand', /onCommand must be a function or a handler map/],
+    ['checkOutcome', /checkOutcome must be a function/],
   ])('throws when %s is missing', (field, message) => {
-    expect(() => defineGame(without(field))).toThrow(message);
+    expect(() => check(without(field))).toThrow(message);
   });
 
   it.each([0, -10, 2.5, Number.NaN])('rejects tickRate %s', (tickRate) => {
-    expect(() => defineGame(withField('tickRate', tickRate))).toThrow(
+    expect(() => check(withField('tickRate', tickRate))).toThrow(
       /tickRate must be a positive integer/
     );
   });
 
   it('rejects an empty id and names the game in later errors', () => {
-    expect(() => defineGame(withField('id', ''))).toThrow(/id must be/);
-    expect(() => defineGame(withField('simVersion', ''))).toThrow(
+    expect(() => check(withField('id', ''))).toThrow(/id must be/);
+    expect(() => check(withField('simVersion', ''))).toThrow(
       /game 'smoke': simVersion/
     );
   });
 
-  it('uses world modules when state is omitted', () => {
-    const def = without('state');
-    const game = defineGame(def);
+  it('uses world modules when save is omitted', () => {
+    const def = without('save');
+    const game = check(def);
     expect(game).not.toBe(def);
-    expect(game.state.formatVersion).toBe(1);
-    expect(typeof game.state.bind).toBe('function');
+    expect(game.save.formatVersion).toBe(1);
+    expect(typeof game.save.handler).toBe('function');
   });
 
-  it('validates the state spec', () => {
+  it('validates the save spec', () => {
     expect(() =>
-      defineGame(withField('state', { formatVersion: 0, bind: () => ({}) }))
-    ).toThrow(/state.formatVersion must be a positive integer/);
-    expect(() => defineGame(withField('state', { formatVersion: 1 }))).toThrow(
-      /state.bind must be a function/
+      check(withField('save', { formatVersion: 0, handler: () => ({}) }))
+    ).toThrow(/save.formatVersion must be a positive integer/);
+    expect(() => check(withField('save', { formatVersion: 1 }))).toThrow(
+      /save.handler must be a function/
     );
   });
 
-  it('validates the command schema', () => {
-    expect(() => defineGame(withField('commands', { types: ['a'] }))).toThrow(
-      /commands.decode must be a function/
+  it('validates the command codec', () => {
+    expect(() => check(withField('commands', { types: ['a'] }))).toThrow(
+      /commands.schema must be an array/
     );
     expect(() =>
-      defineGame(withField('commands', { decode: () => null }))
-    ).toThrow(/commands.types must be an array/);
+      check(
+        withField('commands', {
+          types: ['a'],
+          schema: [],
+          decode: () => null,
+        })
+      )
+    ).toThrow(/commands.encode must be a function/);
+  });
+
+  it('requires a handler for every command type', () => {
+    expect(() => check(withField('onCommand', { other() {} }))).toThrow(
+      /onCommand.noop must be a function/
+    );
   });
 
   it('validates bot factories', () => {
-    expect(() => defineGame(withField('bots', { standard: 42 }))).toThrow(
+    expect(() => check(withField('bots', { standard: 42 }))).toThrow(
       /bots.standard must be a function/
     );
   });
 
   it('rejects non-object input', () => {
-    expect(() => defineGame(null as unknown as GameDefinition)).toThrow(
-      /definition must be an object/
-    );
+    expect(() => check(null)).toThrow(/definition must be an object/);
   });
 });

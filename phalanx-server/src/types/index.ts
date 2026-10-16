@@ -251,7 +251,7 @@ export interface PhalanxConfig {
    */
   extraRequestHandler?: (
     req: IncomingMessage,
-    res: ServerResponse,
+    res: ServerResponse
   ) => boolean | Promise<boolean>;
 }
 
@@ -284,7 +284,13 @@ export interface MatchInfo {
   id: string;
   players: PlayerInfo[];
   currentTick: number;
-  state: 'waiting-for-players' | 'countdown' | 'waiting-for-ready' | 'playing' | 'paused' | 'finished';
+  state:
+    | 'waiting-for-players'
+    | 'countdown'
+    | 'waiting-for-ready'
+    | 'playing'
+    | 'paused'
+    | 'finished';
   createdAt: Date;
   gameType?: string;
 }

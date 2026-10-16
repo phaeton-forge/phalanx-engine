@@ -206,8 +206,13 @@ export class AuthManager {
    */
   private async prepareAndRedirect(options?: LoginOptions): Promise<void> {
     // Prepare PKCE if the adapter supports it
-    if ('preparePKCE' in this.adapter && typeof this.adapter.preparePKCE === 'function') {
-      await (this.adapter as { preparePKCE: () => Promise<void> }).preparePKCE();
+    if (
+      'preparePKCE' in this.adapter &&
+      typeof this.adapter.preparePKCE === 'function'
+    ) {
+      await (
+        this.adapter as { preparePKCE: () => Promise<void> }
+      ).preparePKCE();
     }
 
     const url = this.adapter.getLoginUrl(options);
@@ -218,7 +223,6 @@ export class AuthManager {
       throw new Error('login() requires a browser environment');
     }
   }
-
 
   /**
    * Start login flow using popup.
@@ -235,8 +239,13 @@ export class AuthManager {
     }
 
     // Prepare PKCE if the adapter supports it
-    if ('preparePKCE' in this.adapter && typeof this.adapter.preparePKCE === 'function') {
-      await (this.adapter as { preparePKCE: () => Promise<void> }).preparePKCE();
+    if (
+      'preparePKCE' in this.adapter &&
+      typeof this.adapter.preparePKCE === 'function'
+    ) {
+      await (
+        this.adapter as { preparePKCE: () => Promise<void> }
+      ).preparePKCE();
     }
 
     return new Promise((resolve, reject) => {
@@ -454,9 +463,7 @@ export class AuthManager {
 
       case 'discord':
         if (!config.discord) {
-          throw new Error(
-            'Discord config required when provider is "discord"'
-          );
+          throw new Error('Discord config required when provider is "discord"');
         }
         // DiscordOAuthAdapter not implemented yet
         throw new Error('Discord OAuth adapter not implemented yet');

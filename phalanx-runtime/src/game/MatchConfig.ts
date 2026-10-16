@@ -1,4 +1,8 @@
-/** Where the authoritative copy of the simulation runs besides the clients. */
+/**
+ * Which process this runner is. `'client'` hosts `runsOn: 'local'` bots.
+ * `'server'` hosts `runsOn: 'server'` bots. Replaces `simMode` and the
+ * runner `side` option: one field, on the config.
+ */
 export type SimMode = 'client' | 'server';
 
 /** Which runner side hosts a bot slot's policy. */
@@ -24,8 +28,9 @@ export interface BotSlotConfig {
   /** Integer difficulty passed to the policy factory. */
   readonly level: number;
   /**
-   * `'server'` is the only valid value in `simMode: 'server'`; `'local'` is
-   * the only valid value in `simMode: 'client'`.
+   * Which runner hosts this bot. `'local'` with `side: 'client'`,
+   * `'server'` with `side: 'server'`. A peer whose `side` does not match
+   * ignores the bot's policy state.
    */
   readonly runsOn: BotHostSide;
 }
@@ -42,16 +47,20 @@ export type SlotConfig = HumanSlotConfig | BotSlotConfig;
  */
 export interface MatchConfigBase<Slot extends SlotConfig = SlotConfig> {
   readonly matchId: string;
-  /** Must equal `GameDefinition.id`. */
+  /** Must equal `GameDefinition.id`. Filled from the definition when omitted. */
   readonly gameId: string;
-  /** Must equal `GameDefinition.simVersion`. */
+  /** Must equal `GameDefinition.simVersion`. Filled from the definition when omitted. */
   readonly simVersion: string;
   /** Unsigned 32-bit match seed (`GameRoom` `randomSeed` in server mode). */
   readonly seed: number;
-  readonly simMode: SimMode;
+  /** This runner's role. Replaces `simMode`. */
+  readonly side: SimMode;
   /** Sorted ascending by `slot`, contiguous from 0. */
   readonly slots: readonly Slot[];
-  /** Integer `>= 1`; must not exceed the server's `maxTickAhead`. */
+  /**
+   * Integer `>= 1`; must not exceed the server's `maxTickAhead`.
+   * Defaults to `DEFAULT_INPUT_DELAY_TICKS` (2) when omitted.
+   */
   readonly inputDelayTicks: number;
 }
 
