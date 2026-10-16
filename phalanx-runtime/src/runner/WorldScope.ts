@@ -10,38 +10,57 @@ import {
  * counter and the `SoAComponent` EntityManager context — per world, so
  * several matches can run in one Node process.
  *
- * `run` saves the current globals, installs this scope's counter and
- * EntityManager, runs `fn` synchronously, stores the counter back and
- * restores the previous globals. Re-entering the same scope (snapshot
- * taken from inside a tick) keeps the globals already installed.
- * Simulation code must never yield inside a tick.
+ * One scope is active at a time. Entering a different scope stores the
+ * active scope's live registers back into that scope, then installs this
+ * scope's saved counter and EntityManager. Leaving restores the previous
+ * scope. Immediate re-entry into the scope that is already active does
+ * not touch the registers, so a snapshot taken from inside a tick does
+ * not rewind the counter. Simulation code must never yield inside a tick.
  */
 export class WorldScope {
+  private static active: WorldScope | null = null;
   private counter = 0;
   private manager: EntityManager | null = null;
-  private depth = 0;
 
   public run<T>(fn: () => T): T {
-    const outer = this.depth === 0;
-    let previousCounter = 0;
-    let previousManager: EntityManager | null = null;
-    if (outer) {
-      previousCounter = getEntityIdCounter();
-      previousManager = SoAComponent.currentEntityManager();
-      setEntityIdCounter(this.counter);
-      SoAComponent.useEntityManager(this.manager);
-    }
-    this.depth += 1;
+    if (WorldScope.active === this) return fn();
+    const previous = WorldScope.active;
+    if (previous === null) captureAmbient();
+    else previous.capture();
+    this.install();
+    WorldScope.active = this;
     try {
       return fn();
     } finally {
-      this.depth -= 1;
-      if (outer) {
-        this.counter = getEntityIdCounter();
-        this.manager = SoAComponent.currentEntityManager();
-        setEntityIdCounter(previousCounter);
-        SoAComponent.useEntityManager(previousManager);
-      }
+      this.capture();
+      if (previous === null) restoreAmbient();
+      else previous.install();
+      WorldScope.active = previous;
     }
   }
+
+  private capture(): void {
+    this.counter = getEntityIdCounter();
+    this.manager = SoAComponent.currentEntityManager();
+  }
+
+  private install(): void {
+    setEntityIdCounter(this.counter);
+    SoAComponent.useEntityManager(this.manager);
+  }
+}
+
+const ambient = {
+  counter: 0,
+  manager: null as EntityManager | null,
+};
+
+function captureAmbient(): void {
+  ambient.counter = getEntityIdCounter();
+  ambient.manager = SoAComponent.currentEntityManager();
+}
+
+function restoreAmbient(): void {
+  setEntityIdCounter(ambient.counter);
+  SoAComponent.useEntityManager(ambient.manager);
 }

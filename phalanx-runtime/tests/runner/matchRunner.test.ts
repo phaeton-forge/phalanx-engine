@@ -14,15 +14,21 @@ import {
   type SnapshotBytes,
   type Transport,
 } from '../../src/index.js';
+import { decodeSnapshot } from '../../src/state/snapshot.js';
+import { decodeInputCheckpoint } from '../../src/runner/InputCheckpoint.js';
+import { DeterministicRandom } from '@phalanx-engine/math';
 import {
   TinyGame,
   resetTinyBotCalls,
   setTinyBotBoom,
+  setTinyCreateDraw,
   setTinyDecodeBoom,
   setTinyRestoreBroken,
   setTinyTickBoom,
   setTinyValidateBoom,
   tinyBotCalls,
+  tinyCommandsProto,
+  tinyCreateStates,
   type TinyCommand,
   type TinyConfig,
   type TinySim,
@@ -103,6 +109,13 @@ class ScriptedTransport implements Transport {
   public readonly kind = 'relay-lockstep' as const;
   private readonly ticks: TickHandler[] = [];
   private readonly frames: FrameHandler[] = [];
+  public onSubmit:
+    | ((
+        tick: number,
+        slot: number,
+        commands: readonly { type: string; data?: unknown }[]
+      ) => void)
+    | null = null;
 
   public onTick(handler: TickHandler): Unsubscribe {
     this.ticks.push(handler);
@@ -120,7 +133,13 @@ class ScriptedTransport implements Transport {
     };
   }
 
-  public submit(): void {}
+  public submit(
+    tick: number,
+    slot: number,
+    commands: readonly { type: string; data?: unknown }[]
+  ): void {
+    this.onSubmit?.(tick, slot, commands);
+  }
 
   public emitTick(tick: number, batch: CommandsBatch): void {
     for (const handler of this.ticks.slice()) handler(tick, batch);
@@ -138,6 +157,8 @@ describe('MatchRunner', () => {
     setTinyValidateBoom(false);
     setTinyTickBoom(false);
     setTinyBotBoom(false);
+    setTinyCreateDraw(false);
+    tinyCreateStates.length = 0;
     resetTinyBotCalls();
     while (live.length > 0) live.pop()?.dispose();
   });
@@ -582,6 +603,230 @@ describe('MatchRunner', () => {
     expect(JSON.stringify(restored.runner.log.entriesAfter(1))).toBe(
       JSON.stringify(liveRun.runner.log.entriesAfter(1))
     );
+  });
+
+  it('flushes checkpoint commands when restore happens after start', () => {
+    const handle = drive();
+    handle.runner.start();
+    stepTo(handle, 1);
+    handle.runner.submit({ type: 'spawn', x: 5n });
+    const snapshot = handle.runner.snapshot();
+    handle.runner.restore(snapshot);
+    stepTo(handle, 1 + DELAY);
+    expect(handle.runner.sim.unitBySlot(0)?.x).toBe(5n);
+  });
+
+  it('applies transport batches that arrive past the catch-up range', async () => {
+    const scripted = new ScriptedTransport();
+    const runner = new MatchRunner(TinyGame, configFor('client', 4), scripted);
+    live.push(runner);
+    const seen: number[] = [];
+    runner.onTick((tick) => {
+      seen.push(tick);
+      if (tick === 0) {
+        scripted.emitTick(1, { tick: 1, commands: {} });
+        scripted.emitTick(3, { tick: 3, commands: {} });
+        scripted.emitTick(2, { tick: 2, commands: {} });
+      }
+    });
+    runner.start();
+    await runner.fastForward([], { budgetMs: 1000, throughTick: 1 });
+    expect(runner.tick).toBe(3);
+    expect(seen).toEqual([0, 1, 2, 3]);
+  });
+
+  it('keeps local ticks that arrive after the catch-up range', async () => {
+    const handle = drive();
+    handle.runner.onTick((tick) => {
+      if (tick === 0) handle.transport.step(2);
+    });
+    handle.runner.start();
+    await handle.runner.fastForward([], { budgetMs: 1000, throughTick: 0 });
+    expect(handle.runner.tick).toBe(2);
+  });
+
+  it('rejects pause when the transport cannot pause', () => {
+    const scripted = new ScriptedTransport();
+    const runner = new MatchRunner(TinyGame, configFor('client'), scripted);
+    live.push(runner);
+    runner.start();
+    expect(() => runner.sim.world.pause()).toThrow(/does not support pause/);
+    expect(runner.sim.world.paused).toBe(false);
+    scripted.emitTick(0, { tick: 0, commands: {} });
+    scripted.emitTick(1, { tick: 1, commands: {} });
+    expect(runner.tick).toBe(1);
+    expect(tinyCommandsProto).toBeNull();
+  });
+
+  it('keeps the world paused when restore runs during a transport pause', () => {
+    const handle = drive();
+    handle.runner.start();
+    stepTo(handle, 2);
+    handle.transport.requestPause();
+    expect(handle.runner.sim.world.paused).toBe(true);
+    handle.runner.restore(handle.runner.snapshot());
+    expect(handle.runner.sim.world.paused).toBe(true);
+    const tick = handle.runner.tick;
+    handle.transport.step(1);
+    expect(handle.runner.tick).toBe(tick);
+    handle.transport.requestResume();
+    expect(handle.runner.sim.world.paused).toBe(false);
+  });
+
+  it('resets the match RNG to the config seed before restore bootstrap', () => {
+    setTinyCreateDraw(true);
+    tinyCreateStates.length = 0;
+    const handle = drive('client', 11);
+    const fresh = tinyCreateStates[0];
+    expect(fresh).toBeTypeOf('string');
+    handle.runner.start();
+    stepTo(handle, 4);
+    const digest = handle.runner.digest();
+    const advanced = (handle.runner.sim.random as DeterministicRandom)
+      .getState()
+      .join(',');
+    expect(advanced).not.toBe(fresh);
+    handle.runner.restore(handle.runner.snapshot());
+    expect(tinyCreateStates[1]).toBe(fresh);
+    expect(handle.runner.digest()).toBe(digest);
+  });
+
+  it('rejects a replay export when history was not recorded here', () => {
+    const first = drive();
+    first.runner.start();
+    stepTo(first, 2);
+    const snapshot = first.runner.snapshot();
+    expect(first.runner.toReplay().lastTick).toBe(2);
+    first.runner.restore(snapshot);
+    expect(first.runner.toReplay().lastTick).toBe(2);
+
+    const second = drive();
+    second.runner.restore(snapshot);
+    expect(second.runner.log.isComplete).toBe(false);
+    expect(() => second.runner.toReplay()).toThrow(/command log is incomplete/);
+
+    first.runner.log.truncateThrough(first.runner.tick);
+    expect(() => first.runner.toReplay()).toThrow(/command log is incomplete/);
+  });
+
+  it('raises the local seq past commands delivered during catch-up', async () => {
+    const first = drive();
+    first.runner.start();
+    first.runner.submit({ type: 'spawn', x: 1n });
+    stepTo(first, 0);
+    const snapshot = first.runner.snapshot();
+    first.runner.submit({ type: 'move', dx: 2n });
+    first.runner.submit({ type: 'move', dx: 3n });
+    stepTo(first, 3);
+    const tail = first.runner.log.entriesAfter(0);
+
+    const second = drive();
+    second.runner.restore(snapshot);
+    second.runner.start();
+    await second.runner.fastForward(tail, {
+      budgetMs: 1000,
+      throughTick: 3,
+    });
+    second.runner.submit({ type: 'move', dx: 9n });
+    stepTo(second, 3 + DELAY);
+    const human = second.runner.log
+      .entriesAfter(-1)
+      .filter((entry) => entry.playerId === 'local:0')
+      .map((entry) => entry.data.q);
+    expect(human).toEqual([0, 1, 2, 3]);
+  });
+
+  it('publishes outcome and digest after the tick and bot checkpoint', () => {
+    const transport = LocalTransport.manual();
+    const runner = new MatchRunner(
+      TinyGame,
+      { ...configFor('client', 1), arenaSize: 1 },
+      transport,
+      { hashEveryTicks: 1 }
+    );
+    live.push(runner);
+    const seen: string[] = [];
+    runner.onDigest((tick) => {
+      seen.push(`digest:${String(tick)}:${String(runner.tick)}`);
+      if (tick !== 0) return;
+      const decoded = decodeSnapshot(runner.snapshot());
+      const bytes = decoded.inputCheckpoint;
+      if (bytes === null) throw new Error('missing input checkpoint');
+      const checkpoint = decodeInputCheckpoint(bytes);
+      const hosted = checkpoint.pending.some((batch) =>
+        batch.entries.some((entry) => entry.playerId === botPlayerId(1))
+      );
+      expect(hosted).toBe(true);
+    });
+    runner.onOutcome(() => {
+      seen.push(`outcome:${String(runner.tick)}`);
+    });
+    runner.submit({ type: 'spawn', x: 1n });
+    runner.start();
+    stepTo({ runner, transport }, 4);
+    expect(seen[0]).toBe('digest:0:0');
+    expect(seen).toContain('outcome:1');
+    expect(seen).toContain('digest:1:1');
+  });
+
+  it('drops a late-delivered command from every pending tick', () => {
+    const scripted = new ScriptedTransport();
+    const runner = new MatchRunner(
+      TinyGame,
+      configFor('client', 9),
+      scripted,
+      { localSlots: [0] }
+    );
+    live.push(runner);
+    const submitted: { type: string; data?: unknown }[] = [];
+    scripted.onSubmit = (_tick, _slot, commands) => {
+      submitted.push(...commands);
+    };
+    runner.start();
+    runner.submit({ type: 'spawn', x: 4n });
+    const echoed = submitted[0];
+    if (echoed === undefined) throw new Error('expected a submit');
+    scripted.emitTick(0, { tick: 0, commands: {} });
+    scripted.emitTick(1, { tick: 1, commands: {} });
+    scripted.emitTick(2, {
+      tick: 2,
+      commands: { 'local:0': [echoed] },
+    });
+    expect(runner.sim.unitBySlot(0)?.x).toBe(4n);
+    const decoded = decodeSnapshot(runner.snapshot());
+    const bytes = decoded.inputCheckpoint;
+    if (bytes === null) throw new Error('missing input checkpoint');
+    const checkpoint = decodeInputCheckpoint(bytes);
+    const still = checkpoint.pending.flatMap((batch) =>
+      batch.entries.filter(
+        (entry) => entry.playerId === 'local:0' && entry.data.q === 0
+      )
+    );
+    expect(still).toEqual([]);
+  });
+
+  it('accepts a fractional payload without failing the tick', () => {
+    const scripted = new ScriptedTransport();
+    const runner = new MatchRunner(TinyGame, configFor('client', 2), scripted);
+    live.push(runner);
+    runner.start();
+    scripted.emitTick(0, {
+      tick: 0,
+      commands: {
+        'local:0': [
+          {
+            type: 'move',
+            data: { q: 0, p: { speed: 0.5, type: 'move', dx: '1' } },
+          },
+        ],
+      },
+    });
+    expect(runner.status).toBe('running');
+    const payload = runner.log
+      .entriesAfter(-1)
+      .find((entry) => entry.playerId === 'local:0')?.data.p;
+    expect(payload).toMatchObject({ speed: 0.5 });
+    expect(Object.keys(payload ?? {})).toEqual(['dx', 'speed', 'type']);
   });
 
   it('refuses start on a replay runner', () => {

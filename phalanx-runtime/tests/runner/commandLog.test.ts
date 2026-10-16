@@ -36,6 +36,30 @@ describe('CommandLog', () => {
     expect(log.entriesAfter(2).map((item) => item.tick)).toEqual([3]);
   });
 
+  it('marks a jumped rewind and a truncation as incomplete', () => {
+    const log = new CommandLog();
+    log.appendTick(0, [entry(0)]);
+    log.appendTick(1, [entry(1)]);
+    expect(log.isComplete).toBe(true);
+    log.rewindTo(0);
+    expect(log.isComplete).toBe(true);
+    expect(log.lastTick).toBe(0);
+
+    const restored = new CommandLog();
+    restored.rewindTo(5);
+    expect(restored.lastTick).toBe(5);
+    expect(restored.isComplete).toBe(false);
+
+    const truncated = new CommandLog();
+    truncated.appendTick(0, [entry(0)]);
+    truncated.appendTick(1, [entry(1)]);
+    truncated.truncateThrough(0);
+    expect(truncated.isComplete).toBe(false);
+    truncated.rewindTo(-1);
+    expect(truncated.isComplete).toBe(true);
+    expect(truncated.lastTick).toBe(-1);
+  });
+
   it('rewinds so the next append continues after the restored tick', () => {
     const log = new CommandLog();
     log.appendTick(0, [entry(0)]);

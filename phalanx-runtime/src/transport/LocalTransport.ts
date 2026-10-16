@@ -263,7 +263,9 @@ export class LocalTransport implements Transport {
   }
 
   private takeBatch(tick: number): CommandsBatch {
-    const commands: { [playerId: string]: PlayerCommand[] } = {};
+    // Player ids are arbitrary strings. A null prototype keeps
+    // `__proto__` and `constructor` as own data properties.
+    const commands = emptyCommands();
     const bySlot = this.pending.get(tick);
     if (bySlot !== undefined) {
       const slots = [...bySlot.keys()].sort((a, b) => a - b);
@@ -311,9 +313,11 @@ export class LocalTransport implements Transport {
     if (frameTime < 0) frameTime = 0;
     this.accumulator += frameTime;
     while (this.accumulator >= this.tickDuration) {
+      if (!this.running || this.paused) return;
       this.emitTick();
       this.accumulator -= this.tickDuration;
     }
+    if (!this.running || this.paused) return;
     const alpha =
       this.tickDuration === 0 ? 0 : this.accumulator / this.tickDuration;
     for (const handler of this.frameHandlers.slice()) {
@@ -325,6 +329,10 @@ export class LocalTransport implements Transport {
     const index = handlers.indexOf(handler);
     if (index !== -1) handlers.splice(index, 1);
   }
+}
+
+function emptyCommands(): { [playerId: string]: PlayerCommand[] } {
+  return Object.create(null) as { [playerId: string]: PlayerCommand[] };
 }
 
 function hostSetTimeout(handler: () => void, timeout: number): unknown {

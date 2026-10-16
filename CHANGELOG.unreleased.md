@@ -121,6 +121,19 @@ Entries collected per package until the synchronized 0.3.0 release
   before the next timer. `fromReplay` is driven only by
   `fastForward(replay.log)`; `start()` throws. `RunnerStatus` is a type
   export.
+- Copilot follow-up (Task 6): an already-started `restore` flushes the
+  checkpoint after the transport seek. Catch-up drops buffered batches
+  inside the replayed range and runs the rest in order. Pause and resume
+  require transport support. Command batches use a null-prototype player
+  map. `WorldScope` saves the active scope across nested `A → B → A`
+  runs. A multi-tick timer callback rechecks pause between ticks. The
+  input-checkpoint codec round-trips finite JSON numbers and restores
+  `__proto__` as an own data property. `restore` keeps a paused transport
+  and the rebuilt world in agreement, and resets the match RNG to
+  `config.seed` before `createWorld`. `toReplay()` throws when the log
+  is incomplete. Catch-up raises each local human seq to the delivered
+  `q + 1`. Outcome and digest publish after the tick and the bot
+  checkpoint. A delivered `(playerId, q)` leaves every pending bucket.
 
 ## @phalanx-engine/ecs
 

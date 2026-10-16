@@ -117,8 +117,9 @@ interface TickPlan {
  *     → `sim.applyCommand`; rejected entries stay in the log;
  *  4. emit T on the runner-owned `tickFrameProvider` → the world's standard
  *     `start()` pipeline runs the tick systems;
- *  5. `outcome(sim)`; digest every `hashEveryTicks`;
- *  6. hosted bots `decide(sim, T)` → submitted for `T + inputDelayTicks`.
+ *  5. hosted bots `decide(sim, T)` while the match is still active, submitted
+ *     for `T + inputDelayTicks` (the input checkpoint);
+ *  6. advance the completed tick, then publish `outcome` and the digest.
  */
 export class MatchRunner<G extends AnyGameDefinition> {
   private readonly definition: G;
@@ -133,7 +134,7 @@ export class MatchRunner<G extends AnyGameDefinition> {
   private readonly configDigest: Digest;
   private readonly scope = new WorldScope();
   private readonly commandLog = new CommandLog();
-  private readonly random: IRandom;
+  private readonly random: DeterministicRandom;
   private readonly provider: RunnerProvider;
   private readonly botHost: BotHost<G>;
   private readonly slotByPlayerId = new Map<string, number>();
@@ -162,6 +163,8 @@ export class MatchRunner<G extends AnyGameDefinition> {
   private replayLastTick = -1;
   /** Restored commands not yet handed back to the transport. */
   private unsent: LogEntry[] | null = null;
+  /** Last pause signal from the transport. The rebuilt world must match it. */
+  private transportPaused = false;
   private readonly bufferedTicks: { tick: number; batch: CommandsBatch }[] = [];
   private readonly unsubTick: Unsubscribe;
   private readonly unsubFrame: Unsubscribe;
@@ -217,11 +220,13 @@ export class MatchRunner<G extends AnyGameDefinition> {
     });
     this.unsubPause = transport.onPause
       ? transport.onPause(() => {
+          this.transportPaused = true;
           this.provider.firePause();
         })
       : () => {};
     this.unsubResume = transport.onResume
       ? transport.onResume(() => {
+          this.transportPaused = false;
           this.provider.fireResume();
         })
       : () => {};
@@ -361,7 +366,11 @@ export class MatchRunner<G extends AnyGameDefinition> {
    * the input checkpoint, but only for slots this runner hosts or submits:
    * a client restoring a server snapshot ignores both. With no following
    * `fastForward`, `start` re-submits the checkpoint and does not re-run
-   * `decide` for the snapshot tick.
+   * `decide` for the snapshot tick. A runner that is already started flushes
+   * that checkpoint after the transport seek, because `start` will not run
+   * again. The match RNG is reset to `config.seed` before `createWorld`;
+   * `GameState.restore` then installs the saved generator. A transport that
+   * is already paused pauses the rebuilt world.
    */
   public restore(bytes: SnapshotBytes): void {
     this.ensureLive();
@@ -393,6 +402,9 @@ export class MatchRunner<G extends AnyGameDefinition> {
         : decoded.body;
     this.scope.run(() => {
       this.destroySim();
+      this.random.setState(
+        new DeterministicRandom(this.config.seed >>> 0).getState()
+      );
       this.boot('restore');
       const reader = new BinaryStateReader(body);
       this.requireGameState().restore(reader);
@@ -405,6 +417,7 @@ export class MatchRunner<G extends AnyGameDefinition> {
         }
       }
     });
+    if (this.transportPaused) this.provider.firePause();
     this.completedTick = decoded.header.tick;
     this.commandLog.rewindTo(decoded.header.tick);
     this.pendingByTick.clear();
@@ -425,6 +438,7 @@ export class MatchRunner<G extends AnyGameDefinition> {
       this.transport.clearPending();
       this.transport.seek(decoded.header.tick + 1);
     }
+    if (this.started) this.flushUnsent();
   }
 
   /** `digestBytes(GameState.save())` of the current tick. */
@@ -442,6 +456,10 @@ export class MatchRunner<G extends AnyGameDefinition> {
    * each replayed tick, hosted policies `decide`; a result is submitted
    * only when its target tick is past `throughTick`. `fromReplay` does not
    * use this path and never calls `decide`.
+   *
+   * Batches that arrive while this is running are buffered. When the range
+   * finishes, batches at or before `throughTick` are dropped and the rest
+   * run in tick order.
    */
   public async fastForward(
     entries: Iterable<LogEntry>,
@@ -510,15 +528,22 @@ export class MatchRunner<G extends AnyGameDefinition> {
       finished = !halted;
     } finally {
       this.fastForwarding = false;
-      if (finished && this.transport instanceof LocalTransport) {
-        this.bufferedTicks.length = 0;
-        this.transport.seek(options.throughTick + 1);
+      if (finished) {
+        if (this.transport instanceof LocalTransport) {
+          this.transport.seek(options.throughTick + 1);
+        }
+        this.drainBuffered(options.throughTick);
       }
     }
   }
 
   public toReplay(): ReplayRecord<ConfigOf<G>> {
     this.ensureLive();
+    if (!this.commandLog.isComplete) {
+      throw new Error(
+        'MatchRunner.toReplay: command log is incomplete (restore or truncation dropped history)'
+      );
+    }
     const record: ReplayRecord<ConfigOf<G>> = {
       format: REPLAY_FORMAT,
       gameId: this.definition.id,
@@ -641,32 +666,33 @@ export class MatchRunner<G extends AnyGameDefinition> {
   ): void {
     this.commandLog.appendTick(tick, entries);
     this.noteDelivered(entries);
+    this.noteLocalSeq(entries);
     this.applyEntries(tick, entries);
     this.provider.emitTick(tick);
     const outcome = this.definition.outcome(this.sim);
-    if (outcome !== null && this.phase === 'active') {
-      this.outcomeListeners.emit(outcome);
-      this.phase = 'ended';
+    const endedNow = outcome !== null && this.phase === 'active';
+    if (endedNow) this.phase = 'ended';
+    if (plan.decide && this.phase === 'active') {
+      this.decideHosted(tick, plan.submitAfter);
     }
     const hashDue = tick % this.hashEveryTicks === 0;
     const replayCheck =
       this.replayDigest !== undefined && tick === this.replayLastTick;
+    let digest: Digest | undefined;
     if (hashDue || replayCheck) {
-      const digest = this.computeDigest();
+      digest = this.computeDigest();
       if (replayCheck && digest !== this.replayDigest) {
         throw new Error(
           `MatchRunner.fromReplay: final digest mismatch at tick ${String(tick)}`
         );
       }
-      if (hashDue) {
-        this.digestListeners.emit(tick, digest);
-        this.transport.submitHash?.(tick, digest);
-      }
-    }
-    if (plan.decide && this.phase === 'active') {
-      this.decideHosted(tick, plan.submitAfter);
     }
     this.completedTick = tick;
+    if (endedNow && outcome !== null) this.outcomeListeners.emit(outcome);
+    if (digest !== undefined && hashDue) {
+      this.digestListeners.emit(tick, digest);
+      this.transport.submitHash?.(tick, digest);
+    }
     this.tickListeners.emit(tick);
     if (this.phase === 'ended') this.stop();
   }
@@ -804,20 +830,34 @@ export class MatchRunner<G extends AnyGameDefinition> {
     else list.push(entry);
   }
 
+  /**
+   * A submit is stored under its target tick, but the transport may deliver
+   * it in a later batch. Drop the `(playerId, q)` pair from every bucket.
+   */
   private noteDelivered(entries: readonly LogEntry[]): void {
     if (entries.length === 0) return;
-    const tick = entries[0]?.tick;
-    if (tick === undefined) return;
-    const pending = this.pendingByTick.get(tick);
-    if (pending === undefined) return;
     const delivered = new Set(
       entries.map((entry) => `${entry.playerId}:${String(entry.data.q)}`)
     );
-    const rest = pending.filter(
-      (entry) => !delivered.has(`${entry.playerId}:${String(entry.data.q)}`)
-    );
-    if (rest.length === 0) this.pendingByTick.delete(tick);
-    else this.pendingByTick.set(tick, rest);
+    for (const [tick, pending] of this.pendingByTick) {
+      const rest = pending.filter(
+        (entry) => !delivered.has(`${entry.playerId}:${String(entry.data.q)}`)
+      );
+      if (rest.length === pending.length) continue;
+      if (rest.length === 0) this.pendingByTick.delete(tick);
+      else this.pendingByTick.set(tick, rest);
+    }
+  }
+
+  /** Catch-up applies logged human commands without going through `enqueue`. */
+  private noteLocalSeq(entries: readonly LogEntry[]): void {
+    for (const entry of entries) {
+      const slot = this.slotByPlayerId.get(entry.playerId);
+      if (slot === undefined || !this.localSlotSet.has(slot)) continue;
+      const deliveredNext = entry.data.q + 1;
+      const current = this.nextSeq.get(slot) ?? 0;
+      if (deliveredNext > current) this.nextSeq.set(slot, deliveredNext);
+    }
   }
 
   private holdCheckpoint(checkpoint: InputCheckpoint): void {
@@ -975,6 +1015,16 @@ export class MatchRunner<G extends AnyGameDefinition> {
     return slot !== undefined && this.ownsSlot(slot);
   }
 
+  /** Drop buffered batches the replay already covered; run the rest in order. */
+  private drainBuffered(throughTick: number): void {
+    const queued = this.bufferedTicks.splice(0);
+    queued.sort((a, b) => a.tick - b.tick);
+    for (const item of queued) {
+      if (item.tick <= throughTick) continue;
+      this.onTransportTick(item.tick, item.batch);
+    }
+  }
+
   private ensureLive(): void {
     if (this.stopped || this.simulation === null) {
       throw new Error('MatchRunner: runner is disposed');
@@ -1025,17 +1075,21 @@ class RunnerProvider implements ITickFrameProvider {
   }
 
   public requestPause(): void {
-    if (this.transport.requestPause) this.transport.requestPause();
-    else this.firePause();
+    if (!this.transport.requestPause) {
+      throw new Error('MatchRunner: transport does not support pause');
+    }
+    this.transport.requestPause();
   }
 
   public requestResume(): void {
-    if (this.transport.requestResume) this.transport.requestResume();
-    else this.fireResume();
+    if (!this.transport.requestResume) {
+      throw new Error('MatchRunner: transport does not support resume');
+    }
+    this.transport.requestResume();
   }
 
   public emitTick(tick: number): void {
-    const batch: CommandsBatch = { tick, commands: {} };
+    const batch: CommandsBatch = { tick, commands: emptyCommands() };
     for (const handler of this.tickHandlers.slice()) handler(tick, batch);
   }
 
@@ -1193,6 +1247,14 @@ function toSlotInfo(slot: SlotConfig, playerId: string): SlotInfo {
     kind: 'human',
     playerId,
   };
+}
+
+/**
+ * Player ids are untrusted strings (`__proto__`, `constructor`). A null
+ * prototype keeps those keys as own data properties.
+ */
+function emptyCommands(): CommandsBatch['commands'] {
+  return Object.create(null) as CommandsBatch['commands'];
 }
 
 function entriesFromBatch(

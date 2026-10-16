@@ -72,6 +72,74 @@ describe('LocalTransport', () => {
     expect(delays[0]).toBe(100);
   });
 
+  it('keeps __proto__ and constructor as own command keys', () => {
+    const transport = LocalTransport.manual();
+    transport.bindSlots([
+      { slot: 0, playerId: '__proto__' },
+      { slot: 1, playerId: 'constructor' },
+    ]);
+    transport.submit(0, 0, [{ type: 'a', data: { q: 0, p: null } }]);
+    transport.submit(0, 1, [{ type: 'b', data: { q: 0, p: null } }]);
+    transport.onTick((_tick, batch) => {
+      expect(Object.getPrototypeOf(batch.commands)).toBeNull();
+      expect(Object.hasOwn(batch.commands, '__proto__')).toBe(true);
+      expect(Object.hasOwn(batch.commands, 'constructor')).toBe(true);
+      expect(
+        batch.commands['__proto__']?.map((command) => command.type)
+      ).toEqual(['a']);
+      expect(
+        batch.commands['constructor']?.map((command) => command.type)
+      ).toEqual(['b']);
+    });
+    transport.step(1);
+    transport.dispose();
+  });
+
+  it('rechecks pause between ticks of one timer callback', () => {
+    let nowMs = 0;
+    const host = globalThis as unknown as {
+      setTimeout: (handler: () => void, timeout?: number) => unknown;
+      clearTimeout: (handle: unknown) => void;
+      performance: { now(): number };
+    };
+    const originalTimeout = host.setTimeout;
+    const originalClear = host.clearTimeout;
+    const originalNow = host.performance.now.bind(host.performance);
+    const captured: { run: (() => void) | null } = { run: null };
+    host.setTimeout = (handler) => {
+      captured.run = handler;
+      return 1;
+    };
+    host.clearTimeout = () => {
+      captured.run = null;
+    };
+    host.performance.now = () => nowMs;
+    const transport = new LocalTransport({ tickRate: 10, maxFrameTime: 1 });
+    const ticks: number[] = [];
+    let frames = 0;
+    transport.onTick((tick) => {
+      ticks.push(tick);
+      if (ticks.length === 1) transport.requestPause();
+    });
+    transport.onFrame(() => {
+      frames += 1;
+    });
+    try {
+      transport.start();
+      nowMs = 350;
+      const fire = captured.run;
+      captured.run = null;
+      if (fire) fire();
+    } finally {
+      host.setTimeout = originalTimeout;
+      host.clearTimeout = originalClear;
+      host.performance.now = originalNow;
+      transport.dispose();
+    }
+    expect(ticks).toEqual([0]);
+    expect(frames).toBe(0);
+  });
+
   it('pause blocks step until resume', () => {
     const transport = LocalTransport.manual();
     const ticks: number[] = [];

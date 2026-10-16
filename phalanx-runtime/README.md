@@ -112,7 +112,20 @@ Policy state may already be partial. The first non-null `outcome` is
 emitted once; `status` becomes `'ended'` and the transport stops.
 `status` is `'ready' | 'running' | 'ended' | 'failed' | 'disposed'`.
 Live log payloads are stored with canonical object-key order so they
-match a checkpoint restored into another runner.
+match a checkpoint restored into another runner. The payload codec
+round-trips every finite JSON number. `canonicalConfigBytes` still
+accepts only safe integers. `toReplay()` throws when the command log
+is incomplete: a restore onto a runner that did not record ticks `0..N`,
+or a log truncation. The replay format has no base snapshot.
+`outcome` and the digest are published after the tick has completed
+and after hosted `decide`. A transport without `requestPause` /
+`requestResume` cannot pause the world. Catch-up drops buffered
+batches covered by the replayed range and then runs the rest in order.
+An already-started runner flushes its checkpoint after `restore`.
+`restore` resets the match RNG to `config.seed` before `createWorld`,
+then `GameState.restore` installs the saved generator, and a paused
+transport pauses the rebuilt world. `WorldScope` saves the active
+scope's registers before entering another scope.
 
 `LocalTransport` rejects `submit` when
 `targetTick > nextTick + maxAheadTicks` (default 8) so the pending map

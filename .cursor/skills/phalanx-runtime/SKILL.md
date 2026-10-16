@@ -146,9 +146,23 @@ throws is logged and that slot submits nothing; the match continues, and
 policy state may already be partial. The first non-null outcome is
 emitted once, then `status` is `'ended'` and the transport stops.
 `status` is `'ready' | 'running' | 'ended' | 'failed' | 'disposed'`.
-Live command payloads are canonicalized (UTF-16 key order) so a restored
-log matches the live log. `LocalTransport` rejects a submit more than
-`maxAheadTicks` past `nextTick` (default 8). Its timer waits
+Live command payloads are canonicalized (UTF-16 key order, finite JSON
+numbers) so a restored log matches the live log. `canonicalConfigBytes`
+still accepts only safe integers. `toReplay()` throws when the command
+log is incomplete (restore onto a runner that did not record that
+history, or truncation). Do not add a base snapshot to the replay.
+`outcome` and digests publish after the completed tick and after hosted
+`decide`. Pause requires `requestPause` / `requestResume` on the
+transport. Catch-up applies buffered batches that land after
+`throughTick`, in order, and drops the ones the replay already covered.
+An already-started `restore` flushes the checkpoint after the transport
+seek. `restore` resets the match RNG to `config.seed` before
+`createWorld`; `GameState.restore` then installs the saved generator. A
+paused transport pauses the rebuilt world. `WorldScope` tracks the
+active scope: entering a different scope saves that scope's live
+registers, and only an immediate re-entry skips install. `LocalTransport`
+rejects a submit more than `maxAheadTicks` past `nextTick` (default 8).
+Its timer waits
 `tickDuration - accumulator`. A snapshot taken
 after `decide` stores bot bytes and the input checkpoint outside the
 digest. `restore` applies bot state and the checkpoint only for slots

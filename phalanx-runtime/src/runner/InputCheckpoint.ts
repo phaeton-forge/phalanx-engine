@@ -1,7 +1,6 @@
 import type { JsonValue } from '../game/commands.js';
 import { BinaryStateReader, BinaryStateWriter } from '../state/BinaryState.js';
-import { canonicalConfigBytes } from '../state/snapshot.js';
-import type { StateReader } from '../state/StateIO.js';
+import type { StateReader, StateWriter } from '../state/StateIO.js';
 import type { LogEntry } from './CommandLog.js';
 
 /**
@@ -28,8 +27,12 @@ export interface SlotSequence {
  * Taken with the snapshot, after the tick's hosted `decide` calls. Task 6
  * serializes it with `BinaryStateWriter` (Task 2 only carries the bytes):
  * `sortedBy` batch by tick, each entry `str playerId`, `str type`,
- * `varint q`, then `canonicalConfigBytes` of the envelope payload; then
- * `sortedBy` `nextSeq` by slot.
+ * `varint q`, then the payload codec below; then `sortedBy` `nextSeq` by
+ * slot.
+ *
+ * Payloads use their own codec, not `canonicalConfigBytes`. Match configs
+ * stay safe integers. A command payload may be any finite JSON number,
+ * including fractions. Object keys are still sorted by UTF-16 code unit.
  */
 export interface InputCheckpoint {
   readonly pending: readonly PendingCommandBatch[];
@@ -38,7 +41,7 @@ export interface InputCheckpoint {
 
 const TAG_NULL = 0;
 const TAG_BOOL = 1;
-const TAG_INT = 2;
+const TAG_NUM = 2;
 const TAG_STR = 3;
 const TAG_ARRAY = 4;
 const TAG_OBJECT = 5;
@@ -47,9 +50,9 @@ const TAG_OBJECT = 5;
  * Bytes of an {@link InputCheckpoint}.
  *
  * `sortedBy` batch by tick (the tick is written; `sortedBy` only orders),
- * each entry `str playerId`, `str type`, `varint q`, then
- * `canonicalConfigBytes` of the envelope payload; then `sortedBy` `nextSeq`
- * by slot (`varint slot`, `varint nextSeq`).
+ * each entry `str playerId`, `str type`, `varint q`, then the canonical
+ * payload bytes; then `sortedBy` `nextSeq` by slot (`varint slot`,
+ * `varint nextSeq`).
  */
 export function encodeInputCheckpoint(checkpoint: InputCheckpoint): Uint8Array {
   const writer = new BinaryStateWriter();
@@ -62,9 +65,7 @@ export function encodeInputCheckpoint(checkpoint: InputCheckpoint): Uint8Array {
         entryWriter.str(entry.playerId);
         entryWriter.str(entry.type);
         entryWriter.varint(entry.data.q);
-        entryWriter.bytes(
-          canonicalConfigBytes(canonicalJsonValue(entry.data.p))
-        );
+        entryWriter.bytes(canonicalJsonBytes(entry.data.p));
       });
     }
   );
@@ -82,10 +83,12 @@ export function encodeInputCheckpoint(checkpoint: InputCheckpoint): Uint8Array {
 /**
  * Payload with object keys in the canonical UTF-16 order.
  * `encodeInputCheckpoint` stores this form, so a live log entry must use
- * it too or a restored command log is not byte-identical.
+ * it too or a restored command log is not byte-identical. Finite numbers,
+ * including fractions, round-trip. `canonicalConfigBytes` is unchanged
+ * and still rejects non-integers.
  */
 export function canonicalJsonValue(value: JsonValue): JsonValue {
-  return decodeCanonical(canonicalConfigBytes(value));
+  return decodeCanonical(canonicalJsonBytes(value));
 }
 
 /** Inverse of {@link encodeInputCheckpoint}. */
@@ -118,6 +121,12 @@ export function decodeInputCheckpoint(bytes: Uint8Array): InputCheckpoint {
   return { pending, nextSeq };
 }
 
+function canonicalJsonBytes(value: JsonValue): Uint8Array {
+  const writer = new BinaryStateWriter();
+  writeCanonical(writer, value, new Set());
+  return writer.finish();
+}
+
 function decodeCanonical(bytes: Uint8Array): JsonValue {
   const reader = new BinaryStateReader(bytes);
   const value = readCanonical(reader);
@@ -125,7 +134,77 @@ function decodeCanonical(bytes: Uint8Array): JsonValue {
   return value;
 }
 
-/** Mirrors `canonicalConfigBytes` in `snapshot.ts`. */
+/**
+ * Payload codec. Tag `2` is a decimal string of a finite JSON number
+ * (`String(n)`, with `-0` kept distinct), not a safe-integer `i64`.
+ */
+function writeCanonical(
+  writer: StateWriter,
+  value: JsonValue,
+  stack: Set<object>
+): void {
+  if (value === null) {
+    writer.u8(TAG_NULL);
+    return;
+  }
+  switch (typeof value) {
+    case 'boolean':
+      writer.u8(TAG_BOOL);
+      writer.bool(value);
+      return;
+    case 'number':
+      if (!Number.isFinite(value)) {
+        throw new Error(
+          `input checkpoint: number must be finite, got ${String(value)}`
+        );
+      }
+      writer.u8(TAG_NUM);
+      writer.str(Object.is(value, -0) ? '-0' : String(value));
+      return;
+    case 'string':
+      writer.u8(TAG_STR);
+      writer.str(value);
+      return;
+    case 'object':
+      break;
+    default:
+      throw new Error(
+        `input checkpoint: unsupported payload type ${typeof value}`
+      );
+  }
+  if (stack.has(value)) {
+    throw new Error('input checkpoint: circular reference');
+  }
+  stack.add(value);
+  try {
+    if (isArray(value)) {
+      if (Object.getPrototypeOf(value) !== Array.prototype) {
+        throw new Error('input checkpoint: class instances are not allowed');
+      }
+      writer.u8(TAG_ARRAY);
+      writer.varint(value.length);
+      for (const element of value) writeCanonical(writer, element, stack);
+      return;
+    }
+    if (!isPlainObject(value)) {
+      throw new Error('input checkpoint: class instances are not allowed');
+    }
+    const keys = Object.keys(value).sort();
+    writer.u8(TAG_OBJECT);
+    writer.varint(keys.length);
+    for (const key of keys) {
+      const child = value[key];
+      if (child === undefined) {
+        throw new Error('input checkpoint: undefined is not allowed');
+      }
+      writer.str(key);
+      writeCanonical(writer, child, stack);
+    }
+  } finally {
+    stack.delete(value);
+  }
+}
+
 function readCanonical(reader: StateReader): JsonValue {
   const tag = reader.u8();
   switch (tag) {
@@ -133,16 +212,13 @@ function readCanonical(reader: StateReader): JsonValue {
       return null;
     case TAG_BOOL:
       return reader.bool();
-    case TAG_INT: {
-      const raw = reader.i64();
-      const max = BigInt(Number.MAX_SAFE_INTEGER);
-      const min = BigInt(Number.MIN_SAFE_INTEGER);
-      if (raw > max || raw < min) {
-        throw new Error(
-          'input checkpoint: canonical integer does not fit a JSON number'
-        );
+    case TAG_NUM: {
+      const text = reader.str();
+      const value = Number(text);
+      if (!Number.isFinite(value)) {
+        throw new Error(`input checkpoint: bad canonical number '${text}'`);
       }
-      return Number(raw);
+      return value;
     }
     case TAG_STR:
       return reader.str();
@@ -159,11 +235,29 @@ function readCanonical(reader: StateReader): JsonValue {
       const value: { [key: string]: JsonValue } = {};
       for (let index = 0; index < count; index += 1) {
         const key = reader.str();
-        value[key] = readCanonical(reader);
+        // `__proto__` and `constructor` must be own data properties.
+        // Assignment would invoke the prototype setter.
+        Object.defineProperty(value, key, {
+          value: readCanonical(reader),
+          writable: true,
+          enumerable: true,
+          configurable: true,
+        });
       }
       return value;
     }
     default:
       throw new Error(`input checkpoint: bad canonical tag ${String(tag)}`);
   }
+}
+
+function isArray(value: object): value is readonly JsonValue[] {
+  return Array.isArray(value);
+}
+
+function isPlainObject(
+  value: object
+): value is { [key: string]: JsonValue | undefined } {
+  const proto: unknown = Object.getPrototypeOf(value);
+  return proto === Object.prototype || proto === null;
 }

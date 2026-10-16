@@ -4,6 +4,7 @@ import {
   GameWorld,
   SoAComponent,
   defineSoASchema,
+  type CommandsBatch,
   type SoAComponentStore,
   type SystemContext,
 } from '@phalanx-engine/ecs';
@@ -63,6 +64,16 @@ let decodeBoom = false;
 let validateBoom = false;
 let tickBoom = false;
 let botBoom = false;
+let createDraw = false;
+
+/** Prototype of the commands object the world saw on the last tick. */
+export let tinyCommandsProto: object | null = Object.prototype;
+
+/**
+ * `getState()` captured at the start of each `createWorld` while
+ * {@link setTinyCreateDraw} is on. The first entry is the fresh boot.
+ */
+export const tinyCreateStates: string[] = [];
 
 /** Test hook: the next `restore` writes state that does not round-trip. */
 export function setTinyRestoreBroken(broken: boolean): void {
@@ -87,6 +98,15 @@ export function setTinyTickBoom(boom: boolean): void {
 /** Test hook: the walker `decide` throws `bot exploded`. */
 export function setTinyBotBoom(boom: boolean): void {
   botBoom = boom;
+}
+
+/**
+ * Test hook: `createWorld` records the match RNG state, then draws once.
+ * Restore must show the seed state again, not the generator the ticks
+ * already advanced.
+ */
+export function setTinyCreateDraw(enabled: boolean): void {
+  createDraw = enabled;
 }
 
 export function resetTinyBotCalls(): void {
@@ -117,6 +137,11 @@ class TinyDecaySystem extends GameSystem {
   public override init(context: SystemContext): void {
     super.init(context);
     this.store = context.entityManager.getSoAStore(TINY_UNIT_SCHEMA) ?? null;
+  }
+
+  public beforeTick(_tick: number, commands: CommandsBatch): void {
+    tinyCommandsProto = Object.getPrototypeOf(commands.commands) as
+      object | null;
   }
 
   public override processTick(_tick: number): void {
@@ -298,6 +323,10 @@ export const TinyGame = defineGame({
   simVersion: 'tiny-1',
   tickRate: 10,
   createWorld: (config: TinyConfig, ctx: WorldInitContext): TinySim => {
+    if (createDraw && hasGeneratorState(ctx.random)) {
+      tinyCreateStates.push(ctx.random.getState().join(','));
+      ctx.random.int(1_000_000);
+    }
     const world = new GameWorld({
       tickFrameProvider: ctx.tickFrameProvider,
       random: ctx.random,
@@ -354,4 +383,12 @@ export const TinyGame = defineGame({
 
 function isBigIntString(value: unknown): value is string {
   return typeof value === 'string' && /^-?\d+$/.test(value);
+}
+
+function hasGeneratorState(
+  rng: IRandom
+): rng is IRandom & { getState(): readonly number[] } {
+  if (!('getState' in rng)) return false;
+  const candidate: unknown = rng.getState;
+  return typeof candidate === 'function';
 }

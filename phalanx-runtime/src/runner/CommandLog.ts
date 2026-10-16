@@ -23,6 +23,13 @@ export interface LogEntry {
 export class CommandLog {
   private readonly entries: LogEntry[] = [];
   private lastRecorded = -1;
+  /**
+   * False when `rewindTo` claims ticks this log never appended, or when
+   * `truncateThrough` drops stored entries. `MatchRunner.toReplay` refuses
+   * an incomplete log. A suffix rewind of a log that was recorded from
+   * tick 0 stays complete.
+   */
+  private incomplete = false;
 
   /** Number of entries. */
   public get length(): number {
@@ -32,6 +39,16 @@ export class CommandLog {
   /** Highest tick with a recorded batch, `-1` when empty. */
   public get lastTick(): number {
     return this.lastRecorded;
+  }
+
+  /**
+   * True when the stored entries are the history from the start of the
+   * match through {@link lastTick}. Restore onto a log that never recorded
+   * those ticks, and {@link truncateThrough} after it drops entries, clear
+   * this.
+   */
+  public get isComplete(): boolean {
+    return !this.incomplete;
   }
 
   /**
@@ -83,7 +100,10 @@ export class CommandLog {
       if (entry === undefined || entry.tick > tick) break;
       drop += 1;
     }
-    if (drop > 0) this.entries.splice(0, drop);
+    if (drop > 0) {
+      this.entries.splice(0, drop);
+      this.incomplete = true;
+    }
   }
 
   /**
@@ -100,8 +120,10 @@ export class CommandLog {
     if (tick === -1) {
       this.entries.length = 0;
       this.lastRecorded = -1;
+      this.incomplete = false;
       return;
     }
+    const previous = this.lastRecorded;
     let keep = 0;
     for (const entry of this.entries) {
       if (entry.tick > tick) break;
@@ -109,5 +131,6 @@ export class CommandLog {
     }
     this.entries.length = keep;
     this.lastRecorded = tick;
+    if (tick > previous) this.incomplete = true;
   }
 }
