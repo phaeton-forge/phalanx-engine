@@ -4,7 +4,6 @@ import type {
   IRandom,
   ITickFrameProvider,
   PauseHandler,
-  PlayerCommand,
   TickHandler,
   Unsubscribe,
 } from '@phalanx-engine/ecs';
@@ -50,6 +49,7 @@ import type { Transport } from '../transport/Transport.js';
 import { BotHost } from './BotHost.js';
 import { CommandLog, type LogEntry } from './CommandLog.js';
 import {
+  canonicalJsonValue,
   decodeInputCheckpoint,
   encodeInputCheckpoint,
   type InputCheckpoint,
@@ -61,6 +61,14 @@ import { WorldScope } from './WorldScope.js';
 
 /** Which bot slots a runner hosts: `'client'` → `runsOn: 'local'`. */
 export type RunnerSide = 'client' | 'server';
+
+/**
+ * `'ready'` before `start`, `'running'` while the clock is going,
+ * `'ended'` after the first non-null outcome, `'failed'` after a tick
+ * threw, `'disposed'` after `dispose`.
+ */
+export type RunnerStatus =
+  'ready' | 'running' | 'ended' | 'failed' | 'disposed';
 
 export interface RunnerOptions {
   /** Default `'client'`. SimHost uses `'server'`. */
@@ -138,6 +146,7 @@ export class MatchRunner<G extends AnyGameDefinition> {
   private readonly catchUpListeners = new Emitter<[number]>();
   private readonly digestListeners = new Emitter<[number, Digest]>();
   private readonly rejectedListeners = new Emitter<[LogEntry, string]>();
+  private readonly errorListeners = new Emitter<[unknown, number]>();
   private readonly pendingByTick = new Map<number, LogEntry[]>();
   private readonly nextSeq = new Map<number, number>();
   private simulation: SimOf<G> | null = null;
@@ -146,6 +155,7 @@ export class MatchRunner<G extends AnyGameDefinition> {
   private executingTick: number | null = null;
   private started = false;
   private stopped = false;
+  private phase: 'active' | 'ended' | 'failed' = 'active';
   private fastForwarding = false;
   private replayMode = false;
   private replayDigest: Digest | undefined;
@@ -230,9 +240,10 @@ export class MatchRunner<G extends AnyGameDefinition> {
   }
 
   /**
-   * Runner positioned at tick `-1` in replay mode: hosted policies are never
-   * asked to `decide`. Drive it with `fastForward(replay.log, { throughTick:
-   * replay.lastTick })`.
+   * Runner positioned at tick `-1` in replay mode. Hosted policies are never
+   * asked to `decide`. Drive it only with `fastForward(replay.log, {
+   * throughTick: replay.lastTick })`. `start()` throws: a replay has no
+   * live clock.
    */
   public static fromReplay<GDef extends AnyGameDefinition>(
     definition: GDef,
@@ -265,13 +276,33 @@ export class MatchRunner<G extends AnyGameDefinition> {
     return this.completedTick;
   }
 
+  /** `'ended'` and `'failed'` do not accept further ticks. */
+  public get status(): RunnerStatus {
+    if (this.stopped) return 'disposed';
+    if (this.phase === 'failed') return 'failed';
+    if (this.phase === 'ended') return 'ended';
+    if (this.started) return 'running';
+    return 'ready';
+  }
+
   public get log(): CommandLog {
     return this.commandLog;
   }
 
   public start(): void {
+    if (this.replayMode) {
+      throw new Error(
+        'MatchRunner.fromReplay: drive the runner with fastForward(replay.log, { throughTick: replay.lastTick })'
+      );
+    }
     if (this.stopped) {
       throw new Error('MatchRunner.start: runner is disposed');
+    }
+    if (this.phase === 'failed') {
+      throw new Error('MatchRunner.start: runner has failed');
+    }
+    if (this.phase === 'ended') {
+      throw new Error('MatchRunner.start: match has ended');
     }
     if (this.started) return;
     this.started = true;
@@ -452,14 +483,19 @@ export class MatchRunner<G extends AnyGameDefinition> {
       : { decide: true, submitAfter: options.throughTick };
     this.fastForwarding = true;
     let finished = false;
+    let halted = false;
     try {
       const startTick = this.completedTick + 1;
       let next = startTick;
-      while (next <= options.throughTick) {
+      while (next <= options.throughTick && !halted) {
         const startedAt = hostNowMs();
         do {
+          if (this.phase !== 'active') {
+            halted = true;
+            break;
+          }
           const list = grouped.get(next) ?? [];
-          this.runTick(next, batchFromEntries(next, list), plan);
+          this.runPreparedTick(next, list, plan);
           next += 1;
         } while (
           next <= options.throughTick &&
@@ -469,9 +505,9 @@ export class MatchRunner<G extends AnyGameDefinition> {
         const progress = completed >= total ? 1 : completed / total;
         options.onProgress?.(progress);
         this.catchUpListeners.emit(progress);
-        if (next <= options.throughTick) await yieldEventLoop();
+        if (!halted && next <= options.throughTick) await yieldEventLoop();
       }
-      finished = true;
+      finished = !halted;
     } finally {
       this.fastForwarding = false;
       if (finished && this.transport instanceof LocalTransport) {
@@ -524,8 +560,17 @@ export class MatchRunner<G extends AnyGameDefinition> {
     return this.rejectedListeners.add(handler);
   }
 
+  /**
+   * A tick threw after the transport had already advanced. The runner is
+   * `'failed'` and the transport is stopped. Bot `decide` errors do not
+   * come here: those are logged and that slot submits nothing.
+   */
+  public onError(handler: (error: unknown, tick: number) => void): Unsubscribe {
+    return this.errorListeners.add(handler);
+  }
+
   private onTransportTick(tick: number, batch: CommandsBatch): void {
-    if (this.stopped) return;
+    if (this.stopped || this.phase !== 'active') return;
     if (!this.started) {
       if (this.transport instanceof LocalTransport && this.transport.isManual) {
         throw new Error(
@@ -551,6 +596,19 @@ export class MatchRunner<G extends AnyGameDefinition> {
   }
 
   private runTick(tick: number, batch: CommandsBatch, plan: TickPlan): void {
+    const entries = entriesFromBatch(tick, batch, this.slotByPlayerId);
+    this.runPreparedTick(tick, entries, plan);
+  }
+
+  /** Tick body when the log entries are already known (fast-forward). */
+  private runPreparedTick(
+    tick: number,
+    entries: readonly LogEntry[],
+    plan: TickPlan
+  ): void {
+    if (this.phase !== 'active') {
+      throw new Error(`MatchRunner: runner is ${this.phase}`);
+    }
     if (this.executingTick !== null) {
       throw new Error('MatchRunner: re-entered a tick');
     }
@@ -561,37 +619,62 @@ export class MatchRunner<G extends AnyGameDefinition> {
       );
     }
     this.executingTick = tick;
+    if (this.transport instanceof LocalTransport) {
+      this.transport.seek(tick + 1);
+    }
     try {
       this.scope.run(() => {
-        const entries = entriesFromBatch(tick, batch, this.slotByPlayerId);
-        this.commandLog.appendTick(tick, entries);
-        this.noteDelivered(entries);
-        this.applyEntries(tick, entries);
-        this.provider.emitTick(tick);
-        const outcome = this.definition.outcome(this.sim);
-        if (outcome !== null) this.outcomeListeners.emit(outcome);
-        const hashDue = tick % this.hashEveryTicks === 0;
-        const replayCheck =
-          this.replayDigest !== undefined && tick === this.replayLastTick;
-        if (hashDue || replayCheck) {
-          const digest = this.computeDigest();
-          if (replayCheck && digest !== this.replayDigest) {
-            throw new Error(
-              `MatchRunner.fromReplay: final digest mismatch at tick ${String(tick)}`
-            );
-          }
-          if (hashDue) {
-            this.digestListeners.emit(tick, digest);
-            this.transport.submitHash?.(tick, digest);
-          }
-        }
-        if (plan.decide) this.decideHosted(tick, plan.submitAfter);
-        this.completedTick = tick;
-        this.tickListeners.emit(tick);
+        this.playEntries(tick, entries, plan);
       });
+    } catch (error) {
+      this.fail(tick, error);
+      throw error;
     } finally {
       this.executingTick = null;
     }
+  }
+
+  private playEntries(
+    tick: number,
+    entries: readonly LogEntry[],
+    plan: TickPlan
+  ): void {
+    this.commandLog.appendTick(tick, entries);
+    this.noteDelivered(entries);
+    this.applyEntries(tick, entries);
+    this.provider.emitTick(tick);
+    const outcome = this.definition.outcome(this.sim);
+    if (outcome !== null && this.phase === 'active') {
+      this.outcomeListeners.emit(outcome);
+      this.phase = 'ended';
+    }
+    const hashDue = tick % this.hashEveryTicks === 0;
+    const replayCheck =
+      this.replayDigest !== undefined && tick === this.replayLastTick;
+    if (hashDue || replayCheck) {
+      const digest = this.computeDigest();
+      if (replayCheck && digest !== this.replayDigest) {
+        throw new Error(
+          `MatchRunner.fromReplay: final digest mismatch at tick ${String(tick)}`
+        );
+      }
+      if (hashDue) {
+        this.digestListeners.emit(tick, digest);
+        this.transport.submitHash?.(tick, digest);
+      }
+    }
+    if (plan.decide && this.phase === 'active') {
+      this.decideHosted(tick, plan.submitAfter);
+    }
+    this.completedTick = tick;
+    this.tickListeners.emit(tick);
+    if (this.phase === 'ended') this.stop();
+  }
+
+  private fail(tick: number, error: unknown): void {
+    this.phase = 'failed';
+    this.errorListeners.emit(error, tick);
+    this.stop();
   }
 
   private decideHosted(tick: number, submitAfter: number | undefined): void {
@@ -613,7 +696,22 @@ export class MatchRunner<G extends AnyGameDefinition> {
       const slot = this.slotByPlayerId.get(entry.playerId);
       const info = slot === undefined ? undefined : this.slotInfo.get(slot);
       if (slot === undefined || info === undefined) continue;
-      const decoded = this.definition.commands.decode(entry.data.p, info);
+      if (entry.malformed === true) {
+        this.rejectedListeners.emit(entry, 'malformed envelope');
+        continue;
+      }
+      const decoded = (() => {
+        try {
+          return this.definition.commands.decode(entry.data.p, info);
+        } catch (error) {
+          this.rejectedListeners.emit(
+            entry,
+            thrownReason(error, 'decode failed')
+          );
+          return undefined;
+        }
+      })();
+      if (decoded === undefined) continue;
       if (isCommandRejection(decoded)) {
         this.rejectedListeners.emit(entry, decoded.reason);
         continue;
@@ -626,9 +724,17 @@ export class MatchRunner<G extends AnyGameDefinition> {
         this.definition.commands
       );
       if (validate) {
-        const rejection = validate(decoded, info, this.sim);
-        if (rejection !== null) {
-          this.rejectedListeners.emit(entry, rejection.reason);
+        try {
+          const rejection = validate(decoded, info, this.sim);
+          if (rejection !== null) {
+            this.rejectedListeners.emit(entry, rejection.reason);
+            continue;
+          }
+        } catch (error) {
+          this.rejectedListeners.emit(
+            entry,
+            thrownReason(error, 'validate failed')
+          );
           continue;
         }
       }
@@ -679,9 +785,11 @@ export class MatchRunner<G extends AnyGameDefinition> {
       this.definition.commands
     );
     // Commands are JSON-safe when the game omits `encode` (the documented default).
-    const payload: JsonValue = encode
+    // Canonical key order matches the input-checkpoint round trip.
+    const raw: JsonValue = encode
       ? encode(command)
       : (command as unknown as JsonValue);
+    const payload = canonicalJsonValue(raw);
     return {
       tick,
       playerId,
@@ -870,6 +978,9 @@ export class MatchRunner<G extends AnyGameDefinition> {
   private ensureLive(): void {
     if (this.stopped || this.simulation === null) {
       throw new Error('MatchRunner: runner is disposed');
+    }
+    if (this.phase === 'failed') {
+      throw new Error('MatchRunner: runner has failed');
     }
   }
 }
@@ -1103,9 +1214,20 @@ function entriesFromBatch(
     for (const command of commands) {
       const envelope = readEnvelope(command.data);
       if (envelope === null) {
-        throw new Error(
-          `MatchRunner: malformed command envelope from '${playerId}'`
-        );
+        ranked.push({
+          slot,
+          seq: 0,
+          index,
+          entry: {
+            tick,
+            playerId,
+            type: typeof command.type === 'string' ? command.type : '',
+            data: { q: 0, p: null },
+            malformed: true,
+          },
+        });
+        index += 1;
+        continue;
       }
       ranked.push({
         slot,
@@ -1115,7 +1237,7 @@ function entriesFromBatch(
           tick,
           playerId,
           type: command.type,
-          data: envelope,
+          data: { q: envelope.q, p: canonicalJsonValue(envelope.p) },
         },
       });
       index += 1;
@@ -1157,24 +1279,6 @@ function isJsonValue(value: unknown): value is JsonValue {
   return Object.values(value as { [key: string]: unknown }).every((item) =>
     isJsonValue(item)
   );
-}
-
-function batchFromEntries(
-  tick: number,
-  entries: readonly LogEntry[]
-): CommandsBatch {
-  const commands: { [playerId: string]: PlayerCommand[] } = {};
-  for (const entry of entries) {
-    const command: PlayerCommand = {
-      type: entry.type,
-      data: entry.data,
-      playerId: entry.playerId,
-    };
-    const existing = commands[entry.playerId];
-    if (existing === undefined) commands[entry.playerId] = [command];
-    else existing.push(command);
-  }
-  return { tick, commands };
 }
 
 function groupEntries(
@@ -1229,6 +1333,11 @@ function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
     if (left[index] !== right[index]) return false;
   }
   return true;
+}
+
+function thrownReason(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message.length > 0) return error.message;
+  return fallback;
 }
 
 function cloneConfig<T>(config: T): T {

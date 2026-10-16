@@ -107,6 +107,20 @@ Entries collected per package until the synchronized 0.3.0 release
   for slots this runner hosts or submits. `fastForward` takes an inclusive
   `throughTick`, runs empty ticks, and yields on `budgetMs`. `fromReplay`
   never calls `decide`. `MatchRunner.join` remains Task 12.
+- Review follow-up (Task 6): a malformed envelope is logged and rejected
+  (`'malformed envelope'`) instead of killing the runner. Throws from
+  `decode` and `validate` become rejections. A throw inside a tick calls
+  `onError(error, tick)`, sets `status` to `'failed'`, stops the
+  transport, and leaves `tick` on the previous completed tick. A bot
+  `decide` that throws is logged and that slot submits nothing; the match
+  continues, and policy state may already be partial. Outcome is emitted
+  once, then `status` is `'ended'` and the transport stops. Live log
+  payloads use canonical object-key order so they match a restored
+  checkpoint. `LocalTransport` rejects submits more than `maxAheadTicks`
+  past `nextTick` (default 8) and waits `tickDuration - accumulator`
+  before the next timer. `fromReplay` is driven only by
+  `fastForward(replay.log)`; `start()` throws. `RunnerStatus` is a type
+  export.
 
 ## @phalanx-engine/ecs
 
@@ -179,17 +193,19 @@ Entries collected per package until the synchronized 0.3.0 release
 - **Interface change:** `AbilitySystem` now requires `isAbilityRegistered`
   and `isEffectRegistered`.
 - Pooled entities lose transient GAS state on despawn.
-  `releasePooledAbilityState` clears the effect queue, `pendingAdd`, tags,
-  ad-hoc tags, and effect-grant counts on factory-shell components, and
-  removes `AbilitySystem`, `Attributes`, `ActiveEffects`, and
-  `GameplayTags` components attached after that shell was recorded. A bare
-  pooled entity that gained effects or tags during its life is dormant
-  without those components, matching the shell `readPools` rebuilds.
-  `createAbilitySystem` registers the hook. Attribute values and the
-  equipped ability set stay on a shell component; `onSpawn` must rewrite
-  tags and attributes the next life needs. The hook also runs on the
-  factory's initial dormant pass, so constructor-seeded tags and pending
-  effects do not survive until `onSpawn`.
+  `releasePooledAbilityState` records the factory shell on the first call
+  (attribute `base` / `current` / `dirty`, the equipped ability set, and
+  ad-hoc tags plus effect grants, including `initComponent` tags). Later
+  calls clear the effect queue and `pendingAdd`, copy that shell back, and
+  remove `AbilitySystem`, `Attributes`, `ActiveEffects`, and
+  `GameplayTags` components attached after that shell. A bare pooled
+  entity that gained effects or tags during its life is dormant without
+  those components, matching the shell `readPools` rebuilds.
+  `createAbilitySystem` registers the hook. Initial `pendingAdd` effects
+  are not part of the shell, so `onSpawn` must re-seed those. A respawn
+  whose `onSpawn` does not rewrite attributes matches a restored copy,
+  because a free-list entity is omitted and restore builds a fresh factory
+  instance. The hook also runs on the factory's initial dormant pass.
 - Fixed-point fields on a restored `providedTarget` are recognized by
   shape (`base` and `precision` bigints), not by `instanceof FixedPoint`,
   then reconstructed as a local `FixedPoint` so arithmetic methods exist.

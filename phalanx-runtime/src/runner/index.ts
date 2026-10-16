@@ -1,6 +1,7 @@
 export { MatchRunner } from './MatchRunner.js';
 export type {
   RunnerSide,
+  RunnerStatus,
   RunnerOptions,
   FastForwardOptions,
 } from './MatchRunner.js';

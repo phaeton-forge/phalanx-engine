@@ -36,6 +36,10 @@ const RNG_WORDS = 4;
  * Saved bytes start with the hosting side. A runner whose side differs
  * (a client reading a server snapshot) parses the section and applies
  * nothing. Slots this host does not run are skipped the same way.
+ *
+ * `decide` is not simulation code. If it throws, the error is reported
+ * and that slot submits nothing for the tick. The match keeps running.
+ * Policy state may already have changed; treat a throw as a policy bug.
  */
 export class BotHost<G extends AnyGameDefinition> {
   private readonly hosted: readonly HostedBot<G>[];
@@ -90,10 +94,16 @@ export class BotHost<G extends AnyGameDefinition> {
   ): readonly BotDecision<CommandOf<G>>[] {
     const decisions: BotDecision<CommandOf<G>>[] = [];
     for (const bot of this.hosted) {
-      decisions.push({
-        slot: bot.slot,
-        commands: bot.policy.decide(sim, tick),
-      });
+      let commands: readonly CommandOf<G>[] = [];
+      try {
+        commands = bot.policy.decide(sim, tick);
+      } catch (error) {
+        console.error(
+          `BotHost: decide failed for slot ${String(bot.slot)} at tick ${String(tick)}`,
+          error
+        );
+      }
+      decisions.push({ slot: bot.slot, commands });
     }
     return decisions;
   }

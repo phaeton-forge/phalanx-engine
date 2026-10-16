@@ -35,6 +35,43 @@ describe('LocalTransport', () => {
     transport.dispose();
   });
 
+  it('rejects a submit past maxAheadTicks', () => {
+    const transport = LocalTransport.manual();
+    transport.bindSlots([{ slot: 0, playerId: 'local:0' }]);
+    const command = {
+      type: 'move',
+      data: { q: 0, p: null },
+    } as const;
+    transport.submit(8, 0, [command]);
+    expect(() => transport.submit(9, 0, [command])).toThrow(/more than 8/);
+    const tight = new LocalTransport({ tickRate: 10, maxAheadTicks: 1 });
+    tight.bindSlots([{ slot: 0, playerId: 'local:0' }]);
+    tight.submit(1, 0, [command]);
+    expect(() => tight.submit(2, 0, [command])).toThrow(/more than 1/);
+    tight.dispose();
+    transport.dispose();
+  });
+
+  it('schedules the next timer for the remaining tick, not 0ms', () => {
+    const transport = new LocalTransport({ tickRate: 10 });
+    const delays: number[] = [];
+    const host = globalThis as unknown as {
+      setTimeout: (handler: () => void, timeout?: number) => unknown;
+    };
+    const original = host.setTimeout;
+    host.setTimeout = (_handler, timeout) => {
+      delays.push(timeout ?? 0);
+      return 0;
+    };
+    try {
+      transport.start();
+    } finally {
+      host.setTimeout = original;
+      transport.stop();
+    }
+    expect(delays[0]).toBe(100);
+  });
+
   it('pause blocks step until resume', () => {
     const transport = LocalTransport.manual();
     const ticks: number[] = [];

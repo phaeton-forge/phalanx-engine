@@ -10,11 +10,19 @@ import type { WireCommand } from '../game/commands.js';
 import { wallClock } from '../host/wallClock.js';
 import type { Transport, TransportKind } from './Transport.js';
 
+/** How far past the next tick a submit may target (default). */
+export const DEFAULT_MAX_AHEAD_TICKS = 8;
+
 export interface LocalTransportOptions {
   /** Ticks per second; must equal `GameDefinition.tickRate`. */
   readonly tickRate: number;
   /** Clamp of a single frame's elapsed time in seconds (default 0.25). */
   readonly maxFrameTime?: number;
+  /**
+   * Reject `submit` when `targetTick > nextTick + maxAheadTicks`.
+   * Default {@link DEFAULT_MAX_AHEAD_TICKS}. Bounds the pending map.
+   */
+  readonly maxAheadTicks?: number;
 }
 
 interface SlotBinding {
@@ -37,6 +45,7 @@ export class LocalTransport implements Transport {
   private readonly tickRateValue: number;
   private readonly tickDuration: number;
   private readonly maxFrameTime: number;
+  private readonly maxAheadTicks: number;
   private nextTick = 0;
   private readonly playerIdBySlot = new Map<number, string>();
   private readonly pending = new Map<number, Map<number, PlayerCommand[]>>();
@@ -63,10 +72,17 @@ export class LocalTransport implements Transport {
         `LocalTransport: maxFrameTime must be > 0, got ${String(options.maxFrameTime)}`
       );
     }
+    const maxAheadTicks = options.maxAheadTicks ?? DEFAULT_MAX_AHEAD_TICKS;
+    if (!Number.isInteger(maxAheadTicks) || maxAheadTicks < 0) {
+      throw new Error(
+        `LocalTransport: maxAheadTicks must be an integer >= 0, got ${String(options.maxAheadTicks)}`
+      );
+    }
     this.isManual = manual;
     this.tickRateValue = options.tickRate;
     this.tickDuration = 1 / options.tickRate;
     this.maxFrameTime = maxFrameTime;
+    this.maxAheadTicks = maxAheadTicks;
   }
 
   /** Clock-less transport for tests and replays; advance with {@link step}. */
@@ -141,6 +157,11 @@ export class LocalTransport implements Transport {
     if (targetTick < this.nextTick) {
       throw new Error(
         `LocalTransport.submit: target tick ${String(targetTick)} is already past (next ${String(this.nextTick)})`
+      );
+    }
+    if (targetTick > this.nextTick + this.maxAheadTicks) {
+      throw new Error(
+        `LocalTransport.submit: target tick ${String(targetTick)} is more than ${String(this.maxAheadTicks)} ticks ahead of ${String(this.nextTick)}`
       );
     }
     const playerId = this.playerIdBySlot.get(slot);
@@ -265,12 +286,24 @@ export class LocalTransport implements Transport {
 
   private schedule(): void {
     if (!this.running || this.paused) return;
-    this.timer = hostSetTimeout(this.onTimer, 0);
+    const waitSeconds = this.tickDuration - this.accumulator;
+    const waitMs = waitSeconds > 0 ? waitSeconds * 1000 : 0;
+    this.timer = hostSetTimeout(this.onTimer, waitMs);
   }
 
   private readonly onTimer = (): void => {
     this.timer = null;
     if (!this.running || this.paused) return;
+    try {
+      this.advanceClock();
+    } catch {
+      this.stop();
+      return;
+    }
+    this.schedule();
+  };
+
+  private advanceClock(): void {
     const now = hostNowSeconds();
     let frameTime = now - this.lastTime;
     this.lastTime = now;
@@ -286,8 +319,7 @@ export class LocalTransport implements Transport {
     for (const handler of this.frameHandlers.slice()) {
       handler(alpha, frameTime);
     }
-    this.schedule();
-  };
+  }
 
   private remove<T>(handlers: T[], handler: T): void {
     const index = handlers.indexOf(handler);

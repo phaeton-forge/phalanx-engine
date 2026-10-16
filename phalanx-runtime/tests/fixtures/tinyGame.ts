@@ -59,10 +59,34 @@ export interface TinyBotCall {
 export const tinyBotCalls: TinyBotCall[] = [];
 
 let restoreBroken = false;
+let decodeBoom = false;
+let validateBoom = false;
+let tickBoom = false;
+let botBoom = false;
 
 /** Test hook: the next `restore` writes state that does not round-trip. */
 export function setTinyRestoreBroken(broken: boolean): void {
   restoreBroken = broken;
+}
+
+/** Test hook: `decode` throws `decode exploded`. */
+export function setTinyDecodeBoom(boom: boolean): void {
+  decodeBoom = boom;
+}
+
+/** Test hook: `validate` throws `validate exploded`. */
+export function setTinyValidateBoom(boom: boolean): void {
+  validateBoom = boom;
+}
+
+/** Test hook: the decay system throws `tick exploded`. */
+export function setTinyTickBoom(boom: boolean): void {
+  tickBoom = boom;
+}
+
+/** Test hook: the walker `decide` throws `bot exploded`. */
+export function setTinyBotBoom(boom: boolean): void {
+  botBoom = boom;
 }
 
 export function resetTinyBotCalls(): void {
@@ -96,6 +120,7 @@ class TinyDecaySystem extends GameSystem {
   }
 
   public override processTick(_tick: number): void {
+    if (tickBoom) throw new Error('tick exploded');
     // Advance the match RNG so a restore that skips `readRandom` diverges.
     this.random.int(1);
     const store = this.store;
@@ -243,6 +268,7 @@ class WalkerBot implements BotPolicy<TinyCommand, TinySim> {
   ) {}
 
   public decide(sim: Readonly<TinySim>, tick: number): readonly TinyCommand[] {
+    if (botBoom) throw new Error('bot exploded');
     this.decisions += 1;
     const roll = this.rng.int(3);
     const dx = BigInt(roll + 1 + this.decisions);
@@ -286,6 +312,7 @@ export const TinyGame = defineGame({
   commands: {
     types: ['spawn', 'move'],
     decode: (raw): TinyCommand | CommandRejection => {
+      if (decodeBoom) throw new Error('decode exploded');
       if (typeof raw !== 'object' || raw === null) {
         return rejectCommand('not an object');
       }
@@ -299,6 +326,7 @@ export const TinyGame = defineGame({
       return rejectCommand('unknown command');
     },
     validate: (command, slot, sim) => {
+      if (validateBoom) throw new Error('validate exploded');
       const existing = sim.unitBySlot(slot.slot);
       if (command.type === 'spawn') {
         return existing ? rejectCommand('slot occupied') : null;

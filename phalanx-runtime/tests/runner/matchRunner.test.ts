@@ -17,7 +17,11 @@ import {
 import {
   TinyGame,
   resetTinyBotCalls,
+  setTinyBotBoom,
+  setTinyDecodeBoom,
   setTinyRestoreBroken,
+  setTinyTickBoom,
+  setTinyValidateBoom,
   tinyBotCalls,
   type TinyCommand,
   type TinyConfig,
@@ -130,6 +134,10 @@ class ScriptedTransport implements Transport {
 describe('MatchRunner', () => {
   afterEach(() => {
     setTinyRestoreBroken(false);
+    setTinyDecodeBoom(false);
+    setTinyValidateBoom(false);
+    setTinyTickBoom(false);
+    setTinyBotBoom(false);
     resetTinyBotCalls();
     while (live.length > 0) live.pop()?.dispose();
   });
@@ -238,16 +246,24 @@ describe('MatchRunner', () => {
     expect(runner.log.entriesAfter(-1).map((entry) => entry.playerId)).toEqual([
       'local:0',
     ]);
-    expect(() =>
-      scripted.emitTick(1, {
-        tick: 1,
-        commands: {
-          'local:0': [
-            { type: 'move', data: { q: 'nope' }, playerId: 'local:0' },
-          ],
-        },
-      })
-    ).toThrow(/malformed command envelope/);
+    const reasons: string[] = [];
+    runner.onRejected((_entry, reason) => {
+      reasons.push(reason);
+    });
+    scripted.emitTick(1, {
+      tick: 1,
+      commands: {
+        'local:0': [{ type: 'move', data: { q: 'nope' }, playerId: 'local:0' }],
+      },
+    });
+    expect(reasons).toEqual(['malformed envelope']);
+    expect(runner.tick).toBe(1);
+    expect(runner.log.entriesAfter(0).some((entry) => entry.malformed)).toBe(
+      true
+    );
+    scripted.emitTick(2, { tick: 2, commands: {} });
+    expect(runner.tick).toBe(2);
+    expect(runner.status).toBe('running');
   });
 
   it('pauses the transport so a step does not advance the world', () => {
@@ -451,5 +467,130 @@ describe('MatchRunner', () => {
       calls.filter((call) => call.tick > 40 && call.tick <= 91)
     );
     expect(resumed.runner.digest()).toBe(digests.get(91));
+  });
+
+  it('rejects a malformed envelope and a throwing decode or validate', () => {
+    const decode = drive();
+    const reasons: string[] = [];
+    decode.runner.onRejected((_entry, reason) => {
+      reasons.push(reason);
+    });
+    setTinyDecodeBoom(true);
+    decode.runner.submit({ type: 'spawn', x: 1n });
+    decode.runner.start();
+    stepTo(decode, 2);
+    expect(reasons).toEqual(['decode exploded', 'decode exploded']);
+    expect(decode.runner.sim.unitBySlot(0)).toBeNull();
+    expect(decode.runner.status).toBe('running');
+    setTinyDecodeBoom(false);
+
+    const validate = drive('client', 3);
+    const validateReasons: string[] = [];
+    validate.runner.onRejected((_entry, reason) => {
+      validateReasons.push(reason);
+    });
+    setTinyValidateBoom(true);
+    validate.runner.submit({ type: 'spawn', x: 1n });
+    validate.runner.start();
+    stepTo(validate, 2);
+    expect(validateReasons).toContain('validate exploded');
+    expect(validate.runner.status).toBe('running');
+  });
+
+  it('fails the runner and stops when a tick throws', () => {
+    const handle = drive();
+    const errors: { tick: number; message: string }[] = [];
+    handle.runner.onError((error, tick) => {
+      errors.push({
+        tick,
+        message: error instanceof Error ? error.message : '',
+      });
+    });
+    handle.runner.start();
+    setTinyTickBoom(true);
+    expect(() => handle.transport.step(1)).toThrow(/tick exploded/);
+    expect(handle.runner.status).toBe('failed');
+    expect(handle.runner.tick).toBe(-1);
+    expect(errors).toEqual([{ tick: 0, message: 'tick exploded' }]);
+    setTinyTickBoom(false);
+    handle.transport.step(2);
+    expect(handle.runner.tick).toBe(-1);
+    expect(() => handle.runner.start()).toThrow(/failed/);
+  });
+
+  it('logs a bot decide error and still finishes the tick', () => {
+    const handle = drive();
+    const logged: unknown[] = [];
+    const original = console.error;
+    console.error = (...args: unknown[]) => {
+      logged.push(args);
+    };
+    try {
+      setTinyBotBoom(true);
+      handle.runner.start();
+      handle.transport.step(1);
+    } finally {
+      console.error = original;
+    }
+    expect(handle.runner.status).toBe('running');
+    expect(handle.runner.tick).toBe(0);
+    expect(tinyBotCalls).toEqual([]);
+    expect(logged.length).toBeGreaterThan(0);
+  });
+
+  it('emits outcome once and stops', () => {
+    const transport = LocalTransport.manual();
+    const runner = new MatchRunner(
+      TinyGame,
+      { ...configFor('client', 1), arenaSize: 1 },
+      transport
+    );
+    live.push(runner);
+    const outcomes: string[] = [];
+    runner.onOutcome((outcome) => {
+      outcomes.push(outcome.kind);
+    });
+    runner.submit({ type: 'spawn', x: 1n });
+    runner.start();
+    stepTo({ runner, transport }, 4);
+    expect(outcomes).toEqual(['win']);
+    expect(runner.status).toBe('ended');
+    expect(runner.tick).toBe(1);
+    transport.step(3);
+    expect(runner.tick).toBe(1);
+    expect(outcomes).toEqual(['win']);
+  });
+
+  it('stores canonical payloads so a restored log matches the live log', () => {
+    const liveRun = drive('client', 5);
+    liveRun.runner.submit({ type: 'spawn', x: 3n });
+    liveRun.runner.start();
+    stepTo(liveRun, 1);
+    liveRun.runner.submit({ type: 'move', dx: 4n });
+    const snapshot = liveRun.runner.snapshot();
+    stepTo(liveRun, 4);
+    const move = liveRun.runner.log
+      .entriesAfter(-1)
+      .find((entry) => entry.type === 'move' && entry.playerId === 'local:0');
+    expect(move).toBeDefined();
+    expect(Object.keys(move?.data.p ?? {})).toEqual(['dx', 'type']);
+
+    const restored = drive('client', 5);
+    restored.runner.restore(snapshot);
+    restored.runner.start();
+    stepTo(restored, 4);
+    expect(JSON.stringify(restored.runner.log.entriesAfter(1))).toBe(
+      JSON.stringify(liveRun.runner.log.entriesAfter(1))
+    );
+  });
+
+  it('refuses start on a replay runner', () => {
+    const handle = drive();
+    handle.runner.start();
+    stepTo(handle, 1);
+    const replay = handle.runner.toReplay();
+    const replayed = MatchRunner.fromReplay(TinyGame, replay);
+    live.push(replayed);
+    expect(() => replayed.start()).toThrow(/fastForward\(replay\.log/);
   });
 });

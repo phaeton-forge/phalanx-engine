@@ -92,20 +92,47 @@ checkpoint outside the digest. `restore` rebuilds with
 the checkpoint only for slots this runner hosts or submits. A client
 restoring a server snapshot ignores both. `fastForward(entries, { budgetMs,
 throughTick })` is inclusive and runs empty ticks. `fromReplay` never
-calls `decide`. `WorldScope.run` isolates the entity id counter and the
+calls `decide`. Drive that runner only with
+`fastForward(replay.log, { throughTick: replay.lastTick })`; `start()`
+throws. `WorldScope.run` isolates the entity id counter and the
 SoA entity manager so two matches can share a process.
+
+A malformed envelope is logged and rejected with `'malformed envelope'`
+instead of throwing. Exceptions from `decode` and `validate` become
+rejections too (`error.message`, or `'decode failed'` / `'validate failed'`).
+A throw from the tick itself calls `onError(error, tick)`, sets `status`
+to `'failed'`, stops the transport, and leaves `tick` on the last
+completed tick. The error is rethrown so a manual `step` still surfaces
+it. A bot `decide` that throws is isolated: it is logged with
+`console.error`, that slot submits nothing, and the match continues.
+Policy state may already be partial. The first non-null `outcome` is
+emitted once; `status` becomes `'ended'` and the transport stops.
+`status` is `'ready' | 'running' | 'ended' | 'failed' | 'disposed'`.
+Live log payloads are stored with canonical object-key order so they
+match a checkpoint restored into another runner.
+
+`LocalTransport` rejects `submit` when
+`targetTick > nextTick + maxAheadTicks` (default 8) so the pending map
+stays bounded. Each prepared tick seeks a local transport to `tick + 1`
+first, which is where a live clock already sits, so a catch-up submit
+uses the same horizon. The timer waits `tickDuration - accumulator`
+instead of spinning on a zero delay. A throw from the timer handler
+stops the clock and does not reschedule.
 
 `writeAbilities` stores the per-world runtime from `exportRuntimeState`
 (instance-id counter, activation queue, `currentTick`, resolved
 activations). The cue buffer is not included. Each registered entity that
 has a GAS component is written in ascending id order, with flags so lazy
 components are created on read. Free-list entities are omitted.
-`releasePooledAbilityState` clears the effect queue, pending adds, tags,
-ad-hoc tags, and effect-grant counts on factory-shell components, and
-removes GAS components that were attached after that shell (a bare pooled
-entity that gained `ActiveEffects` or `GameplayTags` during its life is
-dormant without them). Attribute values and the equipped ability set stay
-on a shell component, so `onSpawn` must rewrite them for the next life.
+`releasePooledAbilityState` records the factory shell on the first return
+(attribute `base` / `current` / `dirty`, the equipped ability set, and
+ad-hoc tags plus effect grants, including `initComponent` tags). Later
+returns clear the effect queue and `pendingAdd`, copy that shell back,
+and remove GAS components attached after it (a bare pooled entity that
+gained `ActiveEffects` or `GameplayTags` during its life is dormant
+without them). Initial `pendingAdd` effects are not in the shell, so
+`onSpawn` must re-seed those. A respawn whose `onSpawn` does not rewrite
+attributes matches a restored copy.
 `readAbilities` refills `queue` and `pendingAdd` by clearing each array
 and appending entries one at a time, so a large list does not hit the
 JavaScript argument limit and the arrays keep their identity. Attribute

@@ -884,8 +884,10 @@ describe('ability state helpers', () => {
     pools.despawn(freed);
     expect(getActiveEffectsComponent(freed)?.queue).toHaveLength(0);
     expect(getActiveEffectsComponent(freed)?.pendingAdd).toHaveLength(0);
-    expect(getGameplayTagsComponent(freed)?.tags.size).toBe(0);
-    expect(getGameplayTagsComponent(freed)?.adHocTags.size).toBe(0);
+    expect(getGameplayTagsComponent(freed)?.tags.has('Team.Red')).toBe(true);
+    expect(getGameplayTagsComponent(freed)?.adHocTags.has('Team.Red')).toBe(
+      true
+    );
     expect(getGameplayTagsComponent(freed)?.effectGrantCounts.size).toBe(0);
     expect(
       getAbilitySystemComponent(freed)?.abilities.has('Ability.Burn')
@@ -986,7 +988,61 @@ describe('ability state helpers', () => {
       digestBytes(saveMatch(source.world))
     );
   });
+
+  it('respawns factory attribute defaults when onSpawn does not rewrite them', () => {
+    const source = silentPoolWorld();
+    const pools = source.world.pools;
+    if (pools === null) throw new Error('expected pools');
+    const live = pools.spawn<SilentMinion>('silent');
+    const attributes = getAttributesComponent(live);
+    if (attributes === undefined) throw new Error('missing attributes');
+    const full = FP.ToRaw(FP.FromInt(100));
+    const damaged = FP.ToRaw(FP.FromInt(40));
+    expect(attributes.current[0]).toBe(full);
+    attributes.base[0] = damaged;
+    attributes.current[0] = damaged;
+
+    pools.despawn(live);
+    expect(getAttributesComponent(live)?.current[0]).toBe(full);
+    expect(getAttributesComponent(live)?.base[0]).toBe(full);
+    expect(getAbilitySystemComponent(live)?.abilities.has('Ability.Burn')).toBe(
+      true
+    );
+    expect(getGameplayTagsComponent(live)?.tags.has('Team.Silent')).toBe(true);
+
+    const bytes = saveMatch(source.world);
+    const restored = silentPoolWorld();
+    loadMatch(bytes, restored.world);
+    const again = pools.spawn<SilentMinion>('silent');
+    const restoredPools = restored.world.pools;
+    if (restoredPools === null) throw new Error('expected pools');
+    const restoredAgain = restoredPools.spawn<SilentMinion>('silent');
+    expect(getAttributesComponent(again)?.current[0]).toBe(full);
+    expect(getAttributesComponent(restoredAgain)?.current[0]).toBe(full);
+    expect(getAttributesComponent(again)?.base[0]).toBe(full);
+    expect(getAttributesComponent(restoredAgain)?.base[0]).toBe(full);
+    expect(digestBytes(saveMatch(restored.world))).toBe(
+      digestBytes(saveMatch(source.world))
+    );
+  });
 });
+
+class SilentMinion extends Entity implements IPoolableEntity<void> {
+  public constructor(abilities: AbilitySystem) {
+    super();
+    this.addComponent(
+      abilities.initComponent({
+        abilities: ['Ability.Burn'],
+        tags: ['Team.Silent'],
+        attributes: { Health: FP.FromInt(100) },
+      })
+    );
+  }
+
+  public onSpawn(_args: void): void {}
+
+  public onDespawn(): void {}
+}
 
 class BareMinion extends Entity implements IPoolableEntity<void> {
   public onSpawn(_args: void): void {}
@@ -1027,6 +1083,32 @@ class PooledMinion
   }
 
   public onDespawn(): void {}
+}
+
+function silentPoolWorld(): { world: GameWorld; abilities: AbilitySystem } {
+  const holder: { abilities?: AbilitySystem } = {};
+  const world = new GameWorld({
+    pooling: {
+      entityTypes: {
+        silent: {
+          factory: () => {
+            const abilities = holder.abilities;
+            if (abilities === undefined) {
+              throw new Error('ability system is not ready');
+            }
+            return new SilentMinion(abilities);
+          },
+        },
+      },
+    },
+  });
+  const abilities = createAbilitySystem(world, {
+    definitions,
+    pipeline: 'full',
+  });
+  holder.abilities = abilities;
+  world.registerSystems([...abilities.tickSystems], []);
+  return { world, abilities };
 }
 
 function barePoolWorld(): { world: GameWorld; abilities: AbilitySystem } {

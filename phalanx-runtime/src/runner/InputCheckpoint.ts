@@ -62,7 +62,9 @@ export function encodeInputCheckpoint(checkpoint: InputCheckpoint): Uint8Array {
         entryWriter.str(entry.playerId);
         entryWriter.str(entry.type);
         entryWriter.varint(entry.data.q);
-        entryWriter.bytes(canonicalConfigBytes(entry.data.p));
+        entryWriter.bytes(
+          canonicalConfigBytes(canonicalJsonValue(entry.data.p))
+        );
       });
     }
   );
@@ -75,6 +77,15 @@ export function encodeInputCheckpoint(checkpoint: InputCheckpoint): Uint8Array {
     }
   );
   return writer.finish();
+}
+
+/**
+ * Payload with object keys in the canonical UTF-16 order.
+ * `encodeInputCheckpoint` stores this form, so a live log entry must use
+ * it too or a restored command log is not byte-identical.
+ */
+export function canonicalJsonValue(value: JsonValue): JsonValue {
+  return decodeCanonical(canonicalConfigBytes(value));
 }
 
 /** Inverse of {@link encodeInputCheckpoint}. */

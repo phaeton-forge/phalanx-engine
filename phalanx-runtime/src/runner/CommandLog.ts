@@ -12,6 +12,11 @@ export interface LogEntry {
   readonly playerId: string;
   readonly type: string;
   readonly data: CommandEnvelope;
+  /**
+   * The wire `data` was not an envelope. Replay rejects it again with
+   * `'malformed envelope'` instead of decoding `data`.
+   */
+  readonly malformed?: true;
 }
 
 /** Append-only, tick-ordered command log of a match. */
