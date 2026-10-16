@@ -62,8 +62,13 @@ ctx.tickFrameProvider, random: ctx.random, ... })` and calls
 8. Match configs are JSON-safe with integer numbers only.
    `configHash(config)` is `digestBytes(canonicalConfigBytes(config))`:
    object keys sorted by UTF-16 code unit, safe integers only. After boot,
-   `MatchRunner` folds `world.componentNames()` into that digest when the
-   list is non-empty. An empty list keeps the one-argument hash.
+   `MatchRunner` folds each registered component's name and its field
+   names and types, in registration and declaration order, into that
+   digest when the list is non-empty. An empty list keeps the
+   one-argument hash. Restore compares the schema text stored outside
+   the snapshot digest and throws
+   `component 'Unit' schema changed: expected x:i32,hp:u32, got hp:u32,x:i32`
+   when the fields differ.
 
 ## World and components
 
@@ -75,8 +80,13 @@ const Unit = defineComponent('Unit', { hp: 'i64' }, { defaults: { hp: 48n } });
 
 Register with `world.registerComponent(Unit)` before spawn. `world.spawn({
 Unit: { hp: 48n } })`, `world.despawn(entity)` and `world.each(Unit, fn)`
-use the existing entity id counter. `world.save()` / `world.restore(bytes)`
-are the default `defineGame` state when `state` is omitted. Optional
+use the existing entity id counter. The `each` callback receives one
+reused view; do not store it or read it after the callback returns.
+Importing `@phalanx-engine/runtime` calls `setWorldModuleHost` once.
+`world.save()` / `world.restore(bytes)` are the default `defineGame` state
+when `state` is omitted. Restore returns checked-out pool entities, drops
+entities that are not in the roster, and attaches components from the SoA
+sections. Optional
 singleton bytes go through `bindWorldSingletons(world, { onSave, onRestore })`.
 Component hooks are `onCreate`, `onEnable`, `onDisable`, `onDestroy`.
 `onEnable` also runs after restore and must not overwrite saved fields.

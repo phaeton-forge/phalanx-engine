@@ -638,7 +638,7 @@ class MeshComponent implements IComponent {
 }
 ```
 
-`world.save`, `world.restore`, `world.spawn`, `world.despawn` and `world.each` need `@phalanx-engine/runtime` imported first. `registerComponent` records a `defineComponent` result in registration order.
+`world.save`, `world.restore`, `world.spawn`, `world.despawn` and `world.each` need `@phalanx-engine/runtime` imported first. That import calls `setWorldModuleHost` once for the process; without it those methods throw. `registerComponent` records a `defineComponent` result in registration order. The object passed to `each` is one view reused for every row. Do not store it, and do not read it after the callback returns.
 
 `EntityPool` remains available as a low-level storage primitive; prefer `PoolManager.spawn()` / `despawn()` for gameplay entities.
 

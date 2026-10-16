@@ -51,20 +51,28 @@ the world modules (`formatVersion` 1). When `state` is present,
 
 - **`defineComponent(name, fields, { defaults? })`**: a named SoA schema.
   Register it with `world.registerComponent` before the first spawn.
-  Registration order is part of `configHash` (an empty list keeps the
-  previous hash). `f32` / `f64` fields are rejected. Names `roster`,
-  `pools`, `entityIds`, `random`, `broadphase` and `gas` are reserved.
+  Registration order and each field's name and type are part of
+  `configHash` (an empty list keeps the previous hash). A field type
+  outside `i32`, `u32`, `u8`, `i64`, `f32`, `f64` throws at definition
+  time and names the allowed types. `f32` / `f64` are then rejected
+  because they are not saved. Names `roster`, `pools`, `entityIds`,
+  `random`, `broadphase` and `gas` are reserved.
 - **`world.save()` / `world.restore(bytes)`**: roster (only when a
   non-pooled entity exists), pools, SoA stores, abilities (when GAS is
   attached), the entity id counter, RNG, broadphase centers (when a grid
   is attached), then optional `bindWorldSingletons` hooks. Section bytes
-  match a manual `StateHelpers` save. `restore` skips a roster id that
-  world creation already spawned and overwrites its rows, then calls
-  `onEnable`. `onEnable` must not overwrite saved fields.
+  match a manual `StateHelpers` save. Before those sections are read,
+  `restore` returns every checked-out pooled entity and removes entities
+  whose ids are not in the roster. Missing roster ids are empty shells.
+  Each SoA section then attaches only the components it lists. A roster
+  id world creation already spawned is kept and its rows are overwritten.
+  `onEnable` runs after the bytes land and must not overwrite saved
+  fields.
 - **`world.spawn({ Unit: { hp: 48n } })` / `world.despawn(entity)` /
   `world.each(Unit, (row) => { ... })`**: the same entity id counter as
-  `new Entity()`. `each` walks rows in ascending id. Do not retain the
-  view.
+  `new Entity()`. `each` walks rows in ascending id. The callback receives
+  one view object reused for every row. Do not store it, and do not read
+  it after the callback returns.
 - **`GameState { save(w), restore(r) }`**: implemented by the game when
   the default modules are not enough. Canonical bytes only (no floats;
   FP values as raw `i64`). `restore(save(x))` must re-save to identical
@@ -112,8 +120,17 @@ There is no `f32` or `f64` writer.
 `MatchRunner` emits each tick on a runner-owned `ITickFrameProvider`, so
 `createWorld` must call `world.start()`. Commands are sorted by `(slot, seq)`
 and validated inside the tick; rejected entries stay in the log.
-`snapshot` runs after hosted `decide` and stores bot state plus the input
-checkpoint outside the digest. `restore` rebuilds with
+Importing `@phalanx-engine/runtime` calls `setWorldModuleHost` once and
+installs that host for the process. `GameWorld.save`, `restore`, `spawn`,
+`despawn` and `each` throw until that import has run. `setWorldModuleHost`
+lives on `@phalanx-engine/ecs`; games do not call it.
+
+`snapshot` runs after hosted `decide` and stores bot state, the input
+checkpoint, and the registered component schemas outside the digest.
+`restore` compares those schemas with the booted world before it applies
+the body. A field rename, reorder, or type change throws, for example
+`component 'Unit' schema changed: expected x:i32,hp:u32, got hp:u32,x:i32`.
+The SoA section bytes themselves are unchanged. `restore` rebuilds with
 `purpose: 'restore'`, checks the round trip, then applies bot state and
 the checkpoint only for slots this runner hosts or submits. `createWorld`
 must not spawn entities when `purpose` is `'restore'` if its

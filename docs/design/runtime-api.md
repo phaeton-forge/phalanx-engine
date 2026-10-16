@@ -367,7 +367,14 @@ export function encodeSnapshot(
 export function decodeSnapshot(bytes: SnapshotBytes): DecodedSnapshot;
 export function digestBytes(bytes: Uint8Array): Digest;
 export function canonicalConfigBytes(config: unknown): Uint8Array;
-export function configHash(config: unknown): Digest;
+export interface ComponentSchemaHash {
+  readonly name: string;
+  readonly fields: readonly (readonly [string, string])[];
+}
+export function configHash(
+  config: unknown,
+  components?: readonly ComponentSchemaHash[]
+): Digest;
 export function checkSnapshotCompatibility(
   header: SnapshotHeader,
   expected: ExpectedSnapshotIdentity,
@@ -392,7 +399,9 @@ Task 2 implements this exact byte layout (all through `BinaryStateWriter`):
    `varint formatVersion`, `str configHash`, `varint tick`, `str digest`;
 3. `bytes body` (the `GameState.save()` output);
 4. `bool hasBotState`, then `bytes botState` if true;
-5. `bool hasInputCheckpoint`, then `bytes inputCheckpoint` if true.
+5. `bool hasInputCheckpoint`, then `bytes inputCheckpoint` if true;
+6. `bool hasComponentSchemas`, then `str componentSchemas` if true.
+   Outside the digest. Empty when the writer registered no components.
 
 `encodeSnapshot(header, body, extras?)` takes both extra sections in a
 `SnapshotExtras` object. Neither is covered by `header.digest`. A runner
@@ -427,11 +436,24 @@ unchanged.
 
 `defineComponent(name, fields, { defaults? })` registers a named SoA
 schema. `world.registerComponent` order is deterministic and, when
-non-empty, is folded into `configHash`. `f32` / `f64` fields throw
-(those columns are skipped in snapshots). `world.spawn({ Name: values })`,
-`world.despawn(entity)` and `world.each(component, fn)` use the existing
-entity id counter. `world.restore` skips a roster id that already exists,
-overwrites its rows, then calls component `onEnable`. `spawnWithId` itself
+non-empty, is folded into `configHash` together with each field's name
+and type in declaration order. `f32` / `f64` fields throw (those columns
+are skipped in snapshots). Any other type outside `i32`, `u32`, `u8`,
+`i64`, `f32`, `f64` throws at `defineComponent` and lists the allowed
+types. `world.spawn({ Name: values })`, `world.despawn(entity)` and
+`world.each(component, fn)` use the existing entity id counter. The object
+passed to `each` is one reused view; do not store it. Importing
+`@phalanx-engine/runtime` calls `setWorldModuleHost` once. Without that
+import, `save` / `restore` / `spawn` / `despawn` / `each` throw.
+`world.restore` returns checked-out pooled entities and removes entities
+absent from the roster before reading sections. Missing roster ids are
+empty shells. Component membership comes from the SoA sections, not from
+the full registry. A roster id that already exists is kept, its rows are
+overwritten, then component `onEnable` runs. A snapshot whose registered
+fields differ from the booted world fails before the body is applied:
+`component 'Unit' schema changed: expected x:i32,hp:u32, got hp:u32,x:i32`.
+The schema text rides in the snapshot envelope, outside the body digest,
+so section bytes stay the same. `spawnWithId` itself
 still throws when the id is registered. `bindWorldSingletons` appends
 optional game sections after broadphase.
 

@@ -344,8 +344,8 @@ export class GameWorld {
 
   /**
    * Register a `defineComponent` result. Order is registration order:
-   * the SoA store is created now, and that order is folded into
-   * `configHash` by the runtime.
+   * the SoA store is created now, and that order plus each field's name
+   * and type is folded into `configHash` by the runtime.
    */
   public registerComponent<S extends SoASchemaDefinition>(
     component: ComponentRegistration<S>

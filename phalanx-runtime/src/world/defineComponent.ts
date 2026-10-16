@@ -16,6 +16,8 @@ const RESERVED_NAMES = new Set([
   'gas',
 ]);
 
+const ALLOWED_FIELD_TYPES = ['i32', 'u32', 'u8', 'i64', 'f32', 'f64'] as const;
+
 /**
  * A named SoA component. Pass it to `world.registerComponent`.
  * The name is the snapshot section key.
@@ -47,7 +49,9 @@ export interface DefineComponentOptions<S extends SoASchemaDefinition> {
  * `f32` / `f64` fields are rejected: those columns are not written into
  * snapshots, so a simulation value stored there would desync. Register
  * the result with `world.registerComponent` before the first spawn.
- * Registration order is deterministic and is included in `configHash`.
+ * Registration order and each field's name and type are included in
+ * `configHash`. A type outside `i32`, `u32`, `u8`, `i64`, `f32`, `f64`
+ * throws here and lists those types.
  */
 export function defineComponent<S extends SoASchemaDefinition>(
   name: string,
@@ -56,7 +60,7 @@ export function defineComponent<S extends SoASchemaDefinition>(
 ): DefinedComponent<S> {
   assertName(name);
   for (const fieldName of Object.keys(fields)) {
-    const fieldType = fields[fieldName];
+    const fieldType = assertAllowedFieldType(fieldName, fields[fieldName]);
     if (fieldType === 'f32' || fieldType === 'f64') {
       throw new Error(
         `defineComponent: field '${fieldName}' is ${fieldType} and is not saved; use an integer field`
@@ -101,6 +105,25 @@ export function defineComponent<S extends SoASchemaDefinition>(
       return new Defined(entityId, mergeValues(name, fields, defaults, values));
     },
   };
+}
+
+function assertAllowedFieldType(
+  fieldName: string,
+  fieldType: unknown
+): SoAFieldType {
+  if (!isSoAFieldType(fieldType)) {
+    throw new Error(
+      `defineComponent: field '${fieldName}' has type '${String(fieldType)}'; allowed types are i32, u32, u8, i64, f32, f64`
+    );
+  }
+  return fieldType;
+}
+
+function isSoAFieldType(value: unknown): value is SoAFieldType {
+  for (const allowed of ALLOWED_FIELD_TYPES) {
+    if (value === allowed) return true;
+  }
+  return false;
 }
 
 function assertName(name: string): void {

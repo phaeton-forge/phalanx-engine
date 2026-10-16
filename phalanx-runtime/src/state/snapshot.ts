@@ -52,6 +52,12 @@ export interface DecodedSnapshot {
    * received from the network.
    */
   readonly inputCheckpoint: Uint8Array | null;
+  /**
+   * Registered component schemas of the writer, or `null` when the writer
+   * registered none. Outside the digest. Restore compares this with the
+   * booted world and names the field that changed.
+   */
+  readonly componentSchemas: string | null;
 }
 
 export type VersionDecision = 'accept' | 'migrate' | 'reject';
@@ -73,6 +79,20 @@ export interface ExpectedSnapshotIdentity {
 export interface SnapshotExtras {
   readonly botState?: Uint8Array | null;
   readonly inputCheckpoint?: Uint8Array | null;
+  /**
+   * {@link componentSchemaKey} of the writer's registered components.
+   * `null` and omission both store the flag clear. Outside the digest.
+   */
+  readonly componentSchemas?: string | null;
+}
+
+/**
+ * One registered component, in `registerComponent` order.
+ * `fields` is declaration order, not sorted.
+ */
+export interface ComponentSchemaHash {
+  readonly name: string;
+  readonly fields: readonly (readonly [string, string])[];
 }
 
 /**
@@ -83,7 +103,11 @@ export interface SnapshotExtras {
  *    `varint formatVersion`, `str configHash`, `varint tick`, `str digest`;
  * 3. `bytes body` (GameState bytes; this is the only input to `digest`);
  * 4. `bool hasBotState`, then `bytes botState` when the flag is set;
- * 5. `bool hasInputCheckpoint`, then `bytes inputCheckpoint` when set.
+ * 5. `bool hasInputCheckpoint`, then `bytes inputCheckpoint` when set;
+ * 6. `bool hasComponentSchemas`, then `str componentSchemas` when set.
+ *    The string is outside the digest. It names each registered component
+ *    and its fields so restore can report a schema change. The game body
+ *    (SoA sections) is unchanged.
  *
  * `engineFormat`, `formatVersion` and `tick` are varints, not fixed `u32`s.
  * An empty `Uint8Array` extra is stored (flag set, length 0). `null` and
@@ -111,6 +135,7 @@ export function encodeSnapshot(
     extras?.inputCheckpoint,
     'inputCheckpoint'
   );
+  const componentSchemas = optionalSchema(extras?.componentSchemas);
   const digest = digestBytes(body);
 
   const w = new BinaryStateWriter();
@@ -129,6 +154,8 @@ export function encodeSnapshot(
   if (botState !== null) w.bytes(botState);
   w.bool(inputCheckpoint !== null);
   if (inputCheckpoint !== null) w.bytes(inputCheckpoint);
+  w.bool(componentSchemas !== null);
+  if (componentSchemas !== null) w.str(componentSchemas);
   return w.finish();
 }
 
@@ -174,6 +201,8 @@ function parseSnapshot(payload: Uint8Array): DecodedSnapshot {
   const botState = hasBotState ? r.bytes() : null;
   const hasInputCheckpoint = r.bool();
   const inputCheckpoint = hasInputCheckpoint ? r.bytes() : null;
+  const hasComponentSchemas = r.bool();
+  const componentSchemas = hasComponentSchemas ? r.str() : null;
   r.done();
 
   const actual = digestBytes(body);
@@ -195,6 +224,7 @@ function parseSnapshot(payload: Uint8Array): DecodedSnapshot {
     body,
     botState,
     inputCheckpoint,
+    componentSchemas,
   };
 }
 
@@ -222,25 +252,73 @@ export function canonicalConfigBytes(config: unknown): Uint8Array {
 /**
  * `digestBytes(canonicalConfigBytes(config))`.
  *
- * When `componentNames` is non-empty, those names are appended in
- * registration order (array order, not sorted) before the digest. An
- * empty list matches the one-argument hash.
+ * When `components` is non-empty, each record is appended in registration
+ * order (array order, not sorted). A record is the component name plus
+ * its field names and types in declaration order. An empty list matches
+ * the one-argument hash. Swapping two fields, or changing `u32` to `i32`,
+ * changes the digest.
  */
 export function configHash(
   config: unknown,
-  componentNames?: readonly string[]
+  components?: readonly ComponentSchemaHash[]
 ): Digest {
   const configBytes = canonicalConfigBytes(config);
-  if (componentNames === undefined || componentNames.length === 0) {
+  if (components === undefined || components.length === 0) {
     return digestBytes(configBytes);
   }
-  const nameBytes = canonicalConfigBytes(componentNames);
+  const componentBytes = canonicalConfigBytes(components);
   const combined = new Uint8Array(
-    configBytes.byteLength + nameBytes.byteLength
+    configBytes.byteLength + componentBytes.byteLength
   );
   combined.set(configBytes, 0);
-  combined.set(nameBytes, configBytes.byteLength);
+  combined.set(componentBytes, configBytes.byteLength);
   return digestBytes(combined);
+}
+
+/**
+ * Stable text of {@link configHash}'s component records. `null` when the
+ * list is empty. Restore stores this outside the body digest.
+ */
+export function componentSchemaKey(
+  components: readonly ComponentSchemaHash[]
+): string | null {
+  if (components.length === 0) return null;
+  const plain = components.map((component) => ({
+    name: component.name,
+    fields: component.fields.map((field) => [field[0], field[1]]),
+  }));
+  return JSON.stringify(plain);
+}
+
+/**
+ * `null` when the two keys describe the same schemas. Otherwise the first
+ * difference, in the writer's registration order.
+ */
+export function schemaMismatchMessage(
+  expectedKey: string,
+  actualKey: string | null
+): string | null {
+  if (expectedKey === actualKey) return null;
+  const expected = parseComponentSchemaKey(expectedKey);
+  const actual = actualKey === null ? [] : parseComponentSchemaKey(actualKey);
+  const actualByName = new Map(
+    actual.map((component) => [component.name, component])
+  );
+  for (const component of expected) {
+    const got = actualByName.get(component.name);
+    if (got === undefined) {
+      return `component '${component.name}' schema changed: expected ${component.fields}, got (missing)`;
+    }
+    if (got.fields !== component.fields) {
+      return `component '${component.name}' schema changed: expected ${component.fields}, got ${got.fields}`;
+    }
+  }
+  for (const component of actual) {
+    if (!expected.some((item) => item.name === component.name)) {
+      return `component '${component.name}' schema changed: expected (missing), got ${component.fields}`;
+    }
+  }
+  return `component order changed: expected ${expected.map((component) => component.name).join(',')}, got ${actual.map((component) => component.name).join(',')}`;
 }
 
 /**
@@ -418,4 +496,52 @@ function optionalBytes(
     throw new Error(`encodeSnapshot: ${label} must be a Uint8Array or null`);
   }
   return value;
+}
+
+function optionalSchema(value: string | null | undefined): string | null {
+  if (value === undefined || value === null || value.length === 0) return null;
+  return value;
+}
+
+interface ParsedComponentSchema {
+  readonly name: string;
+  readonly fields: string;
+}
+
+function parseComponentSchemaKey(key: string): ParsedComponentSchema[] {
+  let value: unknown;
+  try {
+    value = JSON.parse(key);
+  } catch (error) {
+    throw new Error('component schema record is malformed', { cause: error });
+  }
+  if (!Array.isArray(value)) {
+    throw new Error('component schema record is malformed');
+  }
+  const parsed: ParsedComponentSchema[] = [];
+  for (const item of value) {
+    if (typeof item !== 'object' || item === null) {
+      throw new Error('component schema record is malformed');
+    }
+    const record = item as Record<string, unknown>;
+    const name = record['name'];
+    const fields = record['fields'];
+    if (typeof name !== 'string' || !Array.isArray(fields)) {
+      throw new Error('component schema record is malformed');
+    }
+    const parts: string[] = [];
+    for (const field of fields) {
+      if (!Array.isArray(field) || field.length !== 2) {
+        throw new Error('component schema record is malformed');
+      }
+      const fieldName: unknown = field[0];
+      const fieldType: unknown = field[1];
+      if (typeof fieldName !== 'string' || typeof fieldType !== 'string') {
+        throw new Error('component schema record is malformed');
+      }
+      parts.push(`${fieldName}:${fieldType}`);
+    }
+    parsed.push({ name, fields: parts.join(',') });
+  }
+  return parsed;
 }

@@ -146,6 +146,7 @@ describe('snapshot header', () => {
     expect(r.bytes()).toEqual(new Uint8Array([1]));
     expect(r.bool()).toBe(true);
     expect(r.bytes()).toEqual(new Uint8Array([2, 3]));
+    expect(r.bool()).toBe(false);
     r.done();
   });
 
@@ -171,6 +172,7 @@ describe('snapshot header', () => {
     expect(inputOnly.header.digest).toBe(plain.header.digest);
     expect(plain.botState).toBeNull();
     expect(plain.inputCheckpoint).toBeNull();
+    expect(plain.componentSchemas).toBeNull();
     expect(withExtras.botState).toEqual(new Uint8Array([9, 9, 9]));
     expect(withExtras.inputCheckpoint).toEqual(new Uint8Array([7]));
     expect(botOnly.inputCheckpoint).toBeNull();
@@ -215,11 +217,7 @@ describe('snapshot header', () => {
       /truncated snapshot/
     );
 
-    const tampered = encoded.slice();
-    const at = tampered.length - 3;
-    const flipped = tampered[at];
-    if (flipped === undefined) throw new Error('expected a body byte');
-    tampered[at] = flipped ^ 0xff;
+    const tampered = tamperBody(encoded, new Uint8Array([1, 2, 3, 4]));
     expect(() => decodeSnapshot(tampered)).toThrow(SnapshotRejectedError);
     expect(() => decodeSnapshot(tampered)).toThrow(/digest mismatch/);
 
@@ -327,11 +325,7 @@ describe('version policy matrix', () => {
       },
       body
     );
-    const tampered = encoded.slice();
-    const at = tampered.length - 3;
-    const flipped = tampered[at];
-    if (flipped === undefined) throw new Error('expected a body byte');
-    tampered[at] = flipped ^ 0xff;
+    const tampered = tamperBody(encoded, body);
     expect(() => decodeSnapshot(tampered)).toThrow(SnapshotRejectedError);
     expect(() => decodeSnapshot(tampered)).toThrow(/digest mismatch/);
     // The compatibility function does not see the body. A stored digest
@@ -474,6 +468,30 @@ describe('canonicalConfigBytes / configHash', () => {
     expect(() => canonicalConfigBytes(circular)).toThrow(/circular/);
   });
 });
+
+function tamperBody(encoded: Uint8Array, body: Uint8Array): Uint8Array {
+  const tampered = encoded.slice();
+  const at = indexOfBytes(tampered, body);
+  if (at < 0) throw new Error('expected the body in the snapshot');
+  const byte = tampered[at];
+  if (byte === undefined) throw new Error('expected a body byte');
+  tampered[at] = byte ^ 0xff;
+  return tampered;
+}
+
+function indexOfBytes(haystack: Uint8Array, needle: Uint8Array): number {
+  for (let start = 0; start + needle.length <= haystack.length; start += 1) {
+    let found = true;
+    for (let offset = 0; offset < needle.length; offset += 1) {
+      if (haystack[start + offset] !== needle[offset]) {
+        found = false;
+        break;
+      }
+    }
+    if (found) return start;
+  }
+  return -1;
+}
 
 function captureRejected(bytes: Uint8Array): SnapshotRejectedError {
   try {

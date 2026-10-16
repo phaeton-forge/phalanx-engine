@@ -137,9 +137,16 @@ Entries collected per package until the synchronized 0.3.0 release
 - World and components (Task 6.5a): `defineComponent`, `world.save` /
   `world.restore`, `world.spawn` / `world.despawn` / `world.each`.
   `defineGame.state` is optional; the default state is those modules.
-  Section bytes are unchanged. `configHash` appends component names when
-  the list is non-empty. `world.restore` skips a roster id that already
-  exists. `StateHelpers`, `spawnWithId`,
+  Section bytes are unchanged. `configHash` appends each component's name
+  and its field names and types, in registration order, when the list is
+  non-empty. Restore stores that schema outside the snapshot digest and
+  rejects a field change with
+  `component 'Unit' schema changed: expected x:i32,hp:u32, got hp:u32,x:i32`.
+  `world.restore` returns checked-out pooled entities, removes entities
+  missing from the roster, and attaches components from the SoA sections.
+  An unknown field type is rejected by `defineComponent` and the error
+  lists `i32`, `u32`, `u8`, `i64`, `f32`, `f64`. `world.restore` skips a
+  roster id that already exists. `StateHelpers`, `spawnWithId`,
   `rebuildBroadphaseFromTransforms` (formerly `rebuildPhysics`) and
   `WorldScope` moved to `@phalanx-engine/runtime/advanced` with no aliases
   on the root. A manual `LocalTransport.step()` does not rethrow after

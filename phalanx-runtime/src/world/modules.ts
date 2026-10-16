@@ -4,6 +4,7 @@ import {
   type ComponentRegistration,
   type GameWorld,
   type SoAComponentStore,
+  type SoAFieldType,
   type SoAFieldsOf,
   type SoASchema,
   type SoASchemaDefinition,
@@ -20,7 +21,7 @@ import {
   writeBroadphase,
 } from '../helpers/physics.js';
 import { readRandom, writeRandom } from '../helpers/random.js';
-import { readSoAStores, writeSoAStores } from '../helpers/soa.js';
+import { readSoAStore, writeSoAStores } from '../helpers/soa.js';
 import {
   assertSectionVersion,
   HELPER_SECTION_VERSION,
@@ -54,20 +55,33 @@ export function writeWorld(world: GameWorld, writer: StateWriter): void {
   singletonHooks(world)?.onSave?.(writer);
 }
 
-/** Inverse of {@link writeWorld}. Enables components after the bytes land. */
+/**
+ * Inverse of {@link writeWorld}. Enables components after the bytes land.
+ *
+ * The startup world is reconciled before any section is applied: checked-out
+ * pool entities go back to their pools, and non-pooled entities whose ids
+ * are absent from the roster are removed. Missing roster ids are empty
+ * shells. Each SoA section then decides which of those shells (and which
+ * kept entities) receive that component. Section bytes are unchanged.
+ */
 export function readWorld(world: GameWorld, reader: StateReader): void {
   const previous = SoAComponent.currentEntityManager();
   SoAComponent.useEntityManager(world.entityManager);
   try {
-    if (leadingSectionKey(reader) === ROSTER_SECTION) {
-      const ids = reader.section(ROSTER_SECTION, (section, version) => {
-        assertSectionVersion('readRoster', version);
-        return section.list((item) => item.u32());
-      });
-      spawnMissing(world, ids);
-    }
+    const rosterIds =
+      leadingSectionKey(reader) === ROSTER_SECTION
+        ? reader.section(ROSTER_SECTION, (section, version) => {
+            assertSectionVersion('readRoster', version);
+            return section.list((item) => item.u32());
+          })
+        : [];
+    const pending = new Map<number, Entity>();
+    reconcileStartup(world, rosterIds, pending);
     readPools(reader, world);
-    readSoAStores(reader, world, schemasOf(world));
+    readComponentSections(world, reader, pending);
+    for (const entity of pending.values()) {
+      world.entityManager.addEntity(entity);
+    }
     if (hasAbilities(world)) readAbilities(reader, world);
     readEntityIds(reader, world);
     readRandom(reader, world.random);
@@ -137,28 +151,186 @@ function hasAbilities(world: GameWorld): boolean {
   );
 }
 
-function spawnMissing(world: GameWorld, ids: readonly number[]): void {
-  for (const id of ids) {
+/**
+ * Make the live world match the snapshot's membership before sections
+ * are read. `readPools` refuses a pool that still has a checked-out
+ * entity, and `readSoAStore` refuses a row the section does not list.
+ */
+function reconcileStartup(
+  world: GameWorld,
+  rosterIds: readonly number[],
+  pending: Map<number, Entity>
+): void {
+  returnCheckedOut(world);
+  const keep = new Set(rosterIds);
+  for (const entity of world.entityManager.getAllEntities()) {
+    if (entity._inPool || entity._poolTypeKey !== undefined) continue;
+    if (keep.has(entity.id)) continue;
+    invokeAll(entity, 'onDisable');
+    world.entityManager.removeEntity(entity);
+    entity.dispose();
+  }
+  for (const id of rosterIds) {
     if (world.entityManager.getEntity(id) !== undefined) continue;
-    spawnWithId(world, id, () => createRestoredEntity(world));
+    const entity = spawnWithId(world, id, () => new Entity());
+    // Components are attached once the SoA sections name them. Unregister
+    // the empty shell so the later addEntity sees those components and
+    // updates component indices. The shell has no rows yet.
+    world.entityManager.removeEntity(entity);
+    pending.set(id, entity);
   }
 }
 
-function createRestoredEntity(world: GameWorld): Entity {
-  const entity = new Entity();
-  const registered = world.registeredComponents();
-  if (registered.length > 0) {
-    for (const component of registered) {
-      entity.addComponent(component.create(entity.id));
+function returnCheckedOut(world: GameWorld): void {
+  const pools = world.pools;
+  if (pools === null) return;
+  for (const typeKey of pools.typeKeys()) {
+    const free = new Set(pools.freeListIds(typeKey));
+    for (const id of pools.ownedIds(typeKey).slice()) {
+      if (free.has(id)) continue;
+      const entity = world.entityManager.getEntity(id);
+      if (entity === undefined) continue;
+      pools.despawn(entity);
     }
-    return entity;
   }
-  for (const raw of world.entityManager.getAllSoAStores().values()) {
-    // getAllSoAStores types every store as SoAComponentStore<any>.
-    const store = raw as unknown as SoAComponentStore<SoASchemaDefinition>;
-    store.add(entity.id, zeroValues(store));
+}
+
+function readComponentSections(
+  world: GameWorld,
+  reader: StateReader,
+  pending: ReadonlyMap<number, Entity>
+): void {
+  for (const schema of schemasOf(world)) {
+    ensureRows(world, schema, peekSoAEntityIds(reader, schema), pending);
+    const store = world.entityManager.getSoAStoreByType<SoASchemaDefinition>(
+      schema.type
+    );
+    if (store === undefined) {
+      throw new Error(
+        `readWorld: no store for schema '${schema.type.description ?? ''}'`
+      );
+    }
+    readSoAStore(reader, store);
   }
-  return entity;
+}
+
+/**
+ * Entity ids in the next SoA section, without consuming `reader`.
+ * `null` when the next section is not this schema; `readSoAStore` then
+ * reports the mismatch.
+ */
+function peekSoAEntityIds(
+  reader: StateReader,
+  schema: SoASchema<SoASchemaDefinition>
+): readonly number[] | null {
+  if (!(reader instanceof BinaryStateReader)) return null;
+  const name = schema.type.description;
+  if (name === undefined || name.length === 0) return null;
+  if (reader.remainingBytes().byteLength === 0) return null;
+  const copy = new BinaryStateReader(reader.remainingBytes());
+  if (copy.str() !== name) return null;
+  if (copy.varint() !== HELPER_SECTION_VERSION) return null;
+  const body = new BinaryStateReader(copy.bytes());
+  const count = body.varint();
+  const ids: number[] = [];
+  for (let index = 0; index < count; index += 1) {
+    ids.push(body.u32());
+    for (const fieldName of schema.fieldNames) {
+      const fieldType = schema.fieldTypes[fieldName];
+      if (fieldType === undefined) {
+        throw new Error(`readWorld: unknown field '${fieldName}'`);
+      }
+      skipPersistedField(body, fieldType);
+    }
+  }
+  return ids;
+}
+
+function skipPersistedField(
+  reader: StateReader,
+  fieldType: SoAFieldType
+): void {
+  switch (fieldType) {
+    case 'i32':
+      reader.i32();
+      return;
+    case 'u32':
+      reader.u32();
+      return;
+    case 'u8':
+      reader.u8();
+      return;
+    case 'i64':
+      reader.i64();
+      return;
+    case 'f32':
+    case 'f64':
+      return;
+    default: {
+      const unexpected: never = fieldType;
+      throw new Error(
+        `readWorld: unsupported field type ${String(unexpected)}`
+      );
+    }
+  }
+}
+
+function ensureRows(
+  world: GameWorld,
+  schema: SoASchema<SoASchemaDefinition>,
+  ids: readonly number[] | null,
+  pending: ReadonlyMap<number, Entity>
+): void {
+  if (ids === null) return;
+  const store = world.entityManager.getSoAStoreByType<SoASchemaDefinition>(
+    schema.type
+  );
+  if (store === undefined) return;
+  const listed = new Set(ids);
+  const registration = registrationFor(world, schema);
+  for (const id of store.entityIds().slice()) {
+    if (listed.has(id) || registration === undefined) continue;
+    dropRow(world, store, registration, id);
+  }
+  for (const id of ids) {
+    if (store.indexOf(id) !== -1) continue;
+    const entity = world.entityManager.getEntity(id) ?? pending.get(id);
+    if (entity === undefined) continue;
+    if (registration !== undefined) {
+      entity.addComponent(registration.create(entity.id));
+    } else {
+      store.add(id, zeroValues(store));
+    }
+  }
+}
+
+function registrationFor(
+  world: GameWorld,
+  schema: SoASchema<SoASchemaDefinition>
+): ComponentRegistration | undefined {
+  for (const component of world.registeredComponents()) {
+    if (component.schema.type === schema.type) return component;
+  }
+  return undefined;
+}
+
+function dropRow(
+  world: GameWorld,
+  store: SoAComponentStore<SoASchemaDefinition>,
+  registration: ComponentRegistration,
+  id: number
+): void {
+  const entity = world.entityManager.getEntity(id);
+  if (entity !== undefined) {
+    const component = entity.getComponent(registration.type);
+    if (component !== undefined) {
+      const record = component as unknown as Record<string, unknown>;
+      const disable = record['onDisable'];
+      if (typeof disable === 'function') disable.call(component);
+      entity.removeComponent(registration.type);
+    }
+  }
+  store.remove(id);
 }
 
 function zeroValues(

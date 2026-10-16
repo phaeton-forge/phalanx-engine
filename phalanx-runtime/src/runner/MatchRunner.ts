@@ -36,13 +36,16 @@ import {
 } from '../state/errors.js';
 import {
   checkSnapshotCompatibility,
+  componentSchemaKey,
   configHash,
   decodeSnapshot,
   digestBytes,
   encodeSnapshot,
+  schemaMismatchMessage,
   type Digest,
   type SnapshotBytes,
 } from '../state/snapshot.js';
+import { componentSchemaHashes } from '../world/schemaHash.js';
 import { wallClock } from '../host/wallClock.js';
 import { LocalTransport } from '../transport/LocalTransport.js';
 import type { Transport } from '../transport/Transport.js';
@@ -132,6 +135,8 @@ export class MatchRunner<G extends AnyGameDefinition> {
   private readonly localSlotSet: ReadonlySet<number>;
   private readonly botSlotSet: ReadonlySet<number>;
   private readonly configDigest: Digest;
+  /** Writer/reader schema text. `null` when no component is registered. */
+  private componentSchemaKey: string | null = null;
   private readonly scope = new WorldScope();
   private readonly commandLog = new CommandLog();
   private readonly random: DeterministicRandom;
@@ -233,9 +238,12 @@ export class MatchRunner<G extends AnyGameDefinition> {
     this.scope.run(() => {
       this.boot('fresh');
     });
-    const names =
-      this.simulation === null ? [] : this.simulation.world.componentNames();
-    this.configDigest = configHash(this.config, names);
+    const schemas =
+      this.simulation === null
+        ? []
+        : componentSchemaHashes(this.simulation.world);
+    this.componentSchemaKey = componentSchemaKey(schemas);
+    this.configDigest = configHash(this.config, schemas);
   }
 
   /** Join (or resume) through a network transport's `join()`. */
@@ -378,6 +386,13 @@ export class MatchRunner<G extends AnyGameDefinition> {
   public restore(bytes: SnapshotBytes): void {
     this.ensureLive();
     const decoded = decodeSnapshot(bytes);
+    if (decoded.componentSchemas !== null) {
+      const mismatch = schemaMismatchMessage(
+        decoded.componentSchemas,
+        this.componentSchemaKey
+      );
+      if (mismatch !== null) throw new Error(mismatch);
+    }
     const decision = checkSnapshotCompatibility(
       decoded.header,
       {
@@ -940,7 +955,11 @@ export class MatchRunner<G extends AnyGameDefinition> {
         tick: this.completedTick,
       },
       body,
-      { botState, inputCheckpoint }
+      {
+        botState,
+        inputCheckpoint,
+        componentSchemas: this.componentSchemaKey,
+      }
     );
   }
 
