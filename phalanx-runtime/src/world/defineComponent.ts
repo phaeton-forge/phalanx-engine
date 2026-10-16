@@ -14,6 +14,8 @@ const RESERVED_NAMES = new Set([
   'random',
   'broadphase',
   'gas',
+  // Symbol description of defineSoASchema() with no explicit name.
+  'SoASchema',
 ]);
 
 const ALLOWED_FIELD_TYPES = ['i32', 'u32', 'u8', 'i64', 'f32', 'f64'] as const;

@@ -298,6 +298,12 @@ function ensureRows(
     if (entity === undefined) continue;
     if (registration !== undefined) {
       entity.addComponent(registration.create(entity.id));
+      // Shells are indexed when they are registered later. A startup
+      // entity is already in the manager, so the new component has to
+      // be published or queryEntities will not see it.
+      if (pending.get(id) === undefined) {
+        world.entityManager.onComponentAdded(entity, registration.type);
+      }
     } else {
       store.add(id, zeroValues(store));
     }
@@ -324,10 +330,10 @@ function dropRow(
   if (entity !== undefined) {
     const component = entity.getComponent(registration.type);
     if (component !== undefined) {
-      const record = component as unknown as Record<string, unknown>;
-      const disable = record['onDisable'];
-      if (typeof disable === 'function') disable.call(component);
+      invokeHook(component, 'onDisable');
+      invokeHook(component, 'onDestroy');
       entity.removeComponent(registration.type);
+      world.entityManager.onComponentRemoved(entity, registration.type);
     }
   }
   store.remove(id);
@@ -362,13 +368,24 @@ export function spawnOn(
     throw new Error('world.spawn: spec is empty');
   }
   const entity = new Entity();
-  for (const name of names) {
-    const component = requireComponent(world, name);
-    const values = spec[name];
-    if (values === undefined) {
-      throw new Error(`world.spawn: missing values for '${name}'`);
+  try {
+    for (const name of names) {
+      const component = requireComponent(world, name);
+      const values = spec[name];
+      if (values === undefined) {
+        throw new Error(`world.spawn: missing values for '${name}'`);
+      }
+      entity.addComponent(component.create(entity.id, values));
     }
-    entity.addComponent(component.create(entity.id, values));
+  } catch (error) {
+    try {
+      entity.dispose();
+    } finally {
+      // create() inserts the SoA row before onCreate. A later failure
+      // must drop those rows; the entity was never registered.
+      world.entityManager.removeEntity(entity);
+    }
+    throw error;
   }
   world.entityManager.addEntity(entity);
   invokeAll(entity, 'onEnable');
@@ -392,25 +409,37 @@ export function eachOn<S extends SoASchemaDefinition>(
 ): void {
   const store = world.entityManager.getSoAStore(component.schema);
   if (store === undefined) return;
-  let index = -1;
-  // One view for the whole pass. `fn` must not retain it.
+  let entityId = -1;
+  // One view for the whole pass. `fn` must not retain it. The dense
+  // index is resolved on each access: despawn swap-and-pops other rows.
   const view = new Proxy({} as SoAFieldsOf<S>, {
     get(_target, prop) {
       if (typeof prop !== 'string') return undefined;
-      return readColumn(store.arrays, prop, index);
+      return readColumn(store.arrays, prop, liveIndex(store, entityId));
     },
     set(_target, prop, value) {
       if (typeof prop !== 'string') return false;
-      writeColumn(store.arrays, prop, index, value);
+      writeColumn(store.arrays, prop, liveIndex(store, entityId), value);
       return true;
     },
   });
   const ids = store.entityIds().slice();
   for (const id of ids) {
-    index = store.indexOf(id);
-    if (index < 0) continue;
+    if (store.indexOf(id) < 0) continue;
+    entityId = id;
     fn(view);
   }
+}
+
+function liveIndex(
+  store: { indexOf(entityId: number): number },
+  entityId: number
+): number {
+  const index = store.indexOf(entityId);
+  if (index < 0) {
+    throw new Error(`world.each: entity ${String(entityId)} was removed`);
+  }
+  return index;
 }
 
 function requireComponent(
@@ -425,11 +454,15 @@ function requireComponent(
 
 function invokeAll(entity: Entity, hook: 'onEnable' | 'onDisable'): void {
   for (const component of [...entity.getComponents().values()]) {
-    // Lifecycle methods are optional and are not declared on IComponent.
-    const record = component as unknown as Record<string, unknown>;
-    const fn = record[hook];
-    if (typeof fn === 'function') fn.call(component);
+    invokeHook(component, hook);
   }
+}
+
+function invokeHook(component: object, hook: string): void {
+  // Lifecycle methods are optional and are not declared on IComponent.
+  const record = component as unknown as Record<string, unknown>;
+  const fn = record[hook];
+  if (typeof fn === 'function') fn.call(component);
 }
 
 function readColumn(

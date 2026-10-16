@@ -56,7 +56,7 @@ the world modules (`formatVersion` 1). When `state` is present,
   outside `i32`, `u32`, `u8`, `i64`, `f32`, `f64` throws at definition
   time and names the allowed types. `f32` / `f64` are then rejected
   because they are not saved. Names `roster`, `pools`, `entityIds`,
-  `random`, `broadphase` and `gas` are reserved.
+  `random`, `broadphase`, `gas`, and `SoASchema` are reserved.
 - **`world.save()` / `world.restore(bytes)`**: roster (only when a
   non-pooled entity exists), pools, SoA stores, abilities (when GAS is
   attached), the entity id counter, RNG, broadphase centers (when a grid
@@ -72,7 +72,9 @@ the world modules (`formatVersion` 1). When `state` is present,
   `world.each(Unit, (row) => { ... })`**: the same entity id counter as
   `new Entity()`. `each` walks rows in ascending id. The callback receives
   one view object reused for every row. Do not store it, and do not read
-  it after the callback returns.
+  it after the callback returns. Each access looks up the entity's current
+  row, so despawning a different entity inside the callback does not
+  redirect the write. Accessing a row after that entity was removed throws.
 - **`GameState { save(w), restore(r) }`**: implemented by the game when
   the default modules are not enough. Canonical bytes only (no floats;
   FP values as raw `i64`). `restore(save(x))` must re-save to identical
@@ -149,7 +151,8 @@ rejections too (`error.message`, or `'decode failed'` / `'validate failed'`).
 A throw from the tick itself calls `onError(error, tick)`, sets `status`
 to `'failed'`, stops the transport, and leaves `tick` on the last
 completed tick. `LocalTransport.manual().step()` does not rethrow that
-error; `onError` already received it. A timed transport swallows it
+error; `onError` already received it. `fastForward`, replay, and catch-up
+still propagate it, including a final-digest mismatch. A timed transport swallows it
 inside its timer. Any other transport still sees the exception. A bot
 `decide` that throws is isolated: it is logged with
 `console.error`, that slot submits nothing, and the match continues.

@@ -206,8 +206,10 @@ bot state and checkpoint. A custom `GameState` that calls `spawnWithId`
 for an id `createWorld` already made still throws
 `spawnWithId: entity N already exists`. `world.restore` skips that id.
 A throw inside a tick does not escape `LocalTransport.manual().step()`;
-`onError` already ran. A timed transport swallows the same error in its
-timer. Other transports still see it.
+`onError` already ran. `fastForward`, replay, and catch-up still
+propagate that error, including a final-digest mismatch. A timed
+transport swallows the same error in its timer. Other transports still
+see it.
 
 ## Canonical state bytes
 

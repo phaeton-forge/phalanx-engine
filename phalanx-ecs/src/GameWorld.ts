@@ -344,8 +344,9 @@ export class GameWorld {
 
   /**
    * Register a `defineComponent` result. Order is registration order:
-   * the SoA store is created now, and that order plus each field's name
-   * and type is folded into `configHash` by the runtime.
+   * the SoA store is created now, the component type is registered for
+   * `queryEntities`, and that order plus each field's name and type is
+   * folded into `configHash` by the runtime.
    */
   public registerComponent<S extends SoASchemaDefinition>(
     component: ComponentRegistration<S>
@@ -358,6 +359,7 @@ export class GameWorld {
     // SoASchema is invariant in its field map. The registry only needs the
     // name, the store key, and create().
     this._components.push(component as unknown as ComponentRegistration);
+    this.entityManager.registerComponentTypes([component.type]);
     this.entityManager.getOrCreateSoAStore(component.schema);
   }
 

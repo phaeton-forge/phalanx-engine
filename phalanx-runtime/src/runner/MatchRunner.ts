@@ -671,12 +671,10 @@ export class MatchRunner<G extends AnyGameDefinition> {
       });
     } catch (error) {
       this.fail(tick, error);
-      // A stepped LocalTransport must not surface the failure from
-      // `step()`. `onError` already received it. Other transports still
-      // see the exception.
-      if (!(
-        this.transport instanceof LocalTransport && this.transport.isManual
-      )) {
+      // A live manual step reports the failure through onError and does
+      // not rethrow from step(). fastForward, replay, and catch-up still
+      // propagate, including a final-digest mismatch.
+      if (!this.isLiveManualStep()) {
         throw error;
       }
     } finally {
@@ -720,6 +718,16 @@ export class MatchRunner<G extends AnyGameDefinition> {
     }
     this.tickListeners.emit(tick);
     if (this.phase === 'ended') this.stop();
+  }
+
+  /** True only for a transport-driven step of `LocalTransport.manual()`. */
+  private isLiveManualStep(): boolean {
+    return (
+      this.transport instanceof LocalTransport &&
+      this.transport.isManual &&
+      !this.fastForwarding &&
+      !this.replayMode
+    );
   }
 
   private fail(tick: number, error: unknown): void {

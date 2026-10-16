@@ -440,7 +440,14 @@ non-empty, is folded into `configHash` together with each field's name
 and type in declaration order. `f32` / `f64` fields throw (those columns
 are skipped in snapshots). Any other type outside `i32`, `u32`, `u8`,
 `i64`, `f32`, `f64` throws at `defineComponent` and lists the allowed
-types. `world.spawn({ Name: values })`, `world.despawn(entity)` and
+types. The name `SoASchema` is reserved, along with the world-module
+section names. `registerComponent` also registers the component type, so
+`queryEntities` finds entities spawned with it. A failed `world.spawn`
+disposes the partial entity and removes the SoA rows already inserted.
+`world.each` resolves the dense index on every access and throws if that
+entity was removed. Restore calls `onComponentAdded` when a kept entity
+gains a component, and `onDestroy` plus `onComponentRemoved` when one is
+dropped. `world.spawn({ Name: values })`, `world.despawn(entity)` and
 `world.each(component, fn)` use the existing entity id counter. The object
 passed to `each` is one reused view; do not store it. Importing
 `@phalanx-engine/runtime` calls `setWorldModuleHost` once. Without that

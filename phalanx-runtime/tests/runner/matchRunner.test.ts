@@ -539,6 +539,34 @@ describe('MatchRunner', () => {
     expect(() => handle.runner.start()).toThrow(/failed/);
   });
 
+  it('propagates tick failures from fastForward and replay', async () => {
+    const handle = drive();
+    handle.runner.start();
+    setTinyTickBoom(true);
+    await expect(
+      handle.runner.fastForward([], { budgetMs: 1000, throughTick: 0 })
+    ).rejects.toThrow(/tick exploded/);
+    expect(handle.runner.status).toBe('failed');
+    setTinyTickBoom(false);
+
+    const recorded = drive();
+    recorded.runner.start();
+    stepTo(recorded, 2);
+    const replay = recorded.runner.toReplay();
+    const replayed = MatchRunner.fromReplay(TinyGame, {
+      ...replay,
+      finalDigest: '0'.repeat(16),
+    });
+    live.push(replayed);
+    await expect(
+      replayed.fastForward(replay.log, {
+        budgetMs: 1000,
+        throughTick: replay.lastTick,
+      })
+    ).rejects.toThrow(/final digest mismatch/);
+    expect(replayed.status).toBe('failed');
+  });
+
   it('logs a bot decide error and still finishes the tick', () => {
     const handle = drive();
     const logged: unknown[] = [];

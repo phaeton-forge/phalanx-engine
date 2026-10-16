@@ -126,8 +126,173 @@ describe('world modules', () => {
     expect(() => defineComponent('Floaty', { x: 'f32' })).toThrow(/f32/);
     expect(() => defineComponent('Floaty', { x: 'f64' })).toThrow(/f64/);
     expect(() => defineComponent('gas', { n: 'u8' })).toThrow(/reserved/);
+    expect(() => defineComponent('SoASchema', { n: 'u8' })).toThrow(/reserved/);
     expect(() => defineComponent('Bad', { a: 'u16' as 'i32' })).toThrow(
       /allowed types are i32, u32, u8, i64, f32, f64/
+    );
+  });
+
+  it('rolls back SoA rows when spawn fails part way', () => {
+    let destroyed = 0;
+    const unit = defineComponent(
+      'Unit',
+      { x: 'i32' },
+      {
+        onDestroy() {
+          destroyed += 1;
+        },
+      }
+    );
+    const boom = defineComponent(
+      'Boom',
+      { n: 'u8' },
+      {
+        onCreate() {
+          throw new Error('boom');
+        },
+      }
+    );
+    const world = openRegistered((registered) => {
+      registered.registerComponent(unit);
+      registered.registerComponent(boom);
+    });
+    live.push(world);
+    expect(() => world.spawn({ Unit: { x: 1 }, Missing: {} })).toThrow(
+      /not registered/
+    );
+    expect(() => world.spawn({ Unit: { x: 1 }, Boom: { n: 1 } })).toThrow(
+      /boom/
+    );
+    expect(destroyed).toBe(2);
+    expect(world.entityManager.getAllEntities()).toEqual([]);
+    expect(world.entityManager.getSoAStore(unit.schema)?.entityIds()).toEqual(
+      []
+    );
+    expect(world.entityManager.getSoAStore(boom.schema)?.entityIds()).toEqual(
+      []
+    );
+    const spawned = world.spawn({ Unit: { x: 4 } });
+    expect(world.entityManager.getSoAStore(unit.schema)?.entityIds()).toEqual([
+      spawned.id,
+    ]);
+  });
+
+  it('writes the visited row after another entity is despawned', () => {
+    const unit = defineComponent(
+      'Unit',
+      { x: 'i32', hp: 'u32' },
+      { defaults: { hp: 1 } }
+    );
+    const world = openRegistered((registered) => {
+      registered.registerComponent(unit);
+    });
+    live.push(world);
+    const first = world.spawn({ Unit: { x: 1, hp: 1 } });
+    const second = world.spawn({ Unit: { x: 2, hp: 1 } });
+    world.each(unit, (row) => {
+      if (row.x === 2) {
+        world.despawn(first);
+        row.hp = 9;
+      }
+    });
+    expect(world.entityManager.getEntity(first.id)).toBeUndefined();
+    let hp = 0;
+    world.each(unit, (row) => {
+      hp = row.hp;
+    });
+    expect(hp).toBe(9);
+    expect(second.id).toBe(2);
+
+    const again = openRegistered((registered) => {
+      registered.registerComponent(unit);
+    });
+    live.push(again);
+    const current = again.spawn({ Unit: { x: 1, hp: 1 } });
+    again.spawn({ Unit: { x: 2, hp: 1 } });
+    expect(() => {
+      again.each(unit, (row) => {
+        if (row.x !== 1) return;
+        again.despawn(current);
+        row.hp = 3;
+      });
+    }).toThrow(`world.each: entity ${String(current.id)} was removed`);
+  });
+
+  it('finds spawned entities with queryEntities', () => {
+    const unit = defineComponent('Unit', { x: 'i32' });
+    const tag = defineComponent('Tag', { k: 'u8' });
+    const world = openRegistered((registered) => {
+      registered.registerComponent(unit);
+      registered.registerComponent(tag);
+    });
+    live.push(world);
+    const both = world.spawn({ Unit: { x: 1 }, Tag: { k: 2 } });
+    const only = world.spawn({ Unit: { x: 3 } });
+    expect(idsOf(world.entityManager.queryEntities(unit.type))).toEqual([
+      both.id,
+      only.id,
+    ]);
+    expect(idsOf(world.entityManager.queryEntities(tag.type))).toEqual([
+      both.id,
+    ]);
+    expect(
+      idsOf(world.entityManager.queryEntities(unit.type, tag.type))
+    ).toEqual([both.id]);
+    expect(
+      idsOf(world.entityManager.queryEntitiesAny(tag.type, unit.type))
+    ).toEqual([both.id, only.id]);
+  });
+
+  it('updates the component index when restore adds or drops a component', () => {
+    let destroyed = 0;
+    const unit = defineComponent('Unit', { x: 'i32' });
+    const tag = defineComponent(
+      'Tag',
+      { k: 'u8' },
+      {
+        onDestroy() {
+          destroyed += 1;
+        },
+      }
+    );
+    const withTag = openRegistered((registered) => {
+      registered.registerComponent(unit);
+      registered.registerComponent(tag);
+    });
+    live.push(withTag);
+    withTag.spawn({ Unit: { x: 1 }, Tag: { k: 3 } });
+    const tagged = withTag.save();
+
+    const bare = openRegistered((registered) => {
+      registered.registerComponent(unit);
+      registered.registerComponent(tag);
+    });
+    live.push(bare);
+    const kept = bare.spawn({ Unit: { x: 9 } });
+    bare.restore(tagged);
+    expect(idsOf(bare.entityManager.queryEntities(tag.type))).toEqual([
+      kept.id,
+    ]);
+
+    const onlyUnit = openRegistered((registered) => {
+      registered.registerComponent(unit);
+      registered.registerComponent(tag);
+    });
+    live.push(onlyUnit);
+    onlyUnit.spawn({ Unit: { x: 1 } });
+    const untagged = onlyUnit.save();
+    const extra = openRegistered((registered) => {
+      registered.registerComponent(unit);
+      registered.registerComponent(tag);
+    });
+    live.push(extra);
+    extra.spawn({ Unit: { x: 1 }, Tag: { k: 4 } });
+    destroyed = 0;
+    extra.restore(untagged);
+    expect(destroyed).toBe(1);
+    expect(extra.entityManager.queryEntities(tag.type)).toEqual([]);
+    expect(extra.entityManager.getSoAStore(tag.schema)?.entityIds()).toEqual(
+      []
     );
   });
 
@@ -630,6 +795,10 @@ function continueConfig(): MatchConfigBase {
     inputDelayTicks: 2,
     slots: [{ slot: 0, team: 0, kind: 'human', playerId: 'local:0' }],
   };
+}
+
+function idsOf(entities: readonly { id: number }[]): number[] {
+  return entities.map((entity) => entity.id);
 }
 
 function openRegistered(register: (world: GameWorld) => void): GameWorld {

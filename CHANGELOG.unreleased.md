@@ -150,7 +150,12 @@ Entries collected per package until the synchronized 0.3.0 release
   `rebuildBroadphaseFromTransforms` (formerly `rebuildPhysics`) and
   `WorldScope` moved to `@phalanx-engine/runtime/advanced` with no aliases
   on the root. A manual `LocalTransport.step()` does not rethrow after
-  `fail()` / `onError`. `defineComponent` rejects `f32` / `f64` fields.
+  `fail()` / `onError`; `fastForward`, replay, and catch-up still do.
+  `defineComponent` rejects `f32` / `f64` fields and the name `SoASchema`.
+  A failed `world.spawn` drops the rows it already inserted.
+  `registerComponent` publishes the type for `queryEntities`. Restore
+  notifies the entity manager when a kept entity gains or loses a
+  component, and runs `onDestroy` when a component is dropped.
 
 ## @phalanx-engine/ecs
 
