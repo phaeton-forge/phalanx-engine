@@ -1,0 +1,18 @@
+{
+  "metrics": {
+    "heapDeltaBytes.150": 3737392,
+    "heapDeltaBytes.500": -485856,
+    "p50TickMs.150": 2.223,
+    "p50TickMs.500": 7.354,
+    "p99TickMs.150": 3.652,
+    "p99TickMs.500": 8.492,
+    "restoreMs.150": 5.533,
+    "restoreMs.500": 12.334,
+    "saveMs.150": 1.693,
+    "saveMs.500": 4.478,
+    "snapshotBytes.150": 47411,
+    "snapshotBytes.500": 156615,
+    "ticksPerSec.150": 422.073,
+    "ticksPerSec.500": 135.257
+  }
+}

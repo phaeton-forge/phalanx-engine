@@ -7,3 +7,4 @@ packages:
   - 'phalanx-abilities'
   - 'phalanx-runtime'
   - 'abilities-playground'
+  - 'integration'
