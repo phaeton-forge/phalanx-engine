@@ -1,4 +1,4 @@
-import type { ProvidedTarget } from './TargetSpec';
+import type { ProvidedTarget } from './TargetSpec.js';
 
 export interface AbilityActivationContext {
   abilityId: string;

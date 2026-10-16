@@ -1,2 +1,2 @@
-export { Cue } from './Cue';
-export type { CueContext, CueFactory, CueConfig } from './Cue';
+export { Cue } from './Cue.js';
+export type { CueContext, CueFactory, CueConfig } from './Cue.js';

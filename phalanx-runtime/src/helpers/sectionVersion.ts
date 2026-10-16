@@ -1,4 +1,4 @@
-/** Section version shared by every Task 4 state helper. */
+/** Section version shared by the state helpers. */
 export const HELPER_SECTION_VERSION = 1;
 
 export function assertSectionVersion(helper: string, version: number): void {

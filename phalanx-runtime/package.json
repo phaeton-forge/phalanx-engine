@@ -13,6 +13,7 @@
     }
   },
   "dependencies": {
+    "@phalanx-engine/abilities": "workspace:*",
     "@phalanx-engine/ecs": "workspace:*"
   },
   "scripts": {
@@ -24,6 +25,7 @@
     "prepublishOnly": "npm run build"
   },
   "peerDependencies": {
+    "@phalanx-engine/abilities": "workspace:^",
     "@phalanx-engine/ecs": "workspace:^",
     "@phalanx-engine/math": "workspace:^",
     "@phalanx-engine/physics": "workspace:^"
@@ -34,6 +36,7 @@
     }
   },
   "devDependencies": {
+    "@phalanx-engine/abilities": "workspace:*",
     "@phalanx-engine/ecs": "workspace:*",
     "@phalanx-engine/math": "workspace:*",
     "@phalanx-engine/physics": "workspace:*",

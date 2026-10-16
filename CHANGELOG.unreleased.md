@@ -51,8 +51,8 @@ Entries collected per package until the synchronized 0.3.0 release
   not `getGenerator`), and broadphase centers (`x`, `z`, and `radius`,
   each with its own precision) through `writeBroadphase` /
   `readBroadphase`. `rebuildPhysics` only rebuilds from current transforms
-  and is valid for a collision-free world. `writeAbilities` /
-  `readAbilities` remain Task 5. A zero-row SoA section recreates a missing
+  and is valid for a collision-free world. Ability helpers are the Task 5
+  bullet below. A zero-row SoA section recreates a missing
   empty store (`getOrCreateSoAStore`); a nonempty section with no row still
   throws `readSoAStore: missing entity <id> in <schema>`. A row the
   section omitted throws `readSoAStore: extra entity <id> in <schema>`.
@@ -65,7 +65,34 @@ Entries collected per package until the synchronized 0.3.0 release
   The package and its ecs/physics dependency graph emit NodeNext ESM so
   `import('@phalanx-engine/runtime')` loads under native Node. The runtime
   test script imports `dist/index.js` after vitest. The empty-store SoA
-  change landed in the same commit as the NodeNext emit.
+  change landed in the same commit as the NodeNext emit. Every
+  `@phalanx-engine/*` package test script now imports its own `dist/index.js`
+  the same way, including abilities after its NodeNext migration.
+- State helpers (Task 5): `writeAbilities` / `readAbilities` persist
+  `section('gas', 1)`. The per-world runtime comes from
+  `exportRuntimeState` / `importRuntimeState` (instance-id counter,
+  activation requests, `currentTick`, resolved activations). The cue
+  buffer is omitted. Entities with a GAS component are stored ascending
+  by id, with flags so lazy components are recreated. Attribute `base` /
+  `current` are `i64` and `dirty` is `u8`. The effect queue and
+  `pendingAdd` keep array order. Abilities, tags, ad-hoc tags and grant
+  counts keep insertion order. `setByCaller` keys are sorted; values are
+  a safe integer, bigint, string, boolean, or FixedPoint, and any other
+  type throws. `@phalanx-engine/abilities` is a dependency and a peer.
+  Restore order is `spawnWithId`, `readPools`, `readSoAStores`,
+  `readAbilities`, `readEntityIds`, `readRandom`, `readBroadphase`.
+  Fixed-point payloads in the GAS section store `base` and `precision` as
+  `i64`, matching broadphase centers. `readAbilities` parses and validates
+  the section before mutating: an unknown ability id or effect def id
+  throws with the entity id, and the instance-id counter must be `>=`
+  every queued effect instance id (pending adds have none). A failed read
+  leaves the world unchanged. Free-list entities are omitted. Pool
+  despawn clears queue, pending adds, tags, and grants on the factory
+  shell and removes GAS components attached after that shell, so a
+  restored bare entity matches one that never snapshotted.
+  `readAbilities` refills `queue` and `pendingAdd` by clearing each array
+  and pushing entries one at a time. A list of hundreds of thousands of
+  effects does not throw, and the destination arrays keep their identity.
 
 ## @phalanx-engine/ecs
 
@@ -84,6 +111,10 @@ Entries collected per package until the synchronized 0.3.0 release
 - `PoolManager.restore(typeKey, entitiesInCreationOrder, freeListIds)`
   replaces that pool's owned set and free list without creating entities.
   The next `spawn` pops the same id the free list would have returned.
+- `PoolManager.addReturnToPoolHook` runs after entity and component
+  despawn hooks (factory dormant pass, `despawn`, and
+  `runDormantHooks`). `readPools` parks a free-list entity through
+  `runDormantHooks`.
 - Built output is NodeNext ESM: relative specifiers end in `.js`, and
   directory imports (`./pool`, `./debug`) point at `index.js`, so Node can
   load the package without a bundler.
@@ -115,6 +146,11 @@ Entries collected per package until the synchronized 0.3.0 release
 
 ## @phalanx-engine/abilities
 
+- Built output is NodeNext ESM: relative specifiers end in `.js`, and
+  directory imports (`./api`, `./components`, `./runtime`, and the other
+  barrels) point at `index.js`. Native Node can import
+  `@phalanx-engine/abilities` from `dist` without
+  `ERR_UNSUPPORTED_DIR_IMPORT`.
 - `InstanceIdCounter.set(n)` restores any integer `>= 0`.
   `AbilitySystem.exportRuntimeState` / `importRuntimeState` copy the
   instance-id counter, activation queue, current tick, and resolved
@@ -125,6 +161,21 @@ Entries collected per package until the synchronized 0.3.0 release
 - `importRuntimeState` rejects an `abilityId` that is not in the ability
   registry. `instanceId` must be `>=` every live effect instance id; that
   bound is the caller's responsibility (a lower integer is still stored).
+  `readAbilities` enforces the bound before it applies a snapshot.
+- **Interface change:** `AbilitySystem` now requires `isAbilityRegistered`
+  and `isEffectRegistered`.
+- Pooled entities lose transient GAS state on despawn.
+  `releasePooledAbilityState` clears the effect queue, `pendingAdd`, tags,
+  ad-hoc tags, and effect-grant counts on factory-shell components, and
+  removes `AbilitySystem`, `Attributes`, `ActiveEffects`, and
+  `GameplayTags` components attached after that shell was recorded. A bare
+  pooled entity that gained effects or tags during its life is dormant
+  without those components, matching the shell `readPools` rebuilds.
+  `createAbilitySystem` registers the hook. Attribute values and the
+  equipped ability set stay on a shell component; `onSpawn` must rewrite
+  tags and attributes the next life needs. The hook also runs on the
+  factory's initial dormant pass, so constructor-seeded tags and pending
+  effects do not survive until `onSpawn`.
 - Fixed-point fields on a restored `providedTarget` are recognized by
   shape (`base` and `precision` bigints), not by `instanceof FixedPoint`,
   then reconstructed as a local `FixedPoint` so arithmetic methods exist.

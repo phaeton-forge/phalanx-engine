@@ -1,8 +1,8 @@
-export { AbilityActivationSystem } from './AbilityActivationSystem';
-export { AbilityHookExecutorSystem } from './AbilityHookExecutorSystem';
-export { AttributeAggregationSystem } from './AttributeAggregationSystem';
-export { CueBufferCleanupSystem } from './CueBufferCleanupSystem';
-export { CueDispatchSystem } from './CueDispatchSystem';
-export { CuePresentationSystem } from './CuePresentationSystem';
-export { EffectApplicationSystem } from './EffectApplicationSystem';
-export { EffectTickSystem } from './EffectTickSystem';
+export { AbilityActivationSystem } from './AbilityActivationSystem.js';
+export { AbilityHookExecutorSystem } from './AbilityHookExecutorSystem.js';
+export { AttributeAggregationSystem } from './AttributeAggregationSystem.js';
+export { CueBufferCleanupSystem } from './CueBufferCleanupSystem.js';
+export { CueDispatchSystem } from './CueDispatchSystem.js';
+export { CuePresentationSystem } from './CuePresentationSystem.js';
+export { EffectApplicationSystem } from './EffectApplicationSystem.js';
+export { EffectTickSystem } from './EffectTickSystem.js';

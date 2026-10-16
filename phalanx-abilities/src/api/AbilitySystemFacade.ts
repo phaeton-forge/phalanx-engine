@@ -7,16 +7,23 @@ import {
   getActiveEffectsComponent,
   getAttributesComponent,
   getGameplayTagsComponent,
-} from '../components';
-import type { AbilitySystemRegistries } from '../registry';
-import type { AbilitySystemRuntime, GameplayCueBufferView } from '../runtime';
-import type { AbilityHook, AttributeValue, ProvidedTarget } from '../types';
+} from '../components/index.js';
+import type { AbilitySystemRegistries } from '../registry/index.js';
+import type {
+  AbilitySystemRuntime,
+  GameplayCueBufferView,
+} from '../runtime/index.js';
+import type {
+  AbilityHook,
+  AttributeValue,
+  ProvidedTarget,
+} from '../types/index.js';
 
 // Re-exported for backward compatibility: `AttributeValue` used to be declared
 // in this module. The canonical declaration now lives in `types/AttributeValue.ts`
 // (needed there so `MagnitudeCalcContext` / `AbilityStateReader` can reference it
 // without an api → types → api import cycle).
-export type { AttributeValue } from '../types';
+export type { AttributeValue } from '../types/index.js';
 
 /**
  * Sentinel `sourceEntityId` written by {@link AbilitySystemFacade.applyEffect}
@@ -96,7 +103,10 @@ export class AbilitySystemFacade {
    * (e.g. `IncomingDamageMultiplier === 1`) when the target has no abilities
    * setup.
    */
-  public tryGetAttribute(entityId: number, attrId: string): AttributeValue | undefined {
+  public tryGetAttribute(
+    entityId: number,
+    attrId: string
+  ): AttributeValue | undefined {
     const entity = this.entityManager.getEntity(entityId);
     if (!entity) {
       return undefined;
@@ -376,7 +386,6 @@ export class AbilitySystemFacade {
     }
     return true;
   }
-
 
   // -----------------------------------------------------------------------
   // Internal helpers

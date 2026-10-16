@@ -15,7 +15,7 @@
     "build": "tsc -p tsconfig.build.json",
     "dev": "tsc -p tsconfig.build.json --watch",
     "clean": "rimraf dist",
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run --passWithNoTests && node --input-type=module -e \"await import('./dist/index.js')\"",
     "test:watch": "vitest",
     "prepublishOnly": "npm run build"
   },

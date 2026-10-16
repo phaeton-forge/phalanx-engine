@@ -15,7 +15,7 @@
     "build": "tsc",
     "clean": "rm -rf dist",
     "rebuild": "npm run clean && npm run build",
-    "test": "vitest run",
+    "test": "vitest run && node --input-type=module -e \"await import('./dist/index.js')\"",
     "prepublishOnly": "npm run build"
   },
   "peerDependencies": {

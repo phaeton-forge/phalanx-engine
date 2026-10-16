@@ -10,13 +10,20 @@ import type { EntityTypeConfig, PoolStats } from './types.js';
  *
  * Orchestrates the full spawn/despawn lifecycle:
  *   spawn:   acquire → component onSpawn() → entity.onSpawn(args) → entityManager.addEntity()
- *   despawn: entityManager.removeEntity() → entity.onDespawn() → component onDespawn() → release
+ *   despawn: entityManager.removeEntity() → entity.onDespawn() → component onDespawn()
+ *            → return-to-pool hooks → release
  */
 export class PoolManager {
   private readonly pools: Map<string, EntityPool<Entity>> = new Map();
   private readonly initialSizes: Map<string, number> = new Map();
   /** Raw factories, without the dormant-hook wrapper passed to each pool. */
   private readonly rawFactories: Map<string, () => Entity> = new Map();
+  /**
+   * Runs after entity and component despawn hooks, in registration order.
+   * `createAbilitySystem` installs the GAS reset here. Hooks must be
+   * idempotent: the factory, `despawn`, and snapshot restore all call them.
+   */
+  private readonly returnToPoolHooks: Array<(entity: Entity) => void> = [];
 
   constructor(private readonly entityManager: EntityManager) {}
 
@@ -71,7 +78,28 @@ export class PoolManager {
     return entity;
   }
 
-  /** entityManager.removeEntity() → entity.onDespawn() → component onDespawn() hooks → release. */
+  /**
+   * Register a hook that runs when an entity returns to the pool.
+   *
+   * Called after `onDespawn` hooks and before `release`, including the
+   * factory's initial dormant transition. A later registration is appended.
+   * The hook must be idempotent and must not allocate.
+   */
+  public addReturnToPoolHook(hook: (entity: Entity) => void): void {
+    this.returnToPoolHooks.push(hook);
+  }
+
+  /**
+   * Entity and component despawn hooks, then return-to-pool hooks.
+   *
+   * Does not change pool membership. Restore uses this to park a free-list
+   * entity that was just constructed.
+   */
+  public runDormantHooks(entity: Entity): void {
+    this.runDespawnHooks(entity);
+  }
+
+  /** entityManager.removeEntity() → onDespawn hooks → return-to-pool hooks → release. */
   despawn(entity: Entity): void {
     const typeKey = entity._poolTypeKey;
     if (!typeKey) {
@@ -240,11 +268,15 @@ export class PoolManager {
     return pool;
   }
 
-  /** Entity game-teardown first, mechanical component cleanup last (inverse of spawn). */
+  /** Entity game-teardown first, mechanical component cleanup, then pool hooks. */
   private runDespawnHooks(entity: Entity): void {
     (entity as Entity & IPoolableEntity<unknown>).onDespawn();
     for (const component of entity.getComponents().values()) {
       if (isPoolableComponent(component)) component.onDespawn();
+    }
+    for (let index = 0; index < this.returnToPoolHooks.length; index += 1) {
+      const hook = this.returnToPoolHooks[index];
+      if (hook !== undefined) hook(entity);
     }
   }
 }

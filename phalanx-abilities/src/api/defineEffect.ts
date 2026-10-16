@@ -1,4 +1,4 @@
-import type { EffectCueSpec, EffectDef, Modifier } from '../types';
+import type { EffectCueSpec, EffectDef, Modifier } from '../types/index.js';
 
 export type EffectDefInput = Omit<EffectDef, 'modifiers'> & {
   modifiers?: Modifier[];

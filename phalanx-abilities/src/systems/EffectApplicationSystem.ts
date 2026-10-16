@@ -8,19 +8,19 @@ import {
   getActiveEffectsComponent,
   getAttributesComponent,
   getGameplayTagsComponent,
-} from '../components';
-import type { PendingEffectAdd } from '../components';
-import type { AbilitySystemFacade } from '../api/AbilitySystemFacade';
-import type { AbilitySystemRegistries } from '../registry';
-import { appendGameplayCueEvents } from '../runtime';
-import type { AbilitySystemRuntime } from '../runtime';
+} from '../components/index.js';
+import type { PendingEffectAdd } from '../components/index.js';
+import type { AbilitySystemFacade } from '../api/AbilitySystemFacade.js';
+import type { AbilitySystemRegistries } from '../registry/index.js';
+import { appendGameplayCueEvents } from '../runtime/index.js';
+import type { AbilitySystemRuntime } from '../runtime/index.js';
 import type {
   ActiveEffectInstance,
   EffectDef,
   MagnitudeCalcContext,
   Modifier,
   ModifierOp,
-} from '../types';
+} from '../types/index.js';
 
 /**
  * Drains `ActiveEffectsComponent.pendingAdd` per entity and applies each

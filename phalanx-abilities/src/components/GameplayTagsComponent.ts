@@ -1,5 +1,5 @@
 import type { IComponent } from '@phalanx-engine/ecs';
-import { AbilitiesComponentType } from './AbilitiesComponentType';
+import { AbilitiesComponentType } from './AbilitiesComponentType.js';
 
 /**
  * Hierarchical gameplay tags attached to an entity.

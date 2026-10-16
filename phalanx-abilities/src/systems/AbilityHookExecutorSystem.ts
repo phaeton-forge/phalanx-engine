@@ -1,7 +1,7 @@
 import { GameSystem } from '@phalanx-engine/ecs';
-import type { AbilitySystemRegistries } from '../registry';
-import type { AbilitySystemRuntime } from '../runtime';
-import type { AbilityActivationContext } from '../types';
+import type { AbilitySystemRegistries } from '../registry/index.js';
+import type { AbilitySystemRuntime } from '../runtime/index.js';
+import type { AbilityActivationContext } from '../types/index.js';
 
 /**
  * Runs activation hooks for abilities that resolved earlier in the current
@@ -63,7 +63,9 @@ export class AbilityHookExecutorSystem extends GameSystem {
       }
       const hook = this.registries.hooks.tryGet(resolved.hookId);
       if (!hook) {
-        throw new Error(`AbilityHooksRegistry does not contain '${resolved.hookId}'`);
+        throw new Error(
+          `AbilityHooksRegistry does not contain '${resolved.hookId}'`
+        );
       }
       const ctx: AbilityActivationContext = {
         abilityId: resolved.abilityId,

@@ -173,6 +173,9 @@ importers:
 
   phalanx-runtime:
     dependencies:
+      '@phalanx-engine/abilities':
+        specifier: workspace:*
+        version: link:../phalanx-abilities
       '@phalanx-engine/ecs':
         specifier: workspace:*
         version: link:../phalanx-ecs

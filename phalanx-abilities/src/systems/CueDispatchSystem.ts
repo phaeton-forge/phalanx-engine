@@ -1,6 +1,6 @@
 import { GameSystem } from '@phalanx-engine/ecs';
-import { GAMEPLAY_CUE_EVENT, gameplayCueKey } from '../events';
-import type { AbilitySystemRuntime } from '../runtime';
+import { GAMEPLAY_CUE_EVENT, gameplayCueKey } from '../events/index.js';
+import type { AbilitySystemRuntime } from '../runtime/index.js';
 
 /**
  * Mirrors deterministic gameplay cue events from the runtime buffer to the

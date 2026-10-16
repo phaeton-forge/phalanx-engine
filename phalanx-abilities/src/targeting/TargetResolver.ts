@@ -1,4 +1,8 @@
-import type { ProvidedTarget, TargetOrigin, TargetSpec } from '../types';
+import type {
+  ProvidedTarget,
+  TargetOrigin,
+  TargetSpec,
+} from '../types/index.js';
 
 /**
  * Input to {@link TargetResolver.resolve}. Keeps the resolver self-contained
@@ -38,8 +42,7 @@ export interface TargetResolutionInput {
  *     value".
  */
 export type TargetResolutionResult =
-  | { dropped: false; targets: number[] }
-  | { dropped: true };
+  { dropped: false; targets: number[] } | { dropped: true };
 
 /**
  * Pure resolver for {@link TargetSpec}. Owns the entire mapping from a
@@ -101,7 +104,11 @@ export class TargetResolver {
         // TargetEntity) carry the point inside the spec itself.
         if (spec.origin.kind === 'Caller') {
           const provided = input.providedTarget;
-          if (!provided || provided.x === undefined || provided.z === undefined) {
+          if (
+            !provided ||
+            provided.x === undefined ||
+            provided.z === undefined
+          ) {
             return TargetResolver.DROPPED;
           }
         }
@@ -151,4 +158,3 @@ export class TargetResolver {
 
   // ---------------------------------------------------------------------------
 }
-

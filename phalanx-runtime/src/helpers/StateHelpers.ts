@@ -1,5 +1,3 @@
-import type { GameWorld } from '@phalanx-engine/ecs';
-import type { StateReader, StateWriter } from '../state/StateIO.js';
 import {
   readSoAStore,
   readSoAStores,
@@ -15,7 +13,7 @@ import {
 } from './entities.js';
 import { readRandom, writeRandom } from './random.js';
 import { readBroadphase, rebuildPhysics, writeBroadphase } from './physics.js';
-import { notImplemented } from '../notImplemented.js';
+import { readAbilities, writeAbilities } from './abilities.js';
 
 /**
  * Optional engine helpers a game MAY call inside its own
@@ -23,13 +21,15 @@ import { notImplemented } from '../notImplemented.js';
  * calls them by itself.
  *
  * Restore order inside `GameState.restore` (normative):
- *  1. `spawnWithId` for dynamic entities that are not in a pool, then
- *     `readPools` (it constructs pooled entities itself, discarding
- *     prewarmed free entities first),
- *  2. overwrite row and component values (`readSoAStores`, `readAbilities`),
- *  3. `readEntityIds` sets the counter to the saved high-water mark,
- *  4. `readRandom` and game singletons, then `readBroadphase`.
- *     `rebuildPhysics` (from the saved transforms) is not the last step:
+ *  1. `spawnWithId` for dynamic entities that are not in a pool,
+ *  2. `readPools` (constructs pooled entities itself, discarding prewarmed
+ *     free entities first),
+ *  3. `readSoAStores`,
+ *  4. `readAbilities` (recreates lazy GAS components, then overwrites them),
+ *  5. `readEntityIds` sets the counter to the saved high-water mark,
+ *  6. `readRandom` and game singletons,
+ *  7. `readBroadphase`.
+ *     `rebuildPhysics` (from the saved transforms) is not that last step:
  *     after a collision the live grid still holds the pre-separation
  *     centers.
  * `save` writes the same sections in the same order.
@@ -54,12 +54,6 @@ export const StateHelpers = {
   writeBroadphase,
   readBroadphase,
   rebuildPhysics,
-  /** GAS state. Implemented in Task 5. */
-  writeAbilities(_w: StateWriter, _world: GameWorld): void {
-    notImplemented('StateHelpers.writeAbilities', 5);
-  },
-  /** GAS state. Implemented in Task 5. */
-  readAbilities(_r: StateReader, _world: GameWorld): void {
-    notImplemented('StateHelpers.readAbilities', 5);
-  },
+  writeAbilities,
+  readAbilities,
 } as const;

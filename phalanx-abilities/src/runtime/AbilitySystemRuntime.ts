@@ -1,7 +1,7 @@
-import type { ProvidedTarget } from '../types';
-import { createGameplayCueBuffer } from './GameplayCueBuffer';
-import type { GameplayCueBuffer } from './GameplayCueBuffer';
-import { InstanceIdCounter } from './InstanceIdCounter';
+import type { ProvidedTarget } from '../types/index.js';
+import { createGameplayCueBuffer } from './GameplayCueBuffer.js';
+import type { GameplayCueBuffer } from './GameplayCueBuffer.js';
+import { InstanceIdCounter } from './InstanceIdCounter.js';
 
 /**
  * In-tick handoff between {@link AbilityActivationSystem} and

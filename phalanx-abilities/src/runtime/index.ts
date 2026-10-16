@@ -1,16 +1,16 @@
-export { InstanceIdCounter } from './InstanceIdCounter';
-export { createAbilitySystemRuntime } from './AbilitySystemRuntime';
+export { InstanceIdCounter } from './InstanceIdCounter.js';
+export { createAbilitySystemRuntime } from './AbilitySystemRuntime.js';
 export {
   appendGameplayCueEvents,
   createGameplayCueBuffer,
-} from './GameplayCueBuffer';
+} from './GameplayCueBuffer.js';
 export type {
   AbilityActivationRequest,
   AbilitySystemRuntime,
   ResolvedAbilityActivationRecord,
-} from './AbilitySystemRuntime';
-export type { AbilityRuntimeState } from './AbilityRuntimeState';
+} from './AbilitySystemRuntime.js';
+export type { AbilityRuntimeState } from './AbilityRuntimeState.js';
 export type {
   GameplayCueBuffer,
   GameplayCueBufferView,
-} from './GameplayCueBuffer';
+} from './GameplayCueBuffer.js';

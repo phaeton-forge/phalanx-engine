@@ -1,5 +1,5 @@
-import type { CuePhase } from './CueEvent';
-import type { Modifier } from './ModifierOp';
+import type { CuePhase } from './CueEvent.js';
+import type { Modifier } from './ModifierOp.js';
 
 export type EffectType = 'Instant' | 'Duration' | 'Periodic';
 

@@ -1,5 +1,5 @@
 import type { IComponent } from '@phalanx-engine/ecs';
-import { AbilitiesComponentType } from './AbilitiesComponentType';
+import { AbilitiesComponentType } from './AbilitiesComponentType.js';
 
 export class AttributesComponent implements IComponent {
   public readonly type = AbilitiesComponentType.Attributes;

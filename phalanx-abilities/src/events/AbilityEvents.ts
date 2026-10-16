@@ -1,4 +1,4 @@
-import type { ProvidedTarget } from '../types';
+import type { ProvidedTarget } from '../types/index.js';
 
 /**
  * Emitted on the world `EventBus` by {@link AbilityActivationSystem} after an

@@ -155,14 +155,9 @@ describe('canonical state bytes', () => {
 });
 
 describe('skeletons name their implementing task', () => {
-  it('Task 05: ability helpers are still a skeleton', () => {
-    const w = {} as runtime.StateWriter;
-    const r = {} as runtime.StateReader;
-    const world = {} as Parameters<
-      typeof runtime.StateHelpers.rebuildPhysics
-    >[0];
-    expectTask(() => runtime.StateHelpers.writeAbilities(w, world), 5);
-    expectTask(() => runtime.StateHelpers.readAbilities(r, world), 5);
+  it('Task 05: ability helpers are implemented', () => {
+    expect(runtime.StateHelpers.writeAbilities.name).toBe('writeAbilities');
+    expect(runtime.StateHelpers.readAbilities.name).toBe('readAbilities');
   });
 
   it('Task 06: runner, log, bot host, scope, local transport', () => {

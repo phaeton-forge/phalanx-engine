@@ -1,6 +1,6 @@
 ---
 name: phalanx-runtime
-description: Describe a Phalanx game as one GameDefinition and run it with MatchRunner from @phalanx-engine/runtime (engine 0.3). Use when defining games with defineGame, implementing the GameState save/restore contract, writing BotPolicy bots, choosing simMode 'client' vs 'server', snapshots, replays, reconnect, or Transport/LocalTransport. Canonical state bytes and StateHelpers (except GAS) are implemented; later tasks are still a skeleton.
+description: Describe a Phalanx game as one GameDefinition and run it with MatchRunner from @phalanx-engine/runtime (engine 0.3). Use when defining games with defineGame, implementing the GameState save/restore contract, writing BotPolicy bots, choosing simMode 'client' vs 'server', snapshots, replays, reconnect, or Transport/LocalTransport. Canonical state bytes and StateHelpers, including GAS, are implemented; later tasks are still a skeleton.
 metadata:
   author: phaeton2040-AI
   version: '0.1'
@@ -8,10 +8,10 @@ metadata:
 
 # Phalanx Runtime Skill
 
-> **Status: Tasks 1–4 implemented; later tasks are still a skeleton.**
+> **Status: Tasks 1–5 implemented; later tasks are still a skeleton.**
 > Task 3 is engine hooks (ecs id counter, SoA context, pools, math RNG
 > state, ability runtime export, broadphase centers). Task 4 is
-> `StateHelpers` except `writeAbilities` / `readAbilities` (Task 5).
+> `StateHelpers` except GAS. Task 5 is `writeAbilities` / `readAbilities`.
 > `BinaryStateWriter` / `BinaryStateReader`, `encodeSnapshot` /
 > `decodeSnapshot`, `digestBytes`, `canonicalConfigBytes`, `configHash` and
 > `checkSnapshotCompatibility` are live. Later members throw
@@ -62,7 +62,7 @@ ctx.tickFrameProvider, random: ctx.random, ... })` and calls
 
 Call these inside the game's own `GameState`, in this order on restore:
 `spawnWithId` for non-pooled entities, `readPools`, `readSoAStores`,
-`readEntityIds`, `readRandom`, `readBroadphase`.
+`readAbilities`, `readEntityIds`, `readRandom`, `readBroadphase`.
 
 - SoA: `section(<schema name>, 1)` and rows in ascending entity id.
   `defineSoASchema` must be given an explicit unique name. `f32` / `f64`
@@ -82,6 +82,30 @@ Call these inside the game's own `GameState`, in this order on restore:
   instance; keep the hook idempotent.
 - RNG: four int32 words from `getState` / `setState`. An `IRandom` without
   `getState` throws. Do not use `getGenerator`.
+- GAS: `section('gas', 1)`. Per-world runtime via `exportRuntimeState` /
+  `importRuntimeState` (instance id counter, activation requests,
+  `currentTick`, resolved activations). The cue buffer is omitted.
+  Registered entities that have a GAS component are written ascending by
+  id, with a flag for which components exist so lazy ones are created on
+  read. Free-list entities are omitted. `createAbilitySystem` clears
+  effect queue, pending adds, tags, ad-hoc tags, and grants on the factory
+  shell when an entity returns to the pool, removes GAS components
+  attached after that shell, and `readPools` runs that hook again.
+  Attribute values and the equipped ability set stay on a shell
+  component; `onSpawn` must rewrite them. Effect queue and `pendingAdd`
+  stay in array order. `readAbilities` clears each destination array and
+  pushes entries one at a time so a large list keeps array identity and
+  does not hit the JavaScript argument limit.
+  Ability sets, tags, ad-hoc tags and grant counts stay in insertion
+  order. `setByCaller` keys are sorted; values are a safe integer, bigint,
+  string, boolean, or FixedPoint. Anything else throws. Fixed-point
+  `base` and `precision` are both `i64`, matching broadphase centers.
+  `readAbilities` parses the section before it mutates. An unknown ability
+  id or effect def id throws with the entity id. The instance-id counter
+  must be `>=` every queued effect instance id (pending adds have none).
+  `dirty` is stored. There is no `stacks` field and no cooldown component.
+  Continuation tests compare `digestBytes` of the helper bytes, not
+  `StateHasher`.
 - Broadphase: `getCenters()` for the `PhysicsWorld` on `context.physics`,
   plus a registered `PhysicsSystem` or `CollisionSystem` when that system
   has a different grid (`physicsSystem` / `collisionSystem`). Each center

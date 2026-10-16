@@ -1,8 +1,8 @@
 /**
  * @phalanx-engine/runtime — isomorphic match runtime (no DOM, no sockets).
  *
- * Status: Tasks 1–4 are implemented (contracts, canonical state bytes,
- * snapshot header, digest, version policy, and `StateHelpers` except GAS).
+ * Status: Tasks 1–5 are implemented (contracts, canonical state bytes,
+ * snapshot header, digest, version policy, and `StateHelpers` including GAS).
  * Later tasks still throw `NotImplementedError` naming the task that
  * implements them. Design: docs/design/runtime-api.md.
  *

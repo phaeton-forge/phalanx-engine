@@ -1,5 +1,5 @@
-import type { AttributeDef } from '../types';
-import { DefinitionRegistry } from './DefinitionRegistry';
+import type { AttributeDef } from '../types/index.js';
+import { DefinitionRegistry } from './DefinitionRegistry.js';
 
 export class AttributeRegistry extends DefinitionRegistry<AttributeDef> {
   protected readonly registryName = 'AttributeRegistry';

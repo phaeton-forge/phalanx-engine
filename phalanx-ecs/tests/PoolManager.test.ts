@@ -290,4 +290,26 @@ describe('PoolManager', () => {
     expect(a._poolTypeKey).toBe('alpha');
     expect(b._poolTypeKey).toBe('beta');
   });
+
+  it('runs return-to-pool hooks on despawn and on runDormantHooks', () => {
+    const seen: number[] = [];
+    manager.registerEntityType('test', {
+      factory: () => new TestPoolableEntity(),
+    });
+    manager.addReturnToPoolHook((entity) => {
+      seen.push(entity.id);
+    });
+
+    const entity = manager.spawn<TestPoolableEntity>('test', { hp: 1 });
+    expect(seen).toEqual([entity.id]);
+
+    manager.despawn(entity);
+    expect(seen).toEqual([entity.id, entity.id]);
+
+    manager.despawn(entity);
+    expect(seen).toEqual([entity.id, entity.id]);
+
+    manager.runDormantHooks(entity);
+    expect(seen).toEqual([entity.id, entity.id, entity.id]);
+  });
 });
