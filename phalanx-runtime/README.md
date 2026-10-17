@@ -134,7 +134,8 @@ snapshot intervals, …), `botPlayerId` / `isBotPlayerId`, `rejectCommand` /
 `BinaryStateReader` (`list` keeps order, `sortedBy` sorts unique integer
 keys), `encodeSnapshot` / `decodeSnapshot` (header, body, and optional bot
 state and input checkpoint outside the digest), `digestBytes` (xxhash64,
-seed 0), `canonicalConfigBytes` / `configHash`,
+seed 0), `initDigest`, `onDigestFallback`, `canonicalConfigBytes` /
+`configHash`,
 `checkSnapshotCompatibility`, `defineComponent`, `bindWorldSingletons`,
 and the offline runner: `MatchRunner`, `ReplayPlayer`, `runLocalMatch`,
 `CommandLog`, `BotHost` and `LocalTransport` (timer or
@@ -198,8 +199,22 @@ round-trips every finite JSON number. `canonicalConfigBytes` still
 accepts only safe integers. `toReplay()` throws when the command log
 is incomplete: a restore onto a runner that did not record ticks `0..N`,
 or a log truncation. The replay format has no base snapshot.
-`checkOutcome` and the digest are published after the tick has completed
-and after hosted `decide`. A transport without `requestPause` /
+`checkOutcome` is published after the tick has completed and after
+hosted `decide`. A periodic hash captures the world body on the tick and
+hashes it off the tick, on the same scheduler as snapshot encode.
+`onDigest(tick, digest)` carries the tick the body belongs to.
+`runner.flush()` finishes those digests synchronously.
+`await runner.whenIdle()` waits for them. `LocalTransport.stepped()`
+does not flush after `step`. Snapshot encoding stays on the journal
+scheduler (`whenPersisted` / `dispose`). The replay final digest stays
+synchronous. A client `state-hash` and `GameRoom.receiveStateHash` store
+the hash under its tick and compare once every connected player has
+submitted that tick, so a digest one or two frames late still matches.
+`initDigest()` compiles the embedded XXH64 module (handwritten `.wat`,
+623 bytes, synchronous under the 4 KB browser limit). `start`,
+`runLocalMatch`, and `ReplayPlayer.from` call it. Until it has run, or
+when `WebAssembly` is unavailable, `digestBytes` uses the BigInt
+reference and `onDigestFallback` fires once. A transport without `requestPause` /
 `requestResume` cannot pause the world. Catch-up drops buffered
 batches covered by the replayed range and then runs the rest in order.
 An already-started runner flushes its checkpoint after `restore`.
@@ -224,11 +239,12 @@ not resume. On a snapshot tick the runner seals `world` save bytes, the
 bot section and the input checkpoint (`systemSeq` and every slot's
 controller mode). The body buffer is the one `BinaryStateWriter.finish()`
 already returned; it is not copied again. When that tick is also a hash
-tick, the runner saves the world once and passes that buffer to both
-`digestBytes` and the journal. `encodeSnapshot` and the store write run
-off the tick: `setImmediate` in Node, `requestIdleCallback` in browsers,
-otherwise `MessageChannel` or `setTimeout(0)`. A microtask is not used
-for the digest. Writes batch every 5 seconds and on
+tick, the runner saves the world once and passes that buffer to the
+journal and to the deferred digest. `encodeSnapshot`, the store write,
+and the periodic `digestBytes` run off the tick: `setImmediate` in Node,
+`requestIdleCallback` in browsers, otherwise `MessageChannel` or
+`setTimeout(0)`. A microtask is not used. `flush` does not commit the
+store. Writes batch every 5 seconds and on
 `visibilitychange: hidden` / `pagehide`. Hiding pauses only after
 `start`; a hide during resume catch-up does not skip systems. Only the
 last two snapshots are kept. A fresh match that reuses a stored id

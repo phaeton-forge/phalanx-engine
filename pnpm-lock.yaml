@@ -235,12 +235,18 @@ importers:
       fake-indexeddb:
         specifier: ^6.2.2
         version: 6.2.6
+      tsx:
+        specifier: ^4.23.15
+        version: 4.23.15
       typescript:
         specifier: ~5.9.3
         version: 5.9.3
       vitest:
         specifier: ^1.0.0
         version: 1.6.1(@types/node@20.19.43)(happy-dom@20.10.6)(lightningcss@1.32.0)
+      wabt:
+        specifier: ^1.0.39
+        version: 1.0.39
 
   phalanx-server:
     dependencies:
@@ -2140,6 +2146,11 @@ packages:
     engines: {node: '>=18.0.0'}
     hasBin: true
 
+  tsx@4.23.15:
+    resolution: {integrity: sha512-Yiex1Ovn8z2xPpOWckIiysV1SSyRMY9BkLF++q0yKiDxCqRhosKfMg3janKkiLBwZ5c/YryloKwGZcrEmtwxKw==}
+    engines: {node: '>=18.0.0'}
+    hasBin: true
+
   type-check@0.4.0:
     resolution: {integrity: sha512-XleUoc9uwGXqjWwXaUTZAmzMcFZ5858QA2vvx1Ur5xIcixXIP+8LnFDgRplU30us6teqdlskFfu+ae4K79Ooew==}
     engines: {node: '>= 0.8.0'}
@@ -2279,6 +2290,10 @@ packages:
         optional: true
       jsdom:
         optional: true
+
+  wabt@1.0.39:
+    resolution: {integrity: sha512-ba+dRL/75VQQY7RkU/CgriGbkoWAfS8TDyUlJfJhJ8KhtXgMl5dhNvoPNUcQ9IWRhW8u41glMSuZeTvsYq2rRg==}
+    hasBin: true
 
   whatwg-mimetype@3.0.0:
     resolution: {integrity: sha512-nt+N2dzIutVRxARx1nghPKGv1xHikU7HKdfafKkLNLindmPU/ch3U31NOCGGA/dmPcmb1VlofO0vnKAcsm0o/Q==}
@@ -4206,6 +4221,12 @@ snapshots:
     optionalDependencies:
       fsevents: 2.3.3
 
+  tsx@4.23.15:
+    dependencies:
+      esbuild: 0.28.1
+    optionalDependencies:
+      fsevents: 2.3.3
+
   type-check@0.4.0:
     dependencies:
       prelude-ls: 1.2.1
@@ -4315,6 +4336,8 @@ snapshots:
       - sugarss
       - supports-color
       - terser
+
+  wabt@1.0.39: {}
 
   whatwg-mimetype@3.0.0: {}
 

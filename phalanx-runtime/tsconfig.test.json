@@ -1,13 +1,13 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "rootDir": ".",
+    "rootDir": "..",
     "noEmit": true,
     "baseUrl": ".",
     "paths": {
       "@phalanx-engine/engine": ["../phalanx-engine/dist/index.d.ts"]
     }
   },
-  "include": ["src/**/*", "tests/**/*"],
+  "include": ["src/**/*", "tests/**/*", "bench/**/*"],
   "exclude": ["node_modules", "dist"]
 }

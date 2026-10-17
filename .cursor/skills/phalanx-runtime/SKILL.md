@@ -19,6 +19,7 @@ metadata:
 > `world.save` / `world.restore`, and the `advanced` subpath.
 > `BinaryStateWriter` /
 > `BinaryStateReader`, `encodeSnapshot` / `decodeSnapshot`, `digestBytes`,
+> `initDigest`, `onDigestFallback`,
 > `canonicalConfigBytes`, `configHash` and `checkSnapshotCompatibility` are
 > live. Later members throw `NotImplementedError` with
 > `not implemented: <member> (Task NN)`. Check `docs/design/runtime-api.md`
@@ -190,8 +191,19 @@ numbers) so a restored log matches the live log. `canonicalConfigBytes`
 still accepts only safe integers. `toReplay()` throws when the command
 log is incomplete (restore onto a runner that did not record that
 history, or truncation). Do not add a base snapshot to the replay.
-`outcome` and digests publish after the completed tick and after hosted
-`decide`. Pause requires `requestPause` / `requestResume` on the
+`outcome` publishes after the completed tick and after hosted
+`decide`. A periodic hash captures the body on the tick and calls
+`digestBytes` off the tick. `onDigest(tick, digest)` names that tick.
+`runner.flush()` finishes pending digests synchronously;
+`await runner.whenIdle()` waits. `LocalTransport.stepped()` does not
+flush. Snapshot encode stays on the journal scheduler. The replay final
+digest stays synchronous. Server and relay hash checks key by tick
+(`receiveStateHash` waits for every connected player), so a digest one
+or two frames late still compares. `initDigest()` compiles the embedded
+XXH64 module (own `.wat`, 623 bytes). `start`, `runLocalMatch`, and
+`ReplayPlayer.from` call it. Before that, `digestBytes` uses BigInt and
+`onDigestFallback` fires once. Pause requires `requestPause` /
+`requestResume` on the
 transport. Catch-up applies buffered batches that land after
 `throughTick`, in order, and drops the ones the replay already covered.
 An already-started `restore` flushes the checkpoint after the transport
@@ -223,9 +235,13 @@ Little-endian, lengths and counts as unsigned LEB128, no `f32` / `f64`.
 `list` writes the given order (effect queues, pool free lists). `sortedBy`
 sorts by a unique integer key and throws on duplicates or non-integers.
 `section` is `str(key)`, `varint(version)`, `varint(byteLength)`, body, and
-the reader must consume the body exactly. `str` rejects unpaired UTF-16
-surrogates, so a lone surrogate cannot share bytes with U+FFFD. That covers
-canonical config keys and values. The reader keeps a leading U+FEFF.
+the reader must consume the body exactly. The writer reserves the length,
+writes the body in place, then stores a canonical varint and shifts the
+body left. A throw inside the body restores `length`. `str` caches UTF-8
+for at most 4096 distinct strings and checks well-formed UTF-16 once, on
+a miss. It rejects unpaired surrogates, so a lone surrogate cannot share
+bytes with U+FFFD. That covers canonical config keys and values. The
+reader keeps a leading U+FEFF.
 
 `encodeSnapshot` wraps the body in a `PHXS` header. `engineFormat`,
 `formatVersion` and `tick` are varints. `digestBytes` is xxhash64 (seed 0,
@@ -296,10 +312,11 @@ const transport = new LocalTransport({
 The tick path seals the world body, the bot section and the input
 checkpoint, and passes the body buffer through without copying it again.
 A tick that is both a hash tick and a snapshot tick saves the world once
-and passes that buffer to `digestBytes` and the journal.
-`encodeSnapshot` and the IndexedDB write run off the tick (`setImmediate`
-in Node, `requestIdleCallback` in browsers, otherwise `MessageChannel` or
-`setTimeout(0)` — not a microtask). Flushes batch every 5s and on hide /
+and passes that buffer to the journal and to the deferred digest.
+`encodeSnapshot`, the IndexedDB write, and the periodic hash run off the
+tick (`setImmediate` in Node, `requestIdleCallback` in browsers, otherwise
+`MessageChannel` or `setTimeout(0)` — not a microtask). `runner.flush()`
+does not commit the store. Flushes batch every 5s and on hide /
 `pagehide`. The store keeps the last two snapshots. The cursor includes
 empty ticks.
 

@@ -1,5 +1,6 @@
 import type { Unsubscribe } from '@phalanx-engine/ecs';
 import type { AnyGameDefinition, ConfigOf } from '../game/GameDefinition.js';
+import { initDigest } from '../state/digest.js';
 import type { Digest } from '../state/snapshot.js';
 import type { LogEntry } from './CommandLog.js';
 import { MatchRunner, type RunnerOptions } from './MatchRunner.js';
@@ -21,6 +22,7 @@ export class ReplayPlayer<G extends AnyGameDefinition> {
     replay: ReplayRecord<ConfigOf<GDef>>,
     options?: RunnerOptions
   ): ReplayPlayer<GDef> {
+    void initDigest();
     return new ReplayPlayer(
       MatchRunner.openReplay(definition, replay, options),
       replay

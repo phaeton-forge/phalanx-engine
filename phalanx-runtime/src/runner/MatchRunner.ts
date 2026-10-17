@@ -48,6 +48,8 @@ import {
   type SealedSnapshot,
 } from '../persistence/MatchJournal.js';
 import type { MatchStore } from '../persistence/MatchStore.js';
+import { scheduleOffTick } from '../persistence/scheduleOffTick.js';
+import { initDigest } from '../state/digest.js';
 import { BinaryStateReader, BinaryStateWriter } from '../state/BinaryState.js';
 import type { SaveHandler, StateMigration } from '../state/GameState.js';
 import {
@@ -224,8 +226,13 @@ export class MatchRunner<G extends AnyGameDefinition> {
   private persistDone: Promise<void> = Promise.resolve();
   private persistenceSyncMs = 0;
   private persistenceSnapshotted = false;
+  /** Reused across captures. `finish()` copies the immutable body out. */
+  private readonly captureWriter = new BinaryStateWriter(65_536);
   /** World body already saved for a tick that is both a hash and a snapshot. */
   private sharedSealBody: Uint8Array | null = null;
+  /** Periodic hashes captured in the tick and hashed off it, in tick order. */
+  private readonly pendingDigests: PendingDigest[] = [];
+  private digestIdle: Promise<void> = Promise.resolve();
   /** Host time spent on {@link sharedSealBody}. Added into the seal sample. */
   private sharedSealMs = 0;
   private readonly persistenceErrorListeners = new Emitter<[unknown]>();
@@ -483,6 +490,7 @@ export class MatchRunner<G extends AnyGameDefinition> {
     }
     if (this.started) return;
     this.assertServerBotsHavePeer();
+    void initDigest();
     this.started = true;
     this.flushUnsent();
     if (this.transport instanceof LocalTransport) this.transport.start();
@@ -497,6 +505,7 @@ export class MatchRunner<G extends AnyGameDefinition> {
     if (this.stopped) return;
     this.stopped = true;
     this.started = false;
+    this.dropPendingDigests();
     const journal = this.journal;
     if (journal !== null) {
       // Encode sealed bodies now. Page teardown must not wait for idle.
@@ -670,6 +679,21 @@ export class MatchRunner<G extends AnyGameDefinition> {
   public digest(): Digest {
     this.ensureLive();
     return this.scope.run(() => this.computeDigest());
+  }
+
+  /**
+   * Hash every captured body that is still waiting, in tick order, on
+   * this stack. `LocalTransport.stepped()` does not call this.
+   * Snapshot encoding stays on the journal's own off-tick turn.
+   */
+  public flush(): void {
+    const jobs = this.pendingDigests.slice();
+    for (const job of jobs) this.settleDigest(job);
+  }
+
+  /** Resolves when every periodic digest queued so far has been delivered. */
+  public whenIdle(): Promise<void> {
+    return this.digestIdle.then(() => undefined);
   }
 
   /**
@@ -926,14 +950,21 @@ export class MatchRunner<G extends AnyGameDefinition> {
     const hashDue = tick % this.hashEveryTicks === 0;
     const replayCheck =
       this.replayDigest !== undefined && tick === this.replayLastTick;
-    let digest: Digest | undefined;
+    let syncDigest: Digest | undefined;
+    let deferredBody: Uint8Array | undefined;
     if (hashDue || replayCheck) {
       const shared = this.captureSharedSnapshotBody(tick);
-      digest = shared === null ? this.computeDigest() : digestBytes(shared);
-      if (replayCheck && digest !== this.replayDigest) {
-        throw new Error(
-          `ReplayPlayer: final digest mismatch at tick ${String(tick)}`
-        );
+      const body = shared ?? this.captureBody();
+      // Replay's final check stays on the tick. A periodic hash does not.
+      if (replayCheck) {
+        syncDigest = digestBytes(body);
+        if (syncDigest !== this.replayDigest) {
+          throw new Error(
+            `ReplayPlayer: final digest mismatch at tick ${String(tick)}`
+          );
+        }
+      } else {
+        deferredBody = body;
       }
     }
     this.completedTick = tick;
@@ -946,9 +977,11 @@ export class MatchRunner<G extends AnyGameDefinition> {
       this.recordPersistence(tick, entries);
     }
     if (endedNow && outcome !== null) this.outcomeListeners.emit(outcome);
-    if (digest !== undefined && hashDue) {
-      this.digestListeners.emit(tick, digest);
-      this.transport.submitHash?.(tick, digest);
+    if (syncDigest !== undefined && hashDue) {
+      this.digestListeners.emit(tick, syncDigest);
+      this.transport.submitHash?.(tick, syncDigest);
+    } else if (deferredBody !== undefined) {
+      this.enqueueDigest(tick, deferredBody);
     }
     this.tickListeners.emit(tick);
     if (this.phase === 'ended') this.stop();
@@ -1490,9 +1523,7 @@ export class MatchRunner<G extends AnyGameDefinition> {
     if (shared !== null) {
       body = shared;
     } else {
-      const bodyWriter = new BinaryStateWriter();
-      this.requireGameState().save(bodyWriter);
-      body = bodyWriter.finish();
+      body = this.captureBody();
     }
     const botWriter = new BinaryStateWriter();
     this.botHost.save(botWriter);
@@ -1515,12 +1546,43 @@ export class MatchRunner<G extends AnyGameDefinition> {
   private captureSharedSnapshotBody(tick: number): Uint8Array | null {
     if (!this.persistenceSnapshotDue(tick)) return null;
     const started = readHostNow();
-    const writer = new BinaryStateWriter();
-    this.requireGameState().save(writer);
-    const body = writer.finish();
+    const body = this.captureBody();
     this.sharedSealBody = body;
     this.sharedSealMs = readHostNow() - started;
     return body;
+  }
+
+  /** Immutable world body. The writer buffer is kept for the next capture. */
+  private captureBody(): Uint8Array {
+    this.captureWriter.reset();
+    this.requireGameState().save(this.captureWriter);
+    return this.captureWriter.finish();
+  }
+
+  private enqueueDigest(tick: number, body: Uint8Array): void {
+    const job: PendingDigest = { tick, body, settled: false };
+    this.pendingDigests.push(job);
+    const scheduled = scheduleOffTick(() => {
+      this.settleDigest(job);
+    });
+    const idle = this.digestIdle;
+    this.digestIdle = idle.then(() => scheduled);
+  }
+
+  private settleDigest(job: PendingDigest): void {
+    if (job.settled) return;
+    job.settled = true;
+    const index = this.pendingDigests.indexOf(job);
+    if (index !== -1) this.pendingDigests.splice(index, 1);
+    if (this.stopped) return;
+    const digest = digestBytes(job.body);
+    this.digestListeners.emit(job.tick, digest);
+    this.transport.submitHash?.(job.tick, digest);
+  }
+
+  private dropPendingDigests(): void {
+    for (const job of this.pendingDigests) job.settled = true;
+    this.pendingDigests.length = 0;
   }
 
   private persistenceSnapshotDue(tick: number): boolean {
@@ -1789,6 +1851,12 @@ class RunnerProvider implements ITickFrameProvider {
   public fireResume(): void {
     for (const handler of this.resumeHandlers.slice()) handler();
   }
+}
+
+interface PendingDigest {
+  readonly tick: number;
+  readonly body: Uint8Array;
+  settled: boolean;
 }
 
 class Emitter<A extends unknown[]> {

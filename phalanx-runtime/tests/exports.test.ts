@@ -27,6 +27,8 @@ const VALUE_EXPORTS = [
   'encodeSnapshot',
   'decodeSnapshot',
   'digestBytes',
+  'initDigest',
+  'onDigestFallback',
   'canonicalConfigBytes',
   'configHash',
   'checkSnapshotCompatibility',

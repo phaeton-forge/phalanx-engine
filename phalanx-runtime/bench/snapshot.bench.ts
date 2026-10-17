@@ -1,0 +1,315 @@
+/**
+ * Sync snapshot and periodic-hash capture on a skirmish world.
+ *
+ *   pnpm --filter @phalanx-engine/runtime run bench
+ *
+ * Not part of test or build. Requires `node --expose-gc` (the script
+ * sets it) and a built `dist/`. Skirmish is imported from integration.
+ */
+import { performance, PerformanceObserver } from 'node:perf_hooks';
+import { cpus } from 'node:os';
+import { stdout } from 'node:process';
+import {
+  BinaryStateWriter,
+  ENGINE_SNAPSHOT_FORMAT,
+  LocalTransport,
+  MatchRunner,
+  digestBytes,
+  encodeSnapshot,
+  initDigest,
+} from '../dist/index.js';
+import {
+  encodeInputCheckpoint,
+  type PendingCommandBatch,
+  type SlotSequence,
+} from '../dist/runner/InputCheckpoint.js';
+import {
+  createSkirmishGame,
+  type SkirmishSession,
+} from '../../integration/src/facade/v65.js';
+
+const SIZES = [500, 1000] as const;
+const WARMUP = 60;
+const ITERATIONS = 200;
+const PRE_TICKS = 200;
+
+const gcEvents: number[] = [];
+const observer = new PerformanceObserver((list) => {
+  for (const entry of list.getEntries()) gcEvents.push(entry.duration);
+});
+observer.observe({ entryTypes: ['gc'] });
+
+/**
+ * `captureBody` and the snapshot seal are private. The bench times those
+ * same calls; this view is not public API.
+ */
+interface TickCapture {
+  readonly scope: { run<T>(body: () => T): T };
+  requireGameState(): { save(writer: BinaryStateWriter): void };
+  readonly botHost: { save(writer: BinaryStateWriter): void };
+  pendingBatches(): PendingCommandBatch[];
+  sequenceSnapshot(): SlotSequence[];
+  readonly systemSeq: number;
+  readonly configDigest: string;
+  readonly componentSchemaKey: string | null;
+}
+
+function asTickCapture(runner: object): TickCapture {
+  // Private seal fields. The bench times the same calls as the tick.
+  return runner as unknown as TickCapture;
+}
+
+function exposedGc(): (() => void) | undefined {
+  const host = globalThis as { gc?: () => void };
+  return typeof host.gc === 'function' ? host.gc : undefined;
+}
+
+function percentile(samples: readonly number[], p: number): number {
+  const sorted = [...samples].sort((a, b) => a - b);
+  const last = sorted.length - 1;
+  const index = Math.min(last, Math.floor((p / 100) * sorted.length));
+  return sorted[index] ?? 0;
+}
+
+function summarize(samples: readonly number[]): {
+  p50: number;
+  p99: number;
+  max: number;
+} {
+  return {
+    p50: percentile(samples, 50),
+    p99: percentile(samples, 99),
+    max: Math.max(...samples),
+  };
+}
+
+function session(): SkirmishSession {
+  return {
+    currentPeer: 'a',
+    spawnOnRestore: false,
+    suppressThrow: false,
+    throwBot: false,
+    poolProbe: false,
+    dirtyAfterRestore: false,
+    breakBotRestore: false,
+    corruptOnRestore: false,
+    injectTick: -1,
+    bots: {},
+    bound: {},
+    controls: [],
+  };
+}
+
+function open(size: number) {
+  const game = createSkirmishGame(session(), { armySize: size, slotCount: 2 });
+  const transport = LocalTransport.stepped();
+  const runner = new MatchRunner(
+    game,
+    {
+      matchId: 'bench',
+      gameId: 'skirmish',
+      simVersion: 'skirmish-1',
+      seed: 1234,
+      side: 'client',
+      inputDelayTicks: 1,
+      tickLimit: 1_000_000,
+      armySize: size,
+      slots: [
+        { slot: 0, team: 0, kind: 'human', playerId: 'local:0' },
+        {
+          slot: 1,
+          team: 1,
+          kind: 'bot',
+          policy: 'aggressive',
+          level: 1,
+          runsOn: 'local',
+        },
+      ],
+    },
+    transport,
+    { hashEveryTicks: 1_000_000, localSlots: [0] }
+  );
+  runner.start();
+  return { runner, transport, capture: asTickCapture(runner), game };
+}
+
+function hashBody(capture: TickCapture, writer: BinaryStateWriter): Uint8Array {
+  return capture.scope.run(() => {
+    writer.reset();
+    capture.requireGameState().save(writer);
+    return writer.finish();
+  });
+}
+
+function sealSnapshot(
+  capture: TickCapture,
+  writer: BinaryStateWriter
+): { body: Uint8Array; botState: Uint8Array; inputCheckpoint: Uint8Array } {
+  const body = hashBody(capture, writer);
+  const botWriter = new BinaryStateWriter();
+  capture.botHost.save(botWriter);
+  const inputCheckpoint = encodeInputCheckpoint({
+    pending: capture.pendingBatches(),
+    nextSeq: capture.sequenceSnapshot(),
+    systemSeq: capture.systemSeq,
+  });
+  return { body, botState: botWriter.finish(), inputCheckpoint };
+}
+
+function medianAlloc(sample: () => void): number | null {
+  const gc = exposedGc();
+  if (gc === undefined) return null;
+  const samples: number[] = [];
+  for (let round = 0; round < 15; round += 1) {
+    gc();
+    gcEvents.length = 0;
+    const before = process.memoryUsage().heapUsed;
+    sample();
+    const after = process.memoryUsage().heapUsed;
+    if (gcEvents.length === 0) samples.push(after - before);
+  }
+  if (samples.length === 0) return null;
+  return percentile(samples, 50);
+}
+
+function mb(bytes: number | null): string {
+  if (bytes === null) return 'n/a';
+  return (bytes / (1024 * 1024)).toFixed(3);
+}
+
+function ms(value: number): string {
+  return value.toFixed(3);
+}
+
+interface SizeResult {
+  readonly entities: number;
+  readonly bodyBytes: number;
+  readonly hashCapture: ReturnType<typeof summarize>;
+  readonly snapshotCapture: ReturnType<typeof summarize>;
+  readonly digest: ReturnType<typeof summarize>;
+  readonly encode: ReturnType<typeof summarize>;
+  readonly allocHashCapture: number | null;
+  readonly allocSnapshotCapture: number | null;
+  readonly allocSnapshotApi: number | null;
+  readonly gcCount: number;
+  readonly gcMaxMs: number;
+}
+
+function measure(size: number): SizeResult {
+  const { runner, transport, capture, game } = open(size);
+  for (let tick = 0; tick < PRE_TICKS; tick += 1) {
+    if (tick % 3 === 0) {
+      runner.submit({ type: 'cast', ability: 1, target: 1 });
+    }
+    transport.step(1);
+    runner.flush();
+  }
+  const writer = new BinaryStateWriter(65_536);
+  const hashCapture: number[] = [];
+  const snapshotCapture: number[] = [];
+  const digest: number[] = [];
+  const encode: number[] = [];
+  let bodyBytes = 0;
+
+  const once = (record: boolean): void => {
+    transport.step(1);
+    if (runner.tick % 3 === 0) {
+      runner.submit({ type: 'cast', ability: 1, target: 1 });
+    }
+    const hashStart = performance.now();
+    const body = hashBody(capture, writer);
+    const hashEnd = performance.now();
+    const botWriter = new BinaryStateWriter();
+    capture.botHost.save(botWriter);
+    const botState = botWriter.finish();
+    const inputCheckpoint = encodeInputCheckpoint({
+      pending: capture.pendingBatches(),
+      nextSeq: capture.sequenceSnapshot(),
+      systemSeq: capture.systemSeq,
+    });
+    const sealEnd = performance.now();
+    const digestStart = performance.now();
+    digestBytes(body);
+    const digestEnd = performance.now();
+    const encodeStart = performance.now();
+    encodeSnapshot(
+      {
+        engineFormat: ENGINE_SNAPSHOT_FORMAT,
+        gameId: game.id,
+        simVersion: game.simVersion,
+        formatVersion: game.save.formatVersion,
+        configHash: capture.configDigest,
+        tick: runner.tick,
+      },
+      body,
+      {
+        botState,
+        inputCheckpoint,
+        componentSchemas: capture.componentSchemaKey,
+      }
+    );
+    const encodeEnd = performance.now();
+    if (!record) return;
+    hashCapture.push(hashEnd - hashStart);
+    snapshotCapture.push(sealEnd - hashStart);
+    digest.push(digestEnd - digestStart);
+    encode.push(encodeEnd - encodeStart);
+    bodyBytes = body.byteLength;
+  };
+
+  for (let index = 0; index < WARMUP; index += 1) once(false);
+  gcEvents.length = 0;
+  for (let index = 0; index < ITERATIONS; index += 1) once(true);
+  const gcDuring = gcEvents.slice();
+
+  const allocHashCapture = medianAlloc(() => {
+    hashBody(capture, writer);
+  });
+  const allocSnapshotCapture = medianAlloc(() => {
+    sealSnapshot(capture, writer);
+  });
+  const allocSnapshotApi = medianAlloc(() => {
+    runner.snapshot();
+  });
+  runner.dispose();
+
+  return {
+    entities: size,
+    bodyBytes,
+    hashCapture: summarize(hashCapture),
+    snapshotCapture: summarize(snapshotCapture),
+    digest: summarize(digest),
+    encode: summarize(encode),
+    allocHashCapture,
+    allocSnapshotCapture,
+    allocSnapshotApi,
+    gcCount: gcDuring.length,
+    gcMaxMs: gcDuring.length === 0 ? 0 : Math.max(...gcDuring),
+  };
+}
+
+const cpu = cpus()[0]?.model ?? 'unknown';
+stdout.write(
+  `cpu ${cpu} x${String(cpus().length)}; node ${process.version}; gc ${String(exposedGc() !== undefined)}\n`
+);
+
+await initDigest();
+const results: SizeResult[] = [];
+for (const size of SIZES) {
+  const row = measure(size);
+  results.push(row);
+  stdout.write(
+    `\n${String(size)} entities body ${String(row.bodyBytes)} B\n` +
+      `hash capture ms     p50 ${ms(row.hashCapture.p50)}  p99 ${ms(row.hashCapture.p99)}  max ${ms(row.hashCapture.max)}\n` +
+      `snapshot capture ms p50 ${ms(row.snapshotCapture.p50)}  p99 ${ms(row.snapshotCapture.p99)}  max ${ms(row.snapshotCapture.max)}\n` +
+      `off-tick digest ms  p50 ${ms(row.digest.p50)}  p99 ${ms(row.digest.p99)}  max ${ms(row.digest.max)}\n` +
+      `off-tick encode ms  p50 ${ms(row.encode.p50)}  p99 ${ms(row.encode.p99)}  max ${ms(row.encode.max)}\n` +
+      `alloc hash MB ${mb(row.allocHashCapture)}  snapshot seal MB ${mb(row.allocSnapshotCapture)}  snapshot() MB ${mb(row.allocSnapshotApi)}\n` +
+      `gc during timed phase count ${String(row.gcCount)} max ${ms(row.gcMaxMs)} ms\n`
+  );
+}
+
+stdout.write('\n');
+stdout.write(JSON.stringify(results, null, 2));
+stdout.write('\n');
+observer.disconnect();

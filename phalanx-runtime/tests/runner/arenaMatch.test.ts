@@ -37,10 +37,12 @@ describe('arena fixture', () => {
     });
     runner.start();
     transport.step(SNAPSHOT_TICK + 1);
+    runner.flush();
     expect(runner.tick).toBe(SNAPSHOT_TICK);
     const snapshot = runner.snapshot();
     const atSnapshot = runner.digest();
     transport.step(THROUGH - SNAPSHOT_TICK);
+    runner.flush();
     expect(runner.tick).toBe(THROUGH);
     const full = FP.ToRaw(FP.FromInt(50));
     expect(runner.sim.healthRaw() < full).toBe(true);
@@ -67,6 +69,7 @@ describe('arena fixture', () => {
       budgetMs: 1_000,
       throughTick: THROUGH,
     });
+    restored.flush();
     expect(restored.tick).toBe(THROUGH);
     expect(restored.digest()).toBe(hashes[THROUGH]);
     expect(restored.sim.healthRaw()).toBe(runner.sim.healthRaw());

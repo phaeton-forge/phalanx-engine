@@ -20,3 +20,5 @@ export type {
   ExpectedSnapshotIdentity,
 } from './snapshot.js';
 export { SnapshotRejectedError, SnapshotRoundTripError } from './errors.js';
+export { initDigest, onDigestFallback } from './digest.js';
+export type { DigestFallbackHandler } from './digest.js';

@@ -87,13 +87,14 @@ export class BinaryStateWriter implements StateWriter {
   /**
    * UTF-8 bytes prefixed by `varint(byteLength)`.
    * Unpaired UTF-16 surrogates throw before any byte is written.
+   * Repeated strings reuse a bounded UTF-8 cache. The well-formed check
+   * runs once, on the miss.
    */
   public str(v: string): void {
     if (typeof v !== 'string') {
       throw new Error('StateWriter.str: expected a string');
     }
-    assertWellFormedUtf16(v);
-    this.writeLengthPrefixed(textEncoder.encode(v));
+    this.writeLengthPrefixed(encodeUtf8(v));
   }
 
   /** Raw bytes prefixed by `varint(byteLength)`. */
@@ -106,21 +107,39 @@ export class BinaryStateWriter implements StateWriter {
 
   /**
    * `str(key)`, `varint(version)`, `varint(bodyLength)`, body.
-   * The body is buffered first so the length is known and a throw inside
-   * `body` leaves this writer unchanged.
+   * The body is written in place. A throw inside `body` rolls `length`
+   * back, so `finish()` is unchanged. The length varint is canonical
+   * (no padding bytes).
    */
   public section(
     key: string,
     version: number,
     body: (w: StateWriter) => void
   ): void {
-    const nested = new BinaryStateWriter();
-    body(nested);
-    const payload = nested.finish();
-    this.str(key);
-    this.varint(version);
-    this.varint(payload.byteLength);
-    this.writeRaw(payload);
+    const mark = this.length;
+    try {
+      this.str(key);
+      this.varint(version);
+      const slot = this.length;
+      this.ensure(SECTION_LEN_SLOT);
+      this.length += SECTION_LEN_SLOT;
+      const bodyStart = this.length;
+      body(this);
+      const bodyLength = this.length - bodyStart;
+      const width = varintWidth(bodyLength);
+      if (width > SECTION_LEN_SLOT) {
+        throw new Error('StateWriter.section: body length exceeds varint slot');
+      }
+      writeVarintAt(this.buf, slot, bodyLength);
+      const extra = SECTION_LEN_SLOT - width;
+      if (extra > 0) {
+        this.buf.copyWithin(bodyStart - extra, bodyStart, this.length);
+        this.length -= extra;
+      }
+    } catch (error) {
+      this.length = mark;
+      throw error;
+    }
   }
 
   /** `varint(count)` then each item in the given order. */
@@ -178,14 +197,55 @@ export class BinaryStateWriter implements StateWriter {
     return this.buf.slice(0, this.length);
   }
 
+  /**
+   * Drop written bytes and keep the buffer. The next `finish()` is empty
+   * until new bytes are written. Used to reuse one writer across captures.
+   */
+  public reset(): void {
+    this.length = 0;
+  }
+
+  /** `u8` without a range check. The caller guarantees `0..255`. */
+  public u8Unchecked(v: number): void {
+    this.ensure(1);
+    this.buf[this.length] = v;
+    this.length += 1;
+  }
+
+  /** `u32` without a range check. Little-endian. */
+  public u32Unchecked(v: number): void {
+    this.ensure(4);
+    this.view.setUint32(this.length, v, true);
+    this.length += 4;
+  }
+
+  /** `i32` without a range check. Little-endian. */
+  public i32Unchecked(v: number): void {
+    this.ensure(4);
+    this.view.setInt32(this.length, v, true);
+    this.length += 4;
+  }
+
+  /** `i64` without a range check. Little-endian. */
+  public i64Unchecked(v: bigint): void {
+    this.ensure(8);
+    this.view.setBigInt64(this.length, v, true);
+    this.length += 8;
+  }
+
   private ensure(extra: number): void {
     const needed = this.length + extra;
     if (needed <= this.buf.length) return;
-    let cap = Math.max(this.buf.length, 1);
-    while (cap < needed) {
+    // One allocation to the final power of two, not one doubling per call.
+    let cap = Math.max(this.buf.length, 64);
+    if (cap < needed) {
+      cap = Math.max(needed, cap * 2);
+    } else {
       cap *= 2;
     }
-    const next = new Uint8Array(cap);
+    let rounded = 64;
+    while (rounded < cap) rounded *= 2;
+    const next = new Uint8Array(rounded);
     next.set(this.buf.subarray(0, this.length));
     this.buf = next;
     this.view = new DataView(next.buffer);
@@ -370,6 +430,54 @@ const I64_MIN = -0x8000000000000000n;
 const I64_MAX = 0x7fffffffffffffffn;
 
 const textEncoder = new TextEncoder();
+/** Max UTF-8 cache entries. Oldest key is dropped past this. */
+const UTF8_CACHE_LIMIT = 4096;
+const utf8Cache = new Map<string, Uint8Array>();
+/**
+ * Reserved bytes for a section length. A safe-integer varint fits in 8.
+ * The canonical width is written and the body is shifted left.
+ */
+const SECTION_LEN_SLOT = 8;
+
+function encodeUtf8(value: string): Uint8Array {
+  const cached = utf8Cache.get(value);
+  if (cached !== undefined) {
+    utf8Cache.delete(value);
+    utf8Cache.set(value, cached);
+    return cached;
+  }
+  assertWellFormedUtf16(value);
+  const encoded = textEncoder.encode(value);
+  if (utf8Cache.size >= UTF8_CACHE_LIMIT) {
+    const oldest = utf8Cache.keys().next().value;
+    if (oldest !== undefined) utf8Cache.delete(oldest);
+  }
+  utf8Cache.set(value, encoded);
+  return encoded;
+}
+
+function varintWidth(value: number): number {
+  let width = 1;
+  let n = value;
+  while (n >= 128) {
+    n = Math.floor(n / 128);
+    width += 1;
+  }
+  return width;
+}
+
+function writeVarintAt(buf: Uint8Array, offset: number, value: number): void {
+  let n = value;
+  let written = 0;
+  for (;;) {
+    const bits = n % 128;
+    n = Math.floor(n / 128);
+    const last = n === 0;
+    buf[offset + written] = last ? bits : bits | 0x80;
+    written += 1;
+    if (last) return;
+  }
+}
 // `ignoreBOM` keeps a leading U+FEFF as data. The default strips it.
 const textDecoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true });
 

@@ -218,6 +218,12 @@ Entries collected per package until the synchronized 0.3.0 release
   a started transport. A corrupt IndexedDB row rejects the read.
   The persistence perf test runs only when `PHALANX_PERF=1`.
   `IndexedDbMatchStore` uses `globalThis.indexedDB`.
+- Snapshot performance (Task 7.5): XXH64 is an embedded 623-byte WASM
+  module (`initDigest`, one `onDigestFallback` when hashing stays on the
+  BigInt reference). Periodic hashes capture the body on the tick and
+  digest it off the tick; `flush` / `whenIdle` finish those digests.
+  `section` writes its body in place, `str` caches UTF-8, and the SoA
+  writer uses a per-schema field plan. Snapshot bytes are unchanged.
 - `decodeInputCheckpoint` throws `SnapshotRejectedError` when a format-2
   input checkpoint has no trailing `systemSeq` (snapshots written before
   setController / 6.5b). `ENGINE_SNAPSHOT_FORMAT` stays 2.

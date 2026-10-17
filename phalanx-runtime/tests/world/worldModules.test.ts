@@ -466,9 +466,11 @@ describe('world modules', () => {
     });
     runner.start();
     transport.step(SNAPSHOT_TICK + 1);
+    runner.flush();
     const snapshot = runner.snapshot();
     const atSnapshot = runner.digest();
     transport.step(THROUGH - SNAPSHOT_TICK);
+    runner.flush();
     const tail = runner.log
       .entriesAfter(SNAPSHOT_TICK)
       .filter((entry) => entry.tick <= THROUGH);
@@ -595,9 +597,11 @@ describe('world modules', () => {
     runner.start();
     runner.submit({ type: 'step' });
     transport.step(SNAPSHOT_TICK + 1);
+    runner.flush();
     const snapshot = runner.snapshot();
     const atSnapshot = runner.digest();
     transport.step(THROUGH - SNAPSHOT_TICK);
+    runner.flush();
     expect(runner.tick).toBe(THROUGH);
 
     const tail = runner.log
@@ -620,6 +624,7 @@ describe('world modules', () => {
       budgetMs: 1000,
       throughTick: THROUGH,
     });
+    copy.flush();
     expect(copy.tick).toBe(THROUGH);
     expect(copy.digest()).toBe(runner.digest());
     expect(copy.digest()).toBe(digests[THROUGH]);

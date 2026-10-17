@@ -2,6 +2,7 @@ import type { AnyGameDefinition } from '../game/GameDefinition.js';
 import type { BotHostSide, SimMode, SlotConfig } from '../game/MatchConfig.js';
 import type { MatchStore } from '../persistence/MatchStore.js';
 import { LocalTransport } from '../transport/LocalTransport.js';
+import { initDigest } from '../state/digest.js';
 import { MatchRunner, type ConfigInput } from './MatchRunner.js';
 
 /** A human seat. `slot` defaults to the array index. */
@@ -58,6 +59,7 @@ export function runLocalMatch<G extends AnyGameDefinition>(
   definition: G,
   options: RunLocalMatchOptions
 ): LocalMatch<G> {
+  void initDigest();
   const side = options.side ?? 'client';
   const slots = options.slots.map((slot, index) =>
     expandSlot(slot, index, side)

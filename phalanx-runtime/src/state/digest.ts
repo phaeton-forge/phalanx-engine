@@ -1,103 +1,43 @@
 /**
  * xxHash64 (XXH64) with seed 0, as lowercase hex (16 characters).
  *
- * Pure TypeScript, no dependencies. Vectors were checked against the
- * reference implementation in xxHash 0.8.2 (`XXH64`, seed 0):
- * empty → `ef46db3751d8e999`, `"abc"` → `44bc2cf5ad770999`.
+ * The hot path is the embedded WASM module ({@link initDigest}). Before
+ * it is ready, or when `WebAssembly` cannot be compiled, hashing falls
+ * back to the BigInt reference. Both paths return the same digest.
+ * The fallback emits one {@link onDigestFallback} event per process.
  *
  * This is XXH64, not XXH3. The digest covers the bytes it is given and
  * nothing else; snapshot code hashes the `GameState` body only.
  */
 
-const MASK64 = 0xffffffffffffffffn;
-const PRIME64_1 = 0x9e3779b185ebca87n;
-const PRIME64_2 = 0xc2b2ae3d27d4eb4fn;
-const PRIME64_3 = 0x165667b19e3779f9n;
-const PRIME64_4 = 0x85ebca77c2b2ae63n;
-const PRIME64_5 = 0x27d4eb2f165667c5n;
+import { xxh64BigInt } from './xxh64BigInt.js';
+import { initXxh64, onXxh64Fallback, xxh64WasmHex } from './xxh64Wasm.js';
+
+export type DigestFallbackHandler = (reason: string) => void;
+
+/**
+ * Compile the XXH64 module. Idempotent. The module is under 4 KB, so
+ * this compiles synchronously on Node, worker threads, and browser
+ * main threads. A larger module would wait for `WebAssembly.compile`
+ * in the browser and keep the BigInt fallback until then.
+ */
+export function initDigest(): Promise<void> {
+  return initXxh64();
+}
+
+/**
+ * One event when {@link digestBytes} uses the BigInt fallback.
+ * Not `console`. Subscribe before the first hash to observe it.
+ */
+export function onDigestFallback(handler: DigestFallbackHandler): () => void {
+  return onXxh64Fallback(handler);
+}
 
 export function digestBytes(bytes: Uint8Array): string {
   if (!(bytes instanceof Uint8Array)) {
     throw new Error('digestBytes: expected a Uint8Array');
   }
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  const len = bytes.byteLength;
-  let offset = 0;
-  let hash: bigint;
-
-  if (len >= 32) {
-    let v1 = u64(PRIME64_1 + PRIME64_2);
-    let v2 = PRIME64_2;
-    let v3 = 0n;
-    let v4 = u64(0n - PRIME64_1);
-    const limit = len - 32;
-    while (offset <= limit) {
-      v1 = round64(v1, view.getBigUint64(offset, true));
-      offset += 8;
-      v2 = round64(v2, view.getBigUint64(offset, true));
-      offset += 8;
-      v3 = round64(v3, view.getBigUint64(offset, true));
-      offset += 8;
-      v4 = round64(v4, view.getBigUint64(offset, true));
-      offset += 8;
-    }
-    hash = u64(rotl64(v1, 1) + rotl64(v2, 7) + rotl64(v3, 12) + rotl64(v4, 18));
-    hash = mergeRound64(hash, v1);
-    hash = mergeRound64(hash, v2);
-    hash = mergeRound64(hash, v3);
-    hash = mergeRound64(hash, v4);
-  } else {
-    hash = PRIME64_5;
-  }
-
-  hash = u64(hash + BigInt(len));
-
-  while (offset + 8 <= len) {
-    const lane = round64(0n, view.getBigUint64(offset, true));
-    offset += 8;
-    hash = u64(hash ^ lane);
-    hash = u64(rotl64(hash, 27) * PRIME64_1 + PRIME64_4);
-  }
-  if (offset + 4 <= len) {
-    hash = u64(hash ^ (BigInt(view.getUint32(offset, true)) * PRIME64_1));
-    offset += 4;
-    hash = u64(rotl64(hash, 23) * PRIME64_2 + PRIME64_3);
-  }
-  while (offset < len) {
-    hash = u64(hash ^ (BigInt(view.getUint8(offset)) * PRIME64_5));
-    offset += 1;
-    hash = u64(rotl64(hash, 11) * PRIME64_1);
-  }
-
-  hash = avalanche64(hash);
-  return hash.toString(16).padStart(16, '0');
-}
-
-function u64(value: bigint): bigint {
-  return value & MASK64;
-}
-
-function rotl64(value: bigint, bits: number): bigint {
-  const shift = BigInt(bits);
-  return u64((value << shift) | (value >> (64n - shift)));
-}
-
-function round64(acc: bigint, input: bigint): bigint {
-  let next = u64(acc + u64(input * PRIME64_2));
-  next = rotl64(next, 31);
-  return u64(next * PRIME64_1);
-}
-
-function mergeRound64(acc: bigint, val: bigint): bigint {
-  const mixed = round64(0n, val);
-  return u64((acc ^ mixed) * PRIME64_1 + PRIME64_4);
-}
-
-function avalanche64(hash: bigint): bigint {
-  let next = u64(hash ^ (hash >> 33n));
-  next = u64(next * PRIME64_2);
-  next = u64(next ^ (next >> 29n));
-  next = u64(next * PRIME64_3);
-  next = u64(next ^ (next >> 32n));
-  return next;
+  const wasm = xxh64WasmHex(bytes);
+  if (wasm !== null) return wasm;
+  return xxh64BigInt(bytes);
 }
