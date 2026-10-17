@@ -240,6 +240,14 @@ export interface PhalanxConfig {
   /** Pause/resume behavior configuration */
   pause?: Partial<PauseConfig>;
 
+  // Task 10
+  /**
+   * Opt-in absence timer while a match is `playing`.
+   * Omit the field to keep today's behaviour: a disconnected player
+   * never loses the match, and no `player-absent` event is sent.
+   */
+  absence?: AbsenceConfig;
+
   // === Extension Hook ===
   /**
    * Optional hook for mounting additional request handlers on the same HTTP
@@ -265,6 +273,51 @@ export interface PlayerCommand {
   data: unknown;
   /** Optional sequence number for input validation (monotonically increasing per player) */
   sequence?: number;
+}
+
+/**
+ * Opt-in absence window (Task 10). Both durations are milliseconds.
+ * `windowMs` may be longer than `matchBudgetMs`; the deadline is the
+ * minimum of the two.
+ */
+export interface AbsenceConfig {
+  /** Milliseconds granted for a single absence. */
+  windowMs: number;
+  /** Milliseconds of absence budget for one player across the match. */
+  matchBudgetMs: number;
+}
+
+/**
+ * Result passed to `GameRoom.endMatch` and to the `player-command` hook.
+ * `winnerTeamId`, when present on the wire, is the team that won.
+ * `loserIds` is an input only: the room derives `winnerTeamId` from it
+ * when the caller did not pass one.
+ */
+export interface EndMatchResult {
+  reason: string;
+  winnerTeamId?: number;
+  loserIds?: string[];
+}
+
+/**
+ * `player-absent` payload, and one row of `GameRoom.getAbsences()`.
+ * Both durations are milliseconds remaining at the moment the payload
+ * is produced (send time for the event, call time for the getter).
+ * The client counts down from the moment it receives the event.
+ */
+export interface PlayerAbsentEvent {
+  playerId: string;
+  deadlineMs: number;
+  budgetLeftMs: number;
+}
+
+/**
+ * Third argument of the `player-command` hook. Two-argument handlers
+ * stay valid; they ignore this context.
+ */
+export interface PlayerCommandContext {
+  matchId: string;
+  endMatch(result: EndMatchResult): boolean;
 }
 
 /**
@@ -461,7 +514,8 @@ export interface PhalanxEventHandlers {
   'match-resumed': (matchId: string, requestedBy: string) => void;
   'player-command': (
     playerId: string,
-    command: PlayerCommand
+    command: PlayerCommand,
+    ctx: PlayerCommandContext
   ) => boolean | void;
   'player-timeout': (playerId: string, matchId: string) => void;
   'player-reconnected': (playerId: string, matchId: string) => void;

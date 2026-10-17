@@ -52,13 +52,48 @@ online and in local (bot) matches.
 
 ## 5. Absence while `playing` (Task 10)
 
-- No pause. The absent player's army keeps spawning by formation and the
-  economy keeps running.
-- Window **120 s** per absence, per-match budget **180 s**. The opponent sees
-  a countdown.
-- On expiry the server ends the match (`reason: 'disconnect'`) through a new
-  public `GameRoom.endMatch`.
-- All humans absent → `abandoned`.
+Implemented on the relay, opt-in. No pause: the absent player's army keeps
+acting from the command log, and the economy keeps running. Expiry does not
+insert or remove commands. `setController` replacement is Task 11, through
+an internal `AbsencePolicy` seam that is not exported.
+
+- Config `absence: { windowMs, matchBudgetMs }`. Omit it for today's
+  behaviour (no timer, no `player-absent`, existing `match-end` reasons
+  unchanged). `DEFAULT_ABSENCE` is `{ windowMs: 120000, matchBudgetMs: 180000 }`.
+  Both values are integers greater than 0. The window may exceed the
+  budget; the deadline is `min(windowMs, budgetLeft)`.
+- The timer starts only when a player becomes disconnected during
+  `playing` (socket drop or `disconnectTicks`). A second signal does not
+  restart it. A disconnect while `paused` does not start a timer. A timer
+  that already started keeps running through a pause. Nothing starts after
+  `finished`. `stop()` and every `match-end` clear the timers.
+- Budget is per player. On return, elapsed time is subtracted, not below 0.
+  A remaining budget of 0 expires with `setTimeout(…, 0)`, not inside
+  `handleDisconnect`.
+- Room event `player-absent { playerId, deadlineMs, budgetLeftMs }`. Both
+  numbers are milliseconds left at send time. The client counts down from
+  receipt. `player-disconnected` and `player-timeout` payloads stay as
+  they are (`gracePeriodMs` included).
+- Return is `handleReconnect` (`reconnect-match`, `room-recover`, and
+  later `match-resume`). There is no separate returned event;
+  `player-reconnected` is enough. With `absence` on, the first message
+  from the still-bound socket after a `disconnectTicks` timeout is also a
+  return. With `absence` off, that message does not set `connected` back
+  to true.
+- On expiry, if every human is absent: `endMatch({ reason: 'abandoned' })`
+  with no winner. Otherwise
+  `endMatch({ reason: 'disconnect', loserIds: [playerId] })`.
+  `winnerTeamId` is included when the caller passed a real team, or when
+  `loserIds` leaves exactly one team that contains no loser (omitted in
+  FFA when more than one team remains). Event order is `match-end`, then
+  `match-ended`.
+- `tickMode: 'event'` does not run `checkPlayerTimeouts`, so only a socket
+  drop starts the timer.
+- `GameRoom.getAbsences()` returns the current rows with the same
+  millisecond semantics, for Task 9's `absentDeadline`.
+- `GameRoom.endMatch` is public, including from the `player-command` hook
+  context `{ matchId, endMatch }`. A hook that ends the match does not log
+  or broadcast that command.
 
 ## 6. Snapshots
 

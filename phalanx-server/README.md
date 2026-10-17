@@ -151,6 +151,14 @@ const config: Partial<PhalanxConfig> = {
     requireSamePlayerToResume: true,
   },
 
+  // === Absence (Task 10, opt-in) ===
+  // Omit `absence` to keep today's behaviour (no timer).
+  // import { DEFAULT_ABSENCE } from '@phalanx-engine/server';
+  absence: {
+    windowMs: 120000, // per absence
+    matchBudgetMs: 180000, // per player, for the whole match
+  },
+
   // === Game Types (multi-game-type routing) ===
   tickMode: 'continuous', // Default tick mode: 'continuous' | 'event'
   turnTimeoutMs: 60000, // Turn timeout for event mode (default: 60000)
@@ -245,6 +253,74 @@ import { GAME_MODES } from '@phalanx-engine/server';
 // 'FFA4' - 4 players, 4 teams (Free For All)
 ```
 
+## Absence while playing
+
+By default a player who disconnects during `playing` never loses: the match
+waits. Set `absence` to give them a window to come back. There is no pause.
+The absent player's commands simply stop arriving; everyone else keeps
+playing, and expiry does not edit the command log.
+
+```typescript
+import { Phalanx, DEFAULT_ABSENCE } from '@phalanx-engine/server';
+
+const app = new Phalanx({
+  absence: DEFAULT_ABSENCE, // { windowMs: 120000, matchBudgetMs: 180000 }
+});
+```
+
+`windowMs` and `matchBudgetMs` must be integers greater than 0. The window
+may be longer than the budget. The deadline for one absence is
+`min(windowMs, budgetLeft)`. The budget is per player and starts at
+`matchBudgetMs`. Coming back subtracts the elapsed time, and it does not
+go below 0. A budget of 0 expires on a zero-delay timer, not inside the
+disconnect handler.
+
+The timer starts only while the match is `playing`, on a socket drop or
+(continuous mode) when `disconnectTicks` elapses. A second signal does not
+restart it. Disconnecting during `paused` does not start a timer. A timer
+that has already started keeps running if the match is paused afterwards.
+`tickMode: 'event'` does not poll `disconnectTicks`, so only a socket drop
+starts the timer. `stop()` and any `match-end` clear the timers.
+
+The room receives `player-absent`:
+
+```typescript
+interface PlayerAbsentEvent {
+  playerId: string;
+  deadlineMs: number; // ms until expiry, at send time
+  budgetLeftMs: number; // ms of budget left, at send time
+}
+```
+
+The client counts down from the moment it receives the event.
+`player-disconnected` and `player-timeout` are unchanged, including
+`gracePeriodMs`.
+
+Returning is the existing `player-reconnected` path (`reconnect-match`,
+`room-recover`). There is no extra "returned" event. When `absence` is
+enabled, the first message on the socket that is still bound after a
+`disconnectTicks` timeout also counts as a return (`connected` becomes
+true again and the timer stops). Without `absence`, that message does not
+set `connected` back to true.
+
+When the timer expires:
+
+- every human is gone → `match-end` `{ reason: 'abandoned' }` with no winner;
+- otherwise → `match-end` `{ reason: 'disconnect', winnerTeamId }`.
+
+`winnerTeamId` is the caller's team when they passed one that exists.
+Otherwise, if `loserIds` leaves exactly one team with no loser, that team
+wins. In FFA, several surviving teams means the field is omitted. Existing
+reasons (`stopped`, `desync`, `turn-timeout`, `ready-timeout`,
+`players-not-connected`) are unchanged.
+
+`GameRoom.endMatch({ reason, winnerTeamId?, loserIds? })` is how a game
+finishes a match, including from the `player-command` hook (`ctx.endMatch`).
+It returns `false` when the match is already finished. The command that
+ended the match is not stored and not broadcast. `getAbsences()` returns
+the current absences with `deadlineMs` / `budgetLeftMs` in the same
+millisecond sense (Task 9 reads the resume deadline from it).
+
 ## Event Hooks
 
 ```typescript
@@ -256,8 +332,12 @@ app.on('match-started', (match) => {
   console.log(`Match ${match.id} started!`);
 });
 
-app.on('player-command', (playerId, command) => {
-  // Custom command validation
+app.on('player-command', (playerId, command, ctx) => {
+  // Custom command validation. Two-argument handlers still work.
+  if (command.type === 'destroy-base') {
+    // The command is not logged or broadcast when the match ends here.
+    ctx.endMatch({ reason: 'base-destroyed', winnerTeamId: 1 });
+  }
   return true; // or false to reject
 });
 
@@ -316,7 +396,8 @@ class Phalanx {
 | `game-start`                |      | ✅      | Countdown finished, load assets                                 |
 | `client-ready`              | ✅   |         | Client finished loading, ready for ticks                        |
 | `player-ready`              |      | ✅      | A player reported ready                                         |
-| `match-end`                 |      | ✅      | Match has ended                                                 |
+| `match-end`                 |      | ✅      | Match has ended (`reason`, optional `winnerTeamId`)             |
+| `player-absent`             |      | ✅      | Opt-in: a player is absent during `playing`                     |
 | `submit-commands`           | ✅   |         | Send game commands                                              |
 | `submit-commands-ack`       |      | ✅      | Command acknowledgment                                          |
 | `commands-batch`            |      | ✅      | All commands for a tick                                         |
