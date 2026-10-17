@@ -9,6 +9,7 @@
  */
 
 import { io, Socket } from 'socket.io-client';
+import { MatchLogError } from './types.js';
 import type {
   MatchFoundEvent,
   CountdownEvent,
@@ -35,6 +36,9 @@ import type {
   ConnectionState,
   PlayerCommand,
   SocketTransport,
+  LogChunk,
+  MatchLogErrorEvent,
+  ServerShutdownEvent,
 } from './types.js';
 
 /**
@@ -47,6 +51,11 @@ export interface SocketManagerConfig {
   playerId: string;
   /** Username */
   username: string;
+  /**
+   * Sent on queue-join / room-create / room-join when set.
+   * Absent from the payload otherwise.
+   */
+  buildId?: string;
   /** Authentication token (e.g., Google ID token) */
   authToken?: string;
   /** Connection timeout in milliseconds */
@@ -107,6 +116,9 @@ export interface SocketManagerCallbacks {
   onRoomExpired: (data: RoomExpiredEvent) => void;
   onRoomCancelled: (data: RoomCancelledEvent) => void;
   onRoomRecovered: (data: RoomRecoveredEvent) => void;
+
+  /** Optional so existing callers do not have to supply it. */
+  onServerShutdown?: (data: ServerShutdownEvent) => void;
 
   // State queries (for reconnection logic)
   isPlaying: () => boolean;
@@ -208,7 +220,11 @@ export class SocketManager {
   /**
    * Update player credentials (after auth)
    */
-  updateCredentials(playerId: string, username: string, authToken?: string): void {
+  updateCredentials(
+    playerId: string,
+    username: string,
+    authToken?: string
+  ): void {
     this.config.playerId = playerId;
     this.config.username = username;
     this.config.authToken = authToken;
@@ -242,6 +258,7 @@ export class SocketManager {
         playerId: this.config.playerId,
         username: this.config.username,
         gameType,
+        ...buildIdField(this.config.buildId),
       });
     });
   }
@@ -285,6 +302,7 @@ export class SocketManager {
         playerId: this.config.playerId,
         username: this.config.username,
         gameType,
+        ...buildIdField(this.config.buildId),
       });
     });
   }
@@ -300,6 +318,7 @@ export class SocketManager {
       playerId: this.config.playerId,
       username: this.config.username,
       code,
+      ...buildIdField(this.config.buildId),
     });
   }
 
@@ -337,7 +356,7 @@ export class SocketManager {
    */
   async recoverRoom(
     code: string,
-    timeoutMs: number = this.config.recoverRoomTimeoutMs,
+    timeoutMs: number = this.config.recoverRoomTimeoutMs
   ): Promise<RoomRecoveredEvent> {
     this.ensureConnected();
 
@@ -518,6 +537,106 @@ export class SocketManager {
     this.socket!.emit('client-ready');
   }
 
+  /**
+   * Read the command log of `matchId` from `fromTick`.
+   * Chunks arrive one at a time; the iterator yields the event loop
+   * between them. `break` removes the socket listeners. No timer is
+   * left pending after the iterator stops.
+   */
+  async *fetchMatchLog(
+    matchId: string,
+    fromTick: number,
+    maxTicks?: number
+  ): AsyncGenerator<LogChunk> {
+    this.ensureConnected();
+    const socket = this.socket!;
+
+    const pending: LogChunk[] = [];
+    let waiter: {
+      resolve: (chunk: LogChunk) => void;
+      reject: (error: Error) => void;
+    } | null = null;
+    let failure: MatchLogError | null = null;
+
+    const onChunk = (chunk: LogChunk): void => {
+      if (chunk.matchId !== matchId) return;
+      if (waiter) {
+        const current = waiter;
+        waiter = null;
+        current.resolve(chunk);
+      } else {
+        pending.push(chunk);
+      }
+    };
+
+    const onError = (payload: MatchLogErrorEvent): void => {
+      if (payload.matchId !== undefined && payload.matchId !== matchId) {
+        return;
+      }
+      const error = new MatchLogError(payload.reason);
+      failure = error;
+      if (waiter) {
+        const current = waiter;
+        waiter = null;
+        current.reject(error);
+      }
+    };
+
+    let yieldTimer: ReturnType<typeof setTimeout> | null = null;
+    const yieldEventLoop = (): Promise<void> =>
+      new Promise((resolve) => {
+        yieldTimer = setTimeout(() => {
+          yieldTimer = null;
+          resolve();
+        }, 0);
+      });
+
+    try {
+      socket.on('match-log-chunk', onChunk);
+      socket.on('match-log-error', onError);
+      socket.emit(
+        'match-log',
+        maxTicks === undefined
+          ? { matchId, fromTick }
+          : { matchId, fromTick, maxTicks }
+      );
+
+      let first = true;
+      while (true) {
+        if (!first) {
+          await yieldEventLoop();
+        }
+        first = false;
+
+        if (failure && pending.length === 0) {
+          throw failure;
+        }
+
+        const chunk =
+          pending.length > 0
+            ? pending.shift()!
+            : await new Promise<LogChunk>((resolve, reject) => {
+                if (failure) {
+                  reject(failure);
+                  return;
+                }
+                waiter = { resolve, reject };
+              });
+
+        yield chunk;
+        if (chunk.done) return;
+      }
+    } finally {
+      if (yieldTimer !== null) {
+        clearTimeout(yieldTimer);
+        yieldTimer = null;
+      }
+      waiter = null;
+      socket.off('match-log-chunk', onChunk);
+      socket.off('match-log-error', onError);
+    }
+  }
+
   // ============================================
   // RECONNECTION
   // ============================================
@@ -597,23 +716,27 @@ export class SocketManager {
   private setupEventHandlers(): void {
     if (!this.socket) return;
 
-    if (this.config.debug) {    }
+    if (this.config.debug) {
+    }
 
     // Match found
     this.socket.on('match-found', (data: MatchFoundEvent) => {
-      if (this.config.debug) {      }
+      if (this.config.debug) {
+      }
       this.callbacks.onMatchFound(data);
     });
 
     // Game start
     this.socket.on('game-start', (data: GameStartEvent) => {
-      if (this.config.debug) {      }
+      if (this.config.debug) {
+      }
       this.callbacks.onGameStart(data);
     });
 
     // Countdown
     this.socket.on('countdown', (data: CountdownEvent) => {
-      if (this.config.debug) {      }
+      if (this.config.debug) {
+      }
       this.callbacks.onCountdown(data);
     });
 
@@ -643,6 +766,10 @@ export class SocketManager {
     // Match end
     this.socket.on('match-end', (data: MatchEndEvent) => {
       this.callbacks.onMatchEnd(data);
+    });
+
+    this.socket.on('server-shutdown', (data: ServerShutdownEvent) => {
+      this.callbacks.onServerShutdown?.(data);
     });
 
     // Reconnect-state — unlike `reconnectToMatch` which attaches a
@@ -755,7 +882,6 @@ export class SocketManager {
     }
   }
 
-
   /**
    * Replay `payload` through every listener currently registered for
    * `event` on the local socket.
@@ -785,7 +911,7 @@ export class SocketManager {
         if (this.config.debug) {
           console.error(
             `[SocketManager] synthetic "${event}" listener threw:`,
-            err,
+            err
           );
         }
       }
@@ -795,4 +921,12 @@ export class SocketManager {
   private delay(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
+}
+
+/** `buildId` is included only when the config actually set one. */
+function buildIdField(
+  buildId: string | undefined
+): { buildId: string } | Record<string, never> {
+  if (buildId === undefined) return {};
+  return { buildId };
 }

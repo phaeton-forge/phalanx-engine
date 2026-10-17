@@ -39,6 +39,8 @@ import type {
   PauseHandler,
   RoomCreatedEvent,
   RoomRecoveredEvent,
+  LogChunk,
+  ServerShutdownEvent,
 } from './types.js';
 
 /**
@@ -70,12 +72,24 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
   private config: Required<
     Omit<
       PhalanxClientConfig,
-      'authToken' | 'auth' | 'playerId' | 'username' | 'pause' | 'roomRecovery'
+      | 'authToken'
+      | 'auth'
+      | 'playerId'
+      | 'username'
+      | 'pause'
+      | 'roomRecovery'
+      | 'buildId'
     >
   > &
     Pick<
       PhalanxClientConfig,
-      'authToken' | 'auth' | 'playerId' | 'username' | 'pause' | 'roomRecovery'
+      | 'authToken'
+      | 'auth'
+      | 'playerId'
+      | 'username'
+      | 'pause'
+      | 'roomRecovery'
+      | 'buildId'
     >;
   private socketManager: SocketManager;
   private renderLoop: RenderLoop;
@@ -165,6 +179,7 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
         serverUrl: this.config.serverUrl,
         playerId: this.config.playerId!,
         username: this.config.username!,
+        buildId: this.config.buildId,
         authToken: this.config.authToken,
         connectionTimeoutMs: this.config.connectionTimeoutMs,
         recoverRoomTimeoutMs: this.config.recoverRoomTimeoutMs,
@@ -275,6 +290,8 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
           this.emit('roomCancelled', data);
         },
         onRoomRecovered: (data) => this.emit('roomRecovered', data),
+        onServerShutdown: (data: ServerShutdownEvent) =>
+          this.emit('serverShutdown', data),
       }
     );
 
@@ -715,6 +732,26 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
   sendReady(): void {
     this.ensureConnected();
     this.socketManager.sendReady();
+  }
+
+  /**
+   * Read this match's command log from `fromTick`, one chunk at a time.
+   * Throws if the client is not in a match. `match-log-error` rejects
+   * the iterator with `MatchLogError`. Breaking out of `for await`
+   * removes the socket listeners.
+   */
+  fetchMatchLog(
+    fromTick: number,
+    options?: { maxTicks?: number }
+  ): AsyncIterable<LogChunk> {
+    if (this.currentMatchId === null) {
+      throw new Error('Not in a match');
+    }
+    return this.socketManager.fetchMatchLog(
+      this.currentMatchId,
+      fromTick,
+      options?.maxTicks
+    );
   }
 
   /**

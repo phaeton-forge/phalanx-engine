@@ -88,6 +88,7 @@ interface PhalanxClientConfig {
   serverUrl: string;               // Server URL (e.g., 'http://localhost:3000')
   playerId?: string;               // Unique player ID (auto-generated if omitted)
   username?: string;               // Display name
+  buildId?: string;                // Sent on queue-join / room-create / room-join when set
   autoReconnect?: boolean;         // Auto-reconnect on disconnect (default: true)
   maxReconnectAttempts?: number;   // Max reconnection attempts (default: 5)
   reconnectDelayMs?: number;       // Delay between attempts (default: 1000)
@@ -99,6 +100,8 @@ interface PhalanxClientConfig {
   pause?: PauseConfig;             // Pause/resume configuration
 }
 ```
+
+`buildId` is copied onto `queue-join`, `room-create`, and `room-join` only when it is set. `fetchMatchLog(fromTick, { maxTicks })` returns an `AsyncIterable<LogChunk>` for the current match. The iterator stops on `done: true`. `match-log-error` rejects with `MatchLogError` (`reason`). Breaking out of `for await` removes the socket listeners. `serverShutdown` carries `{ reason, matchIds }`.
 
 ### 4. Matchmaking Flow
 
@@ -557,6 +560,7 @@ import {
   DeterministicRandom, // re-exported from @phalanx-engine/math (getState / setState / fromState)
   StateHasher,
   DesyncDetector,
+  MatchLogError,
 } from '@phalanx-engine/client';
 
 // Fixed-point math (re-exported from phalanx-math)

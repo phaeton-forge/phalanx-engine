@@ -131,7 +131,10 @@ const config: Partial<PhalanxConfig> = {
   maxTickAhead: 5,
 
   // === Command History (for reconnection) ===
-  commandHistoryTicks: 200, // Ticks of command history to keep
+  commandHistoryTicks: 200, // Ticks of command history to keep, or 'full'
+  // requireBuildId: false,  // reject the match when build ids differ
+  // shutdownGraceMs: 0,     // wait after server-shutdown before stop()
+  // handleSignals: false,   // SIGTERM → shutdown('sigterm')
 
   // === Ready Handshake ===
   readyTimeoutMs: 30000, // Max time for clients to send ready (default: 30000)
@@ -375,6 +378,8 @@ class Phalanx {
   // Lifecycle
   start(): Promise<void>;
   stop(): Promise<void>;
+  /** Notify rooms, wait shutdownGraceMs, then stop(). Idempotent. */
+  shutdown(reason: string): Promise<void>;
 
   // Trusted server-side integrations
   createPrivateRoomForHost(params: {
@@ -433,6 +438,11 @@ class Phalanx {
 | `room-expired`              |      | ✅      | Room TTL exceeded; server evicted the room                      |
 | `room-cancelled`            |      | ✅      | Host cancelled the room                                         |
 | `room-recovered`            |      | ✅      | Room successfully reclaimed after socket drop                   |
+| `match-log`                 | ✅   |         | Request the command log from a tick (`fromTick`, optional `maxTicks`) |
+| `match-log-chunk`           |      | ✅      | One ≤ 2000-tick slice of that log, sent only to the requester   |
+| `match-log-error`           |      | ✅      | Log request refused (`not-member`, `not-found`, `invalid`, `truncated`) |
+| `match-error`               |      | ✅      | Match cannot start (`build-mismatch` when `requireBuildId` is set) |
+| `server-shutdown`           |      | ✅      | Process is stopping; `Phalanx.shutdown()` sends this before `stop()` |
 
 ## Game Start Synchronization
 

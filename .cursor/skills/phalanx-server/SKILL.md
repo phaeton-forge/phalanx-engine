@@ -175,7 +175,10 @@ interface PhalanxConfig {
   // === Command Validation ===
   maxTickBehind: number;           // Default: 10
   maxTickAhead: number;            // Default: 5
-  commandHistoryTicks: number;     // Default: 200
+  commandHistoryTicks: number | 'full'; // Default: 200. 'full' keeps every non-empty tick
+  requireBuildId?: boolean;        // Default: false. Mismatch → match-error before start
+  shutdownGraceMs?: number;        // Default: 0. Wait after server-shutdown before stop()
+  handleSignals?: boolean;         // Default: false. true → SIGTERM calls shutdown('sigterm')
 
   // === Determinism Features ===
   validateInputSequence?: boolean; // Default: false
@@ -192,6 +195,8 @@ interface PhalanxConfig {
   pause?: Partial<PauseConfig>;
 }
 ```
+
+`commandHistoryTicks: 'full'` stores only non-empty ticks for the whole match. `match-log` replies with `match-log-chunk` events of at most 2000 ticks, only to the requesting member socket. `Phalanx.shutdown(reason)` emits `server-shutdown` to every active room, waits `shutdownGraceMs`, then calls `stop()`. Set `handleSignals: true` to bind that to `SIGTERM`. The engine never calls `process.exit`. With `requireBuildId`, a missing or differing `buildId` emits `match-error` (`build-mismatch`) and removes the match before `match-found`. `GameRoom.getBuildId()` returns the first non-empty id in team order.
 
 #### Game Modes
 
