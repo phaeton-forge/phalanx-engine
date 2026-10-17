@@ -18,6 +18,9 @@ export interface Expectation {
   /**
    * Snapshot at `fromTick − 1`, `fromTick`, or `fromTick + 1`, restore
    * into a new runner, and match the continuous run tick for tick.
+   * `before` is taken after the handoff is queued. That peer steps
+   * across `fromTick` from the checkpoint, without the system command
+   * being inserted again from the log.
    */
   readonly handoffRestore?: 'before' | 'at' | 'after';
   /** A second handoff re-inits the bot from `seed + slot`. */

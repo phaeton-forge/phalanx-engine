@@ -107,6 +107,9 @@ request is a report note, and it fails the scenario when
 `expect.handoffRestore` (`before`, `at`, `after`) snapshots at
 `fromTick − 1`, `fromTick`, or `fromTick + 1`, restores into a new
 runner, and checks each later digest against the continuous run.
+`before` is taken after `setController` has queued the handoff. The
+restored peer steps across `fromTick` from that checkpoint and does
+not replay the system command from the log.
 `expect.botReinit` checks that the next handoff starts a fresh bot
 from `seed + slot`. `expect.systemSeq` checks that the next system
 command keeps a unique `q` and that a second save is byte-identical.

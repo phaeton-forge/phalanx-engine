@@ -58,6 +58,19 @@ interface Book {
    * brings it into the window; nearer envelopes are not held behind it.
    */
   pending: LogEntry[];
+  /**
+   * Malformed targets still outside this peer's submit window. Drained
+   * the same way as `pending`: injected once `target` is at most
+   * {@link TRANSPORT_WINDOW} ticks ahead, dropped when a log catch-up
+   * will replay the envelope.
+   */
+  malformed: number[];
+  /**
+   * Slots handed to a bot whose pending commands a restored replica does
+   * not own. Replay those log entries through `replayBotsThrough`.
+   */
+  replayBotSlots: number[];
+  replayBotsThrough: number;
   /** A drop happened; heal with the authoritative log, not a resend. */
   catchUp: boolean;
 }
@@ -148,9 +161,6 @@ export async function simulate(
         }
       );
       if (note !== '') notes.push(note);
-      const armed = peers.get(authorityId);
-      if (armed !== undefined)
-        captureHandoff(scenario, plans, armed, handoffShot);
       if (
         scenario.timeline.some(
           (event) => event.op === 'inject' && event.at === clock
@@ -174,6 +184,10 @@ export async function simulate(
       }
       if (live.status() === 'ended' || live.status() === 'failed') break;
       notes.push(...armControls(plans, peers, gone, spec));
+      // 'before' must include the queued system command. Capturing above
+      // armControls snapshots an empty checkpoint, and the proof then
+      // passes by replaying the command from the log.
+      captureHandoff(scenario, plans, live, handoffShot);
       scriptInputs(scenario, spec, rng, clock, live);
       live.step(1);
       authorityTick = live.tick();
@@ -224,6 +238,20 @@ export async function simulate(
         );
       }
     }
+    // A lagging replica has not yet applied a late rejection. Catch up
+    // before comparing histories, or a convergent run fails sameRejection.
+    if (scenario.expect.converge !== false) {
+      await flushGates(
+        match.log(),
+        authorityTick,
+        peers,
+        books,
+        digests,
+        dumps,
+        gone,
+        plans
+      );
+    }
     const rejectionNote = rejectionFailure(scenario, peers);
     if (rejectionNote !== null) throw new Error(rejectionNote);
     const differed = sameRejection(scenario, peers);
@@ -235,16 +263,6 @@ export async function simulate(
         ...(controller.length === 0 ? {} : { controller }),
       };
     }
-    await flushGates(
-      match.log(),
-      authorityTick,
-      peers,
-      books,
-      digests,
-      dumps,
-      gone,
-      plans
-    );
     await checkConvergence(
       driver,
       scenario,
@@ -319,7 +337,14 @@ export function isSimulationFailure(
 }
 
 function openBook(disabled: boolean): Book {
-  return { gate: new FaultGate(disabled), pending: [], catchUp: false };
+  return {
+    gate: new FaultGate(disabled),
+    pending: [],
+    malformed: [],
+    replayBotSlots: [],
+    replayBotsThrough: -1,
+    catchUp: false,
+  };
 }
 
 function isExpectedFailureMissing(
@@ -559,7 +584,16 @@ async function applyEvent(
     for (const [id, peer] of peers) {
       if (gone.has(id)) continue;
       if (peer.status() === 'disposed' || peer.status() === 'failed') continue;
-      peer.injectMalformed(0, target);
+      // A dropped command can leave this peer more than TRANSPORT_WINDOW
+      // ticks behind. submit() throws on that target; hold it with the
+      // rest of the peer's pending traffic.
+      if (fitsSubmit(peer, target)) {
+        peer.injectMalformed(0, target);
+        continue;
+      }
+      const book = books.get(id) ?? openBook(false);
+      books.set(id, book);
+      book.malformed.push(target);
     }
     return;
   }
@@ -574,7 +608,8 @@ async function applyEvent(
       peers,
       books,
       digests,
-      dumps
+      dumps,
+      plans
     );
     return;
   }
@@ -640,7 +675,8 @@ function roundTrip(
   peers: Map<string, Peer>,
   books: Map<string, Book>,
   digests: Map<string, Map<number, string>>,
-  dumps: Map<string, Map<number, StateDump>>
+  dumps: Map<string, Map<number, StateDump>>,
+  plans: readonly ControlPlan[]
 ): void {
   const peer = peers.get(peerId);
   if (peer === undefined || peer.tick() < 0) return;
@@ -706,6 +742,18 @@ function roundTrip(
       }
     );
   }
+  // The snapshot already applied every handoff at or before this tick.
+  // Leaving the twin unarmed makes the next pass throw setController missed.
+  noteReplayedControls(plans, twinId, twin);
+  const book = books.get(twinId);
+  if (book !== undefined) {
+    // A replica does not own a slot that started human. The checkpoint
+    // drops that bot's already-queued command; replay it from the log
+    // for the delay window, then let the restored policy decide.
+    const spec = specFor(scenario);
+    book.replayBotSlots = handedBotSlots(plans, twin.tick(), spec);
+    book.replayBotsThrough = twin.tick() + spec.inputDelayTicks;
+  }
   remember(twinId, twin, digests, dumps);
 }
 
@@ -763,6 +811,10 @@ async function flushGates(
   for (const [id, peer] of peers) {
     if (gone.has(id)) continue;
     if (peer.tick() >= authorityTick) continue;
+    const book = books.get(id);
+    // The log replay applies the malformed envelope. A late inject would
+    // target a tick this peer is about to leave behind.
+    if (book !== undefined) book.malformed = [];
     await catchUp(
       peer,
       log,
@@ -801,6 +853,7 @@ async function syncReplicas(
     if (book.catchUp) {
       book.catchUp = false;
       book.pending = [];
+      book.malformed = [];
       await catchUp(
         peer,
         log,
@@ -817,6 +870,17 @@ async function syncReplicas(
       const rng = prng(mix(scenario.seed, clock, id));
       for (const entry of fresh) book.gate.offer(authority.tick(), entry, rng);
       offered.set(id, authority.tick());
+    }
+    if (
+      book.replayBotSlots.length > 0 &&
+      authority.tick() <= book.replayBotsThrough
+    ) {
+      for (const entry of log) {
+        if (entry.tick !== authority.tick() || !isBot(entry)) continue;
+        const slot = botSlot(entry.playerId);
+        if (slot === null || !book.replayBotSlots.includes(slot)) continue;
+        book.pending.push(entry);
+      }
     }
     book.pending.push(...book.gate.releaseDue(authority.tick()));
     armControls(plans, peers, gone, spec);
@@ -1103,6 +1167,7 @@ function drainPending(
   const limit = Math.max(through, 0) + book.pending.length + TRANSPORT_WINDOW;
   for (let guard = 0; guard <= limit; guard += 1) {
     if (peer.status() === 'ended' || peer.status() === 'failed') return;
+    flushMalformed(peer, book);
     const deferred: LogEntry[] = [];
     for (const entry of book.pending) {
       if (fitsWindow(peer, entry)) peer.deliver(entry);
@@ -1122,11 +1187,68 @@ function drainPending(
 }
 
 function fitsWindow(peer: Peer, entry: LogEntry): boolean {
-  return entry.tick <= peer.tick() + 1 + TRANSPORT_WINDOW;
+  return fitsSubmit(peer, entry.tick);
+}
+
+/** `LocalTransport.submit` accepts `target` in `[nextTick, nextTick + window]`. */
+function fitsSubmit(peer: Peer, target: number): boolean {
+  const next = peer.tick() + 1;
+  return target >= next && target <= next + TRANSPORT_WINDOW;
+}
+
+function flushMalformed(peer: Peer, book: Book): void {
+  if (book.malformed.length === 0) return;
+  const deferred: number[] = [];
+  for (const target of book.malformed) {
+    if (fitsSubmit(peer, target)) peer.injectMalformed(0, target);
+    else if (target > peer.tick() + 1 + TRANSPORT_WINDOW) deferred.push(target);
+  }
+  book.malformed = deferred;
 }
 
 function isHuman(entry: LogEntry): boolean {
   return entry.playerId.startsWith('local:');
+}
+
+function isBot(entry: LogEntry): boolean {
+  return botSlot(entry.playerId) !== null;
+}
+
+function botSlot(playerId: string): number | null {
+  if (!playerId.startsWith('bot:')) return null;
+  const slot = Number(playerId.slice('bot:'.length));
+  if (!Number.isInteger(slot) || slot < 0) return null;
+  return slot;
+}
+
+/**
+ * Slots a handoff moved onto a bot. Slots that started as bots already
+ * keep their queued commands on restore, so replaying those would apply
+ * the attack twice.
+ */
+function handedBotSlots(
+  plans: readonly ControlPlan[],
+  now: number,
+  spec: MatchSpec
+): number[] {
+  const startedBot = new Set<number>();
+  spec.slots.forEach((slot, index) => {
+    if (slot.kind === 'bot') startedBot.add(index);
+  });
+  const mode = new Map<number, 'human' | 'bot'>();
+  const ordered = [...plans].sort(
+    (left, right) => left.fromTick - right.fromTick
+  );
+  for (const plan of ordered) {
+    if (plan.fromTick > now) continue;
+    mode.set(plan.slot, plan.mode);
+  }
+  const slots: number[] = [];
+  for (const [slot, value] of mode) {
+    if (value === 'bot' && !startedBot.has(slot)) slots.push(slot);
+  }
+  slots.sort((left, right) => left - right);
+  return slots;
 }
 
 function faultOf(event: Extract<TimelineEvent, { op: 'faults' }>): FaultSpec {
@@ -1309,14 +1431,29 @@ async function proveHandoffRestore(
       );
     }
     const replayed = new Map<number, string>();
-    await catchUp(
-      twin,
-      match.log(),
-      authorityTick,
-      replayed,
-      new Map(),
-      target
-    );
+    let after = target;
+    if (mode === 'before') {
+      // Cross fromTick from the restored checkpoint. Replaying the system
+      // command here would hide a restore that dropped pending handoffs.
+      for (const entry of match.log()) {
+        if (entry.tick === plan.fromTick) twin.deliver(entry);
+      }
+      twin.step(1);
+      if (twin.tick() !== plan.fromTick) {
+        throw new Error(
+          `handoff restore: checkpoint advanced to ${String(twin.tick())}, wanted ${String(plan.fromTick)}`
+        );
+      }
+      const crossed = series.get(plan.fromTick);
+      if (crossed === undefined || twin.digest() !== crossed) {
+        throw new Error(
+          `handoff restore: digest mismatch at tick ${String(plan.fromTick)}`
+        );
+      }
+      replayed.set(plan.fromTick, twin.digest());
+      after = plan.fromTick;
+    }
+    await catchUp(twin, match.log(), authorityTick, replayed, new Map(), after);
     for (const [tick, digest] of replayed) {
       if (series.get(tick) !== digest) {
         throw new Error(

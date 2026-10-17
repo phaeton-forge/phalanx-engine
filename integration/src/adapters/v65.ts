@@ -6,7 +6,6 @@ import {
   botPlayerId,
   decodeSnapshot,
   encodeSnapshot,
-  isBotPlayerId,
   type JsonValue,
   type LogEntry as EngineLogEntry,
   type ReplayRecord,
@@ -189,7 +188,6 @@ function wrapPeer(
       reconcileControls(live, session);
     },
     deliver(entry): void {
-      if (isBotPlayerId(entry.playerId)) return;
       if (entry.playerId === SYSTEM_PLAYER_ID) return;
       const slot = slotOf(entry.playerId);
       if (slot === null) return;
@@ -428,8 +426,13 @@ function mapLog(entries: readonly EngineLogEntry[]): LogEntry[] {
 }
 
 function slotOf(playerId: string): number | null {
-  if (!playerId.startsWith('local:')) return null;
-  const slot = Number(playerId.slice('local:'.length));
+  const body = playerId.startsWith('local:')
+    ? playerId.slice('local:'.length)
+    : playerId.startsWith('bot:')
+      ? playerId.slice('bot:'.length)
+      : null;
+  if (body === null) return null;
+  const slot = Number(body);
   if (!Number.isInteger(slot) || slot < 0) return null;
   return slot;
 }

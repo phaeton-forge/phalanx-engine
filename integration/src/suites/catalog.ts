@@ -264,6 +264,56 @@ export function catalog(): readonly Scenario[] {
       inputs: 'scripted:always',
       expect: { converge: true, rejection: 'slot controlled by bot' },
     }),
+    scenario('controller-rejection-after-lag', {
+      suite: 'disconnect',
+      tags: ['disconnect', 'controller', 'quick'],
+      seed: 18,
+      ticks: 8,
+      slots: ['human'],
+      peers: [...PEERS],
+      timeline: [
+        range(
+          0,
+          100,
+          faults('B', { delay: [0, 0], dup: 0, reorder: 0, drop: 1 })
+        ),
+        at(2, replaceWithBot('A', 'defensive')),
+      ],
+      inputs: 'scripted:always',
+      expect: { converge: true, rejection: 'slot controlled by bot' },
+    }),
+    scenario('malformed-behind-window', {
+      suite: 'adversarial',
+      tags: ['adversarial', 'quick'],
+      seed: 32,
+      ticks: 20,
+      slots: ['human'],
+      peers: [...PEERS],
+      timeline: [
+        range(
+          0,
+          100,
+          faults('B', { delay: [0, 0], dup: 0, reorder: 0, drop: 1 })
+        ),
+        at(12, { op: 'malformed', peer: 'A' }),
+      ],
+      inputs: 'scripted:always',
+      expect: { converge: true },
+    }),
+    scenario('controller-handoff-roundtrip', {
+      suite: 'disconnect',
+      tags: ['disconnect', 'controller', 'quick'],
+      seed: 19,
+      ticks: 8,
+      slots: ['human', 'bot:aggressive'],
+      peers: ['A'],
+      timeline: [
+        at(2, replaceWithBot('A', 'defensive')),
+        at(4, { op: 'roundTrip', peer: 'A' }),
+      ],
+      inputs: 'bots',
+      expect: { converge: true },
+    }),
     scenario('restart-server', {
       suite: 'disconnect',
       tags: ['disconnect'],
