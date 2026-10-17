@@ -202,9 +202,10 @@ rejects a submit more than `maxAheadTicks` past `nextTick` (default 8).
 Its timer waits
 `tickDuration - accumulator`. A snapshot taken
 after `decide` stores bot bytes and the input checkpoint outside the
-digest. `restore` applies bot state and the checkpoint only for slots
-this runner hosts or submits, so a client ignores a server snapshot's
-bot state and checkpoint. A custom `GameState` that calls `spawnWithId`
+digest. `restore` applies every slot's controller mode from the bot
+section. Policy bytes and the checkpoint are applied only for slots this
+runner hosts or submits, so a client keeps a server snapshot's
+human-to-bot handover and ignores that snapshot's policy state. A custom `GameState` that calls `spawnWithId`
 for an id `createWorld` already made still throws
 `spawnWithId: entity N already exists`. `world.restore` skips that id.
 A throw inside a tick does not escape `LocalTransport.manual().step()`;

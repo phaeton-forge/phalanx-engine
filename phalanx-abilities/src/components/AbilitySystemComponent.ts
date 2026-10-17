@@ -31,9 +31,11 @@ export class AbilitySystemComponent implements IComponent {
   }
 
   /**
-   * Remember the factory `pendingAdd` list. Later pool returns clear it;
+   * Remember the factory `pendingAdd` list. `initComponent` calls this
+   * before a snapshot can replace the list. Later pool returns clear it;
    * {@link onEnable} copies this image back. A `'restore'` enable does not,
-   * because the snapshot already wrote the saved queue.
+   * because the snapshot already wrote the saved queue. The first call
+   * wins, so a despawn after restore does not adopt the snapshot list.
    */
   public captureInitialPending(): void {
     if (this.initialPending !== null) return;

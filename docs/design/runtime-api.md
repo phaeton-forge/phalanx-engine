@@ -647,7 +647,10 @@ export function isBotPlayerId(playerId: string): boolean;
 - **Bot state is not `GameState`.** In server mode the clients never run
   server bots, so bot state in the body would make server and client digests
   differ forever. It lives in the snapshot's `botState` part, outside the
-  digest.
+  digest. The section stores every slot's controller mode (applied on every
+  peer) and then the hosting side's policy and RNG bytes (applied only when
+  the side matches and this host runs the slot). A hosted bot is reused only
+  when policy, level, and `runsOn` match the saved record.
 - Timing: a decision after tick T executes at `T + inputDelayTicks`.
 
 ## 8. MatchRunner, CommandLog, WorldScope, replays
@@ -755,9 +758,11 @@ export interface ReplayRecord<Cfg extends MatchConfigBase = MatchConfigBase> {
 batch. `snapshot` is taken after step 6, so the input checkpoint holds the
 commands just submitted for `T + inputDelayTicks` and `nextSeq`. `restore`
 builds a fresh world with `purpose: 'restore'`, then calls
-`GameState.restore`, `done()`, the round-trip check, and — only for slots
-this runner hosts or submits — the bot state and the checkpoint. A client
-restoring a server snapshot ignores those two sections.
+`GameState.restore`, `done()`, and the round-trip check. The bot section
+stores every slot's controller mode, which every peer applies, then the
+hosting side's policy and RNG bytes. A client restoring a server snapshot
+keeps those modes and ignores the other side's policy bytes. The input
+checkpoint is applied only for slots this runner hosts or submits.
 
 `fastForward(entries, { budgetMs, throughTick })` runs every tick after the
 current one through `throughTick` inclusive, including ticks that have no
@@ -1312,8 +1317,8 @@ Literal instructions for each task; they override the original task text.
     replayed tick, submitting only commands whose target is past
     `throughTick`. Test: snapshot at T, tail through T+50, the next live
     decision matches a run that never restored. `fromReplay` does not
-    call `decide`. A client does not apply a server snapshot's bot state
-    or checkpoint.
+    call `decide`. A client applies controller modes from a server snapshot
+    and does not apply that snapshot's policy bytes or checkpoint.
 - **Task 7 (persistence).** `IndexedDbMatchStore` and `visibilitychange`
   handling live in `@phalanx-engine/client` (the runtime has no DOM). The
   runtime keeps the `MatchStore` interface and an in-memory store.

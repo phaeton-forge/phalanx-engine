@@ -176,7 +176,14 @@ Entries collected per package until the synchronized 0.3.0 release
   `runsOn` is taken from the bot slot, or is `server` when the runner has a
   server peer and `local` otherwise; a peer that does not host it rejects
   with `not authoritative`. The input checkpoint stores the next system `q` outside the digest, so
-  a new runner does not reuse a `q` from commands applied before the snapshot. `start` throws if a slot
+  a new runner does not reuse a `q` from commands applied before the snapshot.
+  The bot section also stores every slot's controller mode, outside the
+  digest, and every peer restores it, so a client keeps a human-to-bot
+  handover. A hosted bot is reused only when policy, level, and `runsOn`
+  match the saved record. `ReplayPlayer.play` and `fastForward` apply only
+  entries in `(currentTick, throughTick]`. Player id `system` is reserved.
+  Factory GAS `pendingAdd` is captured in `initComponent`, before a
+  snapshot replaces it. `start` throws if a slot
   has `runsOn: 'server'` and the match has no server peer.
   `inputDelayTicks` defaults to 2; `gameId` and `simVersion` are filled
   from the definition. `ENGINE_SNAPSHOT_FORMAT` is 2 (format 1 is rejected).

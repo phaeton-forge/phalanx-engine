@@ -935,6 +935,30 @@ describe('ability state helpers', () => {
     expect(getActiveEffectsComponent(respawned)?.queue).toHaveLength(2);
   });
 
+  it('reseeds factory pending after a restored live minion returns to the pool', () => {
+    const source = pooledGasWorld();
+    const pools = source.world.pools;
+    if (pools === null) throw new Error('expected pools');
+    const live = pools.spawn<PooledMinion>('minion', { health: 90 });
+    source.abilities.applyEffect(live.id, 'Effect.Burn', live.id);
+    expect(pendingIds(live)).toEqual(['Effect.Shield', 'Effect.Burn']);
+
+    const bytes = saveMatch(source.world);
+    const restored = pooledGasWorld();
+    loadMatch(bytes, restored.world);
+    const restoredLive = restored.world.entityManager.getEntity(live.id);
+    if (restoredLive === undefined) throw new Error('missing live entity');
+    expect(pendingIds(restoredLive)).toEqual(['Effect.Shield', 'Effect.Burn']);
+
+    const restoredPools = restored.world.pools;
+    if (restoredPools === null) throw new Error('expected pools');
+    restoredPools.despawn(restoredLive);
+    const respawned = restoredPools.spawn<PooledMinion>('minion', {
+      health: 80,
+    });
+    expect(pendingIds(respawned)).toEqual(['Effect.Shield']);
+  });
+
   it('matches digests when a bare pooled entity gained GAS components lazily', () => {
     const source = barePoolWorld();
     const pools = source.world.pools;
@@ -1153,6 +1177,11 @@ function pooledGasWorld(): { world: GameWorld; abilities: AbilitySystem } {
   holder.abilities = abilities;
   world.registerSystems([...abilities.tickSystems], []);
   return { world, abilities };
+}
+
+function pendingIds(entity: Entity): string[] {
+  const pending = getActiveEffectsComponent(entity)?.pendingAdd ?? [];
+  return pending.map((entry) => entry.defId);
 }
 
 function saveMatch(world: GameWorld): Uint8Array {

@@ -56,6 +56,22 @@ export interface TinyBotCall {
 /** Every hosted `decide` in this process. Tests reset it between runs. */
 export const tinyBotCalls: TinyBotCall[] = [];
 
+let sentryConstructed = 0;
+let sentryRestored = 0;
+
+/** Counters for the sentry policy. Reset between tests that construct it. */
+export function resetSentryBot(): void {
+  sentryConstructed = 0;
+  sentryRestored = 0;
+}
+
+export function sentryBotCounts(): {
+  readonly constructed: number;
+  readonly restored: number;
+} {
+  return { constructed: sentryConstructed, restored: sentryRestored };
+}
+
 let restoreBroken = false;
 let decodeBoom = false;
 let validateBoom = false;
@@ -310,6 +326,34 @@ class WalkerBot implements BotPolicy<TinyCommand, TinySim> {
   }
 }
 
+/** Second policy. Save bytes are one mark byte, not the walker's `u32`. */
+class SentryBot implements BotPolicy<TinyCommand, TinySim> {
+  public constructor() {
+    sentryConstructed += 1;
+  }
+
+  public decide(
+    _sim: Readonly<TinySim>,
+    _tick: number
+  ): readonly TinyCommand[] {
+    return [{ type: 'spawn', x: 42n }];
+  }
+
+  public save(w: StateWriter): void {
+    w.u8(7);
+  }
+
+  public restore(r: StateReader): void {
+    sentryRestored += 1;
+    const mark = r.u8();
+    if (mark !== 7) {
+      throw new Error(
+        `SentryBot.restore: expected mark 7, got ${String(mark)}`
+      );
+    }
+  }
+}
+
 const codec = defineCommands(
   {
     spawn: { x: 'i64' },
@@ -366,6 +410,7 @@ export const TinyGame = defineGame<TinyConfig, TinyCommand, TinySim>({
   bots: {
     walker: (_config, slot: BotSlotInfo, rng: IRandom) =>
       new WalkerBot(slot.slot, rng),
+    sentry: () => new SentryBot(),
   },
   checkOutcome: (sim) =>
     sim.maxAbsX() >= BigInt(sim.config.arenaSize)

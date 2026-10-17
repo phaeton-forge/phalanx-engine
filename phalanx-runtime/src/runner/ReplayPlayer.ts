@@ -1,6 +1,7 @@
 import type { Unsubscribe } from '@phalanx-engine/ecs';
 import type { AnyGameDefinition, ConfigOf } from '../game/GameDefinition.js';
 import type { Digest } from '../state/snapshot.js';
+import type { LogEntry } from './CommandLog.js';
 import { MatchRunner, type RunnerOptions } from './MatchRunner.js';
 import type { ReplayRecord } from './replay.js';
 
@@ -41,7 +42,7 @@ export class ReplayPlayer<G extends AnyGameDefinition> {
 
   /** Play through `replay.lastTick`, yielding every `budgetMs`. */
   public play(options: { readonly budgetMs: number }): Promise<void> {
-    return this.runner.fastForward(this.replay.log, {
+    return this.runner.fastForward(this.entriesInRange(this.replay.lastTick), {
       budgetMs: options.budgetMs,
       throughTick: this.replay.lastTick,
     });
@@ -49,9 +50,17 @@ export class ReplayPlayer<G extends AnyGameDefinition> {
 
   /** Play through `throughTick` in one chunk. */
   public fastForward(throughTick: number): Promise<void> {
-    return this.runner.fastForward(this.replay.log, {
+    return this.runner.fastForward(this.entriesInRange(throughTick), {
       budgetMs: Number.POSITIVE_INFINITY,
       throughTick,
     });
+  }
+
+  /** Entries in `(currentTick, throughTick]`. Already-played ticks are omitted. */
+  private entriesInRange(throughTick: number): readonly LogEntry[] {
+    const currentTick = this.runner.tick;
+    return this.replay.log.filter(
+      (entry) => entry.tick > currentTick && entry.tick <= throughTick
+    );
   }
 }

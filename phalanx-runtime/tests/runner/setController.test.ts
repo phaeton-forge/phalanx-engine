@@ -1,15 +1,22 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { DeterministicRandom } from '@phalanx-engine/math';
 import {
+  BinaryStateReader,
+  BinaryStateWriter,
+  BotHost,
   LocalTransport,
   MatchRunner,
   ReplayPlayer,
+  botPlayerId,
   botSlotSeed,
+  runLocalMatch,
   type Digest,
 } from '../../src/index.js';
 import {
   TinyGame,
+  resetSentryBot,
   resetTinyBotCalls,
+  sentryBotCounts,
   tinyBotCalls,
   type TinyConfig,
 } from '../fixtures/tinyGame.js';
@@ -46,6 +53,7 @@ describe('setController', () => {
 
   afterEach(() => {
     resetTinyBotCalls();
+    resetSentryBot();
     while (live.length > 0) live.pop()?.dispose();
   });
 
@@ -254,4 +262,169 @@ describe('setController', () => {
       runsOn: 'server',
     });
   });
+
+  it('keeps a server handover as a bot when a client restores the snapshot', async () => {
+    const serverTransport = LocalTransport.stepped();
+    const server = keep(
+      new MatchRunner(
+        TinyGame,
+        { ...config(), side: 'server' },
+        serverTransport
+      )
+    );
+    server.start();
+    serverTransport.step(4);
+    server.setController(0, 'bot', { policy: 'walker', fromTick: 5 });
+    serverTransport.step(3);
+    expect(server.tick).toBe(6);
+    const bytes = server.snapshot();
+
+    const client = keep(
+      new MatchRunner(TinyGame, config(), LocalTransport.stepped())
+    );
+    const reasons: string[] = [];
+    client.onRejected((_entry, reason) => {
+      reasons.push(reason);
+    });
+    client.restore(bytes);
+    const next = server.tick + 1;
+    await client.fastForward(
+      [
+        {
+          tick: next,
+          playerId: botPlayerId(0),
+          type: 'spawn',
+          data: { q: 0, p: { type: 'spawn', x: '1' } },
+        },
+        {
+          tick: next,
+          playerId: 'local:0',
+          type: 'spawn',
+          data: { q: 0, p: { type: 'spawn', x: '2' } },
+        },
+      ],
+      { budgetMs: Number.POSITIVE_INFINITY, throughTick: next }
+    );
+    expect(reasons).not.toContain('slot controlled by human');
+    expect(reasons).toContain('slot controlled by bot');
+  });
+
+  it('constructs the saved policy instead of restoring into the configured bot', () => {
+    const transport = LocalTransport.stepped();
+    const runner = keep(
+      new MatchRunner(TinyGame, botSlotConfig('walker', 0), transport)
+    );
+    runner.start();
+    transport.step(1);
+    runner.setController(0, 'human', { fromTick: 2 });
+    transport.step(2);
+    runner.setController(0, 'bot', { policy: 'sentry', fromTick: 4 });
+    transport.step(2);
+    expect(runner.tick).toBe(4);
+    const bytes = runner.snapshot();
+
+    resetSentryBot();
+    const copy = keep(
+      new MatchRunner(
+        TinyGame,
+        botSlotConfig('walker', 0),
+        LocalTransport.stepped()
+      )
+    );
+    expect(sentryBotCounts().constructed).toBe(0);
+    copy.restore(bytes);
+    expect(sentryBotCounts()).toEqual({ constructed: 1, restored: 1 });
+  });
+
+  it('constructs a new bot when the saved level differs', () => {
+    const host = new BotHost(TinyGame, botSlotConfig('sentry', 0), 'client');
+    host.release(0);
+    host.adopt({
+      slot: 0,
+      team: 0,
+      policy: 'sentry',
+      level: 4,
+      runsOn: 'local',
+    });
+    const writer = new BinaryStateWriter();
+    host.save(writer);
+    const bytes = writer.finish();
+
+    resetSentryBot();
+    const restored = new BotHost(
+      TinyGame,
+      botSlotConfig('sentry', 0),
+      'client'
+    );
+    expect(sentryBotCounts().constructed).toBe(1);
+    restored.restore(new BinaryStateReader(bytes));
+    expect(sentryBotCounts()).toEqual({ constructed: 2, restored: 1 });
+  });
+
+  it('plays a replay through a prefix and then the rest', async () => {
+    const { runner, transport } = open();
+    keep(runner);
+    runner.submit({ type: 'move', dx: 1n });
+    runner.start();
+    transport.step(4);
+    runner.submit({ type: 'move', dx: 1n });
+    transport.step(4);
+    runner.submit({ type: 'move', dx: 1n });
+    transport.step(3);
+    const replay = runner.toReplay();
+    const ticks = replay.log.map((entry) => entry.tick);
+    expect(ticks).toEqual(expect.arrayContaining([1, 5, 9]));
+
+    const player = ReplayPlayer.from(TinyGame, replay);
+    await player.fastForward(5);
+    expect(player.tick).toBe(5);
+    await player.play({ budgetMs: 50 });
+    expect(player.tick).toBe(replay.lastTick);
+    expect(player.digest()).toBe(replay.finalDigest);
+  });
+
+  it('rejects the reserved player id system from either entry point', () => {
+    const transport = LocalTransport.stepped();
+    const human = {
+      slot: 0,
+      team: 0,
+      kind: 'human' as const,
+      playerId: 'system',
+      color: 1,
+    };
+    expect(
+      () =>
+        new MatchRunner(TinyGame, { ...config(), slots: [human] }, transport)
+    ).toThrow(/player id 'system' is reserved/);
+    expect(() =>
+      runLocalMatch(TinyGame, {
+        seed: 1,
+        stepped: true,
+        slots: [{ kind: 'human', playerId: 'system' }],
+      })
+    ).toThrow(/player id 'system' is reserved/);
+  });
 });
+
+function botSlotConfig(policy: string, level: number): TinyConfig {
+  return {
+    matchId: 'ctrl',
+    gameId: 'tiny',
+    simVersion: 'tiny-1',
+    seed: 7,
+    side: 'client',
+    inputDelayTicks: DELAY,
+    arenaSize: ARENA,
+    slots: [
+      {
+        slot: 0,
+        team: 0,
+        kind: 'bot',
+        policy,
+        level,
+        runsOn: 'local',
+        color: 1,
+      },
+    ],
+  };
+}

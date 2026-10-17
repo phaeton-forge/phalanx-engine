@@ -43,6 +43,8 @@ export interface BotAdopt {
 
 const CLIENT_SIDE = 0;
 const SERVER_SIDE = 1;
+const MODE_HUMAN = 0;
+const MODE_BOT = 1;
 const RNG_WORDS = 4;
 
 /**
@@ -50,9 +52,16 @@ const RNG_WORDS = 4;
  * `DeterministicRandom` per slot, seeded from `(config.seed, slot)`) and
  * collects their decisions after each tick, slot ascending.
  *
- * Saved bytes start with the hosting side. A runner whose side differs
- * (a client reading a server snapshot) parses the section and applies
- * nothing. Slots this host does not run are skipped the same way.
+ * Saved bytes start with the hosting side, then every slot's controller
+ * mode, then the hosted policies. Modes are outside the digest and are
+ * applied on every peer. Policy and RNG bytes are applied only when the
+ * side matches and this host runs the slot. A client restoring a server
+ * snapshot therefore keeps a human-to-bot handover without taking on the
+ * server's policy state.
+ *
+ * An existing bot is reused only when policy, level, and `runsOn` match
+ * the saved record. Otherwise a new policy is constructed and the saved
+ * bytes are restored into that instance.
  *
  * `decide` is not simulation code. If it throws, the error is reported
  * and that slot submits nothing for the tick. The match keeps running.
@@ -64,11 +73,18 @@ export class BotHost<G extends AnyGameDefinition> {
   private readonly definition: G;
   private readonly config: ConfigOf<G>;
   private readonly side: RunnerSide;
+  private readonly modeMap: Map<number, 'human' | 'bot'> | null;
 
-  public constructor(definition: G, config: ConfigOf<G>, side: RunnerSide) {
+  public constructor(
+    definition: G,
+    config: ConfigOf<G>,
+    side: RunnerSide,
+    modes?: Map<number, 'human' | 'bot'>
+  ) {
     this.definition = definition;
     this.config = config;
     this.side = side;
+    this.modeMap = modes ?? null;
     this.sideTag = side === 'server' ? SERVER_SIDE : CLIENT_SIDE;
     const slots = config.slots
       .filter((slot): slot is BotSlotConfig => {
@@ -177,6 +193,15 @@ export class BotHost<G extends AnyGameDefinition> {
   public save(writer: StateWriter): void {
     writer.u8(this.sideTag);
     writer.sortedBy(
+      this.config.slots,
+      (slot) => slot.slot,
+      (slot, modeWriter) => {
+        modeWriter.varint(slot.slot);
+        const mode = this.modeMap?.get(slot.slot) ?? slot.kind;
+        modeWriter.u8(mode === 'bot' ? MODE_BOT : MODE_HUMAN);
+      }
+    );
+    writer.sortedBy(
       this.hosted,
       (bot) => bot.slot,
       (bot, botWriter) => {
@@ -202,6 +227,7 @@ export class BotHost<G extends AnyGameDefinition> {
   public restore(reader: StateReader): void {
     const side = reader.u8();
     const apply = side === this.sideTag;
+    this.readModes(reader);
     const records = reader.list((botReader) => {
       const slot = botReader.varint();
       const policyName = botReader.str();
@@ -220,17 +246,23 @@ export class BotHost<G extends AnyGameDefinition> {
           `BotHost.restore: runsOn '${record.runsOn}' is not local or server`
         );
       }
-      if (!this.hostsRunsOn(record.runsOn)) continue;
+      const runsOn: BotHostSide = record.runsOn;
+      if (!this.hostsRunsOn(runsOn)) continue;
       const existing = this.hosted.find((bot) => bot.slot === record.slot);
-      const bot =
-        existing ??
-        this.createBot({
-          slot: record.slot,
-          team: this.teamOf(record.slot),
-          policy: record.policyName,
-          level: record.level,
-          runsOn: record.runsOn,
-        });
+      const reusable =
+        existing !== undefined &&
+        existing.policyName === record.policyName &&
+        existing.level === record.level &&
+        existing.runsOn === runsOn;
+      const bot = reusable
+        ? existing
+        : this.createBot({
+            slot: record.slot,
+            team: this.teamOf(record.slot),
+            policy: record.policyName,
+            level: record.level,
+            runsOn,
+          });
       if (record.words.length !== RNG_WORDS) {
         throw new Error(
           `BotHost.restore: expected ${String(RNG_WORDS)} RNG words, got ${String(record.words.length)}`
@@ -249,6 +281,49 @@ export class BotHost<G extends AnyGameDefinition> {
     }
     next.sort((left, right) => left.slot - right.slot);
     this.hosted = next;
+  }
+
+  /**
+   * Every slot's controller mode. Applied even when the snapshot was
+   * written by the other side; policy bytes stay behind that gate.
+   */
+  private readModes(reader: StateReader): void {
+    const rows = reader.list((modeReader) => {
+      const slot = modeReader.varint();
+      const flag = modeReader.u8();
+      return { slot, flag };
+    });
+    if (this.modeMap === null) return;
+    const seen = new Set<number>();
+    for (const row of rows) {
+      if (!Number.isInteger(row.slot) || row.slot < 0) {
+        throw new Error(
+          `BotHost.restore: controller mode slot ${String(row.slot)} is invalid`
+        );
+      }
+      if (seen.has(row.slot)) {
+        throw new Error(
+          `BotHost.restore: duplicate controller mode for slot ${String(row.slot)}`
+        );
+      }
+      seen.add(row.slot);
+      if (row.flag !== MODE_HUMAN && row.flag !== MODE_BOT) {
+        throw new Error(
+          `BotHost.restore: mode ${String(row.flag)} is not human or bot`
+        );
+      }
+      if (this.config.slots[row.slot] === undefined) {
+        throw new Error(`BotHost.restore: unknown slot ${String(row.slot)}`);
+      }
+      this.modeMap.set(row.slot, row.flag === MODE_BOT ? 'bot' : 'human');
+    }
+    for (const slot of this.config.slots) {
+      if (!seen.has(slot.slot)) {
+        throw new Error(
+          `BotHost.restore: missing controller mode for slot ${String(slot.slot)}`
+        );
+      }
+    }
   }
 
   private teamOf(slot: number): number {

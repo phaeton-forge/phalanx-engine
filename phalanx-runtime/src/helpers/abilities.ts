@@ -70,8 +70,10 @@ import {
  * copies the factory shell back (`releasePooledAbilityState`): attribute
  * `base` / `current` / `dirty`, the equipped ability set, and ad-hoc tags
  * plus effect grants from construction (`initComponent` tags included).
- * Components attached after that shell are removed. Initial `pendingAdd`
- * effects are not part of the shell, so `onSpawn` must re-seed those.
+ * Components attached after that shell are removed. Factory `pendingAdd`
+ * is captured in `initComponent`, before a snapshot can replace the list,
+ * and `onEnable` copies it back. Effects added after that capture are not
+ * part of the image.
  * A respawn whose `onSpawn` does not rewrite attributes still matches a
  * restored copy, because restore builds a fresh factory instance and runs
  * the same hook.

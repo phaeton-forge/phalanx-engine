@@ -224,7 +224,7 @@ export class MatchRunner<G extends AnyGameDefinition> {
     );
     this.random = new DeterministicRandom(this.config.seed >>> 0);
     this.provider = new RunnerProvider(this.random, transport);
-    this.botHost = new BotHost(definition, this.config, this.side);
+    this.botHost = new BotHost(definition, this.config, this.side, this.modes);
     this.botSlotSet = new Set(this.botHost.slots);
     if (transport instanceof LocalTransport) {
       if (!transport.isStepped && transport.tickRate !== definition.tickRate) {
@@ -410,9 +410,11 @@ export class MatchRunner<G extends AnyGameDefinition> {
 
   /**
    * Version policy → fresh `createWorld(config, { purpose: 'restore' })` →
-   * `GameState.restore` → `done()` → round-trip check. Then bot state and
-   * the input checkpoint, but only for slots this runner hosts or submits:
-   * a client restoring a server snapshot ignores both. With no following
+   * `GameState.restore` → `done()` → round-trip check. Controller mode for
+   * every slot is restored from the bot section on every peer. Policy and
+   * RNG bytes, and the input checkpoint, are applied only for slots this
+   * runner hosts or submits. A client restoring a server snapshot keeps a
+   * human-to-bot handover and ignores the other side's policy state. With no following
    * `fastForward`, `start` re-submits the checkpoint and does not re-run
    * `decide` for the snapshot tick. A runner that is already started flushes
    * that checkpoint after the transport seek, because `start` will not run
@@ -483,8 +485,9 @@ export class MatchRunner<G extends AnyGameDefinition> {
       const reader = new BinaryStateReader(decoded.botState);
       this.botHost.restore(reader);
       reader.done();
+    } else {
+      this.syncHostedModes();
     }
-    this.syncHostedModes();
     if (
       decoded.inputCheckpoint !== null &&
       decoded.inputCheckpoint.byteLength > 0
@@ -988,9 +991,8 @@ export class MatchRunner<G extends AnyGameDefinition> {
   }
 
   /**
-   * After a bot-state restore, mode follows the hosted set for slots this
-   * runner actually runs. A client ignores server bot bytes and keeps the
-   * config mode.
+   * Fallback when a snapshot has no bot section. Mode follows the hosted
+   * set for slots this runner actually runs.
    */
   private syncHostedModes(): void {
     for (const slot of this.config.slots) {
@@ -1648,6 +1650,11 @@ function validateConfig<G extends AnyGameDefinition>(
     if (slot === undefined || slot.slot !== index) {
       throw new Error(
         'MatchRunner: slots must be contiguous and sorted from 0'
+      );
+    }
+    if (slot.kind === 'human' && slot.playerId === SYSTEM_PLAYER_ID) {
+      throw new Error(
+        `MatchRunner: player id '${SYSTEM_PLAYER_ID}' is reserved (slot ${String(slot.slot)})`
       );
     }
   }

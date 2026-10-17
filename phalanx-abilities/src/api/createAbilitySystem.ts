@@ -247,6 +247,10 @@ class AbilitySystemImpl implements AbilitySystem {
     this.seedAbilities(component, init.abilities);
     this.seedTags(component, init.tags);
     this.seedEffects(component, init.effects);
+    // Capture before any snapshot can replace pendingAdd. A restored live
+    // pooled entity is built by this factory and then overwritten; the
+    // later pool return must reseed these factory effects, not the snapshot.
+    component.captureInitialPending();
     return component;
   }
 
