@@ -482,6 +482,29 @@ describe('GameRoom absence timer', () => {
     });
   });
 
+  it('starts the absence timer on resume after a disconnect during pause', () => {
+    const { room, log } = duel({ windowMs: 120_000, matchBudgetMs: 8000 });
+    room.handleDisconnect('sock-p1');
+    vi.setSystemTime(Date.now() + 3000);
+    expect(room.handleReconnect('p1', 'sock-p1')).toBe(true);
+    expect(room.pause('p2')).toBe(true);
+    const absentBefore = events(log, 'player-absent').length;
+    room.handleDisconnect('sock-p1');
+    expect(room.getAbsences()).toEqual([]);
+    expect(events(log, 'player-absent')).toHaveLength(absentBefore);
+    expect(room.resume('p2')).toBe(true);
+    expect(room.getMatchInfo().state).toBe('playing');
+    expect(room.getAbsences()).toEqual([
+      { playerId: 'p1', deadlineMs: 5000, budgetLeftMs: 5000 },
+    ]);
+    vi.advanceTimersByTime(5000);
+    expect(room.getMatchInfo().state).toBe('finished');
+    expect(matchEndPayload(events(log, 'match-end').at(-1))).toEqual({
+      reason: 'disconnect',
+      winnerTeamId: 1,
+    });
+  });
+
   it('stops a running timer when the absent player messages during pause', () => {
     const running = duel(DEFAULT_ABSENCE);
     running.room.handleDisconnect('sock-p1');

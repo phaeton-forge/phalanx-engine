@@ -277,8 +277,9 @@ Omit `absence` and a disconnected player never loses the match. Pass
 `DEFAULT_ABSENCE` (`windowMs` 120000, `matchBudgetMs` 180000) or your own
 positive integers. The deadline is `min(windowMs, budgetLeft)`. The timer
 starts only in `playing` (socket drop, or `disconnectTicks` in continuous
-mode). It does not start on a disconnect while `paused`, but a timer that
-already started keeps running through a pause. Event mode
+mode). It does not start on a disconnect while `paused`. `resume()` starts
+one for each player who is still disconnected, cut by the remaining budget.
+A timer that already started keeps running through a pause. Event mode
 (`tickMode: 'event'`) does not run `checkPlayerTimeouts`, so only a socket
 drop starts the timer.
 

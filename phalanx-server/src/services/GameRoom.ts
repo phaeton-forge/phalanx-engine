@@ -1175,6 +1175,13 @@ export class GameRoom {
       this.lastMessageTime.set(playerId, now);
     }
 
+    // A disconnect during pause does not start a timer. Once play resumes,
+    // each player who is still disconnected gets one. `beginAbsence` leaves
+    // a running timer alone and cuts the deadline by the remaining budget.
+    for (const [playerId, player] of this.players) {
+      if (!player.connected) this.beginAbsence(playerId);
+    }
+
     // Broadcast to all clients so they unfreeze
     this.io.to(this.roomId).emit('game-resumed', {
       requestedBy,

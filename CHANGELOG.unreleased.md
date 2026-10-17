@@ -295,7 +295,8 @@ Entries collected per package until the synchronized 0.3.0 release
 - server: opt-in absence timer in `playing`
   (`absence: { windowMs, matchBudgetMs }`, `player-absent`, `match-end`
   gains `winnerTeamId`, `reason: 'disconnect' | 'abandoned'`); public
-  `GameRoom.endMatch()`, also via the `player-command` hook context.
+  `GameRoom.endMatch()`, also via the `player-command` hook context. A
+  disconnect during pause starts that player's timer on `resume()`.
 - `DeterministicRandom` subclasses the math implementation. `fromBigInt`
   is unchanged. `generateSeed` uses an ESM `node:crypto` import instead of
   `require`.

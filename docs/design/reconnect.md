@@ -64,8 +64,10 @@ an internal `AbsencePolicy` seam that is not exported.
   budget; the deadline is `min(windowMs, budgetLeft)`.
 - The timer starts only when a player becomes disconnected during
   `playing` (socket drop or `disconnectTicks`). A second signal does not
-  restart it. A disconnect while `paused` does not start a timer. A timer
-  that already started keeps running through a pause. Nothing starts after
+  restart it. A disconnect while `paused` does not start a timer.
+  `resume()` starts one for each player who is still disconnected, cut by
+  the remaining budget. A timer that already started keeps running through
+  a pause. Nothing starts after
   `finished`. `stop()` and every `match-end` clear the timers.
 - Budget is per player. On return, elapsed time is subtracted, not below 0.
   A remaining budget of 0 expires with `setTimeout(…, 0)`, not inside
@@ -79,7 +81,8 @@ an internal `AbsencePolicy` seam that is not exported.
   `player-reconnected` is enough. With `absence` on, the first message
   from the still-bound socket after a `disconnectTicks` timeout is also a
   return, including while `paused` when a timer is already running. A
-  disconnect during `paused` still starts no timer. With `absence` off,
+  disconnect during `paused` starts no timer until `resume()`. With
+  `absence` off,
   that message does not set `connected` back to true.
 - On expiry, if every human is absent: `endMatch({ reason: 'abandoned' })`
   with no winner. Otherwise

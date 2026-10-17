@@ -277,8 +277,10 @@ disconnect handler.
 
 The timer starts only while the match is `playing`, on a socket drop or
 (continuous mode) when `disconnectTicks` elapses. A second signal does not
-restart it. Disconnecting during `paused` does not start a timer. A timer
-that has already started keeps running if the match is paused afterwards.
+restart it. Disconnecting during `paused` does not start a timer.
+`resume()` starts one for each player who is still disconnected, cut by
+the budget they have left. A timer that has already started keeps running
+if the match is paused afterwards.
 `tickMode: 'event'` does not poll `disconnectTicks`, so only a socket drop
 starts the timer. `stop()` and any `match-end` clear the timers.
 
@@ -302,8 +304,8 @@ enabled, the first message on the socket that is still bound after a
 `disconnectTicks` timeout also counts as a return (`connected` becomes
 true again and the timer stops). A message during `paused` does the same
 when a timer is already running, so expiry cannot end the match after the
-player is back. A disconnect that happens during `paused` still starts no
-timer, and a message in that case leaves `connected` false. Without
+player is back. A disconnect during `paused` still starts no timer until
+`resume()`, and a message before then leaves `connected` false. Without
 `absence`, a message does not set `connected` back to true.
 
 When the timer expires:
