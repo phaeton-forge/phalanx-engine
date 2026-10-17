@@ -1139,7 +1139,7 @@ function faultOf(event: Extract<TimelineEvent, { op: 'faults' }>): FaultSpec {
 }
 
 /** Peer A is slot 0, B is slot 1, C is slot 2. An explicit `slot` wins. */
-function slotOfPeer(peer: string): number {
+export function slotOfPeer(peer: string): number {
   if (peer === 'B') return 1;
   if (peer === 'C') return 2;
   return 0;

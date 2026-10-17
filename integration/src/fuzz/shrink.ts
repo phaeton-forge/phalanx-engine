@@ -1,3 +1,4 @@
+import { slotOfPeer } from '../dsl/interpret.js';
 import type { Scenario, TimelineEvent } from '../dsl/scenario.js';
 import { errorMessage } from '../util/json.js';
 
@@ -258,7 +259,7 @@ function handoffPartner(
 
 function handoffSlot(event: TimelineEvent): number {
   if (event.op !== 'replaceWithBot' && event.op !== 'returnFromBot') return -1;
-  return event.slot ?? 0;
+  return event.slot ?? slotOfPeer(event.peer);
 }
 
 function split<T>(items: readonly T[], parts: number): T[][] {

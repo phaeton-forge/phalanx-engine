@@ -46,10 +46,12 @@ describe('round-trip diagnostics', () => {
 describe('fuzz without an early restore', () => {
   it('keeps snapshot reconnects out of the first half of late-restore timelines', () => {
     let late = 0;
+    let total = 0;
     for (let seed = 1; seed <= 20; seed += 1) {
       const rng = prng(seed);
       for (let index = 0; index < 40; index += 1) {
         const generated = generateScenario(rng, seed, index);
+        total += 1;
         if (!generated.tags.includes('late-restore')) continue;
         late += 1;
         const at = firstSnapshotReconnect(generated.timeline);
@@ -57,6 +59,6 @@ describe('fuzz without an early restore', () => {
         expect(at === null || at >= mid).toBe(true);
       }
     }
-    expect(late).toBeGreaterThan(0);
+    expect(late / total).toBeGreaterThanOrEqual(0.3);
   });
 });

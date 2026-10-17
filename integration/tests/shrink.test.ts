@@ -56,6 +56,31 @@ describe('shrinkScenario', () => {
     expect(shrunk.timeline.map((event) => event.op)).toEqual(['malformed']);
   });
 
+  it('pairs an omitted slot with the peer default', async () => {
+    const original = scenario('peer-slot', {
+      suite: 'fuzz',
+      tags: ['fuzz'],
+      seed: 1,
+      ticks: 8,
+      slots: ['human', 'bot:aggressive'],
+      peers: ['A', 'B'],
+      timeline: [
+        { at: 2, op: 'replaceWithBot', peer: 'B', policy: 'defensive' },
+        { at: 3, op: 'malformed', peer: 'A' },
+        { at: 4, op: 'returnFromBot', peer: 'B', slot: 1 },
+      ],
+      inputs: 'scripted:basic',
+      expect: { converge: true },
+    });
+    const shrunk = await shrinkScenario(original, async (candidate) =>
+      candidate.timeline.some((event) => event.op === 'replaceWithBot')
+    );
+    expect(shrunk.timeline.map((event) => event.op)).toEqual([
+      'replaceWithBot',
+      'returnFromBot',
+    ]);
+  });
+
   it('treats a different divergence tick or a rejection as a new failure', () => {
     const diverged = new Error('peer B diverged at tick 5');
     expect(
