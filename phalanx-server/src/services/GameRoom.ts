@@ -16,12 +16,11 @@ import type {
 } from '../types/index.js';
 
 /**
- * Internal seam for Task 11. Not exported from the package entry.
- * The default policy ends the match when an absence expires. Task 11
- * substitutes a policy that calls `setController` through SimHost
- * (`'bot'` on absence, `'human'` on return).
+ * Module-internal seam for Task 11. The default policy ends the match
+ * when an absence expires. Task 11 substitutes a policy that calls
+ * `setController` through SimHost (`'bot'` on absence, `'human'` on return).
  */
-export interface AbsencePolicy {
+interface AbsencePolicy {
   onAbsent(playerId: string): void;
   onReturn(playerId: string): void;
   onExpire(playerId: string): void;
@@ -1591,11 +1590,21 @@ export class GameRoom {
     this.endMatch({ reason: 'disconnect', loserIds: [playerId] });
   }
 
+  /**
+   * Drop every running absence and report each as a return. The default
+   * `onReturn` does nothing. Task 11 uses it to drop a bot controller
+   * when the match ends before the window expires.
+   */
   private clearAbsenceTimers(): void {
+    const returned: string[] = [];
     for (const record of this.activeAbsences.values()) {
       clearTimeout(record.timer);
+      returned.push(record.playerId);
     }
     this.activeAbsences.clear();
+    for (const playerId of returned) {
+      this.absencePolicy.onReturn(playerId);
+    }
   }
 
   /** Every participant is a human until Task 11 adds bot slots. */

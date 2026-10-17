@@ -322,10 +322,12 @@ Existing reasons (`stopped`, `desync`, `turn-timeout`, `ready-timeout`,
 `players-not-connected`) are unchanged.
 
 Call `ctx.endMatch({ reason, winnerTeamId?, loserIds? })` from the
-`player-command` hook. That is how a game finishes a match. It returns
-`false` when the match is already finished, and when `winnerTeamId` is
-not a team in the match. The command that ended the match is not stored
-and not broadcast. `getAbsences()` returns the current absences with
+`player-command` hook. That hook runs before the command is logged or
+broadcast, on both `player-command` and `submit-commands`. That is how a
+game finishes a match. It returns `false` when the match is already
+finished, and when `winnerTeamId` is not a team in the match. The command
+that ended the match is not stored and not broadcast. `getAbsences()`
+returns the current absences with
 `deadlineMs` / `budgetLeftMs` in the same millisecond sense (Task 9
 reads the resume deadline from it).
 

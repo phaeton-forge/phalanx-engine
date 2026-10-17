@@ -584,6 +584,53 @@ describe('GameRoom absence timer', () => {
     expect(calls).toEqual(['absent:p1', 'return:p1', 'absent:p1', 'expire:p1']);
     expect(room.getMatchInfo().state).toBe('playing');
   });
+
+  it('reports onReturn when stop or endMatch clears an absence', () => {
+    const stopped: string[] = [];
+    const stopping = duel(DEFAULT_ABSENCE);
+    stopping.room.setAbsencePolicy({
+      onAbsent: () => {},
+      onReturn: (playerId: string) => {
+        stopped.push(playerId);
+      },
+      onExpire: () => {},
+    });
+    stopping.room.handleDisconnect('sock-p1');
+    stopping.room.stop();
+    expect(stopped).toEqual(['p1']);
+    expect(stopping.room.getAbsences()).toEqual([]);
+
+    const ended: string[] = [];
+    const ending = createRoom({
+      teams: DUEL,
+      absence: DEFAULT_ABSENCE,
+      onCommand: (_playerId, command, ctx) => {
+        if (command.type === 'destroy-base') {
+          ctx.endMatch({ reason: 'base-destroyed', winnerTeamId: 1 });
+        }
+      },
+    });
+    harness = ending;
+    reachPlaying(ending.room, ['p1', 'p2']);
+    ending.room.setAbsencePolicy({
+      onAbsent: () => {},
+      onReturn: (playerId: string) => {
+        ended.push(playerId);
+      },
+      onExpire: () => {},
+    });
+    ending.room.handleDisconnect('sock-p1');
+    expect(
+      ending.room.handleCommand('p2', {
+        type: 'destroy-base',
+        tick: 0,
+        playerId: 'p2',
+        data: {},
+      })
+    ).toBe(false);
+    expect(ended).toEqual(['p1']);
+    expect(ending.room.getMatchInfo().state).toBe('finished');
+  });
 });
 
 describe('absence over real sockets', () => {
