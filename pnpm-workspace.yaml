@@ -6,5 +6,6 @@ packages:
   - 'phalanx-physics'
   - 'phalanx-abilities'
   - 'phalanx-runtime'
+  - 'phalanx-engine'
   - 'abilities-playground'
   - 'integration'

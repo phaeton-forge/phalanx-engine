@@ -59,6 +59,11 @@ const shellByEntity = new WeakMap<Entity, ShellImage>();
  * factory instance and runs this again, so a respawn whose `onSpawn` does
  * not rewrite attributes still matches the restored copy.
  *
+ * Factory `pendingAdd` is captured in `initComponent`, before snapshot
+ * effects replace the list on a restored live entity. The call below is
+ * then a no-op. A component that was not built that way still captures
+ * on the first return to the pool.
+ *
  * `createAbilitySystem` registers this on `PoolManager`. The pool fires
  * it on the initial dormant transition, on `despawn`, and when
  * `readPools` parks a restored free entity.
@@ -69,7 +74,9 @@ export function releasePooledAbilityState(entity: Entity): void {
   if ((shell.flags & SHELL_ABILITY_SYSTEM) !== 0) {
     const ability = getAbilitySystemComponent(entity);
     if (ability !== undefined) {
+      ability.captureInitialPending();
       clearEffects(ability.activeEffects);
+      ability.requestReseed();
       restoreAbility(ability, shell);
     }
   } else if (entity.hasComponent(AbilitiesComponentType.AbilitySystem)) {

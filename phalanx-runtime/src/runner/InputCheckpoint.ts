@@ -28,7 +28,7 @@ export interface SlotSequence {
  * serializes it with `BinaryStateWriter` (Task 2 only carries the bytes):
  * `sortedBy` batch by tick, each entry `str playerId`, `str type`,
  * `varint q`, then the payload codec below; then `sortedBy` `nextSeq` by
- * slot.
+ * slot; then `varint systemSeq` (the next `q` for `playerId` `system`).
  *
  * Payloads use their own codec, not `canonicalConfigBytes`. Match configs
  * stay safe integers. A command payload may be any finite JSON number,
@@ -37,6 +37,12 @@ export interface SlotSequence {
 export interface InputCheckpoint {
   readonly pending: readonly PendingCommandBatch[];
   readonly nextSeq: readonly SlotSequence[];
+  /**
+   * Next `q` for a system command. Outside the digest. A restored runner's
+   * log does not contain commands applied before the snapshot, so this
+   * counter is what keeps `(system, q)` unique across the match.
+   */
+  readonly systemSeq: number;
 }
 
 const TAG_NULL = 0;
@@ -52,7 +58,7 @@ const TAG_OBJECT = 5;
  * `sortedBy` batch by tick (the tick is written; `sortedBy` only orders),
  * each entry `str playerId`, `str type`, `varint q`, then the canonical
  * payload bytes; then `sortedBy` `nextSeq` by slot (`varint slot`,
- * `varint nextSeq`).
+ * `varint nextSeq`); then `varint systemSeq`.
  */
 export function encodeInputCheckpoint(checkpoint: InputCheckpoint): Uint8Array {
   const writer = new BinaryStateWriter();
@@ -77,6 +83,7 @@ export function encodeInputCheckpoint(checkpoint: InputCheckpoint): Uint8Array {
       seqWriter.varint(seq.nextSeq);
     }
   );
+  writer.varint(checkpoint.systemSeq);
   return writer.finish();
 }
 
@@ -117,8 +124,9 @@ export function decodeInputCheckpoint(bytes: Uint8Array): InputCheckpoint {
     const seq = seqReader.varint();
     return { slot, nextSeq: seq };
   });
+  const systemSeq = reader.varint();
   reader.done();
-  return { pending, nextSeq };
+  return { pending, nextSeq, systemSeq };
 }
 
 function canonicalJsonBytes(value: JsonValue): Uint8Array {

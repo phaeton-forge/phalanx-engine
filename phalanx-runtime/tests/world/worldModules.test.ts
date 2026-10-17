@@ -14,6 +14,7 @@ import {
   configHash,
   decodeSnapshot,
   defineComponent,
+  defineCommands,
   defineGame,
   type DefinedComponent,
   type MatchConfigBase,
@@ -88,36 +89,30 @@ describe('world modules', () => {
     );
 
     const marker = defineComponent('Marker', { n: 'u8' });
+    const commands = defineCommands({ noop: {} });
     const game = defineGame({
       id: 'hash',
       simVersion: 'hash-1',
       tickRate: 10,
-      createWorld: (_config, ctx) => {
-        const world = new GameWorld({
-          tickFrameProvider: ctx.tickFrameProvider,
-          random: ctx.random,
-          tickRate: 10,
-        });
-        world.registerComponent(marker);
-        world.registerSystems([], []);
-        world.start();
-        return { world, applyCommand() {} };
-      },
-      commands: {
-        types: ['noop'],
-        decode: () => ({ type: 'noop' }),
-      },
-      outcome: () => null,
+      components: [marker],
+      commands,
+      onCommand: { noop() {} },
+      checkOutcome: () => null,
     });
     const config = hashConfig();
-    const transport = LocalTransport.manual();
+    const { side: _side, ...sharedConfig } = config;
+    const transport = LocalTransport.stepped();
     const runner = new MatchRunner(game, config, transport);
     live.push(runner);
     runner.start();
     transport.step(1);
     const header = decodeSnapshot(runner.snapshot()).header;
     expect(header.configHash).toBe(
-      configHash(config, [{ name: 'Marker', fields: [['n', 'u8']] }])
+      configHash(
+        sharedConfig,
+        [{ name: 'Marker', fields: [['n', 'u8']] }],
+        commands.schema
+      )
     );
     expect(header.configHash).not.toBe(configHash(config));
   });
@@ -416,7 +411,7 @@ describe('world modules', () => {
       { hp: 'u32', x: 'i32' },
       { defaults: { hp: 4 } }
     );
-    const transport = LocalTransport.manual();
+    const transport = LocalTransport.stepped();
     const writer = new MatchRunner(
       schemaGame(ordered),
       schemaConfig(),
@@ -430,7 +425,7 @@ describe('world modules', () => {
     const reader = new MatchRunner(
       schemaGame(swapped),
       schemaConfig(),
-      LocalTransport.manual()
+      LocalTransport.stepped()
     );
     live.push(reader);
     expect(() => reader.restore(snapshot)).toThrow(
@@ -445,7 +440,7 @@ describe('world modules', () => {
     const typed = new MatchRunner(
       schemaGame(narrowed),
       schemaConfig(),
-      LocalTransport.manual()
+      LocalTransport.stepped()
     );
     live.push(typed);
     expect(() => typed.restore(snapshot)).toThrow(
@@ -453,15 +448,14 @@ describe('world modules', () => {
     );
   });
 
-  it('restores arena when createWorld spawns the pawn on restore', async () => {
-    const { state: _state, createWorld, ...rest } = ArenaGame;
+  it('restores arena when onStart spawns the pawn on restore', async () => {
+    const { onStart, ...rest } = ArenaGame;
     const game = defineGame({
       ...rest,
-      createWorld: (config, ctx) =>
-        createWorld(config, { ...ctx, purpose: 'fresh' }),
+      onStart: (ctx) => onStart?.({ ...ctx, purpose: 'fresh' }),
     });
     const config = arenaConfig();
-    const transport = LocalTransport.manual();
+    const transport = LocalTransport.stepped();
     const runner = new MatchRunner(game, config, transport, {
       hashEveryTicks: 1,
     });
@@ -479,7 +473,7 @@ describe('world modules', () => {
       .entriesAfter(SNAPSHOT_TICK)
       .filter((entry) => entry.tick <= THROUGH);
 
-    const copy = new MatchRunner(game, config, LocalTransport.manual(), {
+    const copy = new MatchRunner(game, config, LocalTransport.stepped(), {
       hashEveryTicks: 1,
     });
     live.push(copy);
@@ -569,38 +563,27 @@ describe('world modules', () => {
 
   it('continues a default-state world after restore', async () => {
     const unit = defineComponent('Pos', { x: 'i64' }, { defaults: { x: 0n } });
+    const commands = defineCommands({ step: {} });
     const game = defineGame({
       id: 'continue',
       simVersion: 'continue-1',
       tickRate: 10,
-      createWorld: (_config, ctx) => {
-        const world = new GameWorld({
-          tickFrameProvider: ctx.tickFrameProvider,
-          random: ctx.random,
-          tickRate: 10,
-        });
-        world.registerComponent(unit);
-        if (ctx.purpose === 'fresh') world.spawn({ Pos: { x: 1n } });
-        world.registerSystems([], []);
-        world.start();
-        return {
-          world,
-          applyCommand() {
-            world.each(unit, (row) => {
-              row.x += 1n;
-            });
-          },
-        };
+      components: [unit],
+      commands,
+      onStart(ctx) {
+        if (ctx.purpose === 'fresh') ctx.world.spawn({ Pos: { x: 1n } });
       },
-      commands: {
-        types: ['step'],
-        decode: () => ({ type: 'step' }),
-        encode: () => ({ type: 'step' }),
+      onCommand: {
+        step(ctx) {
+          ctx.world.each(unit, (row) => {
+            row.x += 1n;
+          });
+        },
       },
-      outcome: () => null,
+      checkOutcome: () => null,
     });
     const config = continueConfig();
-    const transport = LocalTransport.manual();
+    const transport = LocalTransport.stepped();
     const runner = new MatchRunner(game, config, transport, {
       hashEveryTicks: 1,
     });
@@ -620,7 +603,7 @@ describe('world modules', () => {
     const tail = runner.log
       .entriesAfter(SNAPSHOT_TICK)
       .filter((entry) => entry.tick <= THROUGH);
-    const copyTransport = LocalTransport.manual();
+    const copyTransport = LocalTransport.stepped();
     const copy = new MatchRunner(game, config, copyTransport, {
       hashEveryTicks: 1,
     });
@@ -697,7 +680,7 @@ function openWorld(component: DefinedComponent<{ hp: 'i64' }>): GameWorld {
 }
 
 function captureTiny(): Map<number, { auto: Uint8Array; manual: Uint8Array }> {
-  const transport = LocalTransport.manual();
+  const transport = LocalTransport.stepped();
   const runner = new MatchRunner(TinyGame, tinyConfig(), transport);
   const saved = new Map<number, { auto: Uint8Array; manual: Uint8Array }>();
   runner.onTick((tick) => {
@@ -714,7 +697,7 @@ function captureTiny(): Map<number, { auto: Uint8Array; manual: Uint8Array }> {
 }
 
 function captureArena(): Map<number, { auto: Uint8Array; manual: Uint8Array }> {
-  const transport = LocalTransport.manual();
+  const transport = LocalTransport.stepped();
   const runner = new MatchRunner(ArenaGame, arenaConfig(), transport);
   const saved = new Map<number, { auto: Uint8Array; manual: Uint8Array }>();
   runner.onTick((tick) => {
@@ -755,7 +738,7 @@ function tinyConfig(): TinyConfig {
     gameId: 'tiny',
     simVersion: 'tiny-1',
     seed: 7,
-    simMode: 'client',
+    side: 'client',
     inputDelayTicks: 2,
     arenaSize: 2_000_000_000,
     slots: [
@@ -779,7 +762,7 @@ function arenaConfig(): ArenaConfig {
     gameId: 'arena',
     simVersion: 'arena-1',
     seed: 11,
-    simMode: 'client',
+    side: 'client',
     inputDelayTicks: 2,
     slots: [{ slot: 0, team: 0, kind: 'human', playerId: 'local:0' }],
   };
@@ -791,7 +774,7 @@ function continueConfig(): MatchConfigBase {
     gameId: 'continue',
     simVersion: 'continue-1',
     seed: 1,
-    simMode: 'client',
+    side: 'client',
     inputDelayTicks: 2,
     slots: [{ slot: 0, team: 0, kind: 'human', playerId: 'local:0' }],
   };
@@ -812,27 +795,20 @@ function openRegistered(register: (world: GameWorld) => void): GameWorld {
 }
 
 function schemaGame<S extends SoASchemaDefinition>(unit: DefinedComponent<S>) {
+  const commands = defineCommands({ noop: {} });
   return defineGame({
     id: 'schema-hash',
     simVersion: 'schema-1',
     tickRate: 10,
-    createWorld: (_config, ctx) => {
-      const world = new GameWorld({
-        tickFrameProvider: ctx.tickFrameProvider,
-        random: ctx.random,
-        tickRate: 10,
-      });
-      world.registerComponent(unit);
-      if (ctx.purpose === 'fresh') world.spawn({ Unit: { x: 3, hp: 4 } });
-      world.registerSystems([], []);
-      world.start();
-      return { world, applyCommand() {} };
+    components: [unit],
+    commands,
+    onStart(ctx) {
+      if (ctx.purpose === 'fresh') {
+        ctx.world.spawn({ Unit: { x: 3, hp: 4 } });
+      }
     },
-    commands: {
-      types: ['noop'],
-      decode: () => ({ type: 'noop' }),
-    },
-    outcome: () => null,
+    onCommand: { noop() {} },
+    checkOutcome: () => null,
   });
 }
 
@@ -842,7 +818,7 @@ function schemaConfig(): MatchConfigBase {
     gameId: 'schema-hash',
     simVersion: 'schema-1',
     seed: 1,
-    simMode: 'client',
+    side: 'client',
     inputDelayTicks: 2,
     slots: [{ slot: 0, team: 0, kind: 'human', playerId: 'local:0' }],
   };
@@ -854,7 +830,7 @@ function hashConfig(): MatchConfigBase {
     gameId: 'hash',
     simVersion: 'hash-1',
     seed: 1,
-    simMode: 'client',
+    side: 'client',
     inputDelayTicks: 2,
     slots: [{ slot: 0, team: 0, kind: 'human', playerId: 'local:0' }],
   };

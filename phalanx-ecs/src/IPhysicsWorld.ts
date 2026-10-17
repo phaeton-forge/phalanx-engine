@@ -26,7 +26,9 @@ export interface IPhysicsWorld {
   /**
    * Interpolated position and rotation for rendering.
    */
-  getInterpolatedTransform(entityId: number): InterpolatedTransformSample | undefined;
+  getInterpolatedTransform(
+    entityId: number
+  ): InterpolatedTransformSample | undefined;
 
   /**
    * Fixed-point position for gameplay queries (e.g. ability targeting).

@@ -1,11 +1,83 @@
 # `@phalanx-engine/runtime` API (engine 0.3)
 
+## Task 6.5b (current)
+
+This section supersedes earlier names in this document. The code wins where
+they still disagree.
+
+A game is `defineComponent` + `defineCommands` + `defineGame` + `runLocalMatch`.
+There is no hand-written command codec and no `SimWorld.applyCommand`.
+
+| Removed                    | Replacement                                                                      |
+| -------------------------- | -------------------------------------------------------------------------------- |
+| `createWorld`              | `onStart(ctx)`; the engine owns `GameWorld`. `ctx.open()` prewarms and starts it |
+| `applyCommand`             | `onCommand` (function or exhaustive handler map)                                 |
+| `outcome`                  | `checkOutcome`                                                                   |
+| `GameState` / `state.bind` | `SaveHandler` and `save: { handler }` in `@phalanx-engine/runtime/advanced`      |
+| `CommandSchema`            | `defineCommands`; the hand-written type stays in `advanced`                      |
+| `LocalTransport.manual`    | `LocalTransport.stepped`                                                         |
+| `simMode` + runner `side`  | one `side` on the match config. `runsOn` is not required to equal `side`         |
+| `MatchRunner.fromReplay`   | `ReplayPlayer.from`                                                              |
+
+`defineCommands` field types: `i32`, `u32`, `u8`, `i64`, `bool`, `entity`,
+`string` (default max length 64). `decode` returns a rejection and does not
+throw. `encode` uses canonical key order. `i64` is a decimal string on the
+wire. The command schema is appended to `configHash` after component records.
+`side` is not part of `configHash`. `ENGINE_SNAPSHOT_FORMAT` is 2; a format-1
+snapshot fails with `unsupported engine snapshot format 1; expected 2`.
+
+`runLocalMatch(def, { seed, slots, stepped?, inputDelayTicks? })` returns
+`{ runner, transport, step }`. Short slots (`{ kind: 'human' }`,
+`{ kind: 'bot', policy }`) are expanded. `inputDelayTicks` defaults to 2.
+`gameId` and `simVersion` are filled from the definition; a provided mismatch
+is still rejected.
+
+`ReplayPlayer.from(def, replay)` exposes `play({ budgetMs })`,
+`fastForward(throughTick)`, `digest()`, `tick` and `onTick`. It has no
+`start` or `submit`. A final-digest mismatch throws.
+
+`runner.setController(slot, 'human' | 'bot', { fromTick?, policy? })` logs a
+system command (player id `system`, not a game command). It is applied at the
+start of `fromTick` (default `tick + inputDelayTicks`), before game commands,
+on live play, restore, `ReplayPlayer` and `fastForward`. Switching to the
+current mode, an unknown slot, or a `fromTick` outside
+`(current, current + inputDelayTicks]` is rejected via `onRejected` and is
+not logged. A human command for a bot-controlled slot is rejected with
+`slot controlled by bot`. Handover to a bot seeds RNG with `botSlotSeed(seed, slot)`.
+The payload `runsOn` comes from the bot slot, or is `server` when this runner
+has a server peer (`side: 'server'` or transport kind `server-peer`) and
+`local` otherwise. A peer that does not host that `runsOn` rejects the call
+with `not authoritative`. The input checkpoint stores the next system `q` outside the digest, so a
+new runner restored after an applied controller change does not reuse it. `start` throws
+when a slot has `runsOn: 'server'` and the match has no server peer.
+
+`GameSystem.world` is the world. `each` passes one reused view; do not store
+it; a write after despawn throws. Importing `@phalanx-engine/runtime` installs
+the world-module host. Without it, save/restore/spawn/despawn/each throw
+`GameWorld: world modules are not installed. Import @phalanx-engine/runtime before using save, restore, spawn, despawn, or each.`
+
+`@phalanx-engine/engine` re-exports the game-facing surface of runtime, ecs,
+abilities, physics and math. It does not export `advanced`.
+
+Initial GAS `pendingAdd` effects are captured on the first pool return and
+copied back by `AbilitySystemComponent.onEnable`. `world.restore` calls
+`onEnable('restore')` and does not reseed.
+
+`spawnWithId` throws `spawnWithId: entity N already exists` when that id is
+already registered.
+
+Sections below this one were written in Tasks 1–6.5a. Where they still say
+`createWorld`, `applyCommand`, `outcome`, `GameState`, `state.bind`,
+`simMode`, `LocalTransport.manual` or `MatchRunner.fromReplay`, use the table
+above.
+
 Status: contracts and skeleton committed in Task 1. Every signature below is
 copied from `phalanx-runtime/src`; when the two differ, the code wins and
 this document has a bug. Skeleton members throw
 `not implemented: <member> (Task NN)` (`NotImplementedError`) until the task
-in the [task map](#task-map) lands. Implemented now: `defineGame`, the
-constants, `botPlayerId` / `isBotPlayerId`, `rejectCommand` /
+in the [task map](#task-map) lands. Implemented now: `defineGame`,
+`defineCommands`, `runLocalMatch`, `ReplayPlayer`, the constants,
+`botPlayerId` / `isBotPlayerId`, `botSlotSeed`, `rejectCommand` /
 `isCommandRejection`.
 
 Related: [server-sim.md](./server-sim.md), [reconnect.md](./reconnect.md).
@@ -575,7 +647,10 @@ export function isBotPlayerId(playerId: string): boolean;
 - **Bot state is not `GameState`.** In server mode the clients never run
   server bots, so bot state in the body would make server and client digests
   differ forever. It lives in the snapshot's `botState` part, outside the
-  digest.
+  digest. The section stores every slot's controller mode (applied on every
+  peer) and then the hosting side's policy and RNG bytes (applied only when
+  the side matches and this host runs the slot). A hosted bot is reused only
+  when policy, level, and `runsOn` match the saved record.
 - Timing: a decision after tick T executes at `T + inputDelayTicks`.
 
 ## 8. MatchRunner, CommandLog, WorldScope, replays
@@ -683,9 +758,11 @@ export interface ReplayRecord<Cfg extends MatchConfigBase = MatchConfigBase> {
 batch. `snapshot` is taken after step 6, so the input checkpoint holds the
 commands just submitted for `T + inputDelayTicks` and `nextSeq`. `restore`
 builds a fresh world with `purpose: 'restore'`, then calls
-`GameState.restore`, `done()`, the round-trip check, and — only for slots
-this runner hosts or submits — the bot state and the checkpoint. A client
-restoring a server snapshot ignores those two sections.
+`GameState.restore`, `done()`, and the round-trip check. The bot section
+stores every slot's controller mode, which every peer applies, then the
+hosting side's policy and RNG bytes. A client restoring a server snapshot
+keeps those modes and ignores the other side's policy bytes. The input
+checkpoint is applied only for slots this runner hosts or submits.
 
 `fastForward(entries, { budgetMs, throughTick })` runs every tick after the
 current one through `throughTick` inclusive, including ticks that have no
@@ -1240,8 +1317,8 @@ Literal instructions for each task; they override the original task text.
     replayed tick, submitting only commands whose target is past
     `throughTick`. Test: snapshot at T, tail through T+50, the next live
     decision matches a run that never restored. `fromReplay` does not
-    call `decide`. A client does not apply a server snapshot's bot state
-    or checkpoint.
+    call `decide`. A client applies controller modes from a server snapshot
+    and does not apply that snapshot's policy bytes or checkpoint.
 - **Task 7 (persistence).** `IndexedDbMatchStore` and `visibilitychange`
   handling live in `@phalanx-engine/client` (the runtime has no DOM). The
   runtime keeps the `MatchStore` interface and an in-memory store.

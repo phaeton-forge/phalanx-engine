@@ -35,9 +35,9 @@ describe('contract types', () => {
     >().toEqualTypeOf<TinyCommand>();
   });
 
-  it('accepts a definition whose state is the world modules', () => {
-    const { state: _state, ...withoutState } = TinyGame;
-    expectTypeOf(defineGame).toBeCallableWith(withoutState);
+  it('accepts a definition whose save handler is the world modules', () => {
+    const { save: _save, ...withoutSave } = TinyGame;
+    expectTypeOf(defineGame).toBeCallableWith(withoutSave);
   });
 
   it('requires an inclusive throughTick on fastForward', () => {

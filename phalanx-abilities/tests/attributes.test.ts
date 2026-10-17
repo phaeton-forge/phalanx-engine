@@ -34,8 +34,12 @@ describe('attributes and aggregation', () => {
     // Defaults are marked dirty on init so the aggregation system clamps them
     // on the next tick. Before the first tick, every attribute is dirty=1.
     expect([...attributes.dirty]).toEqual([1, 1]);
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').base)).toBe(100);
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Mana').current)).toBe(50);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').base)).toBe(
+      100
+    );
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Mana').current)).toBe(
+      50
+    );
 
     // After one tick with no effects, defaults are clamped and dirty is cleared.
     world.processAllTicks(1);
@@ -63,11 +67,15 @@ describe('attributes and aggregation', () => {
     world.registerSystems([...abilities.tickSystems], []);
 
     const entity = spawnEntity(world, abilities);
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Overcap').base)).toBe(200);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Overcap').base)).toBe(
+      200
+    );
 
     world.processAllTicks(1);
 
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Overcap').current)).toBe(100);
+    expect(
+      FP.ToFloat(abilities.getAttribute(entity.id, 'Overcap').current)
+    ).toBe(100);
 
     world.dispose();
   });
@@ -103,17 +111,35 @@ describe('attributes and aggregation', () => {
           defineEffect({
             id: 'Effect.PushNone',
             type: 'Duration',
-            modifiers: [{ attributeId: 'ClampNone', op: 'Add', magnitude: FP.FromInt(-500) }],
+            modifiers: [
+              {
+                attributeId: 'ClampNone',
+                op: 'Add',
+                magnitude: FP.FromInt(-500),
+              },
+            ],
           }),
           defineEffect({
             id: 'Effect.PushBelowMin',
             type: 'Duration',
-            modifiers: [{ attributeId: 'ClampMin', op: 'Add', magnitude: FP.FromInt(-200) }],
+            modifiers: [
+              {
+                attributeId: 'ClampMin',
+                op: 'Add',
+                magnitude: FP.FromInt(-200),
+              },
+            ],
           }),
           defineEffect({
             id: 'Effect.PushAboveMax',
             type: 'Duration',
-            modifiers: [{ attributeId: 'ClampMax', op: 'Add', magnitude: FP.FromInt(200) }],
+            modifiers: [
+              {
+                attributeId: 'ClampMax',
+                op: 'Add',
+                magnitude: FP.FromInt(200),
+              },
+            ],
           }),
         ],
       }),
@@ -159,9 +185,15 @@ describe('attributes and aggregation', () => {
 
     world.processAllTicks(1);
 
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'ClampNone').current)).toBe(-500);
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'ClampMin').current)).toBe(0);
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'ClampMax').current)).toBe(100);
+    expect(
+      FP.ToFloat(abilities.getAttribute(entity.id, 'ClampNone').current)
+    ).toBe(-500);
+    expect(
+      FP.ToFloat(abilities.getAttribute(entity.id, 'ClampMin').current)
+    ).toBe(0);
+    expect(
+      FP.ToFloat(abilities.getAttribute(entity.id, 'ClampMax').current)
+    ).toBe(100);
 
     world.dispose();
   });
@@ -178,9 +210,13 @@ describe('attributes and aggregation', () => {
     expect(abilities.tryGetAttribute(bare.id, 'Health')).toBeUndefined();
 
     const equipped = spawnEntity(world, abilities);
-    expect(abilities.tryGetAttribute(equipped.id, 'NotRegistered')).toBeUndefined();
+    expect(
+      abilities.tryGetAttribute(equipped.id, 'NotRegistered')
+    ).toBeUndefined();
 
-    expect(FP.ToFloat(abilities.tryGetAttribute(equipped.id, 'Health')!.base)).toBe(100);
+    expect(
+      FP.ToFloat(abilities.tryGetAttribute(equipped.id, 'Health')!.base)
+    ).toBe(100);
 
     world.dispose();
   });
@@ -200,8 +236,12 @@ describe('attributes and aggregation', () => {
     attributes.base[0] = raw;
     attributes.current[0] = raw;
 
-    expect(FP.ToRaw(abilities.getAttribute(entity.id, 'Health').base)).toBe(raw);
-    expect(FP.ToRaw(abilities.getAttribute(entity.id, 'Health').current)).toBe(raw);
+    expect(FP.ToRaw(abilities.getAttribute(entity.id, 'Health').base)).toBe(
+      raw
+    );
+    expect(FP.ToRaw(abilities.getAttribute(entity.id, 'Health').current)).toBe(
+      raw
+    );
 
     world.dispose();
   });
@@ -214,17 +254,27 @@ describe('attributes and aggregation', () => {
         defineEffect({
           id: 'Effect.AddHealth',
           type: 'Duration',
-          modifiers: [{ attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(5) }],
+          modifiers: [
+            { attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(5) },
+          ],
         }),
         defineEffect({
           id: 'Effect.DoubleHealth',
           type: 'Duration',
-          modifiers: [{ attributeId: 'Health', op: 'Multiply', magnitude: FP.FromInt(2) }],
+          modifiers: [
+            { attributeId: 'Health', op: 'Multiply', magnitude: FP.FromInt(2) },
+          ],
         }),
         defineEffect({
           id: 'Effect.OverrideHealth',
           type: 'Duration',
-          modifiers: [{ attributeId: 'Health', op: 'Override', magnitude: FP.FromInt(20) }],
+          modifiers: [
+            {
+              attributeId: 'Health',
+              op: 'Override',
+              magnitude: FP.FromInt(20),
+            },
+          ],
         }),
       ],
     });
@@ -262,7 +312,9 @@ describe('attributes and aggregation', () => {
 
     world.processAllTicks(1);
 
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(20);
+    expect(
+      FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)
+    ).toBe(20);
     expect(attributes.dirty[0]).toBe(0);
 
     world.dispose();
@@ -302,8 +354,12 @@ describe('attributes and aggregation', () => {
 
     world.processAllTicks(1);
 
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(100);
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Mana').current)).toBe(0);
+    expect(
+      FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)
+    ).toBe(100);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Mana').current)).toBe(
+      0
+    );
 
     world.dispose();
   });
@@ -316,7 +372,9 @@ describe('attributes and aggregation', () => {
         defineEffect({
           id: 'Effect.HealthDamage',
           type: 'Duration',
-          modifiers: [{ attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(-10) }],
+          modifiers: [
+            { attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(-10) },
+          ],
         }),
       ],
     });
@@ -326,7 +384,9 @@ describe('attributes and aggregation', () => {
     )!.attributes;
 
     world.processAllTicks(1);
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(100);
+    expect(
+      FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)
+    ).toBe(100);
     expect(attributes.dirty[0]).toBe(0);
 
     const activeEffects = entity.getComponent<AbilitySystemComponent>(
@@ -342,12 +402,16 @@ describe('attributes and aggregation', () => {
 
     // Tick 2: dirty is still 0 so the system must NOT recompute Health.
     world.processAllTicks(2);
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(100);
+    expect(
+      FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)
+    ).toBe(100);
 
     attributes.dirty[0] = 1;
     world.processAllTicks(3);
 
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(90);
+    expect(
+      FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)
+    ).toBe(90);
     expect(attributes.dirty[0]).toBe(0);
 
     world.dispose();
@@ -361,12 +425,16 @@ describe('attributes and aggregation', () => {
         defineEffect({
           id: 'Effect.OverrideLow',
           type: 'Duration',
-          modifiers: [{ attributeId: 'Mana', op: 'Override', magnitude: FP.FromInt(10) }],
+          modifiers: [
+            { attributeId: 'Mana', op: 'Override', magnitude: FP.FromInt(10) },
+          ],
         }),
         defineEffect({
           id: 'Effect.OverrideHigh',
           type: 'Duration',
-          modifiers: [{ attributeId: 'Mana', op: 'Override', magnitude: FP.FromInt(40) }],
+          modifiers: [
+            { attributeId: 'Mana', op: 'Override', magnitude: FP.FromInt(40) },
+          ],
         }),
       ],
     });
@@ -397,7 +465,9 @@ describe('attributes and aggregation', () => {
 
     world.processAllTicks(1);
 
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Mana').current)).toBe(40);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Mana').current)).toBe(
+      40
+    );
 
     world.dispose();
   });

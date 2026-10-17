@@ -1,10 +1,10 @@
 import {
-  GameSystem,
-  GameWorld,
-  type IPoolableEntity,
   Entity,
+  GameSystem,
+  SoAComponent,
+  type IPoolableEntity,
 } from '@phalanx-engine/ecs';
-import type { IRandom } from '@phalanx-engine/ecs';
+import type { GameWorld, IRandom } from '@phalanx-engine/ecs';
 import { FP } from '@phalanx-engine/math';
 import {
   AbilitiesComponentType,
@@ -15,36 +15,26 @@ import {
   getAbilitySystemComponent,
 } from '@phalanx-engine/abilities';
 import {
+  PHYSICS_BODY_COMPONENT_TYPE,
   PhysicsBodyComponent,
   PhysicsSoASchema,
   PhysicsWorld,
+  TRANSFORM_COMPONENT_TYPE,
   TransformComponent,
   TransformSoASchema,
-  PHYSICS_BODY_COMPONENT_TYPE,
-  TRANSFORM_COMPONENT_TYPE,
 } from '@phalanx-engine/physics';
 import {
+  defineCommands,
   defineGame,
   rejectCommand,
-  type CommandRejection,
-  type GameState,
-  type JsonValue,
   type MatchConfigBase,
-  type SimWorld,
-  type StampedCommand,
-  type StateReader,
-  type StateWriter,
-  type WorldInitContext,
 } from '../../src/index.js';
-import { StateHelpers } from '../../src/advanced/index.js';
 
 const CELL = FP.FromInt(4);
 const HEALTH = FP.FromInt(50);
 const MOVE_X = FP.FromInt(1);
 const SPAWN_POSITION = { x: FP.FromInt(2), y: FP._0, z: FP.FromInt(-1) };
 const HEALTH_STEP = FP.ToRaw(FP._1);
-
-const SCHEMAS = [TransformSoASchema, PhysicsSoASchema] as const;
 
 const definitions = defineAbilitySystem({
   attributes: [
@@ -74,14 +64,12 @@ export type ArenaCommand = { readonly type: 'hold' };
  * return must restore the factory Health for a later respawn to match
  * a restored world. There is no bot.
  */
-export class ArenaSim implements SimWorld<ArenaCommand> {
+export class ArenaSim {
   public constructor(
     public readonly world: GameWorld,
     public readonly random: IRandom,
     public readonly config: ArenaConfig
   ) {}
-
-  public applyCommand(_stamped: StampedCommand<ArenaCommand>): void {}
 
   public healthRaw(): bigint {
     const pawn = this.world.entityManager.getAllEntities()[0];
@@ -92,9 +80,20 @@ export class ArenaSim implements SimWorld<ArenaCommand> {
   }
 }
 
+const abilitiesByManager = new WeakMap<
+  object,
+  ReturnType<typeof createAbilitySystem>
+>();
+
 class ArenaPawn extends Entity implements IPoolableEntity<void> {
-  public constructor(abilities: ReturnType<typeof createAbilitySystem>) {
+  public constructor() {
     super();
+    const manager = SoAComponent.currentEntityManager();
+    const abilities =
+      manager === null ? undefined : abilitiesByManager.get(manager);
+    if (abilities === undefined) {
+      throw new Error('arena: ability system is not ready');
+    }
     this.addComponent(new TransformComponent(this.id, SPAWN_POSITION));
     this.addComponent(
       new PhysicsBodyComponent(this.id, {
@@ -148,71 +147,45 @@ class HpDecaySystem extends GameSystem {
   }
 }
 
-class ArenaState implements GameState {
-  public constructor(private readonly sim: ArenaSim) {}
-
-  public save(w: StateWriter): void {
-    StateHelpers.writePools(w, this.sim.world);
-    StateHelpers.writeSoAStores(w, this.sim.world, SCHEMAS);
-    StateHelpers.writeAbilities(w, this.sim.world);
-    StateHelpers.writeEntityIds(w, this.sim.world);
-    StateHelpers.writeRandom(w, this.sim.random);
-    StateHelpers.writeBroadphase(w, this.sim.world);
+const commands = defineCommands(
+  { hold: {} },
+  {
+    validate: () => rejectCommand('unused'),
   }
+);
 
-  public restore(r: StateReader): void {
-    StateHelpers.readPools(r, this.sim.world);
-    StateHelpers.readSoAStores(r, this.sim.world, SCHEMAS);
-    StateHelpers.readAbilities(r, this.sim.world);
-    StateHelpers.readEntityIds(r, this.sim.world);
-    StateHelpers.readRandom(r, this.sim.random);
-    StateHelpers.readBroadphase(r, this.sim.world);
-  }
-}
-
-export const ArenaGame = defineGame({
+export const ArenaGame = defineGame<ArenaConfig, ArenaCommand, ArenaSim>({
   id: 'arena',
   simVersion: 'arena-1',
   tickRate: 10,
-  createWorld: (config: ArenaConfig, ctx: WorldInitContext): ArenaSim => {
-    const holder: { abilities?: ReturnType<typeof createAbilitySystem> } = {};
-    const world = new GameWorld({
-      tickFrameProvider: ctx.tickFrameProvider,
-      random: ctx.random,
-      tickRate: 10,
-      pooling: {
-        entityTypes: {
-          pawn: {
-            factory: () => {
-              const abilities = holder.abilities;
-              if (abilities === undefined) {
-                throw new Error('arena: ability system is not ready');
-              }
-              return new ArenaPawn(abilities);
-            },
-            pool: { initialSize: 1 },
-          },
-        },
+  commands,
+  pooling: {
+    entityTypes: {
+      pawn: {
+        factory: () => new ArenaPawn(),
+        pool: { initialSize: 1 },
       },
-    });
-    const abilities = createAbilitySystem(world, {
+    },
+  },
+  onStart: (ctx) => {
+    const abilities = createAbilitySystem(ctx.world, {
       definitions,
       pipeline: 'effects',
     });
-    holder.abilities = abilities;
+    abilitiesByManager.set(ctx.world.entityManager, abilities);
     const physics = new PhysicsWorld({
       tickRate: 10,
       subSteps: 1,
       gridCellSize: CELL,
       gravity: FP._0,
     });
-    world.context.physics = physics;
+    ctx.world.context.physics = physics;
     // Store order is the snapshot order. Gravity init would create
     // PhysicsBody first; the fixture's manual save lists Transform first.
-    world.entityManager.getOrCreateSoAStore(TransformSoASchema);
-    world.entityManager.getOrCreateSoAStore(PhysicsSoASchema);
+    ctx.world.entityManager.getOrCreateSoAStore(TransformSoASchema);
+    ctx.world.entityManager.getOrCreateSoAStore(PhysicsSoASchema);
     const { gravitySystem, physicsSystem } = physics.getSystems();
-    world.registerSystems(
+    ctx.world.registerSystems(
       [
         gravitySystem,
         physicsSystem,
@@ -221,22 +194,16 @@ export const ArenaGame = defineGame({
       ],
       []
     );
-    world.start();
+    ctx.open();
     if (ctx.purpose === 'fresh') {
-      const pools = world.pools;
+      const pools = ctx.world.pools;
       if (pools === null) throw new Error('arena: expected pools');
       pools.spawn<ArenaPawn>('pawn');
     }
-    return new ArenaSim(world, ctx.random, config);
+    return new ArenaSim(ctx.world, ctx.rng, ctx.config);
   },
-  commands: {
-    types: ['hold'],
-    decode: (): ArenaCommand | CommandRejection => rejectCommand('unused'),
-    encode: (): JsonValue => ({ type: 'hold' }),
+  onCommand: {
+    hold() {},
   },
-  state: {
-    formatVersion: 1,
-    bind: (sim) => new ArenaState(sim),
-  },
-  outcome: () => null,
+  checkOutcome: () => null,
 });

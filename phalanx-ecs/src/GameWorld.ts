@@ -193,6 +193,7 @@ export class GameWorld {
       this._pools = null;
     }
     this.systemRegistry.getContext().pools = this._pools;
+    this.systemRegistry.getContext().world = this;
 
     // Use external provider or create internal TickFrameManager
     if (config.tickFrameProvider) {
@@ -418,7 +419,7 @@ export class GameWorld {
 
   /** Look up a registered system by class */
   public getSystem<T extends GameSystem>(
-    systemClass: new (...args: any[]) => T
+    systemClass: abstract new (...args: never[]) => T
   ): T | undefined {
     return this.systemRegistry.getContext().getSystem(systemClass);
   }

@@ -46,12 +46,16 @@ describe('public ability system API', () => {
     world.entityManager.addEntity(unit);
 
     expect(FP.ToFloat(abilities.getAttribute(unit.id, 'Health').base)).toBe(80);
-    expect(FP.ToFloat(abilities.getAttribute(unit.id, 'MoveSpeedMultiplier').base)).toBe(1);
+    expect(
+      FP.ToFloat(abilities.getAttribute(unit.id, 'MoveSpeedMultiplier').base)
+    ).toBe(1);
     expect(abilities.hasTag(unit.id, 'Team.Blue')).toBe(true);
 
     world.processAllTicks(1);
 
-    expect(FP.ToFloat(abilities.getAttribute(unit.id, 'Health').current)).toBe(80);
+    expect(FP.ToFloat(abilities.getAttribute(unit.id, 'Health').current)).toBe(
+      80
+    );
 
     world.dispose();
   });
@@ -73,7 +77,9 @@ describe('public ability system API', () => {
           defineEffect({
             id: 'Effect.SelfDamage',
             type: 'Instant',
-            modifiers: [{ attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(-10) }],
+            modifiers: [
+              { attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(-10) },
+            ],
           }),
         ],
         abilities: [
@@ -91,9 +97,13 @@ describe('public ability system API', () => {
     untrained.addComponent(abilities.initComponent());
     world.entityManager.addEntity(untrained);
 
-    expect(abilities.activateAbility(untrained.id, 'Ability.SelfDamage')).toBe(true);
+    expect(abilities.activateAbility(untrained.id, 'Ability.SelfDamage')).toBe(
+      true
+    );
     world.processAllTicks(1);
-    expect(FP.ToFloat(abilities.getAttribute(untrained.id, 'Health').current)).toBe(100);
+    expect(
+      FP.ToFloat(abilities.getAttribute(untrained.id, 'Health').current)
+    ).toBe(100);
 
     const trained = new Entity();
     trained.addComponent(
@@ -103,9 +113,13 @@ describe('public ability system API', () => {
     );
     world.entityManager.addEntity(trained);
 
-    expect(abilities.activateAbility(trained.id, 'Ability.SelfDamage')).toBe(true);
+    expect(abilities.activateAbility(trained.id, 'Ability.SelfDamage')).toBe(
+      true
+    );
     world.processAllTicks(2);
-    expect(FP.ToFloat(abilities.getAttribute(trained.id, 'Health').current)).toBe(90);
+    expect(
+      FP.ToFloat(abilities.getAttribute(trained.id, 'Health').current)
+    ).toBe(90);
 
     world.dispose();
   });

@@ -1,6 +1,10 @@
 import type { IComponent } from './Component.js';
 import type { IPoolableComponent } from './pool/IPoolableComponent.js';
-import type { SoASchemaDefinition, SoASchema, SoAFieldsOf } from './SoASchema.js';
+import type {
+  SoASchemaDefinition,
+  SoASchema,
+  SoAFieldsOf,
+} from './SoASchema.js';
 import type { SoAComponentStore } from './SoAComponentStore.js';
 import type { EntityManager } from './EntityManager.js';
 
@@ -31,7 +35,9 @@ const DEFAULT_STORE_CAPACITY = 1024;
  * }
  * ```
  */
-export abstract class SoAComponent<S extends SoASchemaDefinition> implements IComponent, IPoolableComponent {
+export abstract class SoAComponent<S extends SoASchemaDefinition>
+  implements IComponent, IPoolableComponent
+{
   public abstract readonly type: symbol;
 
   /** The SoA store backing this component (shared across all instances of the same schema) */
@@ -83,7 +89,11 @@ export abstract class SoAComponent<S extends SoASchemaDefinition> implements ICo
 
   // ── Constructor ───────────────────────────────────────────────────────
 
-  constructor(schema: SoASchema<S>, entityId: number, initialValues: SoAFieldsOf<S>) {
+  constructor(
+    schema: SoASchema<S>,
+    entityId: number,
+    initialValues: SoAFieldsOf<S>
+  ) {
     if (!SoAComponent._entityManager) {
       throw new Error(
         'SoAComponent: No EntityManager context. Ensure GameWorld is created before instantiating SoA components.'
@@ -91,7 +101,10 @@ export abstract class SoAComponent<S extends SoASchemaDefinition> implements ICo
     }
 
     this.entityId = entityId;
-    this.store = SoAComponent._entityManager.getOrCreateSoAStore<S>(schema, DEFAULT_STORE_CAPACITY);
+    this.store = SoAComponent._entityManager.getOrCreateSoAStore<S>(
+      schema,
+      DEFAULT_STORE_CAPACITY
+    );
     this._spawnDefaults = initialValues;
 
     // Add this entity to the store with initial values
@@ -112,7 +125,8 @@ export abstract class SoAComponent<S extends SoASchemaDefinition> implements ICo
     if (this.store.indexOf(this.entityId) === -1) {
       this.store.add(this.entityId, this._spawnDefaults);
     } else {
-      for (const key of Object.keys(this._spawnDefaults) as (keyof S & string)[]) {
+      for (const key of Object.keys(this._spawnDefaults) as (keyof S &
+        string)[]) {
         this.setField(key, this._spawnDefaults[key]);
       }
     }
@@ -136,7 +150,10 @@ export abstract class SoAComponent<S extends SoASchemaDefinition> implements ICo
    * Index can become stale when other entities are removed (swap-and-pop).
    */
   protected getIndex(): number {
-    if (this._cachedIndex === -1 || this.store.entityAt(this._cachedIndex) !== this.entityId) {
+    if (
+      this._cachedIndex === -1 ||
+      this.store.entityAt(this._cachedIndex) !== this.entityId
+    ) {
       this._cachedIndex = this.store.indexOf(this.entityId);
     }
     return this._cachedIndex;
@@ -147,7 +164,9 @@ export abstract class SoAComponent<S extends SoASchemaDefinition> implements ICo
   /**
    * Read a single field value from the SoA store for this entity.
    */
-  protected getField<K extends keyof S & string>(fieldName: K): SoAFieldsOf<S>[K] {
+  protected getField<K extends keyof S & string>(
+    fieldName: K
+  ): SoAFieldsOf<S>[K] {
     const idx = this.getIndex();
     return this.store.arrays[fieldName][idx] as SoAFieldsOf<S>[K];
   }
@@ -155,7 +174,10 @@ export abstract class SoAComponent<S extends SoASchemaDefinition> implements ICo
   /**
    * Write a single field value to the SoA store for this entity.
    */
-  protected setField<K extends keyof S & string>(fieldName: K, value: SoAFieldsOf<S>[K]): void {
+  protected setField<K extends keyof S & string>(
+    fieldName: K,
+    value: SoAFieldsOf<S>[K]
+  ): void {
     const idx = this.getIndex();
     const arr = this.store.arrays[fieldName];
     if (arr instanceof BigInt64Array) {

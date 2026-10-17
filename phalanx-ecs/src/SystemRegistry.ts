@@ -41,10 +41,7 @@ export class SystemRegistry {
     }
 
     // Create SystemContext for systems
-    this.context = new SystemContext(
-      this.eventBus,
-      this.entityManager
-    );
+    this.context = new SystemContext(this.eventBus, this.entityManager);
   }
 
   /**
@@ -104,7 +101,6 @@ export class SystemRegistry {
     this.frameSystems.push(system);
     this.context.registerSystem(system);
   }
-
 
   /**
    * Process all tick-based systems in order

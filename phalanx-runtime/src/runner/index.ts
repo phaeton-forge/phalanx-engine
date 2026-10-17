@@ -5,6 +5,16 @@ export type {
   RunnerOptions,
   FastForwardOptions,
 } from './MatchRunner.js';
+export { ReplayPlayer } from './ReplayPlayer.js';
+export { runLocalMatch } from './runLocalMatch.js';
+export type {
+  LocalBotSlot,
+  LocalHumanSlot,
+  LocalMatch,
+  LocalSlot,
+  RunLocalMatchOptions,
+} from './runLocalMatch.js';
+export { botSlotSeed } from './botSeed.js';
 export { CommandLog } from './CommandLog.js';
 export type { LogEntry } from './CommandLog.js';
 export { BotHost } from './BotHost.js';

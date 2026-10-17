@@ -1,29 +1,26 @@
 import {
   Entity,
   GameSystem,
-  GameWorld,
   SoAComponent,
   defineSoASchema,
   type CommandsBatch,
+  type IRandom,
   type SoAComponentStore,
   type SystemContext,
 } from '@phalanx-engine/ecs';
-import type { IRandom } from '@phalanx-engine/ecs';
+import type { GameWorld } from '@phalanx-engine/ecs';
 import {
+  defineCommands,
   defineGame,
   rejectCommand,
   type BotPolicy,
   type BotSlotInfo,
-  type CommandRejection,
-  type GameState,
-  type JsonValue,
   type MatchConfigBase,
-  type SimWorld,
   type SlotConfig,
+  type SlotInfo,
   type StampedCommand,
   type StateReader,
   type StateWriter,
-  type WorldInitContext,
 } from '../../src/index.js';
 import { StateHelpers } from '../../src/advanced/index.js';
 
@@ -59,6 +56,22 @@ export interface TinyBotCall {
 /** Every hosted `decide` in this process. Tests reset it between runs. */
 export const tinyBotCalls: TinyBotCall[] = [];
 
+let sentryConstructed = 0;
+let sentryRestored = 0;
+
+/** Counters for the sentry policy. Reset between tests that construct it. */
+export function resetSentryBot(): void {
+  sentryConstructed = 0;
+  sentryRestored = 0;
+}
+
+export function sentryBotCounts(): {
+  readonly constructed: number;
+  readonly restored: number;
+} {
+  return { constructed: sentryConstructed, restored: sentryRestored };
+}
+
 let restoreBroken = false;
 let decodeBoom = false;
 let validateBoom = false;
@@ -70,7 +83,7 @@ let createDraw = false;
 export let tinyCommandsProto: object | null = Object.prototype;
 
 /**
- * `getState()` captured at the start of each `createWorld` while
+ * `getState()` captured at the start of each `onStart` while
  * {@link setTinyCreateDraw} is on. The first entry is the fresh boot.
  */
 export const tinyCreateStates: string[] = [];
@@ -101,7 +114,7 @@ export function setTinyBotBoom(boom: boolean): void {
 }
 
 /**
- * Test hook: `createWorld` records the match RNG state, then draws once.
+ * Test hook: `onStart` records the match RNG state, then draws once.
  * Restore must show the seed state again, not the generator the ticks
  * already advanced.
  */
@@ -168,14 +181,14 @@ export interface TinyUnitView {
   readonly hp: bigint;
 }
 
-export class TinySim implements SimWorld<TinyCommand> {
+export class TinySim {
   public constructor(
     public readonly world: GameWorld,
     public readonly random: IRandom,
     public readonly config: TinyConfig
   ) {}
 
-  public applyCommand(stamped: StampedCommand<TinyCommand>): void {
+  public apply(stamped: StampedCommand<TinyCommand>): void {
     if (stamped.command.type === 'spawn') {
       const unit = new TinyUnit(stamped.slot, stamped.command.x, INITIAL_HP);
       this.world.entityManager.addEntity(unit);
@@ -234,7 +247,7 @@ export class TinySim implements SimWorld<TinyCommand> {
   }
 }
 
-export class TinyState implements GameState {
+export class TinyState {
   public constructor(private readonly sim: TinySim) {}
 
   public save(w: StateWriter): void {
@@ -313,77 +326,97 @@ class WalkerBot implements BotPolicy<TinyCommand, TinySim> {
   }
 }
 
-/**
- * Two-slot fixture: i64 position and hp on a named SoA schema, `spawn` /
- * `move` commands, and a walker bot. `GameState` uses the Task 4 helpers
- * (pools, SoA, entity ids, RNG). There is no GAS and no physics.
- */
-export const TinyGame = defineGame({
-  id: 'tiny',
-  simVersion: 'tiny-1',
-  tickRate: 10,
-  createWorld: (config: TinyConfig, ctx: WorldInitContext): TinySim => {
-    if (createDraw && hasGeneratorState(ctx.random)) {
-      tinyCreateStates.push(ctx.random.getState().join(','));
-      ctx.random.int(1_000_000);
+/** Second policy. Save bytes are one mark byte, not the walker's `u32`. */
+class SentryBot implements BotPolicy<TinyCommand, TinySim> {
+  public constructor() {
+    sentryConstructed += 1;
+  }
+
+  public decide(
+    _sim: Readonly<TinySim>,
+    _tick: number
+  ): readonly TinyCommand[] {
+    return [{ type: 'spawn', x: 42n }];
+  }
+
+  public save(w: StateWriter): void {
+    w.u8(7);
+  }
+
+  public restore(r: StateReader): void {
+    sentryRestored += 1;
+    const mark = r.u8();
+    if (mark !== 7) {
+      throw new Error(
+        `SentryBot.restore: expected mark 7, got ${String(mark)}`
+      );
     }
-    const world = new GameWorld({
-      tickFrameProvider: ctx.tickFrameProvider,
-      random: ctx.random,
-      tickRate: 10,
-    });
-    world.entityManager.getOrCreateSoAStore(TINY_UNIT_SCHEMA);
-    const sim = new TinySim(world, ctx.random, config);
-    world.registerSystems([new TinyDecaySystem()], []);
-    world.start();
-    return sim;
+  }
+}
+
+const codec = defineCommands(
+  {
+    spawn: { x: 'i64' },
+    move: { dx: 'i64' },
   },
-  commands: {
-    types: ['spawn', 'move'],
-    decode: (raw): TinyCommand | CommandRejection => {
-      if (decodeBoom) throw new Error('decode exploded');
-      if (typeof raw !== 'object' || raw === null) {
-        return rejectCommand('not an object');
-      }
-      const value = raw as { type?: unknown; x?: unknown; dx?: unknown };
-      if (value.type === 'spawn' && isBigIntString(value.x)) {
-        return { type: 'spawn', x: BigInt(value.x) };
-      }
-      if (value.type === 'move' && isBigIntString(value.dx)) {
-        return { type: 'move', dx: BigInt(value.dx) };
-      }
-      return rejectCommand('unknown command');
-    },
-    validate: (command, slot, sim) => {
+  {
+    validate(command, slot, sim) {
       if (validateBoom) throw new Error('validate exploded');
-      const existing = sim.unitBySlot(slot.slot);
+      const existing = (sim as TinySim).unitBySlot(slot.slot);
       if (command.type === 'spawn') {
         return existing ? rejectCommand('slot occupied') : null;
       }
       return existing ? null : rejectCommand('no unit');
     },
-    encode: (command): JsonValue =>
-      command.type === 'spawn'
-        ? { type: 'spawn', x: command.x.toString() }
-        : { type: 'move', dx: command.dx.toString() },
+  }
+);
+
+const commands = {
+  ...codec,
+  decode(raw: unknown, slot: SlotInfo) {
+    if (decodeBoom) throw new Error('decode exploded');
+    return codec.decode(raw, slot);
   },
-  state: {
+};
+
+/**
+ * Two-slot fixture: i64 position and hp on a named SoA schema, `spawn` /
+ * `move` commands, and a walker bot. The save handler uses the Task 4
+ * helpers (pools, SoA, entity ids, RNG). There is no GAS and no physics.
+ */
+export const TinyGame = defineGame<TinyConfig, TinyCommand, TinySim>({
+  id: 'tiny',
+  simVersion: 'tiny-1',
+  tickRate: 10,
+  commands,
+  systems: [() => new TinyDecaySystem()],
+  onStart: (ctx) => {
+    if (createDraw && hasGeneratorState(ctx.rng)) {
+      tinyCreateStates.push(ctx.rng.getState().join(','));
+      ctx.rng.int(1_000_000);
+    }
+    ctx.world.entityManager.getOrCreateSoAStore(TINY_UNIT_SCHEMA);
+    const sim = new TinySim(ctx.world, ctx.rng, ctx.config);
+    ctx.open();
+    return sim;
+  },
+  onCommand: (ctx, stamped) => {
+    ctx.sim.apply(stamped);
+  },
+  save: {
     formatVersion: 1,
-    bind: (sim) => new TinyState(sim),
+    handler: (sim) => new TinyState(sim),
   },
   bots: {
-    walker: (_config: TinyConfig, slot: BotSlotInfo, rng: IRandom) =>
+    walker: (_config, slot: BotSlotInfo, rng: IRandom) =>
       new WalkerBot(slot.slot, rng),
+    sentry: () => new SentryBot(),
   },
-  outcome: (sim) =>
+  checkOutcome: (sim) =>
     sim.maxAbsX() >= BigInt(sim.config.arenaSize)
       ? { kind: 'win', winnerTeam: 0, reason: 'arena' }
       : null,
 });
-
-function isBigIntString(value: unknown): value is string {
-  return typeof value === 'string' && /^-?\d+$/.test(value);
-}
 
 function hasGeneratorState(
   rng: IRandom

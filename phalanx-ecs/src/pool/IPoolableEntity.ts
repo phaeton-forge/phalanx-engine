@@ -21,4 +21,8 @@ export interface IPoolableEntity<TSpawnArgs = void> {
 
 /** Infers the typed spawn-args tuple from the entity class. */
 export type SpawnArgsOf<T> =
-  T extends IPoolableEntity<infer A> ? (A extends void ? [] : [args: A]) : never;
+  T extends IPoolableEntity<infer A>
+    ? A extends void
+      ? []
+      : [args: A]
+    : never;

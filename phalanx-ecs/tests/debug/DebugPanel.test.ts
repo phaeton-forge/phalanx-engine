@@ -32,10 +32,12 @@ class ArmorComponent implements IComponent {
 
 const PhysicsSoASchema = defineSoASchema(
   { velocityX: 'i64', velocityY: 'i64', radius: 'f64', isStatic: 'u8' },
-  'PhysicsBody',
+  'PhysicsBody'
 );
 
-class PhysicsBodyComponent extends SoAComponent<typeof PhysicsSoASchema.definition> {
+class PhysicsBodyComponent extends SoAComponent<
+  typeof PhysicsSoASchema.definition
+> {
   public readonly type = Symbol('PhysicsBody');
   static readonly soaSchema = PhysicsSoASchema;
 
@@ -53,7 +55,7 @@ class PhysicsBodyComponent extends SoAComponent<typeof PhysicsSoASchema.definiti
 
 function createProvider(
   em: EntityManager,
-  pools: PoolManager | null = null,
+  pools: PoolManager | null = null
 ): DebugDataProvider {
   return new DebugDataProvider(em, pools, { updateInterval: 0 });
 }
@@ -102,7 +104,9 @@ describe('DebugPanel', () => {
       vi.useFakeTimers();
 
       // Use a provider with a real update interval so it pushes snapshots
-      const timedProvider = new DebugDataProvider(em, null, { updateInterval: 200 });
+      const timedProvider = new DebugDataProvider(em, null, {
+        updateInterval: 200,
+      });
       timedProvider.start();
 
       const entity = new Entity();
@@ -236,7 +240,9 @@ describe('DebugPanel', () => {
     it('starts expanded by default', () => {
       panel = new DebugPanel(provider);
       // Body should be visible
-      const body = panel.element.querySelector('div:nth-child(2)') as HTMLDivElement;
+      const body = panel.element.querySelector(
+        'div:nth-child(2)'
+      ) as HTMLDivElement;
       expect(body.style.display).not.toBe('none');
       // Toggle button should show minus
       expect(panel.element.textContent).toContain('\u2212');
@@ -247,7 +253,9 @@ describe('DebugPanel', () => {
 
       // Find the toggle button [−]
       const titleBar = panel.element.firstElementChild as HTMLDivElement;
-      const toggleBtn = titleBar.querySelector('span:last-child') as HTMLSpanElement;
+      const toggleBtn = titleBar.querySelector(
+        'span:last-child'
+      ) as HTMLSpanElement;
       toggleBtn.click();
 
       // Body should be hidden
@@ -265,7 +273,9 @@ describe('DebugPanel', () => {
 
       // Click toggle to expand
       const titleBar = panel.element.firstElementChild as HTMLDivElement;
-      const toggleBtn = titleBar.querySelector('span:last-child') as HTMLSpanElement;
+      const toggleBtn = titleBar.querySelector(
+        'span:last-child'
+      ) as HTMLSpanElement;
       toggleBtn.click();
 
       expect(body.style.display).toBe('block');
@@ -378,11 +388,15 @@ describe('DebugPanel', () => {
       expect(body.style.display).not.toBe('none');
 
       // Press backtick
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: '`', bubbles: true }));
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', { key: '`', bubbles: true })
+      );
       expect(body.style.display).toBe('none');
 
       // Press again to expand
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: '`', bubbles: true }));
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', { key: '`', bubbles: true })
+      );
       expect(body.style.display).toBe('block');
     });
 
@@ -413,11 +427,15 @@ describe('DebugPanel', () => {
       expect(body.style.display).not.toBe('none');
 
       // Backtick should NOT toggle
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: '`', bubbles: true }));
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', { key: '`', bubbles: true })
+      );
       expect(body.style.display).not.toBe('none');
 
       // F2 should toggle
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'F2', bubbles: true }));
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'F2', bubbles: true })
+      );
       expect(body.style.display).toBe('none');
     });
 
@@ -428,10 +446,14 @@ describe('DebugPanel', () => {
       expect(body.style.display).not.toBe('none');
 
       // No key should toggle
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: '`', bubbles: true }));
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', { key: '`', bubbles: true })
+      );
       expect(body.style.display).not.toBe('none');
 
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'F2', bubbles: true }));
+      document.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'F2', bubbles: true })
+      );
       expect(body.style.display).not.toBe('none');
     });
   });

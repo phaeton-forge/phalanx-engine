@@ -1,5 +1,4 @@
 export type { StateWriter, StateReader } from './StateIO.js';
-export type { GameState, GameStateSpec, StateMigration } from './GameState.js';
 export { BinaryStateWriter, BinaryStateReader } from './BinaryState.js';
 export {
   encodeSnapshot,

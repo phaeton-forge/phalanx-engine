@@ -44,13 +44,17 @@ interface Drive {
 
 const live: MatchRunner<typeof TinyGame>[] = [];
 
-function configFor(side: 'client' | 'server', seed = 7): TinyConfig {
+function configFor(
+  side: 'client' | 'server',
+  seed = 7,
+  botRunsOn: 'local' | 'server' = side === 'server' ? 'server' : 'local'
+): TinyConfig {
   return {
     matchId: 'm',
     gameId: 'tiny',
     simVersion: 'tiny-1',
     seed,
-    simMode: side,
+    side,
     inputDelayTicks: DELAY,
     arenaSize: ARENA,
     slots: [
@@ -61,7 +65,7 @@ function configFor(side: 'client' | 'server', seed = 7): TinyConfig {
         kind: 'bot',
         policy: 'walker',
         level: 1,
-        runsOn: side === 'server' ? 'server' : 'local',
+        runsOn: botRunsOn,
         color: 2,
       },
     ],
@@ -69,16 +73,15 @@ function configFor(side: 'client' | 'server', seed = 7): TinyConfig {
 }
 
 function drive(
-  simMode: 'client' | 'server' = 'client',
+  side: 'client' | 'server' = 'client',
   seed = 7,
-  side: 'client' | 'server' = simMode
+  botRunsOn?: 'local' | 'server'
 ): Drive {
-  const transport = LocalTransport.manual();
+  const transport = LocalTransport.stepped();
   const runner = new MatchRunner(
     TinyGame,
-    configFor(simMode, seed),
-    transport,
-    { side }
+    configFor(side, seed, botRunsOn),
+    transport
   );
   live.push(runner);
   return { runner, transport };
@@ -106,7 +109,9 @@ function encoded(command: TinyCommand): {
 }
 
 class ScriptedTransport implements Transport {
-  public readonly kind = 'relay-lockstep' as const;
+  public constructor(
+    public readonly kind: 'relay-lockstep' | 'server-peer' = 'relay-lockstep'
+  ) {}
   private readonly ticks: TickHandler[] = [];
   private readonly frames: FrameHandler[] = [];
   public onSubmit:
@@ -184,7 +189,7 @@ describe('MatchRunner', () => {
 
     const replay = first.runner.toReplay();
     resetTinyBotCalls();
-    const second = MatchRunner.fromReplay(TinyGame, replay);
+    const second = MatchRunner.openReplay(TinyGame, replay);
     live.push(second);
     const again: string[] = [];
     second.onRejected((_entry, reason) => {
@@ -378,7 +383,7 @@ describe('MatchRunner', () => {
     expect(replay.finalDigest).toBe(finalDigest);
     expect(replay.lastTick).toBe(1000);
     resetTinyBotCalls();
-    const replayed = MatchRunner.fromReplay(TinyGame, replay);
+    const replayed = MatchRunner.openReplay(TinyGame, replay);
     live.push(replayed);
     await replayed.fastForward(replay.log, {
       budgetMs: 50,
@@ -448,12 +453,44 @@ describe('MatchRunner', () => {
     expect(resumed.runner.digest()).toBe(expectedDigest);
 
     resetTinyBotCalls();
-    const client = drive('server', 9, 'client');
-    client.runner.restore(saved);
-    client.runner.start();
-    stepTo(client, 15);
-    expect(botX(client.runner.sim)).not.toBe(expectedX);
+    const scripted = new ScriptedTransport('server-peer');
+    const client = new MatchRunner(
+      TinyGame,
+      configFor('client', 9, 'server'),
+      scripted
+    );
+    live.push(client);
+    client.restore(saved);
+    client.start();
+    for (let tick = 11; tick <= 15; tick += 1) {
+      scripted.emitTick(tick, { tick, commands: {} });
+    }
+    expect(botX(client.sim)).not.toBe(expectedX);
     expect(tinyBotCalls).toEqual([]);
+  });
+
+  it('rejects a server bot when the match has no server peer', () => {
+    const handle = drive('client', 1, 'server');
+    expect(() => handle.runner.start()).toThrow(
+      "MatchRunner: slot 1 runsOn 'server' but this match has no server peer"
+    );
+  });
+
+  it('rejects setController from a client of a server match', () => {
+    const scripted = new ScriptedTransport('server-peer');
+    const client = new MatchRunner(
+      TinyGame,
+      configFor('client', 1, 'server'),
+      scripted
+    );
+    live.push(client);
+    const reasons: string[] = [];
+    client.onRejected((_entry, reason) => {
+      reasons.push(reason);
+    });
+    client.start();
+    client.setController(0, 'bot', { policy: 'walker', fromTick: 1 });
+    expect(reasons).toEqual(['not authoritative']);
   });
 
   it('matches the next live decision after a log tail past the snapshot', async () => {
@@ -553,7 +590,7 @@ describe('MatchRunner', () => {
     recorded.runner.start();
     stepTo(recorded, 2);
     const replay = recorded.runner.toReplay();
-    const replayed = MatchRunner.fromReplay(TinyGame, {
+    const replayed = MatchRunner.openReplay(TinyGame, {
       ...replay,
       finalDigest: '0'.repeat(16),
     });
@@ -588,7 +625,7 @@ describe('MatchRunner', () => {
   });
 
   it('emits outcome once and stops', () => {
-    const transport = LocalTransport.manual();
+    const transport = LocalTransport.stepped();
     const runner = new MatchRunner(
       TinyGame,
       { ...configFor('client', 1), arenaSize: 1 },
@@ -765,7 +802,7 @@ describe('MatchRunner', () => {
   });
 
   it('publishes outcome and digest after the tick and bot checkpoint', () => {
-    const transport = LocalTransport.manual();
+    const transport = LocalTransport.stepped();
     const runner = new MatchRunner(
       TinyGame,
       { ...configFor('client', 1), arenaSize: 1 },
@@ -859,8 +896,8 @@ describe('MatchRunner', () => {
     handle.runner.start();
     stepTo(handle, 1);
     const replay = handle.runner.toReplay();
-    const replayed = MatchRunner.fromReplay(TinyGame, replay);
+    const replayed = MatchRunner.openReplay(TinyGame, replay);
     live.push(replayed);
-    expect(() => replayed.start()).toThrow(/fastForward\(replay\.log/);
+    expect(() => replayed.start()).toThrow(/ReplayPlayer/);
   });
 });
