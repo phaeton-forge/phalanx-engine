@@ -461,7 +461,7 @@ The engine does not write a file, object storage, or a database. That is the gam
 
 `archive.log` is the stored `PlayerCommand[]` arrays (the same ones broadcast in `commands-batch` and returned by `match-log`), not copies, and not re-serialized by the engine. After the call the relay does not read them. Do not mutate them if something else still holds those arrays.
 
-The hook runs on the main thread. Compress or upload asynchronously (`zlib` async, a stream into storage). A synchronous throw or a rejected promise is logged with the match id; the relay keeps running and other matches keep their ticks. `stop()` alone fires the hook and does not wait. `shutdown()` waits for hooks that are still in flight, up to `shutdownGraceMs` **after** `stop()`. `shutdownGraceMs: 0` still calls the hooks (they are queued with `setImmediate`) and does not wait for one that never settles.
+The hook runs on the main thread. Compress or upload asynchronously (`zlib` async, a stream into storage). A synchronous throw or a rejected promise is logged with the match id; the relay keeps running and other matches keep their ticks. `stop()` alone fires the hook and does not wait. `shutdown()` waits for hooks that are still in flight, up to `shutdownGraceMs` **after** `stop()`. With `shutdownGraceMs` of 0 or unset, shutdown does not await async hooks.
 
 A `match-log` read that is still streaming when the match ends finishes with `match-log-error` `{ reason: 'not-found' }` instead of an empty tail from the released history.
 

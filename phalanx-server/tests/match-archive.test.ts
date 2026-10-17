@@ -134,6 +134,11 @@ function findRoom(server: Phalanx, matchId: string): GameRoom {
   return room;
 }
 
+function pendingArchiveCount(server: Phalanx): number {
+  return (server as unknown as { pendingArchives: { size: number } })
+    .pendingArchives.size;
+}
+
 function services(server: Phalanx): {
   matchmaking: MatchmakingService;
   privateRooms: PrivateRoomService;
@@ -182,6 +187,7 @@ async function openPrivateMatch(
     buildId?: string;
     gameType?: string;
     ready?: boolean;
+    beforeReady?: () => void;
   } = {}
 ): Promise<Opened> {
   const hostId = options.hostId ?? 'player1';
@@ -233,6 +239,7 @@ async function openPrivateMatch(
     };
     host.on('player-ready', onReady);
   });
+  options.beforeReady?.();
   host.emit('client-ready');
   guest.emit('client-ready');
   await bothReady;
@@ -521,6 +528,55 @@ describe('archive after the match has started', () => {
       )
     ).toBe(true);
   });
+
+  it('sets startedAt at startGame, before the archive is built', async () => {
+    const records: SeenArchive[] = [];
+    const flags = { matchEnd: false };
+    const { server, url } = await startServer({
+      onMatchArchived: attachArchiveHook(records, flags),
+    });
+    let beforeReady = 0;
+    const opened = await openPrivateMatch(url, {
+      beforeReady: () => {
+        beforeReady = Date.now();
+      },
+    });
+    const afterReady = Date.now();
+    watchMatchEnd(opened.host, flags);
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    await server.stop();
+    await waitForArchives(records, 1);
+    const archive = records[0]!.archive;
+    expect(beforeReady).toBeGreaterThan(0);
+    expect(archive.startedAt).toBeGreaterThanOrEqual(beforeReady);
+    expect(archive.startedAt).toBeLessThanOrEqual(afterReady);
+    expect(archive.endedAt).toBeGreaterThan(afterReady);
+    expect(archive.endedAt).toBeGreaterThanOrEqual(archive.startedAt);
+  });
+
+  it('calls the hook captured when the archive was built', async () => {
+    let built = 0;
+    let replaced = 0;
+    const { server, url } = await startServer({
+      onMatchArchived: () => {
+        built += 1;
+      },
+    });
+    server.on('match-ended', () => {
+      (
+        server as unknown as {
+          config: { onMatchArchived?: PhalanxConfig['onMatchArchived'] };
+        }
+      ).config.onMatchArchived = () => {
+        replaced += 1;
+      };
+    });
+    await openPrivateMatch(url);
+    await server.stop();
+    await nextTurns(6);
+    expect(built).toBe(1);
+    expect(replaced).toBe(0);
+  });
 });
 
 describe('no archive before the match starts', () => {
@@ -690,20 +746,23 @@ describe('history release', () => {
 describe('hook isolation', () => {
   async function survivingMatch(
     hook: PhalanxConfig['onMatchArchived']
-  ): Promise<void> {
+  ): Promise<Phalanx> {
     const rejections: unknown[] = [];
     const onRejection = (reason: unknown): void => {
       rejections.push(reason);
     };
     process.on('unhandledRejection', onRejection);
+    let server!: Phalanx;
     try {
-      const { server, url } = await startServer({
+      const started = await startServer({
         tickMode: 'continuous',
         tickRate: 32,
         timeoutTicks: 100_000,
         disconnectTicks: 100_000,
         onMatchArchived: hook,
       });
+      server = started.server;
+      const url = started.url;
       server.on('player-command', (_playerId, command, ctx) => {
         if (command.type === 'destroy-base') {
           ctx.endMatch({ reason: 'base-destroyed', winnerTeamId: 1 });
@@ -764,12 +823,14 @@ describe('hook isolation', () => {
       process.off('unhandledRejection', onRejection);
     }
     expect(rejections).toEqual([]);
+    return server;
   }
 
   it('keeps the relay up when the hook throws', async () => {
-    await survivingMatch(() => {
+    const server = await survivingMatch(() => {
       throw new Error('archive failed');
     });
+    expect(pendingArchiveCount(server)).toBe(0);
   });
 
   it('keeps the relay up when the hook rejects', async () => {
@@ -792,6 +853,76 @@ describe('shutdown waits for archive hooks', () => {
     await server.shutdown('deploy');
     expect(calls).toBe(1);
     expect(Date.now() - started).toBeLessThan(500);
+  });
+
+  it('drains a grace-period hook and a hook queued inside stop', async () => {
+    const grace = 1500;
+    const releases: Array<() => void> = [];
+    const seen: { matchId: string; endReason: string }[] = [];
+    const { server, url } = await startServer({
+      shutdownGraceMs: grace,
+      turnTimeoutMs: 60_000,
+      onMatchArchived: (archive) => {
+        seen.push({ matchId: archive.matchId, endReason: archive.endReason });
+        return new Promise<void>((resolve) => {
+          releases.push(resolve);
+        });
+      },
+    });
+    server.on('player-command', (_playerId, command, ctx) => {
+      if (command.type === 'destroy-base') {
+        ctx.endMatch({ reason: 'base-destroyed', winnerTeamId: 1 });
+      }
+    });
+    const first = await openPrivateMatch(url, {
+      hostId: 'p1',
+      guestId: 'p2',
+      hostName: 'P1',
+      guestName: 'P2',
+    });
+    const second = await openPrivateMatch(url, {
+      hostId: 'p3',
+      guestId: 'p4',
+      hostName: 'P3',
+      guestName: 'P4',
+    });
+
+    const pending = server.shutdown('deploy');
+    first.host.emit('player-command', {
+      type: 'destroy-base',
+      tick: 0,
+      playerId: 'p1',
+      data: {},
+    });
+
+    const firstDeadline = Date.now() + grace - 100;
+    while (seen.length < 1 && Date.now() < firstDeadline) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(seen).toEqual([
+      { matchId: first.matchId, endReason: 'base-destroyed' },
+    ]);
+    expect(server.getActiveMatches().map((match) => match.id)).toContain(
+      second.matchId
+    );
+
+    const bothDeadline = Date.now() + grace + 2000;
+    while (seen.length < 2 && Date.now() < bothDeadline) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(seen.map((entry) => entry.endReason).sort()).toEqual([
+      'base-destroyed',
+      'stopped',
+    ]);
+    expect(seen.map((entry) => entry.matchId).sort()).toEqual(
+      [first.matchId, second.matchId].sort()
+    );
+
+    const drainStarted = Date.now();
+    for (const release of releases) release();
+    await pending;
+    expect(Date.now() - drainStarted).toBeLessThan(500);
+    expect(pendingArchiveCount(server)).toBe(0);
   });
 
   it('resolves a hung hook within shutdownGraceMs after stop', async () => {

@@ -79,7 +79,8 @@ online and in local (bot) matches.
   countdown or waiting-for-ready). `shutdown` still ends those matches as
   `stopped` when they had started; it waits for hooks up to
   `shutdownGraceMs` **after** `stop()` (a second grace; the archives do
-  not exist until `stop()` runs). `log` entries are the stored
+  not exist until `stop()` runs). With grace 0 or unset, shutdown does
+  not await async hooks. `log` entries are the stored
   `PlayerCommand[]` arrays, not copies. A `match-log` stream still in
   flight when the history is released ends with
   `match-log-error { reason: 'not-found' }`.

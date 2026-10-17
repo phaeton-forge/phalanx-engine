@@ -1679,17 +1679,24 @@ export class GameRoom {
    * Build the archive for a started match and drop the room's history.
    * Returns null when the match never started, when this was already
    * called, or when `onMatchArchived` is not set (history is still
-   * dropped). The log arrays are moved, not copied.
+   * dropped). `hook` is the function that authorized this build; the
+   * caller must use that function and not a later config read.
+   * The log arrays are moved, not copied.
    */
-  takeArchive(endReason: string): MatchArchive | null {
+  takeArchive(endReason: string): {
+    archive: MatchArchive;
+    hook: (rec: MatchArchive) => void | Promise<void>;
+  } | null {
     if (this.archiveTaken) return null;
     this.archiveTaken = true;
+    const hook = this.config.onMatchArchived;
     const archive =
-      this.matchStarted && typeof this.config.onMatchArchived === 'function'
+      this.matchStarted && typeof hook === 'function'
         ? this.buildArchive(endReason)
         : null;
     this.releaseHistory();
-    return archive;
+    if (!archive || typeof hook !== 'function') return null;
+    return { archive, hook };
   }
 
   private buildArchive(endReason: string): MatchArchive {

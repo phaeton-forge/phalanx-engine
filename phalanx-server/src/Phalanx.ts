@@ -345,8 +345,8 @@ export class Phalanx extends EventEmitter {
       ((matchId: string, reason: string) => {
         const room = this.findMatch(matchId);
         if (room) {
-          const archive = room.takeArchive(reason);
-          if (archive) this.scheduleArchiveHook(archive);
+          const taken = room.takeArchive(reason);
+          if (taken) this.scheduleArchiveHook(taken.archive, taken.hook);
         }
         this.matchmaking?.removeMatch(matchId);
         this.privateRooms?.removeMatch(matchId);
@@ -444,11 +444,12 @@ export class Phalanx extends EventEmitter {
    * the poll that delivers `match-end` to local clients.
    * The tracked promise stays in `pendingArchives` until the hook
    * returns or its promise settles, including a throw or rejection.
+   * `hook` is the function `takeArchive` used to build `archive`.
    */
-  private scheduleArchiveHook(archive: MatchArchive): void {
-    const hook = this.config.onMatchArchived;
-    if (!hook) return;
-
+  private scheduleArchiveHook(
+    archive: MatchArchive,
+    hook: (rec: MatchArchive) => void | Promise<void>
+  ): void {
     let settle = (): void => {};
     const tracked = new Promise<void>((resolve) => {
       settle = resolve;
@@ -489,9 +490,9 @@ export class Phalanx extends EventEmitter {
 
   /**
    * Let scheduled hooks start, then wait up to `shutdownGraceMs`.
-   * `0` returns once the hooks have been called and does not wait
-   * for a promise that never settles. The timer is cleared when the
-   * hooks finish first so it does not hold the process.
+   * Grace `0` or unset returns once the hooks have been called and
+   * does not await async hooks. The timer is cleared when the hooks
+   * finish first so it does not hold the process.
    */
   private async waitForArchiveHooks(): Promise<void> {
     while (this.archiveHooksStarted < this.archiveHooksScheduled) {
