@@ -44,6 +44,11 @@ export interface GameOptions {
    * scenario must go red when this is set.
    */
   readonly disableFaultGate?: boolean;
+  /**
+   * Test probe. `onRestore` bumps a live field before the snapshot
+   * round-trip check, so restore throws `SnapshotRoundTripError`.
+   */
+  readonly corruptOnRestore?: boolean;
 }
 
 export interface MatchSpec {
@@ -125,6 +130,21 @@ export interface Peer {
   /** Queue one malformed envelope for the next tick. */
   injectMalformed(slot: number): void;
   toReplay(): ReplayFile;
+  /**
+   * Schedule a controller change. `null` when the runner accepted it.
+   * A rejection reason is deterministic across peers.
+   */
+  setController(
+    slot: number,
+    mode: 'human' | 'bot',
+    opts?: { readonly fromTick?: number; readonly policy?: string }
+  ): string | null;
+  /** Who controls `slot` at this peer's current tick. */
+  controllerOf(slot: number): 'human' | 'bot';
+  /** `onRejected` reasons seen by this peer, in order. */
+  rejections(): readonly { readonly type: string; readonly reason: string }[];
+  /** This runner's command log, including system commands. */
+  commandLog(): readonly LogEntry[];
   dispose(): void;
 }
 

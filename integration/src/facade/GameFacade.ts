@@ -1,6 +1,6 @@
 /**
- * The minimum the skirmish rules need. Implementations live in
- * `facade/current.ts` (today) and, after Task 6.5b, `facade/v65.ts`.
+ * The minimum the skirmish rules need. The v65 binding lives in
+ * `facade/v65.ts` and `facade/skirmishWorld.ts`.
  * Rules never import the engine.
  */
 export interface GameFacade {

@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { createCurrentDriver } from '../src/adapters/current.js';
+import { createV65Driver } from '../src/adapters/v65.js';
 import type { LogEntry, SimDriver } from '../src/driver/SimDriver.js';
 import {
   scenario,
@@ -17,7 +17,7 @@ import { prng } from '../src/util/prng.js';
 
 describe('expected failure', () => {
   it('accepts the engine exception and rejects a suppressed one', async () => {
-    const driver = createCurrentDriver();
+    const driver = createV65Driver();
     const throwing = named('throwing-system');
     const exploded = await simulate(driver, throwing);
     expect(exploded.note).toContain('skirmish tick exploded');
@@ -45,7 +45,7 @@ describe('expected failure', () => {
 describe('fault delivery order', () => {
   it('submits a later tick before the withheld earlier tick', async () => {
     const delivered: number[] = [];
-    const driver = recordingDriver(createCurrentDriver(), delivered);
+    const driver = recordingDriver(createV65Driver(), delivered);
     await simulate(
       driver,
       scenario('reorder-wire', {
@@ -89,7 +89,7 @@ describe('fault delivery order', () => {
 
 describe('live reference pause', () => {
   it('keeps scripted commands aligned across a pause', async () => {
-    const driver = createCurrentDriver();
+    const driver = createV65Driver();
     await expect(
       simulate(
         driver,
@@ -125,7 +125,7 @@ describe('fuzz connection order', () => {
 
 describe('inject miss predicate', () => {
   it('keeps convergence and a foreign exception apart from divergence', async () => {
-    const driver = createCurrentDriver();
+    const driver = createV65Driver();
     const quiet = scenario('quiet', {
       suite: 'fuzz',
       tags: ['fuzz'],

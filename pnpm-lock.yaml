@@ -87,21 +87,9 @@ importers:
 
   integration:
     dependencies:
-      '@phalanx-engine/abilities':
+      '@phalanx-engine/engine':
         specifier: workspace:*
-        version: link:../phalanx-abilities
-      '@phalanx-engine/ecs':
-        specifier: workspace:*
-        version: link:../phalanx-ecs
-      '@phalanx-engine/math':
-        specifier: workspace:*
-        version: link:../phalanx-math
-      '@phalanx-engine/physics':
-        specifier: workspace:*
-        version: link:../phalanx-physics
-      '@phalanx-engine/runtime':
-        specifier: workspace:*
-        version: link:../phalanx-runtime
+        version: link:../phalanx-engine
     devDependencies:
       '@eslint/js':
         specifier: ^9.17.0

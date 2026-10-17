@@ -37,6 +37,13 @@ export function formatMarkdown(report: Report): string {
       `| ${cell(row.name)} | ${cell(row.suite)} | ${cell(row.tags.join(', '))} | ${glyph(row.status)} | ${String(row.ticks)} | ${row.timeMs.toFixed(0)}ms | ${cell(row.note)} |`
     );
   }
+  const controllers = report.cases.filter(
+    (row) => row.controller !== undefined && row.controller.length > 0
+  );
+  if (controllers.length > 0) {
+    lines.push('', '## Controllers', '');
+    for (const row of controllers) lines.push(...controllerBlock(row));
+  }
   const failures = report.cases.filter(
     (row) => row.status === 'fail' || row.status === 'known'
   );
@@ -71,16 +78,41 @@ function failureBlock(row: CaseResult): string[] {
     lines.push(`First diverging tick: ${String(row.tick)}`, '');
   if (row.seed !== undefined) lines.push(`Seed: ${String(row.seed)}`, '');
   if (row.diffs !== undefined && row.diffs.length > 0) {
+    const roundTrip = row.before !== undefined;
     lines.push(
-      '| entity | component | field | peer | reference |',
+      roundTrip
+        ? '| entity | component | field | before | after |'
+        : '| entity | component | field | peer | reference |',
       '| --- | --- | --- | --- | --- |'
     );
     for (const diff of row.diffs) {
+      const left = roundTrip ? diff.reference : diff.peer;
+      const right = roundTrip ? diff.peer : diff.reference;
       lines.push(
-        `| ${cell(diff.entity)} | ${cell(diff.component)} | ${cell(diff.field)} | ${cell(diff.peer)} | ${cell(diff.reference)} |`
+        `| ${cell(diff.entity)} | ${cell(diff.component)} | ${cell(diff.field)} | ${cell(left)} | ${cell(right)} |`
       );
     }
     lines.push('');
+  }
+  if (row.before !== undefined) {
+    lines.push(
+      'State before save:',
+      '',
+      '```json',
+      JSON.stringify(row.before),
+      '```',
+      ''
+    );
+  }
+  if (row.after !== undefined) {
+    lines.push(
+      'State after restore:',
+      '',
+      '```json',
+      JSON.stringify(row.after),
+      '```',
+      ''
+    );
   }
   if (row.timeline !== undefined) {
     lines.push(
@@ -93,6 +125,22 @@ function failureBlock(row: CaseResult): string[] {
     );
   }
   if (row.repro !== undefined) lines.push('```', row.repro, '```', '');
+  return lines;
+}
+
+function controllerBlock(row: CaseResult): string[] {
+  const lines = [`### ${row.name}`, ''];
+  const slots = row.controller ?? [];
+  let previous = '';
+  for (const sample of slots) {
+    const text = sample.slots
+      .map((slot) => `${String(slot.slot)} ${slot.mode}`)
+      .join(', ');
+    if (text === previous) continue;
+    previous = text;
+    lines.push(`- tick ${String(sample.tick)}: ${text}`);
+  }
+  lines.push('');
   return lines;
 }
 

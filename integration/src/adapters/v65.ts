@@ -1,15 +1,17 @@
 import {
   LocalTransport,
   MatchRunner,
-  SnapshotRejectedError,
+  ReplayPlayer,
+  SYSTEM_PLAYER_ID,
   botPlayerId,
   decodeSnapshot,
   encodeSnapshot,
   isBotPlayerId,
+  type JsonValue,
   type LogEntry as EngineLogEntry,
   type ReplayRecord,
-} from '@phalanx-engine/runtime';
-import { CURRENT_CAPABILITIES } from '../driver/capabilities.js';
+} from '@phalanx-engine/engine';
+import { V65_CAPABILITIES } from '../driver/capabilities.js';
 import type {
   GameCommandJson,
   LogEntry,
@@ -25,28 +27,36 @@ import {
   createSkirmishGame,
   type SkirmishConfig,
   type SkirmishSession,
-} from '../facade/current.js';
+} from '../facade/v65.js';
 import type { SkirmishCommand as Command } from '../game/skirmish/types.js';
 import { canonicalDigest } from '../oracle/digest.js';
 import { errorMessage, isJson, type Json } from '../util/json.js';
+
+interface Rejection {
+  readonly type: string;
+  readonly reason: string;
+}
 
 interface Live {
   readonly runner: MatchRunner<ReturnType<typeof createSkirmishGame>>;
   readonly transport: LocalTransport;
   readonly role: PeerOptions['role'];
   readonly delivered: Set<string>;
+  readonly rejections: Rejection[];
   started: boolean;
   outcomeText: string | null;
 }
 
 /**
- * SimDriver on the runtime adapter: `defineGame`, `MatchRunner`, and
- * `LocalTransport`. The `@phalanx-engine/engine` facade is not used here.
+ * `runLocalMatch` starts one clocked runner. This suite builds several
+ * peers, steps them by hand, and pushes envelopes through `FaultyTransport`,
+ * so each peer is a `MatchRunner` on `LocalTransport.stepped()`.
+ * Replay peers use `ReplayPlayer`, which never calls bot `decide`.
  */
-export function createCurrentDriver(): SimDriver {
+export function createV65Driver(): SimDriver {
   return {
-    name: 'current',
-    capabilities: CURRENT_CAPABILITIES,
+    name: 'v65',
+    capabilities: V65_CAPABILITIES,
     createMatch(spec: MatchSpec): MatchHandle {
       return openMatch(spec);
     },
@@ -65,22 +75,8 @@ export function createCurrentDriver(): SimDriver {
   };
 }
 
-export { SnapshotRejectedError };
-
 function openMatch(spec: MatchSpec): MatchHandle {
-  const session: SkirmishSession = {
-    currentPeer: '',
-    inject: spec.options.injectDesync,
-    spawnOnRestore: spec.options.spawnOnRestore === true,
-    throwOnTick: spec.options.throwOnTick,
-    suppressThrow: spec.options.suppressThrow === true,
-    throwBot: spec.options.throwBot === true,
-    poolProbe: spec.options.poolProbe === true,
-    dirtyAfterRestore: spec.options.dirtyAfterRestore === true,
-    breakBotRestore: spec.options.breakBotRestore === true,
-    injectTick: -1,
-    bots: {},
-  };
+  const session = emptySession(spec);
   const game = createSkirmishGame(session, poolsFor(spec));
   const config = toConfig(spec);
   const peers: Peer[] = [];
@@ -104,6 +100,7 @@ function openMatch(spec: MatchSpec): MatchHandle {
         transport,
         role: opts.role,
         delivered: new Set(),
+        rejections: [],
         started: false,
         outcomeText: null,
       };
@@ -113,7 +110,10 @@ function openMatch(spec: MatchSpec): MatchHandle {
             ? `win:${String(outcome.winnerTeam)}`
             : `draw:${outcome.reason}`;
       });
-      const peer = wrapPeer(id, live, session);
+      runner.onRejected((entry, reason) => {
+        live.rejections.push({ type: entry.type, reason });
+      });
+      const peer = wrapPeer(id, live, session, spec);
       peers.push(peer);
       if (opts.role === 'authority') authorityRunner = live.runner;
       return peer;
@@ -137,7 +137,12 @@ function openMatch(spec: MatchSpec): MatchHandle {
   return handle;
 }
 
-function wrapPeer(id: string, live: Live, session: SkirmishSession): Peer {
+function wrapPeer(
+  id: string,
+  live: Live,
+  session: SkirmishSession,
+  spec: MatchSpec
+): Peer {
   let failure: unknown = null;
   live.runner.onError((error) => {
     failure = error;
@@ -148,11 +153,10 @@ function wrapPeer(id: string, live: Live, session: SkirmishSession): Peer {
       live.runner.submit(asCommand(cmd), slot);
     },
     step(ticks: number): void {
-      // Perf times this method. Log capture stays on match.log().
       session.currentPeer = id;
       if (live.role === 'replay') {
         throw new Error(
-          'MatchRunner.openReplay: drive the runner with fastForward(replay.log, { throughTick: replay.lastTick })'
+          'ReplayPlayer: drive the player with play() or fastForward(throughTick)'
         );
       }
       if (!live.started) {
@@ -161,6 +165,7 @@ function wrapPeer(id: string, live: Live, session: SkirmishSession): Peer {
       }
       failure = null;
       live.transport.step(ticks);
+      reconcileControls(live, session);
       if (failure !== null) {
         const error = failure;
         failure = null;
@@ -172,6 +177,7 @@ function wrapPeer(id: string, live: Live, session: SkirmishSession): Peer {
     restore(bytes: Uint8Array): void {
       session.currentPeer = id;
       live.runner.restore(bytes);
+      reconcileControls(live, session);
       session.poke?.();
     },
     async fastForward(entries, throughTick): Promise<void> {
@@ -180,9 +186,11 @@ function wrapPeer(id: string, live: Live, session: SkirmishSession): Peer {
         budgetMs: 250,
         throughTick,
       });
+      reconcileControls(live, session);
     },
     deliver(entry): void {
       if (isBotPlayerId(entry.playerId)) return;
+      if (entry.playerId === SYSTEM_PLAYER_ID) return;
       const slot = slotOf(entry.playerId);
       if (slot === null) return;
       const key = `${String(entry.tick)}:${entry.playerId}:${String(entry.data.q)}`;
@@ -191,13 +199,17 @@ function wrapPeer(id: string, live: Live, session: SkirmishSession): Peer {
         live.runner.start();
         live.started = true;
       }
+      // A bot handoff rebinds the slot's transport id. Keep the logged
+      // human id so the runner rejects the command instead of applying
+      // it as a bot command.
+      live.transport.assignPlayerId(slot, entry.playerId);
       live.transport.submit(entry.tick, slot, [
         { type: entry.type, data: entry.data },
       ]);
       live.delivered.add(key);
     },
-    digest: () => canonicalDigest(thisState(live)),
-    stateDump: (): StateDump => thisState(live),
+    digest: () => canonicalDigest(dumpOf(session, id)),
+    stateDump: (): StateDump => dumpOf(session, id),
     status: () => live.runner.status,
     outcome: () => live.outcomeText,
     pause(): void {
@@ -215,6 +227,23 @@ function wrapPeer(id: string, live: Live, session: SkirmishSession): Peer {
     toReplay(): ReplayFile {
       return toReplayFile(live.runner.toReplay());
     },
+    setController(slot, mode, opts) {
+      const before = live.rejections.length;
+      live.runner.setController(slot, mode, opts);
+      const rejected = live.rejections.slice(before).find((item) => {
+        return item.type === 'setController';
+      });
+      if (rejected !== undefined) return rejected.reason;
+      const fromTick =
+        opts?.fromTick ?? live.runner.tick + spec.inputDelayTicks;
+      noteControl(session, slot, mode, fromTick);
+      return null;
+    },
+    controllerOf(slot) {
+      return controllerOf(session, spec, slot, live.runner.tick);
+    },
+    rejections: () => live.rejections.slice(),
+    commandLog: () => mapLog(live.runner.log.entriesAfter(-1)),
     dispose(): void {
       live.runner.dispose();
     },
@@ -222,38 +251,161 @@ function wrapPeer(id: string, live: Live, session: SkirmishSession): Peer {
 }
 
 function openReplayPeer(replay: ReplayFile): Peer {
-  const session: SkirmishSession = {
-    currentPeer: 'replay',
-    spawnOnRestore: false,
-    suppressThrow: false,
-    throwBot: false,
-    poolProbe: false,
-    dirtyAfterRestore: false,
-    breakBotRestore: false,
+  const session = emptySession({
+    seed: 0,
+    inputDelayTicks: 1,
+    slots: [],
+    options: {},
+  });
+  session.currentPeer = 'replay';
+  const game = createSkirmishGame(session, poolsFromReplay(replay.config));
+  // ReplayFile is the JSON form of ReplayRecord. The player checks format,
+  // game id, sim version, and tick bounds itself. The suite stores config
+  // as JSON, which is the shape ReplayRecord already persisted.
+  const record = replay as unknown as ReplayRecord<SkirmishConfig>;
+  const player = ReplayPlayer.from(game, record);
+  return {
+    id: 'replay',
+    submit() {
+      throw new Error(
+        'ReplayPlayer: drive the player with play() or fastForward(throughTick)'
+      );
+    },
+    step() {
+      throw new Error(
+        'ReplayPlayer: drive the player with play() or fastForward(throughTick)'
+      );
+    },
+    tick: () => player.tick,
+    snapshot: () => {
+      throw new Error('ReplayPlayer: a replay peer has no snapshot');
+    },
+    restore() {
+      throw new Error('ReplayPlayer: a replay peer cannot restore');
+    },
+    async fastForward(_entries, throughTick): Promise<void> {
+      await player.fastForward(throughTick);
+    },
+    deliver() {},
+    digest: () => canonicalDigest(dumpOf(session, 'replay')),
+    stateDump: () => dumpOf(session, 'replay'),
+    status: () => (player.tick < 0 ? 'ready' : 'running'),
+    outcome: () => null,
+    pause() {},
+    resume() {},
+    injectMalformed() {},
+    toReplay: () => replay,
+    setController() {
+      return 'replay cannot change controller';
+    },
+    controllerOf(slot) {
+      return controllerOf(session, replaySpec(replay), slot, player.tick);
+    },
+    rejections: () => [],
+    commandLog: () => replay.log,
+    dispose(): void {
+      session.bound['replay']?.world.dispose();
+    },
+  };
+}
+
+function reconcileControls(live: Live, session: SkirmishSession): void {
+  const tick = live.runner.tick;
+  const latest: Record<string, 'human' | 'bot'> = {};
+  for (const entry of live.runner.log.entriesAfter(-1)) {
+    if (entry.tick > tick) continue;
+    const change = systemChange(entry);
+    if (change === null) continue;
+    noteControl(session, change.slot, change.mode, entry.tick);
+    latest[String(change.slot)] = change.mode;
+  }
+  const row = session.bots[session.currentPeer];
+  if (row === undefined) return;
+  for (const slot of Object.keys(latest).sort()) {
+    if (latest[slot] === 'human') delete row[slot];
+  }
+}
+
+function systemChange(
+  entry: EngineLogEntry
+): { readonly slot: number; readonly mode: 'human' | 'bot' } | null {
+  if (entry.playerId !== SYSTEM_PLAYER_ID || entry.type !== 'setController') {
+    return null;
+  }
+  const payload = entry.data.p;
+  if (!isControllerPayload(payload)) return null;
+  const slot = payload['slot'];
+  const mode = payload['mode'];
+  if (typeof slot !== 'number' || !Number.isInteger(slot)) return null;
+  if (mode !== 'human' && mode !== 'bot') return null;
+  return { slot, mode };
+}
+
+function noteControl(
+  session: SkirmishSession,
+  slot: number,
+  mode: 'human' | 'bot',
+  fromTick: number
+): void {
+  for (const change of session.controls) {
+    if (
+      change.slot === slot &&
+      change.mode === mode &&
+      change.fromTick === fromTick
+    ) {
+      return;
+    }
+  }
+  session.controls.push({ slot, mode, fromTick });
+}
+
+function controllerOf(
+  session: SkirmishSession,
+  spec: MatchSpec,
+  slot: number,
+  tick: number
+): 'human' | 'bot' {
+  const initial = spec.slots[slot];
+  let mode: 'human' | 'bot' = initial?.kind === 'bot' ? 'bot' : 'human';
+  for (const change of session.controls) {
+    if (change.slot !== slot || change.fromTick > tick) continue;
+    mode = change.mode;
+  }
+  return mode;
+}
+
+function dumpOf(session: SkirmishSession, id: string): StateDump {
+  const sim = session.bound[id];
+  if (sim === undefined) throw new Error(`skirmish: no sim for ${id}`);
+  return sim.stateDump();
+}
+
+function emptySession(spec: MatchSpec): SkirmishSession {
+  return {
+    currentPeer: '',
+    inject: spec.options.injectDesync,
+    spawnOnRestore: spec.options.spawnOnRestore === true,
+    throwOnTick: spec.options.throwOnTick,
+    suppressThrow: spec.options.suppressThrow === true,
+    throwBot: spec.options.throwBot === true,
+    poolProbe: spec.options.poolProbe === true,
+    dirtyAfterRestore: spec.options.dirtyAfterRestore === true,
+    breakBotRestore: spec.options.breakBotRestore === true,
+    corruptOnRestore: spec.options.corruptOnRestore === true,
     injectTick: -1,
     bots: {},
+    bound: {},
+    controls: [],
   };
-  const game = createSkirmishGame(session, poolsFromReplay(replay.config));
-  const record = replay as unknown as ReplayRecord<SkirmishConfig>;
-  // ReplayFile is the JSON form of ReplayRecord. The runner checks
-  // format, game id, sim version, and tick bounds itself.
-  const runner = MatchRunner.openReplay(game, record);
-  const transport = LocalTransport.stepped();
-  const live: Live = {
-    runner,
-    transport,
-    role: 'replay',
-    delivered: new Set(),
-    started: false,
-    outcomeText: null,
+}
+
+function replaySpec(_replay: ReplayFile): MatchSpec {
+  return {
+    seed: 0,
+    inputDelayTicks: 1,
+    slots: [],
+    options: {},
   };
-  runner.onOutcome((outcome) => {
-    live.outcomeText =
-      outcome.kind === 'win'
-        ? `win:${String(outcome.winnerTeam)}`
-        : `draw:${outcome.reason}`;
-  });
-  return wrapPeer('replay', live, session);
 }
 
 function mapLog(entries: readonly EngineLogEntry[]): LogEntry[] {
@@ -264,10 +416,6 @@ function mapLog(entries: readonly EngineLogEntry[]): LogEntry[] {
     data: { q: entry.data.q, p: entry.data.p },
     ...(entry.malformed === true ? { malformed: true as const } : {}),
   }));
-}
-
-function thisState(live: Live): StateDump {
-  return live.runner.sim.stateDump();
 }
 
 function slotOf(playerId: string): number | null {
@@ -363,6 +511,12 @@ function isJsonRecord(value: Json): value is { readonly [key: string]: Json } {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function isControllerPayload(
+  value: JsonValue
+): value is { readonly [key: string]: JsonValue } {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 function poolsFor(spec: MatchSpec): {
   readonly armySize: number;
   readonly slotCount: number;
@@ -426,11 +580,13 @@ function asCommand(cmd: GameCommandJson): Command {
   ) {
     throw new Error(`skirmish: unknown command ${cmd.type}`);
   }
-  // The type string was checked above. Optional JSON fields match the command union.
+  // The type string was checked above. Payload fields are the command's.
   return cmd as Command;
 }
 
 function toReplayFile(record: ReplayRecord<SkirmishConfig>): ReplayFile {
+  // Match config is a JSON object the runner already hashed. `isJson`
+  // rejects a value that is not JSON before it is stored on ReplayFile.
   const config = record.config as unknown as Json;
   if (!isJson(config)) throw new Error('skirmish: replay config is not JSON');
   const file: ReplayFile = {

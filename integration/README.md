@@ -5,13 +5,34 @@ published, and it has no `build` or `test` script, so root
 `pnpm build` / `pnpm test` (CI) do not run it.
 
 The suite sees the engine only through `SimDriver` (`src/driver`) and
-`GameFacade` (`src/facade/GameFacade.ts`). `adapters/current.ts` and
-`facade/current.ts` are the port onto today's `main` API (`defineGame`,
-`MatchRunner`, `LocalTransport`, `world.save` / `world.restore`).
-When a later API lands, add `adapters/v65.ts` and `facade/v65.ts` and
-switch the default. Scenarios, the DSL, the oracle, the fuzzer, the
-report and the skirmish rules stay put. `runConformance` is the port's
-acceptance test.
+`GameFacade` (`src/facade/GameFacade.ts`). The default driver is
+`adapters/v65.ts` (`createV65Driver`) on `@phalanx-engine/engine`.
+`facade/v65.ts` binds `defineGame`; the sim glue lives in
+`facade/skirmishWorld.ts`. Rules and bots are pure functions in
+`game/skirmish/`. `runConformance` is the acceptance test for a future
+L2 or L3 adapter.
+
+`adapters/current.ts` is gone. `main` has no older API to port from:
+that adapter was already built on the 6.5b surface, only without
+`defineComponent`, `defineCommands`, and `setController`. A second
+adapter on the same API would double the maintenance and the suite
+mutants.
+
+Live peers are `MatchRunner` on `LocalTransport.stepped()`, not
+`runLocalMatch`. `runLocalMatch` starts one clocked runner. This suite
+builds several peers, steps them by hand, and pushes envelopes through
+`FaultyTransport` before `deliver`. Replay peers are `ReplayPlayer`.
+
+Pooled archetypes (`soldier`, `archer`, `totem`) stay. A physics body,
+a transform, and the ability shell are attached in the factory, and
+`world.spawn` cannot pick an archetype. Acquire uses `pools.spawn`.
+The tick path reads units with `world.each` and removes them with
+`world.despawn`. A restored live entity is a new object that skipped
+the prewarm pass, so the return-to-pool hook would record its death
+state on the first despawn. `onDespawn` writes the factory image
+(health, power, abilities, tags) before that hook copies the shell, and
+a later respawn matches a peer that never restored. `SkirmishUnit`
+carries a trailing `eid` field so `world.each` can yield an id.
 
 ## Run
 
@@ -77,6 +98,26 @@ substring of an error that must be thrown. `requires` skips the
 scenario when the driver lacks that capability. `knownFailure` records
 an engine bug without failing the run.
 
+A controller handoff is `replaceWithBot(peer, policy, opts)` and
+`returnFromBot(peer, opts)` (`slot`, `fromTick`, `delay`). The
+interpreter calls `setController` on every in-window peer. `fromTick`
+defaults to the authority tick plus `inputDelayTicks`. A rejected
+request is a report note, and it fails the scenario when
+`expect.converge` is set unless `expect.rejection` names that reason.
+`expect.handoffRestore` (`before`, `at`, `after`) snapshots at
+`fromTick − 1`, `fromTick`, or `fromTick + 1`, restores into a new
+runner, and checks each later digest against the continuous run.
+`expect.botReinit` checks that the next handoff starts a fresh bot
+from `seed + slot`. `expect.systemSeq` checks that the next system
+command keeps a unique `q` and that a second save is byte-identical.
+`expect.replay` compares `ReplayPlayer` digests with bot notes
+stripped, because bot memory is outside the snapshot.
+
+`restart-server` stays a skip. An in-process restart would not test
+the relay. The skip reason is `stage B (L2): needs relay/SimHost
+process (tasks 8, 11)`: SimHost (task 11) and a relay log that resumes
+from tick N (task 8) are not on `main`.
+
 A fault `delay`, `dup` or `reorder` submits the envelope to that peer's
 transport when it is due. A `drop` is not resent; at the end of the
 range the peer catches up from the authoritative log.
@@ -115,9 +156,11 @@ checks that shrink.
 3. Point `src/run.ts` at the new driver.
 4. `runConformance` and `pnpm run it:unit` must pass.
 
-Only `src/adapters/`, `src/facade/` and `src/suites/packageSmoke.ts`
-may import `@phalanx-engine/*`. `pnpm run lint` in this package and
-`tests/imports.test.ts` enforce that.
+`src/facade/` and `src/adapters/` import `@phalanx-engine/engine` only.
+`@phalanx-engine/runtime/advanced` is allowed in an adapter when the
+facade does not export the symbol, and the file must say why.
+`src/suites/packageSmoke.ts` may import the individual packages.
+`pnpm run lint` and `tests/imports.test.ts` enforce that.
 
 L2 (child processes, chaos proxy, `restartServer`) and L3 (browser
 peers) are design-only. See `docs/stage-b.md`.

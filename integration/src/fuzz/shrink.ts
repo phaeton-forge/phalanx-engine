@@ -110,6 +110,7 @@ async function shrinkRanges(
   for (let index = 0; index < events.length; index += 1) {
     const event = events[index];
     if (event === undefined) continue;
+    // `replaceWithBot` / `returnFromBot` shrink with every other `at` event.
     if ('at' in event) {
       let at = event.at;
       while (at > 0) {

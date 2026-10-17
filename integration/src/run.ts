@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { cpus, platform, release, arch } from 'node:os';
 import { join } from 'node:path';
-import { createCurrentDriver } from './adapters/current.js';
+import { createV65Driver } from './adapters/v65.js';
 import { runConformance } from './adapters/conformance.js';
 import type { Capabilities } from './driver/capabilities.js';
 import type { SimDriver } from './driver/SimDriver.js';
@@ -52,7 +52,7 @@ const FULL_FUZZ = { count: 500, seeds: [1, 2, 3, 4] };
 
 export async function runAll(options: RunOptions): Promise<Report> {
   const started = Date.now();
-  const driver = createCurrentDriver();
+  const driver = createV65Driver();
   const cases: CaseResult[] = [];
   try {
     return await runCases(options, driver, cases, started);
@@ -195,12 +195,11 @@ export async function runScenario(
 ): Promise<CaseResult> {
   const missing = (scenario.requires ?? []).find((name) => !capabilities[name]);
   if (missing !== undefined) {
-    return skipped(
-      scenario.name,
-      scenario.suite,
-      scenario.tags,
-      `needs capabilities.${missing}`
-    );
+    const reason =
+      missing === 'restartServer'
+        ? 'stage B (L2): needs relay/SimHost process (tasks 8, 11)'
+        : `needs capabilities.${missing}`;
+    return skipped(scenario.name, scenario.suite, scenario.tags, reason);
   }
   const started = Date.now();
   try {
@@ -223,13 +222,18 @@ export async function runScenario(
         'known failure now passes — remove tag'
       );
     }
-    return base(
-      scenario,
-      'pass',
-      result.ticks,
-      Date.now() - started,
-      result.note
-    );
+    return {
+      ...base(
+        scenario,
+        'pass',
+        result.ticks,
+        Date.now() - started,
+        result.note
+      ),
+      ...(result.controller === undefined
+        ? {}
+        : { controller: result.controller }),
+    };
   } catch (error) {
     const detail = describe(error);
     if (scenario.expect.diverges === true && detail.note.includes('diverged')) {
@@ -270,7 +274,7 @@ export async function runScenario(
 }
 
 async function assertInjectShrink(): Promise<void> {
-  const driver = createCurrentDriver();
+  const driver = createV65Driver();
   const scenario = injectScenario(11);
   if (scenario.timeline.length < 15 || scenario.timeline.length > 20) {
     throw new Error(
@@ -582,12 +586,16 @@ function base(
   };
 }
 
-function describe(error: unknown): Pick<CaseResult, 'note' | 'tick' | 'diffs'> {
+function describe(
+  error: unknown
+): Pick<CaseResult, 'note' | 'tick' | 'diffs' | 'before' | 'after'> {
   if (isSimulationFailure(error)) {
     return {
       note: error.message,
       ...(error.tick === undefined ? {} : { tick: error.tick }),
       diffs: error.diffs,
+      ...(error.before === undefined ? {} : { before: error.before }),
+      ...(error.after === undefined ? {} : { after: error.after }),
     };
   }
   return { note: errorMessage(error) };

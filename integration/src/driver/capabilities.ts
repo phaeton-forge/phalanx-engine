@@ -3,12 +3,11 @@
  * scenario (or the single event) with a reason. Nothing is dropped quietly.
  */
 export interface Capabilities {
-  /** Slot hand-off (`replaceWithBot` / `returnFromBot`). Not on today's API. */
+  /** Slot hand-off (`replaceWithBot` / `returnFromBot`) via `setController`. */
   readonly setController: boolean;
   /**
    * Replay a finished log without calling bot `decide`.
-   * The adapter does this with `MatchRunner.openReplay` + `fastForward`.
-   * The future `ReplayPlayer` type is the same flag.
+   * The v65 adapter does this with `ReplayPlayer`.
    */
   readonly replayPlayer: boolean;
   /** Two OS processes can run the same match (det-continuous). */
@@ -17,8 +16,8 @@ export interface Capabilities {
   readonly restartServer: boolean;
 }
 
-export const CURRENT_CAPABILITIES: Capabilities = {
-  setController: false,
+export const V65_CAPABILITIES: Capabilities = {
+  setController: true,
   replayPlayer: true,
   multiProcess: true,
   restartServer: false,
