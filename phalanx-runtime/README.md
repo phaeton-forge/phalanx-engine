@@ -138,7 +138,8 @@ seed 0), `canonicalConfigBytes` / `configHash`,
 `checkSnapshotCompatibility`, `defineComponent`, `bindWorldSingletons`,
 and the offline runner: `MatchRunner`, `ReplayPlayer`, `runLocalMatch`,
 `CommandLog`, `BotHost` and `LocalTransport` (timer or
-`LocalTransport.stepped()` + `step`).
+`LocalTransport.stepped()` + `step`). Local persistence is opt-in:
+`MemoryMatchStore`, `IndexedDbMatchStore` and `MatchRunner.resumeLocal`.
 `StateHelpers` (including `writeAbilities` / `readAbilities`,
 `section('gas', 1)`), `spawnWithId`, `rebuildBroadphaseFromTransforms`
 and `WorldScope` are exported from `@phalanx-engine/runtime/advanced`.
@@ -214,6 +215,29 @@ first, which is where a live clock already sits, so a catch-up submit
 uses the same horizon. The timer waits `tickDuration - accumulator`
 instead of spinning on a zero delay. A throw from the timer handler
 stops the clock and does not reschedule.
+
+Pass `store` to persist a local match. Without it, `LocalTransport` does
+not snapshot or write a log. `snapshotEveryTicks` defaults to 300 (tick 0
+is never a snapshot) and `pauseWhenHidden` defaults to true. A host with
+no `document` ignores the pause. Hiding the page pauses; showing it does
+not resume. On a snapshot tick the runner seals `world` save bytes, the
+bot section and the input checkpoint (`systemSeq` and every slot's
+controller mode). The body buffer is the one `BinaryStateWriter.finish()`
+already returned; it is not copied again. `encodeSnapshot` / digest and
+the store write run off the tick (`setImmediate` in Node,
+`requestIdleCallback` in browsers). Writes batch every 5 seconds and on
+`visibilitychange: hidden` / `pagehide`. Only the last two snapshots are
+kept. The stored cursor includes empty ticks, so
+`MatchRunner.resumeLocal(definition, store, matchId)` can fast-forward
+past the last command. It returns `null` when the id is unknown, does not
+start the clock, and leaves `systemSeq` and controller modes as they were
+at the snapshot. `runner.whenPersisted()` resolves when the latest flush
+has finished. `lastPersistenceSyncMs` is host time spent sealing that
+tick, not the digest and not the IndexedDB write. `IndexedDbMatchStore`
+reads `globalThis.indexedDB` when a method runs. Node tests install
+`fake-indexeddb` first. `runLocalMatch` accepts the same `store`,
+`snapshotEveryTicks` and `pauseWhenHidden` options; omitting them keeps
+the previous transport.
 
 `writeAbilities` stores the per-world runtime from `exportRuntimeState`
 (instance-id counter, activation queue, `currentTick`, resolved

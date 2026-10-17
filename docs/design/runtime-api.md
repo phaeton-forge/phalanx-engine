@@ -1319,9 +1319,20 @@ Literal instructions for each task; they override the original task text.
     decision matches a run that never restored. `fromReplay` does not
     call `decide`. A client applies controller modes from a server snapshot
     and does not apply that snapshot's policy bytes or checkpoint.
-- **Task 7 (persistence).** `IndexedDbMatchStore` and `visibilitychange`
-  handling live in `@phalanx-engine/client` (the runtime has no DOM). The
-  runtime keeps the `MatchStore` interface and an in-memory store.
+- **Task 7 (persistence).** `MatchStore`, `MemoryMatchStore` and
+  `IndexedDbMatchStore` live in `@phalanx-engine/runtime`. The package has
+  no DOM lib; the IndexedDB store reads `globalThis.indexedDB` when a
+  method runs. `LocalTransport` takes an optional `store`,
+  `snapshotEveryTicks` (default 300) and `pauseWhenHidden` (default true).
+  No store means no persistence. On a snapshot tick the runner seals the
+  world body plus that tick's bot section and input checkpoint, and hands
+  the body buffer through without a second copy. `encodeSnapshot` (and
+  therefore the digest) and the store write run off the tick: `setImmediate`
+  in Node, `requestIdleCallback` in browsers. Writes batch every 5s and on
+  `visibilitychange: hidden` / `pagehide`. `MatchRunner.resumeLocal` restores
+  the newest snapshot, including `systemSeq` and every slot's controller
+  mode, then fast-forwards the command tail through the stored cursor so
+  empty ticks are not dropped. Only the last two snapshots are kept.
 - **Task 8 (relay full log).** Store raw `PlayerCommand`s including the
   envelope; `match-log` chunks of ≤ 2000 ticks; `buildId`; SIGTERM.
 - **Task 9 (session token).** Derive `playerId` from the token / socket for
@@ -1363,7 +1374,7 @@ Literal instructions for each task; they override the original task text.
 | 4    | SoA/entity/RNG/physics helpers                                        | `StateHelpers` except abilities                                                                                                        |
 | 5    | GAS helpers                                                           | `StateHelpers.writeAbilities/readAbilities`                                                                                            |
 | 6    | MatchRunner, in-memory LocalTransport, bot host                       | `MatchRunner` (not `join`), `CommandLog`, `WorldScope`, `BotHost`, `LocalTransport`                                                    |
-| 7    | Persistence                                                           | `MatchStore` (runtime), `IndexedDbMatchStore` (client)                                                                                 |
+| 7    | Persistence                                                           | `MatchStore`, `MemoryMatchStore`, `IndexedDbMatchStore` (runtime)                                                                      |
 | 8    | Relay full log, log-from-tick, buildId, SIGTERM                       | — (server)                                                                                                                             |
 | 9    | Session token + match-resume                                          | — (server/client)                                                                                                                      |
 | 10   | Absence timer + `endMatch`                                            | — (server)                                                                                                                             |

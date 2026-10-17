@@ -6,12 +6,20 @@ import type {
   TickHandler,
   Unsubscribe,
 } from '@phalanx-engine/ecs';
+import { DEFAULT_CLIENT_SNAPSHOT_EVERY_TICKS } from '../constants.js';
 import type { WireCommand } from '../game/commands.js';
 import { wallClock } from '../host/wallClock.js';
+import type { MatchStore } from '../persistence/MatchStore.js';
 import type { Transport, TransportKind } from './Transport.js';
 
 /** How far past the next tick a submit may target (default). */
 export const DEFAULT_MAX_AHEAD_TICKS = 8;
+
+/** How often a stored match flushes its command tail and snapshots. */
+const PERSIST_FLUSH_MS = 5000;
+
+/** Why a {@link LocalTransport} asked the runner to flush its journal. */
+export type PersistenceFlushReason = 'timer' | 'hide' | 'pagehide' | 'stop';
 
 export interface LocalTransportOptions {
   /** Ticks per second; must equal `GameDefinition.tickRate`. */
@@ -23,6 +31,22 @@ export interface LocalTransportOptions {
    * Default {@link DEFAULT_MAX_AHEAD_TICKS}. Bounds the pending map.
    */
   readonly maxAheadTicks?: number;
+  /**
+   * When set, the runner journals this match. Omitted: today's transport,
+   * with no snapshots and no command log on disk.
+   */
+  readonly store?: MatchStore;
+  /**
+   * Completed ticks between sealed snapshots. Default
+   * {@link DEFAULT_CLIENT_SNAPSHOT_EVERY_TICKS} (300). Tick 0 is never a
+   * snapshot.
+   */
+  readonly snapshotEveryTicks?: number;
+  /**
+   * Pause the clock when the document is hidden. Default `true`. A host
+   * with no `document` ignores it. Becoming visible does not resume.
+   */
+  readonly pauseWhenHidden?: boolean;
 }
 
 interface SlotBinding {
@@ -33,7 +57,8 @@ interface SlotBinding {
 /**
  * Offline transport: generates ticks from a local clock and loops local
  * input (humans and local bots) back into the batch of its target tick.
- * Persistence (IndexedDB) is added by Task 7 as an injected `MatchStore`.
+ * An optional {@link MatchStore} journals the match. Writes are batched
+ * every 5s and on hide / pagehide; the transport never awaits them.
  *
  * {@link MatchRunner} calls {@link bindSlots} so echoed batches are keyed
  * by player id. {@link stepped} does not start a timer; tests advance it
@@ -46,6 +71,9 @@ export class LocalTransport implements Transport {
   private readonly tickDuration: number;
   private readonly maxFrameTime: number;
   private readonly maxAheadTicks: number;
+  private readonly store: MatchStore | undefined;
+  private readonly snapshotEvery: number;
+  private readonly pauseWhenHidden: boolean;
   private nextTick = 0;
   private readonly playerIdBySlot = new Map<number, string>();
   private readonly pending = new Map<number, Map<number, PlayerCommand[]>>();
@@ -53,12 +81,16 @@ export class LocalTransport implements Transport {
   private running = false;
   private paused = false;
   private timer: unknown = null;
+  private persistTimer: unknown = null;
   private lastTime = 0;
   private accumulator = 0;
   private tickHandlers: TickHandler[] = [];
   private frameHandlers: FrameHandler[] = [];
   private pauseHandlers: PauseHandler[] = [];
   private resumeHandlers: PauseHandler[] = [];
+  private persistHandlers: Array<(reason: PersistenceFlushReason) => void> = [];
+  private visibilityTarget: EventTargetLike | null = null;
+  private pageTarget: EventTargetLike | null = null;
 
   public constructor(options: LocalTransportOptions, stepped = false) {
     if (!Number.isInteger(options.tickRate) || options.tickRate <= 0) {
@@ -78,21 +110,53 @@ export class LocalTransport implements Transport {
         `LocalTransport: maxAheadTicks must be an integer >= 0, got ${String(options.maxAheadTicks)}`
       );
     }
+    const snapshotEvery =
+      options.snapshotEveryTicks ?? DEFAULT_CLIENT_SNAPSHOT_EVERY_TICKS;
+    if (!Number.isInteger(snapshotEvery) || snapshotEvery < 1) {
+      throw new Error(
+        `LocalTransport: snapshotEveryTicks must be an integer >= 1, got ${String(options.snapshotEveryTicks)}`
+      );
+    }
+    const pauseWhenHidden = options.pauseWhenHidden ?? true;
+    if (typeof pauseWhenHidden !== 'boolean') {
+      throw new Error(
+        `LocalTransport: pauseWhenHidden must be a boolean, got ${String(options.pauseWhenHidden)}`
+      );
+    }
     this.isStepped = stepped;
     this.tickRateValue = options.tickRate;
     this.tickDuration = 1 / options.tickRate;
     this.maxFrameTime = maxFrameTime;
     this.maxAheadTicks = maxAheadTicks;
+    this.store = options.store;
+    this.snapshotEvery = snapshotEvery;
+    this.pauseWhenHidden = pauseWhenHidden;
+    this.bindHostEvents();
   }
 
-  /** Clock-less transport for tests and replays; advance with {@link step}. */
-  public static stepped(): LocalTransport {
-    return new LocalTransport({ tickRate: 1 }, true);
+  /**
+   * Clock-less transport for tests and replays; advance with {@link step}.
+   * `tickRate` defaults to 1 and is not a clock.
+   */
+  public static stepped(
+    options?: Partial<LocalTransportOptions>
+  ): LocalTransport {
+    return new LocalTransport({ tickRate: 1, ...options }, true);
   }
 
   /** Configured tick rate. A stepped transport does not drive a clock from it. */
   public get tickRate(): number {
     return this.tickRateValue;
+  }
+
+  /** Store passed at construction, if persistence is on. */
+  public get matchStore(): MatchStore | undefined {
+    return this.store;
+  }
+
+  /** Interval used when a store is sealing snapshots. */
+  public get snapshotEveryTicks(): number {
+    return this.snapshotEvery;
   }
 
   /**
@@ -201,9 +265,28 @@ export class LocalTransport implements Transport {
     bySlot.set(slot, queued);
   }
 
-  /** Start the timer. Manual transports record the request and do not tick. */
+  /**
+   * Called when the journal should write. `hide` and `pagehide` are urgent.
+   * `timer` and `stop` are not: the digest stays off the tick that stopped
+   * the match.
+   */
+  public onPersistenceFlush(
+    handler: (reason: PersistenceFlushReason) => void
+  ): Unsubscribe {
+    this.persistHandlers.push(handler);
+    return () => {
+      this.remove(this.persistHandlers, handler);
+    };
+  }
+
+  /**
+   * Start the timer. A stepped transport records the request and does not
+   * tick. A hidden document pauses instead of starting the clock.
+   */
   public start(): void {
     this.clockStarted = true;
+    if (this.pauseWhenHidden && this.isHidden()) this.requestPause();
+    this.armPersistTimer();
     if (this.isStepped || this.paused || this.running) return;
     this.running = true;
     this.lastTime = hostNowSeconds();
@@ -211,11 +294,13 @@ export class LocalTransport implements Transport {
     this.schedule();
   }
 
-  /** Stop the timer. Does not reset the tick counter. */
+  /** Stop the timer and ask for a non-urgent flush. Does not reset the tick. */
   public stop(): void {
     this.running = false;
     this.clockStarted = false;
     this.cancelTimer();
+    this.cancelPersistTimer();
+    this.emitFlush('stop');
   }
 
   public onTick(handler: TickHandler): Unsubscribe {
@@ -262,11 +347,13 @@ export class LocalTransport implements Transport {
   }
 
   public dispose(): void {
+    this.detachHostEvents();
     this.stop();
     this.tickHandlers = [];
     this.frameHandlers = [];
     this.pauseHandlers = [];
     this.resumeHandlers = [];
+    this.persistHandlers = [];
     this.pending.clear();
   }
 
@@ -304,6 +391,72 @@ export class LocalTransport implements Transport {
     if (this.timer === null) return;
     hostClearTimeout(this.timer);
     this.timer = null;
+  }
+
+  private armPersistTimer(): void {
+    if (this.store === undefined || this.persistTimer !== null) return;
+    this.persistTimer = hostSetTimeout(this.onPersistTimer, PERSIST_FLUSH_MS);
+  }
+
+  private cancelPersistTimer(): void {
+    if (this.persistTimer === null) return;
+    hostClearTimeout(this.persistTimer);
+    this.persistTimer = null;
+  }
+
+  private readonly onPersistTimer = (): void => {
+    this.persistTimer = null;
+    this.emitFlush('timer');
+    if (this.clockStarted) this.armPersistTimer();
+  };
+
+  private emitFlush(reason: PersistenceFlushReason): void {
+    if (this.store === undefined) return;
+    for (const handler of this.persistHandlers.slice()) handler(reason);
+  }
+
+  private bindHostEvents(): void {
+    if (!this.pauseWhenHidden && this.store === undefined) return;
+    const doc = hostDocument();
+    if (doc !== null) {
+      doc.addEventListener('visibilitychange', this.onVisibility);
+      this.visibilityTarget = doc;
+    }
+    if (this.store === undefined) return;
+    const page = hostPageTarget();
+    if (page === null || page === doc) {
+      if (doc !== null) {
+        doc.addEventListener('pagehide', this.onPageHide);
+        this.pageTarget = doc;
+      }
+      return;
+    }
+    page.addEventListener('pagehide', this.onPageHide);
+    this.pageTarget = page;
+  }
+
+  private detachHostEvents(): void {
+    this.visibilityTarget?.removeEventListener(
+      'visibilitychange',
+      this.onVisibility
+    );
+    this.visibilityTarget = null;
+    this.pageTarget?.removeEventListener('pagehide', this.onPageHide);
+    this.pageTarget = null;
+  }
+
+  private readonly onVisibility = (): void => {
+    if (!this.isHidden()) return;
+    if (this.pauseWhenHidden) this.requestPause();
+    if (this.store !== undefined) this.emitFlush('hide');
+  };
+
+  private readonly onPageHide = (): void => {
+    this.emitFlush('pagehide');
+  };
+
+  private isHidden(): boolean {
+    return documentVisibility() === 'hidden';
   }
 
   private schedule(): void {
@@ -365,4 +518,50 @@ function hostClearTimeout(handle: unknown): void {
 
 function hostNowSeconds(): number {
   return wallClock().performance.now() / 1000;
+}
+
+interface EventTargetLike {
+  addEventListener(type: string, listener: () => void): void;
+  removeEventListener(type: string, listener: () => void): void;
+}
+
+function hostDocument(): EventTargetLike | null {
+  return eventTarget(readHostProperty('document'));
+}
+
+function hostPageTarget(): EventTargetLike | null {
+  return eventTarget(globalThis);
+}
+
+function documentVisibility(): string | null {
+  const doc = readHostProperty('document');
+  if (!isRecord(doc)) return null;
+  const state = doc['visibilityState'];
+  return typeof state === 'string' ? state : null;
+}
+
+function readHostProperty(key: string): unknown {
+  const host: unknown = globalThis;
+  if (!isRecord(host)) return undefined;
+  return host[key];
+}
+
+function eventTarget(value: unknown): EventTargetLike | null {
+  if (!isRecord(value)) return null;
+  const add = value['addEventListener'];
+  const remove = value['removeEventListener'];
+  if (typeof add !== 'function' || typeof remove !== 'function') return null;
+  const target = value;
+  return {
+    addEventListener(type: string, listener: () => void): void {
+      add.call(target, type, listener);
+    },
+    removeEventListener(type: string, listener: () => void): void {
+      remove.call(target, type, listener);
+    },
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }

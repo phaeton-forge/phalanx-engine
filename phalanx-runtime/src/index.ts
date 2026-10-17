@@ -1,8 +1,10 @@
 /**
  * @phalanx-engine/runtime — isomorphic match runtime (no DOM, no sockets).
  *
- * Status: Tasks 1–6, 6.5a and 6.5b are implemented. Games use
+ * Status: Tasks 1–7, 6.5a and 6.5b are implemented. Games use
  * `defineComponent`, `defineCommands`, `defineGame` and `runLocalMatch`.
+ * Local persistence is opt-in via `MatchStore` (`MemoryMatchStore`,
+ * `IndexedDbMatchStore`) and `MatchRunner.resumeLocal`.
  * `StateHelpers`, `spawnWithId`, `CommandSchema`, `SaveHandler` and
  * `WorldScope` live in `@phalanx-engine/runtime/advanced`.
  * `MatchRunner.join` still throws `NotImplementedError` for Task 12. Design:
@@ -33,6 +35,7 @@ export * from './game/index.js';
 export * from './state/index.js';
 export * from './runner/index.js';
 export * from './transport/index.js';
+export * from './persistence/index.js';
 export { defineComponent } from './world/defineComponent.js';
 export type {
   DefinedComponent,

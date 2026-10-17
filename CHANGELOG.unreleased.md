@@ -191,6 +191,17 @@ Entries collected per package until the synchronized 0.3.0 release
   passes `'restore'` and does not reseed. New package
   `@phalanx-engine/engine` (private, not version-bumped) re-exports the
   game-facing surface. `CommandSchema` and `SaveHandler` are advanced-only.
+- Local persistence (Task 7): `MatchStore`, `MemoryMatchStore` and
+  `IndexedDbMatchStore` in `@phalanx-engine/runtime`. `LocalTransport`
+  accepts `store`, `snapshotEveryTicks` (default 300) and `pauseWhenHidden`
+  (default true). No store keeps the previous transport. A snapshot tick
+  seals the world body, bot section and input checkpoint (including
+  `systemSeq` and every slot's controller mode) and does not copy the body
+  again. `encodeSnapshot` / digest and the store write run off the tick.
+  Writes batch every 5s and on hide / `pagehide`. The last two snapshots
+  are kept. `MatchRunner.resumeLocal` restores the newest snapshot and
+  fast-forwards empty ticks through the stored cursor. It does not start
+  the clock. `IndexedDbMatchStore` uses `globalThis.indexedDB`.
 
 ## @phalanx-engine/ecs
 

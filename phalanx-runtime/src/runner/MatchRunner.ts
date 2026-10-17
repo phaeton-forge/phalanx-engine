@@ -11,6 +11,7 @@ import type {
 import { DeterministicRandom } from '@phalanx-engine/math';
 import { GameWorld } from '@phalanx-engine/ecs';
 import {
+  DEFAULT_CLIENT_SNAPSHOT_EVERY_TICKS,
   DEFAULT_HASH_EVERY_TICKS,
   DEFAULT_INPUT_DELAY_TICKS,
   ENGINE_SNAPSHOT_FORMAT,
@@ -42,6 +43,11 @@ import type {
   SlotInfo,
 } from '../game/MatchConfig.js';
 import { notImplemented } from '../notImplemented.js';
+import {
+  MatchJournal,
+  type SealedSnapshot,
+} from '../persistence/MatchJournal.js';
+import type { MatchStore } from '../persistence/MatchStore.js';
 import { BinaryStateReader, BinaryStateWriter } from '../state/BinaryState.js';
 import type { SaveHandler, StateMigration } from '../state/GameState.js';
 import {
@@ -63,7 +69,10 @@ import {
 } from '../state/snapshot.js';
 import { componentSchemaHashes } from '../world/schemaHash.js';
 import { wallClock } from '../host/wallClock.js';
-import { LocalTransport } from '../transport/LocalTransport.js';
+import {
+  LocalTransport,
+  type PersistenceFlushReason,
+} from '../transport/LocalTransport.js';
 import type { Transport } from '../transport/Transport.js';
 import { BotHost } from './BotHost.js';
 import { CommandLog, type LogEntry } from './CommandLog.js';
@@ -193,6 +202,11 @@ export class MatchRunner<G extends AnyGameDefinition> {
   private readonly unsubFrame: Unsubscribe;
   private readonly unsubPause: Unsubscribe;
   private readonly unsubResume: Unsubscribe;
+  private journal: MatchJournal | null = null;
+  private unsubFlush: Unsubscribe = () => {};
+  private persistDone: Promise<void> = Promise.resolve();
+  private persistenceSyncMs = 0;
+  private persistenceSnapshotted = false;
 
   public constructor(
     definition: G,
@@ -271,6 +285,67 @@ export class MatchRunner<G extends AnyGameDefinition> {
       schemas,
       this.definition.commands.schema
     );
+    this.attachPersistence();
+  }
+
+  /**
+   * Rebuild a local match from `store`. Returns null when `matchId` was
+   * never saved. Does not start the clock; call {@link start}. The restored
+   * snapshot includes the input checkpoint (`systemSeq` and every slot's
+   * controller mode). Catch-up fast-forwards empty ticks through the stored
+   * cursor.
+   */
+  public static async resumeLocal<GDef extends AnyGameDefinition>(
+    definition: GDef,
+    store: MatchStore,
+    matchId: string
+  ): Promise<MatchRunner<GDef> | null> {
+    const loaded = await store.load(matchId);
+    if (loaded === null) return null;
+    if (loaded.config.gameId !== definition.id) {
+      throw new Error(
+        `MatchRunner.resumeLocal: stored gameId '${loaded.config.gameId}' does not match '${definition.id}'`
+      );
+    }
+    if (loaded.config.simVersion !== definition.simVersion) {
+      throw new Error(
+        `MatchRunner.resumeLocal: stored simVersion '${loaded.config.simVersion}' does not match '${definition.simVersion}'`
+      );
+    }
+    if (loaded.config.matchId !== matchId) {
+      throw new Error(
+        `MatchRunner.resumeLocal: stored matchId '${loaded.config.matchId}' does not match '${matchId}'`
+      );
+    }
+    const transport = new LocalTransport({
+      tickRate: definition.tickRate,
+      store,
+      snapshotEveryTicks: DEFAULT_CLIENT_SNAPSHOT_EVERY_TICKS,
+      pauseWhenHidden: true,
+    });
+    // The store cloned the JSON config, including game fields. The runner
+    // checks it against this definition.
+    const runner = new MatchRunner(
+      definition,
+      loaded.config as unknown as ConfigInput<GDef>,
+      transport
+    );
+    runner.journal?.skipThrough(loaded.tick);
+    try {
+      if (loaded.snapshot !== undefined) {
+        runner.restore(loaded.snapshot.bytes);
+      }
+      if (loaded.tick > runner.tick) {
+        await runner.fastForward(loaded.tail, {
+          budgetMs: 80,
+          throughTick: loaded.tick,
+        });
+      }
+    } catch (error) {
+      runner.dispose();
+      throw error;
+    }
+    return runner;
   }
 
   /** Join (or resume) through a network transport's `join()`. */
@@ -336,6 +411,25 @@ export class MatchRunner<G extends AnyGameDefinition> {
     return this.commandLog;
   }
 
+  /**
+   * Host milliseconds spent sealing the last tick's persistence work
+   * (world save plus enqueue). Digest and the store write are not included.
+   * `0` when this runner has no store.
+   */
+  public get lastPersistenceSyncMs(): number {
+    return this.persistenceSyncMs;
+  }
+
+  /** True when the last completed tick sealed a snapshot body. */
+  public get lastTickPersistedSnapshot(): boolean {
+    return this.persistenceSnapshotted;
+  }
+
+  /** Resolves when the latest flush has finished writing to the store. */
+  public whenPersisted(): Promise<void> {
+    return this.persistDone;
+  }
+
   public start(): void {
     if (this.replayMode) {
       throw new Error(
@@ -367,6 +461,12 @@ export class MatchRunner<G extends AnyGameDefinition> {
     if (this.stopped) return;
     this.stopped = true;
     this.started = false;
+    const journal = this.journal;
+    if (journal !== null) {
+      // Encode sealed bodies now. Page teardown must not wait for idle.
+      this.persistDone = this.track(journal.flush(true));
+    }
+    this.unsubFlush();
     this.unsubTick();
     this.unsubFrame();
     this.unsubPause();
@@ -768,6 +868,7 @@ export class MatchRunner<G extends AnyGameDefinition> {
       this.transport.submitHash?.(tick, digest);
     }
     this.tickListeners.emit(tick);
+    if (!this.stopped) this.recordPersistence(tick, entries);
     if (this.phase === 'ended') this.stop();
   }
 
@@ -1259,6 +1360,73 @@ export class MatchRunner<G extends AnyGameDefinition> {
         { type: entry.type, data: entry.data },
       ]);
     }
+  }
+
+  private attachPersistence(): void {
+    if (!(this.transport instanceof LocalTransport)) return;
+    const store = this.transport.matchStore;
+    if (store === undefined) return;
+    const journal = new MatchJournal(
+      store,
+      this.config.matchId,
+      this.config,
+      this.transport.snapshotEveryTicks,
+      {
+        engineFormat: ENGINE_SNAPSHOT_FORMAT,
+        gameId: this.definition.id,
+        simVersion: this.definition.simVersion,
+        formatVersion: this.definition.save.formatVersion,
+        configHash: this.configDigest,
+        componentSchemas: this.componentSchemaKey,
+      },
+      () => this.sealSnapshotInputs()
+    );
+    this.journal = journal;
+    this.unsubFlush = this.transport.onPersistenceFlush((reason) => {
+      this.persistDone = this.track(journal.flush(this.flushIsUrgent(reason)));
+    });
+  }
+
+  private flushIsUrgent(reason: PersistenceFlushReason): boolean {
+    return reason === 'hide' || reason === 'pagehide';
+  }
+
+  /**
+   * World body, bot section, and input checkpoint for this tick. The body
+   * buffer is the one `finish()` returned; the journal must not copy it.
+   * `encodeSnapshot` (and its digest) runs later, off the tick.
+   */
+  private sealSnapshotInputs(): SealedSnapshot {
+    const bodyWriter = new BinaryStateWriter();
+    this.requireGameState().save(bodyWriter);
+    const botWriter = new BinaryStateWriter();
+    this.botHost.save(botWriter);
+    return {
+      tick: this.completedTick,
+      body: bodyWriter.finish(),
+      botState: botWriter.finish(),
+      inputCheckpoint: encodeInputCheckpoint({
+        pending: this.pendingBatches(),
+        nextSeq: this.sequenceSnapshot(),
+        systemSeq: this.systemSeq,
+      }),
+    };
+  }
+
+  private recordPersistence(tick: number, entries: readonly LogEntry[]): void {
+    const journal = this.journal;
+    if (journal === null) return;
+    const sample = journal.noteTick(tick, entries);
+    this.persistenceSyncMs = sample.syncMs;
+    this.persistenceSnapshotted = sample.snapshotted;
+  }
+
+  private track(work: Promise<void>): Promise<void> {
+    void work.then(
+      () => undefined,
+      () => undefined
+    );
+    return work;
   }
 
   private captureSnapshot(): SnapshotBytes {
