@@ -1,12 +1,11 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
+import type { Server as HttpServer } from 'node:http';
 import { io, Socket } from 'socket.io-client';
 import { Phalanx } from '../src/index.js';
 import type {
   MatchFoundEvent,
   ServerShutdownEvent,
 } from '../src/types/index.js';
-
-const PORT = 3462;
 
 const servers: Phalanx[] = [];
 const sockets: Socket[] = [];
@@ -25,7 +24,7 @@ async function startServer(
   overrides: ConstructorParameters<typeof Phalanx>[0] = {}
 ): Promise<{ server: Phalanx; url: string }> {
   const server = new Phalanx({
-    port: PORT,
+    port: 0,
     tickMode: 'event',
     countdownSeconds: 0,
     readyTimeoutMs: 5000,
@@ -35,7 +34,13 @@ async function startServer(
   });
   await server.start();
   servers.push(server);
-  return { server, url: `http://127.0.0.1:${PORT}` };
+  const httpServer = (server as unknown as { httpServer: HttpServer | null })
+    .httpServer;
+  const address = httpServer?.address();
+  if (!address || typeof address !== 'object') {
+    throw new Error('Phalanx is not listening');
+  }
+  return { server, url: `http://127.0.0.1:${address.port}` };
 }
 
 function connect(url: string): Promise<Socket> {
@@ -125,7 +130,7 @@ describe('Phalanx.shutdown', () => {
       toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'],
     });
     const server = new Phalanx({
-      port: PORT,
+      port: 0,
       shutdownGraceMs: 500,
       matchmakingIntervalMs: 60_000,
       cors: { origin: '*' },

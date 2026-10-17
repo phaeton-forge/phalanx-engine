@@ -1,4 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
+import type { Server as HttpServer } from 'node:http';
 import { io, Socket } from 'socket.io-client';
 import { Phalanx } from '../src/index.js';
 import { validateConfig } from '../src/config/validation.js';
@@ -15,12 +16,9 @@ import type {
 
 /**
  * Task 8 relay log. Real `Phalanx` plus `socket.io-client`.
- * Port 0 is rejected by the existing port check, so these tests use
- * dedicated ports the same way `match-*.test.ts` does.
+ * `port: 0` asks the OS for an ephemeral port; the URL is read from
+ * the listening address after `start()`.
  */
-
-const PORT = 3460;
-const PORT_B = 3461;
 
 interface Started {
   server: Phalanx;
@@ -83,12 +81,21 @@ function findRoom(server: Phalanx, matchId: string): GameRoom {
   return room;
 }
 
+function listeningUrl(server: Phalanx): string {
+  const httpServer = (server as unknown as { httpServer: HttpServer | null })
+    .httpServer;
+  const address = httpServer?.address();
+  if (!address || typeof address !== 'object') {
+    throw new Error('Phalanx is not listening');
+  }
+  return `http://127.0.0.1:${address.port}`;
+}
+
 async function startServer(
-  overrides: Partial<PhalanxConfig> & { port?: number } = {}
+  overrides: Partial<PhalanxConfig> = {}
 ): Promise<Started> {
-  const port = overrides.port ?? PORT;
   const server = new Phalanx({
-    port,
+    port: 0,
     tickMode: 'event',
     countdownSeconds: 0,
     readyTimeoutMs: 5000,
@@ -100,7 +107,7 @@ async function startServer(
   });
   await server.start();
   servers.push(server);
-  return { server, url: `http://127.0.0.1:${port}` };
+  return { server, url: listeningUrl(server) };
 }
 
 function connect(url: string): Promise<Socket> {
@@ -726,11 +733,8 @@ describe('match-log refusals', () => {
 
 describe('reconnect-state with full history', () => {
   it('uses the same 200-tick window and payload keys as numeric history', async () => {
-    async function snapshot(
-      port: number,
-      history: PhalanxConfig['commandHistoryTicks']
-    ) {
-      const { url } = await startServer({ port, commandHistoryTicks: history });
+    async function snapshot(history: PhalanxConfig['commandHistoryTicks']) {
+      const { url } = await startServer({ commandHistoryTicks: history });
       const { host, guest, matchId } = await openPrivateMatch(url);
       await playEventTicks(host, 250, 10);
       const disconnected = onceEvent(host, 'player-disconnected');
@@ -747,8 +751,8 @@ describe('reconnect-state with full history', () => {
       return statePromise;
     }
 
-    const numeric = await snapshot(PORT, 200);
-    const full = await snapshot(PORT_B, 'full');
+    const numeric = await snapshot(200);
+    const full = await snapshot('full');
 
     expect(Object.keys(full).sort()).toEqual(Object.keys(numeric).sort());
     expect(full.currentTick).toBe(numeric.currentTick);
@@ -926,7 +930,6 @@ describe('match buildId', () => {
     expect(findRoom(strict.server, started.matchId).getBuildId()).toBe(id128);
 
     const loose = await startServer({
-      port: PORT_B,
       requireBuildId: false,
     });
     const ignored = await openPrivateMatch(loose.url, {
