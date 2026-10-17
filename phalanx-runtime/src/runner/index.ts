@@ -1,9 +1,10 @@
-export { MatchRunner } from './MatchRunner.js';
+export { MatchResumeError, MatchRunner } from './MatchRunner.js';
 export type {
   RunnerSide,
   RunnerStatus,
   RunnerOptions,
   ResumeLocalOptions,
+  ResumeReport,
   FastForwardOptions,
 } from './MatchRunner.js';
 export { ReplayPlayer } from './ReplayPlayer.js';

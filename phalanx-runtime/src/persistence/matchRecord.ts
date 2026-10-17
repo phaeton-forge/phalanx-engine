@@ -1,7 +1,8 @@
 import type { LogEntry } from '../runner/CommandLog.js';
 import type { LoadedMatch, MatchConfig } from './MatchStore.js';
 
-const RETAINED_SNAPSHOTS = 2;
+/** How many snapshots a store keeps. Older ones are dropped. */
+export const RETAINED_SNAPSHOTS = 2;
 
 export interface StoredSnapshot {
   tick: number;
@@ -13,10 +14,24 @@ export interface StoredMatch {
   cursor: number;
   commands: LogEntry[];
   snapshots: StoredSnapshot[];
+  /**
+   * True once a command at or before a retained snapshot was discarded.
+   * The only remaining snapshot is then the recovery point.
+   */
+  historyPruned: boolean;
+  /** Lowest command tick ever stored, including ticks later dropped. */
+  minEntryTick: number | null;
 }
 
 export function emptyMatch(): StoredMatch {
-  return { config: null, cursor: -1, commands: [], snapshots: [] };
+  return {
+    config: null,
+    cursor: -1,
+    commands: [],
+    snapshots: [],
+    historyPruned: false,
+    minEntryTick: null,
+  };
 }
 
 /** Replace the config only. A fresh match clears the row before this runs. */
@@ -29,6 +44,121 @@ export function applyCommands(
   entries: readonly LogEntry[],
   cursorTick: number | undefined
 ): void {
+  const seen = new Set(row.commands.map(entryKey));
+  const oldest = row.snapshots[0];
+  row.historyPruned = markPrunedHistory(
+    row.historyPruned,
+    oldest?.tick,
+    row.minEntryTick,
+    entries
+  );
+  const applied = collectNewEntries(
+    entries,
+    row.cursor,
+    cursorTick,
+    oldest?.tick,
+    seen
+  );
+  row.minEntryTick = noteMinEntryTick(row.minEntryTick, applied.kept);
+  for (const entry of applied.kept) row.commands.push(entry);
+  row.cursor = applied.cursor;
+}
+
+/** Record keys already stored so a later batch can skip them. */
+export function rememberEntries(
+  entries: readonly LogEntry[],
+  seen: Set<string>
+): void {
+  for (const entry of entries) seen.add(entryKey(entry));
+}
+
+/**
+ * Commands from one batch that are not already in `seen` and are newer than
+ * the oldest snapshot. `seen` gains the kept keys. Shared by the in-memory
+ * row and the IndexedDB chunk writer so both stores dedup the same way.
+ */
+export function collectNewEntries(
+  entries: readonly LogEntry[],
+  cursor: number,
+  cursorTick: number | undefined,
+  oldestTick: number | undefined,
+  seen: Set<string>
+): { kept: LogEntry[]; cursor: number } {
+  assertCursorTick(cursorTick);
+  let next = cursor;
+  if (cursorTick !== undefined) next = Math.max(next, cursorTick);
+  const kept: LogEntry[] = [];
+  for (const entry of entries) {
+    if (oldestTick !== undefined && entry.tick <= oldestTick) continue;
+    next = Math.max(next, entry.tick);
+    const key = entryKey(entry);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    kept.push(cloneEntry(entry));
+  }
+  return { kept, cursor: next };
+}
+
+/**
+ * True when any entry might already be stored. A batch whose ticks are all
+ * past `maxEntryTick` cannot contain a duplicate.
+ */
+export function commandBatchOverlaps(
+  entries: readonly LogEntry[],
+  maxEntryTick: number
+): boolean {
+  for (const entry of entries) {
+    if (entry.tick <= maxEntryTick) return true;
+  }
+  return false;
+}
+
+/** Lowest tick in the batch, or null when the batch is empty. */
+export function lowestEntryTick(entries: readonly LogEntry[]): number | null {
+  let min: number | null = null;
+  for (const entry of entries) {
+    if (min === null || entry.tick < min) min = entry.tick;
+  }
+  return min;
+}
+
+/** Bounds of the entries actually stored in one chunk. */
+export function chunkBounds(entries: readonly LogEntry[]): {
+  firstTick: number;
+  lastTick: number;
+} {
+  const first = entries[0];
+  if (first === undefined) {
+    throw new Error('MatchStore: a command chunk needs at least one entry');
+  }
+  let firstTick = first.tick;
+  let lastTick = first.tick;
+  for (const entry of entries) {
+    if (entry.tick < firstTick) firstTick = entry.tick;
+    if (entry.tick > lastTick) lastTick = entry.tick;
+  }
+  return { firstTick, lastTick };
+}
+
+/**
+ * Snapshot ticks after storing `tick`, oldest first, capped at
+ * {@link RETAINED_SNAPSHOTS}. A repeated tick replaces and drops nothing.
+ */
+export function planSnapshotTicks(
+  ticks: readonly number[],
+  tick: number
+): { ticks: number[]; dropped: number[] } {
+  if (ticks.includes(tick)) return { ticks: [...ticks], dropped: [] };
+  const next = [...ticks, tick].sort((left, right) => left - right);
+  const dropped: number[] = [];
+  while (next.length > RETAINED_SNAPSHOTS) {
+    const removed = next.shift();
+    if (removed !== undefined) dropped.push(removed);
+  }
+  return { ticks: next, dropped };
+}
+
+export function assertCursorTick(cursorTick: number | undefined): void {
   if (
     cursorTick !== undefined &&
     (!Number.isInteger(cursorTick) || cursorTick < -1)
@@ -37,27 +167,9 @@ export function applyCommands(
       `MatchStore: cursorTick must be an integer >= -1, got ${String(cursorTick)}`
     );
   }
-  let cursor = row.cursor;
-  if (cursorTick !== undefined) cursor = Math.max(cursor, cursorTick);
-  const seen = new Set(row.commands.map(entryKey));
-  const oldest = row.snapshots[0];
-  for (const entry of entries) {
-    if (oldest !== undefined && entry.tick <= oldest.tick) continue;
-    cursor = Math.max(cursor, entry.tick);
-    const key = entryKey(entry);
-    if (seen.has(key)) continue;
-    seen.add(key);
-    row.commands.push(cloneEntry(entry));
-  }
-  row.cursor = cursor;
 }
 
-/** Keep the newest two snapshots. Commands covered by every remaining one drop. */
-export function applySnapshot(
-  row: StoredMatch,
-  tick: number,
-  bytes: Uint8Array
-): void {
+export function assertSnapshotInput(tick: number, bytes: Uint8Array): void {
   if (!Number.isInteger(tick) || tick < 0) {
     throw new Error(
       `MatchStore: snapshot tick must be an integer >= 0, got ${String(tick)}`
@@ -66,6 +178,15 @@ export function applySnapshot(
   if (!(bytes instanceof Uint8Array)) {
     throw new Error('MatchStore: snapshot bytes must be a Uint8Array');
   }
+}
+
+/** Keep the newest two snapshots. Commands covered by every remaining one drop. */
+export function applySnapshot(
+  row: StoredMatch,
+  tick: number,
+  bytes: Uint8Array
+): void {
+  assertSnapshotInput(tick, bytes);
   const existing = row.snapshots.findIndex((snap) => snap.tick === tick);
   if (existing >= 0) {
     const prior = row.snapshots[existing];
@@ -76,6 +197,12 @@ export function applySnapshot(
   row.snapshots.sort((left, right) => left.tick - right.tick);
   while (row.snapshots.length > RETAINED_SNAPSHOTS) row.snapshots.shift();
   const oldest = row.snapshots[0];
+  row.historyPruned = markPrunedHistory(
+    row.historyPruned,
+    oldest?.tick,
+    row.minEntryTick,
+    row.commands
+  );
   if (oldest !== undefined) {
     row.commands = row.commands.filter((entry) => entry.tick > oldest.tick);
   }
@@ -85,21 +212,94 @@ export function applySnapshot(
 export function toLoaded(row: StoredMatch): LoadedMatch | null {
   if (row.config === null) return null;
   const newest = row.snapshots[row.snapshots.length - 1];
-  const after = newest === undefined ? -1 : newest.tick;
-  const tail: LogEntry[] = [];
-  for (const entry of row.commands) {
-    if (entry.tick > after) tail.push(entry);
-  }
+  const older =
+    row.snapshots.length >= 2
+      ? row.snapshots[row.snapshots.length - 2]
+      : undefined;
   const loaded: LoadedMatch = {
     config: row.config,
-    tail,
+    tail: entriesAfter(row.commands, newest?.tick),
     tick: row.cursor,
   };
   if (newest === undefined) return loaded;
-  return {
+  const withNewest: LoadedMatch = {
     ...loaded,
     snapshot: { tick: newest.tick, bytes: newest.bytes },
   };
+  if (older === undefined) return withNewest;
+  return {
+    ...withNewest,
+    previous: {
+      snapshot: { tick: older.tick, bytes: older.bytes },
+      tail: entriesAfter(row.commands, older.tick),
+    },
+  };
+}
+
+export function entriesAfter(
+  commands: readonly LogEntry[],
+  tick: number | undefined
+): LogEntry[] {
+  const after = tick === undefined ? -1 : tick;
+  const tail: LogEntry[] = [];
+  for (const entry of commands) {
+    if (entry.tick > after) tail.push(entry);
+  }
+  return tail;
+}
+
+/**
+ * True once a tick-0 replay would miss a command covered by `oldestTick`.
+ * `minEntryTick` remembers commands already dropped from the log.
+ */
+export function markPrunedHistory(
+  historyPruned: boolean,
+  oldestTick: number | undefined,
+  minEntryTick: number | null,
+  entries: readonly LogEntry[]
+): boolean {
+  if (historyPruned) return true;
+  if (oldestTick === undefined) return false;
+  if (minEntryTick !== null && minEntryTick <= oldestTick) return true;
+  for (const entry of entries) {
+    if (entry.tick <= oldestTick) return true;
+  }
+  return false;
+}
+
+/** Lowest tick among `entries`, keeping a previous minimum. */
+export function noteMinEntryTick(
+  minEntryTick: number | null,
+  entries: readonly LogEntry[]
+): number | null {
+  let min = minEntryTick;
+  for (const entry of entries) {
+    if (min === null || entry.tick < min) min = entry.tick;
+  }
+  return min;
+}
+
+/**
+ * The last snapshot is the only way to rebuild commands that were dropped.
+ * Deleting it would make a tick-0 replay a different match.
+ */
+export function assertFinalSnapshotKept(
+  snapshotCount: number,
+  historyPruned: boolean
+): void {
+  if (snapshotCount === 1 && historyPruned) {
+    throw new Error(
+      'MatchStore: cannot delete the final recovery snapshot after command history was pruned'
+    );
+  }
+}
+
+/** Drop one snapshot. Commands and the cursor stay. A missing tick is a no-op. */
+export function deleteStoredSnapshot(row: StoredMatch, tick: number): void {
+  const index = row.snapshots.findIndex((snap) => snap.tick === tick);
+  if (index < 0) return;
+  assertFinalSnapshotKept(row.snapshots.length, row.historyPruned);
+  row.snapshots.splice(index, 1);
 }
 
 export function snapshotTicksOf(row: StoredMatch): number[] {
