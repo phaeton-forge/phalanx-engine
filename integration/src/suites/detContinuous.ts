@@ -4,7 +4,11 @@ import type { MatchSpec } from '../driver/SimDriver.js';
 import { PACKAGE_ROOT } from '../paths.js';
 import { demoSpec } from './spec.js';
 
-export async function runDetContinuous(ticks: number): Promise<void> {
+export async function runDetContinuous(ticks: number): Promise<{
+  readonly ticks: number;
+  readonly peers: number;
+  readonly processes: number;
+}> {
   const spec = demoSpec(99);
   const [left, right] = await Promise.all([
     runWorker(spec, ticks),
@@ -18,6 +22,7 @@ export async function runDetContinuous(ticks: number): Promise<void> {
       );
     }
   }
+  return { ticks: left.length, peers: 2, processes: 2 };
 }
 
 function runWorker(spec: MatchSpec, ticks: number): Promise<readonly string[]> {

@@ -44,6 +44,11 @@ export interface GameOptions {
    * scenario must go red when this is set.
    */
   readonly disableFaultGate?: boolean;
+  /**
+   * Test probe. `onRestore` bumps a live field before the snapshot
+   * round-trip check, so restore throws `SnapshotRoundTripError`.
+   */
+  readonly corruptOnRestore?: boolean;
 }
 
 export interface MatchSpec {
@@ -110,8 +115,9 @@ export interface Peer {
   restore(bytes: Uint8Array): void;
   fastForward(entries: readonly LogEntry[], throughTick: number): Promise<void>;
   /**
-   * Submit one logged envelope to this peer's transport. Duplicates of
-   * the same `(tick, playerId, seq)` are ignored. Bot envelopes are ignored.
+   * Submit one logged envelope to this peer's transport. A second copy of
+   * the same envelope is ignored. A malformed envelope does not count as
+   * the real command that shares its rewritten seq. Bot envelopes are ignored.
    */
   deliver(entry: LogEntry): void;
   /** Live canonical digest. Not the snapshot-byte hash. */
@@ -122,9 +128,27 @@ export interface Peer {
   outcome(): string | null;
   pause(): void;
   resume(): void;
-  /** Queue one malformed envelope for the next tick. */
-  injectMalformed(slot: number): void;
+  /**
+   * Queue one extra malformed envelope at `targetTick` (default: the next
+   * tick). Appends; it does not replace the slot's real commands.
+   */
+  injectMalformed(slot: number, targetTick?: number): void;
   toReplay(): ReplayFile;
+  /**
+   * Schedule a controller change. `null` when the runner accepted it.
+   * A rejection reason is deterministic across peers.
+   */
+  setController(
+    slot: number,
+    mode: 'human' | 'bot',
+    opts?: { readonly fromTick?: number; readonly policy?: string }
+  ): string | null;
+  /** Who controls `slot` at this peer's current tick. */
+  controllerOf(slot: number): 'human' | 'bot';
+  /** `onRejected` reasons seen by this peer, in order. */
+  rejections(): readonly { readonly type: string; readonly reason: string }[];
+  /** This runner's command log, including system commands. */
+  commandLog(): readonly LogEntry[];
   dispose(): void;
 }
 

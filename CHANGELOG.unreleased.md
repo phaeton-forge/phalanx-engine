@@ -191,6 +191,9 @@ Entries collected per package until the synchronized 0.3.0 release
   passes `'restore'` and does not reseed. New package
   `@phalanx-engine/engine` (private, not version-bumped) re-exports the
   game-facing surface. `CommandSchema` and `SaveHandler` are advanced-only.
+- `decodeInputCheckpoint` throws `SnapshotRejectedError` when a format-2
+  input checkpoint has no trailing `systemSeq` (snapshots written before
+  setController / 6.5b). `ENGINE_SNAPSHOT_FORMAT` stays 2.
 
 ## @phalanx-engine/ecs
 

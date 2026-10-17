@@ -8,6 +8,7 @@ import type {
 } from '../driver/SimDriver.js';
 import type { Scenario, TimelineEvent } from './scenario.js';
 import { FaultGate, type FaultSpec } from '../transport/FaultyTransport.js';
+import { canonicalDigest } from '../oracle/digest.js';
 import {
   diffDumps,
   firstDivergingTick,
@@ -16,16 +17,37 @@ import {
 import { prng, type Prng } from '../util/prng.js';
 import { errorMessage } from '../util/json.js';
 
+export interface ControllerTick {
+  readonly tick: number;
+  readonly slots: readonly {
+    readonly slot: number;
+    readonly mode: 'human' | 'bot';
+  }[];
+}
+
 export interface SimulationFailure {
   readonly message: string;
   readonly tick?: number;
   readonly diffs: readonly FieldDiff[];
   readonly peerId?: string;
+  readonly before?: StateDump;
+  readonly after?: StateDump;
 }
 
 export interface SimulationSuccess {
   readonly ticks: number;
   readonly note: string;
+  readonly controller?: readonly ControllerTick[];
+}
+
+interface ControlPlan {
+  readonly slot: number;
+  readonly mode: 'human' | 'bot';
+  readonly policy?: string;
+  readonly fromTick: number;
+  /** Explicit `fromTick`: ask every peer once, even when the window rejects. */
+  readonly once: boolean;
+  readonly armed: Set<string>;
 }
 
 interface Book {
@@ -36,6 +58,19 @@ interface Book {
    * brings it into the window; nearer envelopes are not held behind it.
    */
   pending: LogEntry[];
+  /**
+   * Malformed targets still outside this peer's submit window. Drained
+   * the same way as `pending`: injected once `target` is at most
+   * {@link TRANSPORT_WINDOW} ticks ahead, dropped when a log catch-up
+   * will replay the envelope.
+   */
+  malformed: number[];
+  /**
+   * Slots handed to a bot whose pending commands a restored replica does
+   * not own. Replay those log entries through `replayBotsThrough`.
+   */
+  replayBotSlots: number[];
+  replayBotsThrough: number;
   /** A drop happened; heal with the authoritative log, not a resend. */
   catchUp: boolean;
 }
@@ -79,6 +114,9 @@ export async function simulate(
   const gone = new Set<string>();
   const faulting = new Set<string>();
   const notes: string[] = [];
+  const plans: ControlPlan[] = [];
+  const controller: ControllerTick[] = [];
+  const handoffShot: { bytes: Uint8Array | null } = { bytes: null };
   const authorityId = scenario.peers[0] ?? 'A';
   const disabled = scenario.options?.disableFaultGate === true;
   let paused = false;
@@ -103,6 +141,7 @@ export async function simulate(
       const note = await applyPointEvents(
         driver,
         scenario,
+        spec,
         clock,
         authorityId,
         () => authorityTick,
@@ -113,6 +152,7 @@ export async function simulate(
         dumps,
         gone,
         faulting,
+        plans,
         () => {
           paused = true;
         },
@@ -143,13 +183,29 @@ export async function simulate(
         armInject = false;
       }
       if (live.status() === 'ended' || live.status() === 'failed') break;
+      notes.push(...armControls(plans, peers, gone, spec));
+      // 'before' must include the queued system command. Capturing above
+      // armControls snapshots an empty checkpoint, and the proof then
+      // passes by replaying the command from the log.
+      captureHandoff(scenario, plans, live, handoffShot);
       scriptInputs(scenario, spec, rng, clock, live);
       live.step(1);
       authorityTick = live.tick();
+      captureHandoff(scenario, plans, live, handoffShot);
+      if (tracksController(scenario)) {
+        controller.push({
+          tick: live.tick(),
+          slots: spec.slots.map((_slot, index) => ({
+            slot: index,
+            mode: live.controllerOf(index),
+          })),
+        });
+      }
       if (live.status() === 'failed') throw new Error('authority failed');
       remember(authorityId, live, digests, dumps);
       const lagged = await syncReplicas(
         scenario,
+        spec,
         clock,
         live,
         match.log(),
@@ -159,7 +215,8 @@ export async function simulate(
         dumps,
         gone,
         offered,
-        faulting
+        faulting,
+        plans
       );
       if (lagged) sawLag = true;
       if (live.status() === 'ended') break;
@@ -181,21 +238,31 @@ export async function simulate(
         );
       }
     }
+    // A lagging replica has not yet applied a late rejection. Catch up
+    // before comparing histories, or a convergent run fails sameRejection.
+    if (scenario.expect.converge !== false) {
+      await flushGates(
+        match.log(),
+        authorityTick,
+        peers,
+        books,
+        digests,
+        dumps,
+        gone,
+        plans
+      );
+    }
+    const rejectionNote = rejectionFailure(scenario, peers);
+    if (rejectionNote !== null) throw new Error(rejectionNote);
+    const differed = sameRejection(scenario, peers);
+    if (differed !== null) throw new Error(differed);
     if (scenario.expect.converge === false) {
       return {
         ticks: authorityTick + 1,
         note: notes.filter(Boolean).join('; '),
+        ...(controller.length === 0 ? {} : { controller }),
       };
     }
-    await flushGates(
-      match.log(),
-      authorityTick,
-      peers,
-      books,
-      digests,
-      dumps,
-      gone
-    );
     await checkConvergence(
       driver,
       scenario,
@@ -207,9 +274,37 @@ export async function simulate(
       dumps,
       gone
     );
+    const authorityPeer = peers.get(authorityId);
+    if (scenario.expect.replay === true && authorityPeer !== undefined) {
+      const series = dumps.get(authorityId);
+      if (series !== undefined) {
+        await replayDigests(driver, authorityPeer, series);
+      }
+    }
+    if (
+      scenario.expect.handoffRestore !== undefined &&
+      authorityPeer !== undefined
+    ) {
+      await proveHandoffRestore(
+        scenario,
+        plans,
+        handoffShot.bytes,
+        authorityPeer,
+        authorityTick,
+        match,
+        digests.get(authorityId)
+      );
+    }
+    if (scenario.expect.botReinit === true && authorityPeer !== undefined) {
+      proveBotReinit(driver, spec, authorityPeer, plans);
+    }
+    if (scenario.expect.systemSeq === true && authorityPeer !== undefined) {
+      proveSystemSeq(match, authorityPeer, spec);
+    }
     return {
       ticks: authorityTick + 1,
       note: notes.filter(Boolean).join('; '),
+      ...(controller.length === 0 ? {} : { controller }),
     };
   } catch (error) {
     if (isExpectedFailureMissing(error)) {
@@ -242,7 +337,14 @@ export function isSimulationFailure(
 }
 
 function openBook(disabled: boolean): Book {
-  return { gate: new FaultGate(disabled), pending: [], catchUp: false };
+  return {
+    gate: new FaultGate(disabled),
+    pending: [],
+    malformed: [],
+    replayBotSlots: [],
+    replayBotsThrough: -1,
+    catchUp: false,
+  };
 }
 
 function isExpectedFailureMissing(
@@ -347,6 +449,7 @@ function scriptedCommand(
 async function applyPointEvents(
   driver: SimDriver,
   scenario: Scenario,
+  spec: MatchSpec,
   clock: number,
   authorityId: string,
   authorityTick: () => number,
@@ -357,6 +460,7 @@ async function applyPointEvents(
   dumps: Map<string, Map<number, StateDump>>,
   gone: Set<string>,
   faulting: Set<string>,
+  plans: ControlPlan[],
   pause: () => void,
   resume: () => void
 ): Promise<string> {
@@ -371,6 +475,7 @@ async function applyPointEvents(
     await applyEvent(
       driver,
       scenario,
+      spec,
       event,
       authorityId,
       authorityTick,
@@ -380,6 +485,7 @@ async function applyPointEvents(
       digests,
       dumps,
       gone,
+      plans,
       pause,
       resume
     );
@@ -410,7 +516,7 @@ function skipReason(driver: SimDriver, event: TimelineEvent): string | null {
     }
   }
   if (event.op === 'restartServer' && !driver.capabilities.restartServer) {
-    return 'stage B (L2): restartServer is not on the in-process host';
+    return 'stage B (L2): needs relay/SimHost process (tasks 8, 11)';
   }
   return null;
 }
@@ -418,6 +524,7 @@ function skipReason(driver: SimDriver, event: TimelineEvent): string | null {
 async function applyEvent(
   driver: SimDriver,
   scenario: Scenario,
+  spec: MatchSpec,
   event: TimelineEvent,
   authorityId: string,
   authorityTick: () => number,
@@ -427,6 +534,7 @@ async function applyEvent(
   digests: Map<string, Map<number, string>>,
   dumps: Map<string, Map<number, StateDump>>,
   gone: Set<string>,
+  plans: ControlPlan[],
   pause: () => void,
   resume: () => void
 ): Promise<void> {
@@ -451,6 +559,7 @@ async function applyEvent(
       digests,
       dumps,
       gone,
+      plans,
       scenario.options?.disableFaultGate === true
     );
     return;
@@ -466,7 +575,26 @@ async function applyEvent(
     return;
   }
   if (event.op === 'malformed') {
-    peers.get(event.peer)?.injectMalformed(0);
+    // Every live peer gets the extra envelope on the authority's next
+    // tick. Injecting on one transport, then replaying the log, lets the
+    // replica drop the slot's real command (the runner stores a malformed
+    // envelope as q 0).
+    const clockPeer = peers.get(authorityId) ?? peers.get(event.peer);
+    const target = (clockPeer?.tick() ?? -1) + 1;
+    for (const [id, peer] of peers) {
+      if (gone.has(id)) continue;
+      if (peer.status() === 'disposed' || peer.status() === 'failed') continue;
+      // A dropped command can leave this peer more than TRANSPORT_WINDOW
+      // ticks behind. submit() throws on that target; hold it with the
+      // rest of the peer's pending traffic.
+      if (fitsSubmit(peer, target)) {
+        peer.injectMalformed(0, target);
+        continue;
+      }
+      const book = books.get(id) ?? openBook(false);
+      books.set(id, book);
+      book.malformed.push(target);
+    }
     return;
   }
   if (event.op === 'roundTrip') {
@@ -480,7 +608,8 @@ async function applyEvent(
       peers,
       books,
       digests,
-      dumps
+      dumps,
+      plans
     );
     return;
   }
@@ -496,6 +625,22 @@ async function applyEvent(
           ? driver.changeSchemaFieldType(bytes)
           : driver.incompatibleSnapshot(bytes);
     peer.restore(mutated);
+    return;
+  }
+  if (event.op === 'replaceWithBot' || event.op === 'returnFromBot') {
+    const clockPeer = peers.get(authorityId) ?? peers.get(event.peer);
+    if (clockPeer === undefined) return;
+    const fromTick =
+      event.fromTick ??
+      clockPeer.tick() + (event.delay ?? spec.inputDelayTicks);
+    plans.push({
+      slot: event.slot ?? slotOfPeer(event.peer),
+      mode: event.op === 'replaceWithBot' ? 'bot' : 'human',
+      ...(event.op === 'replaceWithBot' ? { policy: event.policy } : {}),
+      fromTick,
+      once: event.fromTick !== undefined,
+      armed: new Set(),
+    });
     return;
   }
   if (event.op === 'restoreSelf') {
@@ -530,7 +675,8 @@ function roundTrip(
   peers: Map<string, Peer>,
   books: Map<string, Book>,
   digests: Map<string, Map<number, string>>,
-  dumps: Map<string, Map<number, StateDump>>
+  dumps: Map<string, Map<number, StateDump>>,
+  plans: readonly ControlPlan[]
 ): void {
   const peer = peers.get(peerId);
   if (peer === undefined || peer.tick() < 0) return;
@@ -542,34 +688,71 @@ function roundTrip(
   books.set(twinId, openBook(scenario.options?.disableFaultGate === true));
   digests.set(twinId, new Map());
   dumps.set(twinId, new Map());
+  let after: StateDump | null = null;
   try {
     twin.restore(bytes);
   } catch (error) {
     if (!isRoundTrip(error)) throw error;
-    const found = bisectRoundTrip(
-      driver,
-      scenario,
-      specFor(scenario),
-      authorityTick
-    );
+    try {
+      after = twin.stateDump();
+    } catch {
+      after = null;
+    }
+    const found =
+      after === null
+        ? bisectRoundTrip(driver, scenario, specFor(scenario), authorityTick)
+        : {
+            tick: peer.tick(),
+            diffs: diffDumps(after, before).slice(0, 11),
+          };
+    const first = found.diffs[0];
+    const field =
+      first === undefined
+        ? ''
+        : ` ${first.entity}/${first.component}/${first.field}`;
     throw simulationError(
-      `snapshot round-trip mismatch at tick ${String(found.tick)}`,
+      `snapshot round-trip mismatch at tick ${String(found.tick)}${field}`,
       {
-        message: `snapshot round-trip mismatch at tick ${String(found.tick)}`,
+        message: `snapshot round-trip mismatch at tick ${String(found.tick)}${field}`,
         tick: found.tick,
         peerId,
         diffs: found.diffs,
+        before,
+        ...(after === null ? {} : { after }),
       }
     );
   }
-  const diffs = diffDumps(twin.stateDump(), before);
+  const restored = twin.stateDump();
+  const diffs = diffDumps(restored, before).slice(0, 11);
   if (diffs.length > 0) {
-    throw simulationError(`round-trip state mismatch at tick ${String(at)}`, {
-      message: `round-trip state mismatch at tick ${String(at)}`,
-      tick: peer.tick(),
-      peerId: twinId,
-      diffs,
-    });
+    const first = diffs[0];
+    const field =
+      first === undefined
+        ? ''
+        : ` ${first.entity}/${first.component}/${first.field}`;
+    throw simulationError(
+      `round-trip state mismatch at tick ${String(peer.tick())}${field}`,
+      {
+        message: `round-trip state mismatch at tick ${String(peer.tick())}${field}`,
+        tick: peer.tick(),
+        peerId: twinId,
+        diffs,
+        before,
+        after: restored,
+      }
+    );
+  }
+  // The snapshot already applied every handoff at or before this tick.
+  // Leaving the twin unarmed makes the next pass throw setController missed.
+  noteReplayedControls(plans, twinId, twin);
+  const book = books.get(twinId);
+  if (book !== undefined) {
+    // A replica does not own a slot that started human. The checkpoint
+    // drops that bot's already-queued command; replay it from the log
+    // for the delay window, then let the restored policy decide.
+    const spec = specFor(scenario);
+    book.replayBotSlots = handedBotSlots(plans, twin.tick(), spec);
+    book.replayBotsThrough = twin.tick() + spec.inputDelayTicks;
   }
   remember(twinId, twin, digests, dumps);
 }
@@ -585,6 +768,7 @@ async function reconnect(
   digests: Map<string, Map<number, string>>,
   dumps: Map<string, Map<number, StateDump>>,
   gone: Set<string>,
+  plans: readonly ControlPlan[],
   disabled: boolean
 ): Promise<void> {
   match.log();
@@ -601,9 +785,11 @@ async function reconnect(
     if (source.tick() < 0) return;
     peer.restore(source.snapshot());
     remember(id, peer, digests, dumps);
+    noteReplayedControls(plans, id, peer);
     return;
   }
   await catchUp(peer, log, authorityTick, series, dumpSeries, -1);
+  noteReplayedControls(plans, id, peer);
 }
 
 async function flushGates(
@@ -613,7 +799,8 @@ async function flushGates(
   books: Map<string, Book>,
   digests: Map<string, Map<number, string>>,
   dumps: Map<string, Map<number, StateDump>>,
-  gone: Set<string>
+  gone: Set<string>,
+  plans: readonly ControlPlan[]
 ): Promise<void> {
   for (const book of books.values()) {
     book.gate.setFault(null);
@@ -624,6 +811,10 @@ async function flushGates(
   for (const [id, peer] of peers) {
     if (gone.has(id)) continue;
     if (peer.tick() >= authorityTick) continue;
+    const book = books.get(id);
+    // The log replay applies the malformed envelope. A late inject would
+    // target a tick this peer is about to leave behind.
+    if (book !== undefined) book.malformed = [];
     await catchUp(
       peer,
       log,
@@ -632,11 +823,13 @@ async function flushGates(
       seriesFor(dumps, id),
       peer.tick()
     );
+    noteReplayedControls(plans, id, peer);
   }
 }
 
 async function syncReplicas(
   scenario: Scenario,
+  spec: MatchSpec,
   clock: number,
   authority: Peer,
   log: readonly LogEntry[],
@@ -646,7 +839,8 @@ async function syncReplicas(
   dumps: Map<string, Map<number, StateDump>>,
   gone: Set<string>,
   offered: Map<string, number>,
-  faulting: Set<string>
+  faulting: Set<string>,
+  plans: ControlPlan[]
 ): Promise<boolean> {
   const fresh = log.filter(
     (entry) => entry.tick === authority.tick() && isHuman(entry)
@@ -659,6 +853,7 @@ async function syncReplicas(
     if (book.catchUp) {
       book.catchUp = false;
       book.pending = [];
+      book.malformed = [];
       await catchUp(
         peer,
         log,
@@ -667,6 +862,7 @@ async function syncReplicas(
         seriesFor(dumps, id),
         peer.tick()
       );
+      noteReplayedControls(plans, id, peer);
       continue;
     }
     const cursor = offered.get(id) ?? -1;
@@ -675,12 +871,35 @@ async function syncReplicas(
       for (const entry of fresh) book.gate.offer(authority.tick(), entry, rng);
       offered.set(id, authority.tick());
     }
+    if (
+      book.replayBotSlots.length > 0 &&
+      authority.tick() <= book.replayBotsThrough
+    ) {
+      for (const entry of log) {
+        if (entry.tick !== authority.tick() || !isBot(entry)) continue;
+        const slot = botSlot(entry.playerId);
+        if (slot === null || !book.replayBotSlots.includes(slot)) continue;
+        book.pending.push(entry);
+      }
+    }
     book.pending.push(...book.gate.releaseDue(authority.tick()));
+    armControls(plans, peers, gone, spec);
     const through = Math.min(
       authority.tick(),
       book.gate.horizon(authority.tick()) - 1
     );
-    drainPending(id, peer, book, through, digests, dumps);
+    drainPending(
+      id,
+      peer,
+      book,
+      through,
+      digests,
+      dumps,
+      plans,
+      peers,
+      gone,
+      spec
+    );
     if (faulting.has(id) && peer.tick() < authority.tick()) sawLag = true;
   }
   return sawLag;
@@ -939,11 +1158,16 @@ function drainPending(
   book: Book,
   through: number,
   digests: Map<string, Map<number, string>>,
-  dumps: Map<string, Map<number, StateDump>>
+  dumps: Map<string, Map<number, StateDump>>,
+  plans: readonly ControlPlan[],
+  peers: ReadonlyMap<string, Peer>,
+  gone: ReadonlySet<string>,
+  spec: MatchSpec
 ): void {
   const limit = Math.max(through, 0) + book.pending.length + TRANSPORT_WINDOW;
   for (let guard = 0; guard <= limit; guard += 1) {
     if (peer.status() === 'ended' || peer.status() === 'failed') return;
+    flushMalformed(peer, book);
     const deferred: LogEntry[] = [];
     for (const entry of book.pending) {
       if (fitsWindow(peer, entry)) peer.deliver(entry);
@@ -951,6 +1175,9 @@ function drainPending(
     }
     book.pending = deferred;
     if (peer.tick() >= through) return;
+    // A delayed peer can cross fromTick in this loop. Arm on the tick
+    // that is still inside the window, before the step that applies it.
+    armControls(plans, peers, gone, spec);
     const before = peer.tick();
     peer.step(1);
     if (peer.tick() === before) return;
@@ -960,11 +1187,68 @@ function drainPending(
 }
 
 function fitsWindow(peer: Peer, entry: LogEntry): boolean {
-  return entry.tick <= peer.tick() + 1 + TRANSPORT_WINDOW;
+  return fitsSubmit(peer, entry.tick);
+}
+
+/** `LocalTransport.submit` accepts `target` in `[nextTick, nextTick + window]`. */
+function fitsSubmit(peer: Peer, target: number): boolean {
+  const next = peer.tick() + 1;
+  return target >= next && target <= next + TRANSPORT_WINDOW;
+}
+
+function flushMalformed(peer: Peer, book: Book): void {
+  if (book.malformed.length === 0) return;
+  const deferred: number[] = [];
+  for (const target of book.malformed) {
+    if (fitsSubmit(peer, target)) peer.injectMalformed(0, target);
+    else if (target > peer.tick() + 1 + TRANSPORT_WINDOW) deferred.push(target);
+  }
+  book.malformed = deferred;
 }
 
 function isHuman(entry: LogEntry): boolean {
   return entry.playerId.startsWith('local:');
+}
+
+function isBot(entry: LogEntry): boolean {
+  return botSlot(entry.playerId) !== null;
+}
+
+function botSlot(playerId: string): number | null {
+  if (!playerId.startsWith('bot:')) return null;
+  const slot = Number(playerId.slice('bot:'.length));
+  if (!Number.isInteger(slot) || slot < 0) return null;
+  return slot;
+}
+
+/**
+ * Slots a handoff moved onto a bot. Slots that started as bots already
+ * keep their queued commands on restore, so replaying those would apply
+ * the attack twice.
+ */
+function handedBotSlots(
+  plans: readonly ControlPlan[],
+  now: number,
+  spec: MatchSpec
+): number[] {
+  const startedBot = new Set<number>();
+  spec.slots.forEach((slot, index) => {
+    if (slot.kind === 'bot') startedBot.add(index);
+  });
+  const mode = new Map<number, 'human' | 'bot'>();
+  const ordered = [...plans].sort(
+    (left, right) => left.fromTick - right.fromTick
+  );
+  for (const plan of ordered) {
+    if (plan.fromTick > now) continue;
+    mode.set(plan.slot, plan.mode);
+  }
+  const slots: number[] = [];
+  for (const [slot, value] of mode) {
+    if (value === 'bot' && !startedBot.has(slot)) slots.push(slot);
+  }
+  slots.sort((left, right) => left - right);
+  return slots;
 }
 
 function faultOf(event: Extract<TimelineEvent, { op: 'faults' }>): FaultSpec {
@@ -974,6 +1258,344 @@ function faultOf(event: Extract<TimelineEvent, { op: 'faults' }>): FaultSpec {
     reorder: event.reorder,
     drop: event.drop,
   };
+}
+
+/** Peer A is slot 0, B is slot 1, C is slot 2. An explicit `slot` wins. */
+export function slotOfPeer(peer: string): number {
+  if (peer === 'B') return 1;
+  if (peer === 'C') return 2;
+  return 0;
+}
+
+/**
+ * A snapshot or log replay already applied controller changes that were
+ * in the past. Mark those peers armed so a later step does not treat the
+ * missed live window as a second handoff.
+ */
+function noteReplayedControls(
+  plans: readonly ControlPlan[],
+  id: string,
+  peer: Peer
+): void {
+  const now = peer.tick();
+  for (const plan of plans) {
+    if (plan.armed.has(id) || plan.fromTick > now) continue;
+    plan.armed.add(id);
+  }
+}
+
+function tracksController(scenario: Scenario): boolean {
+  return scenario.timeline.some(
+    (event) => event.op === 'replaceWithBot' || event.op === 'returnFromBot'
+  );
+}
+
+function armControls(
+  plans: readonly ControlPlan[],
+  peers: ReadonlyMap<string, Peer>,
+  gone: ReadonlySet<string>,
+  spec: MatchSpec
+): string[] {
+  const notes: string[] = [];
+  for (const plan of plans) {
+    for (const [id, peer] of peers) {
+      if (plan.armed.has(id) || gone.has(id)) continue;
+      const status = peer.status();
+      if (status === 'disposed' || status === 'failed') continue;
+      const now = peer.tick();
+      const inWindow =
+        plan.fromTick > now && plan.fromTick <= now + spec.inputDelayTicks;
+      if (!plan.once && plan.fromTick <= now) {
+        throw new Error(
+          `setController missed on ${id}: slot ${String(plan.slot)} fromTick ${String(plan.fromTick)} at tick ${String(now)}`
+        );
+      }
+      if (!plan.once && !inWindow) continue;
+      const reason = peer.setController(plan.slot, plan.mode, {
+        fromTick: plan.fromTick,
+        ...(plan.policy === undefined ? {} : { policy: plan.policy }),
+      });
+      plan.armed.add(id);
+      if (reason !== null) {
+        notes.push(`${plan.mode} slot ${String(plan.slot)}: ${reason}`);
+      }
+    }
+  }
+  return notes;
+}
+
+function rejectionFailure(
+  scenario: Scenario,
+  peers: ReadonlyMap<string, Peer>
+): string | null {
+  const reasons: { type: string; reason: string }[] = [];
+  for (const peer of peers.values()) reasons.push(...peer.rejections());
+  const expected = scenario.expect.rejection;
+  if (
+    expected !== undefined &&
+    !reasons.some((item) => item.reason.includes(expected))
+  ) {
+    return `expected rejection '${expected}'`;
+  }
+  if (scenario.expect.converge === false) return null;
+  const unexpected = reasons.filter(
+    (item) =>
+      item.type === 'setController' &&
+      (expected === undefined || !item.reason.includes(expected))
+  );
+  if (unexpected.length === 0) return null;
+  return `setController rejected: ${unexpected
+    .map((item) => item.reason)
+    .join('; ')}`;
+}
+
+async function replayDigests(
+  driver: SimDriver,
+  authority: Peer,
+  series: ReadonlyMap<number, StateDump>
+): Promise<void> {
+  const replay = authority.toReplay();
+  const peer = driver.openReplay(replay);
+  try {
+    const ticks = [...series.keys()].sort((left, right) => left - right);
+    for (const tick of ticks) {
+      const slice = replay.log.filter((entry) => entry.tick === tick);
+      await peer.fastForward(slice, tick);
+      const live = series.get(tick);
+      if (live === undefined) continue;
+      if (digestWithoutBots(peer.stateDump()) !== digestWithoutBots(live)) {
+        throw new Error(`replay diverged at tick ${String(tick)}`);
+      }
+    }
+  } finally {
+    peer.dispose();
+  }
+}
+
+function digestWithoutBots(dump: StateDump): string {
+  return canonicalDigest({ ...dump, bots: {} });
+}
+
+function captureHandoff(
+  scenario: Scenario,
+  plans: readonly ControlPlan[],
+  peer: Peer,
+  shot: { bytes: Uint8Array | null }
+): void {
+  if (shot.bytes !== null || scenario.expect.handoffRestore === undefined) {
+    return;
+  }
+  const plan = plans[0];
+  if (plan === undefined) return;
+  const offset =
+    scenario.expect.handoffRestore === 'before'
+      ? -1
+      : scenario.expect.handoffRestore === 'at'
+        ? 0
+        : 1;
+  if (peer.tick() !== plan.fromTick + offset) return;
+  shot.bytes = peer.snapshot();
+}
+
+async function proveHandoffRestore(
+  scenario: Scenario,
+  plans: readonly ControlPlan[],
+  bytes: Uint8Array | null,
+  authority: Peer,
+  authorityTick: number,
+  match: ReturnType<SimDriver['createMatch']>,
+  series: Map<number, string> | undefined
+): Promise<void> {
+  const plan = plans[0];
+  const mode = scenario.expect.handoffRestore;
+  if (plan === undefined || mode === undefined) {
+    throw new Error('handoff restore: no controller plan');
+  }
+  const offset = mode === 'before' ? -1 : mode === 'at' ? 0 : 1;
+  const target = plan.fromTick + offset;
+  if (bytes === null || series === undefined) {
+    throw new Error(`handoff restore: no snapshot at tick ${String(target)}`);
+  }
+  const twin = match.createPeer('handoff-restore', { role: 'replica' });
+  try {
+    twin.restore(bytes);
+    if (twin.tick() !== target) {
+      throw new Error(
+        `handoff restore: restored tick ${String(twin.tick())}, wanted ${String(target)}`
+      );
+    }
+    const atShot = series.get(target);
+    if (atShot === undefined || twin.digest() !== atShot) {
+      throw new Error(
+        `handoff restore: digest mismatch at tick ${String(target)}`
+      );
+    }
+    const replayed = new Map<number, string>();
+    let after = target;
+    if (mode === 'before') {
+      // Cross fromTick from the restored checkpoint. Replaying the system
+      // command here would hide a restore that dropped pending handoffs.
+      for (const entry of match.log()) {
+        if (entry.tick === plan.fromTick) twin.deliver(entry);
+      }
+      twin.step(1);
+      if (twin.tick() !== plan.fromTick) {
+        throw new Error(
+          `handoff restore: checkpoint advanced to ${String(twin.tick())}, wanted ${String(plan.fromTick)}`
+        );
+      }
+      const crossed = series.get(plan.fromTick);
+      if (crossed === undefined || twin.digest() !== crossed) {
+        throw new Error(
+          `handoff restore: digest mismatch at tick ${String(plan.fromTick)}`
+        );
+      }
+      replayed.set(plan.fromTick, twin.digest());
+      after = plan.fromTick;
+    }
+    await catchUp(twin, match.log(), authorityTick, replayed, new Map(), after);
+    for (const [tick, digest] of replayed) {
+      if (series.get(tick) !== digest) {
+        throw new Error(
+          `handoff restore: digest mismatch at tick ${String(tick)}`
+        );
+      }
+    }
+    if (twin.tick() !== authority.tick()) {
+      throw new Error('handoff restore: restored run ended early');
+    }
+  } finally {
+    twin.dispose();
+  }
+}
+
+function proveBotReinit(
+  driver: SimDriver,
+  spec: MatchSpec,
+  authority: Peer,
+  plans: readonly ControlPlan[]
+): void {
+  const second = plans.filter((plan) => plan.mode === 'bot')[1];
+  if (second === undefined) {
+    throw new Error('bot reinit: expected a second handoff');
+  }
+  const slot = String(second.slot);
+  const live = authority.stateDump().bots[slot];
+  if (live === undefined) throw new Error('bot reinit: live bot has no note');
+  const match = driver.createMatch(spec);
+  try {
+    const ref = match.createPeer('reinit', { role: 'authority' });
+    ref.step(1);
+    const fromTick = ref.tick() + spec.inputDelayTicks;
+    const reason = ref.setController(second.slot, 'bot', {
+      fromTick,
+      policy: second.policy ?? 'defensive',
+    });
+    if (reason !== null) {
+      throw new Error(`bot reinit reference rejected: ${reason}`);
+    }
+    while (ref.tick() < fromTick) ref.step(1);
+    const note = ref.stateDump().bots[slot];
+    if (note === undefined)
+      throw new Error('bot reinit: reference has no note');
+    if (note.phase !== live.phase || note.rng !== live.rng) {
+      throw new Error(
+        `bot reinit: phase/rng ${live.phase}/${live.rng} !== reference ${note.phase}/${note.rng}`
+      );
+    }
+  } finally {
+    match.dispose();
+  }
+}
+
+function proveSystemSeq(
+  match: ReturnType<SimDriver['createMatch']>,
+  authority: Peer,
+  spec: MatchSpec
+): void {
+  const first = authority.snapshot();
+  const second = authority.snapshot();
+  if (!sameBytes(first, second)) {
+    throw new Error('systemSeq: second save differed');
+  }
+  const priorQs = match
+    .log()
+    .filter((entry) => entry.playerId === 'system')
+    .map((entry) => entry.data.q);
+  assertUniqueQs(priorQs);
+  const expected = priorQs.length === 0 ? 0 : Math.max(...priorQs) + 1;
+  const twin = match.createPeer('system-seq', { role: 'replica' });
+  try {
+    twin.restore(first);
+    const slot = 0;
+    const mode = twin.controllerOf(slot) === 'bot' ? 'human' : 'bot';
+    const fromTick = twin.tick() + spec.inputDelayTicks;
+    const reason = twin.setController(slot, mode, {
+      fromTick,
+      ...(mode === 'bot' ? { policy: 'defensive' } : {}),
+    });
+    if (reason !== null) {
+      throw new Error(`systemSeq: follow-up rejected: ${reason}`);
+    }
+    while (twin.tick() < fromTick) {
+      if (twin.status() === 'ended' || twin.status() === 'failed') break;
+      twin.step(1);
+    }
+    const next = twin
+      .commandLog()
+      .find((entry) => entry.playerId === 'system' && entry.tick === fromTick);
+    if (next === undefined) {
+      throw new Error('systemSeq: follow-up command was not logged');
+    }
+    if (next.data.q !== expected) {
+      throw new Error(
+        `systemSeq: expected q ${String(expected)}, got ${String(next.data.q)}`
+      );
+    }
+    assertUniqueQs([...priorQs, next.data.q]);
+  } finally {
+    twin.dispose();
+  }
+}
+
+function assertUniqueQs(values: readonly number[]): void {
+  const seen = new Set<number>();
+  for (const value of values) {
+    if (seen.has(value)) {
+      throw new Error(`systemSeq: duplicate q ${String(value)}`);
+    }
+    seen.add(value);
+  }
+}
+
+function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index] !== right[index]) return false;
+  }
+  return true;
+}
+
+function sameRejection(
+  scenario: Scenario,
+  peers: ReadonlyMap<string, Peer>
+): string | null {
+  const expected = scenario.expect.rejection;
+  if (expected === undefined || peers.size < 2) return null;
+  let first: string | null = null;
+  for (const peer of peers.values()) {
+    const reason = peer
+      .rejections()
+      .find((item) => item.reason.includes(expected));
+    if (reason === undefined) {
+      return `rejection differed across peers: ${peer.id} missed '${expected}'`;
+    }
+    if (first === null) first = reason.reason;
+    else if (reason.reason !== first) {
+      return `rejection differed across peers: ${first} vs ${reason.reason}`;
+    }
+  }
+  return null;
 }
 
 function mix(seed: number, clock: number, id: string): number {

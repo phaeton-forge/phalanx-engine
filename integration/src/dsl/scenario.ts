@@ -11,6 +11,22 @@ export interface Expectation {
   readonly liveReference?: boolean;
   /** Cumulative narrowphase contacts required on the authority. */
   readonly minContacts?: number;
+  /** A rejection reason that must be reported. Convergence still runs. */
+  readonly rejection?: string;
+  /** Compare `ReplayPlayer` digests to the live authority. */
+  readonly replay?: boolean;
+  /**
+   * Snapshot at `fromTick − 1`, `fromTick`, or `fromTick + 1`, restore
+   * into a new runner, and match the continuous run tick for tick.
+   * `before` is taken after the handoff is queued. That peer steps
+   * across `fromTick` from the checkpoint, without the system command
+   * being inserted again from the log.
+   */
+  readonly handoffRestore?: 'before' | 'at' | 'after';
+  /** A second handoff re-inits the bot from `seed + slot`. */
+  readonly botReinit?: boolean;
+  /** The next system command after restore keeps a unique `q`. */
+  readonly systemSeq?: boolean;
 }
 
 export type TimelineEvent =
@@ -37,8 +53,18 @@ export type TimelineEvent =
       readonly op: 'replaceWithBot';
       readonly peer: string;
       readonly policy: string;
+      readonly slot?: number;
+      readonly fromTick?: number;
+      readonly delay?: number;
     }
-  | { readonly at: number; readonly op: 'returnFromBot'; readonly peer: string }
+  | {
+      readonly at: number;
+      readonly op: 'returnFromBot';
+      readonly peer: string;
+      readonly slot?: number;
+      readonly fromTick?: number;
+      readonly delay?: number;
+    }
   | { readonly at: number; readonly op: 'restartServer' }
   | { readonly at: number; readonly op: 'pause' }
   | { readonly at: number; readonly op: 'resume' }
@@ -146,20 +172,51 @@ export function range<T extends { readonly op: string }>(
 
 export function replaceWithBot(
   peer: string,
-  policy: string
+  policy: string,
+  opts?: {
+    readonly slot?: number;
+    readonly fromTick?: number;
+    readonly delay?: number;
+  }
 ): {
   readonly op: 'replaceWithBot';
   readonly peer: string;
   readonly policy: string;
+  readonly slot?: number;
+  readonly fromTick?: number;
+  readonly delay?: number;
 } {
-  return { op: 'replaceWithBot', peer, policy };
+  return {
+    op: 'replaceWithBot',
+    peer,
+    policy,
+    ...(opts?.slot === undefined ? {} : { slot: opts.slot }),
+    ...(opts?.fromTick === undefined ? {} : { fromTick: opts.fromTick }),
+    ...(opts?.delay === undefined ? {} : { delay: opts.delay }),
+  };
 }
 
-export function returnFromBot(peer: string): {
+export function returnFromBot(
+  peer: string,
+  opts?: {
+    readonly slot?: number;
+    readonly fromTick?: number;
+    readonly delay?: number;
+  }
+): {
   readonly op: 'returnFromBot';
   readonly peer: string;
+  readonly slot?: number;
+  readonly fromTick?: number;
+  readonly delay?: number;
 } {
-  return { op: 'returnFromBot', peer };
+  return {
+    op: 'returnFromBot',
+    peer,
+    ...(opts?.slot === undefined ? {} : { slot: opts.slot }),
+    ...(opts?.fromTick === undefined ? {} : { fromTick: opts.fromTick }),
+    ...(opts?.delay === undefined ? {} : { delay: opts.delay }),
+  };
 }
 
 export function restartServer(): { readonly op: 'restartServer' } {
@@ -185,6 +242,19 @@ export function parseScenario(value: unknown): Scenario {
   const faultEffect = expect['faultEffect'];
   const liveReference = expect['liveReference'];
   const minContacts = expect['minContacts'];
+  const rejection = expect['rejection'];
+  const replay = expect['replay'];
+  const handoffRestore = expect['handoffRestore'];
+  const botReinit = expect['botReinit'];
+  const systemSeq = expect['systemSeq'];
+  if (
+    handoffRestore !== undefined &&
+    handoffRestore !== 'before' &&
+    handoffRestore !== 'at' &&
+    handoffRestore !== 'after'
+  ) {
+    throw new Error('scenario: handoffRestore must be before, at, or after');
+  }
   return {
     name: asString(record['name'], 'name'),
     suite: asString(record['suite'], 'suite'),
@@ -214,6 +284,17 @@ export function parseScenario(value: unknown): Scenario {
       ...(minContacts === undefined
         ? {}
         : { minContacts: asInt(minContacts, 'minContacts') }),
+      ...(rejection === undefined
+        ? {}
+        : { rejection: asString(rejection, 'rejection') }),
+      ...(replay === undefined ? {} : { replay: asBoolean(replay, 'replay') }),
+      ...(handoffRestore === undefined ? {} : { handoffRestore }),
+      ...(botReinit === undefined
+        ? {}
+        : { botReinit: asBoolean(botReinit, 'botReinit') }),
+      ...(systemSeq === undefined
+        ? {}
+        : { systemSeq: asBoolean(systemSeq, 'systemSeq') }),
     },
     ...(record['knownFailure'] === undefined
       ? {}
@@ -270,6 +351,7 @@ function parseEvent(value: unknown): TimelineEvent {
       op,
       peer: asString(record['peer'], 'peer'),
       policy: asString(record['policy'], 'policy'),
+      ...controlOpts(record),
     };
   }
   if (op === 'returnFromBot') {
@@ -277,6 +359,7 @@ function parseEvent(value: unknown): TimelineEvent {
       at: asInt(record['at'], 'at'),
       op,
       peer: asString(record['peer'], 'peer'),
+      ...controlOpts(record),
     };
   }
   if (
@@ -341,6 +424,7 @@ function parseOptions(value: unknown): GameOptions {
     poolProbe?: boolean;
     dirtyAfterRestore?: boolean;
     breakBotRestore?: boolean;
+    corruptOnRestore?: boolean;
     disableFaultGate?: boolean;
     injectDesync?: GameOptions['injectDesync'];
   } = {};
@@ -384,6 +468,12 @@ function parseOptions(value: unknown): GameOptions {
       'disableFaultGate'
     );
   }
+  if (record['corruptOnRestore'] !== undefined) {
+    options.corruptOnRestore = asBoolean(
+      record['corruptOnRestore'],
+      'corruptOnRestore'
+    );
+  }
   if (record['injectDesync'] !== undefined) {
     const inject = asRecord(record['injectDesync'], 'injectDesync');
     const when = inject['when'];
@@ -397,6 +487,24 @@ function parseOptions(value: unknown): GameOptions {
     };
   }
   return options;
+}
+
+function controlOpts(record: Record<string, unknown>): {
+  readonly slot?: number;
+  readonly fromTick?: number;
+  readonly delay?: number;
+} {
+  return {
+    ...(record['slot'] === undefined
+      ? {}
+      : { slot: asInt(record['slot'], 'slot') }),
+    ...(record['fromTick'] === undefined
+      ? {}
+      : { fromTick: asInt(record['fromTick'], 'fromTick') }),
+    ...(record['delay'] === undefined
+      ? {}
+      : { delay: asInt(record['delay'], 'delay') }),
+  };
 }
 
 function asRequire(

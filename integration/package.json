@@ -10,11 +10,7 @@
     "lint": "eslint -c eslint.config.js src"
   },
   "dependencies": {
-    "@phalanx-engine/abilities": "workspace:*",
-    "@phalanx-engine/ecs": "workspace:*",
-    "@phalanx-engine/math": "workspace:*",
-    "@phalanx-engine/physics": "workspace:*",
-    "@phalanx-engine/runtime": "workspace:*"
+    "@phalanx-engine/engine": "workspace:*"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",

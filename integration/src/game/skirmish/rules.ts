@@ -70,6 +70,9 @@ export function rejectReason(
 ): string | null {
   const self = view.unitOf(slot);
   if (command.type === 'spawn') {
+    if (command.kind < KIND_SOLDIER || command.kind > KIND_TOTEM) {
+      return 'bad kind';
+    }
     if (view.unitsOf(slot) >= MAX_UNITS_PER_SLOT) return 'slot full';
     return null;
   }
@@ -77,7 +80,9 @@ export function rejectReason(
     return self === null ? 'no unit' : null;
   }
   if (self === null) return 'no unit';
-  if (command.type === 'move') return null;
+  if (command.type === 'move') {
+    return command.dir >= 0 && command.dir <= 3 ? null : 'bad dir';
+  }
   if (!view.alive(command.target)) return 'no target';
   if (view.slotOf(command.target) === slot) return 'own unit';
   if (view.teamOf(command.target) === view.teamOf(self)) return 'ally';
@@ -91,6 +96,7 @@ export function rejectReason(
           view.near(self, command.target, range);
     return inRange ? null : 'out of range';
   }
+  if (command.ability !== 0 && command.ability !== 1) return 'bad ability';
   if (command.ability === 0 && view.hasTag(self, TAG_COOLDOWN)) {
     return 'cooldown';
   }
