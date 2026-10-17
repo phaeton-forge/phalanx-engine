@@ -386,6 +386,30 @@ describe('fetchMatchLog', () => {
     expect(JSON.stringify(collected)).toBe(JSON.stringify(full));
   });
 
+  it('throws aborted without yielding chunks buffered before the abort', async () => {
+    const { client, socket } = clientWithSocket();
+    const iterator = client.fetchMatchLog(0)[Symbol.asyncIterator]();
+    const firstNext = iterator.next();
+    await vi.waitFor(() => {
+      expect(matchLogCalls(socket)).toHaveLength(1);
+    });
+    const requestId = matchLogCalls(socket)[0]!.requestId;
+    socket.fire('match-log-chunk', chunk(0, 10, false, requestId));
+    const first = await firstNext;
+    expect(first.done).toBe(false);
+
+    socket.fire('match-log-chunk', chunk(11, 20, false, requestId));
+    socket.fire('match-log-chunk', chunk(21, 30, true, requestId));
+
+    const replacement = client.fetchMatchLog(0)[Symbol.asyncIterator]();
+    const replacementNext = replacement.next();
+    await expect(iterator.next()).rejects.toMatchObject({ reason: 'aborted' });
+
+    const secondId = matchLogCalls(socket)[1]!.requestId;
+    socket.fire('match-log-chunk', chunk(0, 0, true, secondId));
+    await replacementNext;
+  });
+
   it('throws when the client is not in a match', () => {
     const client = new PhalanxClient({
       serverUrl: 'http://127.0.0.1:9',

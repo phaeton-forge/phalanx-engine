@@ -581,7 +581,12 @@ export class SocketManager {
       }
     };
 
-    const session = { abort: () => fail(new MatchLogError('aborted')) };
+    const session = {
+      abort: () => {
+        pending.length = 0;
+        fail(new MatchLogError('aborted'));
+      },
+    };
     this.activeMatchLog = session;
     const release = (): void => {
       if (this.activeMatchLog === session) this.activeMatchLog = null;

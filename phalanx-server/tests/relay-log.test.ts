@@ -598,6 +598,41 @@ describe('full command log', () => {
     );
   }, 60_000);
 
+  it('a cancel for the replaced request leaves the new stream running', async () => {
+    const { server, url } = await startServer();
+    const { host, matchId } = await openPrivateMatch(url);
+    await playEventTicks(host, 2100, 50);
+    const remote = serverSocket(server, host.id);
+    const seen: MatchLogChunkEvent[] = [];
+    const original = remote.emit.bind(remote);
+    remote.emit = (event: string, ...args: unknown[]) => {
+      if (event === 'match-log-chunk') {
+        seen.push(args[0] as MatchLogChunkEvent);
+      }
+      return original(event, ...args);
+    };
+
+    const phalanx = server as unknown as {
+      handleMatchLog(socket: object, payload: unknown): void;
+    };
+    // All three happen before `setImmediate`, so B is still mid-stream
+    // when the cancel for A arrives.
+    phalanx.handleMatchLog(remote, { matchId, fromTick: 0, requestId: 'a' });
+    phalanx.handleMatchLog(remote, { matchId, fromTick: 0, requestId: 'b' });
+    const cancel = (
+      remote as unknown as {
+        listeners: (name: string) => ((payload: unknown) => void)[];
+      }
+    ).listeners('match-log-cancel');
+    expect(cancel.length).toBeGreaterThan(0);
+    cancel[0]!({ requestId: 'a' });
+
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    const streamB = seen.filter((chunk) => chunk.requestId === 'b');
+    expect(streamB.length).toBeGreaterThan(1);
+    expect(streamB[streamB.length - 1]!.done).toBe(true);
+  }, 60_000);
+
   it('stops streaming when the requester disconnects', async () => {
     const { server, url } = await startServer();
     const { host, matchId } = await openPrivateMatch(url);

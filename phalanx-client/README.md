@@ -471,6 +471,10 @@ try {
 declare function applyChunk(chunk: LogChunk): void;
 ```
 
+`MatchLogError.reason` is `MatchLogErrorReason`: the four wire values
+`not-member`, `not-found`, `invalid`, and `truncated`, plus the
+client-only `disconnected` and `aborted`.
+
 #### sendReady(): void
 
 Notify the server that this client has finished loading and is ready to receive ticks. **Must** be called after assets are loaded and game systems are initialized. The server will not start the tick loop until all clients report ready.
