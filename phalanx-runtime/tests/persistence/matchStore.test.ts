@@ -185,6 +185,19 @@ describe.each([
     expect((await store.load(matchId))?.tail).toHaveLength(1);
   });
 
+  it('dedups a repeated newer command after one with an older tick', async () => {
+    const store = openStore();
+    const matchId = nextId('old-tick-dedup');
+    await store.saveHeader(matchId, tinyConfig(matchId));
+    await store.appendCommands(matchId, [entry(8)], 8);
+    await store.appendCommands(matchId, [entry(10)], 10);
+    await store.appendCommands(matchId, [entry(5)], 10);
+    await store.appendCommands(matchId, [entry(8)], 10);
+    const loaded = await store.load(matchId);
+    expect(loaded?.tick).toBe(10);
+    expect(loaded?.tail.map((item) => item.tick)).toEqual([8, 10, 5]);
+  });
+
   it('deleteSnapshot keeps the cursor and the command log', async () => {
     const store = openStore();
     const matchId = nextId('delete-snap');

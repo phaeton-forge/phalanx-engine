@@ -411,9 +411,12 @@ function writeCommandBatch(
   let maxEntryTick = meta.maxEntryTick;
   if (applied.kept.length > 0) {
     const bounds = chunkBounds(applied.kept);
+    // lastTick must not decrease with seq. A later command can carry an
+    // older tick; the reverse scan and deleteCoveredChunks both stop at
+    // the first chunk whose lastTick is past the range they care about.
     const chunk: CommandChunk = {
       firstTick: bounds.firstTick,
-      lastTick: bounds.lastTick,
+      lastTick: Math.max(bounds.lastTick, meta.maxEntryTick),
       entries: applied.kept,
     };
     commandStore.put(chunk, [matchId, nextSeq]);
@@ -731,7 +734,13 @@ function openDatabase(
       upgradeDatabase(request.result, oldVersion);
     };
     request.onsuccess = () => {
-      if (settled) return;
+      if (settled) {
+        // onblocked already rejected the open. The request can still
+        // succeed once the other connection closes. Leave it open and the
+        // next version change stays blocked, with no onversionchange.
+        request.result.close();
+        return;
+      }
       settled = true;
       const db = request.result;
       db.onversionchange = () => {

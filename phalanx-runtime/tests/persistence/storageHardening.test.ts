@@ -104,8 +104,12 @@ describe.each([
     const played = await play(store, matchId, 5, 300);
     expect(played.runner.resumeReport).toBeNull();
     expect(await store.snapshotTicks(matchId)).toEqual([]);
+    let notices = 0;
     const resumed = await MatchRunner.resumeLocal(TinyGame, store, matchId, {
       pauseWhenHidden: false,
+      onSnapshotFallback: () => {
+        notices += 1;
+      },
     });
     expect(resumed).not.toBeNull();
     if (resumed === null) return;
@@ -113,6 +117,30 @@ describe.each([
     expect(resumed.tick).toBe(played.tick);
     expect(resumed.digest()).toBe(played.digest);
     expect(resumed.resumeReport).toEqual({ snapshotTick: null, skipped: [] });
+    expect(notices).toBe(0);
+  });
+
+  it('does not notify when the newest snapshot restores', async () => {
+    const store = openStore();
+    const matchId = nextId('normal-resume');
+    const played = await play(store, matchId, 9, 4);
+    expect(played.tick).toBe(8);
+    expect(await store.snapshotTicks(matchId)).toEqual([4, 8]);
+    let notices = 0;
+    const resumed = await MatchRunner.resumeLocal(TinyGame, store, matchId, {
+      pauseWhenHidden: false,
+      onSnapshotFallback: () => {
+        notices += 1;
+      },
+    });
+    expect(resumed).not.toBeNull();
+    if (resumed === null) return;
+    keep(resumed);
+    expect(resumed.tick).toBe(played.tick);
+    expect(resumed.digest()).toBe(played.digest);
+    expect(resumed.resumeReport?.snapshotTick).toBe(8);
+    expect(resumed.resumeReport?.skipped).toEqual([]);
+    expect(notices).toBe(0);
   });
 
   it.each([
@@ -432,6 +460,10 @@ describe('IndexedDbMatchStore schema v2', () => {
     ).toEqual(before);
     await store.saveSnapshot(matchId, 30, new Uint8Array([30]));
     expect(await store.snapshotTicks(matchId)).toEqual([20, 30]);
+    expect(await readSnapshotKeys(databaseName, matchId)).toEqual([
+      [matchId, 20],
+      [matchId, 30],
+    ]);
     expect(
       (await readChunks(databaseName, matchId)).map((chunk) => chunk.lastTick)
     ).toEqual([21]);
@@ -471,6 +503,18 @@ describe('IndexedDbMatchStore schema v2', () => {
     } finally {
       held.close();
     }
+  });
+
+  it('closes a blocked open once the other connection releases it', async () => {
+    const databaseName = nextId('blocked-late');
+    const held = await holdVersion1(databaseName);
+    const store = new IndexedDbMatchStore({ databaseName });
+    await expect(
+      settle(store.load(nextId('blocked-late-match')))
+    ).rejects.toThrow(/blocked/);
+    held.close();
+    await settle(openVersion(databaseName, 3));
+    expect(await inspectDatabase(databaseName)).toMatchObject({ version: 3 });
   });
 
   it('closes the database when another connection upgrades', async () => {
@@ -988,6 +1032,11 @@ interface RawTransaction {
       onsuccess: (() => void) | null;
       onerror: (() => void) | null;
     };
+    getAllKeys(range: unknown): {
+      result: unknown;
+      onsuccess: (() => void) | null;
+      onerror: (() => void) | null;
+    };
   };
   oncomplete: (() => void) | null;
   onerror: (() => void) | null;
@@ -1054,6 +1103,51 @@ function readValue(
     request.onerror = () => {
       reject(errorOf(request.error));
     };
+  });
+}
+
+function readSnapshotKeys(
+  name: string,
+  matchId: string
+): Promise<[string, number][]> {
+  const range = (
+    globalThis as unknown as {
+      IDBKeyRange: { bound(lower: unknown, upper: unknown): unknown };
+    }
+  ).IDBKeyRange.bound([matchId, -Infinity], [matchId, Infinity]);
+  return new Promise((resolve, reject) => {
+    const request = factory().open(name);
+    request.onsuccess = () => {
+      const db = request.result;
+      const tx = db.transaction('snapshots', 'readonly');
+      const get = tx.objectStore('snapshots').getAllKeys(range);
+      get.onsuccess = () => {
+        db.close();
+        resolve(asSnapshotKeys(get.result));
+      };
+      get.onerror = () => {
+        db.close();
+        reject(errorOf(tx.error));
+      };
+    };
+    request.onerror = () => {
+      reject(errorOf(request.error));
+    };
+  });
+}
+
+function asSnapshotKeys(value: unknown): [string, number][] {
+  if (!Array.isArray(value)) throw new Error('expected snapshot keys');
+  return value.map((key) => {
+    if (!Array.isArray(key) || key.length !== 2) {
+      throw new Error('expected a snapshot key');
+    }
+    const id = key[0];
+    const tick = key[1];
+    if (typeof id !== 'string' || typeof tick !== 'number') {
+      throw new Error('expected a snapshot key');
+    }
+    return [id, tick];
   });
 }
 
