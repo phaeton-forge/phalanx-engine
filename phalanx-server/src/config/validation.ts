@@ -93,6 +93,25 @@ export function validateConfig(
     }
   }
 
+  // Task 8
+  if (
+    config.commandHistoryTicks !== 'full' &&
+    (!Number.isInteger(config.commandHistoryTicks) ||
+      config.commandHistoryTicks < 1)
+  ) {
+    throw new Error(
+      `Invalid commandHistoryTicks: ${String(config.commandHistoryTicks)}. Must be an integer >= 1 or 'full'.`
+    );
+  }
+  if (
+    config.shutdownGraceMs !== undefined &&
+    (!Number.isInteger(config.shutdownGraceMs) || config.shutdownGraceMs < 0)
+  ) {
+    throw new Error(
+      `Invalid shutdownGraceMs: ${String(config.shutdownGraceMs)}. Must be an integer >= 0.`
+    );
+  }
+
   return config;
 }
 

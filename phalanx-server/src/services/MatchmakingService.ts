@@ -106,7 +106,13 @@ export class MatchmakingService {
   /**
    * Add a player to the matchmaking queue
    */
-  joinQueue(playerId: string, username: string, socket: Socket, gameType?: string): void {
+  joinQueue(
+    playerId: string,
+    username: string,
+    socket: Socket,
+    gameType?: string,
+    buildId?: string
+  ): void {
     // Check not already in any queue
     if (this.isInAnyQueue(playerId)) {
       socket.emit('error', { message: 'Already in queue' });
@@ -118,13 +124,17 @@ export class MatchmakingService {
       gameType && this.isValidGameType(gameType) ? gameType : 'default';
     const queue = this.getQueue(resolvedGameType);
 
-    queue.set(playerId, {
+    const queued: QueuedPlayer = {
       playerId,
       username,
       socketId: socket.id,
       joinedAt: Date.now(),
       gameType: resolvedGameType,
-    });
+    };
+    if (buildId !== undefined) {
+      queued.buildId = buildId;
+    }
+    queue.set(playerId, queued);
 
     const position = queue.size;
     const waitTime = this.estimateWaitTime(resolvedGameType);

@@ -27,13 +27,47 @@ online and in local (bot) matches.
 ## 3. Relay changes (opt-in, Task 8)
 
 - `commandHistoryTicks: 'full'`: keep the whole match log, storing only
-  non-empty ticks (≈ 70–110 KB per 15-minute match).
-- `match-log` request from tick N, answered in chunks of at most 2000 ticks.
-- Match `buildId` check: a client with a different build cannot resume.
-- On SIGTERM, send `server-shutdown` to all rooms. A Render deploy restarts
-  the process and kills in-memory matches, which end with "no result".
-  That is accepted for 0.3 (no players yet). Redis is not part of this
-  release.
+  non-empty ticks (≈ 70–110 KB per 15-minute match). The numeric default
+  stays 200 and still stores empty ticks inside that window.
+- `match-log { matchId, fromTick, maxTicks?, requestId? }` → a series of
+  `match-log-chunk { matchId, fromTick, toTick, entries, done, requestId? }`.
+  `toTick` is inclusive. Each chunk covers at most 2000 ticks of the
+  requested range `[fromTick, min(currentTick - 1, fromTick + maxTicks - 1)]`
+  (when `maxTicks` is omitted, the end is `currentTick - 1`). `entries`
+  lists only non-empty ticks, in ascending order, and those commands are
+  the same objects that were broadcast in `commands-batch`. The next chunk
+  is sent on `setImmediate`. An empty range is one chunk with
+  `entries: []`, `toTick = fromTick - 1`, `done: true`.
+  One socket has one active stream: a new `match-log` or
+  `match-log-cancel { requestId? }` bumps a per-socket generation and the
+  previous chain stops. `requestId`, when the client sent one, is echoed
+  so a reader can ignore chunks from the stream it replaced. A cancel
+  whose `requestId` is not the active one is ignored.
+- Refusals are `match-log-error { matchId, reason }` with `reason` of
+  `not-member` (socket is not in that match), `not-found`, `invalid`
+  (`fromTick` / `maxTicks` not an integer in range), or `truncated`
+  (numeric history no longer contains `fromTick`). A partial log is never
+  sent in place of `truncated`.
+- `reconnect-state.recentCommands` is unchanged. With `'full'`, the window
+  is still the numeric default (200 ticks) and empty ticks in that window
+  are included as `{ tick, commands: [] }`. The client reads the rest
+  through `match-log`.
+- `buildId` (string, length 1–128) may be sent on `queue-join`,
+  `room-create`, and `room-join`. Anything else is ignored.
+  `GameRoom.getBuildId()` is the first non-empty id in `teams.flat()`
+  order. With `requireBuildId: true` (default false), a missing or
+  differing id ends the match before `match-found`: every player gets
+  `match-error { matchId, reason: 'build-mismatch' }`, `stop(true)` runs,
+  and `match-ended` / `'build-mismatch'` removes the match. `match-end` is
+  not sent. Task 9 compares `getBuildId()` again on resume.
+- `Phalanx.shutdown(reason)` emits `server-shutdown { reason, matchIds }`
+  to every active room (`matchIds` is the same list for all of them),
+  waits `shutdownGraceMs` (`0` still yields one `setImmediate`), then
+  `stop()`. Matches end as they do today (`match-end: 'stopped'`), which
+  is "no result". A second call returns the same promise.
+  `handleSignals: true` (default false) registers
+  `process.once('SIGTERM')` → `shutdown('sigterm')` and `stop()` removes
+  it. The engine does not call `process.exit`. Redis is not part of 0.3.
 
 ## 4. Session token (Task 9)
 

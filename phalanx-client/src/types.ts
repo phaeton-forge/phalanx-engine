@@ -13,7 +13,10 @@ import type { RecoverTimeoutBudget } from './recovery/NetworkQuality.js';
 
 // Re-export DesyncEvent for convenience
 export type { DesyncEvent };
-export type { RoomRecoveryStatusEvent, RoomTerminatedEvent } from './recovery/RoomRecoveryController.js';
+export type {
+  RoomRecoveryStatusEvent,
+  RoomTerminatedEvent,
+} from './recovery/RoomRecoveryController.js';
 
 /**
  * Configuration for pause/resume behavior
@@ -57,6 +60,13 @@ export interface PhalanxClientConfig {
    * If auth is enabled and user signs in, this will be overwritten with the auth username.
    */
   username?: string;
+
+  /**
+   * Client build id sent with `queue-join`, `room-create`, and `room-join`.
+   * Omitted from those payloads when unset. The server ignores values that
+   * are not strings of length 1–128.
+   */
+  buildId?: string;
 
   /**
    * Authentication token (e.g., Google ID token).
@@ -366,6 +376,63 @@ export interface TickCommandsHistory {
   commands: PlayerCommand[];
 }
 
+/** Reasons the server sends on `match-log-error`. */
+export type MatchLogWireErrorReason =
+  'not-member' | 'not-found' | 'invalid' | 'truncated';
+
+/**
+ * Why `fetchMatchLog` stopped.
+ * `MatchLogWireErrorReason` arrives on `match-log-error`.
+ * `'disconnected'` is local, when the socket closes mid-read.
+ * `'aborted'` is local, when the caller breaks or a newer fetch
+ * replaces this one. The server does not send either.
+ */
+export type MatchLogErrorReason =
+  MatchLogWireErrorReason | 'disconnected' | 'aborted';
+
+/**
+ * Thrown by `PhalanxClient.fetchMatchLog` when the server emits
+ * `match-log-error`, when the socket drops, or when this read is aborted.
+ */
+export class MatchLogError extends Error {
+  readonly reason: MatchLogErrorReason;
+
+  constructor(reason: MatchLogErrorReason) {
+    super(`match-log failed: ${reason}`);
+    this.name = 'MatchLogError';
+    this.reason = reason;
+  }
+}
+
+/**
+ * One `match-log-chunk`. `toTick` is inclusive. `entries` contains only
+ * non-empty ticks. The iterator finishes on `done: true`.
+ */
+export interface LogChunk {
+  matchId: string;
+  fromTick: number;
+  toTick: number;
+  entries: TickCommandsHistory[];
+  done: boolean;
+  /** Echo of the id this read sent. Chunks for another id are ignored. */
+  requestId?: string;
+}
+
+/** Payload of `match-log-error`. `reason` is a wire value only. */
+export interface MatchLogErrorEvent {
+  matchId?: string;
+  requestId?: string;
+  reason: MatchLogWireErrorReason;
+}
+
+/**
+ * The relay is about to stop. In-memory matches end with no result.
+ */
+export interface ServerShutdownEvent {
+  reason: string;
+  matchIds: string[];
+}
+
 /**
  * Reconnection status response
  */
@@ -428,10 +495,7 @@ export interface PhalanxError {
  * Connection state of the client
  */
 export type ConnectionState =
-  | 'disconnected'
-  | 'connecting'
-  | 'connected'
-  | 'reconnecting';
+  'disconnected' | 'connecting' | 'connected' | 'reconnecting';
 
 /**
  * Client state (overall lifecycle)
@@ -553,6 +617,9 @@ export interface PhalanxClientEvents {
   // Room recovery (optional mobile-friendly layer)
   recoveryStatus: (event: RoomRecoveryStatusEvent) => void;
   roomTerminated: (event: RoomTerminatedEvent) => void;
+
+  /** Process is shutting down. Matches on this relay will end. */
+  serverShutdown: (event: ServerShutdownEvent) => void;
 }
 
 /**

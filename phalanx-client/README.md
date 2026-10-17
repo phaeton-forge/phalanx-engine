@@ -336,6 +336,7 @@ interface PhalanxClientConfig {
   serverUrl: string; // Server URL (e.g., 'http://localhost:3000')
   playerId?: string; // Unique player identifier (auto-generated if omitted)
   username?: string; // Display name (auto-generated if omitted)
+  buildId?: string; // Sent on queue-join / room-create / room-join when set
   authToken?: string; // Auth token for server authentication
   auth?: PhalanxAuthConfig; // OAuth config for managed authentication
   autoReconnect?: boolean; // Auto-reconnect on disconnect (default: true)
@@ -436,6 +437,43 @@ await loadAssets();
 initializeGameWorld();
 client.sendReady();
 ```
+
+### Match log
+
+```typescript
+import { MatchLogError, type LogChunk } from '@phalanx-engine/client';
+
+// buildId is sent only when set on the client config.
+const client = await PhalanxClient.create({
+  serverUrl: 'http://localhost:3000',
+  playerId: 'player-1',
+  buildId: 'sketch-legion-42',
+});
+
+client.on('serverShutdown', ({ reason, matchIds }) => {
+  console.log(reason, matchIds);
+});
+
+// One fetchMatchLog per socket. A second call aborts the first
+// (`MatchLogError` reason `aborted`) and starts a new read.
+try {
+  for await (const chunk of client.fetchMatchLog(0)) {
+    applyChunk(chunk); // caller's job; the iterator yields between chunks
+  }
+} catch (error) {
+  if (error instanceof MatchLogError) {
+    // Wire: not-member, not-found, invalid, truncated.
+    // Local: disconnected, aborted.
+    console.log(error.reason);
+  }
+}
+
+declare function applyChunk(chunk: LogChunk): void;
+```
+
+`MatchLogError.reason` is `MatchLogErrorReason`: the four wire values
+`not-member`, `not-found`, `invalid`, and `truncated`, plus the
+client-only `disconnected` and `aborted`.
 
 #### sendReady(): void
 

@@ -44,6 +44,12 @@ interface SocketData {
   authenticated?: boolean;
 }
 
+/** One in-flight `match-log` read on a socket. */
+interface MatchLogStream {
+  generation: number;
+  requestId?: string;
+}
+
 /**
  * Phalanx Engine
  * A game-agnostic deterministic lockstep multiplayer engine
@@ -57,6 +63,16 @@ export class Phalanx extends EventEmitter {
   private tokenValidator: TokenValidatorService | null = null;
   private oauthExchange: OAuthExchangeService | null = null;
   private isRunning: boolean = false;
+  /** In-flight or finished `shutdown()` for this start/stop cycle. */
+  private shutdownPromise: Promise<void> | null = null;
+  /** `process.once('SIGTERM')` listener installed when `handleSignals` is set. */
+  private sigtermHandler: (() => void) | null = null;
+  /**
+   * The match-log stream currently allowed to emit on this socket.
+   * A new request or `match-log-cancel` bumps `generation`, which
+   * stops the previous `sendNext` chain.
+   */
+  private readonly matchLogStreams = new WeakMap<Socket, MatchLogStream>();
 
   constructor(config?: Partial<PhalanxConfig>) {
     super();
@@ -67,7 +83,10 @@ export class Phalanx extends EventEmitter {
    * Create HTTP or HTTPS server based on TLS configuration
    */
   private createServer(): HttpServer | HttpsServer {
-    const requestHandler = async (req: IncomingMessage, res: ServerResponse) => {
+    const requestHandler = async (
+      req: IncomingMessage,
+      res: ServerResponse
+    ) => {
       // Handle CORS preflight
       if (req.method === 'OPTIONS') {
         this.setCorsHeaders(res, req);
@@ -128,7 +147,10 @@ export class Phalanx extends EventEmitter {
         };
 
         console.log('[Phalanx] Starting with TLS enabled (WSS)');
-        return createHttpsServer(tlsOptions, (req, res) => void requestHandler(req, res));
+        return createHttpsServer(
+          tlsOptions,
+          (req, res) => void requestHandler(req, res)
+        );
       } catch (error) {
         const message =
           error instanceof Error ? error.message : 'Unknown error';
@@ -173,16 +195,21 @@ export class Phalanx extends EventEmitter {
   /**
    * Handle OAuth token exchange request
    */
-  private async handleTokenExchange(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  private async handleTokenExchange(
+    req: IncomingMessage,
+    res: ServerResponse
+  ): Promise<void> {
     this.setCorsHeaders(res, req);
 
     if (!this.oauthExchange) {
       res.writeHead(503, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({
-        success: false,
-        error: 'OAuth not configured',
-        errorCode: 'not_configured'
-      }));
+      res.end(
+        JSON.stringify({
+          success: false,
+          error: 'OAuth not configured',
+          errorCode: 'not_configured',
+        })
+      );
       return;
     }
 
@@ -192,29 +219,41 @@ export class Phalanx extends EventEmitter {
       const request = JSON.parse(body) as TokenExchangeRequest;
 
       // Validate required fields
-      if (!request.code || !request.codeVerifier || !request.redirectUri || !request.provider) {
+      if (
+        !request.code ||
+        !request.codeVerifier ||
+        !request.redirectUri ||
+        !request.provider
+      ) {
         res.writeHead(400, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({
-          success: false,
-          error: 'Missing required fields: code, codeVerifier, redirectUri, provider',
-          errorCode: 'invalid_request'
-        }));
+        res.end(
+          JSON.stringify({
+            success: false,
+            error:
+              'Missing required fields: code, codeVerifier, redirectUri, provider',
+            errorCode: 'invalid_request',
+          })
+        );
         return;
       }
 
       // Exchange the code for tokens
       const result = await this.oauthExchange.exchangeCode(request);
 
-      res.writeHead(result.success ? 200 : 400, { 'Content-Type': 'application/json' });
+      res.writeHead(result.success ? 200 : 400, {
+        'Content-Type': 'application/json',
+      });
       res.end(JSON.stringify(result));
     } catch (error) {
       console.error('[Phalanx] Token exchange error:', error);
       res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({
-        success: false,
-        error: 'Internal server error',
-        errorCode: 'server_error'
-      }));
+      res.end(
+        JSON.stringify({
+          success: false,
+          error: 'Internal server error',
+          errorCode: 'server_error',
+        })
+      );
     }
   }
 
@@ -244,6 +283,8 @@ export class Phalanx extends EventEmitter {
       throw new Error('Phalanx server is already running');
     }
 
+    this.shutdownPromise = null;
+
     // Create HTTP/HTTPS server with health check endpoint
     this.httpServer = this.createServer();
 
@@ -259,7 +300,9 @@ export class Phalanx extends EventEmitter {
       this.setupAuthMiddleware();
       console.log('[Phalanx] Authentication enabled');
       if (this.config.auth.google?.clientSecret) {
-        console.log('[Phalanx] OAuth token exchange endpoint available at /auth/token');
+        console.log(
+          '[Phalanx] OAuth token exchange endpoint available at /auth/token'
+        );
       }
     } else {
       console.log('[Phalanx] Authentication disabled (development mode)');
@@ -278,14 +321,17 @@ export class Phalanx extends EventEmitter {
       this.config,
       (event: string, ...args: unknown[]) => this.emit(event, ...args),
       (gameType: string) => this.matchmaking!.resolveGameTypeConfig(gameType),
-      (playerId: string) => this.matchmaking!.isInAnyQueue(playerId),
+      (playerId: string) => this.matchmaking!.isInAnyQueue(playerId)
     );
 
     // Wire up match-ended event to prune finished matches from both services
-    this.on('match-ended' as PhalanxEventType, ((matchId: string) => {
-      this.matchmaking?.removeMatch(matchId);
-      this.privateRooms?.removeMatch(matchId);
-    }) as PhalanxEventHandlers[PhalanxEventType]);
+    this.on(
+      'match-ended' as PhalanxEventType,
+      ((matchId: string) => {
+        this.matchmaking?.removeMatch(matchId);
+        this.privateRooms?.removeMatch(matchId);
+      }) as PhalanxEventHandlers[PhalanxEventType]
+    );
 
     // Setup socket handlers
     this.setupSocketHandlers();
@@ -297,6 +343,7 @@ export class Phalanx extends EventEmitter {
     return new Promise((resolve, reject) => {
       this.httpServer!.listen(this.config.port, () => {
         this.isRunning = true;
+        this.registerSigterm();
         resolve();
       });
 
@@ -323,14 +370,66 @@ export class Phalanx extends EventEmitter {
     return this.privateRooms.createRoomForDisconnectedHost(
       params.playerId,
       params.username ?? params.playerId,
-      params.gameType,
+      params.gameType
     );
+  }
+
+  /**
+   * Tell every active match the process is going away, wait
+   * `shutdownGraceMs`, then `stop()`. A second call returns the same
+   * promise and does not emit again. Does not call `process.exit`.
+   */
+  shutdown(reason: string): Promise<void> {
+    if (this.shutdownPromise) return this.shutdownPromise;
+    this.shutdownPromise = this.performShutdown(reason);
+    return this.shutdownPromise;
+  }
+
+  private async performShutdown(reason: string): Promise<void> {
+    const matchIds = this.getActiveMatches().map((match) => match.id);
+    const payload = { reason, matchIds };
+    if (this.io) {
+      for (const matchId of matchIds) {
+        this.io.to(matchId).emit('server-shutdown', payload);
+      }
+    }
+
+    const grace = this.config.shutdownGraceMs ?? 0;
+    if (grace > 0) {
+      await new Promise<void>((resolve) => {
+        setTimeout(resolve, grace);
+      });
+    } else {
+      // Yield once so `server-shutdown` can be written to sockets
+      // before `stop()` tears the rooms down.
+      await new Promise<void>((resolve) => {
+        setImmediate(resolve);
+      });
+    }
+
+    await this.stop();
+  }
+
+  private registerSigterm(): void {
+    if (!(this.config.handleSignals ?? false)) return;
+    if (this.sigtermHandler) return;
+    this.sigtermHandler = () => {
+      void this.shutdown('sigterm');
+    };
+    process.once('SIGTERM', this.sigtermHandler);
+  }
+
+  private unregisterSigterm(): void {
+    if (!this.sigtermHandler) return;
+    process.removeListener('SIGTERM', this.sigtermHandler);
+    this.sigtermHandler = null;
   }
 
   /**
    * Stop the Phalanx server
    */
   async stop(): Promise<void> {
+    this.unregisterSigterm();
     if (!this.isRunning) {
       return;
     }
@@ -379,9 +478,7 @@ export class Phalanx extends EventEmitter {
       if (!token) {
         // Allow anonymous if configured
         if (this.config.auth?.allowAnonymous) {
-          console.log(
-            `[Phalanx] Anonymous connection allowed: ${socket.id}`
-          );
+          console.log(`[Phalanx] Anonymous connection allowed: ${socket.id}`);
           (socket.data as SocketData).authenticated = false;
           return next();
         }
@@ -425,9 +522,7 @@ export class Phalanx extends EventEmitter {
       // This replaces tick-ack - any message = player is alive
       socket.onAny(() => {
         if (playerId && (socket.data as SocketData).matchId) {
-          const gameRoom = this.findMatch(
-            (socket.data as SocketData).matchId!
-          );
+          const gameRoom = this.findMatch((socket.data as SocketData).matchId!);
           if (gameRoom) {
             gameRoom.updatePlayerActivity(playerId);
           }
@@ -437,10 +532,21 @@ export class Phalanx extends EventEmitter {
       // Handle join queue (MATCH-1)
       socket.on(
         'queue-join',
-        (data: { playerId: string; username?: string; gameType?: string }) => {
+        (data: {
+          playerId: string;
+          username?: string;
+          gameType?: string;
+          buildId?: unknown;
+        }) => {
           playerId = data.playerId;
           const username = data.username ?? data.playerId;
-          this.matchmaking!.joinQueue(playerId, username, socket, data.gameType);
+          this.matchmaking!.joinQueue(
+            playerId,
+            username,
+            socket,
+            data.gameType,
+            readOptionalBuildId(data.buildId)
+          );
         }
       );
 
@@ -454,20 +560,42 @@ export class Phalanx extends EventEmitter {
       // Handle room-create (private match)
       socket.on(
         'room-create',
-        (data: { playerId: string; username?: string; gameType?: string }) => {
+        (data: {
+          playerId: string;
+          username?: string;
+          gameType?: string;
+          buildId?: unknown;
+        }) => {
           playerId = data.playerId;
           const username = data.username ?? data.playerId;
-          this.privateRooms!.createRoom(playerId, username, socket, data.gameType);
+          this.privateRooms!.createRoom(
+            playerId,
+            username,
+            socket,
+            data.gameType,
+            readOptionalBuildId(data.buildId)
+          );
         }
       );
 
       // Handle room-join (private match)
       socket.on(
         'room-join',
-        (data: { playerId: string; username?: string; code: string }) => {
+        (data: {
+          playerId: string;
+          username?: string;
+          code: string;
+          buildId?: unknown;
+        }) => {
           playerId = data.playerId;
           const username = data.username ?? data.playerId;
-          this.privateRooms!.joinRoom(playerId, username, socket, data.code);
+          this.privateRooms!.joinRoom(
+            playerId,
+            username,
+            socket,
+            data.code,
+            readOptionalBuildId(data.buildId)
+          );
         }
       );
 
@@ -519,7 +647,7 @@ export class Phalanx extends EventEmitter {
         const recovered = this.privateRooms!.recoverRoom(
           data.playerId,
           socket,
-          data.code,
+          data.code
         );
         if (recovered) {
           playerId = data.playerId;
@@ -678,6 +806,16 @@ export class Phalanx extends EventEmitter {
         }
       });
 
+      // Command log for catch-up (Task 8). Only the requesting socket
+      // receives chunks; the tick loop of other matches is not blocked.
+      // A new request or `match-log-cancel` stops the previous stream.
+      socket.on('match-log', (payload: unknown) => {
+        this.handleMatchLog(socket, payload);
+      });
+      socket.on('match-log-cancel', (payload: unknown) => {
+        this.cancelMatchLog(socket, readOptionalRequestId(payload));
+      });
+
       // Handle reconnection
       socket.on(
         'reconnect-match',
@@ -709,10 +847,133 @@ export class Phalanx extends EventEmitter {
   }
 
   /**
+   * Stream `match-log-chunk` events to the requesting socket.
+   * One chunk is sent immediately; the next is scheduled with
+   * `setImmediate` so a long log does not stall other matches.
+   * Starting this request invalidates any stream already running
+   * on the same socket.
+   */
+  private handleMatchLog(socket: Socket, payload: unknown): void {
+    const parsed = parseMatchLogRequest(payload);
+    const generation = this.beginMatchLog(socket, parsed.requestId);
+    const requestField = requestIdField(parsed.requestId);
+
+    const emitError = (
+      matchId: string | undefined,
+      reason: 'invalid' | 'not-found' | 'not-member' | 'truncated'
+    ): void => {
+      if (!this.matchLogIsCurrent(socket, generation)) return;
+      socket.emit('match-log-error', {
+        ...nonEmptyMatchId(matchId),
+        ...requestField,
+        reason,
+      });
+    };
+
+    if (!parsed.ok) {
+      emitError(parsed.matchId, 'invalid');
+      return;
+    }
+
+    const gameRoom = this.findMatch(parsed.matchId);
+    if (!gameRoom) {
+      emitError(parsed.matchId, 'not-found');
+      return;
+    }
+
+    const socketData = socket.data as SocketData;
+    if (
+      socketData.matchId !== parsed.matchId ||
+      !gameRoom.isParticipantSocket(socket.id)
+    ) {
+      emitError(parsed.matchId, 'not-member');
+      return;
+    }
+
+    if (gameRoom.isLogTruncated(parsed.fromTick)) {
+      emitError(parsed.matchId, 'truncated');
+      return;
+    }
+
+    const currentTick = gameRoom.getCurrentTick();
+    const requestedEnd =
+      parsed.maxTicks === undefined
+        ? currentTick - 1
+        : Math.min(currentTick - 1, parsed.fromTick + parsed.maxTicks - 1);
+
+    const emitChunk = (
+      fromTick: number,
+      toTick: number,
+      entries: { tick: number; commands: PlayerCommand[] }[],
+      done: boolean
+    ): boolean => {
+      if (socket.disconnected) return false;
+      if (!this.matchLogIsCurrent(socket, generation)) return false;
+      socket.emit('match-log-chunk', {
+        matchId: parsed.matchId,
+        ...requestField,
+        fromTick,
+        toTick,
+        entries,
+        done,
+      });
+      return true;
+    };
+
+    if (requestedEnd < parsed.fromTick) {
+      emitChunk(parsed.fromTick, parsed.fromTick - 1, [], true);
+      return;
+    }
+
+    let cursor = parsed.fromTick;
+    const sendNext = (): void => {
+      const chunkEnd = Math.min(
+        requestedEnd,
+        cursor + MATCH_LOG_CHUNK_SPAN - 1
+      );
+      const entries = gameRoom.getLogRange(cursor, chunkEnd);
+      const done = chunkEnd >= requestedEnd;
+      if (!emitChunk(cursor, chunkEnd, entries, done)) return;
+      if (!done) {
+        cursor = chunkEnd + 1;
+        setImmediate(sendNext);
+      }
+    };
+    sendNext();
+  }
+
+  /** Bump the per-socket generation so the previous `sendNext` stops. */
+  private beginMatchLog(socket: Socket, requestId: string | undefined): number {
+    const generation = (this.matchLogStreams.get(socket)?.generation ?? 0) + 1;
+    const stream: MatchLogStream = { generation };
+    if (requestId !== undefined) stream.requestId = requestId;
+    this.matchLogStreams.set(socket, stream);
+    return generation;
+  }
+
+  private matchLogIsCurrent(socket: Socket, generation: number): boolean {
+    return this.matchLogStreams.get(socket)?.generation === generation;
+  }
+
+  /**
+   * Stop the active stream. A `requestId` only cancels that request,
+   * so a late cancel cannot kill the read that replaced it.
+   */
+  private cancelMatchLog(socket: Socket, requestId: string | undefined): void {
+    const active = this.matchLogStreams.get(socket);
+    if (!active) return;
+    if (requestId !== undefined && active.requestId !== requestId) return;
+    this.matchLogStreams.set(socket, { generation: active.generation + 1 });
+  }
+
+  /**
    * Find a GameRoom by matchId across both matchmaking and private room services.
    */
   private findMatch(matchId: string): GameRoom | undefined {
-    return this.matchmaking?.getMatch(matchId) ?? this.privateRooms?.getMatch(matchId);
+    return (
+      this.matchmaking?.getMatch(matchId) ??
+      this.privateRooms?.getMatch(matchId)
+    );
   }
 
   /**
@@ -740,7 +1001,8 @@ export class Phalanx extends EventEmitter {
    */
   getActiveMatches(): MatchInfo[] {
     const matchmakingMatches = this.matchmaking?.getActiveMatches() ?? [];
-    const privateMatches = this.privateRooms?.getActiveMatches().map((m) => m.getMatchInfo()) ?? [];
+    const privateMatches =
+      this.privateRooms?.getActiveMatches().map((m) => m.getMatchInfo()) ?? [];
     return [...matchmakingMatches, ...privateMatches];
   }
 
@@ -757,4 +1019,85 @@ export class Phalanx extends EventEmitter {
   getConfig(): PhalanxConfig {
     return { ...this.config };
   }
+}
+
+/** Inclusive tick span of one `match-log-chunk`. */
+const MATCH_LOG_CHUNK_SPAN = 2000;
+const BUILD_ID_MAX_LENGTH = 128;
+
+/**
+ * `buildId` from a join payload. Anything that is not a string of length
+ * 1–128 is ignored, the same way unknown extra fields are ignored today.
+ */
+function readOptionalBuildId(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  if (value.length < 1 || value.length > BUILD_ID_MAX_LENGTH) return undefined;
+  return value;
+}
+
+/** `matchId` is sent only when the request carried a non-empty string. */
+function nonEmptyMatchId(
+  matchId: string | undefined
+): { matchId: string } | Record<string, never> {
+  if (matchId === undefined || matchId.length === 0) return {};
+  return { matchId };
+}
+
+function requestIdField(
+  requestId: string | undefined
+): { requestId: string } | Record<string, never> {
+  if (requestId === undefined || requestId.length === 0) return {};
+  return { requestId };
+}
+
+/** Non-empty `requestId` from a `match-log` or `match-log-cancel` payload. */
+function readOptionalRequestId(payload: unknown): string | undefined {
+  if (!payload || typeof payload !== 'object') return undefined;
+  const value = (payload as { requestId?: unknown }).requestId;
+  if (typeof value !== 'string' || value.length === 0) return undefined;
+  return value;
+}
+
+function isIntAtLeast(value: unknown, min: number): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= min;
+}
+
+function parseMatchLogRequest(payload: unknown):
+  | {
+      ok: true;
+      matchId: string;
+      fromTick: number;
+      maxTicks?: number;
+      requestId?: string;
+    }
+  | { ok: false; matchId?: string; requestId?: string } {
+  const requestId = readOptionalRequestId(payload);
+  if (!payload || typeof payload !== 'object') {
+    return { ok: false, ...requestIdField(requestId) };
+  }
+  const data = payload as {
+    matchId?: unknown;
+    fromTick?: unknown;
+    maxTicks?: unknown;
+  };
+  const matchId =
+    typeof data.matchId === 'string' && data.matchId.length > 0
+      ? data.matchId
+      : undefined;
+  if (matchId === undefined) {
+    return { ok: false, ...requestIdField(requestId) };
+  }
+  if (!isIntAtLeast(data.fromTick, 0)) {
+    return { ok: false, matchId, ...requestIdField(requestId) };
+  }
+  if (data.maxTicks !== undefined && !isIntAtLeast(data.maxTicks, 1)) {
+    return { ok: false, matchId, ...requestIdField(requestId) };
+  }
+  return {
+    ok: true,
+    matchId,
+    fromTick: data.fromTick,
+    ...requestIdField(requestId),
+    ...(data.maxTicks !== undefined ? { maxTicks: data.maxTicks } : {}),
+  };
 }

@@ -131,7 +131,10 @@ const config: Partial<PhalanxConfig> = {
   maxTickAhead: 5,
 
   // === Command History (for reconnection) ===
-  commandHistoryTicks: 200, // Ticks of command history to keep
+  commandHistoryTicks: 200, // Ticks of command history to keep, or 'full'
+  // requireBuildId: false,  // reject the match when build ids differ
+  // shutdownGraceMs: 0,     // wait after server-shutdown before stop()
+  // handleSignals: false,   // SIGTERM → shutdown('sigterm')
 
   // === Ready Handshake ===
   readyTimeoutMs: 30000, // Max time for clients to send ready (default: 30000)
@@ -375,6 +378,8 @@ class Phalanx {
   // Lifecycle
   start(): Promise<void>;
   stop(): Promise<void>;
+  /** Notify rooms, wait shutdownGraceMs, then stop(). Idempotent. */
+  shutdown(reason: string): Promise<void>;
 
   // Trusted server-side integrations
   createPrivateRoomForHost(params: {
@@ -396,43 +401,49 @@ class Phalanx {
 
 ### Socket.IO Protocol Reference
 
-| Event                       | Emit | Receive | Description                                                     |
-| --------------------------- | ---- | ------- | --------------------------------------------------------------- |
-| `queue-join`                | ✅   |         | Join matchmaking queue                                          |
-| `queue-leave`               | ✅   |         | Leave matchmaking queue                                         |
-| `queue-status`              |      | ✅      | Queue join/leave confirmation                                   |
-| `match-found`               |      | ✅      | Match created, countdown starting                               |
-| `match-waiting-for-players` |      | ✅      | Match is waiting for disconnected participants before countdown |
-| `game-start`                |      | ✅      | Countdown finished, load assets                                 |
-| `client-ready`              | ✅   |         | Client finished loading, ready for ticks                        |
-| `player-ready`              |      | ✅      | A player reported ready                                         |
-| `match-end`                 |      | ✅      | Match has ended (`reason`, optional `winnerTeamId`)             |
-| `player-absent`             |      | ✅      | Opt-in: a player is absent during `playing`                     |
-| `submit-commands`           | ✅   |         | Send game commands                                              |
-| `submit-commands-ack`       |      | ✅      | Command acknowledgment                                          |
-| `commands-batch`            |      | ✅      | All commands for a tick                                         |
-| `tick-sync`                 |      | ✅      | Periodic tick synchronization                                   |
-| `countdown`                 |      | ✅      | Countdown before game starts                                    |
-| `submit-state-hash`         | ✅   |         | Submit state hash for desync detection                          |
-| `hash-comparison`           |      | ✅      | Server hash comparison result                                   |
-| `pause-game`                | ✅   |         | Request game pause                                              |
-| `resume-game`               | ✅   |         | Request game resume                                             |
-| `game-paused`               |      | ✅      | Game was paused                                                 |
-| `game-resumed`              |      | ✅      | Game was resumed                                                |
-| `reconnect-match`           | ✅   |         | Attempt to rejoin a match                                       |
-| `reconnect-status`          |      | ✅      | Reconnection result                                             |
-| `reconnect-state`           |      | ✅      | Game state for reconnection                                     |
-| `player-disconnected`       |      | ✅      | Another player disconnected                                     |
-| `player-reconnected`        |      | ✅      | Another player reconnected                                      |
-| `room-create`               | ✅   |         | Create a private room                                           |
-| `room-join`                 | ✅   |         | Join a private room by invite code                              |
-| `room-cancel`               | ✅   |         | Cancel a previously created room                                |
-| `room-recover`              | ✅   |         | Reclaim a room after socket drop (see Private Room Recovery)    |
-| `room-created`              |      | ✅      | Room created; contains invite `code`                            |
-| `room-error`                |      | ✅      | Room operation failed; contains `message`                       |
-| `room-expired`              |      | ✅      | Room TTL exceeded; server evicted the room                      |
-| `room-cancelled`            |      | ✅      | Host cancelled the room                                         |
-| `room-recovered`            |      | ✅      | Room successfully reclaimed after socket drop                   |
+| Event                       | Emit | Receive | Description                                                                                                                                      |
+| --------------------------- | ---- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `queue-join`                | ✅   |         | Join matchmaking queue                                                                                                                           |
+| `queue-leave`               | ✅   |         | Leave matchmaking queue                                                                                                                          |
+| `queue-status`              |      | ✅      | Queue join/leave confirmation                                                                                                                    |
+| `match-found`               |      | ✅      | Match created, countdown starting                                                                                                                |
+| `match-waiting-for-players` |      | ✅      | Match is waiting for disconnected participants before countdown                                                                                  |
+| `game-start`                |      | ✅      | Countdown finished, load assets                                                                                                                  |
+| `client-ready`              | ✅   |         | Client finished loading, ready for ticks                                                                                                         |
+| `player-ready`              |      | ✅      | A player reported ready                                                                                                                          |
+| `match-end`                 |      | ✅      | Match has ended (`reason`, optional `winnerTeamId`)                                                                                              |
+| `player-absent`             |      | ✅      | Opt-in: a player is absent during `playing`                                                                                                      |
+| `submit-commands`           | ✅   |         | Send game commands                                                                                                                               |
+| `submit-commands-ack`       |      | ✅      | Command acknowledgment                                                                                                                           |
+| `commands-batch`            |      | ✅      | All commands for a tick                                                                                                                          |
+| `tick-sync`                 |      | ✅      | Periodic tick synchronization                                                                                                                    |
+| `countdown`                 |      | ✅      | Countdown before game starts                                                                                                                     |
+| `submit-state-hash`         | ✅   |         | Submit state hash for desync detection                                                                                                           |
+| `hash-comparison`           |      | ✅      | Server hash comparison result                                                                                                                    |
+| `pause-game`                | ✅   |         | Request game pause                                                                                                                               |
+| `resume-game`               | ✅   |         | Request game resume                                                                                                                              |
+| `game-paused`               |      | ✅      | Game was paused                                                                                                                                  |
+| `game-resumed`              |      | ✅      | Game was resumed                                                                                                                                 |
+| `reconnect-match`           | ✅   |         | Attempt to rejoin a match                                                                                                                        |
+| `reconnect-status`          |      | ✅      | Reconnection result                                                                                                                              |
+| `reconnect-state`           |      | ✅      | Game state for reconnection                                                                                                                      |
+| `player-disconnected`       |      | ✅      | Another player disconnected                                                                                                                      |
+| `player-reconnected`        |      | ✅      | Another player reconnected                                                                                                                       |
+| `room-create`               | ✅   |         | Create a private room                                                                                                                            |
+| `room-join`                 | ✅   |         | Join a private room by invite code                                                                                                               |
+| `room-cancel`               | ✅   |         | Cancel a previously created room                                                                                                                 |
+| `room-recover`              | ✅   |         | Reclaim a room after socket drop (see Private Room Recovery)                                                                                     |
+| `room-created`              |      | ✅      | Room created; contains invite `code`                                                                                                             |
+| `room-error`                |      | ✅      | Room operation failed; contains `message`                                                                                                        |
+| `room-expired`              |      | ✅      | Room TTL exceeded; server evicted the room                                                                                                       |
+| `room-cancelled`            |      | ✅      | Host cancelled the room                                                                                                                          |
+| `room-recovered`            |      | ✅      | Room successfully reclaimed after socket drop                                                                                                    |
+| `match-log`                 | ✅   |         | Request the command log from a tick (`fromTick`, optional `maxTicks`, optional `requestId`). Replaces any stream already running on this socket. |
+| `match-log-cancel`          | ✅   |         | Stop that stream. `requestId` cancels only the matching read.                                                                                    |
+| `match-log-chunk`           |      | ✅      | One ≤ 2000-tick slice of that log, sent only to the requester. Echoes `requestId` when the request had one.                                      |
+| `match-log-error`           |      | ✅      | Log request refused (`not-member`, `not-found`, `invalid`, `truncated`). `matchId` is omitted when it is not a non-empty string.                 |
+| `match-error`               |      | ✅      | Match cannot start (`build-mismatch` when `requireBuildId` is set)                                                                               |
+| `server-shutdown`           |      | ✅      | Process is stopping; `Phalanx.shutdown()` sends this before `stop()`                                                                             |
 
 ## Game Start Synchronization
 

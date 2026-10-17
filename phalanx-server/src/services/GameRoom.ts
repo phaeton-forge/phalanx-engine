@@ -13,7 +13,9 @@ import type {
   EndMatchResult,
   PlayerAbsentEvent,
   PlayerCommandContext,
+  MatchLogEntry,
 } from '../types/index.js';
+import { DEFAULT_CONFIG } from '../config/defaults.js';
 
 /**
  * Module-internal seam for Task 11. The default policy ends the match
@@ -64,7 +66,13 @@ export class GameRoom {
   ) => boolean | void;
 
   private currentTick: number = 0;
-  private state: 'waiting-for-players' | 'countdown' | 'waiting-for-ready' | 'playing' | 'paused' | 'finished' = 'waiting-for-players';
+  private state:
+    | 'waiting-for-players'
+    | 'countdown'
+    | 'waiting-for-ready'
+    | 'playing'
+    | 'paused'
+    | 'finished' = 'waiting-for-players';
   private createdAt: Date;
   private tickInterval: NodeJS.Timeout | null = null;
   private countdownTimer: NodeJS.Timeout | null = null;
@@ -119,8 +127,17 @@ export class GameRoom {
   private tickSubmissions: Map<number, Set<string>> = new Map();
   // Track last message timestamp per player (LOCKSTEP-5) - uses real time instead of ticks
   private lastMessageTime: Map<string, number> = new Map();
-  // Command history for reconnection (NET-2)
+  // Command history for reconnection (NET-2).
+  // Numeric mode stores every tick, including empty ones, and prunes.
+  // `'full'` stores only non-empty ticks and never prunes.
   private commandHistory: Map<number, PlayerCommand[]> = new Map();
+  /**
+   * Sorted ticks that `getLogRange` returns (non-empty only). Ticks are
+   * appended in order, so the array stays sorted without a full scan.
+   */
+  private logTicks: number[] = [];
+  /** Oldest key still in `commandHistory`, or null when the map is empty. */
+  private oldestHistoryTick: number | null = null;
   // Track players who are currently lagging (to avoid spamming events)
   private laggingPlayers: Set<string> = new Set();
   // Random seed for deterministic RNG (generated at match creation)
@@ -187,7 +204,8 @@ export class GameRoom {
     // Resolve pause config with defaults
     this.pauseConfig = {
       maxPausesPerPlayer: config.pause?.maxPausesPerPlayer ?? Infinity,
-      requireSamePlayerToResume: config.pause?.requireSamePlayerToResume ?? false,
+      requireSamePlayerToResume:
+        config.pause?.requireSamePlayerToResume ?? false,
     };
 
     this.commandContext = {
@@ -244,6 +262,11 @@ export class GameRoom {
    * countdown alone" guarantee for free.
    */
   start(): void {
+    if (this.buildsMismatch()) {
+      this.rejectForBuildMismatch();
+      return;
+    }
+
     // Wire each player's socket: assign socket.data, join the room,
     // and reflect their actual connection state in `players`. The
     // constructor optimistically initialises everyone as connected,
@@ -307,7 +330,7 @@ export class GameRoom {
 
       const missing = this.getDisconnectedPlayerIds();
       console.log(
-        `[GameRoom ${this.id}] players-connect timeout — ${missing.length} player(s) never returned: ${missing.join(', ')}`,
+        `[GameRoom ${this.id}] players-connect timeout — ${missing.length} player(s) never returned: ${missing.join(', ')}`
       );
       this.clearAbsenceTimers();
       this.io.to(this.roomId).emit('match-end', {
@@ -329,9 +352,11 @@ export class GameRoom {
     if (this.state !== 'waiting-for-players') return;
 
     if (this.areAllPlayersConnected()) {
-      this.clearPlayersReconnectTimeout('all players connected before countdown');
+      this.clearPlayersReconnectTimeout(
+        'all players connected before countdown'
+      );
       console.log(
-        `[GameRoom ${this.id}] all players connected — starting countdown`,
+        `[GameRoom ${this.id}] all players connected — starting countdown`
       );
       this.state = 'countdown';
       this.startGameCountdown();
@@ -388,7 +413,7 @@ export class GameRoom {
    */
   private emitLifecycleToConnectedPlayers(
     eventName: 'countdown' | 'game-start',
-    payload: unknown,
+    payload: unknown
   ): void {
     for (const [socketId, playerId] of this.socketToPlayer) {
       const player = this.players.get(playerId);
@@ -480,7 +505,10 @@ export class GameRoom {
     if (this.playersConnectTimeout) return;
     this.playersConnectTimeout = setTimeout(() => {
       this.playersConnectTimeout = null;
-      if (this.state !== 'waiting-for-players' && this.state !== 'waiting-for-ready') {
+      if (
+        this.state !== 'waiting-for-players' &&
+        this.state !== 'waiting-for-ready'
+      ) {
         return;
       }
 
@@ -493,7 +521,7 @@ export class GameRoom {
       }
 
       console.log(
-        `[GameRoom ${this.id}] players reconnect timeout — ${missing.length} player(s) never returned: ${missing.join(', ')}`,
+        `[GameRoom ${this.id}] players reconnect timeout — ${missing.length} player(s) never returned: ${missing.join(', ')}`
       );
       this.clearAbsenceTimers();
       this.io.to(this.roomId).emit('match-end', {
@@ -522,7 +550,7 @@ export class GameRoom {
           const payload = this.buildMatchFoundPayloadForTeam(
             player.playerId,
             teamId,
-            team,
+            team
           );
           if (payload) socket.emit('match-found', payload);
         }
@@ -557,7 +585,7 @@ export class GameRoom {
   private buildMatchFoundPayloadForTeam(
     playerId: string,
     teamId: number,
-    team: QueuedPlayer[],
+    team: QueuedPlayer[]
   ): {
     matchId: string;
     playerId: string;
@@ -631,7 +659,9 @@ export class GameRoom {
     this.readyTimeout = null;
     const disconnectedPlayerIds = this.getDisconnectedPlayerIds();
     if (disconnectedPlayerIds.length > 0) {
-      this.armPlayersReconnectTimeout('ready timeout while players disconnected');
+      this.armPlayersReconnectTimeout(
+        'ready timeout while players disconnected'
+      );
       return;
     }
 
@@ -1071,14 +1101,45 @@ export class GameRoom {
    * Store command history for reconnection support (NET-2)
    */
   private storeCommandHistory(tick: number, commands: PlayerCommand[]): void {
-    this.commandHistory.set(tick, [...commands]);
+    const historyTicks = this.config.commandHistoryTicks;
+    if (historyTicks === 'full') {
+      if (commands.length === 0) return;
+      this.commandHistory.set(tick, [...commands]);
+      this.logTicks.push(tick);
+      if (this.oldestHistoryTick === null) {
+        this.oldestHistoryTick = tick;
+      }
+      return;
+    }
 
-    // Prune old history
-    const oldestToKeep = tick - this.config.commandHistoryTicks;
+    this.commandHistory.set(tick, [...commands]);
+    if (commands.length > 0) {
+      this.logTicks.push(tick);
+    }
+
+    // Prune old history (numeric mode only — unchanged window).
+    const oldestToKeep = tick - historyTicks;
     for (const [historyTick] of this.commandHistory) {
       if (historyTick < oldestToKeep) {
         this.commandHistory.delete(historyTick);
       }
+    }
+    this.pruneLogTicks(oldestToKeep);
+    this.oldestHistoryTick =
+      this.commandHistory.size === 0 ? null : Math.max(0, oldestToKeep);
+  }
+
+  /** Drop non-empty index entries that numeric pruning removed from the map. */
+  private pruneLogTicks(oldestToKeep: number): void {
+    let removeCount = 0;
+    while (
+      removeCount < this.logTicks.length &&
+      this.logTicks[removeCount]! < oldestToKeep
+    ) {
+      removeCount++;
+    }
+    if (removeCount > 0) {
+      this.logTicks.splice(0, removeCount);
     }
   }
 
@@ -1089,15 +1150,115 @@ export class GameRoom {
     fromTick: number
   ): { tick: number; commands: PlayerCommand[] }[] {
     const history: { tick: number; commands: PlayerCommand[] }[] = [];
+    // `'full'` does not store empty ticks. The reconnect window still
+    // reports them as `[]`, matching numeric history.
+    const synthesizeEmpty = this.config.commandHistoryTicks === 'full';
 
     for (let tick = fromTick; tick < this.currentTick; tick++) {
       const commands = this.commandHistory.get(tick);
       if (commands) {
         history.push({ tick, commands });
+      } else if (synthesizeEmpty) {
+        history.push({ tick, commands: [] });
       }
     }
 
     return history;
+  }
+
+  /**
+   * Non-empty log entries in `[fromTick, toTick]` (both inclusive).
+   * Binary search on the sorted tick index, then a walk of the hits.
+   */
+  getLogRange(fromTick: number, toTick: number): MatchLogEntry[] {
+    if (toTick < fromTick || this.logTicks.length === 0) return [];
+    const start = lowerBound(this.logTicks, fromTick);
+    const entries: MatchLogEntry[] = [];
+    for (let i = start; i < this.logTicks.length; i++) {
+      const tick = this.logTicks[i]!;
+      if (tick > toTick) break;
+      const commands = this.commandHistory.get(tick);
+      if (commands && commands.length > 0) {
+        entries.push({ tick, commands });
+      }
+    }
+    return entries;
+  }
+
+  /**
+   * Oldest tick a `match-log` caller can still ask for.
+   * `'full'` is never truncated, so this is 0 even when the map is
+   * empty or the first stored command is later than tick 0.
+   * Numeric mode returns the oldest stored tick, or `currentTick`
+   * when the map is empty.
+   */
+  getOldestLogTick(): number {
+    if (this.config.commandHistoryTicks === 'full') return 0;
+    if (this.oldestHistoryTick !== null) return this.oldestHistoryTick;
+    return this.currentTick;
+  }
+
+  /**
+   * Ticks currently stored in the history map, including empty ticks in
+   * numeric mode.
+   * @internal
+   */
+  getStoredTickCount(): number {
+    return this.commandHistory.size;
+  }
+
+  /**
+   * Numeric history has already dropped `fromTick`. `'full'` is never
+   * truncated: empty ticks are simply absent from the map.
+   */
+  isLogTruncated(fromTick: number): boolean {
+    if (this.config.commandHistoryTicks === 'full') return false;
+    if (this.oldestHistoryTick === null) return false;
+    return fromTick < this.oldestHistoryTick;
+  }
+
+  /** True when this socket is currently bound to a player of the match. */
+  isParticipantSocket(socketId: string): boolean {
+    return this.socketToPlayer.has(socketId);
+  }
+
+  /**
+   * First non-empty `buildId` in `teams.flat()` order, if any player
+   * sent one. Task 9 compares this on resume; the signature stays stable.
+   */
+  getBuildId(): string | undefined {
+    for (const player of this.teams.flat()) {
+      if (player.buildId) return player.buildId;
+    }
+    return undefined;
+  }
+
+  /**
+   * `requireBuildId` rejects a match whose players do not all carry the
+   * same non-empty build id.
+   */
+  private buildsMismatch(): boolean {
+    if (!(this.config.requireBuildId ?? false)) return false;
+    const players = this.teams.flat();
+    const expected = players[0]?.buildId;
+    if (!expected) return true;
+    return players.some((player) => player.buildId !== expected);
+  }
+
+  /**
+   * Same teardown as a players-not-connected ending (`stop(true)` plus
+   * `match-ended`) but no `match-end` broadcast. `match-error` goes
+   * straight to each player's socket because the room has not started.
+   */
+  private rejectForBuildMismatch(): void {
+    const payload = { matchId: this.id, reason: 'build-mismatch' as const };
+    for (const player of this.teams.flat()) {
+      this.io.sockets.sockets
+        .get(player.socketId)
+        ?.emit('match-error', payload);
+    }
+    this.stop(true);
+    this.eventEmitter('match-ended', this.id, 'build-mismatch');
   }
 
   /**
@@ -1266,7 +1427,9 @@ export class GameRoom {
       this.readyPlayers.delete(playerId);
       if (this.state === 'waiting-for-ready') {
         this.clearReadyTimeout('player disconnected during waiting-for-ready');
-        this.armPlayersReconnectTimeout('player disconnected during waiting-for-ready');
+        this.armPlayersReconnectTimeout(
+          'player disconnected during waiting-for-ready'
+        );
       }
       this.eventEmitter('player-disconnected', playerId, this.id);
 
@@ -1311,7 +1474,9 @@ export class GameRoom {
     }
 
     if (this.state === 'waiting-for-ready' && this.areAllPlayersConnected()) {
-      this.clearPlayersReconnectTimeout('all players reconnected during waiting-for-ready');
+      this.clearPlayersReconnectTimeout(
+        'all players reconnected during waiting-for-ready'
+      );
       this.armReadyTimeout();
     }
 
@@ -1369,19 +1534,16 @@ export class GameRoom {
       // instead of freezing on the last value it saw, and a client who
       // reconnects after `game-start` can synthesize the event locally
       // (it will never be re-broadcast).
-      const fromTick = Math.max(
-        0,
-        this.currentTick - this.config.commandHistoryTicks
+      const historyWindow = reconnectHistoryWindow(
+        this.config.commandHistoryTicks
       );
+      const fromTick = Math.max(0, this.currentTick - historyWindow);
       // Use Math.ceil so a deadline 2.1s away is reported as 3, matching
       // the integer value the periodic `countdown` broadcast would have
       // emitted at the most recent whole second.
       const countdownSecondsRemaining =
         this.countdownDeadline !== null
-          ? Math.max(
-              0,
-              Math.ceil((this.countdownDeadline - Date.now()) / 1000),
-            )
+          ? Math.max(0, Math.ceil((this.countdownDeadline - Date.now()) / 1000))
           : null;
       socket.emit('reconnect-state', {
         matchId: this.id,
@@ -1400,7 +1562,6 @@ export class GameRoom {
 
     return true;
   }
-
 
   /**
    * Returns true only when every player in the room is currently
@@ -1786,4 +1947,27 @@ export class GameRoom {
       }
     }
   }
+}
+
+/**
+ * How many ticks of `recentCommands` a reconnect receives.
+ * `'full'` uses the numeric default so the payload matches a server
+ * configured with `commandHistoryTicks: 200`.
+ */
+function reconnectHistoryWindow(commandHistoryTicks: number | 'full'): number {
+  if (commandHistoryTicks !== 'full') return commandHistoryTicks;
+  const fallback = DEFAULT_CONFIG.commandHistoryTicks;
+  return fallback === 'full' ? 200 : fallback;
+}
+
+/** First index in `ticks` whose value is >= `target`. */
+function lowerBound(ticks: readonly number[], target: number): number {
+  let lo = 0;
+  let hi = ticks.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (ticks[mid]! < target) lo = mid + 1;
+    else hi = mid;
+  }
+  return lo;
 }

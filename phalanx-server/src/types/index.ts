@@ -208,7 +208,29 @@ export interface PhalanxConfig {
   maxTickAhead: number;
 
   // === Command History (for reconnection) ===
-  commandHistoryTicks: number;
+  // Task 8 — relay log, build id, and process shutdown.
+  // `commandHistoryTicks` stays 200 by default. `'full'` keeps every
+  // non-empty tick for the whole match. The other fields are optional
+  // and read as false / 0 when omitted, so today's behaviour is unchanged.
+  commandHistoryTicks: number | 'full';
+  /**
+   * When true, `GameRoom.start()` rejects the match before `match-found`
+   * if players' `buildId`s differ or any player has none.
+   * Default: false (build ids are stored and not checked).
+   */
+  requireBuildId?: boolean;
+  /**
+   * How long `Phalanx.shutdown()` waits after `server-shutdown` before
+   * `stop()`. `0` still yields once via `setImmediate` so the event can
+   * leave the process. Default: 0.
+   */
+  shutdownGraceMs?: number;
+  /**
+   * When true, `start()` registers `process.once('SIGTERM')` to call
+   * `shutdown('sigterm')`. `stop()` removes that listener. Default: false.
+   * The process is never exited by the engine.
+   */
+  handleSignals?: boolean;
 
   // === Determinism Features (Phase 2.1) ===
   /** Enable input sequence validation (default: false for backward compatibility) */
@@ -259,7 +281,7 @@ export interface PhalanxConfig {
    */
   extraRequestHandler?: (
     req: IncomingMessage,
-    res: ServerResponse,
+    res: ServerResponse
   ) => boolean | Promise<boolean>;
 }
 
@@ -342,7 +364,13 @@ export interface MatchInfo {
   id: string;
   players: PlayerInfo[];
   currentTick: number;
-  state: 'waiting-for-players' | 'countdown' | 'waiting-for-ready' | 'playing' | 'paused' | 'finished';
+  state:
+    | 'waiting-for-players'
+    | 'countdown'
+    | 'waiting-for-ready'
+    | 'playing'
+    | 'paused'
+    | 'finished';
   createdAt: Date;
   gameType?: string;
 }
@@ -422,6 +450,78 @@ export interface QueuedPlayer {
   socketId: string;
   joinedAt: number;
   gameType?: string;
+  /** Client build id from queue-join / room-create / room-join, when valid. */
+  buildId?: string;
+}
+
+/**
+ * Why a `match-log` request was refused.
+ * `'truncated'` means numeric history no longer contains `fromTick`.
+ */
+export type MatchLogErrorReason =
+  'not-member' | 'not-found' | 'invalid' | 'truncated';
+
+/**
+ * Client → server request for the command log of a match.
+ * `maxTicks` defaults to the whole remaining log on the server.
+ */
+export interface MatchLogRequest {
+  matchId: string;
+  fromTick: number;
+  maxTicks?: number;
+  /**
+   * Client-chosen id for this read. Echoed on chunks and errors so a
+   * socket can ignore a stream that a later request replaced.
+   */
+  requestId?: string;
+}
+
+/** Client → server. Stops the `match-log` stream with this `requestId`. */
+export interface MatchLogCancelRequest {
+  requestId?: string;
+}
+
+/** One stored tick inside a `match-log-chunk`. Empty ticks are omitted. */
+export interface MatchLogEntry {
+  tick: number;
+  commands: PlayerCommand[];
+}
+
+/**
+ * Server → requesting socket. `toTick` is inclusive. A chunk spans at
+ * most 2000 ticks of the requested range (not 2000 entries). `matchId`
+ * is present so a client can ignore a chunk from another match.
+ */
+export interface MatchLogChunkEvent {
+  matchId: string;
+  fromTick: number;
+  toTick: number;
+  entries: MatchLogEntry[];
+  done: boolean;
+  /** Present when the request carried a `requestId`. */
+  requestId?: string;
+}
+
+/** Server → requesting socket when `match-log` is refused. */
+export interface MatchLogErrorEvent {
+  matchId?: string;
+  requestId?: string;
+  reason: MatchLogErrorReason;
+}
+
+/**
+ * Sent to every player of a match before the process stops.
+ * `matchIds` is the same list for every room.
+ */
+export interface ServerShutdownEvent {
+  reason: string;
+  matchIds: string[];
+}
+
+/** Sent to match players when the match cannot start. */
+export interface MatchErrorEvent {
+  matchId: string;
+  reason: 'build-mismatch';
 }
 
 /**
