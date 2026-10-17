@@ -265,17 +265,31 @@ before outcome, digest, and tick listeners. The stored cursor includes
 empty ticks, so
 `MatchRunner.resumeLocal(definition, store, matchId, options?)` can
 fast-forward past the last command. `options` may set `snapshotEveryTicks`
-(default 300), `pauseWhenHidden` (default true), and `RunnerOptions`
-(`hashEveryTicks`, `localSlots`, `roundTripCheck`). It returns `null`
-when the id is unknown, does not start the clock, and leaves `systemSeq`
-and controller modes as they were at the snapshot. A failed snapshot
+(default 300), `pauseWhenHidden` (default true), `onSnapshotFallback`,
+and `RunnerOptions` (`hashEveryTicks`, `localSlots`, `roundTripCheck`).
+It returns `null` when the id is unknown, does not start the clock, and
+leaves `systemSeq` and controller modes as they were at the snapshot.
+A bad newest snapshot is restored from `LoadedMatch.previous` on a new
+runner. `runner.resumeReport` says which tick was used.
+`onSnapshotFallback` runs only when a newer snapshot was skipped. The
+rejected ticks are removed with optional `MatchStore.deleteSnapshot`; a
+cleanup failure is `resumeReport.cleanupError` and the match still
+resumes. `deleteSnapshot` refuses to remove the only remaining snapshot
+once a command at or before a snapshot has been dropped. Resume would
+otherwise replay a partial log from tick 0. If every snapshot fails, `resumeLocal` throws `MatchResumeError`
+and does not clear the store. With no snapshot the whole log is replayed
+from tick 0. A failed snapshot
 encode or snapshot write is reported with `onPersistenceError` and does
 not drop the header or the command tail. A header or command failure
 rejects `whenPersisted()` and is reported on the same hook.
 `lastPersistenceSyncMs` is host time spent sealing that tick, including a
 world save shared with the digest, not the digest itself and not the
 IndexedDB write. `IndexedDbMatchStore` reads `globalThis.indexedDB` when
-a method runs. Node tests install `fake-indexeddb` first. `runLocalMatch`
+a method runs. Schema version 2 keeps `meta`, `commands`, and `snapshots`
+in separate object stores, so an append rewrites one chunk instead of the
+whole match. Opening that version deletes the v1 `matches` store.
+Pre-0.3.0 local matches do not resume; later schema versions must
+migrate. Node tests install `fake-indexeddb` first. `runLocalMatch`
 accepts the same `store`, `snapshotEveryTicks` and `pauseWhenHidden`
 options; omitting them keeps the previous transport.
 

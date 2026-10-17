@@ -8,14 +8,17 @@ metadata:
 
 # Phalanx Runtime Skill
 
-> **Status: Tasks 1–7, 6.5a and 6.5b implemented. `MatchRunner.join` is still Task 12.**
+> **Status: Tasks 1–7, 7.1, 6.5a and 6.5b implemented. `MatchRunner.join` is still Task 12.**
 > Task 3 is engine hooks (ecs id counter, SoA context, pools, math RNG
 > state, ability runtime export, broadphase centers). Task 4 is
 > `StateHelpers` except GAS. Task 5 is `writeAbilities` / `readAbilities`.
 > Task 6 is `MatchRunner` (not `join`), `CommandLog`, `WorldScope`,
 > `BotHost` and `LocalTransport`. Task 7 is opt-in local persistence
 > (`MatchStore`, `MemoryMatchStore`, `IndexedDbMatchStore`,
-> `MatchRunner.resumeLocal`). Task 6.5a is `defineComponent`,
+> `MatchRunner.resumeLocal`). Task 7.1 splits IndexedDB into `meta`,
+> command chunks, and snapshots (schema v2 drops pre-0.3.0 v1 rows) and
+> makes `resumeLocal` fall back to the previous snapshot.
+> Task 6.5a is `defineComponent`,
 > `world.save` / `world.restore`, and the `advanced` subpath.
 > `BinaryStateWriter` /
 > `BinaryStateReader`, `encodeSnapshot` / `decodeSnapshot`, `digestBytes`,
@@ -337,10 +340,21 @@ resumed.start(); // resumeLocal does not start the clock
 ```
 
 Resume restores controller mode for every slot and `systemSeq`, then
-fast-forwards the tail through the stored cursor. A snapshot that is
-already terminal stays ended (`start` throws) and does not catch up. A
-fresh match reuses a stored id by clearing that record once; resume does
-not. `restore` rejects a snapshot older than the persisted cursor.
+fast-forwards the tail through the stored cursor. `LoadedMatch.previous`
+is the older snapshot. A failed `restore` tries that snapshot on a new
+runner and, after catch-up, deletes the rejected tick when the store
+implements `deleteSnapshot`. That delete refuses to remove the only
+remaining snapshot once a covered command has been dropped.
+`runner.resumeReport` is null until
+`resumeLocal` returns. `onSnapshotFallback` runs only when a snapshot
+was skipped. Every snapshot failing throws `MatchResumeError` and leaves
+the store in place. No stored snapshot replays the log from tick 0. A
+snapshot that is already terminal stays ended (`start` throws) and does
+not catch up. A fresh match reuses a stored id by clearing that record
+once; resume does not. `restore` rejects a snapshot older than the
+persisted cursor. IndexedDB schema v2 stores `meta`, one command chunk
+per append, and snapshot bytes separately. Upgrade from v1 deletes
+`matches` without copying it.
 Hiding the page pauses only a started transport. `await runner.whenPersisted()`
 before exiting the process. It rejects when the header or the command tail
 fails to write. A snapshot encode or snapshot write failure is reported

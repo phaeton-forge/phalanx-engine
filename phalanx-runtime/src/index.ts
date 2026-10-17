@@ -1,7 +1,7 @@
 /**
  * @phalanx-engine/runtime — isomorphic match runtime (no DOM, no sockets).
  *
- * Status: Tasks 1–7, 6.5a and 6.5b are implemented. Games use
+ * Status: Tasks 1–7, 7.1, 6.5a and 6.5b are implemented. Games use
  * `defineComponent`, `defineCommands`, `defineGame` and `runLocalMatch`.
  * Local persistence is opt-in via `MatchStore` (`MemoryMatchStore`,
  * `IndexedDbMatchStore`) and `MatchRunner.resumeLocal`.

@@ -276,6 +276,10 @@ export class MatchJournal {
       }
     } catch (error) {
       if (header) this.headerPending = true;
+      // appendCommands is one transaction. A throw means nothing from this
+      // batch was committed, so the retry is the same batch again. The
+      // journal does not produce a partial overlap with a stored chunk.
+      // The store still dedups one, because other callers can append twice.
       this.entries = entries.concat(this.entries);
       this.encoded = snapshots.concat(this.encoded);
       throw error;

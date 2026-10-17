@@ -20,6 +20,7 @@ const ARENA = 2_000_000_000;
 
 interface InspectableStore extends MatchStore {
   snapshotTicks(matchId: string): Promise<readonly number[]>;
+  deleteSnapshot(matchId: string, tick: number): Promise<void>;
 }
 
 let sequence = 0;
@@ -145,6 +146,115 @@ describe.each([
     expect(loaded?.tick).toBe(9);
     expect(loaded?.tail.map((item) => item.tick)).toEqual([6]);
     expect(loaded?.snapshot?.tick).toBe(5);
+    expect(loaded?.previous).toBeUndefined();
+  });
+
+  it('exposes the previous snapshot and the commands after it', async () => {
+    const store = openStore();
+    const matchId = nextId('previous');
+    await store.saveHeader(matchId, tinyConfig(matchId));
+    await store.appendCommands(matchId, [entry(6), entry(8), entry(12)], 12);
+    await store.saveSnapshot(matchId, 5, new Uint8Array([5]));
+    await store.saveSnapshot(matchId, 10, new Uint8Array([10]));
+    const loaded = await store.load(matchId);
+    expect(loaded?.snapshot?.tick).toBe(10);
+    expect(loaded?.tail.map((item) => item.tick)).toEqual([12]);
+    expect(loaded?.previous?.snapshot.tick).toBe(5);
+    expect(loaded?.previous?.snapshot.bytes).toEqual(new Uint8Array([5]));
+    expect(loaded?.previous?.tail.map((item) => item.tick)).toEqual([6, 8, 12]);
+  });
+
+  it('collapses one command when only the payload key order differs', async () => {
+    const store = openStore();
+    const matchId = nextId('key-order-one');
+    const first: LogEntry = {
+      tick: 4,
+      playerId: 'local:0',
+      type: 'spawn',
+      data: { q: 1, p: { a: 1, b: 2 } },
+    };
+    const reordered: LogEntry = {
+      tick: 4,
+      playerId: 'local:0',
+      type: 'spawn',
+      data: { q: 1, p: { b: 2, a: 1 } },
+    };
+    await store.saveHeader(matchId, tinyConfig(matchId));
+    await store.appendCommands(matchId, [first], 4);
+    await store.appendCommands(matchId, [reordered], 4);
+    expect((await store.load(matchId))?.tail).toHaveLength(1);
+  });
+
+  it('dedups a repeated newer command after one with an older tick', async () => {
+    const store = openStore();
+    const matchId = nextId('old-tick-dedup');
+    await store.saveHeader(matchId, tinyConfig(matchId));
+    await store.appendCommands(matchId, [entry(8)], 8);
+    await store.appendCommands(matchId, [entry(10)], 10);
+    await store.appendCommands(matchId, [entry(5)], 10);
+    await store.appendCommands(matchId, [entry(8)], 10);
+    const loaded = await store.load(matchId);
+    expect(loaded?.tick).toBe(10);
+    expect(loaded?.tail.map((item) => item.tick)).toEqual([8, 10, 5]);
+  });
+
+  it('deleteSnapshot keeps the cursor and the command log', async () => {
+    const store = openStore();
+    const matchId = nextId('delete-snap');
+    await store.saveHeader(matchId, tinyConfig(matchId));
+    await store.appendCommands(matchId, [entry(6), entry(12), entry(18)], 20);
+    await store.saveSnapshot(matchId, 5, new Uint8Array([5]));
+    await store.saveSnapshot(matchId, 10, new Uint8Array([10]));
+    await store.saveSnapshot(matchId, 15, new Uint8Array([15]));
+    expect(await store.snapshotTicks(matchId)).toEqual([10, 15]);
+    await store.deleteSnapshot(matchId, 15);
+    expect(await store.snapshotTicks(matchId)).toEqual([10]);
+    const afterNewest = await store.load(matchId);
+    expect(afterNewest?.tick).toBe(20);
+    expect(afterNewest?.snapshot?.tick).toBe(10);
+    expect(afterNewest?.previous).toBeUndefined();
+    expect(afterNewest?.tail.map((item) => item.tick)).toEqual([12, 18]);
+    await store.deleteSnapshot(matchId, 99);
+    expect(await store.snapshotTicks(matchId)).toEqual([10]);
+    expect((await store.load(matchId))?.tick).toBe(20);
+    await store.saveSnapshot(matchId, 15, new Uint8Array([15]));
+    await store.deleteSnapshot(matchId, 10);
+    expect(await store.snapshotTicks(matchId)).toEqual([15]);
+    const afterOldest = await store.load(matchId);
+    expect(afterOldest?.tick).toBe(20);
+    expect(afterOldest?.snapshot?.bytes).toEqual(new Uint8Array([15]));
+    expect(afterOldest?.tail.map((item) => item.tick)).toEqual([18]);
+  });
+
+  it('rejects deleting the only snapshot once covered commands are gone', async () => {
+    const store = openStore();
+    const matchId = nextId('final-snapshot');
+    await store.saveHeader(matchId, tinyConfig(matchId));
+    await store.appendCommands(matchId, [entry(1), entry(6)], 6);
+    await store.saveSnapshot(matchId, 5, new Uint8Array([5]));
+    await expect(store.deleteSnapshot(matchId, 5)).rejects.toThrow(
+      /final recovery snapshot/
+    );
+    const loaded = await store.load(matchId);
+    expect(loaded?.tick).toBe(6);
+    expect(loaded?.snapshot?.tick).toBe(5);
+    expect(loaded?.snapshot?.bytes).toEqual(new Uint8Array([5]));
+    expect(loaded?.tail.map((item) => item.tick)).toEqual([6]);
+    expect(await store.snapshotTicks(matchId)).toEqual([5]);
+  });
+
+  it('deletes the only snapshot when every command is still stored', async () => {
+    const store = openStore();
+    const matchId = nextId('complete-log');
+    await store.saveHeader(matchId, tinyConfig(matchId));
+    await store.appendCommands(matchId, [entry(6)], 6);
+    await store.saveSnapshot(matchId, 5, new Uint8Array([5]));
+    await store.deleteSnapshot(matchId, 5);
+    const loaded = await store.load(matchId);
+    expect(loaded?.tick).toBe(6);
+    expect(loaded?.snapshot).toBeUndefined();
+    expect(loaded?.tail.map((item) => item.tick)).toEqual([6]);
+    expect(await store.snapshotTicks(matchId)).toEqual([]);
   });
 
   it('resumes a malformed envelope beside the first command', async () => {
@@ -748,7 +858,8 @@ describe('IndexedDbMatchStore corrupt rows', () => {
     const databaseName = nextId('corrupt-db');
     const matchId = nextId('corrupt');
     const store = new IndexedDbMatchStore({ databaseName });
-    await putRawRow(databaseName, matchId, { cursor: 'nope' });
+    await store.saveHeader(matchId, tinyConfig(matchId));
+    await putMeta(databaseName, matchId, { cursor: 'nope' });
     await expect(settle(store.load(matchId))).rejects.toThrow(/corrupt/);
     await settle(store.clear(matchId));
     expect(await settle(store.load(matchId))).toBeNull();
@@ -759,7 +870,7 @@ describe('IndexedDbMatchStore corrupt rows', () => {
     const matchId = nextId('corrupt-write');
     const store = new IndexedDbMatchStore({ databaseName });
     await store.saveHeader(matchId, tinyConfig(matchId));
-    await putRawRow(databaseName, matchId, { cursor: 'nope' });
+    await putMeta(databaseName, matchId, { cursor: 'nope' });
     await expect(
       settle(store.appendCommands(matchId, [entry(1)], 1))
     ).rejects.toThrow(/corrupt/);
@@ -807,6 +918,10 @@ class ClearCountingStore implements InspectableStore {
 
   public snapshotTicks(matchId: string): Promise<readonly number[]> {
     return this.inner.snapshotTicks(matchId);
+  }
+
+  public deleteSnapshot(matchId: string, tick: number): Promise<void> {
+    return this.inner.deleteSnapshot(matchId, tick);
   }
 }
 
@@ -890,8 +1005,6 @@ function installYieldHider(onYield: () => void): () => void {
 }
 
 interface RawDatabase {
-  objectStoreNames: { contains(name: string): boolean };
-  createObjectStore(name: string): unknown;
   transaction(
     name: string,
     mode: 'readwrite'
@@ -904,20 +1017,16 @@ interface RawDatabase {
   close(): void;
 }
 
-function putRawRow(
+function putMeta(
   databaseName: string,
   matchId: string,
   value: unknown
 ): Promise<void> {
   const host = globalThis as unknown as {
     indexedDB?: {
-      open(
-        name: string,
-        version: number
-      ): {
+      open(name: string): {
         result: RawDatabase;
         error: unknown;
-        onupgradeneeded: (() => void) | null;
         onsuccess: (() => void) | null;
         onerror: (() => void) | null;
       };
@@ -928,17 +1037,11 @@ function putRawRow(
     return Promise.reject(new Error('indexedDB missing'));
   }
   return new Promise((resolve, reject) => {
-    const request = factory.open(databaseName, 1);
-    request.onupgradeneeded = () => {
-      const db = request.result;
-      if (!db.objectStoreNames.contains('matches')) {
-        db.createObjectStore('matches');
-      }
-    };
+    const request = factory.open(databaseName);
     request.onsuccess = () => {
       const db = request.result;
-      const tx = db.transaction('matches', 'readwrite');
-      tx.objectStore('matches').put(value, matchId);
+      const tx = db.transaction('meta', 'readwrite');
+      tx.objectStore('meta').put(value, matchId);
       tx.oncomplete = () => {
         db.close();
         resolve();

@@ -1346,6 +1346,21 @@ Literal instructions for each task; they override the original task text.
   write queue pending. `options` carries `snapshotEveryTicks`,
   `pauseWhenHidden`, and `RunnerOptions`. Only the last two snapshots are
   kept. Command dedup sorts payload object keys.
+- **Task 7.1 (storage hardening).** IndexedDB schema v2 splits a match
+  into `meta` (keyed by `matchId`), `commands` (keyed by `[matchId, seq]`,
+  one chunk per `appendCommands`), and `snapshots` (keyed by
+  `[matchId, tick]`). An append writes one chunk plus `meta`, not the
+  whole log. Version 1's `matches` store is deleted on upgrade;
+  pre-0.3.0 data is dropped and later versions must migrate.
+  `LoadedMatch.previous` is the older snapshot and the commands after it.
+  `resumeLocal` tries snapshots newest first, each on a new runner. A
+  fast-forward error does not fall back. Every snapshot failing throws
+  `MatchResumeError` and does not clear the store. On a successful
+  fallback the runner's `resumeReport` names the snapshot used, and
+  `deleteSnapshot?` removes the rejected ticks. It refuses to delete the
+  only remaining snapshot once a command at or before a snapshot has been
+  dropped. `onSnapshotFallback`
+  runs only when at least one snapshot was skipped.
 - **Task 8 (relay full log).** Store raw `PlayerCommand`s including the
   envelope; `match-log` chunks of ≤ 2000 ticks; `buildId`; SIGTERM.
 - **Task 9 (session token).** Derive `playerId` from the token / socket for

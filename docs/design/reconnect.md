@@ -72,8 +72,12 @@ online and in local (bot) matches.
   `MemoryMatchStore` and `IndexedDbMatchStore` both live in
   `@phalanx-engine/runtime` (Task 7). The IndexedDB store touches
   `globalThis.indexedDB` only when a method runs, so the package stays free
-  of the DOM lib. The tick seals the world body (buffer handed off without
-  a second copy) plus that tick's bot section and input checkpoint.
+  of the DOM lib. Schema v2 stores a small `meta` row, one command chunk
+  per append, and one snapshot row per retained tick (`DB_VERSION` 2).
+  Opening it deletes the v1 `matches` store. Pre-0.3.0 local matches are
+  dropped; later versions must migrate. The tick seals the world body
+  (buffer handed off without a second copy) plus that tick's bot section
+  and input checkpoint.
   `encodeSnapshot` / digest and the store write run later (`setImmediate`
   in Node, `requestIdleCallback` in browsers, otherwise `MessageChannel`
   or `setTimeout(0)`). A hash tick that is also a snapshot tick serializes
@@ -128,8 +132,17 @@ not ended.
   it never drops ticks.
 - Resume with `MatchRunner.resumeLocal` from the latest stored snapshot
   plus the logged ticks after it, including empty ticks via the stored
-  cursor. A snapshot that is already a finished match stays ended and
-  does not catch up. The snapshot's controller modes and `systemSeq` come
+  cursor. A restore failure tries the previous snapshot on a new runner
+  and deletes the rejected one after a successful catch-up
+  (`resumeReport`, `onSnapshotFallback`, optional
+  `MatchStore.deleteSnapshot`). `deleteSnapshot` refuses to remove the
+  only remaining snapshot once a command at or before a snapshot has been
+  dropped, so a tick-0 replay cannot silently drop that command. When
+  every snapshot fails it throws
+  `MatchResumeError` and leaves the store unchanged. With no snapshot the
+  whole log is replayed from tick 0. A snapshot that is already a finished
+  match stays ended and does not catch up. The snapshot's controller modes
+  and `systemSeq` come
   back with the bot section and the input checkpoint. A fresh match that
   reuses a stored id replaces that record; resume does not.
 - The snapshot's input checkpoint is re-submitted when the log has no tail.
