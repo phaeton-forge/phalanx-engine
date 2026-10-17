@@ -24,6 +24,52 @@ export interface CustomGameMode {
 export type GameMode = GameModePreset | CustomGameMode;
 
 /**
+ * One finished match, handed to `PhalanxConfig.onMatchArchived`.
+ * `formatVersion` is 1. The engine does not store this value.
+ * `log` entries match `match-log-chunk` `entries`: non-empty ticks,
+ * ascending, the same `PlayerCommand[]` arrays the room stored.
+ */
+export interface MatchArchive {
+  formatVersion: 1;
+  matchId: string;
+  /** Present when the room was created with a game type. */
+  gameType?: string;
+  /** `GameRoom.getBuildId()`, omitted when no player sent one. */
+  buildId?: string;
+  /** `GameRoom.randomSeed`, the same value sent in `game-start`. */
+  seed: number;
+  /** Index is `teamId`. Order matches `GameRoom` teams. */
+  teams: { playerId: string; username: string }[][];
+  /**
+   * `reason` from `match-ended` / `match-end`
+   * (`'stopped' | 'desync' | 'turn-timeout' | …`).
+   */
+  endReason: string;
+  /** Set when `endMatch` resolved a winning team. Otherwise omitted. */
+  winnerTeamId?: number;
+  /** Epoch ms of `startGame()`. */
+  startedAt: number;
+  /** Epoch ms when this archive was built. */
+  endedAt: number;
+  /**
+   * Last tick broadcast in `commands-batch` (`currentTick - 1`).
+   * `-1` when no tick was broadcast.
+   */
+  lastTick: number;
+  /** Room `tickRate`, including a `gameTypes` override. */
+  tickRate: number;
+  /** Room `commandHistoryTicks`. */
+  historyMode: number | 'full';
+  /**
+   * `true` for `'full'`, and for a numeric window that still holds
+   * tick 0 (or never stored a tick). `false` once the numeric window
+   * has dropped the start of the log.
+   */
+  complete: boolean;
+  log: { tick: number; commands: PlayerCommand[] }[];
+}
+
+/**
  * Tick mode: 'continuous' runs a server tick loop; 'event' is tickless (relay-only).
  */
 export type TickMode = 'continuous' | 'event';
@@ -231,6 +277,24 @@ export interface PhalanxConfig {
    * The process is never exited by the engine.
    */
   handleSignals?: boolean;
+
+  // Task 8.1
+  /**
+   * Called once when a match that reached `startGame()` ends.
+   * The engine does not write the archive anywhere. Omit the hook
+   * and the match log is released with nothing built.
+   * Not called before the match starts: `build-mismatch`,
+   * `players-not-connected`, `ready-timeout`, or `stop()` /
+   * `shutdown()` during countdown or waiting-for-ready.
+   * `rec.log` reuses the stored command arrays. The engine does not
+   * touch them after the call. Do not mutate them if something else
+   * still holds those arrays. Do heavy work asynchronously
+   * (`zlib` async, a stream into storage): the hook runs on the
+   * main thread. A throw or a rejected promise is logged and does
+   * not stop the relay. `shutdown()` waits for hooks that are still
+   * running, up to `shutdownGraceMs` after `stop()`.
+   */
+  onMatchArchived?: (rec: MatchArchive) => void | Promise<void>;
 
   // === Determinism Features (Phase 2.1) ===
   /** Enable input sequence validation (default: false for backward compatibility) */

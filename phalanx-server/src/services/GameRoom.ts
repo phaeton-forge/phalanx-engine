@@ -1,4 +1,5 @@
 import { randomBytes } from 'crypto';
+import { performance } from 'node:perf_hooks';
 import type { Server as SocketIOServer } from 'socket.io';
 import type {
   PhalanxConfig,
@@ -14,6 +15,7 @@ import type {
   PlayerAbsentEvent,
   PlayerCommandContext,
   MatchLogEntry,
+  MatchArchive,
 } from '../types/index.js';
 import { DEFAULT_CONFIG } from '../config/defaults.js';
 
@@ -138,6 +140,30 @@ export class GameRoom {
   private logTicks: number[] = [];
   /** Oldest key still in `commandHistory`, or null when the map is empty. */
   private oldestHistoryTick: number | null = null;
+  /**
+   * Set in `startGame()`. Endings before that do not build an archive.
+   * `stop()` moves the room to `'finished'`, so the state alone cannot
+   * answer "did this match start?".
+   */
+  private matchStarted: boolean = false;
+  /** Epoch ms captured from the `Date.now()` already taken in `startGame()`. */
+  private startedAtMs: number = 0;
+  /** First `takeArchive` wins. Later calls return null. */
+  private archiveTaken: boolean = false;
+  /**
+   * History maps were dropped at match end. An in-flight `match-log`
+   * must end with `not-found` instead of reading the empty map.
+   */
+  private logReleased: boolean = false;
+  /** Times `buildArchive` ran. Stays 0 when no hook is configured. */
+  private archiveBuildCount: number = 0;
+  /** Milliseconds spent in the last `buildArchive`, or 0. */
+  private lastArchiveBuildMs: number = 0;
+  /**
+   * Winning team from a successful `endMatch`, when the relay knows one.
+   * `undefined` omits `winnerTeamId` (including `'abandoned'`).
+   */
+  private archiveWinnerTeamId: number | undefined;
   // Track players who are currently lagging (to avoid spamming events)
   private laggingPlayers: Set<string> = new Set();
   // Random seed for deterministic RNG (generated at match creation)
@@ -681,8 +707,11 @@ export class GameRoom {
     this.state = 'playing';
     this.currentTick = 0;
 
-    // Reset activity timestamps for all players at game start
+    // Reset activity timestamps for all players at game start.
+    // The same timestamp is the archive's `startedAt`.
     const now = Date.now();
+    this.matchStarted = true;
+    this.startedAtMs = now;
     for (const playerId of this.players.keys()) {
       this.lastMessageTime.set(playerId, now);
     }
@@ -1193,9 +1222,34 @@ export class GameRoom {
    * when the map is empty.
    */
   getOldestLogTick(): number {
+    if (this.logReleased) return this.currentTick;
     if (this.config.commandHistoryTicks === 'full') return 0;
     if (this.oldestHistoryTick !== null) return this.oldestHistoryTick;
     return this.currentTick;
+  }
+
+  /**
+   * True after match end has dropped the command history.
+   * `match-log` uses this to finish an in-flight read with `not-found`.
+   */
+  isLogReleased(): boolean {
+    return this.logReleased;
+  }
+
+  /**
+   * How many times this room assembled a `MatchArchive`.
+   * @internal
+   */
+  getArchiveBuildCount(): number {
+    return this.archiveBuildCount;
+  }
+
+  /**
+   * Duration of the last archive assembly, in milliseconds.
+   * @internal
+   */
+  getLastArchiveBuildMs(): number {
+    return this.lastArchiveBuildMs;
   }
 
   /**
@@ -1622,6 +1676,86 @@ export class GameRoom {
   }
 
   /**
+   * Build the archive for a started match and drop the room's history.
+   * Returns null when the match never started, when this was already
+   * called, or when `onMatchArchived` is not set (history is still
+   * dropped). `hook` is the function that authorized this build; the
+   * caller must use that function and not a later config read.
+   * The log arrays are moved, not copied.
+   */
+  takeArchive(endReason: string): {
+    archive: MatchArchive;
+    hook: (rec: MatchArchive) => void | Promise<void>;
+  } | null {
+    if (this.archiveTaken) return null;
+    this.archiveTaken = true;
+    const hook = this.config.onMatchArchived;
+    const archive =
+      this.matchStarted && typeof hook === 'function'
+        ? this.buildArchive(endReason)
+        : null;
+    this.releaseHistory();
+    if (!archive || typeof hook !== 'function') return null;
+    return { archive, hook };
+  }
+
+  private buildArchive(endReason: string): MatchArchive {
+    const started = performance.now();
+    const log: MatchLogEntry[] = [];
+    for (const tick of this.logTicks) {
+      const commands = this.commandHistory.get(tick);
+      if (commands !== undefined && commands.length > 0) {
+        log.push({ tick, commands });
+      }
+    }
+    const historyMode = this.config.commandHistoryTicks;
+    const complete =
+      historyMode === 'full' ||
+      this.oldestHistoryTick === null ||
+      this.oldestHistoryTick === 0;
+    const archive: MatchArchive = {
+      formatVersion: 1,
+      matchId: this.id,
+      seed: this.randomSeed,
+      teams: this.teams.map((team) =>
+        team.map((player) => ({
+          playerId: player.playerId,
+          username: player.username,
+        }))
+      ),
+      endReason,
+      startedAt: this.startedAtMs,
+      endedAt: Date.now(),
+      lastTick: this.currentTick - 1,
+      tickRate: this.config.tickRate,
+      historyMode,
+      complete,
+      log,
+    };
+    if (this.gameType !== undefined) {
+      archive.gameType = this.gameType;
+    }
+    const buildId = this.getBuildId();
+    if (buildId !== undefined) {
+      archive.buildId = buildId;
+    }
+    if (this.archiveWinnerTeamId !== undefined) {
+      archive.winnerTeamId = this.archiveWinnerTeamId;
+    }
+    this.archiveBuildCount += 1;
+    this.lastArchiveBuildMs = performance.now() - started;
+    return archive;
+  }
+
+  /** Drop history so the hook, when there is one, owns the arrays. */
+  private releaseHistory(): void {
+    this.commandHistory = new Map();
+    this.logTicks = [];
+    this.oldestHistoryTick = null;
+    this.logReleased = true;
+  }
+
+  /**
    * End the match and tell the room, then the services (`match-ended`).
    * A second call is a no-op. `winnerTeamId` is sent when the caller
    * passed one that exists, or when `loserIds` leaves exactly one team
@@ -1635,6 +1769,9 @@ export class GameRoom {
     if (this.isFinished()) return false;
     const winnerTeamId = this.resolveWinnerTeamId(result);
     if (winnerTeamId === null) return false;
+    if (winnerTeamId !== undefined) {
+      this.archiveWinnerTeamId = winnerTeamId;
+    }
     this.stop(true);
     const payload: { reason: string; winnerTeamId?: number } = {
       reason: result.reason,

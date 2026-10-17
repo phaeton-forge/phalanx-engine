@@ -43,6 +43,7 @@ export type {
   MatchLogEntry,
   MatchLogChunkEvent,
   MatchLogErrorEvent,
+  MatchArchive,
   ServerShutdownEvent,
   MatchErrorEvent,
   StateHashEvent,
