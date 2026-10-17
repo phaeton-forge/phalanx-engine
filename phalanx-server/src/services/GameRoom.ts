@@ -1186,15 +1186,23 @@ export class GameRoom {
   }
 
   /**
-   * Oldest tick still stored in the history map.
-   * When the map is empty this is `currentTick` (nothing older exists).
+   * Oldest tick a `match-log` caller can still ask for.
+   * `'full'` is never truncated, so this is 0 even when the map is
+   * empty or the first stored command is later than tick 0.
+   * Numeric mode returns the oldest stored tick, or `currentTick`
+   * when the map is empty.
    */
   getOldestLogTick(): number {
+    if (this.config.commandHistoryTicks === 'full') return 0;
     if (this.oldestHistoryTick !== null) return this.oldestHistoryTick;
     return this.currentTick;
   }
 
-  /** Ticks currently stored in the history map, including empty ticks in numeric mode. */
+  /**
+   * Ticks currently stored in the history map, including empty ticks in
+   * numeric mode.
+   * @internal
+   */
   getStoredTickCount(): number {
     return this.commandHistory.size;
   }

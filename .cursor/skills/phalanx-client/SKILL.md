@@ -101,7 +101,7 @@ interface PhalanxClientConfig {
 }
 ```
 
-`buildId` is copied onto `queue-join`, `room-create`, and `room-join` only when it is set. `fetchMatchLog(fromTick, { maxTicks })` returns an `AsyncIterable<LogChunk>` for the current match. The iterator stops on `done: true`. `match-log-error` rejects with `MatchLogError` (`reason`). Breaking out of `for await` removes the socket listeners. `serverShutdown` carries `{ reason, matchIds }`.
+`buildId` is copied onto `queue-join`, `room-create`, and `room-join` only when it is set. `fetchMatchLog(fromTick, { maxTicks })` returns an `AsyncIterable<LogChunk>` for the current match. Run one fetch per match at a time; parallel iterators share the socket events and split the chunks. The iterator stops on `done: true`. `match-log-error` rejects with `MatchLogError` (`reason`). A socket drop rejects with reason `'disconnected'`. Breaking out of `for await` removes the socket listeners. `serverShutdown` carries `{ reason, matchIds }`.
 
 ### 4. Matchmaking Flow
 

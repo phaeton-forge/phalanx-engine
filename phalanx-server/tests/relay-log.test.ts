@@ -39,6 +39,37 @@ afterEach(async () => {
   }
 });
 
+/**
+ * The Socket.IO socket the server emits on. `io` is private; the cast
+ * is only so a test can see emits that a disconnected client would miss.
+ */
+function serverSocket(
+  server: Phalanx,
+  socketId: string
+): {
+  disconnected: boolean;
+  disconnect: () => unknown;
+  emit: (event: string, ...args: unknown[]) => boolean;
+} {
+  const internal = server as unknown as {
+    io: {
+      sockets: {
+        sockets: Map<
+          string,
+          {
+            disconnected: boolean;
+            disconnect: () => unknown;
+            emit: (event: string, ...args: unknown[]) => boolean;
+          }
+        >;
+      };
+    } | null;
+  };
+  const sock = internal.io?.sockets.sockets.get(socketId);
+  if (!sock) throw new Error(`no server socket ${socketId}`);
+  return sock;
+}
+
 function findRoom(server: Phalanx, matchId: string): GameRoom {
   // Production `findMatch` is private. Tests use the same services.
   const internal = server as unknown as {
@@ -309,8 +340,11 @@ describe('full command log', () => {
     assertChunkJoints(chunks, 0, 8999);
     const entries = chunks.flatMap((chunk) => chunk.entries);
     expect(JSON.stringify(entries)).toBe(JSON.stringify(batches));
-    // 180 commands across 9000 ticks. Measured once; kept so the figure stays honest.
-    expect(Buffer.byteLength(JSON.stringify(entries), 'utf8')).toBe(16852);
+    // Sparse log: one small command every 50 ticks. Bound, not a snapshot
+    // of one JSON encoding.
+    expect(Buffer.byteLength(JSON.stringify(entries), 'utf8')).toBeLessThan(
+      20_000
+    );
   }, 120_000);
 
   it('matches commands-batch in continuous mode, including sort order', async () => {
@@ -478,6 +512,52 @@ describe('full command log', () => {
       findRoom(server, matchId).getCurrentTick() - 1
     );
   }, 60_000);
+
+  it('stops streaming when the requester disconnects', async () => {
+    const { server, url } = await startServer();
+    const { host, matchId } = await openPrivateMatch(url);
+    await playEventTicks(host, 2001, 2001);
+    const remote = serverSocket(server, host.id);
+    let chunkEmits = 0;
+    const original = remote.emit.bind(remote);
+    remote.emit = (event: string, ...args: unknown[]) => {
+      if (event === 'match-log-chunk') {
+        chunkEmits += 1;
+        if (chunkEmits === 1) remote.disconnect();
+      }
+      return original(event, ...args);
+    };
+
+    host.emit('match-log', { matchId, fromTick: 0 });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(remote.disconnected).toBe(true);
+    expect(chunkEmits).toBe(1);
+  }, 60_000);
+
+  it('sends the next chunk on a later turn', async () => {
+    const { server, url } = await startServer();
+    const { host, matchId } = await openPrivateMatch(url);
+    await playEventTicks(host, 2001, 2001);
+    const remote = serverSocket(server, host.id);
+    let chunkEmits = 0;
+    let yieldedBeforeSecond = false;
+    const original = remote.emit.bind(remote);
+    remote.emit = (event: string, ...args: unknown[]) => {
+      if (event === 'match-log-chunk') {
+        chunkEmits += 1;
+        if (chunkEmits === 1) {
+          setImmediate(() => {
+            yieldedBeforeSecond = chunkEmits === 1;
+          });
+        }
+      }
+      return original(event, ...args);
+    };
+
+    const chunks = await requestLog(host, matchId, 0);
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(yieldedBeforeSecond).toBe(true);
+  }, 60_000);
 });
 
 describe('match-log refusals', () => {
@@ -553,7 +633,16 @@ describe('match-log refusals', () => {
         maxTicks,
       });
       expect(error.reason).toBe('invalid');
+      expect(error.matchId).toBe(matchId);
     }
+
+    const blank = await expectLogError(host, { matchId: '', fromTick: 0 });
+    expect(blank).toEqual({ reason: 'invalid' });
+    expect(blank.matchId).toBeUndefined();
+
+    const missingId = await expectLogError(host, { fromTick: 0 });
+    expect(missingId).toEqual({ reason: 'invalid' });
+    expect(missingId.matchId).toBeUndefined();
   });
 });
 
@@ -695,6 +784,78 @@ describe('match buildId', () => {
     expect(room.getBuildId()).toBe('host-build');
     expect(server.getActiveMatches().map((item) => item.id)).toContain(
       match.matchId
+    );
+  });
+
+  it('rejects a player with no buildId when requireBuildId is set', async () => {
+    const { server, url } = await startServer({ requireBuildId: true });
+
+    async function rejected(
+      hostId: string,
+      guestId: string,
+      hostBuild: string | undefined
+    ): Promise<void> {
+      const host = await connect(url);
+      const guest = await connect(url);
+      const created = onceEvent<{ code: string }>(host, 'room-created');
+      const hostError = onceEvent<{ matchId: string; reason: string }>(
+        host,
+        'match-error'
+      );
+      const guestError = onceEvent<{ matchId: string; reason: string }>(
+        guest,
+        'match-error'
+      );
+      let matchFound = false;
+      host.on('match-found', () => {
+        matchFound = true;
+      });
+      guest.on('match-found', () => {
+        matchFound = true;
+      });
+      host.emit('room-create', {
+        playerId: hostId,
+        username: hostId,
+        ...(hostBuild !== undefined ? { buildId: hostBuild } : {}),
+      });
+      const { code } = await created;
+      guest.emit('room-join', {
+        playerId: guestId,
+        username: guestId,
+        code,
+      });
+      const [left, right] = await Promise.all([hostError, guestError]);
+      expect(left.reason).toBe('build-mismatch');
+      expect(right).toEqual({
+        matchId: left.matchId,
+        reason: 'build-mismatch',
+      });
+      expect(matchFound).toBe(false);
+      expect(server.getActiveMatches()).toEqual([]);
+    }
+
+    await rejected('player1', 'player2', 'build-a');
+    await rejected('player3', 'player4', undefined);
+  });
+
+  it('accepts a buildId of length 128 and ignores 129', async () => {
+    const id128 = 'b'.repeat(128);
+    const strict = await startServer({ requireBuildId: true });
+    const started = await openPrivateMatch(strict.url, {
+      host: id128,
+      guest: id128,
+    });
+    expect(findRoom(strict.server, started.matchId).getBuildId()).toBe(id128);
+
+    const loose = await startServer({
+      port: PORT_B,
+      requireBuildId: false,
+    });
+    const ignored = await openPrivateMatch(loose.url, {
+      guest: 'x'.repeat(129),
+    });
+    expect(findRoom(loose.server, ignored.matchId).getBuildId()).toBe(
+      undefined
     );
   });
 

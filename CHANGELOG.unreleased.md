@@ -293,7 +293,8 @@ Entries collected per package until the synchronized 0.3.0 release
   `queue-join` / `room-create` / `room-join` only when set.
   `fetchMatchLog(fromTick)` is an `AsyncIterable` of `LogChunk`
   (`match-log` / `match-log-chunk`). `match-log-error` rejects with
-  `MatchLogError`. `serverShutdown` fires for `server-shutdown`.
+  `MatchLogError`. A socket drop rejects with reason `disconnected`.
+  `serverShutdown` fires for `server-shutdown`.
 
 ## @phalanx-engine/server
 

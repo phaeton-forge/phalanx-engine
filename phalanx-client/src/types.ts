@@ -376,13 +376,18 @@ export interface TickCommandsHistory {
   commands: PlayerCommand[];
 }
 
-/** Why the server refused a `match-log` request. */
+/**
+ * Why `fetchMatchLog` stopped.
+ * The first four values arrive on `match-log-error`.
+ * `'disconnected'` is raised locally when the socket closes mid-read;
+ * the server does not send it.
+ */
 export type MatchLogErrorReason =
-  'not-member' | 'not-found' | 'invalid' | 'truncated';
+  'not-member' | 'not-found' | 'invalid' | 'truncated' | 'disconnected';
 
 /**
  * Thrown by `PhalanxClient.fetchMatchLog` when the server emits
- * `match-log-error`. `reason` is the wire value.
+ * `match-log-error`, or when the socket drops before the log finishes.
  */
 export class MatchLogError extends Error {
   readonly reason: MatchLogErrorReason;

@@ -454,13 +454,16 @@ client.on('serverShutdown', ({ reason, matchIds }) => {
   console.log(reason, matchIds);
 });
 
+// One fetchMatchLog per match at a time. Parallel requests share the
+// socket events and would split the chunks between them.
 try {
   for await (const chunk of client.fetchMatchLog(0)) {
     applyChunk(chunk); // caller's job; the iterator yields between chunks
   }
 } catch (error) {
   if (error instanceof MatchLogError) {
-    console.log(error.reason); // not-member | not-found | invalid | truncated
+    // not-member | not-found | invalid | truncated | disconnected
+    console.log(error.reason);
   }
 }
 

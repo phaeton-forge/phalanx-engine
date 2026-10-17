@@ -839,7 +839,7 @@ export class Phalanx extends EventEmitter {
     const parsed = parseMatchLogRequest(payload);
     if (!parsed.ok) {
       socket.emit('match-log-error', {
-        ...(parsed.matchId !== undefined ? { matchId: parsed.matchId } : {}),
+        ...nonEmptyMatchId(parsed.matchId),
         reason: 'invalid',
       });
       return;
@@ -985,6 +985,14 @@ function readOptionalBuildId(value: unknown): string | undefined {
   return value;
 }
 
+/** `matchId` is sent only when the request carried a non-empty string. */
+function nonEmptyMatchId(
+  matchId: string | undefined
+): { matchId: string } | Record<string, never> {
+  if (matchId === undefined || matchId.length === 0) return {};
+  return { matchId };
+}
+
 function isIntAtLeast(value: unknown, min: number): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= min;
 }
@@ -1000,9 +1008,12 @@ function parseMatchLogRequest(
     fromTick?: unknown;
     maxTicks?: unknown;
   };
-  const matchId = typeof data.matchId === 'string' ? data.matchId : undefined;
-  if (matchId === undefined || matchId.length === 0) {
-    return { ok: false, matchId };
+  const matchId =
+    typeof data.matchId === 'string' && data.matchId.length > 0
+      ? data.matchId
+      : undefined;
+  if (matchId === undefined) {
+    return { ok: false };
   }
   if (!isIntAtLeast(data.fromTick, 0)) {
     return { ok: false, matchId };

@@ -235,6 +235,55 @@ describe('fetchMatchLog', () => {
     expect(socket.listenerCount('match-log-error')).toBe(0);
   });
 
+  it('rejects with disconnected and removes listeners when the socket drops', async () => {
+    const { client, socket } = clientWithSocket();
+    const pending = client.fetchMatchLog(0)[Symbol.asyncIterator]();
+    const next = pending.next();
+    await vi.waitFor(() => {
+      expect(socket.listenerCount('match-log-chunk')).toBe(1);
+      expect(socket.listenerCount('disconnect')).toBe(2);
+    });
+    socket.fire('disconnect', 'transport close');
+    try {
+      await next;
+      expect.unreachable();
+    } catch (error) {
+      expect(error).toBeInstanceOf(MatchLogError);
+      expect((error as MatchLogError).reason).toBe('disconnected');
+    }
+    expect(socket.listenerCount('match-log-chunk')).toBe(0);
+    expect(socket.listenerCount('match-log-error')).toBe(0);
+    expect(socket.listenerCount('disconnect')).toBe(1);
+  });
+
+  it('rejects an error that arrives between chunks while nobody is waiting', async () => {
+    const { client, socket } = clientWithSocket();
+    const consuming = (async () => {
+      for await (const item of client.fetchMatchLog(0)) {
+        if (!item.done) {
+          socket.fire('match-log-error', {
+            matchId: 'match-1',
+            reason: 'truncated',
+          });
+        }
+      }
+    })();
+    await vi.waitFor(() => {
+      expect(socket.listenerCount('match-log-chunk')).toBe(1);
+    });
+    socket.fire('match-log-chunk', chunk(0, 1999, false));
+    try {
+      await consuming;
+      expect.unreachable();
+    } catch (error) {
+      expect(error).toBeInstanceOf(MatchLogError);
+      expect((error as MatchLogError).reason).toBe('truncated');
+    }
+    expect(socket.listenerCount('match-log-chunk')).toBe(0);
+    expect(socket.listenerCount('match-log-error')).toBe(0);
+    expect(socket.listenerCount('disconnect')).toBe(1);
+  });
+
   it('throws when the client is not in a match', () => {
     const client = new PhalanxClient({
       serverUrl: 'http://127.0.0.1:9',

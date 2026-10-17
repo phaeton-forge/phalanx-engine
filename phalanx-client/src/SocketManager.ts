@@ -541,7 +541,8 @@ export class SocketManager {
    * Read the command log of `matchId` from `fromTick`.
    * Chunks arrive one at a time; the iterator yields the event loop
    * between them. `break` removes the socket listeners. No timer is
-   * left pending after the iterator stops.
+   * left pending after the iterator stops. One read per match at a
+   * time: a second iterator would share these listeners and split chunks.
    */
   async *fetchMatchLog(
     matchId: string,
@@ -558,6 +559,15 @@ export class SocketManager {
     } | null = null;
     const logState: { error: MatchLogError | null } = { error: null };
 
+    const fail = (error: MatchLogError): void => {
+      logState.error = error;
+      if (waiter) {
+        const current = waiter;
+        waiter = null;
+        current.reject(error);
+      }
+    };
+
     const onChunk = (chunk: LogChunk): void => {
       if (chunk.matchId !== matchId) return;
       if (waiter) {
@@ -573,13 +583,11 @@ export class SocketManager {
       if (payload.matchId !== undefined && payload.matchId !== matchId) {
         return;
       }
-      const error = new MatchLogError(payload.reason);
-      logState.error = error;
-      if (waiter) {
-        const current = waiter;
-        waiter = null;
-        current.reject(error);
-      }
+      fail(new MatchLogError(payload.reason));
+    };
+
+    const onDisconnect = (): void => {
+      fail(new MatchLogError('disconnected'));
     };
 
     let yieldTimer: ReturnType<typeof setTimeout> | null = null;
@@ -594,6 +602,7 @@ export class SocketManager {
     try {
       socket.on('match-log-chunk', onChunk);
       socket.on('match-log-error', onError);
+      socket.on('disconnect', onDisconnect);
       socket.emit(
         'match-log',
         maxTicks === undefined
@@ -636,6 +645,7 @@ export class SocketManager {
       waiter = null;
       socket.off('match-log-chunk', onChunk);
       socket.off('match-log-error', onError);
+      socket.off('disconnect', onDisconnect);
     }
   }
 
