@@ -8,3 +8,4 @@ packages:
   - 'phalanx-runtime'
   - 'phalanx-engine'
   - 'abilities-playground'
+  - 'integration'
