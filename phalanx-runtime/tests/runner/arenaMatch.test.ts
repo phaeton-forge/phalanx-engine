@@ -12,7 +12,7 @@ function config(): ArenaConfig {
     gameId: 'arena',
     simVersion: 'arena-1',
     seed: 11,
-    simMode: 'client',
+    side: 'client',
     inputDelayTicks: 2,
     slots: [{ slot: 0, team: 0, kind: 'human', playerId: 'local:0' }],
   };
@@ -26,7 +26,7 @@ describe('arena fixture', () => {
   });
 
   it('matches per-tick hashes after snapshot and fastForward', async () => {
-    const transport = LocalTransport.manual();
+    const transport = LocalTransport.stepped();
     const runner = new MatchRunner(ArenaGame, config(), transport, {
       hashEveryTicks: 1,
     });
@@ -50,7 +50,7 @@ describe('arena fixture', () => {
     const tail = runner.log
       .entriesAfter(SNAPSHOT_TICK)
       .filter((entry) => entry.tick <= THROUGH);
-    const restoredTransport = LocalTransport.manual();
+    const restoredTransport = LocalTransport.stepped();
     const restored = new MatchRunner(ArenaGame, config(), restoredTransport, {
       hashEveryTicks: 1,
     });

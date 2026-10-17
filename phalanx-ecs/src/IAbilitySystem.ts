@@ -1,4 +1,4 @@
-import type {GameSystem} from "./GameSystem.js";
+import type { GameSystem } from './GameSystem.js';
 
 /**
  * Minimal ability-system contract known to phalanx-ecs.
@@ -16,23 +16,23 @@ export interface IAbilitySystem {
   activateAbility(
     casterEntityId: number,
     abilityId: string,
-    providedTarget?: unknown,
+    providedTarget?: unknown
   ): boolean;
 
   applyEffect(
     targetEntityId: number,
     effectId: string,
-    sourceEntityId?: number,
+    sourceEntityId?: number
   ): void;
 
   tryGetAttribute(
     entityId: number,
-    attrId: string,
+    attrId: string
   ): { base: unknown; current: unknown } | undefined;
 
   getAttribute(
     entityId: number,
-    attrId: string,
+    attrId: string
   ): { base: unknown; current: unknown };
 
   hasTag(entityId: number, tag: string): boolean;

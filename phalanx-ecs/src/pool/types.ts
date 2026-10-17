@@ -20,7 +20,9 @@ export interface PoolStats {
   missCount: number;
 }
 
-export interface EntityTypeConfig<T extends Entity & IPoolableEntity<any> = Entity & IPoolableEntity<any>> {
+export interface EntityTypeConfig<
+  T extends Entity & IPoolableEntity<never> = Entity & IPoolableEntity<never>,
+> {
   factory: () => T;
   pool?: PoolConfig;
 }

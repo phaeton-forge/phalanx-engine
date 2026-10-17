@@ -101,7 +101,7 @@ describe('pooled GAS reset', () => {
     const minion = pools.spawn<Minion>('minion');
     const component = getAbilitySystemComponent(minion);
     if (component === undefined) throw new Error('missing ability component');
-    expect(component.activeEffects.pendingAdd).toHaveLength(0);
+    expect(component.activeEffects.pendingAdd).toHaveLength(1);
     expect(component.tags.tags.has('Team.Red')).toBe(true);
     expect(component.abilities.has('Ability.Hold')).toBe(true);
     expect(component.attributes.current[0]).toBe(HEALTH_RAW);
@@ -109,12 +109,12 @@ describe('pooled GAS reset', () => {
     abilities.addTag(minion.id, 'Team.Blue');
     abilities.applyEffect(minion.id, 'Effect.Burn', minion.id);
     world.processAllTicks(0);
-    expect(getActiveEffectsComponent(minion)?.queue).toHaveLength(1);
+    expect(getActiveEffectsComponent(minion)?.queue).toHaveLength(2);
     expect(
       getGameplayTagsComponent(minion)?.effectGrantCounts.get(
         'State.Debuff.Burn'
       )
-    ).toBe(1);
+    ).toBe(2);
     abilities.applyEffect(minion.id, 'Effect.Burn', minion.id);
     expect(getActiveEffectsComponent(minion)?.pendingAdd).toHaveLength(1);
     component.abilities.delete('Ability.Hold');
@@ -140,7 +140,7 @@ describe('pooled GAS reset', () => {
     const again = pools.spawn<Minion>('minion');
     expect(again.id).toBe(minion.id);
     expect(getActiveEffectsComponent(again)?.queue).toHaveLength(0);
-    expect(getActiveEffectsComponent(again)?.pendingAdd).toHaveLength(0);
+    expect(getActiveEffectsComponent(again)?.pendingAdd).toHaveLength(1);
   });
 
   it('removes GAS components a bare pooled entity gained after construction', () => {

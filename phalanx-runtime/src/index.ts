@@ -1,10 +1,10 @@
 /**
  * @phalanx-engine/runtime — isomorphic match runtime (no DOM, no sockets).
  *
- * Status: Tasks 1–6 and 6.5a are implemented. Games use `defineComponent`,
- * `world.save` / `world.restore`, and an optional `defineGame` state.
- * Low-level `StateHelpers`, `spawnWithId`, `rebuildBroadphaseFromTransforms`,
- * and `WorldScope` live in `@phalanx-engine/runtime/advanced`.
+ * Status: Tasks 1–6, 6.5a and 6.5b are implemented. Games use
+ * `defineComponent`, `defineCommands`, `defineGame` and `runLocalMatch`.
+ * `StateHelpers`, `spawnWithId`, `CommandSchema`, `SaveHandler` and
+ * `WorldScope` live in `@phalanx-engine/runtime/advanced`.
  * `MatchRunner.join` still throws `NotImplementedError` for Task 12. Design:
  * docs/design/runtime-api.md.
  *
@@ -23,6 +23,7 @@ export {
   DEFAULT_HASH_EVERY_TICKS,
   DEFAULT_INPUT_DELAY_TICKS,
   BOT_PLAYER_ID_PREFIX,
+  SYSTEM_PLAYER_ID,
   botPlayerId,
   isBotPlayerId,
 } from './constants.js';

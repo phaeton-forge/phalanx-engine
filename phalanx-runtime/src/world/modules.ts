@@ -355,7 +355,7 @@ function enableLive(world: GameWorld): void {
   for (const id of ids) {
     const entity = world.entityManager.getEntity(id);
     if (entity === undefined || entity._inPool) continue;
-    invokeAll(entity, 'onEnable');
+    invokeAll(entity, 'onEnable', 'restore');
   }
 }
 
@@ -452,17 +452,26 @@ function requireComponent(
   throw new Error(`world.spawn: component '${name}' is not registered`);
 }
 
-function invokeAll(entity: Entity, hook: 'onEnable' | 'onDisable'): void {
+function invokeAll(
+  entity: Entity,
+  hook: 'onEnable' | 'onDisable',
+  reason?: 'restore'
+): void {
   for (const component of [...entity.getComponents().values()]) {
-    invokeHook(component, hook);
+    invokeHook(component, hook, reason);
   }
 }
 
-function invokeHook(component: object, hook: string): void {
+function invokeHook(component: object, hook: string, reason?: 'restore'): void {
   // Lifecycle methods are optional and are not declared on IComponent.
   const record = component as unknown as Record<string, unknown>;
   const fn = record[hook];
-  if (typeof fn === 'function') fn.call(component);
+  if (typeof fn !== 'function') return;
+  if (hook === 'onEnable') {
+    (fn as (enableReason?: 'restore') => void).call(component, reason);
+    return;
+  }
+  fn.call(component);
 }
 
 function readColumn(

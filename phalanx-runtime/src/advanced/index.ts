@@ -10,3 +10,23 @@ export { StateHelpers } from '../helpers/StateHelpers.js';
 export { spawnWithId } from '../helpers/entities.js';
 export { rebuildBroadphaseFromTransforms } from '../helpers/physics.js';
 export { WorldScope } from '../runner/WorldScope.js';
+export {
+  DebugPanel,
+  PoolManager,
+  SoAComponentStore,
+  TickFrameManager,
+  TYPED_ARRAY_CONSTRUCTORS,
+  nextEntityId,
+  setEntityIdCounter,
+  setWorldModuleHost,
+} from '@phalanx-engine/ecs';
+export type {
+  DebugPanelConfig,
+  TickFrameManagerConfig,
+} from '@phalanx-engine/ecs';
+export type { CommandSchema } from '../game/commands.js';
+export type {
+  SaveHandler,
+  SaveSpec,
+  StateMigration,
+} from '../state/GameState.js';

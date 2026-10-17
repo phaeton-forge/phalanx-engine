@@ -33,7 +33,7 @@ export class PoolManager {
    * freshly created entity starts in a dormant state (despawn hooks fired,
    * _inPool = true) before its first spawn.
    */
-  registerEntityType<T extends Entity & IPoolableEntity<any>>(
+  registerEntityType<T extends Entity & IPoolableEntity<never>>(
     typeKey: string,
     config: EntityTypeConfig<T>
   ): void {
@@ -59,7 +59,7 @@ export class PoolManager {
    * Acquire → internal storage reset → `entity.onSpawn(args)` →
    * `addEntity` → component `onEnable`.
    */
-  spawn<T extends Entity & IPoolableEntity<any>>(
+  spawn<T extends Entity & IPoolableEntity<never>>(
     typeKey: string,
     ...args: SpawnArgsOf<T>
   ): T {
@@ -76,7 +76,7 @@ export class PoolManager {
       if (isPoolableComponent(component)) component.onSpawn();
     }
     // 2. Domain init: per-spawn values via typed setters.
-    entity.onSpawn(args[0] as any);
+    entity.onSpawn(args[0] as Parameters<T['onSpawn']>[0]);
     // 3. Register with the world, then enable components.
     this.entityManager.addEntity(entity);
     invokeComponentHooks([...entity.getComponents().values()], 'onEnable');

@@ -23,7 +23,10 @@ import { GAMEPLAY_CUE_EVENT } from '../src/events';
 
 /** Trivial instant cue for tests that only need dispatch enabled. */
 export class NoopCue extends Cue {
-  public onSpawn(_event: GameplayCueDispatchedEvent, _context: CueContext): void {}
+  public onSpawn(
+    _event: GameplayCueDispatchedEvent,
+    _context: CueContext
+  ): void {}
 
   public override isFinished(): boolean {
     return true;
@@ -108,7 +111,9 @@ export function createActivationWorld(opts: TestWorldOpts = {}): TestWorld {
   });
 
   if (hasCues) {
-    world.eventBus.on<CueEvent>(GAMEPLAY_CUE_EVENT, (event) => cueLog.push(event));
+    world.eventBus.on<CueEvent>(GAMEPLAY_CUE_EVENT, (event) =>
+      cueLog.push(event)
+    );
   }
 
   world.registerSystems([...abilities.tickSystems], []);

@@ -21,7 +21,9 @@ describe('gameplay cues', () => {
         defineEffect({
           id: 'Effect.AutoAttack.Damage',
           type: 'Instant',
-          modifiers: [{ attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(-10) }],
+          modifiers: [
+            { attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(-10) },
+          ],
           cues: ['Cue.AutoAttack.Hit'],
         }),
       ],
@@ -55,7 +57,9 @@ describe('gameplay cues', () => {
           id: 'Effect.ArmorShred',
           type: 'Duration',
           durationTicks: 2,
-          modifiers: [{ attributeId: 'Armor', op: 'Add', magnitude: FP.FromInt(-20) }],
+          modifiers: [
+            { attributeId: 'Armor', op: 'Add', magnitude: FP.FromInt(-20) },
+          ],
           cues: {
             onApplied: ['Cue.ArmorShred.Apply'],
             onExpired: ['Cue.ArmorShred.Expire'],
@@ -116,7 +120,9 @@ describe('gameplay cues', () => {
           type: 'Periodic',
           durationTicks: 6,
           periodTicks: 2,
-          modifiers: [{ attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(-3) }],
+          modifiers: [
+            { attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(-3) },
+          ],
           cues: { onPeriodic: ['Cue.Poison.Tick'] },
         }),
       ],
@@ -150,7 +156,9 @@ describe('gameplay cues', () => {
           durationTicks: 3,
           periodTicks: 2,
           executePeriodicOnApplication: true,
-          modifiers: [{ attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(-2) }],
+          modifiers: [
+            { attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(-2) },
+          ],
           cues: {
             onApplied: ['Cue.Burning.Apply'],
             onPeriodic: ['Cue.Burning.Tick'],
@@ -162,7 +170,9 @@ describe('gameplay cues', () => {
           durationTicks: 3,
           periodTicks: 2,
           executePeriodicOnApplication: true,
-          modifiers: [{ attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(-1) }],
+          modifiers: [
+            { attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(-1) },
+          ],
           cues: ['Cue.Shortcut.ApplyOnly'],
         }),
       ],
@@ -208,8 +218,16 @@ describe('gameplay cues', () => {
         attributes: [HealthAttribute, ArmorAttribute],
         cues: DISPATCH_CUES,
         effects: [
-          defineEffect({ id: 'Effect.First', type: 'Instant', cues: ['Cue.First'] }),
-          defineEffect({ id: 'Effect.Second', type: 'Instant', cues: ['Cue.Second'] }),
+          defineEffect({
+            id: 'Effect.First',
+            type: 'Instant',
+            cues: ['Cue.First'],
+          }),
+          defineEffect({
+            id: 'Effect.Second',
+            type: 'Instant',
+            cues: ['Cue.Second'],
+          }),
         ],
       });
       const source = spawnEntity(world, abilities);
@@ -247,12 +265,18 @@ describe('gameplay cues', () => {
       pipeline: 'effects',
       attributes: [HealthAttribute, ArmorAttribute],
       cues: DISPATCH_CUES,
-      effects: [defineEffect({ id: 'Effect.Signal', type: 'Instant', cues: ['Cue.X'] })],
+      effects: [
+        defineEffect({ id: 'Effect.Signal', type: 'Instant', cues: ['Cue.X'] }),
+      ],
     });
     const globalEvents: CueEvent[] = [];
     const perCueEvents: CueEvent[] = [];
-    world.eventBus.on<CueEvent>(GAMEPLAY_CUE_EVENT, (event) => globalEvents.push(event));
-    world.eventBus.on<CueEvent>(gameplayCueKey('Cue.X'), (event) => perCueEvents.push(event));
+    world.eventBus.on<CueEvent>(GAMEPLAY_CUE_EVENT, (event) =>
+      globalEvents.push(event)
+    );
+    world.eventBus.on<CueEvent>(gameplayCueKey('Cue.X'), (event) =>
+      perCueEvents.push(event)
+    );
     const source = spawnEntity(world, abilities);
     const target = spawnEntity(world, abilities);
 
@@ -275,8 +299,15 @@ describe('gameplay cues', () => {
 
   it('cleans the cue buffer even without CueDispatchSystem', () => {
     const { world, abilities } = createTestWorld({
-      pipeline: 'effects', attributes: [HealthAttribute, ArmorAttribute],
-      effects: [defineEffect({ id: 'Effect.Cleanup', type: 'Instant', cues: ['Cue.Cleanup'] })],
+      pipeline: 'effects',
+      attributes: [HealthAttribute, ArmorAttribute],
+      effects: [
+        defineEffect({
+          id: 'Effect.Cleanup',
+          type: 'Instant',
+          cues: ['Cue.Cleanup'],
+        }),
+      ],
     });
     const entity = spawnEntity(world, abilities);
 
@@ -295,7 +326,9 @@ describe('gameplay cues', () => {
         defineEffect({
           id: 'Effect.BlockedDamage',
           type: 'Instant',
-          modifiers: [{ attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(-10) }],
+          modifiers: [
+            { attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(-10) },
+          ],
           tagsBlocked: ['State.Invulnerable'],
           cues: ['Cue.Blocked.ShouldNotFire'],
         }),
@@ -320,7 +353,9 @@ describe('gameplay cues', () => {
           id: 'Effect.RemovableShield',
           type: 'Duration',
           durationTicks: 100,
-          modifiers: [{ attributeId: 'Armor', op: 'Add', magnitude: FP.FromInt(10) }],
+          modifiers: [
+            { attributeId: 'Armor', op: 'Add', magnitude: FP.FromInt(10) },
+          ],
           tagsGranted: ['State.Shielded'],
           cues: { onExpired: ['Cue.Shield.Removed'] },
         }),
@@ -354,21 +389,35 @@ describe('gameplay cues', () => {
         attributes: [HealthAttribute, ArmorAttribute],
         cues: DISPATCH_CUES,
         effects: [
-          defineEffect({ id: 'Effect.Hit', type: 'Instant', cues: ['Cue.Hit'] }),
+          defineEffect({
+            id: 'Effect.Hit',
+            type: 'Instant',
+            cues: ['Cue.Hit'],
+          }),
           defineEffect({
             id: 'Effect.Dot',
             type: 'Periodic',
             durationTicks: 5,
             periodTicks: 2,
-            modifiers: [{ attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(-1) }],
-            cues: { onApplied: ['Cue.Dot.Apply'], onPeriodic: ['Cue.Dot.Tick'] },
+            modifiers: [
+              { attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(-1) },
+            ],
+            cues: {
+              onApplied: ['Cue.Dot.Apply'],
+              onPeriodic: ['Cue.Dot.Tick'],
+            },
           }),
           defineEffect({
             id: 'Effect.Buff',
             type: 'Duration',
             durationTicks: 4,
-            modifiers: [{ attributeId: 'Armor', op: 'Add', magnitude: FP.FromInt(5) }],
-            cues: { onApplied: ['Cue.Buff.Apply'], onExpired: ['Cue.Buff.Expire'] },
+            modifiers: [
+              { attributeId: 'Armor', op: 'Add', magnitude: FP.FromInt(5) },
+            ],
+            cues: {
+              onApplied: ['Cue.Buff.Apply'],
+              onExpired: ['Cue.Buff.Expire'],
+            },
           }),
           defineEffect({
             id: 'Effect.ImmediateDot',
@@ -376,7 +425,9 @@ describe('gameplay cues', () => {
             durationTicks: 3,
             periodTicks: 2,
             executePeriodicOnApplication: true,
-            modifiers: [{ attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(-2) }],
+            modifiers: [
+              { attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(-2) },
+            ],
             cues: { onPeriodic: ['Cue.Immediate.Tick'] },
           }),
           defineEffect({
@@ -384,7 +435,9 @@ describe('gameplay cues', () => {
             type: 'Periodic',
             durationTicks: 3,
             periodTicks: 2,
-            modifiers: [{ attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(-1) }],
+            modifiers: [
+              { attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(-1) },
+            ],
             cues: ['Cue.Shortcut.Apply'],
           }),
         ],
@@ -405,7 +458,11 @@ describe('gameplay cues', () => {
           abilities.applyEffect(target.id, 'Effect.ImmediateDot', source.id);
         }
         if (tick % 40 === 5) {
-          abilities.applyEffect(target.id, 'Effect.ShortcutPeriodic', source.id);
+          abilities.applyEffect(
+            target.id,
+            'Effect.ShortcutPeriodic',
+            source.id
+          );
         }
         world.processAllTicks(tick);
       }
@@ -417,7 +474,11 @@ describe('gameplay cues', () => {
   });
 });
 
-function periodicEvent(tick: number, sourceEntityId: number, targetEntityId: number): CueEvent {
+function periodicEvent(
+  tick: number,
+  sourceEntityId: number,
+  targetEntityId: number
+): CueEvent {
   return {
     tick,
     cueId: 'Cue.Poison.Tick',
@@ -426,4 +487,3 @@ function periodicEvent(tick: number, sourceEntityId: number, targetEntityId: num
     phase: 'OnPeriodic',
   };
 }
-

@@ -78,18 +78,25 @@ export interface SoAComponentStoreOptions {
  * Set a value in a typed array at the given index
  * Handles both number and bigint arrays
  */
-function setTypedArrayValue(arr: TypedArrayLike, index: number, value: number | bigint): void {
+function setTypedArrayValue(
+  arr: TypedArrayLike,
+  index: number,
+  value: number | bigint
+): void {
   if (arr instanceof BigInt64Array) {
     arr[index] = value as bigint;
   } else {
-    (arr as Exclude<TypedArrayLike, BigInt64Array>)[index] = value as number;
+    arr[index] = value as number;
   }
 }
 
 /**
  * Get a value from a typed array at the given index
  */
-function getTypedArrayValue(arr: TypedArrayLike, index: number): number | bigint {
+function getTypedArrayValue(
+  arr: TypedArrayLike,
+  index: number
+): number | bigint {
   return arr[index];
 }
 
@@ -173,14 +180,18 @@ export class SoAComponentStore<S extends SoASchemaDefinition> {
 
   constructor(
     schema: SoASchema<S>,
-    initialCapacityOrOptions: number | SoAComponentStoreOptions = DEFAULT_INITIAL_CAPACITY
+    initialCapacityOrOptions:
+      number | SoAComponentStoreOptions = DEFAULT_INITIAL_CAPACITY
   ) {
     const options: SoAComponentStoreOptions =
       typeof initialCapacityOrOptions === 'number'
         ? { initialCapacity: initialCapacityOrOptions }
         : initialCapacityOrOptions;
 
-    const initialCapacity = Math.max(1, options.initialCapacity ?? DEFAULT_INITIAL_CAPACITY);
+    const initialCapacity = Math.max(
+      1,
+      options.initialCapacity ?? DEFAULT_INITIAL_CAPACITY
+    );
 
     this.schema = schema;
     this._capacity = initialCapacity;
@@ -204,10 +215,10 @@ export class SoAComponentStore<S extends SoASchemaDefinition> {
    */
   private rebuildFieldCache(): void {
     const names = this.schema.fieldNames;
-    this._fieldArrays = new Array(names.length);
-    this._fieldIsBigInt = new Array(names.length);
+    this._fieldArrays = new Array<TypedArrayLike>(names.length);
+    this._fieldIsBigInt = new Array<boolean>(names.length);
     for (let f = 0; f < names.length; f++) {
-      const arr = this.arrays[names[f]] as TypedArrayLike;
+      const arr = this.arrays[names[f]];
       this._fieldArrays[f] = arr;
       this._fieldIsBigInt[f] = arr instanceof BigInt64Array;
     }
@@ -292,7 +303,10 @@ export class SoAComponentStore<S extends SoASchemaDefinition> {
     this.indexToEntity[index] = entityId;
 
     // Maintain sorted entity ID list
-    const insertIdx = this.binarySearchInsertIndex(this._sortedEntityIds, entityId);
+    const insertIdx = this.binarySearchInsertIndex(
+      this._sortedEntityIds,
+      entityId
+    );
     this._sortedEntityIds.splice(insertIdx, 0, entityId);
 
     // Set initial values (iterate cached arrays by index, branch on bigint once per field)
@@ -302,7 +316,9 @@ export class SoAComponentStore<S extends SoASchemaDefinition> {
       if (this._fieldIsBigInt[f]) {
         (this._fieldArrays[f] as BigInt64Array)[index] = value as bigint;
       } else {
-        (this._fieldArrays[f] as Exclude<TypedArrayLike, BigInt64Array>)[index] = value as number;
+        (this._fieldArrays[f] as Exclude<TypedArrayLike, BigInt64Array>)[
+          index
+        ] = value as number;
       }
     }
 
@@ -334,7 +350,10 @@ export class SoAComponentStore<S extends SoASchemaDefinition> {
           const arr = this._fieldArrays[f] as BigInt64Array;
           arr[index] = arr[lastIndex];
         } else {
-          const arr = this._fieldArrays[f] as Exclude<TypedArrayLike, BigInt64Array>;
+          const arr = this._fieldArrays[f] as Exclude<
+            TypedArrayLike,
+            BigInt64Array
+          >;
           arr[index] = arr[lastIndex];
         }
       }
@@ -350,7 +369,10 @@ export class SoAComponentStore<S extends SoASchemaDefinition> {
     this._count = lastIndex;
 
     // Maintain sorted entity ID list
-    const sortedIdx = this.binarySearchInsertIndex(this._sortedEntityIds, entityId);
+    const sortedIdx = this.binarySearchInsertIndex(
+      this._sortedEntityIds,
+      entityId
+    );
     if (this._sortedEntityIds[sortedIdx] === entityId) {
       this._sortedEntityIds.splice(sortedIdx, 1);
     }
@@ -373,7 +395,7 @@ export class SoAComponentStore<S extends SoASchemaDefinition> {
 
     const result: Record<string, unknown> = {};
     for (const fieldName of this.schema.fieldNames) {
-      const arr = this.arrays[fieldName] as TypedArrayLike;
+      const arr = this.arrays[fieldName];
       result[fieldName] = getTypedArrayValue(arr, index);
     }
     return result as SoAFieldsOf<S>;
@@ -390,7 +412,7 @@ export class SoAComponentStore<S extends SoASchemaDefinition> {
 
     for (const fieldName of this.schema.fieldNames) {
       if (fieldName in values) {
-        const arr = this.arrays[fieldName] as TypedArrayLike;
+        const arr = this.arrays[fieldName];
         const value = values[fieldName as keyof S];
         setTypedArrayValue(arr, index, value as number | bigint);
       }
@@ -409,7 +431,7 @@ export class SoAComponentStore<S extends SoASchemaDefinition> {
     if (index === undefined) {
       return undefined;
     }
-    const arr = this.arrays[fieldName] as TypedArrayLike;
+    const arr = this.arrays[fieldName];
     return getTypedArrayValue(arr, index) as SoAFieldsOf<S>[K];
   }
 
@@ -425,8 +447,8 @@ export class SoAComponentStore<S extends SoASchemaDefinition> {
     if (index === undefined) {
       return false;
     }
-    const arr = this.arrays[fieldName] as TypedArrayLike;
-    setTypedArrayValue(arr, index, value as number | bigint);
+    const arr = this.arrays[fieldName];
+    setTypedArrayValue(arr, index, value);
     return true;
   }
 
@@ -442,7 +464,7 @@ export class SoAComponentStore<S extends SoASchemaDefinition> {
 
     // Zero out arrays for clean state
     for (const fieldName of this.schema.fieldNames) {
-      const arr = this.arrays[fieldName] as TypedArrayLike;
+      const arr = this.arrays[fieldName];
       if (arr instanceof BigInt64Array) {
         arr.fill(0n);
       } else {
@@ -468,7 +490,7 @@ export class SoAComponentStore<S extends SoASchemaDefinition> {
     const copyLen = Math.min(this._count, newCapacity);
 
     for (const fieldName of this.schema.fieldNames) {
-      const oldArray = this.arrays[fieldName] as TypedArrayLike;
+      const oldArray = this.arrays[fieldName];
       const fieldType = this.schema.fieldTypes[fieldName];
       const ArrayConstructor = TYPED_ARRAY_CONSTRUCTORS[fieldType];
       const newArray = new ArrayConstructor(newCapacity);
@@ -477,7 +499,9 @@ export class SoAComponentStore<S extends SoASchemaDefinition> {
       if (oldArray instanceof BigInt64Array) {
         (newArray as BigInt64Array).set(oldArray.subarray(0, copyLen));
       } else {
-        (newArray as Float64Array).set((oldArray as Float64Array).subarray(0, copyLen));
+        (newArray as Float64Array).set(
+          (oldArray as Float64Array).subarray(0, copyLen)
+        );
       }
 
       (this.arrays as Record<string, TypedArrayLike>)[fieldName] = newArray;
@@ -530,7 +554,9 @@ export class SoAComponentStore<S extends SoASchemaDefinition> {
    * Iteration order is by dense array index (NOT deterministic by entity ID)
    * Use entityIds() for deterministic iteration
    */
-  public forEachDense(callback: (entityId: number, index: number) => void): void {
+  public forEachDense(
+    callback: (entityId: number, index: number) => void
+  ): void {
     for (let i = 0; i < this._count; i++) {
       callback(this.indexToEntity[i], i);
     }

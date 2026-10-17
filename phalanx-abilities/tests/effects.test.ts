@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { FP } from '@phalanx-engine/math';
-import { getActiveEffectsComponent, NO_SOURCE_ENTITY_ID, defineEffect } from '../src';
+import {
+  getActiveEffectsComponent,
+  NO_SOURCE_ENTITY_ID,
+  defineEffect,
+} from '../src';
 import {
   ArmorAttribute,
   HealthAttribute,
@@ -18,21 +22,29 @@ describe('effect application', () => {
         defineEffect({
           id: 'Effect.Damage',
           type: 'Instant',
-          modifiers: [{ attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(-10) }],
+          modifiers: [
+            { attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(-10) },
+          ],
         }),
       ],
     });
     const entity = spawnEntity(world, abilities);
     // Settle defaults so dirty starts clean.
     world.processAllTicks(1);
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(100);
+    expect(
+      FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)
+    ).toBe(100);
 
     abilities.applyEffect(entity.id, 'Effect.Damage', entity.id);
 
     // Application + aggregation both run on tick 2.
     world.processAllTicks(2);
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').base)).toBe(90);
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(90);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').base)).toBe(
+      90
+    );
+    expect(
+      FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)
+    ).toBe(90);
 
     world.dispose();
   });
@@ -46,14 +58,18 @@ describe('effect application', () => {
           id: 'Effect.ArmorShred',
           type: 'Duration',
           durationTicks: 3,
-          modifiers: [{ attributeId: 'Armor', op: 'Add', magnitude: FP.FromInt(-20) }],
+          modifiers: [
+            { attributeId: 'Armor', op: 'Add', magnitude: FP.FromInt(-20) },
+          ],
           tagsGranted: ['State.Debuff.ArmorShred'],
         }),
       ],
     });
     const entity = spawnEntity(world, abilities);
     world.processAllTicks(1);
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(50);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(
+      50
+    );
 
     abilities.applyEffect(entity.id, 'Effect.ArmorShred', entity.id);
 
@@ -62,20 +78,28 @@ describe('effect application', () => {
     // present. EffectTickSystem deliberately does NOT decrement an instance
     // on its application tick (otherwise durationTicks=1 would be invisible).
     world.processAllTicks(2);
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(30);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(
+      30
+    );
     expect(abilities.hasTag(entity.id, 'State.Debuff.ArmorShred')).toBe(true);
 
     // Tick 3: remaining 3 -> 2.
     world.processAllTicks(3);
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(30);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(
+      30
+    );
 
     // Tick 4: remaining 2 -> 1.
     world.processAllTicks(4);
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(30);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(
+      30
+    );
 
     // Tick 5: remaining 1 -> 0, expires, tag revoked, Armor recomputes to 50.
     world.processAllTicks(5);
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(50);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(
+      50
+    );
     expect(abilities.hasTag(entity.id, 'State.Debuff.ArmorShred')).toBe(false);
 
     world.dispose();
@@ -89,7 +113,9 @@ describe('effect application', () => {
         defineEffect({
           id: 'Effect.Damage',
           type: 'Instant',
-          modifiers: [{ attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(-10) }],
+          modifiers: [
+            { attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(-10) },
+          ],
           tagsBlocked: ['State.Invulnerable'],
         }),
       ],
@@ -101,12 +127,16 @@ describe('effect application', () => {
     abilities.applyEffect(entity.id, 'Effect.Damage', entity.id);
     world.processAllTicks(2);
     // Effect was dropped: Health unchanged.
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').base)).toBe(100);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').base)).toBe(
+      100
+    );
 
     abilities.removeTag(entity.id, 'State.Invulnerable');
     abilities.applyEffect(entity.id, 'Effect.Damage', entity.id);
     world.processAllTicks(3);
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').base)).toBe(90);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').base)).toBe(
+      90
+    );
 
     world.dispose();
   });
@@ -119,7 +149,9 @@ describe('effect application', () => {
         defineEffect({
           id: 'Effect.ExecuteWounded',
           type: 'Instant',
-          modifiers: [{ attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(-50) }],
+          modifiers: [
+            { attributeId: 'Health', op: 'Add', magnitude: FP.FromInt(-50) },
+          ],
           tagsRequired: ['State.Wounded'],
         }),
       ],
@@ -130,12 +162,16 @@ describe('effect application', () => {
     // No `State.Wounded` yet: must be dropped.
     abilities.applyEffect(entity.id, 'Effect.ExecuteWounded', entity.id);
     world.processAllTicks(2);
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').base)).toBe(100);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').base)).toBe(
+      100
+    );
 
     abilities.addTag(entity.id, 'State.Wounded');
     abilities.applyEffect(entity.id, 'Effect.ExecuteWounded', entity.id);
     world.processAllTicks(3);
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').base)).toBe(50);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').base)).toBe(
+      50
+    );
 
     world.dispose();
   });
@@ -149,7 +185,9 @@ describe('effect application', () => {
           id: 'Effect.ArmorShred',
           type: 'Duration',
           durationTicks: 100,
-          modifiers: [{ attributeId: 'Armor', op: 'Add', magnitude: FP.FromInt(-20) }],
+          modifiers: [
+            { attributeId: 'Armor', op: 'Add', magnitude: FP.FromInt(-20) },
+          ],
           tagsGranted: ['State.Debuff.ArmorShred'],
         }),
       ],
@@ -159,16 +197,23 @@ describe('effect application', () => {
 
     abilities.applyEffect(entity.id, 'Effect.ArmorShred', entity.id);
     world.processAllTicks(2);
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(30);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(
+      30
+    );
     expect(abilities.hasTag(entity.id, 'State.Debuff.ArmorShred')).toBe(true);
 
-    const flagged = abilities.removeEffectsByTag(entity.id, 'State.Debuff.ArmorShred');
+    const flagged = abilities.removeEffectsByTag(
+      entity.id,
+      'State.Debuff.ArmorShred'
+    );
     expect(flagged).toBe(1);
 
     // Tick 3 runs EffectTickSystem: the flagged instance reaches 0 and is removed,
     // the tag is revoked, and aggregation recomputes Armor without the modifier.
     world.processAllTicks(3);
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(50);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(
+      50
+    );
     expect(abilities.hasTag(entity.id, 'State.Debuff.ArmorShred')).toBe(false);
 
     world.dispose();
@@ -183,14 +228,18 @@ describe('effect application', () => {
           id: 'Effect.Slow',
           type: 'Duration',
           durationTicks: 100,
-          modifiers: [{ attributeId: 'Armor', op: 'Add', magnitude: FP.FromInt(-10) }],
+          modifiers: [
+            { attributeId: 'Armor', op: 'Add', magnitude: FP.FromInt(-10) },
+          ],
           tagsGranted: ['State.Slowed'],
         }),
         defineEffect({
           id: 'Effect.Poison',
           type: 'Duration',
           durationTicks: 100,
-          modifiers: [{ attributeId: 'Armor', op: 'Add', magnitude: FP.FromInt(-5) }],
+          modifiers: [
+            { attributeId: 'Armor', op: 'Add', magnitude: FP.FromInt(-5) },
+          ],
           tagsGranted: ['State.Poisoned'],
         }),
       ],
@@ -201,14 +250,18 @@ describe('effect application', () => {
     abilities.applyEffect(entity.id, 'Effect.Slow', entity.id);
     abilities.applyEffect(entity.id, 'Effect.Poison', entity.id);
     world.processAllTicks(2);
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(35);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(
+      35
+    );
 
     const flagged = abilities.removeEffectsByDefId(entity.id, 'Effect.Slow');
     expect(flagged).toBe(1);
 
     world.processAllTicks(3);
     // Slow gone, Poison still active.
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(45);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(
+      45
+    );
     expect(abilities.hasTag(entity.id, 'State.Slowed')).toBe(false);
     expect(abilities.hasTag(entity.id, 'State.Poisoned')).toBe(true);
 
@@ -268,13 +321,25 @@ describe('effect application', () => {
           id: 'Effect.OverrideHealth.10',
           type: 'Duration',
           durationTicks: 100,
-          modifiers: [{ attributeId: 'Health', op: 'Override', magnitude: FP.FromInt(10) }],
+          modifiers: [
+            {
+              attributeId: 'Health',
+              op: 'Override',
+              magnitude: FP.FromInt(10),
+            },
+          ],
         }),
         defineEffect({
           id: 'Effect.OverrideHealth.50',
           type: 'Duration',
           durationTicks: 100,
-          modifiers: [{ attributeId: 'Health', op: 'Override', magnitude: FP.FromInt(50) }],
+          modifiers: [
+            {
+              attributeId: 'Health',
+              op: 'Override',
+              magnitude: FP.FromInt(50),
+            },
+          ],
         }),
       ],
     });
@@ -288,7 +353,9 @@ describe('effect application', () => {
     world.processAllTicks(2);
 
     expect(abilities.instanceIdCounter).toBe(before + 2);
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)).toBe(50);
+    expect(
+      FP.ToFloat(abilities.getAttribute(entity.id, 'Health').current)
+    ).toBe(50);
 
     world.dispose();
   });
@@ -296,15 +363,17 @@ describe('effect application', () => {
   it('applyEffect throws on unknown effect id or missing entity', () => {
     const { world, abilities } = createTestWorld({
       pipeline: 'effects',
-      attributes: [HealthAttribute, ArmorAttribute], effects: [] });
+      attributes: [HealthAttribute, ArmorAttribute],
+      effects: [],
+    });
     const entity = addEntity(world);
 
-    expect(() => abilities.applyEffect(entity.id, 'Effect.DoesNotExist', entity.id)).toThrow(
-      "EffectRegistry does not contain 'Effect.DoesNotExist'"
-    );
-    expect(() => abilities.applyEffect(9999, 'Effect.DoesNotExist', entity.id)).toThrow(
-      'Entity 9999 does not exist'
-    );
+    expect(() =>
+      abilities.applyEffect(entity.id, 'Effect.DoesNotExist', entity.id)
+    ).toThrow("EffectRegistry does not contain 'Effect.DoesNotExist'");
+    expect(() =>
+      abilities.applyEffect(9999, 'Effect.DoesNotExist', entity.id)
+    ).toThrow('Entity 9999 does not exist');
 
     world.dispose();
   });
@@ -321,25 +390,33 @@ describe('effect application', () => {
           id: 'Effect.OneTickBuff',
           type: 'Duration',
           durationTicks: 1,
-          modifiers: [{ attributeId: 'Armor', op: 'Add', magnitude: FP.FromInt(25) }],
+          modifiers: [
+            { attributeId: 'Armor', op: 'Add', magnitude: FP.FromInt(25) },
+          ],
           tagsGranted: ['State.Buff.OneTick'],
         }),
       ],
     });
     const entity = spawnEntity(world, abilities);
     world.processAllTicks(1);
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(50);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(
+      50
+    );
 
     abilities.applyEffect(entity.id, 'Effect.OneTickBuff', entity.id);
 
     // Tick 2 (application tick): aggregation must see the buff exactly once.
     world.processAllTicks(2);
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(75);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(
+      75
+    );
     expect(abilities.hasTag(entity.id, 'State.Buff.OneTick')).toBe(true);
 
     // Tick 3 (next tick): decrement 1 -> 0, expire, tag revoked, Armor recompute.
     world.processAllTicks(3);
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(50);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(
+      50
+    );
     expect(abilities.hasTag(entity.id, 'State.Buff.OneTick')).toBe(false);
 
     world.dispose();
@@ -364,7 +441,9 @@ describe('effect application', () => {
           type: 'Periodic',
           durationTicks: 100,
           periodTicks: 10,
-          modifiers: [{ attributeId: 'Armor', op: 'Add', magnitude: FP.FromInt(-30) }],
+          modifiers: [
+            { attributeId: 'Armor', op: 'Add', magnitude: FP.FromInt(-30) },
+          ],
           tagsGranted: ['State.Debuff.Poisoned'],
           // executePeriodicOnApplication defaults to false: no immediate hit.
         }),
@@ -379,11 +458,15 @@ describe('effect application', () => {
 
     // Tag granted, no periodic landing yet (would be on tick 12).
     expect(abilities.hasTag(entity.id, 'State.Debuff.Poisoned')).toBe(true);
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(50);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(
+      50
+    );
 
     // Tick 11: still before first scheduled firing.
     world.processAllTicks(11);
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(50);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(
+      50
+    );
 
     world.dispose();
   });
@@ -479,7 +562,11 @@ describe('effect application', () => {
           type: 'Instant',
           tagsGranted: ['State.LeakSentinel2'],
           modifiers: [
-            { attributeId: 'NonExistentAttribute', op: 'Add', magnitude: FP.FromInt(-1) },
+            {
+              attributeId: 'NonExistentAttribute',
+              op: 'Add',
+              magnitude: FP.FromInt(-1),
+            },
           ],
         }),
       ],
@@ -507,7 +594,9 @@ describe('effect application', () => {
           id: 'Effect.Sourceless',
           type: 'Duration',
           durationTicks: 10,
-          modifiers: [{ attributeId: 'Armor', op: 'Add', magnitude: FP.FromInt(-5) }],
+          modifiers: [
+            { attributeId: 'Armor', op: 'Add', magnitude: FP.FromInt(-5) },
+          ],
           tagsGranted: ['State.Sourceless'],
         }),
       ],
@@ -518,7 +607,9 @@ describe('effect application', () => {
     abilities.applyEffect(entity.id, 'Effect.Sourceless');
     world.processAllTicks(1);
 
-    const activeEffects = getActiveEffectsComponent(world.entityManager.getEntity(entity.id)!)!;
+    const activeEffects = getActiveEffectsComponent(
+      world.entityManager.getEntity(entity.id)!
+    )!;
     expect(activeEffects.queue.length).toBe(1);
     expect(activeEffects.queue[0].sourceEntityId).toBe(NO_SOURCE_ENTITY_ID);
     expect(abilities.hasTag(entity.id, 'State.Sourceless')).toBe(true);
@@ -535,7 +626,9 @@ describe('effect application', () => {
           id: 'Effect.ShortShred',
           type: 'Duration',
           durationTicks: 2,
-          modifiers: [{ attributeId: 'Armor', op: 'Add', magnitude: FP.FromInt(-15) }],
+          modifiers: [
+            { attributeId: 'Armor', op: 'Add', magnitude: FP.FromInt(-15) },
+          ],
           tagsGranted: ['State.Debuff.Shred'],
         }),
       ],
@@ -545,20 +638,25 @@ describe('effect application', () => {
 
     abilities.applyEffect(entity.id, 'Effect.ShortShred', entity.id);
     world.processAllTicks(2);
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(35);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(
+      35
+    );
 
     // durationTicks=2: survives ticks 2 and 3, expires on tick 4.
     world.processAllTicks(3);
     world.processAllTicks(4);
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(50);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(
+      50
+    );
     expect(abilities.hasTag(entity.id, 'State.Debuff.Shred')).toBe(false);
 
     abilities.applyEffect(entity.id, 'Effect.ShortShred', entity.id);
     world.processAllTicks(5);
-    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(35);
+    expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Armor').current)).toBe(
+      35
+    );
     expect(abilities.hasTag(entity.id, 'State.Debuff.Shred')).toBe(true);
 
     world.dispose();
   });
 });
-

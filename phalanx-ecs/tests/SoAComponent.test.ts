@@ -11,21 +11,28 @@ import {
 
 // ── Test schema and component ──────────────────────────────────────────
 
-const TestSchema = defineSoASchema({
-  x: 'f64',
-  y: 'f64',
-  health: 'i32',
-  flags: 'u8',
-  rawValue: 'i64',
-}, 'Test');
+const TestSchema = defineSoASchema(
+  {
+    x: 'f64',
+    y: 'f64',
+    health: 'i32',
+    flags: 'u8',
+    rawValue: 'i64',
+  },
+  'Test'
+);
 
 type TestSchemaDef = typeof TestSchema.definition;
 
 class TestComponent extends SoAComponent<TestSchemaDef> {
   public readonly type = Symbol('Test');
   // Expose protected members for testing
-  public getStoreForTest() { return this.store; }
-  public getIndexForTest() { return this.getIndex(); }
+  public getStoreForTest() {
+    return this.store;
+  }
+  public getIndexForTest() {
+    return this.getIndex();
+  }
   static readonly soaSchema = TestSchema;
 
   constructor(entityId: number, x: number, y: number) {
@@ -38,19 +45,37 @@ class TestComponent extends SoAComponent<TestSchemaDef> {
     });
   }
 
-  get x(): number { return this.getField('x'); }
-  set x(v: number) { this.setField('x', v); }
+  get x(): number {
+    return this.getField('x');
+  }
+  set x(v: number) {
+    this.setField('x', v);
+  }
 
-  get y(): number { return this.getField('y'); }
-  set y(v: number) { this.setField('y', v); }
+  get y(): number {
+    return this.getField('y');
+  }
+  set y(v: number) {
+    this.setField('y', v);
+  }
 
-  get health(): number { return this.getField('health'); }
-  set health(v: number) { this.setField('health', v); }
+  get health(): number {
+    return this.getField('health');
+  }
+  set health(v: number) {
+    this.setField('health', v);
+  }
 
-  get flags(): number { return this.getField('flags'); }
+  get flags(): number {
+    return this.getField('flags');
+  }
 
-  get rawValue(): bigint { return this.getField('rawValue'); }
-  set rawValue(v: bigint) { this.setField('rawValue', v); }
+  get rawValue(): bigint {
+    return this.getField('rawValue');
+  }
+  set rawValue(v: bigint) {
+    this.setField('rawValue', v);
+  }
 }
 
 // ── Tests ──────────────────────────────────────────────────────────────
@@ -191,14 +216,17 @@ describe('SoAComponent', () => {
 
 // ── TransformComponent-like direct store access test ───────────────────
 
-const TransformLikeSchema = defineSoASchema({
-  fpX: 'i64',
-  fpY: 'i64',
-  fpZ: 'i64',
-  visX: 'f64',
-  visY: 'f64',
-  visZ: 'f64',
-}, 'TransformLike');
+const TransformLikeSchema = defineSoASchema(
+  {
+    fpX: 'i64',
+    fpY: 'i64',
+    fpZ: 'i64',
+    visX: 'f64',
+    visY: 'f64',
+    visZ: 'f64',
+  },
+  'TransformLike'
+);
 
 type TransformLikeDef = typeof TransformLikeSchema.definition;
 
@@ -207,10 +235,22 @@ class TransformLikeComponent extends SoAComponent<TransformLikeDef> {
   private _cachedFp = { x: 0n, y: 0n, z: 0n };
   private _cachedVis = { x: 0, y: 0, z: 0 };
 
-  constructor(entityId: number, fpX: bigint, fpY: bigint, fpZ: bigint, visX: number, visY: number, visZ: number) {
+  constructor(
+    entityId: number,
+    fpX: bigint,
+    fpY: bigint,
+    fpZ: bigint,
+    visX: number,
+    visY: number,
+    visZ: number
+  ) {
     super(TransformLikeSchema, entityId, {
-      fpX, fpY, fpZ,
-      visX, visY, visZ,
+      fpX,
+      fpY,
+      fpZ,
+      visX,
+      visY,
+      visZ,
     });
   }
 
@@ -321,7 +361,13 @@ describe('SoAComponentStore capacity reclamation', () => {
   it('shrinkToFit releases memory while preserving live data', () => {
     const store = em().getOrCreateSoAStore(TestSchema, 2);
     for (let id = 1; id <= 100; id++) {
-      store.add(id, { x: id, y: id * 2, health: id, flags: 0, rawValue: BigInt(id) });
+      store.add(id, {
+        x: id,
+        y: id * 2,
+        health: id,
+        flags: 0,
+        rawValue: BigInt(id),
+      });
     }
     for (let id = 1; id <= 90; id++) store.remove(id);
 
@@ -339,7 +385,10 @@ describe('SoAComponentStore capacity reclamation', () => {
   });
 
   it('autoShrink reclaims memory automatically as population drops', () => {
-    const store = em().getOrCreateSoAStore(TestSchema, { initialCapacity: 4, autoShrink: true });
+    const store = em().getOrCreateSoAStore(TestSchema, {
+      initialCapacity: 4,
+      autoShrink: true,
+    });
     for (let id = 1; id <= 200; id++) {
       store.add(id, { x: id, y: 0, health: 100, flags: 0, rawValue: 0n });
     }
@@ -358,7 +407,10 @@ describe('SoAComponentStore capacity reclamation', () => {
   });
 
   it('autoShrink never drops below initial capacity', () => {
-    const store = em().getOrCreateSoAStore(TestSchema, { initialCapacity: 64, autoShrink: true });
+    const store = em().getOrCreateSoAStore(TestSchema, {
+      initialCapacity: 64,
+      autoShrink: true,
+    });
     for (let id = 1; id <= 200; id++) {
       store.add(id, { x: id, y: 0, health: 100, flags: 0, rawValue: 0n });
     }
@@ -462,13 +514,22 @@ class PooledSoAComponent extends SoAComponent<PooledSoASchemaDef> {
     super(PooledSoASchema, entityId, { value: 0 });
   }
 
-  get value(): number { return this.getField('value'); }
-  set value(v: number) { this.setField('value', v); }
+  get value(): number {
+    return this.getField('value');
+  }
+  set value(v: number) {
+    this.setField('value', v);
+  }
 }
 
-interface PooledSoASpawnArgs { value: number }
+interface PooledSoASpawnArgs {
+  value: number;
+}
 
-class PooledSoAEntity extends Entity implements IPoolableEntity<PooledSoASpawnArgs> {
+class PooledSoAEntity
+  extends Entity
+  implements IPoolableEntity<PooledSoASpawnArgs>
+{
   public readonly soa: PooledSoAComponent;
 
   constructor() {
@@ -516,5 +577,3 @@ describe('SoAComponent PoolManager integration', () => {
     expect(reused.soa.value).toBe(7);
   });
 });
-
-
