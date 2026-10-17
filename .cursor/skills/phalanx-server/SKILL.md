@@ -177,8 +177,9 @@ interface PhalanxConfig {
   maxTickAhead: number;            // Default: 5
   commandHistoryTicks: number | 'full'; // Default: 200. 'full' keeps every non-empty tick
   requireBuildId?: boolean;        // Default: false. Mismatch → match-error before start
-  shutdownGraceMs?: number;        // Default: 0. Wait after server-shutdown before stop()
+  shutdownGraceMs?: number;        // Default: 0. Wait after server-shutdown before stop(), then again for archive hooks
   handleSignals?: boolean;         // Default: false. true → SIGTERM calls shutdown('sigterm')
+  onMatchArchived?: (rec: MatchArchive) => void | Promise<void>; // Default: omitted. Once per started match; engine stores nothing
 
   // === Determinism Features ===
   validateInputSequence?: boolean; // Default: false
@@ -196,7 +197,9 @@ interface PhalanxConfig {
 }
 ```
 
-`commandHistoryTicks: 'full'` stores only non-empty ticks for the whole match. `match-log` replies with `match-log-chunk` events of at most 2000 ticks, only to the requesting member socket. A new `match-log` or `match-log-cancel` stops the previous stream on that socket. Optional `requestId` is echoed on chunks and errors. `Phalanx.shutdown(reason)` emits `server-shutdown` to every active room, waits `shutdownGraceMs`, then calls `stop()`. Set `handleSignals: true` to bind that to `SIGTERM`. The engine never calls `process.exit`. With `requireBuildId`, a missing or differing `buildId` emits `match-error` (`build-mismatch`) and removes the match before `match-found`. `GameRoom.getBuildId()` returns the first non-empty id in team order.
+`commandHistoryTicks: 'full'` stores only non-empty ticks for the whole match. `match-log` replies with `match-log-chunk` events of at most 2000 ticks, only to the requesting member socket. A new `match-log` or `match-log-cancel` stops the previous stream on that socket. Optional `requestId` is echoed on chunks and errors. `Phalanx.shutdown(reason)` emits `server-shutdown` to every active room, waits `shutdownGraceMs`, then calls `stop()`, then waits for `onMatchArchived` hooks up to `shutdownGraceMs` again. Set `handleSignals: true` to bind that to `SIGTERM`. The engine never calls `process.exit`. With `requireBuildId`, a missing or differing `buildId` emits `match-error` (`build-mismatch`) and removes the match before `match-found`. `GameRoom.getBuildId()` returns the first non-empty id in team order.
+
+`onMatchArchived` is opt-in. It runs once after a match that reached `startGame()` ends, with a `MatchArchive` (seed, optional `buildId`, teams, end reason, optional `winnerTeamId`, and the command log). It does not run for `build-mismatch`, `players-not-connected`, `ready-timeout`, or a stop during countdown or waiting-for-ready. The log arrays are not copied; do heavy work asynchronously. Without the hook the log is released at match end and nothing is stored. A throw or a rejected promise is logged and does not stop other matches. An in-flight `match-log` ends with `match-log-error` `not-found` when the history is released.
 
 #### Game Modes
 
