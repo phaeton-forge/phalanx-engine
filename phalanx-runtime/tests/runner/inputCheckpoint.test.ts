@@ -7,6 +7,7 @@ import {
   type InputCheckpoint,
 } from '../../src/runner/InputCheckpoint.js';
 import type { LogEntry } from '../../src/runner/CommandLog.js';
+import { SnapshotRejectedError } from '../../src/state/errors.js';
 import { canonicalConfigBytes } from '../../src/state/snapshot.js';
 
 function entry(payload: JsonValue): LogEntry {
@@ -73,5 +74,24 @@ describe('input checkpoint payload codec', () => {
     expect(record['__proto__']).toEqual({ admin: true });
     expect(record['constructor']).toEqual({ forged: 1 });
     expect(Object.hasOwn(Object.prototype, 'admin')).toBe(false);
+  });
+
+  it('rejects a format-2 checkpoint that has no systemSeq', () => {
+    const checkpoint: InputCheckpoint = {
+      pending: [{ tick: 3, entries: [entry({ type: 'move', dir: 1 })] }],
+      nextSeq: [{ slot: 0, nextSeq: 2 }],
+      systemSeq: 4,
+    };
+    const bytes = encodeInputCheckpoint(checkpoint);
+    const truncated = bytes.subarray(0, bytes.length - 1);
+    expect(() => decodeInputCheckpoint(truncated)).toThrow(
+      SnapshotRejectedError
+    );
+    expect(() => decodeInputCheckpoint(truncated)).toThrow(/systemSeq/);
+    expect(decodeInputCheckpoint(bytes).systemSeq).toBe(4);
+    const extra = new Uint8Array(bytes.length + 1);
+    extra.set(bytes);
+    extra[bytes.length] = 0;
+    expect(() => decodeInputCheckpoint(extra)).toThrow(/StateReader\.done:/);
   });
 });

@@ -44,6 +44,22 @@ export async function runConformance(driver: SimDriver): Promise<void> {
       throw new Error('conformance: restored digest mismatch');
     }
     restored.dispose();
+    const handoff = authority.setController(0, 'bot', { policy: 'defensive' });
+    if (handoff !== null) {
+      throw new Error(`conformance: setController rejected: ${handoff}`);
+    }
+    authority.step(1);
+    if (authority.controllerOf(0) !== 'bot') {
+      throw new Error('conformance: slot stayed human after setController');
+    }
+    const unknown = authority.setController(9, 'bot', { policy: 'defensive' });
+    if (unknown !== 'unknown slot') {
+      throw new Error(`conformance: unknown slot returned ${String(unknown)}`);
+    }
+    const same = authority.setController(0, 'bot', { policy: 'defensive' });
+    if (same !== 'slot is already bot') {
+      throw new Error(`conformance: same mode returned ${String(same)}`);
+    }
   } finally {
     match.dispose();
   }

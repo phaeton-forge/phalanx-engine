@@ -1,4 +1,4 @@
-import { createCurrentDriver } from '../adapters/current.js';
+import { createV65Driver } from '../adapters/v65.js';
 import type { MatchSpec } from '../driver/SimDriver.js';
 import { parseJson } from '../util/json.js';
 
@@ -10,7 +10,7 @@ interface Request {
 async function main(): Promise<void> {
   const raw = await readStdin();
   const request = parseRequest(parseJson(raw));
-  const driver = createCurrentDriver();
+  const driver = createV65Driver();
   const match = driver.createMatch(request.spec);
   try {
     const peer = match.createPeer('A', { role: 'authority' });

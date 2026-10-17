@@ -24,6 +24,34 @@ describe('import rule', () => {
     }
     expect(violations).toEqual([]);
   });
+
+  it('limits facade and adapters to @phalanx-engine/engine', () => {
+    const violations: string[] = [];
+    for (const file of walk(join(PACKAGE_ROOT, 'src'))) {
+      const rel = relative(PACKAGE_ROOT, file).split('\\').join('/');
+      const facade = rel.startsWith('src/facade/');
+      const adapter = rel.startsWith('src/adapters/');
+      if (!facade && !adapter) continue;
+      const text = readFileSync(file, 'utf8');
+      const specifiers = [
+        ...text.matchAll(/from\s+['"](@phalanx-engine\/[^'"]+)['"]/g),
+      ];
+      for (const match of specifiers) {
+        const specifier = match[1];
+        if (specifier === undefined) continue;
+        if (specifier === '@phalanx-engine/engine') continue;
+        if (
+          adapter &&
+          specifier === '@phalanx-engine/runtime/advanced' &&
+          /why|почему/i.test(text)
+        ) {
+          continue;
+        }
+        violations.push(`${rel} imports ${specifier}`);
+      }
+    }
+    expect(violations).toEqual([]);
+  });
 });
 
 function walk(directory: string): string[] {

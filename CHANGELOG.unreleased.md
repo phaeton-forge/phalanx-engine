@@ -218,6 +218,9 @@ Entries collected per package until the synchronized 0.3.0 release
   a started transport. A corrupt IndexedDB row rejects the read.
   The persistence perf test runs only when `PHALANX_PERF=1`.
   `IndexedDbMatchStore` uses `globalThis.indexedDB`.
+- `decodeInputCheckpoint` throws `SnapshotRejectedError` when a format-2
+  input checkpoint has no trailing `systemSeq` (snapshots written before
+  setController / 6.5b). `ENGINE_SNAPSHOT_FORMAT` stays 2.
 
 ## @phalanx-engine/ecs
 

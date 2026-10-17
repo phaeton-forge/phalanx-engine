@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { createCurrentDriver } from '../src/adapters/current.js';
+import { createV65Driver } from '../src/adapters/v65.js';
 import { scenario } from '../src/dsl/scenario.js';
 import { simulate } from '../src/dsl/interpret.js';
 import { canonicalDigest } from '../src/oracle/digest.js';
 
 describe('oracle sensitivity', () => {
   it('goes red when the fault gate is disabled', async () => {
-    const driver = createCurrentDriver();
+    const driver = createV65Driver();
     const base = scenario('fault-off', {
       suite: 'disconnect',
       tags: ['disconnect'],
@@ -41,7 +41,7 @@ describe('oracle sensitivity', () => {
   });
 
   it('changes homeZ and records contacts, and the digest is not snapshot bytes', async () => {
-    const driver = createCurrentDriver();
+    const driver = createV65Driver();
     const match = driver.createMatch({
       seed: 5,
       inputDelayTicks: 1,

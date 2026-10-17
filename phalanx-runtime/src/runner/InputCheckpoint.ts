@@ -1,5 +1,6 @@
 import type { JsonValue } from '../game/commands.js';
 import { BinaryStateReader, BinaryStateWriter } from '../state/BinaryState.js';
+import { SnapshotRejectedError } from '../state/errors.js';
 import type { StateReader, StateWriter } from '../state/StateIO.js';
 import type { LogEntry } from './CommandLog.js';
 
@@ -124,6 +125,13 @@ export function decodeInputCheckpoint(bytes: Uint8Array): InputCheckpoint {
     const seq = seqReader.varint();
     return { slot, nextSeq: seq };
   });
+  // Format 2 from 6.5a ended after nextSeq. `unreadCount` is private;
+  // `remainingBytes` does not consume the varint that follows.
+  if (reader.remainingBytes().length === 0) {
+    throw new SnapshotRejectedError(
+      'input checkpoint: missing systemSeq — written before setController (6.5b); snapshot format 2 without system sequence is not supported'
+    );
+  }
   const systemSeq = reader.varint();
   reader.done();
   return { pending, nextSeq, systemSeq };
