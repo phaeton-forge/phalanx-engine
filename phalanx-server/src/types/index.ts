@@ -288,7 +288,7 @@ export interface AbsenceConfig {
 }
 
 /**
- * Result passed to `GameRoom.endMatch` and to the `player-command` hook.
+ * Result passed to `ctx.endMatch` on the `player-command` hook.
  * `winnerTeamId`, when present on the wire, is the team that won.
  * `loserIds` is an input only: the room derives `winnerTeamId` from it
  * when the caller did not pass one.
@@ -317,6 +317,11 @@ export interface PlayerAbsentEvent {
  */
 export interface PlayerCommandContext {
   matchId: string;
+  /**
+   * Finish the match. Returns false when it is already finished, or when
+   * `winnerTeamId` is not a team in the match (warning, match stays
+   * `playing`).
+   */
   endMatch(result: EndMatchResult): boolean;
 }
 

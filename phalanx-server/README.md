@@ -300,8 +300,11 @@ Returning is the existing `player-reconnected` path (`reconnect-match`,
 `room-recover`). There is no extra "returned" event. When `absence` is
 enabled, the first message on the socket that is still bound after a
 `disconnectTicks` timeout also counts as a return (`connected` becomes
-true again and the timer stops). Without `absence`, that message does not
-set `connected` back to true.
+true again and the timer stops). A message during `paused` does the same
+when a timer is already running, so expiry cannot end the match after the
+player is back. A disconnect that happens during `paused` still starts no
+timer, and a message in that case leaves `connected` false. Without
+`absence`, a message does not set `connected` back to true.
 
 When the timer expires:
 
@@ -310,16 +313,19 @@ When the timer expires:
 
 `winnerTeamId` is the caller's team when they passed one that exists.
 Otherwise, if `loserIds` leaves exactly one team with no loser, that team
-wins. In FFA, several surviving teams means the field is omitted. Existing
-reasons (`stopped`, `desync`, `turn-timeout`, `ready-timeout`,
+wins. In FFA, several surviving teams means the field is omitted. An
+unknown `winnerTeamId` does not end the match: `ctx.endMatch` returns
+`false`, the server logs a warning, and the match stays `playing`.
+Existing reasons (`stopped`, `desync`, `turn-timeout`, `ready-timeout`,
 `players-not-connected`) are unchanged.
 
-`GameRoom.endMatch({ reason, winnerTeamId?, loserIds? })` is how a game
-finishes a match, including from the `player-command` hook (`ctx.endMatch`).
-It returns `false` when the match is already finished. The command that
-ended the match is not stored and not broadcast. `getAbsences()` returns
-the current absences with `deadlineMs` / `budgetLeftMs` in the same
-millisecond sense (Task 9 reads the resume deadline from it).
+Call `ctx.endMatch({ reason, winnerTeamId?, loserIds? })` from the
+`player-command` hook. That is how a game finishes a match. It returns
+`false` when the match is already finished, and when `winnerTeamId` is
+not a team in the match. The command that ended the match is not stored
+and not broadcast. `getAbsences()` returns the current absences with
+`deadlineMs` / `budgetLeftMs` in the same millisecond sense (Task 9
+reads the resume deadline from it).
 
 ## Event Hooks
 

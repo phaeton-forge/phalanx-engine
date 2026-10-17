@@ -446,6 +446,8 @@ describe('GameRoom absence timer', () => {
     room.handleDisconnect('sock-p1');
     expect(room.getAbsences()).toHaveLength(1);
     room.stop();
+    expect(room.getAbsences()).toEqual([]);
+    expect(vi.getTimerCount()).toBe(0);
     const ends = events(log, 'match-end').length;
     vi.advanceTimersByTime(180_000);
     expect(events(log, 'match-end')).toHaveLength(ends);
@@ -478,6 +480,39 @@ describe('GameRoom absence timer', () => {
       reason: 'disconnect',
       winnerTeamId: 1,
     });
+  });
+
+  it('stops a running timer when the absent player messages during pause', () => {
+    const running = duel(DEFAULT_ABSENCE);
+    running.room.handleDisconnect('sock-p1');
+    expect(running.room.pause('p2')).toBe(true);
+    running.room.updatePlayerActivity('p1');
+    expect(running.room.getAbsences()).toEqual([]);
+    expect(
+      running.room.getMatchInfo().players.find((player) => player.id === 'p1')
+        ?.connected
+    ).toBe(true);
+    vi.advanceTimersByTime(120_000);
+    expect(running.room.getMatchInfo().state).toBe('paused');
+    expect(
+      events(running.log, 'match-end').some(
+        (entry) =>
+          isRecord(entry.payload) && entry.payload.reason === 'disconnect'
+      )
+    ).toBe(false);
+    running.room.stop();
+
+    const quiet = createRoom({ teams: DUEL, absence: DEFAULT_ABSENCE });
+    harness = quiet;
+    reachPlaying(quiet.room, ['p1', 'p2']);
+    expect(quiet.room.pause('p2')).toBe(true);
+    quiet.room.handleDisconnect('sock-p1');
+    quiet.room.updatePlayerActivity('p1');
+    expect(quiet.room.getAbsences()).toEqual([]);
+    expect(
+      quiet.room.getMatchInfo().players.find((player) => player.id === 'p1')
+        ?.connected
+    ).toBe(false);
   });
 
   it('in event mode starts the timer only from a socket drop', () => {
@@ -715,6 +750,30 @@ describe('absence over real sockets', () => {
     expect(batch.commands.some((command) => command.type === 'move')).toBe(
       true
     );
+  });
+
+  it('continuous mode ends the match after a socket drop', async () => {
+    const { client1, client2, team2 } = await twoPlayerMatch({
+      timeoutTicks: 1_000_000,
+      disconnectTicks: 1_000_000,
+      absence: { windowMs: 1500, matchBudgetMs: 10_000 },
+    });
+    const absent = once<PlayerAbsentEvent>(client2, 'player-absent');
+    const ended = once<{ reason?: string; winnerTeamId?: number }>(
+      client2,
+      'match-end'
+    );
+    client1.disconnect();
+    await expect(absent).resolves.toMatchObject({
+      playerId: 'player1',
+      deadlineMs: 1500,
+      budgetLeftMs: 10_000,
+    });
+    await expect(ended).resolves.toEqual({
+      reason: 'disconnect',
+      winnerTeamId: team2,
+    });
+    expect(server?.getActiveMatches()).toEqual([]);
   });
 });
 

@@ -287,6 +287,7 @@ are milliseconds left at send time; the client counts down from receipt.
 `getAbsences()` uses the same semantics. Return goes through
 `handleReconnect`. With `absence` enabled, the first message on the
 still-bound socket after a `disconnectTicks` timeout is also a return.
+A message during `paused` stops a timer that is already running.
 
 Expiry calls `endMatch`. Every human absent → `{ reason: 'abandoned' }`
 with no winner. Otherwise `{ reason: 'disconnect', loserIds }` and
@@ -308,9 +309,10 @@ phalanx.on('player-command', (_playerId, command, ctx) => {
 });
 ```
 
-`ctx.endMatch` returns false when the match is already finished. The
-command that ended the match is not written to the log and not broadcast.
-Handlers with two parameters stay valid.
+`ctx.endMatch` returns false when the match is already finished, and when
+`winnerTeamId` is not a team in the match (a warning is logged and the
+match stays `playing`). The command that ended the match is not written
+to the log and not broadcast. Handlers with two parameters stay valid.
 
 ### 4. Server Event Hooks
 

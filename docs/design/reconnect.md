@@ -78,22 +78,25 @@ an internal `AbsencePolicy` seam that is not exported.
   later `match-resume`). There is no separate returned event;
   `player-reconnected` is enough. With `absence` on, the first message
   from the still-bound socket after a `disconnectTicks` timeout is also a
-  return. With `absence` off, that message does not set `connected` back
-  to true.
+  return, including while `paused` when a timer is already running. A
+  disconnect during `paused` still starts no timer. With `absence` off,
+  that message does not set `connected` back to true.
 - On expiry, if every human is absent: `endMatch({ reason: 'abandoned' })`
   with no winner. Otherwise
   `endMatch({ reason: 'disconnect', loserIds: [playerId] })`.
   `winnerTeamId` is included when the caller passed a real team, or when
   `loserIds` leaves exactly one team that contains no loser (omitted in
-  FFA when more than one team remains). Event order is `match-end`, then
-  `match-ended`.
+  FFA when more than one team remains). An unknown `winnerTeamId` returns
+  false, logs a warning, and leaves the match `playing`. Event order is
+  `match-end`, then `match-ended`.
 - `tickMode: 'event'` does not run `checkPlayerTimeouts`, so only a socket
   drop starts the timer.
 - `GameRoom.getAbsences()` returns the current rows with the same
   millisecond semantics, for Task 9's `absentDeadline`.
-- `GameRoom.endMatch` is public, including from the `player-command` hook
-  context `{ matchId, endMatch }`. A hook that ends the match does not log
-  or broadcast that command.
+- Games finish a match with `ctx.endMatch` on the `player-command` hook
+  (`{ matchId, endMatch }`). A hook that ends the match does not log or
+  broadcast that command. `ctx.endMatch` returns false when the match is
+  already finished or when `winnerTeamId` is not a team in the match.
 
 ## 6. Snapshots
 

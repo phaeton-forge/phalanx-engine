@@ -237,15 +237,36 @@ describe('GameRoom.endMatch', () => {
     abandoned.room.stop();
   });
 
-  it('throws on an unknown winnerTeamId and leaves the match playing', () => {
+  it('returns false on an unknown winnerTeamId and leaves the match playing', () => {
     vi.useFakeTimers();
-    const { room, log } = createRoom([[P1], [P2]]);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { room, log } = createRoom([[P1], [P2]], {
+      onCommand: (_playerId, command, ctx) => {
+        if (command.type === 'destroy-base') {
+          expect(
+            ctx.endMatch({ reason: 'base-destroyed', winnerTeamId: 9 })
+          ).toBe(false);
+        }
+      },
+    });
     reachPlaying(room, ['p1', 'p2']);
-    expect(() =>
-      room.endMatch({ reason: 'base-destroyed', winnerTeamId: 9 })
-    ).toThrow(/winnerTeamId 9/);
+    expect(room.endMatch({ reason: 'base-destroyed', winnerTeamId: 9 })).toBe(
+      false
+    );
+    expect(
+      room.handleCommand('p1', {
+        type: 'destroy-base',
+        tick: 0,
+        playerId: 'p1',
+        data: {},
+      })
+    ).toBe(true);
     expect(room.getMatchInfo().state).toBe('playing');
     expect(matchEnds(log)).toEqual([]);
+    expect(warn).toHaveBeenCalledWith(
+      'endMatch: winnerTeamId 9 does not exist'
+    );
+    warn.mockRestore();
     room.stop();
   });
 

@@ -966,11 +966,16 @@ export class GameRoom {
 
     // Task 10. `checkPlayerTimeouts` sets `connected = false` and does not
     // clear the socket binding. With `absence` enabled, the next message
-    // on that socket is a return. Without `absence`, leave `connected`
-    // false — that is today's behaviour.
-    if (!this.config.absence || this.state !== 'playing') return;
+    // on that socket is a return while `playing`. A timer that is already
+    // running is also stopped by a message during `paused`, so expiry
+    // cannot award the match to the opponent after the player is back.
+    // Without `absence`, `connected` stays false.
+    if (!this.config.absence) return;
     const player = this.players.get(playerId);
     if (!player || player.connected) return;
+    if (this.state !== 'playing' && !this.activeAbsences.has(playerId)) {
+      return;
+    }
     player.connected = true;
     this.returnFromAbsence(playerId);
     this.eventEmitter('player-reconnected', playerId, this.id);
@@ -1454,12 +1459,15 @@ export class GameRoom {
    * A second call is a no-op. `winnerTeamId` is sent when the caller
    * passed one that exists, or when `loserIds` leaves exactly one team
    * with no loser. `reason: 'abandoned'` never carries a winner.
-   * Returns false when the match was already finished or when this call
-   * does not change it.
+   * Returns false when the match was already finished, or when
+   * `winnerTeamId` is not a team in this match. An unknown team logs a
+   * warning and leaves the match in `playing`, so a `player-command`
+   * hook cannot throw out of the relay.
    */
   endMatch(result: EndMatchResult): boolean {
     if (this.isFinished()) return false;
     const winnerTeamId = this.resolveWinnerTeamId(result);
+    if (winnerTeamId === null) return false;
     this.stop(true);
     const payload: { reason: string; winnerTeamId?: number } = {
       reason: result.reason,
@@ -1493,8 +1501,7 @@ export class GameRoom {
   }
 
   /**
-   * Replace the absence policy. Internal seam for Task 11; not exported
-   * from the package entry.
+   * @internal Seam for Task 11. Not exported from the package entry.
    */
   setAbsencePolicy(policy: AbsencePolicy): void {
     this.absencePolicy = policy;
@@ -1602,13 +1609,21 @@ export class GameRoom {
     );
   }
 
-  private resolveWinnerTeamId(result: EndMatchResult): number | undefined {
+  /**
+   * `null` means `winnerTeamId` is not a team in this match: the caller
+   * returns false and does not stop the match. `undefined` omits the
+   * field on the wire.
+   */
+  private resolveWinnerTeamId(
+    result: EndMatchResult
+  ): number | null | undefined {
     if (result.reason === 'abandoned') return undefined;
     if (result.winnerTeamId !== undefined) {
       if (!this.hasTeam(result.winnerTeamId)) {
-        throw new Error(
+        console.warn(
           `endMatch: winnerTeamId ${String(result.winnerTeamId)} does not exist`
         );
+        return null;
       }
       return result.winnerTeamId;
     }
