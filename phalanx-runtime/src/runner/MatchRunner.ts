@@ -1566,7 +1566,9 @@ export class MatchRunner<G extends AnyGameDefinition> {
       this.settleDigest(job);
     });
     const idle = this.digestIdle;
-    this.digestIdle = idle.then(() => scheduled);
+    // settleDigest reports a listener throw through onError. If that
+    // report itself throws, this catch keeps the idle chain handled.
+    this.digestIdle = idle.then(() => scheduled.catch(() => undefined));
   }
 
   private settleDigest(job: PendingDigest): void {
@@ -1574,10 +1576,14 @@ export class MatchRunner<G extends AnyGameDefinition> {
     job.settled = true;
     const index = this.pendingDigests.indexOf(job);
     if (index !== -1) this.pendingDigests.splice(index, 1);
-    if (this.stopped) return;
+    if (this.stopped || this.phase === 'failed') return;
     const digest = digestBytes(job.body);
-    this.digestListeners.emit(job.tick, digest);
-    this.transport.submitHash?.(job.tick, digest);
+    try {
+      this.digestListeners.emit(job.tick, digest);
+      this.transport.submitHash?.(job.tick, digest);
+    } catch (error) {
+      this.fail(job.tick, error);
+    }
   }
 
   private dropPendingDigests(): void {

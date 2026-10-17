@@ -87,8 +87,9 @@ export class BinaryStateWriter implements StateWriter {
   /**
    * UTF-8 bytes prefixed by `varint(byteLength)`.
    * Unpaired UTF-16 surrogates throw before any byte is written.
-   * Repeated strings reuse a bounded UTF-8 cache. The well-formed check
-   * runs once, on the miss.
+   * Strings of at most 128 characters reuse a bounded UTF-8 cache.
+   * The well-formed check runs once, on the miss. Longer strings are
+   * checked and encoded on every call and are not cached.
    */
   public str(v: string): void {
     if (typeof v !== 'string') {
@@ -432,6 +433,8 @@ const I64_MAX = 0x7fffffffffffffffn;
 const textEncoder = new TextEncoder();
 /** Max UTF-8 cache entries. Oldest key is dropped past this. */
 const UTF8_CACHE_LIMIT = 4096;
+/** Longer strings are encoded every call. They are not worth retaining. */
+const UTF8_CACHE_MAX_CHARS = 128;
 const utf8Cache = new Map<string, Uint8Array>();
 /**
  * Reserved bytes for a section length. A safe-integer varint fits in 8.
@@ -440,6 +443,10 @@ const utf8Cache = new Map<string, Uint8Array>();
 const SECTION_LEN_SLOT = 8;
 
 function encodeUtf8(value: string): Uint8Array {
+  if (value.length > UTF8_CACHE_MAX_CHARS) {
+    assertWellFormedUtf16(value);
+    return textEncoder.encode(value);
+  }
   const cached = utf8Cache.get(value);
   if (cached !== undefined) {
     utf8Cache.delete(value);

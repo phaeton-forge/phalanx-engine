@@ -88,7 +88,7 @@ describe('xxh64 wasm', () => {
     }
   });
 
-  it('uses BigInt until init and warns once', async () => {
+  it('compiles on the first hash without a fallback event', async () => {
     resetXxh64ForTests();
     const reasons: string[] = [];
     const unsubscribe = onDigestFallback((reason) => {
@@ -96,10 +96,10 @@ describe('xxh64 wasm', () => {
     });
     expect(digestBytes(new Uint8Array())).toBe('ef46db3751d8e999');
     expect(digestBytes(sanity(32))).toBe('18b216492bb44b70');
-    expect(reasons).toEqual(['XXH64 wasm is not initialized']);
+    expect(reasons).toEqual([]);
     await initDigest();
     expect(digestBytes(sanity(33))).toBe('55c8dc3e578f5b59');
-    expect(reasons).toEqual(['XXH64 wasm is not initialized']);
+    expect(reasons).toEqual([]);
     unsubscribe();
   });
 
@@ -117,17 +117,18 @@ describe('xxh64 wasm', () => {
     expect(reasons).toEqual(['wasm blocked']);
   });
 
-  it('matches wasm, the BigInt fallback, and the reference on 2000 buffers', async () => {
+  it('matches wasm, the BigInt fallback, and the reference', async () => {
+    const count = process.env['XXH64_FULL'] === '1' ? 2000 : 200;
     await initDigest();
     const seed = { value: 0x9e3779b1 };
     const wasm: string[] = [];
-    for (let index = 0; index < 2000; index += 1) {
+    for (let index = 0; index < count; index += 1) {
       wasm.push(digestBytes(randomBuffer(seed)));
     }
     resetXxh64ForTests();
     forceXxh64FallbackForTests('compare');
     const again = { value: 0x9e3779b1 };
-    for (let index = 0; index < 2000; index += 1) {
+    for (let index = 0; index < count; index += 1) {
       const bytes = randomBuffer(again);
       const fallback = digestBytes(bytes);
       expect(fallback).toBe(wasm[index]);

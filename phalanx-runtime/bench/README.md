@@ -12,7 +12,8 @@ pnpm --filter @phalanx-engine/runtime run bench
 The script is `node --expose-gc --import tsx bench/snapshot.bench.ts`.
 It is not part of `build` or `test`. Warmup is 60 iterations and the
 timed phase is 200. The world is advanced 200 ticks first, with a cast
-every third tick, matching `uploads/snapbench/bench-src/snapbench.ts`.
+every third tick. At 1000 entities it also prints a per-section split
+of the world save: pools, SoA, abilities, and the remaining sections.
 
 Acceptance numbers are for the Xeon 2.4 GHz box (Node 20.19). This
 machine is whatever host runs the command; the printed `cpu` line is

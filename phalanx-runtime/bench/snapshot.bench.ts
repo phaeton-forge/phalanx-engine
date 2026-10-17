@@ -9,6 +9,11 @@
 import { performance, PerformanceObserver } from 'node:perf_hooks';
 import { cpus } from 'node:os';
 import { stdout } from 'node:process';
+import type {
+  GameWorld,
+  SoAComponentStore,
+  SoASchemaDefinition,
+} from '@phalanx-engine/ecs';
 import {
   BinaryStateWriter,
   ENGINE_SNAPSHOT_FORMAT,
@@ -18,6 +23,12 @@ import {
   encodeSnapshot,
   initDigest,
 } from '../dist/index.js';
+import { writeAbilities } from '../dist/helpers/abilities.js';
+import { writeEntityIds, writePools } from '../dist/helpers/entities.js';
+import { hasBroadphase, writeBroadphase } from '../dist/helpers/physics.js';
+import { writeRandom } from '../dist/helpers/random.js';
+import { writeSoAStore } from '../dist/helpers/soa.js';
+import { singletonHooks } from '../dist/world/singletons.js';
 import {
   encodeInputCheckpoint,
   type PendingCommandBatch,
@@ -52,6 +63,14 @@ interface TickCapture {
   readonly systemSeq: number;
   readonly configDigest: string;
   readonly componentSchemaKey: string | null;
+  readonly simulation: { readonly world: GameWorld } | null;
+}
+
+interface SectionProfile {
+  readonly pools: ReturnType<typeof summarize>;
+  readonly soa: ReturnType<typeof summarize>;
+  readonly abilities: ReturnType<typeof summarize>;
+  readonly rest: ReturnType<typeof summarize>;
 }
 
 function asTickCapture(runner: object): TickCapture {
@@ -193,6 +212,76 @@ interface SizeResult {
   readonly allocSnapshotApi: number | null;
   readonly gcCount: number;
   readonly gcMaxMs: number;
+  readonly sections: SectionProfile | null;
+}
+
+function hasAbilities(world: GameWorld): boolean {
+  const abilities: unknown = world.context.abilities;
+  if (typeof abilities !== 'object' || abilities === null) return false;
+  const record = abilities as Record<string, unknown>;
+  return (
+    typeof record['exportRuntimeState'] === 'function' &&
+    typeof record['importRuntimeState'] === 'function'
+  );
+}
+
+function writeSoASection(writer: BinaryStateWriter, world: GameWorld): void {
+  for (const store of world.entityManager.getAllSoAStores().values()) {
+    // getAllSoAStores types every store as SoAComponentStore<any>.
+    writeSoAStore(
+      writer,
+      store as unknown as SoAComponentStore<SoASchemaDefinition>
+    );
+  }
+}
+
+/**
+ * Same section order as `writeWorld`, timed apart. Roster is omitted:
+ * this skirmish pools every entity, so that section is empty.
+ */
+function profileSections(capture: TickCapture): SectionProfile {
+  const world = capture.simulation?.world;
+  if (world === undefined) throw new Error('bench: simulation is missing');
+  const writer = new BinaryStateWriter(65_536);
+  const gas = hasAbilities(world);
+  const broadphase = hasBroadphase(world);
+  const pools: number[] = [];
+  const soa: number[] = [];
+  const abilities: number[] = [];
+  const rest: number[] = [];
+  const sample = (record: boolean): void => {
+    capture.scope.run(() => {
+      writer.reset();
+      let started = performance.now();
+      writePools(writer, world);
+      const poolsMs = performance.now() - started;
+      started = performance.now();
+      writeSoASection(writer, world);
+      const soaMs = performance.now() - started;
+      started = performance.now();
+      if (gas) writeAbilities(writer, world);
+      const abilitiesMs = performance.now() - started;
+      started = performance.now();
+      writeEntityIds(writer, world);
+      writeRandom(writer, world.random);
+      if (broadphase) writeBroadphase(writer, world);
+      singletonHooks(world)?.onSave?.(writer);
+      const restMs = performance.now() - started;
+      if (!record) return;
+      pools.push(poolsMs);
+      soa.push(soaMs);
+      abilities.push(abilitiesMs);
+      rest.push(restMs);
+    });
+  };
+  for (let index = 0; index < WARMUP; index += 1) sample(false);
+  for (let index = 0; index < ITERATIONS; index += 1) sample(true);
+  return {
+    pools: summarize(pools),
+    soa: summarize(soa),
+    abilities: summarize(abilities),
+    rest: summarize(rest),
+  };
 }
 
 function measure(size: number): SizeResult {
@@ -271,6 +360,7 @@ function measure(size: number): SizeResult {
   const allocSnapshotApi = medianAlloc(() => {
     runner.snapshot();
   });
+  const sections = size === 1000 ? profileSections(capture) : null;
   runner.dispose();
 
   return {
@@ -285,7 +375,12 @@ function measure(size: number): SizeResult {
     allocSnapshotApi,
     gcCount: gcDuring.length,
     gcMaxMs: gcDuring.length === 0 ? 0 : Math.max(...gcDuring),
+    sections,
   };
+}
+
+function sectionLine(label: string, row: ReturnType<typeof summarize>): string {
+  return `${label} p50 ${ms(row.p50)}  p99 ${ms(row.p99)}  max ${ms(row.max)}`;
 }
 
 const cpu = cpus()[0]?.model ?? 'unknown';
@@ -307,6 +402,15 @@ for (const size of SIZES) {
       `alloc hash MB ${mb(row.allocHashCapture)}  snapshot seal MB ${mb(row.allocSnapshotCapture)}  snapshot() MB ${mb(row.allocSnapshotApi)}\n` +
       `gc during timed phase count ${String(row.gcCount)} max ${ms(row.gcMaxMs)} ms\n`
   );
+  if (row.sections !== null) {
+    stdout.write(
+      `sections @${String(size)} ms\n` +
+        `  ${sectionLine('pools    ', row.sections.pools)}\n` +
+        `  ${sectionLine('soa      ', row.sections.soa)}\n` +
+        `  ${sectionLine('abilities', row.sections.abilities)}\n` +
+        `  ${sectionLine('rest     ', row.sections.rest)}\n`
+    );
+  }
 }
 
 stdout.write('\n');

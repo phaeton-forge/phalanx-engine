@@ -194,6 +194,9 @@ history, or truncation). Do not add a base snapshot to the replay.
 `outcome` publishes after the completed tick and after hosted
 `decide`. A periodic hash captures the body on the tick and calls
 `digestBytes` off the tick. `onDigest(tick, digest)` names that tick.
+The callback can run after `runner.tick` has moved past it. A throw
+from `onDigest` or `submitHash` calls `onError` with that tick and
+sets `status` to `'failed'`.
 `runner.flush()` finishes pending digests synchronously;
 `await runner.whenIdle()` waits. `LocalTransport.stepped()` does not
 flush. Snapshot encode stays on the journal scheduler. The replay final
@@ -201,8 +204,9 @@ digest stays synchronous. Server and relay hash checks key by tick
 (`receiveStateHash` waits for every connected player), so a digest one
 or two frames late still compares. `initDigest()` compiles the embedded
 XXH64 module (own `.wat`, 623 bytes). `start`, `runLocalMatch`, and
-`ReplayPlayer.from` call it. Before that, `digestBytes` uses BigInt and
-`onDigestFallback` fires once. Pause requires `requestPause` /
+`ReplayPlayer.from` call it. A cold hash compiles synchronously
+(`decodeSnapshot`, `resumeLocal`). `onDigestFallback` fires once only
+when compilation fails. Pause requires `requestPause` /
 `requestResume` on the
 transport. Catch-up applies buffered batches that land after
 `throughTick`, in order, and drops the ones the replay already covered.
@@ -238,9 +242,11 @@ sorts by a unique integer key and throws on duplicates or non-integers.
 the reader must consume the body exactly. The writer reserves the length,
 writes the body in place, then stores a canonical varint and shifts the
 body left. A throw inside the body restores `length`. `str` caches UTF-8
-for at most 4096 distinct strings and checks well-formed UTF-16 once, on
-a miss. It rejects unpaired surrogates, so a lone surrogate cannot share
-bytes with U+FFFD. That covers canonical config keys and values. The
+for strings of at most 128 characters, at most 4096 entries, and checks
+well-formed UTF-16 once, on a miss. Longer strings are encoded every
+call and are not cached. It rejects unpaired surrogates, so a lone
+surrogate cannot share bytes with U+FFFD. That covers canonical config
+keys and values. The
 reader keeps a leading U+FEFF.
 
 `encodeSnapshot` wraps the body in a `PHXS` header. `engineFormat`,

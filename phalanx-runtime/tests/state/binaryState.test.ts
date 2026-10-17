@@ -460,6 +460,22 @@ describe('BinaryStateWriter / BinaryStateReader', () => {
     expect(writer.finish()).toEqual(first);
   });
 
+  it('round-trips a string longer than the utf-8 cache and rejects its surrogate', () => {
+    const long = 'n'.repeat(200);
+    const writer = new BinaryStateWriter();
+    writer.str(long);
+    writer.str(long);
+    const reader = new BinaryStateReader(writer.finish());
+    expect(reader.str()).toBe(long);
+    expect(reader.str()).toBe(long);
+
+    const bad = new BinaryStateWriter();
+    const unpaired = `${'n'.repeat(200)}\uD800`;
+    expect(() => bad.str(unpaired)).toThrow(/unpaired surrogate/);
+    expect(() => bad.str(unpaired)).toThrow(/unpaired surrogate/);
+    expect(bad.finish()).toEqual(new Uint8Array());
+  });
+
   it('round-trips more strings than the utf-8 cache and rejects a bad surrogate twice', () => {
     const writer = new BinaryStateWriter();
     const values = Array.from(

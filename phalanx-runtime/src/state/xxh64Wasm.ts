@@ -94,17 +94,19 @@ export function initXxh64(): Promise<void> {
 }
 
 /**
- * Lowercase hex, or `null` when {@link initXxh64} has not finished.
- * A `null` result emits the fallback event once. Hashing does not
- * compile the module; callers use the BigInt fallback until init.
+ * Lowercase hex, or `null` when the module cannot hash yet.
+ * A cold module is compiled here, synchronously, so `decodeSnapshot`
+ * and `resumeLocal` do not need a prior {@link initXxh64}. The
+ * fallback event fires only when compilation fails. An in-flight
+ * async compile (browser, module over 4 KB) returns `null` without
+ * that event.
  */
 export function xxh64WasmHex(bytes: Uint8Array): string | null {
+  if (mode === 'cold') ensureColdInstall();
   if (mode !== 'ready' || backend === null) {
-    noteFallback(
-      mode === 'cold'
-        ? 'XXH64 wasm is not initialized'
-        : (fallbackReason ?? 'XXH64 wasm is unavailable')
-    );
+    if (mode === 'fallback') {
+      noteFallback(fallbackReason ?? 'XXH64 wasm is unavailable');
+    }
     return null;
   }
   return hex64(backend.hash(bytes));
@@ -126,6 +128,24 @@ export function forceXxh64FallbackForTests(reason: string): void {
   mode = 'fallback';
   initPromise = Promise.resolve();
   noteFallback(reason);
+}
+
+function ensureColdInstall(): void {
+  if (initPromise !== null) return;
+  const wasm = wasmNamespace();
+  if (wasm === undefined) {
+    fail('WebAssembly is not available');
+    return;
+  }
+  if (browserHost() && WASM_BYTES.byteLength > SYNC_COMPILE_LIMIT) {
+    void initXxh64();
+    return;
+  }
+  try {
+    install(new wasm.Module(WASM_BYTES));
+  } catch (error) {
+    fail(errorText(error));
+  }
 }
 
 function install(module: WasmModule): void {

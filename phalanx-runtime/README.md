@@ -203,6 +203,11 @@ or a log truncation. The replay format has no base snapshot.
 hosted `decide`. A periodic hash captures the world body on the tick and
 hashes it off the tick, on the same scheduler as snapshot encode.
 `onDigest(tick, digest)` carries the tick the body belongs to.
+The callback can run after `runner.tick` has already moved past that
+tick. `flush()` before the next tick delivers it while `runner.tick`
+is still the digest tick. A throw from `onDigest` or `submitHash`
+calls `onError(error, tick)` with that digest tick and sets `status`
+to `'failed'`.
 `runner.flush()` finishes those digests synchronously.
 `await runner.whenIdle()` waits for them. `LocalTransport.stepped()`
 does not flush after `step`. Snapshot encoding stays on the journal
@@ -212,9 +217,13 @@ the hash under its tick and compare once every connected player has
 submitted that tick, so a digest one or two frames late still matches.
 `initDigest()` compiles the embedded XXH64 module (handwritten `.wat`,
 623 bytes, synchronous under the 4 KB browser limit). `start`,
-`runLocalMatch`, and `ReplayPlayer.from` call it. Until it has run, or
-when `WebAssembly` is unavailable, `digestBytes` uses the BigInt
-reference and `onDigestFallback` fires once. A transport without `requestPause` /
+`runLocalMatch`, and `ReplayPlayer.from` call it. A hash that finds
+the module still cold compiles it synchronously, which is the path
+`decodeSnapshot` and `resumeLocal` take. `onDigestFallback` fires
+once only when that compilation fails, for example when `WebAssembly`
+is missing or blocked by a page policy. An in-flight compile of a
+module over the 4 KB browser limit uses the BigInt reference without
+that event. A transport without `requestPause` /
 `requestResume` cannot pause the world. Catch-up drops buffered
 batches covered by the replayed range and then runs the rest in order.
 An already-started runner flushes its checkpoint after `restore`.

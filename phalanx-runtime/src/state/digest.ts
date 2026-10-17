@@ -1,10 +1,12 @@
 /**
  * xxHash64 (XXH64) with seed 0, as lowercase hex (16 characters).
  *
- * The hot path is the embedded WASM module ({@link initDigest}). Before
- * it is ready, or when `WebAssembly` cannot be compiled, hashing falls
- * back to the BigInt reference. Both paths return the same digest.
- * The fallback emits one {@link onDigestFallback} event per process.
+ * The hot path is the embedded WASM module ({@link initDigest}). A
+ * cold call compiles that module synchronously. When `WebAssembly`
+ * cannot be compiled, hashing falls back to the BigInt reference.
+ * Both paths return the same digest. A real compile failure emits one
+ * {@link onDigestFallback} event per process. An in-flight async
+ * compile uses the BigInt reference without that event.
  *
  * This is XXH64, not XXH3. The digest covers the bytes it is given and
  * nothing else; snapshot code hashes the `GameState` body only.
@@ -26,8 +28,9 @@ export function initDigest(): Promise<void> {
 }
 
 /**
- * One event when {@link digestBytes} uses the BigInt fallback.
+ * One event when the XXH64 module fails to compile.
  * Not `console`. Subscribe before the first hash to observe it.
+ * A cold hash compiles synchronously and does not emit this.
  */
 export function onDigestFallback(handler: DigestFallbackHandler): () => void {
   return onXxh64Fallback(handler);

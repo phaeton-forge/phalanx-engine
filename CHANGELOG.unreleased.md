@@ -219,10 +219,13 @@ Entries collected per package until the synchronized 0.3.0 release
   The persistence perf test runs only when `PHALANX_PERF=1`.
   `IndexedDbMatchStore` uses `globalThis.indexedDB`.
 - Snapshot performance (Task 7.5): XXH64 is an embedded 623-byte WASM
-  module (`initDigest`, one `onDigestFallback` when hashing stays on the
-  BigInt reference). Periodic hashes capture the body on the tick and
-  digest it off the tick; `flush` / `whenIdle` finish those digests.
-  `section` writes its body in place, `str` caches UTF-8, and the SoA
+  module (`initDigest`). A cold hash compiles synchronously.
+  `onDigestFallback` fires once when that compilation fails. Periodic
+  hashes capture the body on the tick and digest it off the tick;
+  `onDigest` may run after `runner.tick` has moved on. A throw from
+  `onDigest` or `submitHash` fails the match. `flush` / `whenIdle`
+  finish those digests. `section` writes its body in place, `str`
+  caches UTF-8 for strings of at most 128 characters, and the SoA
   writer uses a per-schema field plan. Snapshot bytes are unchanged.
 - `decodeInputCheckpoint` throws `SnapshotRejectedError` when a format-2
   input checkpoint has no trailing `systemSeq` (snapshots written before

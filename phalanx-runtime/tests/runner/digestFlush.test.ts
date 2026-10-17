@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { LocalTransport, MatchRunner, type Digest } from '../../src/index.js';
+import {
+  LocalTransport,
+  MatchRunner,
+  onDigestFallback,
+  type Digest,
+} from '../../src/index.js';
 import { TinyGame, type TinyConfig } from '../fixtures/tinyGame.js';
+import { resetXxh64ForTests, xxh64WasmHex } from '../../src/state/xxh64Wasm.js';
 
 function config(): TinyConfig {
   return {
@@ -84,6 +90,113 @@ describe('deferred periodic digest', () => {
     expect(left.seen[0]?.digest).toBe(right.seen[0]?.digest);
     expect(left.seen[0]?.tick).toBe(0);
     expect(right.seen[0]?.tick).toBe(0);
+  });
+
+  it('delivers queued digests in tick order from flush', () => {
+    const { runner, transport, seen } = open();
+    transport.step(3);
+    expect(runner.tick).toBe(2);
+    expect(seen).toEqual([]);
+    runner.flush();
+    expect(seen.map((entry) => entry.tick)).toEqual([0, 1, 2]);
+    expect(seen.every((entry) => entry.at === 2)).toBe(true);
+  });
+
+  it('fails the match when onDigest throws, with no unhandled rejection', async () => {
+    const rejections: unknown[] = [];
+    const onRejection = (reason: unknown): void => {
+      rejections.push(reason);
+    };
+    process.on('unhandledRejection', onRejection);
+    try {
+      const transport = LocalTransport.stepped();
+      const runner = new MatchRunner(TinyGame, config(), transport, {
+        hashEveryTicks: 1,
+      });
+      live.push(runner);
+      const errors: { tick: number; message: string }[] = [];
+      runner.onDigest(() => {
+        throw new Error('digest boom');
+      });
+      runner.onError((error, tick) => {
+        errors.push({
+          tick,
+          message: error instanceof Error ? error.message : 'not an error',
+        });
+      });
+      runner.start();
+      transport.step(3);
+      expect(runner.tick).toBe(2);
+      await runner.whenIdle();
+      await new Promise<void>((resolve) => {
+        setImmediate(resolve);
+      });
+      expect(errors).toEqual([{ tick: 0, message: 'digest boom' }]);
+      expect(runner.status).toBe('failed');
+      expect(runner.tick).toBe(2);
+      expect(rejections).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', onRejection);
+    }
+  });
+
+  it('fails the match when submitHash throws', async () => {
+    const rejections: unknown[] = [];
+    const onRejection = (reason: unknown): void => {
+      rejections.push(reason);
+    };
+    process.on('unhandledRejection', onRejection);
+    try {
+      const transport = LocalTransport.stepped();
+      // LocalTransport leaves submitHash unset. The runner calls it when present.
+      const hashing = transport as LocalTransport & {
+        submitHash(tick: number, digest: Digest): void;
+      };
+      hashing.submitHash = () => {
+        throw new Error('submit boom');
+      };
+      const runner = new MatchRunner(TinyGame, config(), transport, {
+        hashEveryTicks: 1,
+      });
+      live.push(runner);
+      const errors: { tick: number; message: string }[] = [];
+      runner.onError((error, tick) => {
+        errors.push({
+          tick,
+          message: error instanceof Error ? error.message : 'not an error',
+        });
+      });
+      runner.start();
+      transport.step(1);
+      await runner.whenIdle();
+      await new Promise<void>((resolve) => {
+        setImmediate(resolve);
+      });
+      expect(errors).toEqual([{ tick: 0, message: 'submit boom' }]);
+      expect(runner.status).toBe('failed');
+      expect(rejections).toEqual([]);
+    } finally {
+      process.off('unhandledRejection', onRejection);
+    }
+  });
+
+  it('does not fall back to BigInt after start', () => {
+    resetXxh64ForTests();
+    const reasons: string[] = [];
+    const unsubscribe = onDigestFallback((reason) => {
+      reasons.push(reason);
+    });
+    try {
+      const { runner, transport, seen } = open();
+      transport.step(1);
+      runner.flush();
+      expect(seen).toHaveLength(1);
+      expect(reasons).toEqual([]);
+      expect(xxh64WasmHex(new Uint8Array())).toBe('ef46db3751d8e999');
+      expect(reasons).toEqual([]);
+    } finally {
+      unsubscribe();
+    }
   });
 
   it('drops a pending digest on dispose', async () => {
