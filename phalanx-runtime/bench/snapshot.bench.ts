@@ -71,6 +71,8 @@ interface SectionProfile {
   readonly soa: ReturnType<typeof summarize>;
   readonly abilities: ReturnType<typeof summarize>;
   readonly rest: ReturnType<typeof summarize>;
+  readonly split: ReturnType<typeof summarize>;
+  readonly save: ReturnType<typeof summarize>;
 }
 
 function asTickCapture(runner: object): TickCapture {
@@ -236,7 +238,8 @@ function writeSoASection(writer: BinaryStateWriter, world: GameWorld): void {
 }
 
 /**
- * Same section order as `writeWorld`, timed apart. Roster is omitted:
+ * Same section order as `writeWorld`, timed apart, plus one full
+ * `GameState.save` in that loop. Roster is omitted from the split:
  * this skirmish pools every entity, so that section is empty.
  */
 function profileSections(capture: TickCapture): SectionProfile {
@@ -249,10 +252,13 @@ function profileSections(capture: TickCapture): SectionProfile {
   const soa: number[] = [];
   const abilities: number[] = [];
   const rest: number[] = [];
+  const split: number[] = [];
+  const save: number[] = [];
   const sample = (record: boolean): void => {
     capture.scope.run(() => {
       writer.reset();
-      let started = performance.now();
+      const splitStart = performance.now();
+      let started = splitStart;
       writePools(writer, world);
       const poolsMs = performance.now() - started;
       started = performance.now();
@@ -267,11 +273,19 @@ function profileSections(capture: TickCapture): SectionProfile {
       if (broadphase) writeBroadphase(writer, world);
       singletonHooks(world)?.onSave?.(writer);
       const restMs = performance.now() - started;
+      const splitMs = performance.now() - splitStart;
+      writer.reset();
+      const saveStart = performance.now();
+      capture.requireGameState().save(writer);
+      writer.finish();
+      const saveMs = performance.now() - saveStart;
       if (!record) return;
       pools.push(poolsMs);
       soa.push(soaMs);
       abilities.push(abilitiesMs);
       rest.push(restMs);
+      split.push(splitMs);
+      save.push(saveMs);
     });
   };
   for (let index = 0; index < WARMUP; index += 1) sample(false);
@@ -281,6 +295,8 @@ function profileSections(capture: TickCapture): SectionProfile {
     soa: summarize(soa),
     abilities: summarize(abilities),
     rest: summarize(rest),
+    split: summarize(split),
+    save: summarize(save),
   };
 }
 
@@ -408,7 +424,9 @@ for (const size of SIZES) {
         `  ${sectionLine('pools    ', row.sections.pools)}\n` +
         `  ${sectionLine('soa      ', row.sections.soa)}\n` +
         `  ${sectionLine('abilities', row.sections.abilities)}\n` +
-        `  ${sectionLine('rest     ', row.sections.rest)}\n`
+        `  ${sectionLine('rest     ', row.sections.rest)}\n` +
+        `  ${sectionLine('split    ', row.sections.split)}\n` +
+        `  ${sectionLine('save     ', row.sections.save)}\n`
     );
   }
 }
