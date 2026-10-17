@@ -47,6 +47,7 @@ const VALUE_EXPORTS = [
   // persistence
   'MemoryMatchStore',
   'IndexedDbMatchStore',
+  'MatchResumeError',
 ] as const;
 
 const STATE_HELPERS = [

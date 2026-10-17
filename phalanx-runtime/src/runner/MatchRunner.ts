@@ -47,7 +47,7 @@ import {
   MatchJournal,
   type SealedSnapshot,
 } from '../persistence/MatchJournal.js';
-import type { MatchStore } from '../persistence/MatchStore.js';
+import type { LoadedMatch, MatchStore } from '../persistence/MatchStore.js';
 import { BinaryStateReader, BinaryStateWriter } from '../state/BinaryState.js';
 import type { SaveHandler, StateMigration } from '../state/GameState.js';
 import {
@@ -111,6 +111,48 @@ export interface RunnerOptions {
 }
 
 /**
+ * Which snapshot {@link MatchRunner.resumeLocal} restored, and which newer
+ * ones it rejected. `cleanupError` is set when deleting a rejected snapshot
+ * fails. The match is still resumed.
+ */
+export interface ResumeReport {
+  readonly snapshotTick: number | null;
+  readonly skipped: readonly {
+    readonly tick: number;
+    readonly error: unknown;
+  }[];
+  readonly cleanupError?: unknown;
+}
+
+/**
+ * Every retained snapshot failed to restore. The store is left as it was.
+ * `attempts` runs from the newest snapshot. Each `error` is the restore
+ * failure (`cause` is the underlying reader error when there is one).
+ */
+export class MatchResumeError extends Error {
+  public readonly matchId: string;
+  public readonly attempts: readonly {
+    readonly tick: number;
+    readonly error: unknown;
+  }[];
+
+  public constructor(
+    matchId: string,
+    attempts: readonly { readonly tick: number; readonly error: unknown }[]
+  ) {
+    const ticks = attempts.map((attempt) => String(attempt.tick)).join(', ');
+    const newest = attempts[0]?.error;
+    super(
+      `MatchRunner.resumeLocal: every stored snapshot for '${matchId}' failed (ticks ${ticks})`,
+      newest === undefined ? undefined : { cause: newest }
+    );
+    this.name = 'MatchResumeError';
+    this.matchId = matchId;
+    this.attempts = attempts;
+  }
+}
+
+/**
  * Options for {@link MatchRunner.resumeLocal}. Persistence fields configure
  * the new local transport. The rest are {@link RunnerOptions}.
  */
@@ -125,6 +167,11 @@ export interface ResumeLocalOptions extends RunnerOptions {
    * A host with no `document` ignores it.
    */
   readonly pauseWhenHidden?: boolean;
+  /**
+   * Called once, before the runner is returned, when a newer snapshot was
+   * rejected and an older one was restored.
+   */
+  readonly onSnapshotFallback?: (report: ResumeReport) => void;
 }
 
 export interface FastForwardOptions {
@@ -142,6 +189,26 @@ export interface FastForwardOptions {
   readonly throughTick: number;
   /** Progress in `[0, 1]`; reaches exactly `1` at the end. */
   readonly onProgress?: (progress: number) => void;
+}
+
+interface ResumeAttempt {
+  readonly snapshot?: LoadedMatch['snapshot'];
+  readonly tail: readonly LogEntry[];
+}
+
+/** Newest snapshot first. No snapshot means replay the whole log from 0. */
+function resumeAttempts(loaded: LoadedMatch): ResumeAttempt[] {
+  if (loaded.snapshot === undefined) return [{ tail: loaded.tail }];
+  const attempts: ResumeAttempt[] = [
+    { snapshot: loaded.snapshot, tail: loaded.tail },
+  ];
+  if (loaded.previous !== undefined) {
+    attempts.push({
+      snapshot: loaded.previous.snapshot,
+      tail: loaded.previous.tail,
+    });
+  }
+  return attempts;
 }
 
 interface TickPlan {
@@ -229,6 +296,8 @@ export class MatchRunner<G extends AnyGameDefinition> {
   /** Host time spent on {@link sharedSealBody}. Added into the seal sample. */
   private sharedSealMs = 0;
   private readonly persistenceErrorListeners = new Emitter<[unknown]>();
+  /** Set by {@link MatchRunner.resumeLocal}. Null on a runner that was not resumed. */
+  private resumeReportValue: ResumeReport | null = null;
 
   public constructor(
     definition: G,
@@ -316,8 +385,12 @@ export class MatchRunner<G extends AnyGameDefinition> {
    * snapshot includes the input checkpoint (`systemSeq` and every slot's
    * controller mode). Catch-up fast-forwards empty ticks through the stored
    * cursor. A snapshot that is already a finished match stays ended and
-   * does not catch up. `options` sets the resumed transport's snapshot
-   * interval and pause-when-hidden flag, and the runner's hash interval.
+   * does not catch up. A restore failure tries the previous snapshot on a
+   * new runner. A fast-forward failure does not. When every snapshot fails,
+   * this throws {@link MatchResumeError} and leaves the store unchanged.
+   * With no snapshot, the whole log is replayed from tick 0.
+   * `options` sets the resumed transport's snapshot interval and
+   * pause-when-hidden flag, and the runner's hash interval.
    */
   public static async resumeLocal<GDef extends AnyGameDefinition>(
     definition: GDef,
@@ -342,6 +415,70 @@ export class MatchRunner<G extends AnyGameDefinition> {
         `MatchRunner.resumeLocal: stored matchId '${loaded.config.matchId}' does not match '${matchId}'`
       );
     }
+    const attempts = resumeAttempts(loaded);
+    const skipped: { tick: number; error: unknown }[] = [];
+    for (let index = 0; index < attempts.length; index += 1) {
+      const attempt = attempts[index];
+      if (attempt === undefined) continue;
+      const runner = MatchRunner.openResumeRunner(
+        definition,
+        store,
+        loaded,
+        options
+      );
+      if (attempt.snapshot !== undefined) {
+        try {
+          runner.restore(attempt.snapshot.bytes);
+        } catch (error) {
+          await MatchRunner.abandonResumeAttempt(runner, loaded.tick);
+          skipped.push({ tick: attempt.snapshot.tick, error });
+          if (index < attempts.length - 1) continue;
+          throw new MatchResumeError(matchId, skipped);
+        }
+      }
+      try {
+        // After restore, so a snapshot at or above the fresh cursor (-1) is
+        // not treated as a rewind. Resume must not clear the stored record.
+        runner.journal?.skipThrough(loaded.tick);
+        if (runner.status !== 'ended' && loaded.tick > runner.tick) {
+          await runner.fastForward(attempt.tail, {
+            budgetMs: 80,
+            throughTick: loaded.tick,
+          });
+        }
+      } catch (error) {
+        runner.dispose();
+        try {
+          await runner.whenPersisted();
+        } catch {
+          // The fast-forward error is the one the caller must see.
+        }
+        throw error;
+      }
+      const report = await MatchRunner.publishResumeReport(
+        runner,
+        store,
+        matchId,
+        attempt.snapshot?.tick ?? null,
+        skipped
+      );
+      try {
+        if (skipped.length > 0) options?.onSnapshotFallback?.(report);
+      } catch (error) {
+        runner.dispose();
+        throw error;
+      }
+      return runner;
+    }
+    throw new MatchResumeError(matchId, skipped);
+  }
+
+  private static openResumeRunner<GDef extends AnyGameDefinition>(
+    definition: GDef,
+    store: MatchStore,
+    loaded: LoadedMatch,
+    options: ResumeLocalOptions | undefined
+  ): MatchRunner<GDef> {
     const transport = new LocalTransport({
       tickRate: definition.tickRate,
       store,
@@ -351,30 +488,50 @@ export class MatchRunner<G extends AnyGameDefinition> {
     });
     // The store cloned the JSON config, including game fields. The runner
     // checks it against this definition.
-    const runner = new MatchRunner(
+    return new MatchRunner(
       definition,
       loaded.config as unknown as ConfigInput<GDef>,
       transport,
       options
     );
-    try {
-      if (loaded.snapshot !== undefined) {
-        runner.restore(loaded.snapshot.bytes);
+  }
+
+  /**
+   * A failed restore must not flush as a fresh match: that would clear the
+   * stored record. `skipThrough` marks the journal as already committed.
+   */
+  private static async abandonResumeAttempt<GDef extends AnyGameDefinition>(
+    runner: MatchRunner<GDef>,
+    tick: number
+  ): Promise<void> {
+    runner.journal?.skipThrough(tick);
+    runner.dispose();
+    await runner.whenPersisted();
+  }
+
+  private static async publishResumeReport<GDef extends AnyGameDefinition>(
+    runner: MatchRunner<GDef>,
+    store: MatchStore,
+    matchId: string,
+    snapshotTick: number | null,
+    skipped: readonly { readonly tick: number; readonly error: unknown }[]
+  ): Promise<ResumeReport> {
+    let cleanupError: unknown;
+    if (skipped.length > 0 && store.deleteSnapshot !== undefined) {
+      for (const item of skipped) {
+        try {
+          await store.deleteSnapshot(matchId, item.tick);
+        } catch (error) {
+          if (cleanupError === undefined) cleanupError = error;
+        }
       }
-      // After restore, so a snapshot at or above the fresh cursor (-1) is
-      // not treated as a rewind. Resume must not clear the stored record.
-      runner.journal?.skipThrough(loaded.tick);
-      if (runner.status !== 'ended' && loaded.tick > runner.tick) {
-        await runner.fastForward(loaded.tail, {
-          budgetMs: 80,
-          throughTick: loaded.tick,
-        });
-      }
-    } catch (error) {
-      runner.dispose();
-      throw error;
     }
-    return runner;
+    const report: ResumeReport =
+      cleanupError === undefined
+        ? { snapshotTick, skipped }
+        : { snapshotTick, skipped, cleanupError };
+    runner.resumeReportValue = report;
+    return report;
   }
 
   /** Join (or resume) through a network transport's `join()`. */
@@ -412,6 +569,14 @@ export class MatchRunner<G extends AnyGameDefinition> {
     runner.replayDigest = replay.finalDigest;
     runner.replayLastTick = replay.lastTick;
     return runner;
+  }
+
+  /**
+   * Snapshot chosen by {@link MatchRunner.resumeLocal}. Null until that
+   * path returns this runner.
+   */
+  public get resumeReport(): ResumeReport | null {
+    return this.resumeReportValue;
   }
 
   /** Current simulation; replaced by `restore`, never cache it. */

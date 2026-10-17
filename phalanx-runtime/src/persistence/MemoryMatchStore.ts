@@ -4,6 +4,7 @@ import {
   applyHeader,
   applySnapshot,
   assertMatchId,
+  deleteStoredSnapshot,
   emptyMatch,
   snapshotTicksOf,
   toLoaded,
@@ -51,6 +52,13 @@ export class MemoryMatchStore implements MatchStore {
   public clear(matchId: string): Promise<void> {
     assertMatchId(matchId);
     this.rows.delete(matchId);
+    return Promise.resolve();
+  }
+
+  public deleteSnapshot(matchId: string, tick: number): Promise<void> {
+    assertMatchId(matchId);
+    const row = this.rows.get(matchId);
+    if (row !== undefined) deleteStoredSnapshot(row, tick);
     return Promise.resolve();
   }
 

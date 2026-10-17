@@ -16,10 +16,16 @@ export interface MatchSnapshotRecord {
  * A match loaded for resume. `tick` is the highest completed tick, including
  * ticks that logged no commands. `tail` is the commands strictly after the
  * newest snapshot, or the whole log when no snapshot has been stored.
+ * `previous` is the older retained snapshot and every command after it.
+ * Stores that omit it do not offer a fallback.
  */
 export interface LoadedMatch {
   readonly config: MatchConfig;
   readonly snapshot?: MatchSnapshotRecord;
+  readonly previous?: {
+    readonly snapshot: MatchSnapshotRecord;
+    readonly tail: readonly LogEntry[];
+  };
   readonly tail: readonly LogEntry[];
   readonly tick: number;
 }
@@ -48,4 +54,10 @@ export interface MatchStore {
   saveSnapshot(matchId: string, tick: number, bytes: Uint8Array): Promise<void>;
   load(matchId: string): Promise<LoadedMatch | null>;
   clear(matchId: string): Promise<void>;
+  /**
+   * Drop one stored snapshot. Commands and the cursor stay. A tick that is
+   * not stored is a no-op. Optional: a store without it skips cleanup when
+   * resume falls back to an older snapshot.
+   */
+  deleteSnapshot?(matchId: string, tick: number): Promise<void>;
 }
