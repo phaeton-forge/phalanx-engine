@@ -191,6 +191,33 @@ Entries collected per package until the synchronized 0.3.0 release
   passes `'restore'` and does not reseed. New package
   `@phalanx-engine/engine` (private, not version-bumped) re-exports the
   game-facing surface. `CommandSchema` and `SaveHandler` are advanced-only.
+- Local persistence (Task 7): `MatchStore`, `MemoryMatchStore` and
+  `IndexedDbMatchStore` in `@phalanx-engine/runtime`. `LocalTransport`
+  accepts `store`, `snapshotEveryTicks` (default 300) and `pauseWhenHidden`
+  (default true). No store keeps the previous transport. A snapshot tick
+  seals the world body, bot section and input checkpoint (including
+  `systemSeq` and every slot's controller mode) and does not copy the body
+  again. `encodeSnapshot` / digest and the store write run off the tick.
+  Writes batch every 5s and on hide / `pagehide`. The last two snapshots
+  are kept. `MatchRunner.resumeLocal` restores the newest snapshot and
+  fast-forwards empty ticks through the stored cursor. It does not start
+  the clock. `resumeLocal` accepts `snapshotEveryTicks`, `pauseWhenHidden`,
+  and `RunnerOptions`. A tick that is both a hash tick and a snapshot tick
+  saves the world once. Off-tick encode uses `setImmediate`,
+  `requestIdleCallback`, `MessageChannel`, or `setTimeout(0)`.
+  `onPersistenceError` reports a failed snapshot without dropping the
+  header or the command tail; header and command failures reject
+  `whenPersisted`. A malformed envelope does not dedup away the player's
+  first real command in the same tick. Payload dedup sorts object keys.
+  Failed snapshot retries keep the newest two. Catch-up does not save a
+  snapshot for a tick already stored. A fresh match that reuses a stored
+  id clears that record once before the first header write; resume and a
+  retried header write do not. `restore` recomputes the terminal phase and
+  rejects a snapshot older than the persisted cursor. A tick is journaled
+  before outcome, digest, and tick listeners. Hiding the page pauses only
+  a started transport. A corrupt IndexedDB row rejects the read.
+  The persistence perf test runs only when `PHALANX_PERF=1`.
+  `IndexedDbMatchStore` uses `globalThis.indexedDB`.
 - `decodeInputCheckpoint` throws `SnapshotRejectedError` when a format-2
   input checkpoint has no trailing `systemSeq` (snapshots written before
   setController / 6.5b). `ENGINE_SNAPSHOT_FORMAT` stays 2.

@@ -3,6 +3,7 @@ export type {
   RunnerSide,
   RunnerStatus,
   RunnerOptions,
+  ResumeLocalOptions,
   FastForwardOptions,
 } from './MatchRunner.js';
 export { ReplayPlayer } from './ReplayPlayer.js';

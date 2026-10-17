@@ -11,7 +11,9 @@ import {
 } from '@phalanx-engine/engine';
 ```
 
-It re-exports `@phalanx-engine/runtime`, `@phalanx-engine/ecs`,
+It re-exports `@phalanx-engine/runtime` (including `MatchStore`,
+`MemoryMatchStore`, `IndexedDbMatchStore` and `MatchRunner.resumeLocal`),
+`@phalanx-engine/ecs`,
 `@phalanx-engine/abilities`, `@phalanx-engine/physics` and
 `@phalanx-engine/math`.
 

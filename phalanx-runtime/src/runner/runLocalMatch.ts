@@ -1,5 +1,6 @@
 import type { AnyGameDefinition } from '../game/GameDefinition.js';
 import type { BotHostSide, SimMode, SlotConfig } from '../game/MatchConfig.js';
+import type { MatchStore } from '../persistence/MatchStore.js';
 import { LocalTransport } from '../transport/LocalTransport.js';
 import { MatchRunner, type ConfigInput } from './MatchRunner.js';
 
@@ -34,6 +35,12 @@ export interface RunLocalMatchOptions {
   readonly side?: SimMode;
   /** Default `'local'`. */
   readonly matchId?: string;
+  /** Opt-in command and snapshot journal. Omitted: no persistence. */
+  readonly store?: MatchStore;
+  /** Default 300. Ignored unless `store` is set. */
+  readonly snapshotEveryTicks?: number;
+  /** Default `true`. A host with no document ignores it. */
+  readonly pauseWhenHidden?: boolean;
 }
 
 export interface LocalMatch<G extends AnyGameDefinition> {
@@ -55,10 +62,7 @@ export function runLocalMatch<G extends AnyGameDefinition>(
   const slots = options.slots.map((slot, index) =>
     expandSlot(slot, index, side)
   );
-  const transport =
-    options.stepped === true
-      ? LocalTransport.stepped()
-      : new LocalTransport({ tickRate: definition.tickRate });
+  const transport = createTransport(definition.tickRate, options);
   const runner = new MatchRunner(
     definition,
     {
@@ -85,6 +89,34 @@ export function runLocalMatch<G extends AnyGameDefinition>(
       transport.step(count);
     },
   };
+}
+
+function createTransport(
+  tickRate: number,
+  options: RunLocalMatchOptions
+): LocalTransport {
+  const persist =
+    options.store !== undefined ||
+    options.snapshotEveryTicks !== undefined ||
+    options.pauseWhenHidden !== undefined;
+  if (!persist) {
+    return options.stepped === true
+      ? LocalTransport.stepped()
+      : new LocalTransport({ tickRate });
+  }
+  return new LocalTransport(
+    {
+      tickRate: options.stepped === true ? 1 : tickRate,
+      ...(options.store === undefined ? {} : { store: options.store }),
+      ...(options.snapshotEveryTicks === undefined
+        ? {}
+        : { snapshotEveryTicks: options.snapshotEveryTicks }),
+      ...(options.pauseWhenHidden === undefined
+        ? {}
+        : { pauseWhenHidden: options.pauseWhenHidden }),
+    },
+    options.stepped === true
+  );
 }
 
 function expandSlot(slot: LocalSlot, index: number, side: SimMode): SlotConfig {

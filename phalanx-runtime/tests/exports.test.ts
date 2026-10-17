@@ -44,6 +44,9 @@ const VALUE_EXPORTS = [
   'BotHost',
   // transport
   'LocalTransport',
+  // persistence
+  'MemoryMatchStore',
+  'IndexedDbMatchStore',
 ] as const;
 
 const STATE_HELPERS = [

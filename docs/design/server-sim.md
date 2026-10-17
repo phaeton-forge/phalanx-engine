@@ -39,8 +39,10 @@ pure relay, exactly as today.
     `fastForward` catch-up;
   - `BotHost`: runs the `BotPolicy` of the bot slots hosted on this side;
   - `WorldScope`: isolates the process-global ecs registers per world;
-  - the `Transport` interface and the in-memory `LocalTransport`;
-  - replay records and the `MatchStore` interface (Task 7).
+  - the `Transport` interface and `LocalTransport` (optional `MatchStore`);
+  - replay records, `MatchStore`, `MemoryMatchStore` and
+    `IndexedDbMatchStore` (Task 7; IndexedDB is `globalThis.indexedDB`,
+    not a DOM import).
 - **`@phalanx-engine/ecs`, `abilities`, `physics`, `math`:** unchanged except
   for small additive hooks (Task 3):
   - entity id counter accessors and `SoAComponent.currentEntityManager()`;
@@ -49,9 +51,9 @@ pure relay, exactly as today.
   - pool state accessors;
   - a public broadphase rebuild.
 - **`@phalanx-engine/client`:** `PhalanxClient` unchanged. It adds
-  `ServerPeerTransport` (Task 12), `RelayLockstepTransport` (later), the
-  session storage and the browser `IndexedDbMatchStore` (Task 7). It
-  **re-exports `MatchRunner`, `LocalTransport` and `defineGame`**, so a game
+  `ServerPeerTransport` (Task 12), `RelayLockstepTransport` (later) and the
+  session storage. `IndexedDbMatchStore` is runtime (Task 7), not client.
+  It **re-exports `MatchRunner`, `LocalTransport` and `defineGame`**, so a game
   can import the runner from the client.
 - **`@phalanx-engine/server`:** the relay (`GameRoom`, `PrivateRoomService`)
   is unchanged. It adds `SimHost` (one `MatchRunner` per server-mode match,

@@ -68,10 +68,17 @@ online and in local (bot) matches.
   snapshot every 1000 ticks (`DEFAULT_SERVER_SNAPSHOT_EVERY_TICKS`) exists
   only for persistence across restarts later.
 - **Client mode:** a local snapshot every 300 ticks
-  (`DEFAULT_CLIENT_SNAPSHOT_EVERY_TICKS`) into a `MatchStore`. The browser
-  store (`IndexedDbMatchStore`) lives in `@phalanx-engine/client`, because the
-  runtime has no DOM; the runtime owns the `MatchStore` interface and an
-  in-memory store (Task 7).
+  (`DEFAULT_CLIENT_SNAPSHOT_EVERY_TICKS`) into a `MatchStore`.
+  `MemoryMatchStore` and `IndexedDbMatchStore` both live in
+  `@phalanx-engine/runtime` (Task 7). The IndexedDB store touches
+  `globalThis.indexedDB` only when a method runs, so the package stays free
+  of the DOM lib. The tick seals the world body (buffer handed off without
+  a second copy) plus that tick's bot section and input checkpoint.
+  `encodeSnapshot` / digest and the store write run later (`setImmediate`
+  in Node, `requestIdleCallback` in browsers, otherwise `MessageChannel`
+  or `setTimeout(0)`). A hash tick that is also a snapshot tick serializes
+  the world once. Snapshot failures are reported separately from the
+  header and the command tail.
 - Why 300 and not 1000 on the client: ×10 catch-up is not reachable on
   mid-range phones.
   - ×10 needs ≤ 10 ms/tick, but phones take 20–35 ms at the 240-body peak,
@@ -113,10 +120,18 @@ not ended.
 
 ## 9. Local bot match
 
-- Auto-pause on `visibilitychange: hidden` (client package, Task 7). The
-  runtime's pause goes through the runner-owned provider, so it never drops
-  ticks.
-- Resume from the latest stored snapshot plus the logged ticks after it.
+- Auto-pause on `visibilitychange: hidden` is `LocalTransport`'s
+  `pauseWhenHidden` (default true, Task 7). A host with no `document`
+  ignores it. The pause applies only after the transport has started, so
+  a hide during resume catch-up does not skip systems. Becoming visible
+  does not resume. The pause goes through the runner-owned provider, so
+  it never drops ticks.
+- Resume with `MatchRunner.resumeLocal` from the latest stored snapshot
+  plus the logged ticks after it, including empty ticks via the stored
+  cursor. A snapshot that is already a finished match stays ended and
+  does not catch up. The snapshot's controller modes and `systemSeq` come
+  back with the bot section and the input checkpoint. A fresh match that
+  reuses a stored id replaces that record; resume does not.
 - The snapshot's input checkpoint is re-submitted when the log has no tail.
   When the log continues through tick L, the checkpoint is discarded and
   hosted bot policies are advanced during catch-up: `decide` runs after

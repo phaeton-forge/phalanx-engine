@@ -44,6 +44,7 @@
     "@phalanx-engine/ecs": "workspace:*",
     "@phalanx-engine/math": "workspace:*",
     "@phalanx-engine/physics": "workspace:*",
+    "fake-indexeddb": "^6.2.2",
     "typescript": "~5.9.3",
     "vitest": "^1.0.0"
   },

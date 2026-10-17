@@ -1,6 +1,6 @@
 ---
 name: phalanx-runtime
-description: Describe a Phalanx game as one GameDefinition and run it with MatchRunner from @phalanx-engine/runtime (engine 0.3). Use when defining games with defineGame, defineCommands, defineComponent, onCommand, runLocalMatch, ReplayPlayer, setController, world.save/restore, writing BotPolicy bots, choosing side 'client' vs 'server', snapshots, replays, reconnect, or Transport/LocalTransport. World modules are the default save handler. StateHelpers, spawnWithId, rebuildBroadphaseFromTransforms and WorldScope are in @phalanx-engine/runtime/advanced. MatchRunner.join is still Task 12.
+description: Describe a Phalanx game as one GameDefinition and run it with MatchRunner from @phalanx-engine/runtime (engine 0.3). Use when defining games with defineGame, defineCommands, defineComponent, onCommand, runLocalMatch, ReplayPlayer, setController, world.save/restore, writing BotPolicy bots, choosing side 'client' vs 'server', snapshots, replays, reconnect, or Transport/LocalTransport. Local persistence is opt-in via MatchStore, MemoryMatchStore, IndexedDbMatchStore and MatchRunner.resumeLocal. World modules are the default save handler. StateHelpers, spawnWithId, rebuildBroadphaseFromTransforms and WorldScope are in @phalanx-engine/runtime/advanced. MatchRunner.join is still Task 12.
 metadata:
   author: phaeton2040-AI
   version: '0.1'
@@ -8,12 +8,14 @@ metadata:
 
 # Phalanx Runtime Skill
 
-> **Status: Tasks 1–6, 6.5a and 6.5b implemented. `MatchRunner.join` is still Task 12.**
+> **Status: Tasks 1–7, 6.5a and 6.5b implemented. `MatchRunner.join` is still Task 12.**
 > Task 3 is engine hooks (ecs id counter, SoA context, pools, math RNG
 > state, ability runtime export, broadphase centers). Task 4 is
 > `StateHelpers` except GAS. Task 5 is `writeAbilities` / `readAbilities`.
 > Task 6 is `MatchRunner` (not `join`), `CommandLog`, `WorldScope`,
-> `BotHost` and in-memory `LocalTransport`. Task 6.5a is `defineComponent`,
+> `BotHost` and `LocalTransport`. Task 7 is opt-in local persistence
+> (`MatchStore`, `MemoryMatchStore`, `IndexedDbMatchStore`,
+> `MatchRunner.resumeLocal`). Task 6.5a is `defineComponent`,
 > `world.save` / `world.restore`, and the `advanced` subpath.
 > `BinaryStateWriter` /
 > `BinaryStateReader`, `encodeSnapshot` / `decodeSnapshot`, `digestBytes`,
@@ -166,7 +168,7 @@ runner.start();
 runner.submit({ type: 'move', dx: 1n }); // executes at tick + inputDelayTicks
 ```
 
-Tests and replays use `LocalTransport.manual()` and `step(n)`.
+Tests and replays use `LocalTransport.stepped()` and `step(n)`.
 `fastForward(log, { budgetMs, throughTick })` replays through `throughTick`
 inclusive, including empty ticks. `MatchRunner.fromReplay` never calls
 `decide`. Drive it only with `fastForward(replay.log, { throughTick:
@@ -274,6 +276,55 @@ class TinyState implements GameState {
   }
 }
 ```
+
+## Local persistence
+
+Opt-in. A `LocalTransport` with no `store` does not write snapshots or a
+command log.
+
+```ts
+const store = new IndexedDbMatchStore();
+const transport = new LocalTransport({
+  tickRate: game.tickRate,
+  store,
+  snapshotEveryTicks: 300, // default
+  pauseWhenHidden: true, // default; no document → no pause
+});
+```
+
+`snapshotEveryTicks` counts completed ticks. Tick 0 is not a snapshot.
+The tick path seals the world body, the bot section and the input
+checkpoint, and passes the body buffer through without copying it again.
+A tick that is both a hash tick and a snapshot tick saves the world once
+and passes that buffer to `digestBytes` and the journal.
+`encodeSnapshot` and the IndexedDB write run off the tick (`setImmediate`
+in Node, `requestIdleCallback` in browsers, otherwise `MessageChannel` or
+`setTimeout(0)` — not a microtask). Flushes batch every 5s and on hide /
+`pagehide`. The store keeps the last two snapshots. The cursor includes
+empty ticks.
+
+```ts
+const resumed = await MatchRunner.resumeLocal(game, store, matchId, {
+  snapshotEveryTicks: 300, // default
+  pauseWhenHidden: true, // default
+  hashEveryTicks: 60, // RunnerOptions; default
+});
+if (resumed === null) return; // nothing saved
+resumed.start(); // resumeLocal does not start the clock
+```
+
+Resume restores controller mode for every slot and `systemSeq`, then
+fast-forwards the tail through the stored cursor. A snapshot that is
+already terminal stays ended (`start` throws) and does not catch up. A
+fresh match reuses a stored id by clearing that record once; resume does
+not. `restore` rejects a snapshot older than the persisted cursor.
+Hiding the page pauses only a started transport. `await runner.whenPersisted()`
+before exiting the process. It rejects when the header or the command tail
+fails to write. A snapshot encode or snapshot write failure is reported
+with `runner.onPersistenceError` and still leaves the header and commands
+committed. `lastPersistenceSyncMs` is the synchronous seal cost, including
+a world save shared with the digest, not the digest itself and not the
+write.
 
 ## References
 
