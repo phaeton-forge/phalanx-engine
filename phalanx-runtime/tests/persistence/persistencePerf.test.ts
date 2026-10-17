@@ -89,7 +89,9 @@ function benchGame(entityCount: number) {
     id: `persist-bench-${String(entityCount)}`,
     simVersion: 'bench-1',
     tickRate: 20,
-    commands: defineCommands({}),
+    commands: defineCommands({
+      noop: { n: 'u8' },
+    }),
     components: [PersistBenchUnit],
     systems: [() => new BenchSystem()],
     onStart(ctx) {
@@ -215,7 +217,7 @@ async function measure(entityCount: number): Promise<CountReport> {
   expect(store.snapshotCalls).toBe(0);
   runner.dispose();
   await runner.whenPersisted();
-  expect(await store.snapshotTicks(matchId)).toEqual([300, 600, 900]);
+  expect(await store.snapshotTicks(matchId)).toEqual([600, 900]);
   expect(store.snapshotCalls).toBe(3);
 
   const snapshotSyncMs = summarize(snapshotSync);

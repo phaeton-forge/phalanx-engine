@@ -364,10 +364,14 @@ function captureTimers(): { fire(ms: number): void; restore(): void } {
   };
   return {
     fire(ms: number): void {
+      const due: number[] = [];
       for (const [id, item] of pending) {
-        if (item.ms !== ms) continue;
+        if (item.ms === ms) due.push(id);
+      }
+      for (const id of due) {
+        const item = pending.get(id);
         pending.delete(id);
-        item.fn();
+        item?.fn();
       }
     },
     restore(): void {
