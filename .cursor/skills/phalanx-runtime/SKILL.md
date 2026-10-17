@@ -295,21 +295,32 @@ const transport = new LocalTransport({
 `snapshotEveryTicks` counts completed ticks. Tick 0 is not a snapshot.
 The tick path seals the world body, the bot section and the input
 checkpoint, and passes the body buffer through without copying it again.
-`encodeSnapshot` / digest and the IndexedDB write run off the tick
-(`setImmediate` in Node, `requestIdleCallback` in browsers). Flushes batch
-every 5s and on hide / `pagehide`. The store keeps the last two snapshots.
-The cursor includes empty ticks.
+A tick that is both a hash tick and a snapshot tick saves the world once
+and passes that buffer to `digestBytes` and the journal.
+`encodeSnapshot` and the IndexedDB write run off the tick (`setImmediate`
+in Node, `requestIdleCallback` in browsers, otherwise `MessageChannel` or
+`setTimeout(0)` — not a microtask). Flushes batch every 5s and on hide /
+`pagehide`. The store keeps the last two snapshots. The cursor includes
+empty ticks.
 
 ```ts
-const resumed = await MatchRunner.resumeLocal(game, store, matchId);
+const resumed = await MatchRunner.resumeLocal(game, store, matchId, {
+  snapshotEveryTicks: 300, // default
+  pauseWhenHidden: true, // default
+  hashEveryTicks: 60, // RunnerOptions; default
+});
 if (resumed === null) return; // nothing saved
 resumed.start(); // resumeLocal does not start the clock
 ```
 
 Resume restores controller mode for every slot and `systemSeq`, then
 fast-forwards the tail through the stored cursor. `await runner.whenPersisted()`
-before exiting the process. `lastPersistenceSyncMs` is the synchronous
-seal cost, not the digest and not the write.
+before exiting the process. It rejects when the header or the command tail
+fails to write. A snapshot encode or snapshot write failure is reported
+with `runner.onPersistenceError` and still leaves the header and commands
+committed. `lastPersistenceSyncMs` is the synchronous seal cost, including
+a world save shared with the digest, not the digest itself and not the
+write.
 
 ## References
 

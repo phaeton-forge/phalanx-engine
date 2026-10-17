@@ -1,24 +1,19 @@
 import { writeFileSync } from 'node:fs';
-import { GameSystem } from '@phalanx-engine/ecs';
 import { describe, expect, it } from 'vitest';
 import {
+  DEFAULT_CLIENT_SNAPSHOT_EVERY_TICKS,
+  DEFAULT_HASH_EVERY_TICKS,
   LocalTransport,
   MatchRunner,
   MemoryMatchStore,
-  defineCommands,
-  defineComponent,
-  defineGame,
   type MatchStore,
 } from '../../src/index.js';
+import { createPersistBenchGame } from '../fixtures/persistBenchGame.js';
 
-const FRAME_BUDGET_MS = 16;
-const TICKS = 1000;
-const SNAPSHOT_EVERY = 300;
-
-const PersistBenchUnit = defineComponent('PersistBenchUnit', {
-  x: 'i64',
-  hp: 'i64',
-});
+const SNAPSHOT_EVERY = DEFAULT_CLIENT_SNAPSHOT_EVERY_TICKS;
+const SNAPSHOT_COUNT = 30;
+/** Tick 9000 is the 30th snapshot (300, 600, …, 9000). step(9001) lands there. */
+const LAST_TICK = SNAPSHOT_EVERY * SNAPSHOT_COUNT;
 
 class CountingStore implements MatchStore {
   public headerCalls = 0;
@@ -69,44 +64,6 @@ class CountingStore implements MatchStore {
   }
 }
 
-class BenchSystem extends GameSystem {
-  public override processTick(_tick: number): void {
-    const store = this.entityManager.getSoAStore(PersistBenchUnit.schema);
-    if (store === undefined) return;
-    const xs = store.arrays.x;
-    for (const id of store.entityIds()) {
-      const index = store.indexOf(id);
-      if (index < 0) continue;
-      const current = xs[index];
-      if (current === undefined) continue;
-      xs[index] = current + 1n;
-    }
-  }
-}
-
-function benchGame(entityCount: number) {
-  return defineGame({
-    id: `persist-bench-${String(entityCount)}`,
-    simVersion: 'bench-1',
-    tickRate: 20,
-    commands: defineCommands({
-      noop: { n: 'u8' },
-    }),
-    components: [PersistBenchUnit],
-    systems: [() => new BenchSystem()],
-    onStart(ctx) {
-      if (ctx.purpose !== 'fresh') return;
-      for (let index = 0; index < entityCount; index += 1) {
-        ctx.world.spawn({
-          PersistBenchUnit: { x: 0n, hp: 1n },
-        });
-      }
-    },
-    onCommand() {},
-    checkOutcome: () => null,
-  });
-}
-
 interface TickStat {
   readonly p50: number;
   readonly p99: number;
@@ -116,17 +73,13 @@ interface TickStat {
 
 interface CountReport {
   readonly entities: number;
-  readonly normalFullMs: TickStat;
+  readonly ticks: number;
+  readonly hashEveryTicks: number;
+  readonly snapshotEveryTicks: number;
+  readonly plainFullMs: TickStat;
+  readonly hashOnlyFullMs: TickStat;
   readonly snapshotFullMs: TickStat;
-  readonly normalSyncMs: TickStat;
   readonly snapshotSyncMs: TickStat;
-  readonly snapshotSamples: readonly {
-    readonly tick: number;
-    readonly fullMs: number;
-    readonly syncMs: number;
-  }[];
-  readonly syncSnapshotWithinFrame: boolean;
-  readonly fullSnapshotWithinFrame: boolean;
 }
 
 function hostNow(): number {
@@ -144,15 +97,19 @@ function percentile(values: readonly number[], p: number): number {
 
 function summarize(values: readonly number[]): TickStat {
   return {
-    p50: percentile(values, 50),
-    p99: percentile(values, 99),
-    max: percentile(values, 100),
+    p50: roundMs(percentile(values, 50)),
+    p99: roundMs(percentile(values, 99)),
+    max: roundMs(percentile(values, 100)),
     n: values.length,
   };
 }
 
+function roundMs(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
 async function measure(entityCount: number): Promise<CountReport> {
-  const game = benchGame(entityCount);
+  const game = createPersistBenchGame(entityCount);
   const store = new CountingStore();
   const matchId = `bench-${String(entityCount)}`;
   const transport = LocalTransport.stepped({
@@ -169,79 +126,71 @@ async function measure(entityCount: number): Promise<CountReport> {
       inputDelayTicks: 2,
       slots: [{ slot: 0, team: 0, kind: 'human', playerId: 'local:0' }],
     },
-    transport,
-    { hashEveryTicks: 1_000_000 }
+    transport
   );
   runner.start();
-  const rows = runner.sim.world.entityManager.getSoAStore(
-    PersistBenchUnit.schema
-  );
-  expect(rows?.entityIds().length).toBe(entityCount);
 
-  const normalFull: number[] = [];
+  const plainFull: number[] = [];
+  const hashOnlyFull: number[] = [];
   const snapshotFull: number[] = [];
-  const normalSync: number[] = [];
   const snapshotSync: number[] = [];
-  const snapshotSamples: CountReport['snapshotSamples'][number][] = [];
 
-  const now = hostNow;
-  for (let step = 0; step < TICKS; step += 1) {
-    const started = now();
+  for (let step = 0; step < LAST_TICK + 1; step += 1) {
+    const started = hostNow();
     transport.step(1);
-    const fullMs = now() - started;
+    const fullMs = hostNow() - started;
     expect(store.calls).toBe(0);
     const tick = runner.tick;
     if (tick === 0) continue;
-    const syncMs = runner.lastPersistenceSyncMs;
     if (runner.lastTickPersistedSnapshot) {
       snapshotFull.push(fullMs);
-      snapshotSync.push(syncMs);
-      snapshotSamples.push({ tick, fullMs, syncMs });
+      snapshotSync.push(runner.lastPersistenceSyncMs);
+    } else if (tick % DEFAULT_HASH_EVERY_TICKS === 0) {
+      hashOnlyFull.push(fullMs);
     } else {
-      normalFull.push(fullMs);
-      normalSync.push(syncMs);
+      plainFull.push(fullMs);
     }
   }
 
-  expect(runner.tick).toBe(TICKS - 1);
-  expect(snapshotSamples.map((sample) => sample.tick)).toEqual([300, 600, 900]);
+  expect(runner.tick).toBe(LAST_TICK);
+  expect(snapshotFull).toHaveLength(SNAPSHOT_COUNT);
+  // The loop is synchronous, so the 5s flush cannot run inside it. A
+  // microtask is also too early: encode is not a microtask, and the store
+  // write waits for a flush. A run this long is past the flush interval, so
+  // the next timer turn may write; that is the batch, not the tick.
   await Promise.resolve();
   expect(store.calls).toBe(0);
-  await new Promise<void>((resolve) => {
-    const host = globalThis as unknown as {
-      setImmediate?: (callback: () => void) => void;
-    };
-    if (typeof host.setImmediate === 'function') host.setImmediate(resolve);
-    else resolve();
-  });
-  expect(store.snapshotCalls).toBe(0);
   runner.dispose();
   await runner.whenPersisted();
-  expect(await store.snapshotTicks(matchId)).toEqual([600, 900]);
-  expect(store.snapshotCalls).toBe(3);
+  expect(store.snapshotCalls).toBe(SNAPSHOT_COUNT);
+  expect(await store.snapshotTicks(matchId)).toEqual([
+    LAST_TICK - SNAPSHOT_EVERY,
+    LAST_TICK,
+  ]);
 
-  const snapshotSyncMs = summarize(snapshotSync);
-  const snapshotFullMs = summarize(snapshotFull);
   return {
     entities: entityCount,
-    normalFullMs: summarize(normalFull),
-    snapshotFullMs,
-    normalSyncMs: summarize(normalSync),
-    snapshotSyncMs,
-    snapshotSamples,
-    syncSnapshotWithinFrame: snapshotSyncMs.max < FRAME_BUDGET_MS,
-    fullSnapshotWithinFrame: snapshotFullMs.max < FRAME_BUDGET_MS,
+    ticks: LAST_TICK,
+    hashEveryTicks: DEFAULT_HASH_EVERY_TICKS,
+    snapshotEveryTicks: SNAPSHOT_EVERY,
+    plainFullMs: summarize(plainFull),
+    hashOnlyFullMs: summarize(hashOnlyFull),
+    snapshotFullMs: summarize(snapshotFull),
+    snapshotSyncMs: summarize(snapshotSync),
   };
 }
 
 describe('persistence tick cost', () => {
-  it('measures synchronous persist cost at 500 and 1000 entities', async () => {
+  it('measures a GAS and pooled world at the default hash interval', async () => {
     const report = {
-      frameBudgetMs: FRAME_BUDGET_MS,
       counts: [await measure(500), await measure(1000)],
     };
     writeFileSync('/tmp/persist-perf.json', JSON.stringify(report, null, 2));
     console.log(`PERSIST_PERF ${JSON.stringify(report)}`);
     expect(report.counts).toHaveLength(2);
-  }, 60_000);
+    for (const count of report.counts) {
+      expect(count.snapshotFullMs.n).toBe(SNAPSHOT_COUNT);
+      expect(count.hashEveryTicks).toBe(DEFAULT_HASH_EVERY_TICKS);
+    }
+  }, 600_000);
 });

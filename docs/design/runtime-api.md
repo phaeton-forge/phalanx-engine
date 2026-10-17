@@ -1326,13 +1326,20 @@ Literal instructions for each task; they override the original task text.
   `snapshotEveryTicks` (default 300) and `pauseWhenHidden` (default true).
   No store means no persistence. On a snapshot tick the runner seals the
   world body plus that tick's bot section and input checkpoint, and hands
-  the body buffer through without a second copy. `encodeSnapshot` (and
-  therefore the digest) and the store write run off the tick: `setImmediate`
-  in Node, `requestIdleCallback` in browsers. Writes batch every 5s and on
-  `visibilitychange: hidden` / `pagehide`. `MatchRunner.resumeLocal` restores
-  the newest snapshot, including `systemSeq` and every slot's controller
-  mode, then fast-forwards the command tail through the stored cursor so
-  empty ticks are not dropped. Only the last two snapshots are kept.
+  the body buffer through without a second copy. A tick that is both a hash
+  tick and a snapshot tick saves the world once and passes that buffer to
+  the digest and the journal. `encodeSnapshot` (and therefore its digest)
+  and the store write run off the tick: `setImmediate` in Node,
+  `requestIdleCallback` in browsers, otherwise `MessageChannel` or
+  `setTimeout(0)`. Writes batch every 5s and on `visibilitychange: hidden`
+  / `pagehide`. A failed snapshot encode or snapshot write is reported via
+  `MatchRunner.onPersistenceError` and does not roll back the header or the
+  command tail. `MatchRunner.resumeLocal(definition, store, matchId, options?)`
+  restores the newest snapshot, including `systemSeq` and every slot's
+  controller mode, then fast-forwards the command tail through the stored
+  cursor so empty ticks are not dropped. `options` carries
+  `snapshotEveryTicks`, `pauseWhenHidden`, and `RunnerOptions`. Only the
+  last two snapshots are kept.
 - **Task 8 (relay full log).** Store raw `PlayerCommand`s including the
   envelope; `match-log` chunks of ≤ 2000 ticks; `buildId`; SIGTERM.
 - **Task 9 (session token).** Derive `playerId` from the token / socket for

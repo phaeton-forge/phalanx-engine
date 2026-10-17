@@ -201,7 +201,13 @@ Entries collected per package until the synchronized 0.3.0 release
   Writes batch every 5s and on hide / `pagehide`. The last two snapshots
   are kept. `MatchRunner.resumeLocal` restores the newest snapshot and
   fast-forwards empty ticks through the stored cursor. It does not start
-  the clock. `IndexedDbMatchStore` uses `globalThis.indexedDB`.
+  the clock. `resumeLocal` accepts `snapshotEveryTicks`, `pauseWhenHidden`,
+  and `RunnerOptions`. A tick that is both a hash tick and a snapshot tick
+  saves the world once. Off-tick encode uses `setImmediate`,
+  `requestIdleCallback`, `MessageChannel`, or `setTimeout(0)`.
+  `onPersistenceError` reports a failed snapshot without dropping the
+  header or the command tail; header and command failures reject
+  `whenPersisted`. `IndexedDbMatchStore` uses `globalThis.indexedDB`.
 
 ## @phalanx-engine/ecs
 

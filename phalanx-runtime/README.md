@@ -223,21 +223,29 @@ no `document` ignores the pause. Hiding the page pauses; showing it does
 not resume. On a snapshot tick the runner seals `world` save bytes, the
 bot section and the input checkpoint (`systemSeq` and every slot's
 controller mode). The body buffer is the one `BinaryStateWriter.finish()`
-already returned; it is not copied again. `encodeSnapshot` / digest and
-the store write run off the tick (`setImmediate` in Node,
-`requestIdleCallback` in browsers). Writes batch every 5 seconds and on
+already returned; it is not copied again. When that tick is also a hash
+tick, the runner saves the world once and passes that buffer to both
+`digestBytes` and the journal. `encodeSnapshot` and the store write run
+off the tick: `setImmediate` in Node, `requestIdleCallback` in browsers,
+otherwise `MessageChannel` or `setTimeout(0)`. A microtask is not used
+for the digest. Writes batch every 5 seconds and on
 `visibilitychange: hidden` / `pagehide`. Only the last two snapshots are
 kept. The stored cursor includes empty ticks, so
-`MatchRunner.resumeLocal(definition, store, matchId)` can fast-forward
-past the last command. It returns `null` when the id is unknown, does not
-start the clock, and leaves `systemSeq` and controller modes as they were
-at the snapshot. `runner.whenPersisted()` resolves when the latest flush
-has finished. `lastPersistenceSyncMs` is host time spent sealing that
-tick, not the digest and not the IndexedDB write. `IndexedDbMatchStore`
-reads `globalThis.indexedDB` when a method runs. Node tests install
-`fake-indexeddb` first. `runLocalMatch` accepts the same `store`,
-`snapshotEveryTicks` and `pauseWhenHidden` options; omitting them keeps
-the previous transport.
+`MatchRunner.resumeLocal(definition, store, matchId, options?)` can
+fast-forward past the last command. `options` may set `snapshotEveryTicks`
+(default 300), `pauseWhenHidden` (default true), and `RunnerOptions`
+(`hashEveryTicks`, `localSlots`, `roundTripCheck`). It returns `null`
+when the id is unknown, does not start the clock, and leaves `systemSeq`
+and controller modes as they were at the snapshot. A failed snapshot
+encode or snapshot write is reported with `onPersistenceError` and does
+not drop the header or the command tail. A header or command failure
+rejects `whenPersisted()` and is reported on the same hook.
+`lastPersistenceSyncMs` is host time spent sealing that tick, including a
+world save shared with the digest, not the digest itself and not the
+IndexedDB write. `IndexedDbMatchStore` reads `globalThis.indexedDB` when
+a method runs. Node tests install `fake-indexeddb` first. `runLocalMatch`
+accepts the same `store`, `snapshotEveryTicks` and `pauseWhenHidden`
+options; omitting them keeps the previous transport.
 
 `writeAbilities` stores the per-world runtime from `exportRuntimeState`
 (instance-id counter, activation queue, `currentTick`, resolved

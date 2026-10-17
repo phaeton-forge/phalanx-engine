@@ -51,6 +51,10 @@ const ZERO_SAMPLE: PersistenceSample = { syncMs: 0, snapshotted: false };
  * bytes that have to match that tick) and enqueues them. `encodeSnapshot`
  * (and therefore the body digest) runs in {@link scheduleOffTick}. IndexedDB
  * writes run later still, when {@link flush} commits the batch.
+ *
+ * A failed encode or snapshot write is reported and does not roll back the
+ * header or the command tail. Header and command failures still reject
+ * {@link flush}.
  */
 export class MatchJournal {
   private readonly sample: PersistenceSample = {
@@ -74,7 +78,8 @@ export class MatchJournal {
     private readonly config: MatchConfig,
     private readonly snapshotEveryTicks: number,
     private readonly identity: SnapshotIdentity,
-    private readonly seal: () => SealedSnapshot
+    private readonly seal: () => SealedSnapshot,
+    private readonly onSnapshotError: (error: unknown) => void
   ) {}
 
   /**
@@ -128,33 +133,22 @@ export class MatchJournal {
    * Write the batch. `urgent` encodes on this stack (page hide / dispose)
    * and starts the store write without waiting for the idle encode.
    * A live stop passes `false`, so the digest stays on the off-tick turn.
+   *
+   * The header and the command tail commit even when a snapshot fails.
+   * Snapshot failures are reported through the constructor callback and do
+   * not reject this promise.
    */
   public flush(urgent: boolean): Promise<void> {
-    if (urgent) this.encodeNow();
     if (urgent) {
-      const job = this.tail.then(async () => {
+      try {
         this.encodeNow();
-        await this.commit();
-      });
-      this.tail = job.then(
-        () => undefined,
-        () => undefined
-      );
-      return job;
+      } catch (error) {
+        this.noteSnapshotError(error);
+      }
+      return this.enqueueCommit();
     }
     const gate = this.encodeGate;
-    const job = gate.then(() => {
-      const commit = this.tail.then(async () => {
-        this.encodeNow();
-        await this.commit();
-      });
-      this.tail = commit.then(
-        () => undefined,
-        () => undefined
-      );
-      return commit;
-    });
-    return job;
+    return gate.then(() => this.enqueueCommit());
   }
 
   private shouldSnapshot(tick: number): boolean {
@@ -167,7 +161,26 @@ export class MatchJournal {
     this.encodeGate = scheduleOffTick(() => {
       this.encodeScheduled = false;
       this.encodeNow();
+    }).catch((error: unknown) => {
+      this.encodeScheduled = false;
+      this.noteSnapshotError(error);
     });
+  }
+
+  private enqueueCommit(): Promise<void> {
+    const commit = this.tail.then(async () => {
+      try {
+        this.encodeNow();
+      } catch (error) {
+        this.noteSnapshotError(error);
+      }
+      await this.commit();
+    });
+    this.tail = commit.then(
+      () => undefined,
+      () => undefined
+    );
+    return commit;
   }
 
   /** `encodeSnapshot` / digest. Never call this from the tick path. */
@@ -175,10 +188,10 @@ export class MatchJournal {
     if (this.pendingBodies.length === 0) return;
     const waiting = this.pendingBodies;
     this.pendingBodies = [];
-    const produced: EncodedSnapshot[] = [];
-    try {
-      for (const sealed of waiting) {
-        produced.push({
+    let failure: unknown;
+    for (const sealed of waiting) {
+      try {
+        this.encoded.push({
           tick: sealed.tick,
           bytes: encodeSnapshot(
             {
@@ -197,12 +210,17 @@ export class MatchJournal {
             }
           ),
         });
+      } catch (error) {
+        // Drop this body. Restoring it would make the next flush throw
+        // again and skip the header.
+        failure = error;
       }
-    } catch (error) {
-      this.pendingBodies = waiting.concat(this.pendingBodies);
-      throw error;
     }
-    this.encoded = this.encoded.concat(produced);
+    if (failure !== undefined) {
+      throw failure instanceof Error
+        ? failure
+        : new Error('MatchJournal: encodeSnapshot failed');
+    }
   }
 
   private async commit(): Promise<void> {
@@ -227,15 +245,28 @@ export class MatchJournal {
         await this.store.appendCommands(this.matchId, entries, cursor);
         this.lastCursor = cursor;
       }
-      for (const snap of snapshots) {
-        await this.store.saveSnapshot(this.matchId, snap.tick, snap.bytes);
-      }
     } catch (error) {
       if (header) this.headerPending = true;
       this.entries = entries.concat(this.entries);
       this.encoded = snapshots.concat(this.encoded);
       throw error;
     }
+    const retry: EncodedSnapshot[] = [];
+    let snapshotFailure: unknown;
+    for (const snap of snapshots) {
+      try {
+        await this.store.saveSnapshot(this.matchId, snap.tick, snap.bytes);
+      } catch (error) {
+        snapshotFailure = error;
+        retry.push(snap);
+      }
+    }
+    if (retry.length > 0) this.encoded = retry.concat(this.encoded);
+    if (snapshotFailure !== undefined) this.noteSnapshotError(snapshotFailure);
+  }
+
+  private noteSnapshotError(error: unknown): void {
+    this.onSnapshotError(error);
   }
 }
 

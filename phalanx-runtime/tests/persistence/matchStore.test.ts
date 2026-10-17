@@ -77,6 +77,47 @@ describe.each([
     return runner;
   }
 
+  it('resumeLocal forwards snapshot, pause, and hash options', async () => {
+    const store = openStore();
+    const matchId = nextId('resume-options');
+    const transport = LocalTransport.stepped({
+      store,
+      snapshotEveryTicks: 4,
+      pauseWhenHidden: false,
+    });
+    const runner = keep(
+      new MatchRunner(TinyGame, tinyConfig(matchId), transport, {
+        hashEveryTicks: 1_000_000,
+      })
+    );
+    runner.start();
+    transport.step(5);
+    expect(runner.tick).toBe(4);
+    const digest = runner.digest();
+    runner.dispose();
+    await runner.whenPersisted();
+
+    await expect(
+      MatchRunner.resumeLocal(TinyGame, store, matchId, {
+        snapshotEveryTicks: 0,
+      })
+    ).rejects.toThrow(/snapshotEveryTicks/);
+    await expect(
+      MatchRunner.resumeLocal(TinyGame, store, matchId, { hashEveryTicks: 0 })
+    ).rejects.toThrow(/hashEveryTicks/);
+
+    const resumed = await MatchRunner.resumeLocal(TinyGame, store, matchId, {
+      snapshotEveryTicks: 8,
+      pauseWhenHidden: false,
+      hashEveryTicks: 4,
+    });
+    expect(resumed).not.toBeNull();
+    if (resumed === null) return;
+    keep(resumed);
+    expect(resumed.tick).toBe(4);
+    expect(resumed.digest()).toBe(digest);
+  });
+
   it('keeps the last two snapshots and clears', async () => {
     const store = openStore();
     const matchId = nextId('direct');

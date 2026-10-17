@@ -110,6 +110,23 @@ export interface RunnerOptions {
   readonly roundTripCheck?: boolean;
 }
 
+/**
+ * Options for {@link MatchRunner.resumeLocal}. Persistence fields configure
+ * the new local transport. The rest are {@link RunnerOptions}.
+ */
+export interface ResumeLocalOptions extends RunnerOptions {
+  /**
+   * Completed ticks between sealed snapshots. Default
+   * `DEFAULT_CLIENT_SNAPSHOT_EVERY_TICKS`.
+   */
+  readonly snapshotEveryTicks?: number;
+  /**
+   * Pause the resumed transport while the document is hidden. Default true.
+   * A host with no `document` ignores it.
+   */
+  readonly pauseWhenHidden?: boolean;
+}
+
 export interface FastForwardOptions {
   /** Wall-clock budget per chunk before yielding to the event loop. */
   readonly budgetMs: number;
@@ -207,6 +224,11 @@ export class MatchRunner<G extends AnyGameDefinition> {
   private persistDone: Promise<void> = Promise.resolve();
   private persistenceSyncMs = 0;
   private persistenceSnapshotted = false;
+  /** World body already saved for a tick that is both a hash and a snapshot. */
+  private sharedSealBody: Uint8Array | null = null;
+  /** Host time spent on {@link sharedSealBody}. Added into the seal sample. */
+  private sharedSealMs = 0;
+  private readonly persistenceErrorListeners = new Emitter<[unknown]>();
 
   public constructor(
     definition: G,
@@ -293,12 +315,14 @@ export class MatchRunner<G extends AnyGameDefinition> {
    * never saved. Does not start the clock; call {@link start}. The restored
    * snapshot includes the input checkpoint (`systemSeq` and every slot's
    * controller mode). Catch-up fast-forwards empty ticks through the stored
-   * cursor.
+   * cursor. `options` sets the resumed transport's snapshot interval and
+   * pause-when-hidden flag, and the runner's hash interval.
    */
   public static async resumeLocal<GDef extends AnyGameDefinition>(
     definition: GDef,
     store: MatchStore,
-    matchId: string
+    matchId: string,
+    options?: ResumeLocalOptions
   ): Promise<MatchRunner<GDef> | null> {
     const loaded = await store.load(matchId);
     if (loaded === null) return null;
@@ -320,15 +344,17 @@ export class MatchRunner<G extends AnyGameDefinition> {
     const transport = new LocalTransport({
       tickRate: definition.tickRate,
       store,
-      snapshotEveryTicks: DEFAULT_CLIENT_SNAPSHOT_EVERY_TICKS,
-      pauseWhenHidden: true,
+      snapshotEveryTicks:
+        options?.snapshotEveryTicks ?? DEFAULT_CLIENT_SNAPSHOT_EVERY_TICKS,
+      pauseWhenHidden: options?.pauseWhenHidden ?? true,
     });
     // The store cloned the JSON config, including game fields. The runner
     // checks it against this definition.
     const runner = new MatchRunner(
       definition,
       loaded.config as unknown as ConfigInput<GDef>,
-      transport
+      transport,
+      options
     );
     runner.journal?.skipThrough(loaded.tick);
     try {
@@ -413,7 +439,9 @@ export class MatchRunner<G extends AnyGameDefinition> {
 
   /**
    * Host milliseconds spent sealing the last tick's persistence work
-   * (world save plus enqueue). Digest and the store write are not included.
+   * (world save plus enqueue). When that tick is also a hash tick, the
+   * world save is shared with the digest and its time is included here.
+   * The digest itself and the store write are not included.
    * `0` when this runner has no store.
    */
   public get lastPersistenceSyncMs(): number {
@@ -425,7 +453,12 @@ export class MatchRunner<G extends AnyGameDefinition> {
     return this.persistenceSnapshotted;
   }
 
-  /** Resolves when the latest flush has finished writing to the store. */
+  /**
+   * Resolves when the latest flush has committed the header and the command
+   * tail. A snapshot encode or snapshot write failure is reported through
+   * {@link onPersistenceError} and does not reject this promise. A header or
+   * command failure rejects it and is also reported there.
+   */
   public whenPersisted(): Promise<void> {
     return this.persistDone;
   }
@@ -758,6 +791,15 @@ export class MatchRunner<G extends AnyGameDefinition> {
     return this.errorListeners.add(handler);
   }
 
+  /**
+   * The store rejected a header or command write, or a snapshot failed to
+   * encode or to save. Snapshot failures leave the header and the command
+   * tail committed. This is not {@link onError}: the match keeps running.
+   */
+  public onPersistenceError(handler: (error: unknown) => void): Unsubscribe {
+    return this.persistenceErrorListeners.add(handler);
+  }
+
   private onTransportTick(tick: number, batch: CommandsBatch): void {
     if (this.stopped || this.phase !== 'active') return;
     if (!this.started) {
@@ -854,7 +896,8 @@ export class MatchRunner<G extends AnyGameDefinition> {
       this.replayDigest !== undefined && tick === this.replayLastTick;
     let digest: Digest | undefined;
     if (hashDue || replayCheck) {
-      digest = this.computeDigest();
+      const shared = this.captureSharedSnapshotBody(tick);
+      digest = shared === null ? this.computeDigest() : digestBytes(shared);
       if (replayCheck && digest !== this.replayDigest) {
         throw new Error(
           `ReplayPlayer: final digest mismatch at tick ${String(tick)}`
@@ -868,7 +911,12 @@ export class MatchRunner<G extends AnyGameDefinition> {
       this.transport.submitHash?.(tick, digest);
     }
     this.tickListeners.emit(tick);
-    if (!this.stopped) this.recordPersistence(tick, entries);
+    if (this.stopped) {
+      this.sharedSealBody = null;
+      this.sharedSealMs = 0;
+    } else {
+      this.recordPersistence(tick, entries);
+    }
     if (this.phase === 'ended') this.stop();
   }
 
@@ -1379,7 +1427,10 @@ export class MatchRunner<G extends AnyGameDefinition> {
         configHash: this.configDigest,
         componentSchemas: this.componentSchemaKey,
       },
-      () => this.sealSnapshotInputs()
+      () => this.sealSnapshotInputs(),
+      (error: unknown) => {
+        this.persistenceErrorListeners.emit(error);
+      }
     );
     this.journal = journal;
     this.unsubFlush = this.transport.onPersistenceFlush((reason) => {
@@ -1394,16 +1445,26 @@ export class MatchRunner<G extends AnyGameDefinition> {
   /**
    * World body, bot section, and input checkpoint for this tick. The body
    * buffer is the one `finish()` returned; the journal must not copy it.
-   * `encodeSnapshot` (and its digest) runs later, off the tick.
+   * When this tick was also hashed, the body is the buffer already passed
+   * to `digestBytes`. `encodeSnapshot` (and its digest) runs later, off
+   * the tick.
    */
   private sealSnapshotInputs(): SealedSnapshot {
-    const bodyWriter = new BinaryStateWriter();
-    this.requireGameState().save(bodyWriter);
+    const shared = this.sharedSealBody;
+    this.sharedSealBody = null;
+    let body: Uint8Array;
+    if (shared !== null) {
+      body = shared;
+    } else {
+      const bodyWriter = new BinaryStateWriter();
+      this.requireGameState().save(bodyWriter);
+      body = bodyWriter.finish();
+    }
     const botWriter = new BinaryStateWriter();
     this.botHost.save(botWriter);
     return {
       tick: this.completedTick,
-      body: bodyWriter.finish(),
+      body,
       botState: botWriter.finish(),
       inputCheckpoint: encodeInputCheckpoint({
         pending: this.pendingBatches(),
@@ -1413,18 +1474,51 @@ export class MatchRunner<G extends AnyGameDefinition> {
     };
   }
 
+  /**
+   * Save once when this tick publishes a digest and also seals a snapshot.
+   * Returns that body, or null when the tick is not both.
+   */
+  private captureSharedSnapshotBody(tick: number): Uint8Array | null {
+    if (!this.persistenceSnapshotDue(tick)) return null;
+    const started = readHostNow();
+    const writer = new BinaryStateWriter();
+    this.requireGameState().save(writer);
+    const body = writer.finish();
+    this.sharedSealBody = body;
+    this.sharedSealMs = readHostNow() - started;
+    return body;
+  }
+
+  private persistenceSnapshotDue(tick: number): boolean {
+    if (this.journal === null) return false;
+    if (!(this.transport instanceof LocalTransport)) return false;
+    const every = this.transport.snapshotEveryTicks;
+    return tick > 0 && tick % every === 0;
+  }
+
   private recordPersistence(tick: number, entries: readonly LogEntry[]): void {
     const journal = this.journal;
-    if (journal === null) return;
-    const sample = journal.noteTick(tick, entries);
-    this.persistenceSyncMs = sample.syncMs;
-    this.persistenceSnapshotted = sample.snapshotted;
+    if (journal === null) {
+      this.sharedSealBody = null;
+      this.sharedSealMs = 0;
+      return;
+    }
+    try {
+      const sample = journal.noteTick(tick, entries);
+      this.persistenceSyncMs = sample.syncMs + this.sharedSealMs;
+      this.persistenceSnapshotted = sample.snapshotted;
+    } finally {
+      this.sharedSealBody = null;
+      this.sharedSealMs = 0;
+    }
   }
 
   private track(work: Promise<void>): Promise<void> {
     void work.then(
       () => undefined,
-      () => undefined
+      (error: unknown) => {
+        this.persistenceErrorListeners.emit(error);
+      }
     );
     return work;
   }
@@ -1695,6 +1789,14 @@ function hashMatchConfig(
 ): Digest {
   const { side: _side, ...shared } = config;
   return configHash(shared, components, commands);
+}
+
+function readHostNow(): number {
+  try {
+    return wallClock().performance.now();
+  } catch {
+    return 0;
+  }
 }
 
 function resolveHashEvery(value: number | undefined): number {

@@ -75,7 +75,10 @@ online and in local (bot) matches.
   of the DOM lib. The tick seals the world body (buffer handed off without
   a second copy) plus that tick's bot section and input checkpoint.
   `encodeSnapshot` / digest and the store write run later (`setImmediate`
-  in Node, `requestIdleCallback` in browsers).
+  in Node, `requestIdleCallback` in browsers, otherwise `MessageChannel`
+  or `setTimeout(0)`). A hash tick that is also a snapshot tick serializes
+  the world once. Snapshot failures are reported separately from the
+  header and the command tail.
 - Why 300 and not 1000 on the client: ×10 catch-up is not reachable on
   mid-range phones.
   - ×10 needs ≤ 10 ms/tick, but phones take 20–35 ms at the 240-body peak,
