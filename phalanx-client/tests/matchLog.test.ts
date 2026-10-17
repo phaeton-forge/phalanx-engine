@@ -138,8 +138,14 @@ function clientWithSocket(buildId?: string): {
   return { client, socket };
 }
 
-const chunk = (fromTick: number, toTick: number, done: boolean): LogChunk => ({
+const chunk = (
+  fromTick: number,
+  toTick: number,
+  done: boolean,
+  requestId: string
+): LogChunk => ({
   matchId: 'match-1',
+  requestId,
   fromTick,
   toTick,
   entries:
@@ -148,6 +154,12 @@ const chunk = (fromTick: number, toTick: number, done: boolean): LogChunk => ({
       : [],
   done,
 });
+
+function matchLogCalls(socket: MockSocket): { requestId: string }[] {
+  return socket.emit.mock.calls
+    .filter((call) => call[0] === 'match-log')
+    .map((call) => call[1] as { requestId: string });
+}
 
 describe('fetchMatchLog', () => {
   it('yields chunks in order and finishes on done', async () => {
@@ -160,17 +172,20 @@ describe('fetchMatchLog', () => {
     })();
 
     await vi.waitFor(() => {
-      expect(socket.emit).toHaveBeenCalledWith('match-log', {
-        matchId: 'match-1',
-        fromTick: 0,
-      });
+      expect(matchLogCalls(socket)).toHaveLength(1);
+    });
+    const requestId = matchLogCalls(socket)[0]!.requestId;
+    expect(socket.emit).toHaveBeenCalledWith('match-log', {
+      matchId: 'match-1',
+      fromTick: 0,
+      requestId,
     });
 
-    socket.fire('match-log-chunk', chunk(0, 1999, false));
+    socket.fire('match-log-chunk', chunk(0, 1999, false, requestId));
     await vi.waitFor(() => {
       expect(collected).toHaveLength(1);
     });
-    socket.fire('match-log-chunk', chunk(2000, 2000, true));
+    socket.fire('match-log-chunk', chunk(2000, 2000, true, requestId));
     await done;
 
     expect(collected.map((item) => item.fromTick)).toEqual([0, 2000]);
@@ -186,13 +201,16 @@ describe('fetchMatchLog', () => {
       [Symbol.asyncIterator]();
     const next = pending.next();
     await vi.waitFor(() => {
-      expect(socket.emit).toHaveBeenCalledWith('match-log', {
-        matchId: 'match-1',
-        fromTick: 4,
-        maxTicks: 3,
-      });
+      expect(matchLogCalls(socket)).toHaveLength(1);
     });
-    socket.fire('match-log-chunk', chunk(4, 6, true));
+    const requestId = matchLogCalls(socket)[0]!.requestId;
+    expect(socket.emit).toHaveBeenCalledWith('match-log', {
+      matchId: 'match-1',
+      fromTick: 4,
+      maxTicks: 3,
+      requestId,
+    });
+    socket.fire('match-log-chunk', chunk(4, 6, true, requestId));
     await next;
     await pending.return(undefined);
   });
@@ -207,8 +225,10 @@ describe('fetchMatchLog', () => {
     await vi.waitFor(() => {
       expect(socket.listenerCount('match-log-chunk')).toBe(1);
     });
-    socket.fire('match-log-chunk', chunk(0, 10, false));
+    const requestId = matchLogCalls(socket)[0]!.requestId;
+    socket.fire('match-log-chunk', chunk(0, 10, false, requestId));
     await done;
+    expect(socket.emit).toHaveBeenCalledWith('match-log-cancel', { requestId });
     expect(socket.listenerCount('match-log-chunk')).toBe(0);
     expect(socket.listenerCount('match-log-error')).toBe(0);
   });
@@ -271,7 +291,8 @@ describe('fetchMatchLog', () => {
     await vi.waitFor(() => {
       expect(socket.listenerCount('match-log-chunk')).toBe(1);
     });
-    socket.fire('match-log-chunk', chunk(0, 1999, false));
+    const requestId = matchLogCalls(socket)[0]!.requestId;
+    socket.fire('match-log-chunk', chunk(0, 1999, false, requestId));
     try {
       await consuming;
       expect.unreachable();
@@ -282,6 +303,87 @@ describe('fetchMatchLog', () => {
     expect(socket.listenerCount('match-log-chunk')).toBe(0);
     expect(socket.listenerCount('match-log-error')).toBe(0);
     expect(socket.listenerCount('disconnect')).toBe(1);
+  });
+
+  it('aborts a break before the first chunk, then a new fetch reads the log', async () => {
+    const { client, socket } = clientWithSocket();
+    const first = client.fetchMatchLog(0)[Symbol.asyncIterator]();
+    const next = first.next();
+    await vi.waitFor(() => {
+      expect(matchLogCalls(socket)).toHaveLength(1);
+    });
+    const firstId = matchLogCalls(socket)[0]!.requestId;
+    const returned = first.return?.();
+    try {
+      await next;
+      expect.unreachable();
+    } catch (error) {
+      expect(error).toBeInstanceOf(MatchLogError);
+      expect((error as MatchLogError).reason).toBe('aborted');
+    }
+    await returned;
+    expect(socket.emit).toHaveBeenCalledWith('match-log-cancel', {
+      requestId: firstId,
+    });
+    expect(socket.listenerCount('match-log-chunk')).toBe(0);
+
+    const collected: LogChunk[] = [];
+    const again = (async () => {
+      for await (const item of client.fetchMatchLog(0)) {
+        collected.push(item);
+      }
+    })();
+    await vi.waitFor(() => {
+      expect(matchLogCalls(socket)).toHaveLength(2);
+    });
+    const secondId = matchLogCalls(socket)[1]!.requestId;
+    const full = [
+      chunk(0, 1999, false, secondId),
+      chunk(2000, 2000, true, secondId),
+    ];
+    socket.fire('match-log-chunk', chunk(0, 1999, false, firstId));
+    socket.fire('match-log-chunk', full[0]!);
+    socket.fire('match-log-chunk', full[1]!);
+    await again;
+    expect(JSON.stringify(collected)).toBe(JSON.stringify(full));
+  });
+
+  it('aborts the in-flight fetch when another starts and keeps that log intact', async () => {
+    const { client, socket } = clientWithSocket();
+    const first = (async () => {
+      for await (const _item of client.fetchMatchLog(0)) {
+        // Replaced before any chunk arrives.
+      }
+    })();
+    await vi.waitFor(() => {
+      expect(matchLogCalls(socket)).toHaveLength(1);
+    });
+    const firstId = matchLogCalls(socket)[0]!.requestId;
+
+    const collected: LogChunk[] = [];
+    const second = (async () => {
+      for await (const item of client.fetchMatchLog(0)) {
+        collected.push(item);
+      }
+    })();
+    await vi.waitFor(() => {
+      expect(matchLogCalls(socket)).toHaveLength(2);
+    });
+    const secondId = matchLogCalls(socket)[1]!.requestId;
+    await expect(first).rejects.toMatchObject({ reason: 'aborted' });
+    expect(socket.emit).toHaveBeenCalledWith('match-log-cancel', {
+      requestId: firstId,
+    });
+
+    const full = [
+      chunk(0, 1999, false, secondId),
+      chunk(2000, 3999, true, secondId),
+    ];
+    socket.fire('match-log-chunk', chunk(0, 1999, false, firstId));
+    socket.fire('match-log-chunk', full[0]!);
+    socket.fire('match-log-chunk', full[1]!);
+    await second;
+    expect(JSON.stringify(collected)).toBe(JSON.stringify(full));
   });
 
   it('throws when the client is not in a match', () => {

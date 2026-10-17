@@ -469,6 +469,16 @@ export interface MatchLogRequest {
   matchId: string;
   fromTick: number;
   maxTicks?: number;
+  /**
+   * Client-chosen id for this read. Echoed on chunks and errors so a
+   * socket can ignore a stream that a later request replaced.
+   */
+  requestId?: string;
+}
+
+/** Client → server. Stops the `match-log` stream with this `requestId`. */
+export interface MatchLogCancelRequest {
+  requestId?: string;
 }
 
 /** One stored tick inside a `match-log-chunk`. Empty ticks are omitted. */
@@ -488,11 +498,14 @@ export interface MatchLogChunkEvent {
   toTick: number;
   entries: MatchLogEntry[];
   done: boolean;
+  /** Present when the request carried a `requestId`. */
+  requestId?: string;
 }
 
 /** Server → requesting socket when `match-log` is refused. */
 export interface MatchLogErrorEvent {
   matchId?: string;
+  requestId?: string;
   reason: MatchLogErrorReason;
 }
 

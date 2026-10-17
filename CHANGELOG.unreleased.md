@@ -292,8 +292,10 @@ Entries collected per package until the synchronized 0.3.0 release
 - Opt-in relay catch-up: `PhalanxClientConfig.buildId` is sent on
   `queue-join` / `room-create` / `room-join` only when set.
   `fetchMatchLog(fromTick)` is an `AsyncIterable` of `LogChunk`
-  (`match-log` / `match-log-chunk`). `match-log-error` rejects with
-  `MatchLogError`. A socket drop rejects with reason `disconnected`.
+  (`match-log` / `match-log-chunk`). One read per socket; a second call
+  aborts the first. `match-log-error` rejects with `MatchLogError`.
+  A socket drop rejects with reason `disconnected`, and breaking out
+  of the read rejects with `aborted` and sends `match-log-cancel`.
   `serverShutdown` fires for `server-shutdown`.
 
 ## @phalanx-engine/server
@@ -307,7 +309,9 @@ Entries collected per package until the synchronized 0.3.0 release
   is unchanged. `generateSeed` uses an ESM `node:crypto` import instead of
   `require`.
 - Opt-in full match log (`commandHistoryTicks: 'full'`), `match-log` from
-  any tick in ≤ 2000-tick chunks, match `buildId` (`requireBuildId`),
+  any tick in ≤ 2000-tick chunks. A new request or `match-log-cancel`
+  stops the previous stream on that socket (`requestId` is echoed).
+  Match `buildId` (`requireBuildId`),
   `Phalanx.shutdown()` + `server-shutdown` (`shutdownGraceMs`,
   `handleSignals`). Defaults keep the 200-tick history and do not check
   builds or install a `SIGTERM` handler.

@@ -29,8 +29,8 @@ online and in local (bot) matches.
 - `commandHistoryTicks: 'full'`: keep the whole match log, storing only
   non-empty ticks (≈ 70–110 KB per 15-minute match). The numeric default
   stays 200 and still stores empty ticks inside that window.
-- `match-log { matchId, fromTick, maxTicks? }` → a series of
-  `match-log-chunk { matchId, fromTick, toTick, entries, done }`.
+- `match-log { matchId, fromTick, maxTicks?, requestId? }` → a series of
+  `match-log-chunk { matchId, fromTick, toTick, entries, done, requestId? }`.
   `toTick` is inclusive. Each chunk covers at most 2000 ticks of the
   requested range `[fromTick, min(currentTick - 1, fromTick + maxTicks - 1)]`
   (when `maxTicks` is omitted, the end is `currentTick - 1`). `entries`
@@ -38,6 +38,11 @@ online and in local (bot) matches.
   the same objects that were broadcast in `commands-batch`. The next chunk
   is sent on `setImmediate`. An empty range is one chunk with
   `entries: []`, `toTick = fromTick - 1`, `done: true`.
+  One socket has one active stream: a new `match-log` or
+  `match-log-cancel { requestId? }` bumps a per-socket generation and the
+  previous chain stops. `requestId`, when the client sent one, is echoed
+  so a reader can ignore chunks from the stream it replaced. A cancel
+  whose `requestId` is not the active one is ignored.
 - Refusals are `match-log-error { matchId, reason }` with `reason` of
   `not-member` (socket is not in that match), `not-found`, `invalid`
   (`fromTick` / `maxTicks` not an integer in range), or `truncated`

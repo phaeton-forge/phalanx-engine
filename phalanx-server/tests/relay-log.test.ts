@@ -194,12 +194,14 @@ function requestLog(
   socket: Socket,
   matchId: string,
   fromTick: number,
-  maxTicks?: number
+  maxTicks?: number,
+  requestId?: string
 ): Promise<MatchLogChunkEvent[]> {
   return new Promise((resolve, reject) => {
     const chunks: MatchLogChunkEvent[] = [];
     const onChunk = (chunk: MatchLogChunkEvent) => {
       if (chunk.matchId !== matchId) return;
+      if (requestId !== undefined && chunk.requestId !== requestId) return;
       chunks.push(chunk);
       if (chunk.done) {
         cleanup();
@@ -217,12 +219,12 @@ function requestLog(
     };
     socket.on('match-log-chunk', onChunk);
     socket.on('match-log-error', onError);
-    socket.emit(
-      'match-log',
-      maxTicks === undefined
-        ? { matchId, fromTick }
-        : { matchId, fromTick, maxTicks }
-    );
+    socket.emit('match-log', {
+      matchId,
+      fromTick,
+      ...(maxTicks !== undefined ? { maxTicks } : {}),
+      ...(requestId !== undefined ? { requestId } : {}),
+    });
   });
 }
 
@@ -510,6 +512,82 @@ describe('full command log', () => {
     expect(JSON.stringify(entries)).toBe(JSON.stringify(batches));
     expect(rest[rest.length - 1]!.toTick).toBe(
       findRoom(server, matchId).getCurrentTick() - 1
+    );
+  }, 60_000);
+
+  it('stops after match-log-cancel and a new read matches commands-batch', async () => {
+    const { server, url } = await startServer();
+    const { host, matchId } = await openPrivateMatch(url);
+    const batches = await playEventTicks(host, 2100, 50);
+    const remote = serverSocket(server, host.id);
+    const seen: MatchLogChunkEvent[] = [];
+    const original = remote.emit.bind(remote);
+    // Cancel inside the first emit, before `setImmediate` queues the next
+    // chunk. A client round-trip would already be too late.
+    remote.emit = (event: string, ...args: unknown[]) => {
+      if (event === 'match-log-chunk') {
+        const chunk = args[0] as MatchLogChunkEvent;
+        seen.push(chunk);
+        if (chunk.requestId === 'a' && seen.length === 1) {
+          const cancel = (
+            remote as unknown as {
+              listeners: (name: string) => ((payload: unknown) => void)[];
+            }
+          ).listeners('match-log-cancel');
+          cancel[0]?.({ requestId: 'a' });
+        }
+      }
+      return original(event, ...args);
+    };
+
+    host.emit('match-log', { matchId, fromTick: 0, requestId: 'a' });
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(seen.filter((chunk) => chunk.requestId === 'a')).toHaveLength(1);
+
+    const chunks = await requestLog(host, matchId, 0, undefined, 'b');
+    expect(JSON.stringify(chunks.flatMap((item) => item.entries))).toBe(
+      JSON.stringify(batches)
+    );
+  }, 60_000);
+
+  it('replaces an in-flight match-log and the new stream matches commands-batch', async () => {
+    const { server, url } = await startServer();
+    const { host, matchId } = await openPrivateMatch(url);
+    const batches = await playEventTicks(host, 2100, 50);
+    const remote = serverSocket(server, host.id);
+    const seen: MatchLogChunkEvent[] = [];
+    const original = remote.emit.bind(remote);
+    let replaced = false;
+    remote.emit = (event: string, ...args: unknown[]) => {
+      if (event === 'match-log-chunk') {
+        const chunk = args[0] as MatchLogChunkEvent;
+        seen.push(chunk);
+        if (chunk.requestId === 'a' && !replaced) {
+          replaced = true;
+          // A second request in this same turn invalidates `a`.
+          (
+            server as unknown as {
+              handleMatchLog(socket: object, payload: unknown): void;
+            }
+          ).handleMatchLog(remote, {
+            matchId,
+            fromTick: 0,
+            requestId: 'b',
+          });
+        }
+      }
+      return original(event, ...args);
+    };
+
+    host.emit('match-log', { matchId, fromTick: 0, requestId: 'a' });
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    const streamA = seen.filter((chunk) => chunk.requestId === 'a');
+    const streamB = seen.filter((chunk) => chunk.requestId === 'b');
+    expect(streamA).toHaveLength(1);
+    expect(streamA[0]!.done).toBe(false);
+    expect(streamB[streamB.length - 1]!.done).toBe(true);
+    expect(JSON.stringify(streamB.flatMap((chunk) => chunk.entries))).toBe(
+      JSON.stringify(batches)
     );
   }, 60_000);
 

@@ -39,6 +39,7 @@ export type {
   QueueStatusEvent,
   MatchLogErrorReason,
   MatchLogRequest,
+  MatchLogCancelRequest,
   MatchLogEntry,
   MatchLogChunkEvent,
   MatchLogErrorEvent,

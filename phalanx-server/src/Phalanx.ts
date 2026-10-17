@@ -44,6 +44,12 @@ interface SocketData {
   authenticated?: boolean;
 }
 
+/** One in-flight `match-log` read on a socket. */
+interface MatchLogStream {
+  generation: number;
+  requestId?: string;
+}
+
 /**
  * Phalanx Engine
  * A game-agnostic deterministic lockstep multiplayer engine
@@ -61,6 +67,12 @@ export class Phalanx extends EventEmitter {
   private shutdownPromise: Promise<void> | null = null;
   /** `process.once('SIGTERM')` listener installed when `handleSignals` is set. */
   private sigtermHandler: (() => void) | null = null;
+  /**
+   * The match-log stream currently allowed to emit on this socket.
+   * A new request or `match-log-cancel` bumps `generation`, which
+   * stops the previous `sendNext` chain.
+   */
+  private readonly matchLogStreams = new WeakMap<Socket, MatchLogStream>();
 
   constructor(config?: Partial<PhalanxConfig>) {
     super();
@@ -796,8 +808,12 @@ export class Phalanx extends EventEmitter {
 
       // Command log for catch-up (Task 8). Only the requesting socket
       // receives chunks; the tick loop of other matches is not blocked.
+      // A new request or `match-log-cancel` stops the previous stream.
       socket.on('match-log', (payload: unknown) => {
         this.handleMatchLog(socket, payload);
+      });
+      socket.on('match-log-cancel', (payload: unknown) => {
+        this.cancelMatchLog(socket, readOptionalRequestId(payload));
       });
 
       // Handle reconnection
@@ -834,23 +850,34 @@ export class Phalanx extends EventEmitter {
    * Stream `match-log-chunk` events to the requesting socket.
    * One chunk is sent immediately; the next is scheduled with
    * `setImmediate` so a long log does not stall other matches.
+   * Starting this request invalidates any stream already running
+   * on the same socket.
    */
   private handleMatchLog(socket: Socket, payload: unknown): void {
     const parsed = parseMatchLogRequest(payload);
-    if (!parsed.ok) {
+    const generation = this.beginMatchLog(socket, parsed.requestId);
+    const requestField = requestIdField(parsed.requestId);
+
+    const emitError = (
+      matchId: string | undefined,
+      reason: 'invalid' | 'not-found' | 'not-member' | 'truncated'
+    ): void => {
+      if (!this.matchLogIsCurrent(socket, generation)) return;
       socket.emit('match-log-error', {
-        ...nonEmptyMatchId(parsed.matchId),
-        reason: 'invalid',
+        ...nonEmptyMatchId(matchId),
+        ...requestField,
+        reason,
       });
+    };
+
+    if (!parsed.ok) {
+      emitError(parsed.matchId, 'invalid');
       return;
     }
 
     const gameRoom = this.findMatch(parsed.matchId);
     if (!gameRoom) {
-      socket.emit('match-log-error', {
-        matchId: parsed.matchId,
-        reason: 'not-found',
-      });
+      emitError(parsed.matchId, 'not-found');
       return;
     }
 
@@ -859,18 +886,12 @@ export class Phalanx extends EventEmitter {
       socketData.matchId !== parsed.matchId ||
       !gameRoom.isParticipantSocket(socket.id)
     ) {
-      socket.emit('match-log-error', {
-        matchId: parsed.matchId,
-        reason: 'not-member',
-      });
+      emitError(parsed.matchId, 'not-member');
       return;
     }
 
     if (gameRoom.isLogTruncated(parsed.fromTick)) {
-      socket.emit('match-log-error', {
-        matchId: parsed.matchId,
-        reason: 'truncated',
-      });
+      emitError(parsed.matchId, 'truncated');
       return;
     }
 
@@ -880,40 +901,69 @@ export class Phalanx extends EventEmitter {
         ? currentTick - 1
         : Math.min(currentTick - 1, parsed.fromTick + parsed.maxTicks - 1);
 
-    if (requestedEnd < parsed.fromTick) {
+    const emitChunk = (
+      fromTick: number,
+      toTick: number,
+      entries: { tick: number; commands: PlayerCommand[] }[],
+      done: boolean
+    ): boolean => {
+      if (socket.disconnected) return false;
+      if (!this.matchLogIsCurrent(socket, generation)) return false;
       socket.emit('match-log-chunk', {
         matchId: parsed.matchId,
-        fromTick: parsed.fromTick,
-        toTick: parsed.fromTick - 1,
-        entries: [],
-        done: true,
+        ...requestField,
+        fromTick,
+        toTick,
+        entries,
+        done,
       });
+      return true;
+    };
+
+    if (requestedEnd < parsed.fromTick) {
+      emitChunk(parsed.fromTick, parsed.fromTick - 1, [], true);
       return;
     }
 
-    const matchId = parsed.matchId;
     let cursor = parsed.fromTick;
     const sendNext = (): void => {
-      if (socket.disconnected) return;
       const chunkEnd = Math.min(
         requestedEnd,
         cursor + MATCH_LOG_CHUNK_SPAN - 1
       );
       const entries = gameRoom.getLogRange(cursor, chunkEnd);
       const done = chunkEnd >= requestedEnd;
-      socket.emit('match-log-chunk', {
-        matchId,
-        fromTick: cursor,
-        toTick: chunkEnd,
-        entries,
-        done,
-      });
+      if (!emitChunk(cursor, chunkEnd, entries, done)) return;
       if (!done) {
         cursor = chunkEnd + 1;
         setImmediate(sendNext);
       }
     };
     sendNext();
+  }
+
+  /** Bump the per-socket generation so the previous `sendNext` stops. */
+  private beginMatchLog(socket: Socket, requestId: string | undefined): number {
+    const generation = (this.matchLogStreams.get(socket)?.generation ?? 0) + 1;
+    const stream: MatchLogStream = { generation };
+    if (requestId !== undefined) stream.requestId = requestId;
+    this.matchLogStreams.set(socket, stream);
+    return generation;
+  }
+
+  private matchLogIsCurrent(socket: Socket, generation: number): boolean {
+    return this.matchLogStreams.get(socket)?.generation === generation;
+  }
+
+  /**
+   * Stop the active stream. A `requestId` only cancels that request,
+   * so a late cancel cannot kill the read that replaced it.
+   */
+  private cancelMatchLog(socket: Socket, requestId: string | undefined): void {
+    const active = this.matchLogStreams.get(socket);
+    if (!active) return;
+    if (requestId !== undefined && active.requestId !== requestId) return;
+    this.matchLogStreams.set(socket, { generation: active.generation + 1 });
   }
 
   /**
@@ -993,16 +1043,38 @@ function nonEmptyMatchId(
   return { matchId };
 }
 
+function requestIdField(
+  requestId: string | undefined
+): { requestId: string } | Record<string, never> {
+  if (requestId === undefined || requestId.length === 0) return {};
+  return { requestId };
+}
+
+/** Non-empty `requestId` from a `match-log` or `match-log-cancel` payload. */
+function readOptionalRequestId(payload: unknown): string | undefined {
+  if (!payload || typeof payload !== 'object') return undefined;
+  const value = (payload as { requestId?: unknown }).requestId;
+  if (typeof value !== 'string' || value.length === 0) return undefined;
+  return value;
+}
+
 function isIntAtLeast(value: unknown, min: number): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= min;
 }
 
-function parseMatchLogRequest(
-  payload: unknown
-):
-  | { ok: true; matchId: string; fromTick: number; maxTicks?: number }
-  | { ok: false; matchId?: string } {
-  if (!payload || typeof payload !== 'object') return { ok: false };
+function parseMatchLogRequest(payload: unknown):
+  | {
+      ok: true;
+      matchId: string;
+      fromTick: number;
+      maxTicks?: number;
+      requestId?: string;
+    }
+  | { ok: false; matchId?: string; requestId?: string } {
+  const requestId = readOptionalRequestId(payload);
+  if (!payload || typeof payload !== 'object') {
+    return { ok: false, ...requestIdField(requestId) };
+  }
   const data = payload as {
     matchId?: unknown;
     fromTick?: unknown;
@@ -1013,18 +1085,19 @@ function parseMatchLogRequest(
       ? data.matchId
       : undefined;
   if (matchId === undefined) {
-    return { ok: false };
+    return { ok: false, ...requestIdField(requestId) };
   }
   if (!isIntAtLeast(data.fromTick, 0)) {
-    return { ok: false, matchId };
+    return { ok: false, matchId, ...requestIdField(requestId) };
   }
   if (data.maxTicks !== undefined && !isIntAtLeast(data.maxTicks, 1)) {
-    return { ok: false, matchId };
+    return { ok: false, matchId, ...requestIdField(requestId) };
   }
   return {
     ok: true,
     matchId,
     fromTick: data.fromTick,
+    ...requestIdField(requestId),
     ...(data.maxTicks !== undefined ? { maxTicks: data.maxTicks } : {}),
   };
 }

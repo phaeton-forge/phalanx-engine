@@ -376,18 +376,23 @@ export interface TickCommandsHistory {
   commands: PlayerCommand[];
 }
 
+/** Reasons the server sends on `match-log-error`. */
+export type MatchLogWireErrorReason =
+  'not-member' | 'not-found' | 'invalid' | 'truncated';
+
 /**
  * Why `fetchMatchLog` stopped.
- * The first four values arrive on `match-log-error`.
- * `'disconnected'` is raised locally when the socket closes mid-read;
- * the server does not send it.
+ * `MatchLogWireErrorReason` arrives on `match-log-error`.
+ * `'disconnected'` is local, when the socket closes mid-read.
+ * `'aborted'` is local, when the caller breaks or a newer fetch
+ * replaces this one. The server does not send either.
  */
 export type MatchLogErrorReason =
-  'not-member' | 'not-found' | 'invalid' | 'truncated' | 'disconnected';
+  MatchLogWireErrorReason | 'disconnected' | 'aborted';
 
 /**
  * Thrown by `PhalanxClient.fetchMatchLog` when the server emits
- * `match-log-error`, or when the socket drops before the log finishes.
+ * `match-log-error`, when the socket drops, or when this read is aborted.
  */
 export class MatchLogError extends Error {
   readonly reason: MatchLogErrorReason;
@@ -409,12 +414,15 @@ export interface LogChunk {
   toTick: number;
   entries: TickCommandsHistory[];
   done: boolean;
+  /** Echo of the id this read sent. Chunks for another id are ignored. */
+  requestId?: string;
 }
 
-/** Payload of `match-log-error`. */
+/** Payload of `match-log-error`. `reason` is a wire value only. */
 export interface MatchLogErrorEvent {
   matchId?: string;
-  reason: MatchLogErrorReason;
+  requestId?: string;
+  reason: MatchLogWireErrorReason;
 }
 
 /**

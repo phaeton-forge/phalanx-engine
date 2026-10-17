@@ -205,6 +205,7 @@ export type {
 
   // Match log (Task 8)
   LogChunk,
+  MatchLogWireErrorReason,
   MatchLogErrorReason,
   MatchLogErrorEvent,
   ServerShutdownEvent,

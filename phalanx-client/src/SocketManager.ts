@@ -135,6 +135,9 @@ export class SocketManager {
 
   private connectionState: ConnectionState = 'disconnected';
   private reconnectAttempts: number = 0;
+  /** The one match-log read allowed on this socket. A new read aborts it. */
+  private activeMatchLog: { abort: () => void } | null = null;
+  private matchLogRequestSeq = 0;
 
   constructor(config: SocketManagerConfig, callbacks: SocketManagerCallbacks) {
     this.config = config;
@@ -540,17 +543,23 @@ export class SocketManager {
   /**
    * Read the command log of `matchId` from `fromTick`.
    * Chunks arrive one at a time; the iterator yields the event loop
-   * between them. `break` removes the socket listeners. No timer is
-   * left pending after the iterator stops. One read per match at a
-   * time: a second iterator would share these listeners and split chunks.
+   * between them. `break` cancels the server stream and removes the
+   * socket listeners. No timer is left pending after the iterator
+   * stops. A second call aborts the read already in flight on this
+   * socket; chunks are matched by `requestId`, so the two streams
+   * cannot mix.
    */
-  async *fetchMatchLog(
+  fetchMatchLog(
     matchId: string,
     fromTick: number,
     maxTicks?: number
-  ): AsyncGenerator<LogChunk> {
+  ): AsyncIterable<LogChunk> {
     this.ensureConnected();
     const socket = this.socket!;
+    this.matchLogRequestSeq += 1;
+    const requestId = String(this.matchLogRequestSeq);
+
+    this.activeMatchLog?.abort();
 
     const pending: LogChunk[] = [];
     let waiter: {
@@ -558,6 +567,10 @@ export class SocketManager {
       reject: (error: Error) => void;
     } | null = null;
     const logState: { error: MatchLogError | null } = { error: null };
+    let yieldTimer: ReturnType<typeof setTimeout> | null = null;
+    let completed = false;
+    let started = false;
+    let cancelSent = false;
 
     const fail = (error: MatchLogError): void => {
       logState.error = error;
@@ -568,7 +581,22 @@ export class SocketManager {
       }
     };
 
+    const session = { abort: () => fail(new MatchLogError('aborted')) };
+    this.activeMatchLog = session;
+    const release = (): void => {
+      if (this.activeMatchLog === session) this.activeMatchLog = null;
+    };
+    const takeWaiter = (): {
+      resolve: (chunk: LogChunk) => void;
+      reject: (error: Error) => void;
+    } | null => {
+      const current = waiter;
+      waiter = null;
+      return current;
+    };
+
     const onChunk = (chunk: LogChunk): void => {
+      if (chunk.requestId !== requestId) return;
       if (chunk.matchId !== matchId) return;
       if (waiter) {
         const current = waiter;
@@ -580,6 +608,9 @@ export class SocketManager {
     };
 
     const onError = (payload: MatchLogErrorEvent): void => {
+      if (payload.requestId !== undefined && payload.requestId !== requestId) {
+        return;
+      }
       if (payload.matchId !== undefined && payload.matchId !== matchId) {
         return;
       }
@@ -590,7 +621,6 @@ export class SocketManager {
       fail(new MatchLogError('disconnected'));
     };
 
-    let yieldTimer: ReturnType<typeof setTimeout> | null = null;
     const yieldEventLoop = (): Promise<void> =>
       new Promise((resolve) => {
         yieldTimer = setTimeout(() => {
@@ -599,54 +629,87 @@ export class SocketManager {
         }, 0);
       });
 
-    try {
-      socket.on('match-log-chunk', onChunk);
-      socket.on('match-log-error', onError);
-      socket.on('disconnect', onDisconnect);
-      socket.emit(
-        'match-log',
-        maxTicks === undefined
-          ? { matchId, fromTick }
-          : { matchId, fromTick, maxTicks }
-      );
-
-      let first = true;
-      while (true) {
-        if (!first) {
-          await yieldEventLoop();
+    const generator = (async function* (): AsyncGenerator<LogChunk> {
+      try {
+        const initialError = logState.error;
+        if (initialError !== null) {
+          throw new MatchLogError(initialError.reason);
         }
-        first = false;
+        started = true;
+        socket.on('match-log-chunk', onChunk);
+        socket.on('match-log-error', onError);
+        socket.on('disconnect', onDisconnect);
+        socket.emit('match-log', {
+          matchId,
+          fromTick,
+          requestId,
+          ...(maxTicks !== undefined ? { maxTicks } : {}),
+        });
 
-        const pendingError = logState.error;
-        if (pending.length === 0 && pendingError !== null) {
-          throw new MatchLogError(pendingError.reason);
+        let first = true;
+        while (true) {
+          if (!first) {
+            await yieldEventLoop();
+          }
+          first = false;
+
+          const pendingError = logState.error;
+          if (pending.length === 0 && pendingError !== null) {
+            throw new MatchLogError(pendingError.reason);
+          }
+
+          const chunk =
+            pending.length > 0
+              ? pending.shift()!
+              : await new Promise<LogChunk>((resolve, reject) => {
+                  const queued = logState.error;
+                  if (queued !== null) {
+                    reject(queued);
+                    return;
+                  }
+                  waiter = { resolve, reject };
+                });
+
+          yield chunk;
+          if (chunk.done) {
+            completed = true;
+            return;
+          }
         }
-
-        const chunk =
-          pending.length > 0
-            ? pending.shift()!
-            : await new Promise<LogChunk>((resolve, reject) => {
-                const pendingError = logState.error;
-                if (pendingError !== null) {
-                  reject(pendingError);
-                  return;
-                }
-                waiter = { resolve, reject };
-              });
-
-        yield chunk;
-        if (chunk.done) return;
+      } finally {
+        if (yieldTimer !== null) {
+          clearTimeout(yieldTimer);
+          yieldTimer = null;
+        }
+        const pendingWait = takeWaiter();
+        if (pendingWait) {
+          pendingWait.reject(new MatchLogError('aborted'));
+        }
+        if (started && !completed && !cancelSent && socket.connected) {
+          cancelSent = true;
+          socket.emit('match-log-cancel', { requestId });
+        }
+        if (started) {
+          socket.off('match-log-chunk', onChunk);
+          socket.off('match-log-error', onError);
+          socket.off('disconnect', onDisconnect);
+        }
+        release();
       }
-    } finally {
-      if (yieldTimer !== null) {
-        clearTimeout(yieldTimer);
-        yieldTimer = null;
-      }
-      waiter = null;
-      socket.off('match-log-chunk', onChunk);
-      socket.off('match-log-error', onError);
-      socket.off('disconnect', onDisconnect);
-    }
+    })();
+
+    return {
+      [Symbol.asyncIterator](): AsyncIterator<LogChunk> {
+        return {
+          next: () => generator.next(),
+          throw: (error: unknown) => generator.throw(error),
+          return: () => {
+            session.abort();
+            return generator.return(undefined);
+          },
+        };
+      },
+    };
   }
 
   // ============================================

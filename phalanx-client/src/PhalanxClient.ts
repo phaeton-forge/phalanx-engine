@@ -738,9 +738,9 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
    * Read this match's command log from `fromTick`, one chunk at a time.
    * Throws if the client is not in a match. `match-log-error` rejects
    * the iterator with `MatchLogError`. A socket drop rejects with
-   * reason `'disconnected'`. Breaking out of `for await` removes the
-   * socket listeners. Run one fetch per match at a time; parallel
-   * iterators share the socket events and split the chunks.
+   * reason `'disconnected'`. Breaking out of `for await` cancels the
+   * server stream and removes the socket listeners. A second fetch on
+   * the same socket aborts the one already in flight (`'aborted'`).
    */
   fetchMatchLog(
     fromTick: number,
