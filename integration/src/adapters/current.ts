@@ -40,9 +40,8 @@ interface Live {
 }
 
 /**
- * SimDriver on today's main API: `defineGame`, `MatchRunner`,
- * `LocalTransport`, and `world.save` / `world.restore` (Task 6.5a).
- * `spawnWithId` is reached only when `legacySpawnWithId` is set.
+ * SimDriver on the runtime adapter: `defineGame`, `MatchRunner`, and
+ * `LocalTransport`. The `@phalanx-engine/engine` facade is not used here.
  */
 export function createCurrentDriver(): SimDriver {
   return {
@@ -82,7 +81,7 @@ function openMatch(spec: MatchSpec): MatchHandle {
     injectTick: -1,
     bots: {},
   };
-  const game = createSkirmishGame(session);
+  const game = createSkirmishGame(session, poolsFor(spec));
   const config = toConfig(spec);
   const peers: Peer[] = [];
   let authorityRunner: Live['runner'] | null = null;
@@ -91,9 +90,8 @@ function openMatch(spec: MatchSpec): MatchHandle {
   const handle: MatchHandle = {
     createPeer(id, opts): Peer {
       session.currentPeer = id;
-      const transport = LocalTransport.manual();
+      const transport = LocalTransport.stepped();
       const runner = new MatchRunner(game, config, transport, {
-        side: 'client',
         localSlots:
           opts.role === 'authority'
             ? config.slots
@@ -154,7 +152,7 @@ function wrapPeer(id: string, live: Live, session: SkirmishSession): Peer {
       session.currentPeer = id;
       if (live.role === 'replay') {
         throw new Error(
-          'MatchRunner.fromReplay: drive the runner with fastForward(replay.log, { throughTick: replay.lastTick })'
+          'MatchRunner.openReplay: drive the runner with fastForward(replay.log, { throughTick: replay.lastTick })'
         );
       }
       if (!live.started) {
@@ -235,12 +233,12 @@ function openReplayPeer(replay: ReplayFile): Peer {
     injectTick: -1,
     bots: {},
   };
-  const game = createSkirmishGame(session);
+  const game = createSkirmishGame(session, poolsFromReplay(replay.config));
   const record = replay as unknown as ReplayRecord<SkirmishConfig>;
   // ReplayFile is the JSON form of ReplayRecord. The runner checks
   // format, game id, sim version, and tick bounds itself.
-  const runner = MatchRunner.fromReplay(game, record);
-  const transport = LocalTransport.manual();
+  const runner = MatchRunner.openReplay(game, record);
+  const transport = LocalTransport.stepped();
   const live: Live = {
     runner,
     transport,
@@ -361,13 +359,40 @@ function isSchemaComponent(
   );
 }
 
+function isJsonRecord(value: Json): value is { readonly [key: string]: Json } {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function poolsFor(spec: MatchSpec): {
+  readonly armySize: number;
+  readonly slotCount: number;
+} {
+  return {
+    armySize: spec.options.armySize ?? 0,
+    slotCount: spec.slots.length,
+  };
+}
+
+function poolsFromReplay(config: Json): {
+  readonly armySize: number;
+  readonly slotCount: number;
+} {
+  if (!isJsonRecord(config)) return { armySize: 0, slotCount: 2 };
+  const army = config['armySize'];
+  const slots = config['slots'];
+  return {
+    armySize: typeof army === 'number' && Number.isInteger(army) ? army : 0,
+    slotCount: Array.isArray(slots) ? slots.length : 2,
+  };
+}
+
 function toConfig(spec: MatchSpec): SkirmishConfig {
   return {
     matchId: 'skirmish',
     gameId: 'skirmish',
     simVersion: 'skirmish-1',
     seed: spec.seed >>> 0,
-    simMode: 'client',
+    side: 'client',
     inputDelayTicks: spec.inputDelayTicks,
     tickLimit: spec.options.tickLimit ?? 1_000_000,
     armySize: spec.options.armySize ?? 0,

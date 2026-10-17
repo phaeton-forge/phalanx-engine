@@ -7,7 +7,7 @@ export interface Capabilities {
   readonly setController: boolean;
   /**
    * Replay a finished log without calling bot `decide`.
-   * Today's adapter does this with `MatchRunner.fromReplay` + `fastForward`.
+   * The adapter does this with `MatchRunner.openReplay` + `fastForward`.
    * The future `ReplayPlayer` type is the same flag.
    */
   readonly replayPlayer: boolean;

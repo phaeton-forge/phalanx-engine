@@ -39,7 +39,6 @@ import {
   type StampedCommand,
   type StateReader,
   type StateWriter,
-  type WorldInitContext,
 } from '@phalanx-engine/runtime';
 import type {
   BotMemory,
@@ -424,9 +423,7 @@ class LifeSystem extends GameSystem {
   }
 }
 
-class SkirmishSim
-  implements SimWorld<SkirmishCommand>, CommandView, CommandSink
-{
+class SkirmishSim implements SimWorld, CommandView, CommandSink {
   public tickValue = -1;
   public readonly probe: boolean;
   public readonly throwOnTick: number | undefined;
@@ -1115,37 +1112,38 @@ class Policy implements BotPolicy<SkirmishCommand, SkirmishSim> {
 }
 
 export function createSkirmishGame(
-  session: SkirmishSession
+  session: SkirmishSession,
+  pools: { readonly armySize: number; readonly slotCount: number } = {
+    armySize: 0,
+    slotCount: 2,
+  }
 ): ReturnType<typeof defineGame<SkirmishConfig, SkirmishCommand, SkirmishSim>> {
+  const holder: { abilities?: AbilitySystem } = {};
+  const soldierPool = pools.armySize > 0 ? pools.armySize : pools.slotCount + 8;
+  const archerPool = pools.armySize > 0 ? 1 : 6;
+  const totemPool = pools.armySize > 0 ? 1 : 4;
   return defineGame({
     id: 'skirmish',
     simVersion: 'skirmish-1',
     tickRate: 10,
-    createWorld: (config, ctx: WorldInitContext): SkirmishSim => {
-      const holder: { abilities?: AbilitySystem } = {};
-      const army = config.armySize;
-      const soldierPool = army > 0 ? army : config.slots.length + 8;
-      const world = new GameWorld({
-        tickFrameProvider: ctx.tickFrameProvider,
-        random: ctx.random,
-        tickRate: 10,
-        pooling: {
-          entityTypes: {
-            soldier: {
-              factory: () => buildUnit(KIND_SOLDIER, holder, true, false),
-              pool: { initialSize: soldierPool },
-            },
-            archer: {
-              factory: () => buildUnit(KIND_ARCHER, holder, true, true),
-              pool: { initialSize: army > 0 ? 1 : 6 },
-            },
-            totem: {
-              factory: () => buildUnit(KIND_TOTEM, holder, false, false),
-              pool: { initialSize: army > 0 ? 1 : 4 },
-            },
-          },
+    pooling: {
+      entityTypes: {
+        soldier: {
+          factory: () => buildUnit(KIND_SOLDIER, holder, true, false),
+          pool: { initialSize: soldierPool },
         },
-      });
+        archer: {
+          factory: () => buildUnit(KIND_ARCHER, holder, true, true),
+          pool: { initialSize: archerPool },
+        },
+        totem: {
+          factory: () => buildUnit(KIND_TOTEM, holder, false, false),
+          pool: { initialSize: totemPool },
+        },
+      },
+    },
+    onStart: (ctx): SkirmishSim => {
+      const world = ctx.world;
       world.registerComponent(UnitDef);
       world.registerComponent(RangedDef);
       world.entityManager.getOrCreateSoAStore(TransformSoASchema);
@@ -1164,8 +1162,8 @@ export function createSkirmishGame(
       world.context.physics = physics;
       const sim = new SkirmishSim(
         world,
-        ctx.random,
-        config,
+        ctx.rng,
+        ctx.config,
         abilities,
         session
       );
@@ -1189,31 +1187,46 @@ export function createSkirmishGame(
         ],
         []
       );
-      world.start();
+      ctx.open();
       physics.onCollision((event: CollisionEvent) => {
         sim.noteContact(event.entityA, event.entityB);
       });
       const spawn = ctx.purpose === 'fresh' || session.spawnOnRestore;
-      if (spawn) spawnRoster(sim, config);
+      if (spawn) spawnRoster(sim, ctx.config);
       return sim;
     },
     commands: {
       types: ['move', 'attack', 'cast', 'spawn', 'recall'],
+      schema: [
+        { name: 'move', fields: [['dir', 'i32']] },
+        { name: 'attack', fields: [['target', 'i32']] },
+        {
+          name: 'cast',
+          fields: [
+            ['ability', 'i32'],
+            ['target', 'i32'],
+          ],
+        },
+        { name: 'spawn', fields: [['kind', 'i32']] },
+        { name: 'recall', fields: [] },
+      ],
       decode: (raw): SkirmishCommand | CommandRejection => decodeCommand(raw),
       validate: (command, slot, sim) => {
-        const reason = rejectReason(sim, command, slot.slot);
+        const reason = rejectReason(sim as SkirmishSim, command, slot.slot);
         return reason === null ? null : rejectCommand(reason);
       },
       encode: (command): JsonValue => command,
     },
-    state: undefined,
+    onCommand: (ctx, stamped) => {
+      ctx.sim.applyCommand(stamped);
+    },
     bots: {
       aggressive: (_config, slot: BotSlotInfo, rng: IRandom) =>
         new Policy(slot.slot, rng, true, session),
       defensive: (_config, slot: BotSlotInfo, rng: IRandom) =>
         new Policy(slot.slot, rng, false, session),
     },
-    outcome: (sim) => {
+    checkOutcome: (sim) => {
       if (sim.tickValue + 1 >= sim.config.tickLimit) {
         return { kind: 'draw', reason: 'tick limit' };
       }
