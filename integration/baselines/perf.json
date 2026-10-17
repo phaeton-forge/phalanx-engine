@@ -3,19 +3,19 @@
   "cpu": "Intel(R) Xeon(R) Processor",
   "node": "v22.14.0",
   "metrics": {
-    "heapDeltaBytes.150": 2526584,
-    "heapDeltaBytes.500": 11883760,
-    "p50TickMs.150": 1.905,
-    "p50TickMs.500": 11.852,
-    "p99TickMs.150": 3.587,
-    "p99TickMs.500": 16.843,
-    "restoreMs.150": 6.95,
-    "restoreMs.500": 15.685,
-    "saveMs.150": 1.502,
-    "saveMs.500": 4.27,
-    "snapshotBytes.150": 47326,
-    "snapshotBytes.500": 156530,
-    "ticksPerSec.150": 479.878,
-    "ticksPerSec.500": 83.6
+    "heapDeltaBytes.150": 7798056,
+    "heapDeltaBytes.500": 19172792,
+    "p50TickMs.150": 1.975,
+    "p50TickMs.500": 11.585,
+    "p99TickMs.150": 4.118,
+    "p99TickMs.500": 17.201,
+    "restoreMs.150": 8.818,
+    "restoreMs.500": 18.176,
+    "saveMs.150": 1.958,
+    "saveMs.500": 4.948,
+    "snapshotBytes.150": 47964,
+    "snapshotBytes.500": 158569,
+    "ticksPerSec.150": 479.099,
+    "ticksPerSec.500": 84.377
   }
 }
