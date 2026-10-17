@@ -9,7 +9,7 @@
  */
 
 import { io, Socket } from 'socket.io-client';
-import { MatchLogError } from './types.js';
+import { MatchLogError, MatchResumeRejected } from './types.js';
 import type {
   MatchFoundEvent,
   CountdownEvent,
@@ -39,6 +39,9 @@ import type {
   LogChunk,
   MatchLogErrorEvent,
   ServerShutdownEvent,
+  MatchResumeState,
+  MatchResumeWireErrorReason,
+  SessionTokenEvent,
 } from './types.js';
 
 /**
@@ -120,9 +123,21 @@ export interface SocketManagerCallbacks {
   /** Optional so existing callers do not have to supply it. */
   onServerShutdown?: (data: ServerShutdownEvent) => void;
 
+  /** Optional so existing callers do not have to supply it. */
+  onSessionToken?: (data: SessionTokenEvent) => void;
+
   // State queries (for reconnection logic)
   isPlaying: () => boolean;
   getCurrentMatchId: () => string | null;
+  /**
+   * Session saved for `gameId`, or `null`. Optional so callers that
+   * never persist a token keep the legacy `reconnectToMatch` path.
+   */
+  loadMatchSession?: () => { token: string; matchId: string } | null;
+  /** Last tick the client has already applied. Sent as `haveTick`. */
+  getLastTick?: () => number;
+  /** Drop the stored session after a final reconnection failure. */
+  clearMatchSession?: () => void;
 }
 
 /**
@@ -722,6 +737,60 @@ export class SocketManager {
   // ============================================
 
   /**
+   * Resume a match with a session token.
+   * `buildId` is included only when this client was configured with one.
+   * Resolves on `match-resume-state`. The same `reconnect-state` handler
+   * that `reconnectToMatch` relies on puts the client back into the match.
+   * Rejects `MatchResumeRejected` on `match-resume-error` or when
+   * `connectionTimeoutMs` elapses. That timeout is the same budget as
+   * `connect()`.
+   */
+  async resumeMatch(
+    token: string,
+    haveTick: number
+  ): Promise<MatchResumeState> {
+    this.ensureConnected();
+    const socket = this.socket;
+    if (!socket) {
+      throw new Error('Not connected to server. Call connect() first.');
+    }
+
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const timer = setTimeout(() => {
+        finish(() => reject(new MatchResumeRejected('timeout')));
+      }, this.config.connectionTimeoutMs);
+
+      const onState = (state: MatchResumeState) => {
+        finish(() => resolve(state));
+      };
+      const onError = (event: { reason?: unknown }) => {
+        const reason = isMatchResumeWireReason(event?.reason)
+          ? event.reason
+          : 'invalid';
+        finish(() => reject(new MatchResumeRejected(reason)));
+      };
+
+      const finish = (settle: () => void) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        socket.off('match-resume-state', onState);
+        socket.off('match-resume-error', onError);
+        settle();
+      };
+
+      socket.on('match-resume-state', onState);
+      socket.on('match-resume-error', onError);
+      socket.emit('match-resume', {
+        token,
+        haveTick,
+        ...buildIdField(this.config.buildId),
+      });
+    });
+  }
+
+  /**
    * Reconnect to a specific match
    */
   async reconnectToMatch(matchId: string): Promise<ReconnectStateEvent> {
@@ -776,7 +845,7 @@ export class SocketManager {
         await this.connect();
 
         if (savedMatchId) {
-          await this.reconnectToMatch(savedMatchId);
+          await this.rejoinSavedMatch(savedMatchId);
         }
 
         return;
@@ -785,8 +854,31 @@ export class SocketManager {
       }
     }
 
+    this.callbacks.clearMatchSession?.();
     this.callbacks.onReconnectFailed();
     throw new Error('Max reconnection attempts reached');
+  }
+
+  /**
+   * Prefer the stored token for this match. `reconnectToMatch` runs
+   * only when that resume does not bind the socket. A terminal
+   * refusal drops the token before the legacy attempt; a timeout
+   * keeps it so a later attempt can try the token again.
+   */
+  private async rejoinSavedMatch(matchId: string): Promise<void> {
+    const session = this.callbacks.loadMatchSession?.() ?? null;
+    if (session && session.matchId === matchId) {
+      const lastTick = this.callbacks.getLastTick?.() ?? -1;
+      try {
+        await this.resumeMatch(session.token, lastTick);
+        return;
+      } catch (error) {
+        if (isTerminalResumeRejection(error)) {
+          this.callbacks.clearMatchSession?.();
+        }
+      }
+    }
+    await this.reconnectToMatch(matchId);
   }
 
   // ============================================
@@ -850,6 +942,10 @@ export class SocketManager {
 
     this.socket.on('server-shutdown', (data: ServerShutdownEvent) => {
       this.callbacks.onServerShutdown?.(data);
+    });
+
+    this.socket.on('session-token', (data: SessionTokenEvent) => {
+      this.callbacks.onSessionToken?.(data);
     });
 
     // Reconnect-state — unlike `reconnectToMatch` which attaches a
@@ -1001,6 +1097,31 @@ export class SocketManager {
   private delay(ms: number): Promise<void> {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
+}
+
+const MATCH_RESUME_WIRE_REASONS: readonly MatchResumeWireErrorReason[] = [
+  'invalid',
+  'expired',
+  'match-ended',
+  'build-mismatch',
+];
+
+function isMatchResumeWireReason(
+  value: unknown
+): value is MatchResumeWireErrorReason {
+  return (
+    typeof value === 'string' &&
+    (MATCH_RESUME_WIRE_REASONS as readonly string[]).includes(value)
+  );
+}
+
+function isTerminalResumeRejection(
+  error: unknown
+): error is MatchResumeRejected {
+  return (
+    error instanceof MatchResumeRejected &&
+    isMatchResumeWireReason(error.reason)
+  );
 }
 
 /** `buildId` is included only when the config actually set one. */

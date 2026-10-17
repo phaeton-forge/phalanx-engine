@@ -1228,8 +1228,11 @@ resolveMatchConfig? }` (see [server-sim.md § 6](./server-sim.md#6-server-config
   `playerId` is taken from the request body in `queue-join`
   (`Phalanx.ts:441`), `room-create` (`:458`), `room-join` (`:468`),
   `room-recover` (`:525`) and `reconnect-match` (`:685`), even when the
-  socket is authenticated. Reported only; fixed by the session token in
-  Task 9.
+  socket is authenticated. Task 9 closes `match-resume` (always, the
+  id comes from the token) and, when `reconnect.requireSessionToken`
+  is set, `reconnect-match` and in-match `room-recover`. `queue-join`,
+  `room-create`, `room-join`, and waiting-room `room-recover` stay on
+  the body id until Task 9b.
 - **Other discrepancies** (reported, not changed):
   - AGENTS.md §1 says `NodeNext`; every package tsconfig uses
     `moduleResolution: bundler`. The runtime copies the ecs tsconfig.
@@ -1363,8 +1366,20 @@ Literal instructions for each task; they override the original task text.
   runs only when at least one snapshot was skipped.
 - **Task 8 (relay full log).** Store raw `PlayerCommand`s including the
   envelope; `match-log` chunks of ≤ 2000 ticks; `buildId`; SIGTERM.
-- **Task 9 (session token).** Derive `playerId` from the token / socket for
-  all five handlers listed in finding 10, not only `reconnect-match`.
+- **Task 9 (session token).** Opt-in `session`. `match-resume` takes
+  `playerId` from the HMAC token only. The token is signed, not
+  encrypted; do not log it or `session.secret`.
+  `reconnect.requireSessionToken` (default false) rejects legacy
+  `reconnect-match` and in-match `room-recover` (`room-error.reason`
+  is `'session-token-required'`, and `message` stays the same). The
+  flag throws at startup without `session.secret`. Waiting-room
+  `room-recover` and the pre-match handlers (`queue-join`,
+  `room-create`, `room-join`) are unchanged here; those three are
+  Task 9b, not "all five handlers". `slot` is the index in
+  `teams.flat()` (team 0 first, queue order within a team), the same
+  index Task 12 will use. `absentDeadline` is the soonest other row
+  from `GameRoom.getAbsences()`. A resume drops the previous socket
+  from the room. `autoReconnect` tries the stored token first.
 - **Task 10 (absence timer).** Public `GameRoom.endMatch`; 120 s window,
   180 s budget; `abandoned` when all humans are absent.
 - **Task 11 (SimHost).**

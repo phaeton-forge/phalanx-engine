@@ -397,6 +397,16 @@ export class PrivateRoomService {
     if (matchId) {
       const match = this.matches.get(matchId);
       if (match && match.hasPlayer(playerId)) {
+        // Task 9. Waiting-room recover (case 1) is unchanged. An
+        // in-match rebind must present a session token when the flag
+        // is on. `false` / omitted keeps this path byte-for-byte.
+        if (this.config.reconnect?.requireSessionToken === true) {
+          socket.emit('room-error', {
+            message: 'session-token-required',
+            reason: 'session-token-required',
+          } satisfies RoomErrorEvent);
+          return false;
+        }
         socket.emit('room-recovered', {
           code: normalizedCode,
         } satisfies RoomRecoveredEvent);

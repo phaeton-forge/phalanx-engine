@@ -14,6 +14,7 @@ import type {
   PlayerAbsentEvent,
   PlayerCommandContext,
   MatchLogEntry,
+  SessionTokenEvent,
 } from '../types/index.js';
 import { DEFAULT_CONFIG } from '../config/defaults.js';
 
@@ -169,6 +170,14 @@ export class GameRoom {
   private absencePolicy: AbsencePolicy;
   private readonly activeAbsences: Map<string, AbsenceRecord> = new Map();
   private readonly absenceBudgets: Map<string, number> = new Map();
+
+  /**
+   * Set by `Phalanx` when `session` is configured. The room never sees
+   * the HMAC secret. Unset means no `session-token` events.
+   */
+  private sessionIssuer:
+    | ((claims: { matchId: string; playerId: string; slot: number }) => string)
+    | null = null;
 
   constructor(
     id: string,
@@ -423,6 +432,30 @@ export class GameRoom {
     }
   }
 
+  /** `session-token` for every socket that just received `game-start`. */
+  private emitSessionTokensToConnectedPlayers(): void {
+    if (!this.sessionIssuer) return;
+    for (const [socketId, playerId] of this.socketToPlayer) {
+      const player = this.players.get(playerId);
+      if (!player?.connected) continue;
+      const socket = this.io.sockets.sockets.get(socketId);
+      if (!socket) continue;
+      this.emitSessionToken(socket, playerId);
+    }
+  }
+
+  private emitSessionToken(
+    socket: { emit: (event: string, payload: SessionTokenEvent) => void },
+    playerId: string
+  ): void {
+    const issuer = this.sessionIssuer;
+    if (!issuer) return;
+    const slot = this.getPlayerSlot(playerId);
+    if (slot < 0) return;
+    const token = issuer({ matchId: this.id, playerId, slot });
+    socket.emit('session-token', { token, matchId: this.id, slot });
+  }
+
   /**
    * Start the game countdown
    * Emits countdown events (5, 4, 3, 2, 1, 0) every second, then game-start
@@ -437,6 +470,7 @@ export class GameRoom {
         matchId: this.id,
         randomSeed: this.randomSeed,
       });
+      this.emitSessionTokensToConnectedPlayers();
       this.enterWaitingForReady();
       return;
     }
@@ -471,6 +505,7 @@ export class GameRoom {
           matchId: this.id,
           randomSeed: this.randomSeed,
         });
+        this.emitSessionTokensToConnectedPlayers();
         this.enterWaitingForReady();
       }
     }, 1000);
@@ -1223,6 +1258,33 @@ export class GameRoom {
   }
 
   /**
+   * Index of `playerId` in `teams.flat()`: team 0 first, and within a
+   * team the queue order. That is the `match-found` order. Task 12 uses
+   * the same index. `-1` when the player is not in this match.
+   */
+  getPlayerSlot(playerId: string): number {
+    const players = this.teams.flat();
+    for (let slot = 0; slot < players.length; slot++) {
+      if (players[slot]?.playerId === playerId) return slot;
+    }
+    return -1;
+  }
+
+  /**
+   * Install the token issuer. `Phalanx` calls this from `match-created`,
+   * before `start()`, so the secret stays out of this room.
+   */
+  setSessionIssuer(
+    issuer: (claims: {
+      matchId: string;
+      playerId: string;
+      slot: number;
+    }) => string
+  ): void {
+    this.sessionIssuer = issuer;
+  }
+
+  /**
    * First non-empty `buildId` in `teams.flat()` order, if any player
    * sent one. Task 9 compares this on resume; the signature stays stable.
    */
@@ -1452,10 +1514,23 @@ export class GameRoom {
       return false;
     }
 
-    // Update socket mapping
+    // The previous socket may still be connected. It is no longer this
+    // player: drop its identity and its room membership so a later
+    // `submit-commands` cannot ride the old closure `playerId`.
     for (const [oldSocketId, pid] of this.socketToPlayer.entries()) {
       if (pid === playerId) {
         this.socketToPlayer.delete(oldSocketId);
+        if (oldSocketId !== socketId) {
+          const oldSocket = this.io.sockets.sockets.get(oldSocketId);
+          if (oldSocket) {
+            const oldData = oldSocket.data as SocketData;
+            delete oldData.matchId;
+            delete oldData.playerId;
+            if (typeof oldSocket.leave === 'function') {
+              void oldSocket.leave(this.roomId);
+            }
+          }
+        }
         break;
       }
     }
@@ -1555,6 +1630,12 @@ export class GameRoom {
         gameStartEmitted: this.gameStartEmitted,
         randomSeed: this.randomSeed,
       });
+
+      // A player who missed `game-start` (or is rebinding after it)
+      // gets the token as its own event. `reconnect-state` is unchanged.
+      if (this.gameStartEmitted) {
+        this.emitSessionToken(socket, playerId);
+      }
 
       // Notify other players
       socket.to(this.roomId).emit('player-reconnected', { playerId });

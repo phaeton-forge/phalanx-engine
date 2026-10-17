@@ -88,7 +88,8 @@ interface PhalanxClientConfig {
   serverUrl: string;               // Server URL (e.g., 'http://localhost:3000')
   playerId?: string;               // Unique player ID (auto-generated if omitted)
   username?: string;               // Display name
-  buildId?: string;                // Sent on queue-join / room-create / room-join when set
+  buildId?: string;                // Sent on queue-join / room-create / room-join / match-resume when set
+  gameId?: string;                 // Persists session-token at phalanx.session.<gameId>. No default.
   autoReconnect?: boolean;         // Auto-reconnect on disconnect (default: true)
   maxReconnectAttempts?: number;   // Max reconnection attempts (default: 5)
   reconnectDelayMs?: number;       // Delay between attempts (default: 1000)
@@ -101,7 +102,11 @@ interface PhalanxClientConfig {
 }
 ```
 
-`buildId` is copied onto `queue-join`, `room-create`, and `room-join` only when it is set. `fetchMatchLog(fromTick, { maxTicks })` returns an `AsyncIterable<LogChunk>` for the current match. One read per socket: a second call aborts the first with `MatchLogError` reason `'aborted'`. Chunks carry a `requestId`, so a replaced stream cannot mix in. The iterator stops on `done: true`. `match-log-error` rejects with `MatchLogError`. A socket drop rejects with `'disconnected'`. Breaking out of `for await` sends `match-log-cancel` and removes the socket listeners. `serverShutdown` carries `{ reason, matchIds }`. Wire reasons (`MatchLogWireErrorReason`) are separate from the client-only `'disconnected'` and `'aborted'`.
+`gameId` opts into `MatchSessionStore` (`localStorage` key `phalanx.session.<gameId>`). On `session-token` the client saves `{ token, matchId, slot, buildId }` and emits `sessionToken` with `{ token }`. It does not parse the token. The token is signed, not encrypted. Never log `sessionToken.token`. `match-end` clears the record. `resumeMatch` also clears it on `invalid`, `expired`, `match-ended`, and `build-mismatch`. `timeout` keeps it. Without `gameId` nothing is stored.
+
+Tab killed: `store.load()` → `connect()` → `resumeMatch(token, haveTick)` → `fetchMatchLog(haveTick + 1)`. `resumeMatch` resolves on `match-resume-state` and rejects `MatchResumeRejected`. `reconnect-state` uses the same path as `reconnectToMatch`, so the client is back in the match before the promise resolves. Pass `matchSessionStorage` to replace `localStorage` (tests use `MemoryKeyValueStorage`). `autoReconnect` tries `resumeMatch(token, lastTick)` when the store has a token for the current match, then `reconnectToMatch` if that resume does not bind. Giving up clears the store and emits `reconnectFailed`.
+
+`buildId` is copied onto `queue-join`, `room-create`, and `room-join` only when it is set. `resumeMatch` includes it on `match-resume` the same way. `fetchMatchLog(fromTick, { maxTicks })` returns an `AsyncIterable<LogChunk>` for the current match. One read per socket: a second call aborts the first with `MatchLogError` reason `'aborted'`. Chunks carry a `requestId`, so a replaced stream cannot mix in. The iterator stops on `done: true`. `match-log-error` rejects with `MatchLogError`. A socket drop rejects with `'disconnected'`. Breaking out of `for await` sends `match-log-cancel` and removes the socket listeners. `serverShutdown` carries `{ reason, matchIds }`. Wire reasons (`MatchLogWireErrorReason`) are separate from the client-only `'disconnected'` and `'aborted'`.
 
 ### 4. Matchmaking Flow
 
@@ -390,6 +395,17 @@ const client = new PhalanxClient({
 // Manual reconnection
 const state = await client.reconnectToMatch(matchId);
 
+// Tab was killed. `haveTick` is the last simulated tick.
+const haveTick = 0;
+const saved = new MatchSessionStore('sketch-legion').load();
+if (saved) {
+  await client.connect();
+  await client.resumeMatch(saved.token, haveTick);
+  for await (const chunk of client.fetchMatchLog(haveTick + 1)) {
+    if (chunk.done) break;
+  }
+}
+
 // Reconnection events
 client.on('reconnecting', (attempt) => {
   console.log(`Reconnecting... attempt ${attempt}`);
@@ -397,6 +413,10 @@ client.on('reconnecting', (attempt) => {
 
 client.on('reconnectFailed', () => {
   console.log('Failed to reconnect');
+});
+
+client.on('sessionToken', ({ token }) => {
+  // Store already saved { token, matchId, slot, buildId } when gameId is set.
 });
 
 client.on('reconnectState', (event) => {

@@ -13,12 +13,14 @@ import { AuthManager } from './auth/AuthManager.js';
 import type { AuthState } from './auth/types.js';
 import {
   RoomRecoveryController,
+  MatchSessionStore,
   type RecoveryClientPort,
 } from './recovery/index.js';
 import {
   pickMobileFriendlyTransports,
   loadOrCreateGuestPlayerId,
 } from './recovery/index.js';
+import { MatchResumeRejected } from './types.js';
 import type {
   PhalanxClientConfig,
   PhalanxClientEvents,
@@ -41,6 +43,8 @@ import type {
   RoomRecoveredEvent,
   LogChunk,
   ServerShutdownEvent,
+  MatchResumeState,
+  SessionTokenEvent,
 } from './types.js';
 
 /**
@@ -79,6 +83,8 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
       | 'pause'
       | 'roomRecovery'
       | 'buildId'
+      | 'gameId'
+      | 'matchSessionStorage'
     >
   > &
     Pick<
@@ -90,8 +96,15 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
       | 'pause'
       | 'roomRecovery'
       | 'buildId'
+      | 'gameId'
+      | 'matchSessionStorage'
     >;
   private socketManager: SocketManager;
+  /**
+   * Created only when `gameId` is set. The same key is what a new
+   * process reads after the tab was killed.
+   */
+  private sessionStore: MatchSessionStore | null = null;
   private renderLoop: RenderLoop;
   private desyncDetector: DesyncDetector;
   private authManager: AuthManager | null = null;
@@ -211,8 +224,10 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
         onMatchEnd: (data) => {
           this.clientState = 'finished';
           this.resetMatchRandom();
+          this.sessionStore?.clear();
           this.emit('matchEnd', data);
         },
+        onSessionToken: (event) => this.handleSessionToken(event),
 
         // Tick events
         onTickSync: (data) => {
@@ -281,6 +296,11 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
         // State queries
         isPlaying: () => this.clientState === 'playing',
         getCurrentMatchId: () => this.currentMatchId,
+        loadMatchSession: () => this.sessionStore?.load() ?? null,
+        getLastTick: () => this.currentTick,
+        clearMatchSession: () => {
+          this.sessionStore?.clear();
+        },
 
         // Private room events
         onRoomError: (data) => this.emit('roomError', data),
@@ -320,6 +340,39 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
         config.roomRecovery
       );
     }
+
+    if (config.gameId) {
+      this.sessionStore = new MatchSessionStore(
+        config.gameId,
+        config.matchSessionStorage
+      );
+    }
+  }
+
+  /**
+   * Persist the opaque token and tell the game. `matchId` and `slot`
+   * come from the event; `buildId` comes from this client's config.
+   * The token is not parsed.
+   */
+  private handleSessionToken(event: SessionTokenEvent): void {
+    if (
+      typeof event?.token !== 'string' ||
+      event.token.length === 0 ||
+      typeof event.matchId !== 'string' ||
+      event.matchId.length === 0 ||
+      typeof event.slot !== 'number' ||
+      !Number.isSafeInteger(event.slot) ||
+      event.slot < 0
+    ) {
+      return;
+    }
+    this.sessionStore?.save({
+      token: event.token,
+      matchId: event.matchId,
+      slot: event.slot,
+      buildId: this.config.buildId ?? '',
+    });
+    this.emit('sessionToken', { token: event.token });
   }
 
   private createRoomRecoveryController(
@@ -976,6 +1029,32 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
   }
 
   /**
+   * Return to a live match after the tab was killed.
+   * Sends `match-resume` with this client's `buildId` when one is set.
+   * Resolves with `match-resume-state`. `reconnect-state` (sent first by
+   * the server) goes through the same handler as `reconnectToMatch`, so
+   * the client is in the match before this promise resolves.
+   * Rejects `MatchResumeRejected`.
+   *
+   * Typical cold start: `store.load()`, `connect()`, `resumeMatch(token,
+   * haveTick)`, then `fetchMatchLog(haveTick + 1)`.
+   */
+  async resumeMatch(
+    token: string,
+    haveTick: number
+  ): Promise<MatchResumeState> {
+    this.clientState = 'reconnecting';
+    try {
+      return await this.socketManager.resumeMatch(token, haveTick);
+    } catch (error) {
+      if (isTerminalResumeRejection(error)) {
+        this.sessionStore?.clear();
+      }
+      throw error;
+    }
+  }
+
+  /**
    * Attempt automatic reconnection with retries
    * @returns Promise that resolves when reconnected, rejects if all attempts fail
    */
@@ -1103,4 +1182,15 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
       console.log('[PhalanxClient]', ...args);
     }
   }
+}
+
+/** Server refusals. `'timeout'` is local and must keep the stored token. */
+function isTerminalResumeRejection(error: unknown): boolean {
+  return (
+    error instanceof MatchResumeRejected &&
+    (error.reason === 'invalid' ||
+      error.reason === 'expired' ||
+      error.reason === 'match-ended' ||
+      error.reason === 'build-mismatch')
+  );
 }

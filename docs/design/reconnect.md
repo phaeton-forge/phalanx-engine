@@ -17,7 +17,11 @@ online and in local (bot) matches.
   `gameRoom.handleReconnect`. The same pattern is used by `queue-join`
   (`:441`), `room-create` (`:458`), `room-join` (`:468`) and
   `room-recover` (`:525`). This violates AGENTS.md §6 ("Server never trusts
-  client-supplied identity"); Task 9 fixes it.
+  client-supplied identity"). Task 9 closes that hole for `match-resume`
+  always, and for `reconnect-match` plus in-match `room-recover` when
+  `reconnect.requireSessionToken` is set. `queue-join`, `room-create`,
+  `room-join`, and waiting-room `room-recover` stay on the body id
+  until Task 9b.
 - `reconnectGracePeriodMs` only applies in `waiting-for-ready`. During
   `playing` a disconnected player never loses.
 - `commandHistoryTicks` defaults to 200 ticks
@@ -71,14 +75,84 @@ online and in local (bot) matches.
 
 ## 4. Session token (Task 9)
 
-- At game start the relay issues an HMAC-SHA256 token
-  `{matchId, playerId, slot, exp}`.
-- The client stores `{token, matchId, slot, buildId}` in `localStorage` (not
-  `sessionStorage`, which iOS drops when the tab is killed).
-- `match-resume {token, buildId, haveTick}` →
-  `match-resume-state {currentTick, state, absentDeadline, snapshot?}`.
-- The server derives `playerId` from the verified token, never from the
-  body. This fixes the `reconnect-match` §6 violation.
+Implemented on the relay, opt-in. Omit `session` and nothing is issued:
+`match-resume` answers `match-resume-error { reason: 'invalid' }`, and
+`reconnect-match` / `room-recover` stay as they are.
+
+- Config `session: { secret, ttlMs? }`. `secret` is a string of at least
+  32 characters. `ttlMs` defaults to 60 minutes (`DEFAULT_SESSION_TTL_MS`),
+  longer than a DS match. `reconnect: { requireSessionToken? }` defaults
+  to false and does not replace the flat `reconnectGracePeriodMs`.
+- Token format:
+  `base64url(JSON {matchId, playerId, slot, exp}) + '.' +
+base64url(HMAC-SHA256(secret, payloadPart))`.
+  The MAC is over the base64url payload string, not a re-encoded JSON
+  object. The token is **signed, not encrypted**: anyone who has the
+  string can read `matchId`, `playerId`, `slot`, and `exp`. Do not log
+  the token or `session.secret`, including the client's `sessionToken`
+  payload. `exp` is epoch milliseconds. `nowMs >= exp` is `'expired'`
+  (the equal boundary included). Anything malformed is `'invalid'` and
+  does not throw. The client treats the string as opaque.
+- `slot` is the player's index in `teams.flat()`: team 0 first, and
+  within a team the queue order. That is the `match-found` order.
+  Task 12 uses the same index.
+- At `game-start` every connected socket gets `session-token { token,
+matchId, slot }` as its own event (both countdown paths). `matchId`
+  and `slot` ride along because the client does not parse the token.
+  A player who binds after `gameStartEmitted` (`reconnect-match`,
+  `room-recover`, or `match-resume`) gets the same event **after**
+  `reconnect-state`. The `reconnect-state` payload is unchanged.
+  `GameRoom` does not see the secret; `Phalanx` installs the issuer
+  on `match-created`, before `start()`.
+- `match-resume { token, buildId?, haveTick }` →
+  `match-resume-state { matchId, slot, currentTick, state, absentDeadline? }`.
+  `snapshot?` is Task 11 and is not sent. Check order:
+  1. `verify` → `'invalid'` or `'expired'`;
+  2. no such match → `'match-ended'` if a tombstone is still fresh,
+     otherwise `'invalid'`;
+  3. `getBuildId()` is known, `buildId` was sent, and they differ →
+     `'build-mismatch'`. A known build with `buildId` omitted is
+     allowed unless the match was created with `requireBuildId`, in
+     which case the answer is also `'build-mismatch'`;
+  4. `playerId` from the token (a body `playerId` is ignored) →
+     `handleReconnect`. `false` → `'invalid'`.
+     `haveTick` must be an integer `>= -1`. The server checks it and does
+     not catch the client up; the client reads `match-log` from
+     `haveTick + 1`. Success rebinds the socket's player id, then emits
+     `match-resume-state` after `reconnect-state`. The socket this
+     player was bound to before is removed from the room and loses
+     `socket.data.matchId` / `playerId`. `player-command` and
+     `submit-commands` are accepted only from
+     `GameRoom.isParticipantSocket`.
+- `absentDeadline` is the soonest `deadlineMs` from `GameRoom.getAbsences()`
+  among **other** players (the returning player's timer is already
+  stopped by `handleReconnect`). Same millisecond-until-expiry meaning
+  as Task 10. The field is omitted when nobody else is absent.
+- An ended match is remembered for 10 minutes (`matchId → endedAt`) so
+  resume can answer `'match-ended'` rather than `'invalid'`. A timer
+  drops stale rows. Individual tokens are not revoked.
+- `requireSessionToken: true` rejects `reconnect-match` with
+  `reconnect-status { success: false, reason: 'session-token-required' }`
+  and rejects `room-recover` into a match already in progress with
+  `room-error`. `message` stays `'session-token-required'` and `reason`
+  is the same typed value.
+  Waiting-room `room-recover` is unchanged. `false` is the previous
+  behaviour. `true` without `session.secret` throws from
+  `validateConfig` at startup.
+- The client stores `{ token, matchId, slot, buildId }` under
+  `phalanx.session.<gameId>` in `localStorage` (not `sessionStorage`,
+  which iOS drops when the tab is killed). No `gameId` means the store
+  is not created and the token is not saved. `match-end` clears it.
+  `PhalanxClient.resumeMatch(token, haveTick)` sends `match-resume`
+  (with `buildId` when the client has one) and rejects
+  `MatchResumeRejected`. A rejection of `invalid`, `expired`,
+  `match-ended`, or `build-mismatch` clears the store. `timeout` keeps
+  it. `sessionToken` fires with `{ token }`; do not log that token.
+  `autoReconnect` loads the store and, when the token is for the
+  current match, calls `resumeMatch(token, lastTick)` before
+  `reconnectToMatch`. A terminal refusal drops the token and then tries
+  the legacy rebind. Giving up clears the store and emits
+  `reconnectFailed`.
 - In the runtime, the token is the transport's concern:
   `ServerPeerTransport.join()` (Task 12) performs `match-resume` and returns
   a `TransportJoin` with `catchUp`. `MatchRunner.join(def, transport)` then

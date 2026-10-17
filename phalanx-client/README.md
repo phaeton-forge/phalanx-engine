@@ -336,7 +336,8 @@ interface PhalanxClientConfig {
   serverUrl: string; // Server URL (e.g., 'http://localhost:3000')
   playerId?: string; // Unique player identifier (auto-generated if omitted)
   username?: string; // Display name (auto-generated if omitted)
-  buildId?: string; // Sent on queue-join / room-create / room-join when set
+  buildId?: string; // Sent on queue-join / room-create / room-join / match-resume when set
+  gameId?: string; // Persists the session token at phalanx.session.<gameId>. No default.
   authToken?: string; // Auth token for server authentication
   auth?: PhalanxAuthConfig; // OAuth config for managed authentication
   autoReconnect?: boolean; // Auto-reconnect on disconnect (default: true)
@@ -606,6 +607,55 @@ const state = await client.reconnectToMatch(matchId);
 await client.attemptReconnection();
 ```
 
+### Tab killed: session token and match-resume
+
+The server issues `session-token` at `game-start` when `session` is
+configured. With `gameId` set, the client writes
+`{ token, matchId, slot, buildId }` to `localStorage` under
+`phalanx.session.<gameId>` (not `sessionStorage`). `match-end` deletes
+it. The token is opaque and signed, not encrypted. Do not log
+`sessionToken`'s `token`. `sessionToken` fires with `{ token }`.
+
+```typescript
+import { MatchSessionStore, PhalanxClient } from '@phalanx-engine/client';
+
+const store = new MatchSessionStore('sketch-legion');
+const saved = store.load();
+
+const client = new PhalanxClient({
+  serverUrl: 'http://localhost:3000',
+  gameId: 'sketch-legion',
+  buildId: 'sketch-legion-42',
+  autoReconnect: false,
+});
+client.on('sessionToken', ({ token }) => {
+  // The store already holds { token, matchId, slot, buildId }.
+  console.log('session token issued', token.length);
+});
+
+await client.connect();
+if (saved) {
+  const haveTick = 120; // last tick this device simulated
+  const resumed = await client.resumeMatch(saved.token, haveTick);
+  // reconnect-state has already put the client back in the match.
+  for await (const chunk of client.fetchMatchLog(haveTick + 1)) {
+    apply(chunk);
+    if (chunk.done) break;
+  }
+  console.log(resumed.currentTick, resumed.absentDeadline);
+}
+```
+
+`resumeMatch` rejects `MatchResumeRejected` (`reason` is `invalid`,
+`expired`, `match-ended`, `build-mismatch`, or the local `timeout`).
+The timeout uses `connectionTimeoutMs`. Those four server reasons
+clear the stored session. `timeout` keeps it. With `autoReconnect`
+on, a disconnect tries `resumeMatch(token, lastTick)` first when the
+store has a token for the current match, and calls
+`reconnectToMatch` only if that resume does not bind. A terminal
+refusal drops the token before the legacy attempt. Giving up clears
+the store and emits `reconnectFailed`.
+
 ### Events
 
 ```typescript
@@ -643,6 +693,7 @@ client.on('playerReady', (event) => {}); // A player reported ready (local or re
 // Reconnection events
 client.on('reconnectState', (event) => {});
 client.on('reconnectStatus', (event) => {});
+client.on('sessionToken', ({ token }) => {});
 
 // Auth events
 client.on('authStateChanged', (state) => {});

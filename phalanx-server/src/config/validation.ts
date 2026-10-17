@@ -78,6 +78,35 @@ export function validateConfig(
     throw new Error('maxTickAhead must be positive');
   }
 
+  // Task 9. Absent `session` means tokens are not issued.
+  if (config.session !== undefined) {
+    const { secret, ttlMs } = config.session;
+    if (typeof secret !== 'string' || secret.length < 32) {
+      throw new Error(
+        'Invalid session.secret: must be a string of at least 32 characters.'
+      );
+    }
+    if (ttlMs !== undefined && (!Number.isInteger(ttlMs) || ttlMs <= 0)) {
+      throw new Error(
+        `Invalid session.ttlMs: ${String(ttlMs)}. Must be an integer > 0.`
+      );
+    }
+  }
+  if (
+    config.reconnect?.requireSessionToken !== undefined &&
+    typeof config.reconnect.requireSessionToken !== 'boolean'
+  ) {
+    throw new Error(
+      'Invalid reconnect.requireSessionToken: must be a boolean.'
+    );
+  }
+  if (
+    config.reconnect?.requireSessionToken === true &&
+    config.session === undefined
+  ) {
+    throw new Error('reconnect.requireSessionToken requires session.secret.');
+  }
+
   // Task 10. Absent means the timer is off (today's behaviour).
   if (config.absence !== undefined) {
     const { windowMs, matchBudgetMs } = config.absence;
