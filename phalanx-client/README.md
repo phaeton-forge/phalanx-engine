@@ -614,7 +614,8 @@ The server issues `session-token` at `game-start` when `session` is
 configured. With `gameId` set, the client writes
 `{ token, matchId, slot, buildId }` to `localStorage` under
 `phalanx.session.<gameId>` (not `sessionStorage`). `match-end` deletes
-it. The token is opaque. `sessionToken` fires with `{ token }`.
+it. The token is opaque and signed, not encrypted. Do not log
+`sessionToken`'s `token`. `sessionToken` fires with `{ token }`.
 
 ```typescript
 import { MatchSessionStore, PhalanxClient } from '@phalanx-engine/client';
@@ -648,9 +649,13 @@ if (saved) {
 
 `resumeMatch` rejects `MatchResumeRejected` (`reason` is `invalid`,
 `expired`, `match-ended`, `build-mismatch`, or the local `timeout`).
-The timeout uses `connectionTimeoutMs`. Set `autoReconnect: false`
-when the server requires a session token, so the legacy
-`reconnect-match` path does not race this one.
+The timeout uses `connectionTimeoutMs`. Those four server reasons
+clear the stored session. `timeout` keeps it. With `autoReconnect`
+on, a disconnect tries `resumeMatch(token, lastTick)` first when the
+store has a token for the current match, and calls
+`reconnectToMatch` only if that resume does not bind. A terminal
+refusal drops the token before the legacy attempt. Giving up clears
+the store and emits `reconnectFailed`.
 
 ### Events
 

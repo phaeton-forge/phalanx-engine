@@ -20,6 +20,7 @@ import {
   pickMobileFriendlyTransports,
   loadOrCreateGuestPlayerId,
 } from './recovery/index.js';
+import { MatchResumeRejected } from './types.js';
 import type {
   PhalanxClientConfig,
   PhalanxClientEvents,
@@ -295,6 +296,11 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
         // State queries
         isPlaying: () => this.clientState === 'playing',
         getCurrentMatchId: () => this.currentMatchId,
+        loadMatchSession: () => this.sessionStore?.load() ?? null,
+        getLastTick: () => this.currentTick,
+        clearMatchSession: () => {
+          this.sessionStore?.clear();
+        },
 
         // Private room events
         onRoomError: (data) => this.emit('roomError', data),
@@ -1038,7 +1044,14 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
     haveTick: number
   ): Promise<MatchResumeState> {
     this.clientState = 'reconnecting';
-    return this.socketManager.resumeMatch(token, haveTick);
+    try {
+      return await this.socketManager.resumeMatch(token, haveTick);
+    } catch (error) {
+      if (isTerminalResumeRejection(error)) {
+        this.sessionStore?.clear();
+      }
+      throw error;
+    }
   }
 
   /**
@@ -1169,4 +1182,15 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
       console.log('[PhalanxClient]', ...args);
     }
   }
+}
+
+/** Server refusals. `'timeout'` is local and must keep the stored token. */
+function isTerminalResumeRejection(error: unknown): boolean {
+  return (
+    error instanceof MatchResumeRejected &&
+    (error.reason === 'invalid' ||
+      error.reason === 'expired' ||
+      error.reason === 'match-ended' ||
+      error.reason === 'build-mismatch')
+  );
 }

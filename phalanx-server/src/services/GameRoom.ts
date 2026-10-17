@@ -1568,10 +1568,23 @@ export class GameRoom {
       return false;
     }
 
-    // Update socket mapping
+    // The previous socket may still be connected. It is no longer this
+    // player: drop its identity and its room membership so a later
+    // `submit-commands` cannot ride the old closure `playerId`.
     for (const [oldSocketId, pid] of this.socketToPlayer.entries()) {
       if (pid === playerId) {
         this.socketToPlayer.delete(oldSocketId);
+        if (oldSocketId !== socketId) {
+          const oldSocket = this.io.sockets.sockets.get(oldSocketId);
+          if (oldSocket) {
+            const oldData = oldSocket.data as SocketData;
+            delete oldData.matchId;
+            delete oldData.playerId;
+            if (typeof oldSocket.leave === 'function') {
+              void oldSocket.leave(this.roomId);
+            }
+          }
+        }
         break;
       }
     }

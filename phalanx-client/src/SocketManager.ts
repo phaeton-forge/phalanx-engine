@@ -129,6 +129,15 @@ export interface SocketManagerCallbacks {
   // State queries (for reconnection logic)
   isPlaying: () => boolean;
   getCurrentMatchId: () => string | null;
+  /**
+   * Session saved for `gameId`, or `null`. Optional so callers that
+   * never persist a token keep the legacy `reconnectToMatch` path.
+   */
+  loadMatchSession?: () => { token: string; matchId: string } | null;
+  /** Last tick the client has already applied. Sent as `haveTick`. */
+  getLastTick?: () => number;
+  /** Drop the stored session after a final reconnection failure. */
+  clearMatchSession?: () => void;
 }
 
 /**
@@ -836,7 +845,7 @@ export class SocketManager {
         await this.connect();
 
         if (savedMatchId) {
-          await this.reconnectToMatch(savedMatchId);
+          await this.rejoinSavedMatch(savedMatchId);
         }
 
         return;
@@ -845,8 +854,31 @@ export class SocketManager {
       }
     }
 
+    this.callbacks.clearMatchSession?.();
     this.callbacks.onReconnectFailed();
     throw new Error('Max reconnection attempts reached');
+  }
+
+  /**
+   * Prefer the stored token for this match. `reconnectToMatch` runs
+   * only when that resume does not bind the socket. A terminal
+   * refusal drops the token before the legacy attempt; a timeout
+   * keeps it so a later attempt can try the token again.
+   */
+  private async rejoinSavedMatch(matchId: string): Promise<void> {
+    const session = this.callbacks.loadMatchSession?.() ?? null;
+    if (session && session.matchId === matchId) {
+      const lastTick = this.callbacks.getLastTick?.() ?? -1;
+      try {
+        await this.resumeMatch(session.token, lastTick);
+        return;
+      } catch (error) {
+        if (isTerminalResumeRejection(error)) {
+          this.callbacks.clearMatchSession?.();
+        }
+      }
+    }
+    await this.reconnectToMatch(matchId);
   }
 
   // ============================================
@@ -1080,6 +1112,15 @@ function isMatchResumeWireReason(
   return (
     typeof value === 'string' &&
     (MATCH_RESUME_WIRE_REASONS as readonly string[]).includes(value)
+  );
+}
+
+function isTerminalResumeRejection(
+  error: unknown
+): error is MatchResumeRejected {
+  return (
+    error instanceof MatchResumeRejected &&
+    isMatchResumeWireReason(error.reason)
   );
 }
 

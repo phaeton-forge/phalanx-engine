@@ -53,6 +53,30 @@ afterEach(async () => {
   }
 });
 
+function serverSocket(
+  server: Phalanx,
+  socketId: string
+):
+  | { data: { matchId?: string; playerId?: string }; rooms: Set<string> }
+  | undefined {
+  const io = (
+    server as unknown as {
+      io: {
+        sockets: {
+          sockets: Map<
+            string,
+            {
+              data: { matchId?: string; playerId?: string };
+              rooms: Set<string>;
+            }
+          >;
+        };
+      } | null;
+    }
+  ).io;
+  return io?.sockets.sockets.get(socketId);
+}
+
 function findRoom(server: Phalanx, matchId: string): GameRoom {
   const internal = server as unknown as {
     matchmaking: MatchmakingService | null;
@@ -609,10 +633,126 @@ describe('match-resume', () => {
       username: 'Player1',
       code,
     });
-    expect((await roomError).message).toBe('session-token-required');
+    expect(await roomError).toEqual({
+      message: 'session-token-required',
+      reason: 'session-token-required',
+    });
     expect(findRoom(server, matchId).isParticipantSocket(recover.id)).toBe(
       false
     );
+  });
+
+  it('does not accept commands from the socket a resume replaced', async () => {
+    const { server, url } = await startServer();
+    const opened = await openMatch(url);
+    const next = await connect(url);
+    const state = onceEvent<MatchResumeStateEvent>(next, 'match-resume-state');
+    next.emit('match-resume', { token: opened.hostToken, haveTick: -1 });
+    await state;
+
+    const room = findRoom(server, opened.matchId);
+    expect(room.isParticipantSocket(opened.host.id)).toBe(false);
+    expect(room.isParticipantSocket(next.id)).toBe(true);
+    const superseded = serverSocket(server, opened.host.id);
+    expect(superseded?.data.matchId).toBeUndefined();
+    expect(superseded?.data.playerId).toBeUndefined();
+    expect(superseded?.rooms.has(opened.matchId)).toBe(false);
+
+    const rejected = onceEvent<{ accepted: boolean }>(
+      opened.host,
+      'submit-commands-ack'
+    );
+    opened.host.emit('submit-commands', {
+      tick: 0,
+      commands: [{ type: 'ping', data: { n: 1 } }],
+    });
+    expect((await rejected).accepted).toBe(false);
+
+    const accepted = onceEvent<{ accepted: boolean }>(
+      next,
+      'submit-commands-ack'
+    );
+    const batch = onceEvent<{ commands: PlayerCommand[] }>(
+      opened.guest,
+      'commands-batch'
+    );
+    next.emit('submit-commands', {
+      tick: 0,
+      commands: [{ type: 'ping', data: { n: 2 } }],
+    });
+    expect((await accepted).accepted).toBe(true);
+    const seen = await batch;
+    expect(seen.commands.map((command) => command.data)).toEqual([{ n: 2 }]);
+  });
+
+  it('leaves one active socket when two resumes share a token', async () => {
+    const { server, url } = await startServer();
+    const opened = await openMatch(url);
+    const gone = onceEvent(opened.guest, 'player-disconnected');
+    opened.host.disconnect();
+    await gone;
+
+    const first = await connect(url);
+    const second = await connect(url);
+    const settled = (socket: Socket) =>
+      new Promise<string>((resolve) => {
+        socket.once('match-resume-state', () => resolve('state'));
+        socket.once('match-resume-error', () => resolve('error'));
+      });
+    const firstSettled = settled(first);
+    const secondSettled = settled(second);
+    first.emit('match-resume', { token: opened.hostToken, haveTick: -1 });
+    second.emit('match-resume', { token: opened.hostToken, haveTick: -1 });
+    expect(await Promise.all([firstSettled, secondSettled])).toEqual([
+      'state',
+      'state',
+    ]);
+
+    const room = findRoom(server, opened.matchId);
+    const active = [first, second].filter((socket) =>
+      room.isParticipantSocket(socket.id)
+    );
+    expect(active).toHaveLength(1);
+    const loser = active[0] === first ? second : first;
+    const rejected = onceEvent<{ accepted: boolean }>(
+      loser,
+      'submit-commands-ack'
+    );
+    loser.emit('submit-commands', {
+      tick: 0,
+      commands: [{ type: 'ping', data: { n: 9 } }],
+    });
+    expect((await rejected).accepted).toBe(false);
+    expect(room.isParticipantSocket(active[0]!.id)).toBe(true);
+  });
+
+  it('stops the absence timer when match-resume rebinds the player', async () => {
+    const { server, url } = await startServer({
+      absence: { windowMs: 500, matchBudgetMs: 500 },
+    });
+    const opened = await openMatch(url);
+    const absent = onceEvent<{ playerId: string }>(
+      opened.guest,
+      'player-absent'
+    );
+    let ended = false;
+    opened.guest.on('match-end', () => {
+      ended = true;
+    });
+    opened.host.disconnect();
+    expect((await absent).playerId).toBe('player1');
+
+    const room = findRoom(server, opened.matchId);
+    expect(room.getAbsences().map((row) => row.playerId)).toEqual(['player1']);
+    const next = await connect(url);
+    const state = onceEvent(next, 'match-resume-state');
+    next.emit('match-resume', { token: opened.hostToken, haveTick: -1 });
+    await state;
+    expect(room.getAbsences()).toEqual([]);
+
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    expect(ended).toBe(false);
+    expect(room.getMatchInfo().state).toBe('playing');
   });
 
   it('reports absentDeadline only while another player is absent', async () => {

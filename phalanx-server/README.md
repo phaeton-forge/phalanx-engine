@@ -271,7 +271,9 @@ import { GAME_MODES } from '@phalanx-engine/server';
 Opt-in. Set `session.secret` (at least 32 characters) to issue an
 HMAC-SHA256 token at `game-start`. `ttlMs` defaults to 60 minutes.
 The token is `base64url(JSON {matchId, playerId, slot, exp})` plus a
-MAC of that base64url string. `slot` is the index in `teams.flat()`
+MAC of that base64url string. It is signed, not encrypted: the JSON
+payload is readable. Do not log the token or `session.secret`.
+`slot` is the index in `teams.flat()`
 (team 0 first, queue order inside a team).
 
 `match-resume` checks, in order: signature and expiry, a 10-minute
@@ -282,9 +284,15 @@ id), then `handleReconnect` with the **token's** `playerId`.
 in milliseconds left, and is omitted when nobody else is absent.
 
 `reconnect.requireSessionToken: true` rejects `reconnect-match` and
-in-match `room-recover` (`room-error` message `session-token-required`).
-A waiting room can still be recovered with its code. The default is
-`false`, which keeps the previous rebind behaviour.
+in-match `room-recover` (`room-error` keeps
+`message: 'session-token-required'` and adds
+`reason: 'session-token-required'`). The flag throws at startup when
+`session.secret` is not set. A waiting room can still be recovered
+with its code. The default is `false`, which keeps the previous
+rebind behaviour. A resume replaces the previous socket: that socket
+leaves the room, loses `matchId` / `playerId`, and
+`player-command` / `submit-commands` are accepted only from the
+socket `isParticipantSocket` still names.
 
 ## Absence while playing
 

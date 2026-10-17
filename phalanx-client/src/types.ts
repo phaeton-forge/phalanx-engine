@@ -702,9 +702,12 @@ export interface RoomCreatedEvent {
 
 /**
  * Event emitted when a room operation fails.
+ * `reason` is set only for the in-match session-token gate.
+ * `message` stays `'session-token-required'` in that case.
  */
 export interface RoomErrorEvent {
   message: string;
+  reason?: 'session-token-required';
 }
 
 /**

@@ -100,6 +100,12 @@ export function validateConfig(
       'Invalid reconnect.requireSessionToken: must be a boolean.'
     );
   }
+  if (
+    config.reconnect?.requireSessionToken === true &&
+    config.session === undefined
+  ) {
+    throw new Error('reconnect.requireSessionToken requires session.secret.');
+  }
 
   // Task 10. Absent means the timer is off (today's behaviour).
   if (config.absence !== undefined) {
