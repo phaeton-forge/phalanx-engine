@@ -205,9 +205,10 @@ hashes it off the tick, on the same scheduler as snapshot encode.
 `onDigest(tick, digest)` carries the tick the body belongs to.
 The callback can run after `runner.tick` has already moved past that
 tick. `flush()` before the next tick delivers it while `runner.tick`
-is still the digest tick. A throw from `onDigest` or `submitHash`
-calls `onError(error, tick)` with that digest tick and sets `status`
-to `'failed'`.
+is still the digest tick. A throw from hashing, `onDigest`, or
+`submitHash` calls `onError(error, tick)` with that digest tick and
+sets `status` to `'failed'`. `restore` drops digests that have not
+been delivered, once the snapshot is accepted.
 `runner.flush()` finishes those digests synchronously.
 `await runner.whenIdle()` waits for them. `LocalTransport.stepped()`
 does not flush after `step`. Snapshot encoding stays on the journal

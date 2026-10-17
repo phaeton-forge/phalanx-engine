@@ -223,7 +223,8 @@ Entries collected per package until the synchronized 0.3.0 release
   `onDigestFallback` fires once when that compilation fails. Periodic
   hashes capture the body on the tick and digest it off the tick;
   `onDigest` may run after `runner.tick` has moved on. A throw from
-  `onDigest` or `submitHash` fails the match. `flush` / `whenIdle`
+  hashing, `onDigest`, or `submitHash` fails the match. `restore`
+  drops digests that have not been delivered. `flush` / `whenIdle`
   finish those digests. `section` writes its body in place, `str`
   caches UTF-8 for strings of at most 128 characters, and the SoA
   writer uses a per-schema field plan. Snapshot bytes are unchanged.

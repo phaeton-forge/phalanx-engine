@@ -44,6 +44,7 @@ let backend: WasmBackend | null = null;
 let initPromise: Promise<void> | null = null;
 let warned = false;
 let fallbackReason: string | null = null;
+let injectedFailure: string | null = null;
 const listeners = new Set<(reason: string) => void>();
 
 /** Byte length of the embedded module. Tests lock this at <= 4096. */
@@ -102,6 +103,11 @@ export function initXxh64(): Promise<void> {
  * that event.
  */
 export function xxh64WasmHex(bytes: Uint8Array): string | null {
+  if (injectedFailure !== null) {
+    const reason = injectedFailure;
+    injectedFailure = null;
+    throw new Error(reason);
+  }
   if (mode === 'cold') ensureColdInstall();
   if (mode !== 'ready' || backend === null) {
     if (mode === 'fallback') {
@@ -119,7 +125,13 @@ export function resetXxh64ForTests(): void {
   initPromise = null;
   warned = false;
   fallbackReason = null;
+  injectedFailure = null;
   listeners.clear();
+}
+
+/** Test hook. The next hash throws `reason` once. */
+export function failNextXxh64ForTests(reason: string): void {
+  injectedFailure = reason;
 }
 
 /** Test hook. The next hash uses BigInt and emits `reason` once. */

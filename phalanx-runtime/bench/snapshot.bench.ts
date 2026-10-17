@@ -6,7 +6,11 @@
  * Not part of test or build. Requires `node --expose-gc` (the script
  * sets it) and a built `dist/`. Skirmish is imported from integration.
  */
-import { performance, PerformanceObserver } from 'node:perf_hooks';
+import {
+  performance,
+  PerformanceObserver,
+  type PerformanceEntry,
+} from 'node:perf_hooks';
 import { cpus } from 'node:os';
 import { stdout } from 'node:process';
 import type {
@@ -44,11 +48,37 @@ const WARMUP = 60;
 const ITERATIONS = 200;
 const PRE_TICKS = 200;
 
-const gcEvents: number[] = [];
+interface GcSpan {
+  readonly start: number;
+  readonly duration: number;
+}
+
+const gcSpans: GcSpan[] = [];
 const observer = new PerformanceObserver((list) => {
-  for (const entry of list.getEntries()) gcEvents.push(entry.duration);
+  for (const entry of list.getEntries()) recordGc(entry);
 });
-observer.observe({ entryTypes: ['gc'] });
+observer.observe({ entryTypes: ['gc'], buffered: true });
+
+function recordGc(entry: PerformanceEntry): void {
+  gcSpans.push({ start: entry.startTime, duration: entry.duration });
+}
+
+/** GC notifications are queued after the pause. Drain them before reading. */
+async function settleGcObservations(): Promise<void> {
+  await new Promise<void>((resolve) => {
+    setImmediate(resolve);
+  });
+  for (const entry of observer.takeRecords()) recordGc(entry);
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, 0);
+  });
+  for (const entry of observer.takeRecords()) recordGc(entry);
+}
+
+/** GCs that began in `[start, end)`, not warmup or a pre-sample collection. */
+function gcBeganDuring(start: number, end: number): readonly GcSpan[] {
+  return gcSpans.filter((span) => span.start >= start && span.start < end);
+}
 
 /**
  * `captureBody` and the snapshot seal are private. The bench times those
@@ -177,17 +207,19 @@ function sealSnapshot(
   return { body, botState: botWriter.finish(), inputCheckpoint };
 }
 
-function medianAlloc(sample: () => void): number | null {
+async function medianAlloc(sample: () => void): Promise<number | null> {
   const gc = exposedGc();
   if (gc === undefined) return null;
   const samples: number[] = [];
   for (let round = 0; round < 15; round += 1) {
     gc();
-    gcEvents.length = 0;
     const before = process.memoryUsage().heapUsed;
+    const start = performance.now();
     sample();
+    const end = performance.now();
     const after = process.memoryUsage().heapUsed;
-    if (gcEvents.length === 0) samples.push(after - before);
+    await settleGcObservations();
+    if (gcBeganDuring(start, end).length === 0) samples.push(after - before);
   }
   if (samples.length === 0) return null;
   return percentile(samples, 50);
@@ -300,7 +332,7 @@ function profileSections(capture: TickCapture): SectionProfile {
   };
 }
 
-function measure(size: number): SizeResult {
+async function measure(size: number): Promise<SizeResult> {
   const { runner, transport, capture, game } = open(size);
   for (let tick = 0; tick < PRE_TICKS; tick += 1) {
     if (tick % 3 === 0) {
@@ -363,17 +395,19 @@ function measure(size: number): SizeResult {
   };
 
   for (let index = 0; index < WARMUP; index += 1) once(false);
-  gcEvents.length = 0;
+  const timedStart = performance.now();
   for (let index = 0; index < ITERATIONS; index += 1) once(true);
-  const gcDuring = gcEvents.slice();
+  const timedEnd = performance.now();
+  await settleGcObservations();
+  const gcDuring = gcBeganDuring(timedStart, timedEnd);
 
-  const allocHashCapture = medianAlloc(() => {
+  const allocHashCapture = await medianAlloc(() => {
     hashBody(capture, writer);
   });
-  const allocSnapshotCapture = medianAlloc(() => {
+  const allocSnapshotCapture = await medianAlloc(() => {
     sealSnapshot(capture, writer);
   });
-  const allocSnapshotApi = medianAlloc(() => {
+  const allocSnapshotApi = await medianAlloc(() => {
     runner.snapshot();
   });
   const sections = size === 1000 ? profileSections(capture) : null;
@@ -390,7 +424,10 @@ function measure(size: number): SizeResult {
     allocSnapshotCapture,
     allocSnapshotApi,
     gcCount: gcDuring.length,
-    gcMaxMs: gcDuring.length === 0 ? 0 : Math.max(...gcDuring),
+    gcMaxMs:
+      gcDuring.length === 0
+        ? 0
+        : Math.max(...gcDuring.map((span) => span.duration)),
     sections,
   };
 }
@@ -407,7 +444,7 @@ stdout.write(
 await initDigest();
 const results: SizeResult[] = [];
 for (const size of SIZES) {
-  const row = measure(size);
+  const row = await measure(size);
   results.push(row);
   stdout.write(
     `\n${String(size)} entities body ${String(row.bodyBytes)} B\n` +

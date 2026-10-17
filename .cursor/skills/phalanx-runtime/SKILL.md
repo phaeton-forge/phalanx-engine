@@ -198,8 +198,9 @@ history, or truncation). Do not add a base snapshot to the replay.
 `decide`. A periodic hash captures the body on the tick and calls
 `digestBytes` off the tick. `onDigest(tick, digest)` names that tick.
 The callback can run after `runner.tick` has moved past it. A throw
-from `onDigest` or `submitHash` calls `onError` with that tick and
-sets `status` to `'failed'`.
+from hashing, `onDigest`, or `submitHash` calls `onError` with that
+tick and sets `status` to `'failed'`. `restore` drops digests that
+have not been delivered, once the snapshot is accepted.
 `runner.flush()` finishes pending digests synchronously;
 `await runner.whenIdle()` waits. `LocalTransport.stepped()` does not
 flush. Snapshot encode stays on the journal scheduler. The replay final

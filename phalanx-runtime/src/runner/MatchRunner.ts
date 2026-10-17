@@ -732,7 +732,9 @@ export class MatchRunner<G extends AnyGameDefinition> {
    * `GameState.restore` then installs the saved generator. A transport that
    * is already paused pauses the rebuilt world. The terminal phase is
    * recomputed from the restored state. While persistence is enabled, a
-   * snapshot older than the journal cursor is rejected.
+   * snapshot older than the journal cursor is rejected. Once the snapshot
+   * is accepted, periodic digests still waiting are dropped, so the
+   * abandoned timeline is not published.
    */
   public restore(bytes: SnapshotBytes): void {
     this.ensureLive();
@@ -770,6 +772,7 @@ export class MatchRunner<G extends AnyGameDefinition> {
             this.definition.save.migrate ?? {}
           )
         : decoded.body;
+    this.dropPendingDigests();
     this.resetModes();
     this.scope.run(() => {
       this.destroySim();
@@ -1742,8 +1745,8 @@ export class MatchRunner<G extends AnyGameDefinition> {
     const index = this.pendingDigests.indexOf(job);
     if (index !== -1) this.pendingDigests.splice(index, 1);
     if (this.stopped || this.phase === 'failed') return;
-    const digest = digestBytes(job.body);
     try {
+      const digest = digestBytes(job.body);
       this.digestListeners.emit(job.tick, digest);
       this.transport.submitHash?.(job.tick, digest);
     } catch (error) {

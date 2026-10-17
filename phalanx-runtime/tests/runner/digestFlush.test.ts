@@ -6,7 +6,11 @@ import {
   type Digest,
 } from '../../src/index.js';
 import { TinyGame, type TinyConfig } from '../fixtures/tinyGame.js';
-import { resetXxh64ForTests, xxh64WasmHex } from '../../src/state/xxh64Wasm.js';
+import {
+  failNextXxh64ForTests,
+  resetXxh64ForTests,
+  xxh64WasmHex,
+} from '../../src/state/xxh64Wasm.js';
 
 function config(): TinyConfig {
   return {
@@ -197,6 +201,91 @@ describe('deferred periodic digest', () => {
     } finally {
       unsubscribe();
     }
+  });
+
+  it('drops abandoned digests when restore runs before the idle turn', async () => {
+    const control = open();
+    control.transport.step(3);
+    control.runner.flush();
+    expect(control.seen.map((entry) => entry.tick)).toEqual([0, 1, 2]);
+
+    const { runner, transport, seen } = open();
+    transport.step(1);
+    const saved = runner.snapshot();
+    transport.step(2);
+    expect(runner.tick).toBe(2);
+    expect(seen).toEqual([]);
+    runner.restore(saved);
+    expect(runner.tick).toBe(0);
+    await runner.whenIdle();
+    expect(seen).toEqual([]);
+    transport.step(2);
+    expect(runner.tick).toBe(2);
+    runner.flush();
+    expect(seen.map((entry) => entry.tick)).toEqual([1, 2]);
+    expect(seen[0]?.digest).toBe(control.seen[1]?.digest);
+    expect(seen[1]?.digest).toBe(control.seen[2]?.digest);
+    expect(runner.status).toBe('running');
+  });
+
+  it('fails the match when hashing throws on the idle turn', async () => {
+    const rejections: unknown[] = [];
+    const onRejection = (reason: unknown): void => {
+      rejections.push(reason);
+    };
+    process.on('unhandledRejection', onRejection);
+    try {
+      const transport = LocalTransport.stepped();
+      const runner = new MatchRunner(TinyGame, config(), transport, {
+        hashEveryTicks: 1,
+      });
+      live.push(runner);
+      const errors: { tick: number; message: string }[] = [];
+      runner.onError((error, tick) => {
+        errors.push({
+          tick,
+          message: error instanceof Error ? error.message : 'not an error',
+        });
+      });
+      runner.start();
+      transport.step(1);
+      failNextXxh64ForTests('grow failed');
+      await runner.whenIdle();
+      await new Promise<void>((resolve) => {
+        setImmediate(resolve);
+      });
+      expect(errors).toEqual([{ tick: 0, message: 'grow failed' }]);
+      expect(runner.status).toBe('failed');
+      expect(runner.tick).toBe(0);
+      expect(rejections).toEqual([]);
+    } finally {
+      resetXxh64ForTests();
+      process.off('unhandledRejection', onRejection);
+    }
+  });
+
+  it('fails the match when hashing throws during flush', () => {
+    const transport = LocalTransport.stepped();
+    const runner = new MatchRunner(TinyGame, config(), transport, {
+      hashEveryTicks: 1,
+    });
+    live.push(runner);
+    const errors: { tick: number; message: string }[] = [];
+    runner.onError((error, tick) => {
+      errors.push({
+        tick,
+        message: error instanceof Error ? error.message : 'not an error',
+      });
+    });
+    runner.start();
+    transport.step(1);
+    failNextXxh64ForTests('grow failed');
+    expect(() => {
+      runner.flush();
+    }).not.toThrow();
+    expect(errors).toEqual([{ tick: 0, message: 'grow failed' }]);
+    expect(runner.status).toBe('failed');
+    resetXxh64ForTests();
   });
 
   it('drops a pending digest on dispose', async () => {
