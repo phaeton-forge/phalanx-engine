@@ -189,7 +189,6 @@ function wrapPeer(id: string, live: Live, session: SkirmishSession): Peer {
       if (slot === null) return;
       const key = `${String(entry.tick)}:${entry.playerId}:${String(entry.data.q)}`;
       if (live.delivered.has(key)) return;
-      live.delivered.add(key);
       if (!live.started) {
         live.runner.start();
         live.started = true;
@@ -197,6 +196,7 @@ function wrapPeer(id: string, live: Live, session: SkirmishSession): Peer {
       live.transport.submit(entry.tick, slot, [
         { type: entry.type, data: entry.data },
       ]);
+      live.delivered.add(key);
     },
     digest: () => canonicalDigest(thisState(live)),
     stateDump: (): StateDump => thisState(live),

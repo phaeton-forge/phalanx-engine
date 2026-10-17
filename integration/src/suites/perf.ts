@@ -266,10 +266,20 @@ function compare(sample: Sample, baseline: number | undefined): PerfRow {
   };
 }
 
+/** GC moves a few megabytes between samples. Below this, heap has no stable percentage. */
+const HEAP_NOISE_BYTES = 16_000_000;
+
 function worseStatus(
   sample: Sample,
   baseline: number
 ): 'pass' | 'warn' | 'fail' {
+  if (
+    !sample.higherIsBetter &&
+    sample.metric.startsWith('heapDeltaBytes') &&
+    (baseline <= 0 || sample.current - baseline <= HEAP_NOISE_BYTES)
+  ) {
+    return 'pass';
+  }
   if (sample.higherIsBetter) {
     if (baseline === 0) return 'pass';
     const ratio = sample.current / baseline;

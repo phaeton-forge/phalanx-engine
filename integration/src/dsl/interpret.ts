@@ -30,9 +30,22 @@ export interface SimulationSuccess {
 
 interface Book {
   gate: FaultGate;
+  /**
+   * Released, not yet submitted. Order is release order. An envelope the
+   * transport would reject as too far ahead stays here until a step
+   * brings it into the window; nearer envelopes are not held behind it.
+   */
+  pending: LogEntry[];
   /** A drop happened; heal with the authoritative log, not a resend. */
   catchUp: boolean;
 }
+
+/**
+ * `LocalTransport.manual` rejects a submit more than this many ticks
+ * ahead. The interpreter does not import the engine, so the default
+ * lives here too.
+ */
+const TRANSPORT_WINDOW = 8;
 
 /** Completion without `failsWith`. The message must not contain that text. */
 class ExpectedFailureMissing extends Error {
@@ -229,7 +242,7 @@ export function isSimulationFailure(
 }
 
 function openBook(disabled: boolean): Book {
-  return { gate: new FaultGate(disabled), catchUp: false };
+  return { gate: new FaultGate(disabled), pending: [], catchUp: false };
 }
 
 function isExpectedFailureMissing(
@@ -382,7 +395,7 @@ async function applyPointEvents(
     if (clock === event.to) {
       book.catchUp = book.gate.hasDrop();
       const released = book.gate.retransmit();
-      if (!book.catchUp) deliverReleased(peers.get(event.peer), released);
+      if (!book.catchUp) book.pending.push(...released);
       book.gate.setFault(null);
       faulting.delete(event.peer);
     }
@@ -605,6 +618,7 @@ async function flushGates(
   for (const book of books.values()) {
     book.gate.setFault(null);
     book.gate.retransmit();
+    book.pending = [];
     book.catchUp = false;
   }
   for (const [id, peer] of peers) {
@@ -644,6 +658,7 @@ async function syncReplicas(
     books.set(id, book);
     if (book.catchUp) {
       book.catchUp = false;
+      book.pending = [];
       await catchUp(
         peer,
         log,
@@ -660,16 +675,12 @@ async function syncReplicas(
       for (const entry of fresh) book.gate.offer(authority.tick(), entry, rng);
       offered.set(id, authority.tick());
     }
-    deliverReleased(peer, book.gate.releaseDue(authority.tick()));
+    book.pending.push(...book.gate.releaseDue(authority.tick()));
     const through = Math.min(
       authority.tick(),
       book.gate.horizon(authority.tick()) - 1
     );
-    while (peer.tick() < through) {
-      if (peer.status() === 'ended' || peer.status() === 'failed') break;
-      peer.step(1);
-      remember(id, peer, digests, dumps);
-    }
+    drainPending(id, peer, book, through, digests, dumps);
     if (faulting.has(id) && peer.tick() < authority.tick()) sawLag = true;
   }
   return sawLag;
@@ -922,12 +933,34 @@ function seriesFor<T>(
   return created;
 }
 
-function deliverReleased(
-  peer: Peer | undefined,
-  entries: readonly LogEntry[]
+function drainPending(
+  id: string,
+  peer: Peer,
+  book: Book,
+  through: number,
+  digests: Map<string, Map<number, string>>,
+  dumps: Map<string, Map<number, StateDump>>
 ): void {
-  if (peer === undefined) return;
-  for (const entry of entries) peer.deliver(entry);
+  const limit = Math.max(through, 0) + book.pending.length + TRANSPORT_WINDOW;
+  for (let guard = 0; guard <= limit; guard += 1) {
+    if (peer.status() === 'ended' || peer.status() === 'failed') return;
+    const deferred: LogEntry[] = [];
+    for (const entry of book.pending) {
+      if (fitsWindow(peer, entry)) peer.deliver(entry);
+      else deferred.push(entry);
+    }
+    book.pending = deferred;
+    if (peer.tick() >= through) return;
+    const before = peer.tick();
+    peer.step(1);
+    if (peer.tick() === before) return;
+    remember(id, peer, digests, dumps);
+  }
+  throw new Error('replica delivery did not advance');
+}
+
+function fitsWindow(peer: Peer, entry: LogEntry): boolean {
+  return entry.tick <= peer.tick() + 1 + TRANSPORT_WINDOW;
 }
 
 function isHuman(entry: LogEntry): boolean {
