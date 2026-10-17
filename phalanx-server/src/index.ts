@@ -46,6 +46,11 @@ export type {
   MatchArchive,
   ServerShutdownEvent,
   MatchErrorEvent,
+  SessionConfig,
+  ReconnectConfig,
+  MatchResumeErrorReason,
+  MatchResumeStateEvent,
+  SessionTokenEvent,
   StateHashEvent,
   DesyncDetectedEvent,
   PhalanxEventType,
@@ -74,4 +79,17 @@ export type {
 } from './types/index.js';
 
 // Constants
-export { GAME_MODES, DEFAULT_ABSENCE } from './config/defaults.js';
+export {
+  GAME_MODES,
+  DEFAULT_ABSENCE,
+  DEFAULT_SESSION_TTL_MS,
+} from './config/defaults.js';
+export {
+  SessionTokens,
+  SESSION_TOMBSTONE_TTL_MS,
+} from './services/SessionTokens.js';
+export type {
+  SessionClaims,
+  SessionIssueClaims,
+  SessionVerifyResult,
+} from './services/SessionTokens.js';

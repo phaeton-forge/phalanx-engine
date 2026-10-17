@@ -15,6 +15,13 @@ export const DEFAULT_ABSENCE: AbsenceConfig = {
 };
 
 /**
+ * Default session-token lifetime (Task 9). Longer than a DS match so a
+ * live resume fails as `'match-ended'` (tombstone) rather than `'expired'`.
+ * Applied only when `PhalanxConfig.session` is set and `ttlMs` is omitted.
+ */
+export const DEFAULT_SESSION_TTL_MS = 60 * 60 * 1000;
+
+/**
  * Game mode presets configuration
  */
 export const GAME_MODES: Record<GameModePreset, CustomGameMode> = {

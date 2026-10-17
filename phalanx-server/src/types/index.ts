@@ -326,6 +326,21 @@ export interface PhalanxConfig {
   /** Pause/resume behavior configuration */
   pause?: Partial<PauseConfig>;
 
+  // Task 9
+  /**
+   * Opt-in HMAC session tokens. Omit the field to keep today's
+   * behaviour: no `session-token` is sent, and `match-resume` answers
+   * `match-resume-error` with `reason: 'invalid'`.
+   */
+  session?: SessionConfig;
+  /**
+   * Opt-in gate on legacy rebind. Omit it, or leave
+   * `requireSessionToken` false, and `reconnect-match` / `room-recover`
+   * keep today's behaviour. The flat `reconnectGracePeriodMs` is
+   * unrelated and stays where it is.
+   */
+  reconnect?: ReconnectConfig;
+
   // Task 10
   /**
    * Opt-in absence timer while a match is `playing`.
@@ -359,6 +374,61 @@ export interface PlayerCommand {
   data: unknown;
   /** Optional sequence number for input validation (monotonically increasing per player) */
   sequence?: number;
+}
+
+/**
+ * Opt-in session tokens (Task 9). `secret` signs every token for this
+ * process. `ttlMs` defaults to 60 minutes.
+ */
+export interface SessionConfig {
+  /** HMAC-SHA256 secret. At least 32 characters. */
+  secret: string;
+  /** Token lifetime in milliseconds. Default: 3600000 (60 minutes). */
+  ttlMs?: number;
+}
+
+/**
+ * Opt-in rejection of body-`playerId` rebind into a match that has
+ * already started (Task 9). Default is off.
+ */
+export interface ReconnectConfig {
+  /**
+   * When true, `reconnect-match` and `room-recover` into a match
+   * already in progress are rejected. Waiting-room `room-recover`
+   * is unchanged. Resume goes through `match-resume`.
+   * Default: false.
+   */
+  requireSessionToken?: boolean;
+}
+
+/** Why `match-resume` was refused. No extra detail is sent. */
+export type MatchResumeErrorReason =
+  'invalid' | 'expired' | 'match-ended' | 'build-mismatch';
+
+/**
+ * Successful `match-resume`. `absentDeadline` is omitted when no other
+ * player is absent. It is milliseconds until the soonest other absence
+ * expires (`GameRoom.getAbsences()`), not an epoch time.
+ * `snapshot` is Task 11.
+ */
+export interface MatchResumeStateEvent {
+  matchId: string;
+  slot: number;
+  currentTick: number;
+  state: MatchInfo['state'];
+  absentDeadline?: number;
+}
+
+/**
+ * Issued next to `game-start`, and again after `reconnect-state` for a
+ * player who binds once `game-start` has already been emitted.
+ * `matchId` and `slot` are beside `token` because the client does not
+ * parse the token. `slot` is the index in `teams.flat()`.
+ */
+export interface SessionTokenEvent {
+  token: string;
+  matchId: string;
+  slot: number;
 }
 
 /**
