@@ -44,6 +44,9 @@ interface EncodedSnapshot {
 
 const ZERO_SAMPLE: PersistenceSample = { syncMs: 0, snapshotted: false };
 
+/** The store keeps this many snapshots. Retries must not grow past it. */
+const RETAINED_SNAPSHOTS = 2;
+
 /**
  * Batches a local match into a {@link MatchStore}.
  *
@@ -149,6 +152,14 @@ export class MatchJournal {
     }
     const gate = this.encodeGate;
     return gate.then(() => this.enqueueCommit());
+  }
+
+  /**
+   * True when {@link noteTick} will seal this tick. Ticks at or below a
+   * {@link skipThrough} cursor are already stored.
+   */
+  public willSnapshot(tick: number): boolean {
+    return tick > this.floor && this.shouldSnapshot(tick);
   }
 
   private shouldSnapshot(tick: number): boolean {
@@ -261,13 +272,28 @@ export class MatchJournal {
         retry.push(snap);
       }
     }
-    if (retry.length > 0) this.encoded = retry.concat(this.encoded);
+    if (retry.length > 0) {
+      this.encoded = newestSnapshots(retry.concat(this.encoded));
+    }
     if (snapshotFailure !== undefined) this.noteSnapshotError(snapshotFailure);
   }
 
   private noteSnapshotError(error: unknown): void {
     this.onSnapshotError(error);
   }
+}
+
+function newestSnapshots(
+  snapshots: readonly EncodedSnapshot[]
+): EncodedSnapshot[] {
+  const byTick = new Map<number, EncodedSnapshot>();
+  for (const snap of snapshots) byTick.set(snap.tick, snap);
+  const ordered = [...byTick.values()].sort(
+    (left, right) => left.tick - right.tick
+  );
+  return ordered.length > RETAINED_SNAPSHOTS
+    ? ordered.slice(ordered.length - RETAINED_SNAPSHOTS)
+    : ordered;
 }
 
 function hostNow(): number {

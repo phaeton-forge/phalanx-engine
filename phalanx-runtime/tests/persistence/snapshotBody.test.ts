@@ -121,4 +121,63 @@ describe('shared snapshot body', () => {
     expect(saves).toBe(2);
     runner.dispose();
   });
+
+  it('does not save a snapshot body for a tick catch-up already stored', async () => {
+    let saves = 0;
+    const game = defineGame({
+      id: 'catch-up-save',
+      simVersion: 'catch-1',
+      tickRate: 10,
+      commands: defineCommands({ hold: {} }),
+      onCommand: { hold() {} },
+      checkOutcome: () => null,
+      save: {
+        formatVersion: 1,
+        handler: () => ({
+          save: () => {
+            saves += 1;
+          },
+          restore: () => {},
+        }),
+      },
+    });
+    const store = new MemoryMatchStore();
+    const transport = LocalTransport.stepped({
+      store,
+      snapshotEveryTicks: 300,
+      pauseWhenHidden: false,
+    });
+    const runner = new MatchRunner(
+      game,
+      {
+        matchId: 'catch-up-save',
+        seed: 1,
+        side: 'client',
+        inputDelayTicks: 1,
+        slots: [{ slot: 0, team: 0, kind: 'human', playerId: 'local:0' }],
+      },
+      transport
+    );
+    runner.start();
+    transport.step(121);
+    expect(runner.tick).toBe(120);
+    runner.dispose();
+    await runner.whenPersisted();
+    const before = saves;
+    const resumed = await MatchRunner.resumeLocal(
+      game,
+      store,
+      'catch-up-save',
+      {
+        snapshotEveryTicks: 60,
+        pauseWhenHidden: false,
+        hashEveryTicks: 60,
+      }
+    );
+    expect(resumed).not.toBeNull();
+    resumed?.dispose();
+    // Hash ticks 0, 60, and 120. The resumed interval would also snapshot
+    // 60 and 120, and skipThrough must not save those bodies again.
+    expect(saves - before).toBe(3);
+  });
 });

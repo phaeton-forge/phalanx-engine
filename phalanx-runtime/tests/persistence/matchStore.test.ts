@@ -147,6 +147,48 @@ describe.each([
     expect(loaded?.snapshot?.tick).toBe(5);
   });
 
+  it('resumes a malformed envelope beside the first command', async () => {
+    const store = openStore();
+    const matchId = nextId('malformed');
+    const transport = LocalTransport.stepped({
+      store,
+      snapshotEveryTicks: 300,
+      pauseWhenHidden: false,
+    });
+    const runner = keep(
+      new MatchRunner(
+        TinyGame,
+        { ...tinyConfig(matchId), inputDelayTicks: 1 },
+        transport,
+        { hashEveryTicks: 1_000_000 }
+      )
+    );
+    runner.start();
+    transport.step(1);
+    const target = runner.tick + 1;
+    transport.submit(target, 0, [{ type: 'spawn', data: { q: -1, p: null } }]);
+    runner.submit({ type: 'spawn', x: 3n });
+    transport.step(40);
+    const digest = runner.digest();
+    runner.dispose();
+    await runner.whenPersisted();
+    const atTarget = (await store.load(matchId))?.tail.filter(
+      (item) => item.tick === target
+    );
+    expect(atTarget?.some((item) => item.malformed === true)).toBe(true);
+    expect(
+      atTarget?.some((item) => item.malformed !== true && item.data.q === 0)
+    ).toBe(true);
+    const resumed = await MatchRunner.resumeLocal(TinyGame, store, matchId, {
+      pauseWhenHidden: false,
+    });
+    expect(resumed).not.toBeNull();
+    if (resumed === null) return;
+    keep(resumed);
+    expect(resumed.tick).toBe(runner.tick);
+    expect(resumed.digest()).toBe(digest);
+  });
+
   it('resumes tick 950 with the same digest', async () => {
     const store = openStore();
     const matchId = nextId('resume');

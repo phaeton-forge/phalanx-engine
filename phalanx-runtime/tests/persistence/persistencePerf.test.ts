@@ -10,6 +10,7 @@ import {
 } from '../../src/index.js';
 import { createPersistBenchGame } from '../fixtures/persistBenchGame.js';
 
+const PERF_ENABLED = process.env['PHALANX_PERF'] === '1';
 const SNAPSHOT_EVERY = DEFAULT_CLIENT_SNAPSHOT_EVERY_TICKS;
 const SNAPSHOT_COUNT = 30;
 /** Tick 9000 is the 30th snapshot (300, 600, …, 9000). step(9001) lands there. */
@@ -180,7 +181,7 @@ async function measure(entityCount: number): Promise<CountReport> {
   };
 }
 
-describe('persistence tick cost', () => {
+describe.skipIf(!PERF_ENABLED)('persistence tick cost', () => {
   it('measures a GAS and pooled world at the default hash interval', async () => {
     const report = {
       counts: [await measure(500), await measure(1000)],

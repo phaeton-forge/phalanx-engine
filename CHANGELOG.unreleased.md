@@ -207,7 +207,11 @@ Entries collected per package until the synchronized 0.3.0 release
   `requestIdleCallback`, `MessageChannel`, or `setTimeout(0)`.
   `onPersistenceError` reports a failed snapshot without dropping the
   header or the command tail; header and command failures reject
-  `whenPersisted`. `IndexedDbMatchStore` uses `globalThis.indexedDB`.
+  `whenPersisted`. A malformed envelope does not dedup away the player's
+  first real command in the same tick. Failed snapshot retries keep the
+  newest two. Catch-up does not save a snapshot for a tick already stored.
+  The persistence perf test runs only when `PHALANX_PERF=1`.
+  `IndexedDbMatchStore` uses `globalThis.indexedDB`.
 
 ## @phalanx-engine/ecs
 

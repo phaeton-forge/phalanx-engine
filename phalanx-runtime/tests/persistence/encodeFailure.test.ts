@@ -242,4 +242,42 @@ describe('persistence errors', () => {
       'snapshot store failed',
     ]);
   });
+
+  it('retries at most the newest two snapshots', async () => {
+    const store = new RetrySnapshotStore();
+    const matchId = 'retry-cap';
+    const transport = LocalTransport.stepped({
+      store,
+      snapshotEveryTicks: 4,
+      pauseWhenHidden: false,
+    });
+    const runner = new MatchRunner(TinyGame, tinyConfig(matchId), transport, {
+      hashEveryTicks: 1_000_000,
+    });
+    runner.start();
+    transport.step(13);
+    expect(runner.tick).toBe(12);
+    runner.stop();
+    await runner.whenPersisted();
+    expect(store.savedTicks).toEqual([]);
+    store.fail = false;
+    runner.dispose();
+    await runner.whenPersisted();
+    expect(store.savedTicks).toEqual([8, 12]);
+  });
 });
+
+class RetrySnapshotStore extends MemoryMatchStore {
+  public fail = true;
+  public readonly savedTicks: number[] = [];
+
+  public override saveSnapshot(
+    matchId: string,
+    tick: number,
+    bytes: Uint8Array
+  ): Promise<void> {
+    if (this.fail) return Promise.reject(new Error('snapshot store failed'));
+    this.savedTicks.push(tick);
+    return super.saveSnapshot(matchId, tick, bytes);
+  }
+}

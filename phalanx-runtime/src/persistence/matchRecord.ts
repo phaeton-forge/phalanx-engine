@@ -149,8 +149,23 @@ function cloneEntry(entry: LogEntry): LogEntry {
   return copy;
 }
 
+/**
+ * Identity of one logged command. A malformed envelope is stored as `q: 0`,
+ * which is also the player's first real command, so the key includes
+ * `malformed` and the payload. Two copies of the same command still collapse.
+ */
 function entryKey(entry: LogEntry): string {
-  return `${String(entry.tick)}\0${entry.playerId}\0${String(entry.data.q)}\0${entry.type}`;
+  const malformed = entry.malformed === true ? '1' : '0';
+  return `${String(entry.tick)}\0${entry.playerId}\0${String(entry.data.q)}\0${entry.type}\0${malformed}\0${payloadKey(entry.data.p)}`;
+}
+
+function payloadKey(value: unknown): string {
+  try {
+    const encoded = JSON.stringify(value);
+    return encoded === undefined ? '' : encoded;
+  } catch {
+    return '';
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

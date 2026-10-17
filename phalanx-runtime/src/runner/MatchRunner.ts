@@ -1490,10 +1490,9 @@ export class MatchRunner<G extends AnyGameDefinition> {
   }
 
   private persistenceSnapshotDue(tick: number): boolean {
-    if (this.journal === null) return false;
-    if (!(this.transport instanceof LocalTransport)) return false;
-    const every = this.transport.snapshotEveryTicks;
-    return tick > 0 && tick % every === 0;
+    // False for ticks `skipThrough` already stored, so catch-up does not
+    // save a snapshot body the journal will drop.
+    return this.journal?.willSnapshot(tick) ?? false;
   }
 
   private recordPersistence(tick: number, entries: readonly LogEntry[]): void {
