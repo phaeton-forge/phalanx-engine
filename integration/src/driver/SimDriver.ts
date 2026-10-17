@@ -21,6 +21,11 @@ export interface GameOptions {
   };
   readonly spawnOnRestore?: boolean;
   readonly throwOnTick?: number;
+  /**
+   * Test probe. A tick exception was requested, but the sim must not
+   * throw it. `failsWith` has to reject that run.
+   */
+  readonly suppressThrow?: boolean;
   readonly throwBot?: boolean;
   readonly poolProbe?: boolean;
   /**

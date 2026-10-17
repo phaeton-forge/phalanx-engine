@@ -56,6 +56,23 @@ export async function runAll(options: RunOptions): Promise<Report> {
   const cases: CaseResult[] = [];
   try {
     return await runCases(options, driver, cases, started);
+  } catch (error) {
+    cases.push(
+      base(
+        {
+          name: 'runner',
+          suite: 'runner',
+          tags: ['runner'],
+          seed: options.seed ?? 0,
+          ticks: 0,
+        },
+        'fail',
+        0,
+        Date.now() - started,
+        errorMessage(error)
+      )
+    );
+    throw error;
   } finally {
     const header = await headerFor(options, Date.now() - started);
     writeReport({ header, cases }, options.out);
@@ -76,7 +93,7 @@ async function runCases(
 
   if (options.load !== undefined) {
     const loaded = parseScenario(parseJson(readFileSync(options.load, 'utf8')));
-    cases.push(await runScenario(driver, loaded));
+    cases.push(await runScenario(driver, withRequestedSeed(loaded, options)));
     if (options.promote !== undefined) {
       const path = promoteScenario(
         { ...loaded, name: options.promote },
@@ -94,7 +111,13 @@ async function runCases(
     }
     for (const scenario of catalog()) {
       if (!selected(options, scenario.name, scenario.tags, focused)) continue;
-      cases.push(await runScenario(driver, scenario, driver.capabilities));
+      cases.push(
+        await runScenario(
+          driver,
+          withRequestedSeed(scenario, options),
+          driver.capabilities
+        )
+      );
     }
     if (
       selected(options, 'replay-matches-live', ['replay', 'quick'], focused)
@@ -138,7 +161,13 @@ async function runCases(
     }
     for (const scenario of loadRegressions(regressionsDir)) {
       if (!selected(options, scenario.name, scenario.tags, focused)) continue;
-      cases.push(await runScenario(driver, scenario, driver.capabilities));
+      cases.push(
+        await runScenario(
+          driver,
+          withRequestedSeed(scenario, options),
+          driver.capabilities
+        )
+      );
     }
     if (selected(options, 'inject-shrink', ['fuzz', 'inject'], focused)) {
       cases.push(
@@ -289,11 +318,26 @@ async function runFuzzCases(
     for (let index = 0; index < count; index += 1) {
       const scenario = generateScenario(rng, seed, index);
       if (scenario.expect.diverges === true) {
-        try {
-          await simulate(driver, scenario);
+        const outcome = await divergenceOutcome(driver, scenario);
+        if (outcome.kind !== 'diverged') {
           failures += 1;
-        } catch (error) {
-          if (!errorMessage(error).includes('diverged')) failures += 1;
+          const error =
+            outcome.kind === 'converged'
+              ? new Error('expected divergence but the scenario converged')
+              : outcome.error;
+          await recordFuzzFailure(
+            options,
+            scenario,
+            error,
+            async (candidate) =>
+              injectMissPersists(
+                driver,
+                candidate,
+                outcome.kind === 'converged' ? 'converged' : 'threw',
+                errorMessage(error)
+              ),
+            rows
+          );
         }
         continue;
       }
@@ -301,31 +345,20 @@ async function runFuzzCases(
         await simulate(driver, scenario);
       } catch (error) {
         failures += 1;
-        const shrunk = await shrinkScenario(scenario, async (candidate) => {
-          try {
-            await simulate(driver, candidate);
-            return false;
-          } catch {
-            return true;
-          }
-        });
-        const reproDir = join(options.out, 'repros');
-        mkdirSync(reproDir, { recursive: true });
-        const reproPath = join(reproDir, `${shrunk.name}.json`);
-        writeFileSync(reproPath, `${JSON.stringify(shrunk, null, 2)}\n`);
-        if (options.promote !== undefined)
-          promoteScenario(
-            shrunk,
-            join(PACKAGE_ROOT, 'scenarios', 'regressions')
-          );
-        const detail = describe(error);
-        rows.push({
-          ...base(shrunk, 'fail', shrunk.ticks, 0, detail.note),
-          ...detail,
-          seed: shrunk.seed,
-          timeline: shrunk.timeline,
-          repro: `pnpm --filter @phalanx-engine/integration run it -- --load ${reproPath}`,
-        });
+        await recordFuzzFailure(
+          options,
+          scenario,
+          error,
+          async (candidate) => {
+            try {
+              await simulate(driver, candidate);
+              return false;
+            } catch {
+              return true;
+            }
+          },
+          rows
+        );
       }
     }
   }
@@ -346,6 +379,70 @@ async function runFuzzCases(
     )
   );
   return rows;
+}
+
+type DivergenceKind = 'diverged' | 'converged' | 'threw';
+
+async function divergenceOutcome(
+  driver: SimDriver,
+  scenario: Scenario
+): Promise<{ kind: DivergenceKind; error?: unknown }> {
+  try {
+    await simulate(driver, scenario);
+    return { kind: 'converged' };
+  } catch (error) {
+    if (errorMessage(error).includes('diverged')) return { kind: 'diverged' };
+    return { kind: 'threw', error };
+  }
+}
+
+/**
+ * Shrink predicate for an inject case that did not diverge.
+ * Convergence stays a miss only while the candidate still fails to
+ * diverge. A thrown miss stays a miss only while the candidate throws
+ * the same failure, not a clean divergence and not a quiet pass.
+ */
+export async function injectMissPersists(
+  driver: SimDriver,
+  candidate: Scenario,
+  expectation: 'converged' | 'threw',
+  originalMessage: string
+): Promise<boolean> {
+  try {
+    await simulate(driver, candidate);
+    return expectation === 'converged';
+  } catch (error) {
+    const message = errorMessage(error);
+    if (message.includes('diverged')) return false;
+    if (expectation === 'converged') return true;
+    const prefix = originalMessage.split(' at tick ')[0] ?? originalMessage;
+    return prefix !== '' && message.includes(prefix);
+  }
+}
+
+async function recordFuzzFailure(
+  options: RunOptions,
+  scenario: Scenario,
+  error: unknown,
+  persists: (candidate: Scenario) => Promise<boolean>,
+  rows: CaseResult[]
+): Promise<void> {
+  const shrunk = await shrinkScenario(scenario, persists);
+  const reproDir = join(options.out, 'repros');
+  mkdirSync(reproDir, { recursive: true });
+  const reproPath = join(reproDir, `${shrunk.name}.json`);
+  writeFileSync(reproPath, `${JSON.stringify(shrunk, null, 2)}\n`);
+  if (options.promote !== undefined) {
+    promoteScenario(shrunk, join(PACKAGE_ROOT, 'scenarios', 'regressions'));
+  }
+  const detail = describe(error);
+  rows.push({
+    ...base(shrunk, 'fail', shrunk.ticks, 0, detail.note),
+    ...detail,
+    seed: shrunk.seed,
+    timeline: shrunk.timeline,
+    repro: `pnpm --filter @phalanx-engine/integration run it -- --load ${reproPath}`,
+  });
 }
 
 function runPerfCase(driver: SimDriver, options: RunOptions): CaseResult {
@@ -423,6 +520,11 @@ async function timeCase(
       repro: reproCommand(name, 0),
     };
   }
+}
+
+function withRequestedSeed(scenario: Scenario, options: RunOptions): Scenario {
+  if (options.seed === undefined) return scenario;
+  return { ...scenario, seed: options.seed };
 }
 
 function selected(

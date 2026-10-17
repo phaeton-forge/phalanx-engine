@@ -30,19 +30,28 @@ export interface SimulationSuccess {
 
 interface Book {
   gate: FaultGate;
-  inbox: LogEntry[];
   /** A drop happened; heal with the authoritative log, not a resend. */
   catchUp: boolean;
+}
+
+/** Completion without `failsWith`. The message must not contain that text. */
+class ExpectedFailureMissing extends Error {
+  public readonly expectedFailureMissing = true;
+
+  public constructor() {
+    super('scenario completed without the expected failure');
+  }
 }
 
 /**
  * Run one scenario on L1.
  *
  * Human envelopes are offered to a FaultGate and, once released, submitted
- * to that peer's transport (`deliver`). Delay, duplicate and reorder take
- * that path. A drop is not submitted; when the fault ends the peer
- * catch-up replays the authoritative log. Bot commands are not forwarded:
- * every live peer runs its own policies.
+ * to that peer's transport (`deliver`) in release order. The gate's horizon
+ * only limits how far that peer steps; it does not sort the submissions.
+ * Delay, duplicate and reorder take that path. A drop is not submitted;
+ * when the fault ends the peer catch-up replays the authoritative log.
+ * Bot commands are not forwarded: every live peer runs its own policies.
  */
 export async function simulate(
   driver: SimDriver,
@@ -143,9 +152,7 @@ export async function simulate(
       if (live.status() === 'ended') break;
     }
     if (scenario.expect.failsWith !== undefined) {
-      throw new Error(
-        `expected failure ${scenario.expect.failsWith} but the scenario completed`
-      );
+      throw new ExpectedFailureMissing();
     }
     if (scenario.expect.faultEffect === true && !sawLag) {
       throw new Error('fault gate had no effect');
@@ -192,6 +199,12 @@ export async function simulate(
       note: notes.filter(Boolean).join('; '),
     };
   } catch (error) {
+    if (isExpectedFailureMissing(error)) {
+      throw simulationError(error.message, {
+        message: error.message,
+        diffs: [],
+      });
+    }
     const message = errorMessage(error);
     if (
       scenario.expect.failsWith !== undefined &&
@@ -216,7 +229,16 @@ export function isSimulationFailure(
 }
 
 function openBook(disabled: boolean): Book {
-  return { gate: new FaultGate(disabled), inbox: [], catchUp: false };
+  return { gate: new FaultGate(disabled), catchUp: false };
+}
+
+function isExpectedFailureMissing(
+  error: unknown
+): error is ExpectedFailureMissing {
+  return (
+    error instanceof ExpectedFailureMissing &&
+    error.expectedFailureMissing === true
+  );
 }
 
 function simulationError(message: string, body: SimulationFailure): Error {
@@ -360,7 +382,7 @@ async function applyPointEvents(
     if (clock === event.to) {
       book.catchUp = book.gate.hasDrop();
       const released = book.gate.retransmit();
-      if (!book.catchUp) book.inbox.push(...released);
+      if (!book.catchUp) deliverReleased(peers.get(event.peer), released);
       book.gate.setFault(null);
       faulting.delete(event.peer);
     }
@@ -582,7 +604,7 @@ async function flushGates(
 ): Promise<void> {
   for (const book of books.values()) {
     book.gate.setFault(null);
-    book.inbox.push(...book.gate.retransmit());
+    book.gate.retransmit();
     book.catchUp = false;
   }
   for (const [id, peer] of peers) {
@@ -622,7 +644,6 @@ async function syncReplicas(
     books.set(id, book);
     if (book.catchUp) {
       book.catchUp = false;
-      book.inbox = [];
       await catchUp(
         peer,
         log,
@@ -639,18 +660,13 @@ async function syncReplicas(
       for (const entry of fresh) book.gate.offer(authority.tick(), entry, rng);
       offered.set(id, authority.tick());
     }
-    book.inbox.push(...book.gate.releaseDue(authority.tick()));
+    deliverReleased(peer, book.gate.releaseDue(authority.tick()));
     const through = Math.min(
       authority.tick(),
       book.gate.horizon(authority.tick()) - 1
     );
     while (peer.tick() < through) {
       if (peer.status() === 'ended' || peer.status() === 'failed') break;
-      const next = peer.tick() + 1;
-      for (const entry of book.inbox) {
-        if (entry.tick === next) peer.deliver(entry);
-      }
-      book.inbox = book.inbox.filter((entry) => entry.tick !== next);
       peer.step(1);
       remember(id, peer, digests, dumps);
     }
@@ -752,8 +768,27 @@ function liveReference(
   try {
     const peer = match.createPeer('live-ref', { role: 'authority' });
     const rng = prng(scenario.seed);
+    let paused = false;
     for (let clock = 0; clock < scenario.ticks; clock += 1) {
       if (peer.status() === 'ended' || peer.status() === 'failed') break;
+      for (const event of scenario.timeline) {
+        if (!('at' in event) || event.at !== clock) continue;
+        if (event.op === 'pause') {
+          peer.pause();
+          paused = true;
+        } else if (event.op === 'resume') {
+          peer.resume();
+          paused = false;
+        }
+      }
+      if (paused) {
+        const before = peer.tick();
+        peer.step(1);
+        if (peer.tick() !== before) {
+          throw new Error('pause did not hold the virtual clock');
+        }
+        continue;
+      }
       scriptInputs(scenario, clean, rng, clock, peer);
       peer.step(1);
       digests.set(peer.tick(), peer.digest());
@@ -772,6 +807,7 @@ function cleanSpec(spec: MatchSpec): MatchSpec {
       ...spec.options,
       injectDesync: undefined,
       throwOnTick: undefined,
+      suppressThrow: false,
       dirtyAfterRestore: false,
       breakBotRestore: false,
     },
@@ -884,6 +920,14 @@ function seriesFor<T>(
   const created = new Map<number, T>();
   maps.set(id, created);
   return created;
+}
+
+function deliverReleased(
+  peer: Peer | undefined,
+  entries: readonly LogEntry[]
+): void {
+  if (peer === undefined) return;
+  for (const entry of entries) peer.deliver(entry);
 }
 
 function isHuman(entry: LogEntry): boolean {

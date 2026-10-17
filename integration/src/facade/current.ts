@@ -212,6 +212,7 @@ export interface SkirmishSession {
   inject?: { peer: string; afterTick: number; when?: 'restore' | 'tick' };
   spawnOnRestore: boolean;
   throwOnTick?: number;
+  suppressThrow: boolean;
   throwBot: boolean;
   poolProbe: boolean;
   dirtyAfterRestore: boolean;
@@ -411,7 +412,7 @@ class LifeSystem extends GameSystem {
 
   public override processTick(tick: number): void {
     this.sim.tickValue = tick;
-    if (this.sim.throwOnTick === tick) {
+    if (this.sim.throwOnTick === tick && !this.sim.suppressThrow) {
       throw new Error('skirmish tick exploded');
     }
     if (this.sim.probe) {
@@ -429,6 +430,7 @@ class SkirmishSim
   public tickValue = -1;
   public readonly probe: boolean;
   public readonly throwOnTick: number | undefined;
+  public readonly suppressThrow: boolean;
   public readonly api: GameFacade;
   private readonly jobs: RespawnJob[];
   private readonly injectPeer: boolean;
@@ -454,6 +456,7 @@ class SkirmishSim
     session.bots[this.peerId] = {};
     this.probe = session.poolProbe;
     this.throwOnTick = session.throwOnTick;
+    this.suppressThrow = session.suppressThrow;
     this.injectPeer =
       session.inject !== undefined &&
       session.inject.peer === session.currentPeer;

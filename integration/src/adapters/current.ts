@@ -74,6 +74,7 @@ function openMatch(spec: MatchSpec): MatchHandle {
     inject: spec.options.injectDesync,
     spawnOnRestore: spec.options.spawnOnRestore === true,
     throwOnTick: spec.options.throwOnTick,
+    suppressThrow: spec.options.suppressThrow === true,
     throwBot: spec.options.throwBot === true,
     poolProbe: spec.options.poolProbe === true,
     dirtyAfterRestore: spec.options.dirtyAfterRestore === true,
@@ -84,18 +85,8 @@ function openMatch(spec: MatchSpec): MatchHandle {
   const game = createSkirmishGame(session);
   const config = toConfig(spec);
   const peers: Peer[] = [];
-  let authority: Peer | null = null;
+  let authorityRunner: Live['runner'] | null = null;
   const cache: { entries: readonly LogEntry[] } = { entries: [] };
-
-  const remember = (peer: Peer | null): readonly LogEntry[] => {
-    if (peer === null || peer.status() === 'disposed') return cache.entries;
-    try {
-      cache.entries = peer.toReplay().log;
-    } catch {
-      // Restore truncates history. Keep the last complete copy.
-    }
-    return cache.entries;
-  };
 
   const handle: MatchHandle = {
     createPeer(id, opts): Peer {
@@ -124,15 +115,16 @@ function openMatch(spec: MatchSpec): MatchHandle {
             ? `win:${String(outcome.winnerTeam)}`
             : `draw:${outcome.reason}`;
       });
-      const peer = wrapPeer(id, live, session, () => {
-        remember(peer);
-      });
+      const peer = wrapPeer(id, live, session);
       peers.push(peer);
-      if (opts.role === 'authority') authority = peer;
+      if (opts.role === 'authority') authorityRunner = live.runner;
       return peer;
     },
     log(): readonly LogEntry[] {
-      return remember(authority);
+      const runner = authorityRunner;
+      if (runner === null || runner.status === 'disposed') return cache.entries;
+      cache.entries = mapLog(runner.log.entriesAfter(-1));
+      return cache.entries;
     },
     armInject(tick: number): void {
       if (session.inject === undefined || session.inject.when === 'restore') {
@@ -147,12 +139,7 @@ function openMatch(spec: MatchSpec): MatchHandle {
   return handle;
 }
 
-function wrapPeer(
-  id: string,
-  live: Live,
-  session: SkirmishSession,
-  onStepped: () => void
-): Peer {
+function wrapPeer(id: string, live: Live, session: SkirmishSession): Peer {
   let failure: unknown = null;
   live.runner.onError((error) => {
     failure = error;
@@ -163,6 +150,7 @@ function wrapPeer(
       live.runner.submit(asCommand(cmd), slot);
     },
     step(ticks: number): void {
+      // Perf times this method. Log capture stays on match.log().
       session.currentPeer = id;
       if (live.role === 'replay') {
         throw new Error(
@@ -180,7 +168,6 @@ function wrapPeer(
         failure = null;
         throw error instanceof Error ? error : new Error(errorMessage(error));
       }
-      onStepped();
     },
     tick: () => live.runner.tick,
     snapshot: () => live.runner.snapshot(),
@@ -240,6 +227,7 @@ function openReplayPeer(replay: ReplayFile): Peer {
   const session: SkirmishSession = {
     currentPeer: 'replay',
     spawnOnRestore: false,
+    suppressThrow: false,
     throwBot: false,
     poolProbe: false,
     dirtyAfterRestore: false,
@@ -267,7 +255,17 @@ function openReplayPeer(replay: ReplayFile): Peer {
         ? `win:${String(outcome.winnerTeam)}`
         : `draw:${outcome.reason}`;
   });
-  return wrapPeer('replay', live, session, () => undefined);
+  return wrapPeer('replay', live, session);
+}
+
+function mapLog(entries: readonly EngineLogEntry[]): LogEntry[] {
+  return entries.map((entry) => ({
+    tick: entry.tick,
+    playerId: entry.playerId,
+    type: entry.type,
+    data: { q: entry.data.q, p: entry.data.p },
+    ...(entry.malformed === true ? { malformed: true as const } : {}),
+  }));
 }
 
 function thisState(live: Live): StateDump {

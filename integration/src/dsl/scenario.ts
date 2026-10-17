@@ -336,6 +336,7 @@ function parseOptions(value: unknown): GameOptions {
     tickLimit?: number;
     spawnOnRestore?: boolean;
     throwOnTick?: number;
+    suppressThrow?: boolean;
     throwBot?: boolean;
     poolProbe?: boolean;
     dirtyAfterRestore?: boolean;
@@ -356,6 +357,9 @@ function parseOptions(value: unknown): GameOptions {
   }
   if (record['throwOnTick'] !== undefined) {
     options.throwOnTick = asInt(record['throwOnTick'], 'throwOnTick');
+  }
+  if (record['suppressThrow'] !== undefined) {
+    options.suppressThrow = asBoolean(record['suppressThrow'], 'suppressThrow');
   }
   if (record['throwBot'] !== undefined)
     options.throwBot = asBoolean(record['throwBot'], 'throwBot');

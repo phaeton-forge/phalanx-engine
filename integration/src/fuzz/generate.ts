@@ -20,6 +20,8 @@ export function generateScenario(
   let gone = false;
   let paused = false;
   let injected = false;
+  /** Clock of the latest disconnect or reconnect. The next one is later. */
+  let linkAt = -1;
   const budget = 3 + rng.int(6);
   for (let count = 0; count < budget; count += 1) {
     const kind = rng.int(6);
@@ -30,24 +32,26 @@ export function generateScenario(
       continue;
     }
     if (kind === 0 && !gone) {
-      const at = rng.int(Math.max(1, ticks - 3));
+      const at = clockAfter(rng, linkAt, ticks - 1);
+      if (at === null) continue;
       timeline.push({ at, op: 'disconnect', peer: 'B' });
+      linkAt = at;
       gone = true;
       continue;
     }
     if (kind === 1 && gone) {
       const via = rng.int(2) === 0 ? 'snapshot' : 'log';
       // Snapshot restore needs a completed tick, so it cannot be clock 0.
-      const at =
-        via === 'snapshot'
-          ? 1 + rng.int(Math.max(1, ticks - 1))
-          : rng.int(ticks);
+      const earliest = Math.max(linkAt, via === 'snapshot' ? 0 : -1);
+      const at = clockAfter(rng, earliest, ticks - 1);
+      if (at === null) continue;
       timeline.push({
         at,
         op: 'reconnect',
         peer: 'B',
         via,
       });
+      linkAt = at;
       gone = false;
       continue;
     }
@@ -117,6 +121,13 @@ export function injectScenario(seed: number): Scenario {
     inputs: 'scripted:basic',
     expect: { diverges: true },
   });
+}
+
+/** Inclusive clock in `(after, latest]`, or null when that range is empty. */
+function clockAfter(rng: Prng, after: number, latest: number): number | null {
+  const earliest = after + 1;
+  if (earliest > latest) return null;
+  return earliest + rng.int(latest - earliest + 1);
 }
 
 function eventAt(event: TimelineEvent): number {
