@@ -556,7 +556,7 @@ export class SocketManager {
       resolve: (chunk: LogChunk) => void;
       reject: (error: Error) => void;
     } | null = null;
-    let failure: MatchLogError | null = null;
+    const logState: { error: MatchLogError | null } = { error: null };
 
     const onChunk = (chunk: LogChunk): void => {
       if (chunk.matchId !== matchId) return;
@@ -574,7 +574,7 @@ export class SocketManager {
         return;
       }
       const error = new MatchLogError(payload.reason);
-      failure = error;
+      logState.error = error;
       if (waiter) {
         const current = waiter;
         waiter = null;
@@ -608,16 +608,18 @@ export class SocketManager {
         }
         first = false;
 
-        if (failure && pending.length === 0) {
-          throw failure;
+        const pendingError = logState.error;
+        if (pending.length === 0 && pendingError !== null) {
+          throw new MatchLogError(pendingError.reason);
         }
 
         const chunk =
           pending.length > 0
             ? pending.shift()!
             : await new Promise<LogChunk>((resolve, reject) => {
-                if (failure) {
-                  reject(failure);
+                const pendingError = logState.error;
+                if (pendingError !== null) {
+                  reject(pendingError);
                   return;
                 }
                 waiter = { resolve, reject };
