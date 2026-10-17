@@ -61,7 +61,10 @@ function run(seed = 11): {
     }
   });
   runner.start();
-  transport.step(LAST + 1);
+  for (let tick = 0; tick <= LAST; tick += 1) {
+    transport.step(1);
+    runner.flush();
+  }
   return { runner, transport, digests, snaps };
 }
 
@@ -94,6 +97,7 @@ describe('two-bot determinism', () => {
       expect(restored.digest()).toBe(first.digests.get(sample));
       restored.start();
       transport.step(LAST - sample);
+      restored.flush();
       expect(restored.tick).toBe(LAST);
       expect(restored.digest()).toBe(first.digests.get(LAST));
       for (let tick = sample + 1; tick <= LAST; tick += 1) {
@@ -112,6 +116,7 @@ describe('two-bot determinism', () => {
       forwarded.restore(bytes);
       const tail = first.runner.log.entriesAfter(sample);
       await forwarded.fastForward(tail, { budgetMs: 50, throughTick: LAST });
+      forwarded.flush();
       expect(forwarded.digest()).toBe(first.digests.get(LAST));
       for (let tick = sample + 1; tick <= LAST; tick += 1) {
         expect(forwardedSeen.get(tick)).toBe(first.digests.get(tick));
@@ -156,6 +161,8 @@ describe('two-bot determinism', () => {
     for (let tick = 0; tick <= LAST; tick += 1) {
       leftTransport.step(1);
       rightTransport.step(1);
+      left.flush();
+      right.flush();
       expect(leftDigests.get(tick)).toBe(solo.digests.get(tick));
       expect(rightDigests.get(tick)).toBe(solo.digests.get(tick));
       expect(left.sim.entityIds()[0]).toBe(right.sim.entityIds()[0]);

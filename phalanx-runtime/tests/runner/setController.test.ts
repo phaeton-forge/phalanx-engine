@@ -37,6 +37,17 @@ function config(seed = 7): TinyConfig {
   };
 }
 
+function stepFlushed(
+  transport: LocalTransport,
+  runner: MatchRunner<typeof TinyGame>,
+  count: number
+): void {
+  for (let step = 0; step < count; step += 1) {
+    transport.step(1);
+    runner.flush();
+  }
+}
+
 function open(seed = 7): {
   runner: MatchRunner<typeof TinyGame>;
   transport: LocalTransport;
@@ -101,18 +112,18 @@ describe('setController', () => {
       if (tick >= 4 && tick <= 9) snaps.set(tick, runner.snapshot());
     });
     runner.start();
-    transport.step(4);
+    stepFlushed(transport, runner, 4);
     runner.setController(0, 'bot', { policy: 'walker', fromTick: 5 });
     const reasons: string[] = [];
     runner.onRejected((_entry, reason) => {
       reasons.push(reason);
     });
-    transport.step(1);
+    stepFlushed(transport, runner, 1);
     runner.submit({ type: 'move', dx: 1n });
-    transport.step(2);
+    stepFlushed(transport, runner, 2);
     expect(reasons).toContain('slot controlled by bot');
     runner.setController(0, 'human', { fromTick: 8 });
-    transport.step(6);
+    stepFlushed(transport, runner, 6);
     expect(runner.tick).toBe(12);
 
     const botMoves = tinyBotCalls.filter(
@@ -143,6 +154,7 @@ describe('setController', () => {
         budgetMs: 50,
         throughTick: 12,
       });
+      copy.flush();
       for (let at = tick + 1; at <= 12; at += 1) {
         expect(seen.get(at)).toBe(digests.get(at));
       }

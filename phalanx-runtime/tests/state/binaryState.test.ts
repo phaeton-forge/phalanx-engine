@@ -431,6 +431,68 @@ describe('BinaryStateWriter / BinaryStateReader', () => {
     expect(readBack(w.finish(), (r) => r.u8())).toBe(1);
   });
 
+  it('writes a canonical in-place section length', () => {
+    for (const bodyLength of [0, 1, 200]) {
+      const viaSection = new BinaryStateWriter();
+      viaSection.section('k', 1, (section) => {
+        for (let index = 0; index < bodyLength; index += 1) {
+          section.u8(index & 0xff);
+        }
+      });
+      const manual = new BinaryStateWriter();
+      manual.str('k');
+      manual.varint(1);
+      manual.varint(bodyLength);
+      for (let index = 0; index < bodyLength; index += 1) {
+        manual.u8(index & 0xff);
+      }
+      expect(viaSection.finish()).toEqual(manual.finish());
+    }
+  });
+
+  it('reuses a writer buffer after reset', () => {
+    const writer = new BinaryStateWriter();
+    writer.str('again');
+    const first = writer.finish();
+    writer.reset();
+    expect(writer.finish()).toEqual(new Uint8Array());
+    writer.str('again');
+    expect(writer.finish()).toEqual(first);
+  });
+
+  it('round-trips a string longer than the utf-8 cache and rejects its surrogate', () => {
+    const long = 'n'.repeat(200);
+    const writer = new BinaryStateWriter();
+    writer.str(long);
+    writer.str(long);
+    const reader = new BinaryStateReader(writer.finish());
+    expect(reader.str()).toBe(long);
+    expect(reader.str()).toBe(long);
+
+    const bad = new BinaryStateWriter();
+    const unpaired = `${'n'.repeat(200)}\uD800`;
+    expect(() => bad.str(unpaired)).toThrow(/unpaired surrogate/);
+    expect(() => bad.str(unpaired)).toThrow(/unpaired surrogate/);
+    expect(bad.finish()).toEqual(new Uint8Array());
+  });
+
+  it('round-trips more strings than the utf-8 cache and rejects a bad surrogate twice', () => {
+    const writer = new BinaryStateWriter();
+    const values = Array.from(
+      { length: 5000 },
+      (_, index) => `Tag.Ability.${String(index)}`
+    );
+    for (const value of values) writer.str(value);
+    const reader = new BinaryStateReader(writer.finish());
+    for (const value of values) expect(reader.str()).toBe(value);
+
+    const bad = new BinaryStateWriter();
+    const unpaired = 'a\uD800b';
+    expect(() => bad.str(unpaired)).toThrow(/unpaired surrogate/);
+    expect(() => bad.str(unpaired)).toThrow(/unpaired surrogate/);
+    expect(bad.finish()).toEqual(new Uint8Array());
+  });
+
   it('done() throws when unread bytes remain', () => {
     const bytes = written((w) => {
       w.u8(1);

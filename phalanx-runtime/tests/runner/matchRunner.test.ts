@@ -828,7 +828,10 @@ describe('MatchRunner', () => {
     });
     runner.submit({ type: 'spawn', x: 1n });
     runner.start();
-    stepTo({ runner, transport }, 4);
+    for (let tick = 0; tick <= 4; tick += 1) {
+      transport.step(1);
+      runner.flush();
+    }
     expect(seen[0]).toBe('digest:0:0');
     expect(seen).toContain('outcome:1');
     expect(seen).toContain('digest:1:1');

@@ -6,6 +6,7 @@ import type {
   SoASchemaDefinition,
   TypedArrayLike,
 } from '@phalanx-engine/ecs';
+import { BinaryStateWriter } from '../state/BinaryState.js';
 import type { StateReader, StateWriter } from '../state/StateIO.js';
 import {
   assertSectionVersion,
@@ -71,7 +72,9 @@ function assertUniqueSchemaNames(names: readonly string[]): void {
   }
 }
 
-function isPersistedField(fieldType: SoAFieldType): boolean {
+function isPersistedField(
+  fieldType: SoAFieldType
+): fieldType is 'i64' | 'i32' | 'u32' | 'u8' {
   return fieldType !== 'f32' && fieldType !== 'f64';
 }
 
@@ -195,6 +198,66 @@ function readField(r: StateReader, fieldType: SoAFieldType): bigint | number {
   }
 }
 
+type ColumnWrite = (
+  w: BinaryStateWriter,
+  array: TypedArrayLike,
+  index: number
+) => void;
+
+interface StorePlan {
+  readonly names: readonly string[];
+  readonly writes: readonly ColumnWrite[];
+}
+
+const STORE_PLANS = new WeakMap<object, StorePlan>();
+
+const COLUMN_WRITE: Record<'i64' | 'i32' | 'u32' | 'u8', ColumnWrite> = {
+  i64: (w, array, index) => {
+    const value = array[index];
+    if (typeof value !== 'bigint') {
+      throw new Error('writeSoAStore: expected a bigint for an i64 field');
+    }
+    w.i64Unchecked(value);
+  },
+  i32: (w, array, index) => {
+    const value = array[index];
+    if (typeof value !== 'number') {
+      throw new Error('writeSoAStore: expected a number for an i32 field');
+    }
+    w.i32Unchecked(value);
+  },
+  u32: (w, array, index) => {
+    const value = array[index];
+    if (typeof value !== 'number') {
+      throw new Error('writeSoAStore: expected a number for a u32 field');
+    }
+    w.u32Unchecked(value);
+  },
+  u8: (w, array, index) => {
+    const value = array[index];
+    if (typeof value !== 'number') {
+      throw new Error('writeSoAStore: expected a number for a u8 field');
+    }
+    w.u8Unchecked(value);
+  },
+};
+
+function planFor(schema: SoASchemaRef): StorePlan {
+  const cached = STORE_PLANS.get(schema);
+  if (cached !== undefined) return cached;
+  const names: string[] = [];
+  const writes: ColumnWrite[] = [];
+  for (const fieldName of schema.fieldNames) {
+    const fieldType = fieldTypeOf(schema.fieldTypes, fieldName);
+    if (!isPersistedField(fieldType)) continue;
+    names.push(fieldName);
+    writes.push(COLUMN_WRITE[fieldType]);
+  }
+  const plan: StorePlan = { names, writes };
+  STORE_PLANS.set(schema, plan);
+  return plan;
+}
+
 function writeRow<S extends SoASchemaDefinition>(
   w: StateWriter,
   store: SoAComponentStore<S>,
@@ -209,6 +272,28 @@ function writeRow<S extends SoASchemaDefinition>(
     const fieldType = fieldTypeOf(store.schema.fieldTypes, fieldName);
     if (!isPersistedField(fieldType)) continue;
     writeField(w, fieldType, valueAt(fieldArray(store, fieldName), index));
+  }
+}
+
+function writeRowFast<S extends SoASchemaDefinition>(
+  w: BinaryStateWriter,
+  store: SoAComponentStore<S>,
+  entityId: number,
+  columns: readonly TypedArrayLike[],
+  writes: readonly ColumnWrite[]
+): void {
+  const index = store.indexOf(entityId);
+  if (index === -1) {
+    throw new Error(`writeSoAStore: missing entity ${String(entityId)}`);
+  }
+  w.u32Unchecked(entityId);
+  for (let field = 0; field < writes.length; field += 1) {
+    const write = writes[field];
+    const column = columns[field];
+    if (write === undefined || column === undefined) {
+      throw new Error('writeSoAStore: missing field plan');
+    }
+    write(w, column, index);
   }
 }
 
@@ -254,7 +339,23 @@ export function writeSoAStore<S extends SoASchemaDefinition>(
 ): void {
   const name = requireSchemaName(store.schema, 'writeSoAStore');
   w.section(name, HELPER_SECTION_VERSION, (section) => {
-    section.list(store.entityIds(), (entityId, row) => {
+    const ids = store.entityIds();
+    if (section instanceof BinaryStateWriter) {
+      const plan = planFor(store.schema);
+      const columns = plan.names.map((fieldName) =>
+        fieldArray(store, fieldName)
+      );
+      section.varint(ids.length);
+      for (let row = 0; row < ids.length; row += 1) {
+        const entityId = ids[row];
+        if (entityId === undefined) {
+          throw new Error('writeSoAStore: missing entity id');
+        }
+        writeRowFast(section, store, entityId, columns, plan.writes);
+      }
+      return;
+    }
+    section.list(ids, (entityId, row) => {
       writeRow(row, store, entityId);
     });
   });

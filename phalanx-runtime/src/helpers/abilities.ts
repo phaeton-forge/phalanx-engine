@@ -664,17 +664,59 @@ function applyEffects(
   }
 }
 
+/**
+ * `forEach` with one shared callback. `for...of` on a Set or Map allocates
+ * an iterator per entity, and a skirmish capture does that hundreds of
+ * times. Insertion order matches the previous `for...of` walk.
+ */
+let stringSink: StateWriter | null = null;
+
+function writeSunkString(value: string): void {
+  const writer = stringSink;
+  if (writer === null) {
+    throw new Error('writeAbilities: string sink is not set');
+  }
+  writer.str(value);
+}
+
+function writeSunkGrant(count: number, tag: string): void {
+  const writer = stringSink;
+  if (writer === null) {
+    throw new Error('writeAbilities: string sink is not set');
+  }
+  writer.str(tag);
+  writer.varint(count);
+}
+
+function writeStringSet(w: StateWriter, values: ReadonlySet<string>): void {
+  w.varint(values.size);
+  const previous = stringSink;
+  stringSink = w;
+  try {
+    values.forEach(writeSunkString);
+  } finally {
+    stringSink = previous;
+  }
+}
+
+function writeGrantMap(
+  w: StateWriter,
+  grants: ReadonlyMap<string, number>
+): void {
+  w.varint(grants.size);
+  const previous = stringSink;
+  stringSink = w;
+  try {
+    grants.forEach(writeSunkGrant);
+  } finally {
+    stringSink = previous;
+  }
+}
+
 function writeTags(w: StateWriter, tags: GameplayTagsComponent): void {
-  w.list(Array.from(tags.tags), (tag, item) => {
-    item.str(tag);
-  });
-  w.list(Array.from(tags.adHocTags), (tag, item) => {
-    item.str(tag);
-  });
-  w.list(Array.from(tags.effectGrantCounts.entries()), (entry, item) => {
-    item.str(entry[0]);
-    item.varint(entry[1]);
-  });
+  writeStringSet(w, tags.tags);
+  writeStringSet(w, tags.adHocTags);
+  writeGrantMap(w, tags.effectGrantCounts);
 }
 
 interface ParsedTags {
@@ -708,9 +750,7 @@ function writeAbilitySystem(
   w: StateWriter,
   component: AbilitySystemComponent
 ): void {
-  w.list(Array.from(component.abilities), (abilityId, item) => {
-    item.str(abilityId);
-  });
+  writeStringSet(w, component.abilities);
   writeAttributes(w, component.attributes);
   writeActiveEffects(w, component.activeEffects);
   writeTags(w, component.tags);
@@ -868,13 +908,14 @@ export function writeAbilities(w: StateWriter, world: GameWorld): void {
   const abilities = abilityStateIO(world, 'writeAbilities');
   w.section(GAS_SECTION, HELPER_SECTION_VERSION, (section) => {
     writeRuntime(section, abilities.exportRuntimeState());
-    section.sortedBy(
-      gasEntities(world),
-      (entity) => entity.id,
-      (entity, item) => {
-        writeEntityGas(item, entity);
-      }
-    );
+    const entities = gasEntities(world);
+    entities.sort((left, right) => {
+      if (left.id < right.id) return -1;
+      if (left.id > right.id) return 1;
+      return 0;
+    });
+    section.varint(entities.length);
+    for (const entity of entities) writeEntityGas(section, entity);
   });
 }
 
