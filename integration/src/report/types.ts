@@ -20,6 +20,10 @@ export interface CaseResult {
   readonly ticks: number;
   readonly timeMs: number;
   readonly note: string;
+  /** Peer count for a multi-process case such as det-continuous. */
+  readonly peers?: number;
+  /** OS processes for a multi-process case such as det-continuous. */
+  readonly processes?: number;
   readonly seed?: number;
   readonly tick?: number;
   readonly diffs?: readonly FieldDiff[];

@@ -115,8 +115,9 @@ export interface Peer {
   restore(bytes: Uint8Array): void;
   fastForward(entries: readonly LogEntry[], throughTick: number): Promise<void>;
   /**
-   * Submit one logged envelope to this peer's transport. Duplicates of
-   * the same `(tick, playerId, seq)` are ignored. Bot envelopes are ignored.
+   * Submit one logged envelope to this peer's transport. A second copy of
+   * the same envelope is ignored. A malformed envelope does not count as
+   * the real command that shares its rewritten seq. Bot envelopes are ignored.
    */
   deliver(entry: LogEntry): void;
   /** Live canonical digest. Not the snapshot-byte hash. */
@@ -127,8 +128,11 @@ export interface Peer {
   outcome(): string | null;
   pause(): void;
   resume(): void;
-  /** Queue one malformed envelope for the next tick. */
-  injectMalformed(slot: number): void;
+  /**
+   * Queue one extra malformed envelope at `targetTick` (default: the next
+   * tick). Appends; it does not replace the slot's real commands.
+   */
+  injectMalformed(slot: number, targetTick?: number): void;
   toReplay(): ReplayFile;
   /**
    * Schedule a controller change. `null` when the runner accepted it.

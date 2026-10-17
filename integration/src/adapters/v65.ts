@@ -193,7 +193,7 @@ function wrapPeer(
       if (entry.playerId === SYSTEM_PLAYER_ID) return;
       const slot = slotOf(entry.playerId);
       if (slot === null) return;
-      const key = `${String(entry.tick)}:${entry.playerId}:${String(entry.data.q)}`;
+      const key = deliveryKey(entry);
       if (live.delivered.has(key)) return;
       if (!live.started) {
         live.runner.start();
@@ -218,8 +218,10 @@ function wrapPeer(
     resume(): void {
       live.transport.requestResume();
     },
-    injectMalformed(slot: number): void {
-      const target = live.runner.tick + 1;
+    injectMalformed(slot: number, targetTick?: number): void {
+      const target = targetTick ?? live.runner.tick + 1;
+      // Extra envelope. `submit` appends to the slot queue, so the real
+      // command for this tick stays in the batch.
       live.transport.submit(target, slot, [
         { type: 'move', data: { q: -1, p: null } },
       ]);
@@ -307,6 +309,13 @@ function openReplayPeer(replay: ReplayFile): Peer {
       session.bound['replay']?.world.dispose();
     },
   };
+}
+
+function deliveryKey(entry: LogEntry): string {
+  // The runner rewrites a malformed envelope to q 0, which is also the
+  // first real command's seq. The payload keeps them distinct so deliver
+  // does not drop the move.
+  return `${String(entry.tick)}:${entry.playerId}:${String(entry.data.q)}:${entry.type}:${entry.malformed === true ? '1' : '0'}:${JSON.stringify(entry.data.p)}`;
 }
 
 function reconcileControls(live: Live, session: SkirmishSession): void {

@@ -1,3 +1,9 @@
+/**
+ * Engine binding for the skirmish sim: SoA components, pooled archetypes,
+ * and the tick systems. Pure rules and bot decisions live in
+ * `game/skirmish/` and do not import the engine. `facade/v65.ts` only
+ * builds the `defineGame` definition on top of this module.
+ */
 import {
   Entity,
   FP,

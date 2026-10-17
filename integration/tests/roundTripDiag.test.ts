@@ -32,31 +32,31 @@ describe('round-trip diagnostics', () => {
     } catch (error) {
       expect(isSimulationFailure(error)).toBe(true);
       if (!isSimulationFailure(error)) return;
-      expect(error.tick).toBeGreaterThan(0);
+      expect(error.tick).toBe(3);
       expect(error.diffs.length).toBeGreaterThan(0);
       expect(error.diffs.length).toBeLessThanOrEqual(11);
       expect(error.before).toBeDefined();
       expect(error.after).toBeDefined();
-      const first = error.diffs[0];
-      expect(first?.field).toBeTruthy();
+      const health = error.diffs.find((diff) => diff.field === 'health');
+      expect(health).toMatchObject({ component: 'Gas', field: 'health' });
     }
   });
 });
 
 describe('fuzz without an early restore', () => {
-  it('keeps at least 30% of timelines free of an early snapshot reconnect', () => {
+  it('keeps snapshot reconnects out of the first half of late-restore timelines', () => {
     let late = 0;
-    let total = 0;
     for (let seed = 1; seed <= 20; seed += 1) {
       const rng = prng(seed);
-      for (let index = 0; index < 20; index += 1) {
+      for (let index = 0; index < 40; index += 1) {
         const generated = generateScenario(rng, seed, index);
-        total += 1;
+        if (!generated.tags.includes('late-restore')) continue;
+        late += 1;
         const at = firstSnapshotReconnect(generated.timeline);
         const mid = Math.floor(generated.ticks / 2);
-        if (at === null || at >= mid) late += 1;
+        expect(at === null || at >= mid).toBe(true);
       }
     }
-    expect(late / total).toBeGreaterThanOrEqual(0.3);
+    expect(late).toBeGreaterThan(0);
   });
 });

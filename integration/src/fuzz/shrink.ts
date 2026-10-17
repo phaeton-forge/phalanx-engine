@@ -1,6 +1,43 @@
 import type { Scenario, TimelineEvent } from '../dsl/scenario.js';
+import { errorMessage } from '../util/json.js';
 
 export type Fails = (scenario: Scenario) => Promise<boolean>;
+
+/** Failure class plus the first diverging tick, when the message has one. */
+export interface FailureSignature {
+  readonly type: string;
+  readonly tick: number | null;
+}
+
+export function failureSignature(error: unknown): FailureSignature {
+  const message = errorMessage(error);
+  const tick = tickOf(message);
+  if (message.includes('diverged')) return { type: 'diverged', tick };
+  if (message.includes('round-trip') || message.includes('restore changed')) {
+    return { type: 'round-trip', tick };
+  }
+  if (message.startsWith('setController rejected')) {
+    return { type: message, tick };
+  }
+  const type = message.split(':')[0] ?? message;
+  return { type, tick };
+}
+
+export function sameFailureSignature(
+  error: unknown,
+  original: unknown
+): boolean {
+  const left = failureSignature(error);
+  const right = failureSignature(original);
+  return left.type === right.type && left.tick === right.tick;
+}
+
+function tickOf(message: string): number | null {
+  const match = /at tick (\d+)/.exec(message);
+  if (match?.[1] === undefined) return null;
+  const tick = Number(match[1]);
+  return Number.isInteger(tick) ? tick : null;
+}
 
 /**
  * Delta-debug events, then narrow ticks, peers, slots and event ranges.
@@ -30,7 +67,7 @@ async function shrinkEvents(
     const chunks = split(events, granularity);
     let reduced = false;
     for (const chunk of chunks) {
-      const trial = without(events, chunk);
+      const trial = dropEvents(events, chunk);
       if (trial.length === events.length) continue;
       if (await fails(withTimeline(scenario, trial))) {
         events = trial;
@@ -42,8 +79,10 @@ async function shrinkEvents(
     if (reduced) continue;
     for (const chunk of chunks) {
       if (chunk.length === 0 || chunk.length === events.length) continue;
-      if (await fails(withTimeline(scenario, chunk))) {
-        events = chunk;
+      const kept = keepEvents(events, chunk);
+      if (kept.length === events.length) continue;
+      if (await fails(withTimeline(scenario, kept))) {
+        events = kept;
         granularity = 2;
         reduced = true;
         break;
@@ -110,7 +149,8 @@ async function shrinkRanges(
   for (let index = 0; index < events.length; index += 1) {
     const event = events[index];
     if (event === undefined) continue;
-    // `replaceWithBot` / `returnFromBot` shrink with every other `at` event.
+    // `at` moves one event at a time. A handoff is removed only as a pair
+    // (see dropEvents). The caller must reject a different failure.
     if ('at' in event) {
       let at = event.at;
       while (at > 0) {
@@ -157,9 +197,68 @@ function replace(
   return next;
 }
 
-function without<T>(items: readonly T[], chunk: readonly T[]): T[] {
-  const drop = new Set<T>(chunk);
-  return items.filter((item) => !drop.has(item));
+function dropEvents(
+  events: readonly TimelineEvent[],
+  chunk: readonly TimelineEvent[]
+): TimelineEvent[] {
+  const drop = paired(events, chunk);
+  return events.filter((event) => !drop.has(event));
+}
+
+function keepEvents(
+  events: readonly TimelineEvent[],
+  chunk: readonly TimelineEvent[]
+): TimelineEvent[] {
+  const keep = paired(events, chunk);
+  return events.filter((event) => keep.has(event));
+}
+
+/** A replace and its return leave or stay together. */
+function paired(
+  events: readonly TimelineEvent[],
+  chosen: readonly TimelineEvent[]
+): Set<TimelineEvent> {
+  const set = new Set<TimelineEvent>(chosen);
+  for (const event of chosen) {
+    const partner = handoffPartner(events, event);
+    if (partner !== undefined) set.add(partner);
+  }
+  return set;
+}
+
+function handoffPartner(
+  events: readonly TimelineEvent[],
+  event: TimelineEvent
+): TimelineEvent | undefined {
+  if (event.op === 'replaceWithBot') {
+    return events.find(
+      (other) =>
+        other.op === 'returnFromBot' &&
+        other.peer === event.peer &&
+        handoffSlot(other) === handoffSlot(event) &&
+        other.at >= event.at
+    );
+  }
+  if (event.op === 'returnFromBot') {
+    let found: TimelineEvent | undefined;
+    for (const other of events) {
+      if (other.op !== 'replaceWithBot') continue;
+      if (
+        other.peer !== event.peer ||
+        handoffSlot(other) !== handoffSlot(event)
+      ) {
+        continue;
+      }
+      if (other.at <= event.at) found = other;
+    }
+    return found;
+  }
+  return undefined;
+}
+
+function handoffSlot(event: TimelineEvent): number {
+  if (event.op !== 'replaceWithBot' && event.op !== 'returnFromBot') return -1;
+  return event.slot ?? 0;
 }
 
 function split<T>(items: readonly T[], parts: number): T[][] {

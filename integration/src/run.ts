@@ -9,7 +9,7 @@ import { parseScenario, type Scenario } from './dsl/scenario.js';
 import { isSimulationFailure, simulate } from './dsl/interpret.js';
 import { generateScenario, injectScenario } from './fuzz/generate.js';
 import { promoteScenario } from './fuzz/promote.js';
-import { shrinkScenario } from './fuzz/shrink.js';
+import { sameFailureSignature, shrinkScenario } from './fuzz/shrink.js';
 import { PACKAGE_ROOT, REPO_ROOT } from './paths.js';
 import { failed, writeReport } from './report/format.js';
 import type {
@@ -357,8 +357,8 @@ async function runFuzzCases(
             try {
               await simulate(driver, candidate);
               return false;
-            } catch {
-              return true;
+            } catch (candidateError) {
+              return sameFailureSignature(candidateError, error);
             }
           },
           rows
@@ -492,22 +492,38 @@ function runPerfCase(driver: SimDriver, options: RunOptions): CaseResult {
   }
 }
 
+interface TimedCase {
+  readonly ticks: number;
+  readonly peers: number;
+  readonly processes: number;
+}
+
 async function timeCase(
   name: string,
   suite: string,
   tags: readonly string[],
-  body: () => Promise<void>
+  body: () => Promise<void | TimedCase>
 ): Promise<CaseResult> {
   const started = Date.now();
   try {
-    await body();
-    return base(
-      { name, suite, tags, seed: 0, ticks: 0 },
-      'pass',
-      0,
-      Date.now() - started,
-      ''
-    );
+    const stats = await body();
+    const ticks = stats?.ticks ?? 0;
+    const note =
+      stats === undefined
+        ? ''
+        : `${String(stats.processes)} processes, ${String(stats.peers)} peers`;
+    return {
+      ...base(
+        { name, suite, tags, seed: 0, ticks },
+        'pass',
+        ticks,
+        Date.now() - started,
+        note
+      ),
+      ...(stats === undefined
+        ? {}
+        : { peers: stats.peers, processes: stats.processes }),
+    };
   } catch (error) {
     const message = errorMessage(error);
     if (message.startsWith('skip:')) {

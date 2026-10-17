@@ -242,7 +242,8 @@ export async function simulate(
       books,
       digests,
       dumps,
-      gone
+      gone,
+      plans
     );
     await checkConvergence(
       driver,
@@ -533,6 +534,7 @@ async function applyEvent(
       digests,
       dumps,
       gone,
+      plans,
       scenario.options?.disableFaultGate === true
     );
     return;
@@ -548,7 +550,17 @@ async function applyEvent(
     return;
   }
   if (event.op === 'malformed') {
-    peers.get(event.peer)?.injectMalformed(0);
+    // Every live peer gets the extra envelope on the authority's next
+    // tick. Injecting on one transport, then replaying the log, lets the
+    // replica drop the slot's real command (the runner stores a malformed
+    // envelope as q 0).
+    const clockPeer = peers.get(authorityId) ?? peers.get(event.peer);
+    const target = (clockPeer?.tick() ?? -1) + 1;
+    for (const [id, peer] of peers) {
+      if (gone.has(id)) continue;
+      if (peer.status() === 'disposed' || peer.status() === 'failed') continue;
+      peer.injectMalformed(0, target);
+    }
     return;
   }
   if (event.op === 'roundTrip') {
@@ -587,7 +599,7 @@ async function applyEvent(
       event.fromTick ??
       clockPeer.tick() + (event.delay ?? spec.inputDelayTicks);
     plans.push({
-      slot: event.slot ?? 0,
+      slot: event.slot ?? slotOfPeer(event.peer),
       mode: event.op === 'replaceWithBot' ? 'bot' : 'human',
       ...(event.op === 'replaceWithBot' ? { policy: event.policy } : {}),
       fromTick,
@@ -708,6 +720,7 @@ async function reconnect(
   digests: Map<string, Map<number, string>>,
   dumps: Map<string, Map<number, StateDump>>,
   gone: Set<string>,
+  plans: readonly ControlPlan[],
   disabled: boolean
 ): Promise<void> {
   match.log();
@@ -724,9 +737,11 @@ async function reconnect(
     if (source.tick() < 0) return;
     peer.restore(source.snapshot());
     remember(id, peer, digests, dumps);
+    noteReplayedControls(plans, id, peer);
     return;
   }
   await catchUp(peer, log, authorityTick, series, dumpSeries, -1);
+  noteReplayedControls(plans, id, peer);
 }
 
 async function flushGates(
@@ -736,7 +751,8 @@ async function flushGates(
   books: Map<string, Book>,
   digests: Map<string, Map<number, string>>,
   dumps: Map<string, Map<number, StateDump>>,
-  gone: Set<string>
+  gone: Set<string>,
+  plans: readonly ControlPlan[]
 ): Promise<void> {
   for (const book of books.values()) {
     book.gate.setFault(null);
@@ -755,6 +771,7 @@ async function flushGates(
       seriesFor(dumps, id),
       peer.tick()
     );
+    noteReplayedControls(plans, id, peer);
   }
 }
 
@@ -792,6 +809,7 @@ async function syncReplicas(
         seriesFor(dumps, id),
         peer.tick()
       );
+      noteReplayedControls(plans, id, peer);
       continue;
     }
     const cursor = offered.get(id) ?? -1;
@@ -806,7 +824,18 @@ async function syncReplicas(
       authority.tick(),
       book.gate.horizon(authority.tick()) - 1
     );
-    drainPending(id, peer, book, through, digests, dumps);
+    drainPending(
+      id,
+      peer,
+      book,
+      through,
+      digests,
+      dumps,
+      plans,
+      peers,
+      gone,
+      spec
+    );
     if (faulting.has(id) && peer.tick() < authority.tick()) sawLag = true;
   }
   return sawLag;
@@ -1065,7 +1094,11 @@ function drainPending(
   book: Book,
   through: number,
   digests: Map<string, Map<number, string>>,
-  dumps: Map<string, Map<number, StateDump>>
+  dumps: Map<string, Map<number, StateDump>>,
+  plans: readonly ControlPlan[],
+  peers: ReadonlyMap<string, Peer>,
+  gone: ReadonlySet<string>,
+  spec: MatchSpec
 ): void {
   const limit = Math.max(through, 0) + book.pending.length + TRANSPORT_WINDOW;
   for (let guard = 0; guard <= limit; guard += 1) {
@@ -1077,6 +1110,9 @@ function drainPending(
     }
     book.pending = deferred;
     if (peer.tick() >= through) return;
+    // A delayed peer can cross fromTick in this loop. Arm on the tick
+    // that is still inside the window, before the step that applies it.
+    armControls(plans, peers, gone, spec);
     const before = peer.tick();
     peer.step(1);
     if (peer.tick() === before) return;
@@ -1102,6 +1138,30 @@ function faultOf(event: Extract<TimelineEvent, { op: 'faults' }>): FaultSpec {
   };
 }
 
+/** Peer A is slot 0, B is slot 1, C is slot 2. An explicit `slot` wins. */
+function slotOfPeer(peer: string): number {
+  if (peer === 'B') return 1;
+  if (peer === 'C') return 2;
+  return 0;
+}
+
+/**
+ * A snapshot or log replay already applied controller changes that were
+ * in the past. Mark those peers armed so a later step does not treat the
+ * missed live window as a second handoff.
+ */
+function noteReplayedControls(
+  plans: readonly ControlPlan[],
+  id: string,
+  peer: Peer
+): void {
+  const now = peer.tick();
+  for (const plan of plans) {
+    if (plan.armed.has(id) || plan.fromTick > now) continue;
+    plan.armed.add(id);
+  }
+}
+
 function tracksController(scenario: Scenario): boolean {
   return scenario.timeline.some(
     (event) => event.op === 'replaceWithBot' || event.op === 'returnFromBot'
@@ -1123,10 +1183,12 @@ function armControls(
       const now = peer.tick();
       const inWindow =
         plan.fromTick > now && plan.fromTick <= now + spec.inputDelayTicks;
-      if (!plan.once && !inWindow) {
-        if (plan.fromTick <= now) plan.armed.add(id);
-        continue;
+      if (!plan.once && plan.fromTick <= now) {
+        throw new Error(
+          `setController missed on ${id}: slot ${String(plan.slot)} fromTick ${String(plan.fromTick)} at tick ${String(now)}`
+        );
       }
+      if (!plan.once && !inWindow) continue;
       const reason = peer.setController(plan.slot, plan.mode, {
         fromTick: plan.fromTick,
         ...(plan.policy === undefined ? {} : { policy: plan.policy }),

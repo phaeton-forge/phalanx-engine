@@ -39,8 +39,8 @@ export function catalog(): readonly Scenario[] {
         ),
         at(640, crashPeer('B')),
         at(760, reconnect('B', 'log')),
-        at(820, replaceWithBot('B', 'defensive')),
-        at(840, returnFromBot('B')),
+        at(820, replaceWithBot('B', 'defensive', { slot: 1 })),
+        at(840, returnFromBot('B', { slot: 1 })),
         at(860, restartServer()),
       ],
       inputs: 'scripted:basic',
@@ -232,6 +232,26 @@ export function catalog(): readonly Scenario[] {
       timeline: [at(2, replaceWithBot('A', 'defensive', { slot: 9 }))],
       inputs: 'bots',
       expect: { converge: true, rejection: 'unknown slot' },
+    }),
+    scenario('controller-under-faults', {
+      suite: 'disconnect',
+      tags: ['disconnect', 'controller', 'quick'],
+      seed: 77,
+      ticks: 64,
+      slots: ['human', 'human', 'bot:aggressive'],
+      peers: ['A', 'B', 'C'],
+      timeline: [
+        range(
+          8,
+          48,
+          faults('B', { delay: [0, 2], dup: 0, reorder: 0.1, drop: 0 })
+        ),
+        at(16, replaceWithBot('A', 'defensive', { slot: 0 })),
+        at(32, returnFromBot('A', { slot: 0 })),
+        at(48, replaceWithBot('A', 'aggressive', { slot: 1 })),
+      ],
+      inputs: 'scripted:basic',
+      expect: { converge: true },
     }),
     scenario('controller-reject-human-while-bot', {
       suite: 'disconnect',
