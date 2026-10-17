@@ -10,7 +10,30 @@ import type {
   DesyncConfig,
   PauseConfig,
   TickMode,
+  EndMatchResult,
+  PlayerAbsentEvent,
+  PlayerCommandContext,
 } from '../types/index.js';
+
+/**
+ * Module-internal seam for Task 11. The default policy ends the match
+ * when an absence expires. Task 11 substitutes a policy that calls
+ * `setController` through SimHost (`'bot'` on absence, `'human'` on return).
+ */
+interface AbsencePolicy {
+  onAbsent(playerId: string): void;
+  onReturn(playerId: string): void;
+  onExpire(playerId: string): void;
+}
+
+/** One running absence. Times are epoch milliseconds. */
+interface AbsenceRecord {
+  playerId: string;
+  startedAt: number;
+  deadlineAt: number;
+  budgetAtStart: number;
+  timer: NodeJS.Timeout;
+}
 
 /**
  * Socket data interface for type safety
@@ -123,6 +146,13 @@ export class GameRoom {
   // Turn timeout handle for event mode
   private turnTimeout: NodeJS.Timeout | null = null;
 
+  // Task 10 — absence while `playing`. Wall clock (Date.now / setTimeout),
+  // one timer per absent player. Idle unless `config.absence` is set.
+  private readonly commandContext: PlayerCommandContext;
+  private absencePolicy: AbsencePolicy;
+  private readonly activeAbsences: Map<string, AbsenceRecord> = new Map();
+  private readonly absenceBudgets: Map<string, number> = new Map();
+
   constructor(
     id: string,
     io: SocketIOServer,
@@ -158,6 +188,18 @@ export class GameRoom {
     this.pauseConfig = {
       maxPausesPerPlayer: config.pause?.maxPausesPerPlayer ?? Infinity,
       requireSamePlayerToResume: config.pause?.requireSamePlayerToResume ?? false,
+    };
+
+    this.commandContext = {
+      matchId: this.id,
+      endMatch: (result: EndMatchResult): boolean => this.endMatch(result),
+    };
+    this.absencePolicy = {
+      onAbsent: () => {},
+      onReturn: () => {},
+      onExpire: (playerId: string) => {
+        this.expireAbsenceDefault(playerId);
+      },
     };
 
     // Initialize players from teams
@@ -267,6 +309,7 @@ export class GameRoom {
       console.log(
         `[GameRoom ${this.id}] players-connect timeout — ${missing.length} player(s) never returned: ${missing.join(', ')}`,
       );
+      this.clearAbsenceTimers();
       this.io.to(this.roomId).emit('match-end', {
         reason: 'players-not-connected',
       });
@@ -452,6 +495,7 @@ export class GameRoom {
       console.log(
         `[GameRoom ${this.id}] players reconnect timeout — ${missing.length} player(s) never returned: ${missing.join(', ')}`,
       );
+      this.clearAbsenceTimers();
       this.io.to(this.roomId).emit('match-end', {
         reason: 'players-not-connected',
       });
@@ -689,9 +733,15 @@ export class GameRoom {
       return false;
     }
 
-    // Let external handlers validate
-    const result = this.eventEmitter('player-command', playerId, command);
-    if (result === false) {
+    // Let external handlers validate. The context lets the game end the
+    // match from the hook; a finished match drops this command.
+    const result = this.eventEmitter(
+      'player-command',
+      playerId,
+      command,
+      this.commandContext
+    );
+    if (result === false || this.isFinished()) {
       return false;
     }
 
@@ -777,6 +827,21 @@ export class GameRoom {
       validCommands.push(...commands);
     }
 
+    // Hooks run before the command is logged. If one of them ends the
+    // match, this submission is not stored and not broadcast, and the
+    // remaining commands in the batch are not delivered.
+    for (const command of validCommands) {
+      this.eventEmitter(
+        'player-command',
+        playerId,
+        command,
+        this.commandContext
+      );
+      if (this.isFinished()) {
+        return { accepted: false };
+      }
+    }
+
     // Get or create tick entry in command buffer
     if (!this.commandBuffer.has(tick)) {
       this.commandBuffer.set(tick, {});
@@ -795,11 +860,6 @@ export class GameRoom {
 
     // Update player's last tick
     player.lastTick = tick;
-
-    // Let external handlers process each command
-    for (const command of validCommands) {
-      this.eventEmitter('player-command', playerId, command);
-    }
 
     if (this.tickMode === 'event') {
       // Event mode: immediately broadcast commands and advance tick
@@ -902,6 +962,23 @@ export class GameRoom {
     if (this.laggingPlayers.has(playerId)) {
       this.laggingPlayers.delete(playerId);
     }
+
+    // Task 10. `checkPlayerTimeouts` sets `connected = false` and does not
+    // clear the socket binding. With `absence` enabled, the next message
+    // on that socket is a return while `playing`. A timer that is already
+    // running is also stopped by a message during `paused`, so expiry
+    // cannot award the match to the opponent after the player is back.
+    // Without `absence`, `connected` stays false.
+    if (!this.config.absence) return;
+    const player = this.players.get(playerId);
+    if (!player || player.connected) return;
+    if (this.state !== 'playing' && !this.activeAbsences.has(playerId)) {
+      return;
+    }
+    player.connected = true;
+    this.returnFromAbsence(playerId);
+    this.eventEmitter('player-reconnected', playerId, this.id);
+    this.io.to(this.roomId).emit('player-reconnected', { playerId });
   }
 
   /**
@@ -937,6 +1014,7 @@ export class GameRoom {
         playerInfo.connected = false;
         this.laggingPlayers.delete(playerId);
         this.eventEmitter('player-timeout', playerId, this.id);
+        this.beginAbsence(playerId);
       } else if (msSinceLastMessage >= lagThresholdMs) {
         // Player is lagging - emit warning (only once per lagging period)
         if (!this.laggingPlayers.has(playerId)) {
@@ -1096,6 +1174,13 @@ export class GameRoom {
       this.lastMessageTime.set(playerId, now);
     }
 
+    // A disconnect during pause does not start a timer. Once play resumes,
+    // each player who is still disconnected gets one. `beginAbsence` leaves
+    // a running timer alone and cuts the deadline by the remaining budget.
+    for (const [playerId, player] of this.players) {
+      if (!player.connected) this.beginAbsence(playerId);
+    }
+
     // Broadcast to all clients so they unfreeze
     this.io.to(this.roomId).emit('game-resumed', {
       requestedBy,
@@ -1152,6 +1237,7 @@ export class GameRoom {
       clearTimeout(this.turnTimeout);
       this.turnTimeout = null;
     }
+    this.clearAbsenceTimers();
     this.state = 'finished';
 
     if (!skipNotify) {
@@ -1190,6 +1276,7 @@ export class GameRoom {
         matchId: this.id,
         gracePeriodMs: this.config.reconnectGracePeriodMs,
       });
+      this.beginAbsence(playerId);
     }
   }
 
@@ -1213,6 +1300,9 @@ export class GameRoom {
 
     player.connected = true;
     this.laggingPlayers.delete(playerId);
+    // Stop an absence timer before `reconnect-state`. `reconnect-match`,
+    // `room-recover`, and (Task 9) `match-resume` all rebind here.
+    this.returnFromAbsence(playerId);
     // Reconnecting during the startup ready gate invalidates any previous
     // ready signal from the old socket. The client must confirm readiness
     // again after its recovered socket is wired and local game state is ready.
@@ -1368,6 +1458,203 @@ export class GameRoom {
    */
   getRandomSeed(): number {
     return this.randomSeed;
+  }
+
+  /**
+   * End the match and tell the room, then the services (`match-ended`).
+   * A second call is a no-op. `winnerTeamId` is sent when the caller
+   * passed one that exists, or when `loserIds` leaves exactly one team
+   * with no loser. `reason: 'abandoned'` never carries a winner.
+   * Returns false when the match was already finished, or when
+   * `winnerTeamId` is not a team in this match. An unknown team logs a
+   * warning and leaves the match in `playing`, so a `player-command`
+   * hook cannot throw out of the relay.
+   */
+  endMatch(result: EndMatchResult): boolean {
+    if (this.isFinished()) return false;
+    const winnerTeamId = this.resolveWinnerTeamId(result);
+    if (winnerTeamId === null) return false;
+    this.stop(true);
+    const payload: { reason: string; winnerTeamId?: number } = {
+      reason: result.reason,
+    };
+    if (winnerTeamId !== undefined) {
+      payload.winnerTeamId = winnerTeamId;
+    }
+    this.io.to(this.roomId).emit('match-end', payload);
+    this.eventEmitter('match-ended', this.id, result.reason);
+    return true;
+  }
+
+  /**
+   * Absences in progress. `deadlineMs` and `budgetLeftMs` are milliseconds
+   * remaining at this call, the same semantics as `player-absent`.
+   * Task 9 reads `absentDeadline` from here.
+   */
+  getAbsences(): readonly PlayerAbsentEvent[] {
+    const now = Date.now();
+    const rows: PlayerAbsentEvent[] = [];
+    for (const record of this.activeAbsences.values()) {
+      const elapsed = Math.max(0, now - record.startedAt);
+      rows.push({
+        playerId: record.playerId,
+        deadlineMs: Math.max(0, record.deadlineAt - now),
+        budgetLeftMs: Math.max(0, record.budgetAtStart - elapsed),
+      });
+    }
+    rows.sort((a, b) => a.playerId.localeCompare(b.playerId));
+    return rows;
+  }
+
+  /**
+   * @internal Seam for Task 11. Not exported from the package entry.
+   */
+  setAbsencePolicy(policy: AbsencePolicy): void {
+    this.absencePolicy = policy;
+  }
+
+  /**
+   * Start the absence timer when a player becomes disconnected during
+   * `playing`. A timer that is already running is left alone. A zero
+   * budget schedules `setTimeout(…, 0)` and does not end the match
+   * inside the caller.
+   */
+  private beginAbsence(playerId: string): void {
+    const absence = this.config.absence;
+    if (!absence || this.state !== 'playing') return;
+    if (this.activeAbsences.has(playerId)) return;
+
+    const budgetLeft =
+      this.absenceBudgets.get(playerId) ?? absence.matchBudgetMs;
+    const delayMs = Math.min(absence.windowMs, Math.max(0, budgetLeft));
+    const now = Date.now();
+    const timer = setTimeout(() => {
+      this.expireAbsence(playerId);
+    }, delayMs);
+    this.activeAbsences.set(playerId, {
+      playerId,
+      startedAt: now,
+      deadlineAt: now + delayMs,
+      budgetAtStart: budgetLeft,
+      timer,
+    });
+    const payload: PlayerAbsentEvent = {
+      playerId,
+      deadlineMs: delayMs,
+      budgetLeftMs: budgetLeft,
+    };
+    this.io.to(this.roomId).emit('player-absent', payload);
+    this.absencePolicy.onAbsent(playerId);
+  }
+
+  /** Stop the timer and charge the elapsed time against the budget. */
+  private returnFromAbsence(playerId: string): void {
+    const record = this.activeAbsences.get(playerId);
+    if (!record) return;
+    clearTimeout(record.timer);
+    this.activeAbsences.delete(playerId);
+    const elapsed = Math.max(0, Date.now() - record.startedAt);
+    this.absenceBudgets.set(
+      playerId,
+      Math.max(0, record.budgetAtStart - elapsed)
+    );
+    this.absencePolicy.onReturn(playerId);
+  }
+
+  private expireAbsence(playerId: string): void {
+    const record = this.activeAbsences.get(playerId);
+    if (!record) return;
+    this.activeAbsences.delete(playerId);
+    const elapsed = Math.max(0, Date.now() - record.startedAt);
+    this.absenceBudgets.set(
+      playerId,
+      Math.max(0, record.budgetAtStart - elapsed)
+    );
+    if (this.isFinished()) return;
+    this.absencePolicy.onExpire(playerId);
+  }
+
+  /**
+   * Read through a method so a hook can flip `state` without TypeScript
+   * treating the earlier `'playing'` narrow as permanent.
+   */
+  private isFinished(): boolean {
+    return this.state === 'finished';
+  }
+
+  private expireAbsenceDefault(playerId: string): void {
+    if (this.areAllHumansAbsent()) {
+      this.endMatch({ reason: 'abandoned' });
+      return;
+    }
+    this.endMatch({ reason: 'disconnect', loserIds: [playerId] });
+  }
+
+  /**
+   * Drop every running absence and report each as a return. The default
+   * `onReturn` does nothing. Task 11 uses it to drop a bot controller
+   * when the match ends before the window expires.
+   */
+  private clearAbsenceTimers(): void {
+    const returned: string[] = [];
+    for (const record of this.activeAbsences.values()) {
+      clearTimeout(record.timer);
+      returned.push(record.playerId);
+    }
+    this.activeAbsences.clear();
+    for (const playerId of returned) {
+      this.absencePolicy.onReturn(playerId);
+    }
+  }
+
+  /** Every participant is a human until Task 11 adds bot slots. */
+  private areAllHumansAbsent(): boolean {
+    if (this.players.size === 0) return false;
+    for (const player of this.players.values()) {
+      if (player.connected) return false;
+    }
+    return true;
+  }
+
+  private hasTeam(teamId: number): boolean {
+    return (
+      Number.isInteger(teamId) &&
+      teamId >= 0 &&
+      teamId < this.teams.length &&
+      this.teams[teamId] !== undefined
+    );
+  }
+
+  /**
+   * `null` means `winnerTeamId` is not a team in this match: the caller
+   * returns false and does not stop the match. `undefined` omits the
+   * field on the wire.
+   */
+  private resolveWinnerTeamId(
+    result: EndMatchResult
+  ): number | null | undefined {
+    if (result.reason === 'abandoned') return undefined;
+    if (result.winnerTeamId !== undefined) {
+      if (!this.hasTeam(result.winnerTeamId)) {
+        console.warn(
+          `endMatch: winnerTeamId ${String(result.winnerTeamId)} does not exist`
+        );
+        return null;
+      }
+      return result.winnerTeamId;
+    }
+    const loserIds = result.loserIds;
+    if (!loserIds || loserIds.length === 0) return undefined;
+    const losers = new Set(loserIds);
+    const winners: number[] = [];
+    for (let teamId = 0; teamId < this.teams.length; teamId++) {
+      const team = this.teams[teamId];
+      if (!team || team.length === 0) continue;
+      const hasLoser = team.some((player) => losers.has(player.playerId));
+      if (!hasLoser) winners.push(teamId);
+    }
+    if (winners.length !== 1) return undefined;
+    return winners[0];
   }
 
   // ============================================================

@@ -2,7 +2,17 @@ import type {
   PhalanxConfig,
   GameModePreset,
   CustomGameMode,
+  AbsenceConfig,
 } from '../types/index.js';
+
+/**
+ * Suggested absence window for a match that opts in (Task 10).
+ * Not applied unless `PhalanxConfig.absence` is set.
+ */
+export const DEFAULT_ABSENCE: AbsenceConfig = {
+  windowMs: 120000,
+  matchBudgetMs: 180000,
+};
 
 /**
  * Game mode presets configuration

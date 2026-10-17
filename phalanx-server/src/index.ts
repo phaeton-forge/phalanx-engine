@@ -57,7 +57,12 @@ export type {
   RoomCreatedEvent,
   RoomRecoveredEvent,
   RoomErrorEvent,
+  // Task 10
+  AbsenceConfig,
+  EndMatchResult,
+  PlayerAbsentEvent,
+  PlayerCommandContext,
 } from './types/index.js';
 
 // Constants
-export { GAME_MODES } from './config/defaults.js';
+export { GAME_MODES, DEFAULT_ABSENCE } from './config/defaults.js';

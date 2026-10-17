@@ -271,6 +271,50 @@ const phalanx = new Phalanx({
 });
 ```
 
+#### Absence while `playing` (opt-in)
+
+Omit `absence` and a disconnected player never loses the match. Pass
+`DEFAULT_ABSENCE` (`windowMs` 120000, `matchBudgetMs` 180000) or your own
+positive integers. The deadline is `min(windowMs, budgetLeft)`. The timer
+starts only in `playing` (socket drop, or `disconnectTicks` in continuous
+mode). It does not start on a disconnect while `paused`. `resume()` starts
+one for each player who is still disconnected, cut by the remaining budget.
+A timer that already started keeps running through a pause. Event mode
+(`tickMode: 'event'`) does not run `checkPlayerTimeouts`, so only a socket
+drop starts the timer.
+
+`player-absent` is `{ playerId, deadlineMs, budgetLeftMs }`. Both numbers
+are milliseconds left at send time; the client counts down from receipt.
+`getAbsences()` uses the same semantics. Return goes through
+`handleReconnect`. With `absence` enabled, the first message on the
+still-bound socket after a `disconnectTicks` timeout is also a return.
+A message during `paused` stops a timer that is already running.
+
+Expiry calls `endMatch`. Every human absent → `{ reason: 'abandoned' }`
+with no winner. Otherwise `{ reason: 'disconnect', loserIds }` and
+`winnerTeamId` when exactly one team contains no loser (omitted for FFA
+when several teams remain).
+
+```typescript
+import { DEFAULT_ABSENCE } from '@phalanx-engine/server';
+
+const phalanx = new Phalanx({
+  absence: DEFAULT_ABSENCE,
+});
+
+phalanx.on('player-command', (_playerId, command, ctx) => {
+  if (command.type === 'destroy-base') {
+    // Returns false when the match was already finished.
+    ctx.endMatch({ reason: 'base-destroyed', winnerTeamId: 1 });
+  }
+});
+```
+
+`ctx.endMatch` returns false when the match is already finished, and when
+`winnerTeamId` is not a team in the match (a warning is logged and the
+match stays `playing`). The command that ended the match is not written
+to the log and not broadcast. Handlers with two parameters stay valid.
+
 ### 4. Server Event Hooks
 
 Register handlers for server-side events:
@@ -284,8 +328,9 @@ phalanx.on('match-paused', (matchId: string, requestedBy: string) => { });
 phalanx.on('match-resumed', (matchId: string, requestedBy: string) => { });
 
 // Player events
-phalanx.on('player-command', (playerId: string, command: PlayerCommand) => {
-  // Return false to reject the command
+phalanx.on('player-command', (playerId: string, command: PlayerCommand, ctx) => {
+  // Return false to reject the command. ctx.endMatch finishes the match
+  // and drops this command. Two-argument handlers still work.
   return true;
 });
 phalanx.on('player-timeout', (playerId: string, matchId: string) => { });
@@ -344,7 +389,8 @@ interface PlayerInfo {
 | `game-start`          | Server → Client  | Countdown finished, load assets   |
 | `client-ready`        | Client → Server  | Client finished loading, ready for ticks |
 | `player-ready`        | Server → Client  | A player reported ready           |
-| `match-end`           | Server → Client  | Match has ended                   |
+| `match-end`           | Server → Client  | Match has ended (`reason`, optional `winnerTeamId`) |
+| `player-absent`       | Server → Client  | Opt-in absence timer (`deadlineMs`, `budgetLeftMs`) |
 | `submit-commands`     | Client → Server  | Send game commands for a tick     |
 | `submit-commands-ack` | Server → Client  | Command acknowledgment            |
 | `commands-batch`      | Server → Client  | All commands for a tick           |
@@ -474,15 +520,16 @@ import { TokenValidatorService, createDevValidator, createEndpointValidator } fr
 import { DeterministicRandom, FP, FPVector2, FPVector3, FixedPoint } from '@phalanx-engine/server';
 import type { FPVector2Interface, FPVector3Interface } from '@phalanx-engine/server';
 
-// Game mode presets
-import { GAME_MODES } from '@phalanx-engine/server';
+// Game mode presets and the suggested absence window
+import { GAME_MODES, DEFAULT_ABSENCE } from '@phalanx-engine/server';
 
 // Types — Configuration
 import type {
   PhalanxConfig, AuthConfig,
   CorsConfig, TlsConfig,
   DesyncConfig, DesyncAction,
-  PauseConfig,
+  PauseConfig, AbsenceConfig, EndMatchResult,
+  PlayerAbsentEvent, PlayerCommandContext,
   GameMode, GameModePreset, CustomGameMode,
   TokenValidator, TokenValidationResult,
 } from '@phalanx-engine/server';

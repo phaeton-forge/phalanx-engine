@@ -22,10 +22,10 @@ export function validateConfig(
     },
   };
 
-  // Validate port
-  if (config.port < 1 || config.port > 65535) {
+  // Validate port. 0 asks the OS for an ephemeral port (tests).
+  if (config.port !== 0 && (config.port < 1 || config.port > 65535)) {
     throw new Error(
-      `Invalid port: ${config.port}. Must be between 1 and 65535.`
+      `Invalid port: ${config.port}. Must be 0 or between 1 and 65535.`
     );
   }
 
@@ -76,6 +76,21 @@ export function validateConfig(
   }
   if (config.maxTickAhead < 1) {
     throw new Error('maxTickAhead must be positive');
+  }
+
+  // Task 10. Absent means the timer is off (today's behaviour).
+  if (config.absence !== undefined) {
+    const { windowMs, matchBudgetMs } = config.absence;
+    if (!Number.isInteger(windowMs) || windowMs <= 0) {
+      throw new Error(
+        `Invalid absence.windowMs: ${String(windowMs)}. Must be an integer > 0.`
+      );
+    }
+    if (!Number.isInteger(matchBudgetMs) || matchBudgetMs <= 0) {
+      throw new Error(
+        `Invalid absence.matchBudgetMs: ${String(matchBudgetMs)}. Must be an integer > 0.`
+      );
+    }
   }
 
   return config;
