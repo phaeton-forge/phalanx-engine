@@ -52,7 +52,7 @@
 // ============================================
 
 export { PhalanxClient } from './PhalanxClient.js';
-export { MatchLogError } from './types.js';
+export { MatchLogError, MatchResumeRejected } from './types.js';
 
 // ============================================
 // Utilities
@@ -99,6 +99,7 @@ export {
   loadOrCreateGuestPlayerId,
   MemoryKeyValueStorage,
   defaultKeyValueStorage,
+  MatchSessionStore,
   getRecoverTimeoutMs,
   DEFAULT_RECOVER_TIMEOUT_BUDGET,
   armBrowserLifecycle,
@@ -114,6 +115,7 @@ export type {
   PersistedRoom,
   RoomRole,
   KeyValueStorage,
+  MatchSession,
   RecoverTimeoutBudget,
   BrowserLifecycleHandle,
   BrowserLifecycleHandlers,
@@ -209,6 +211,12 @@ export type {
   MatchLogErrorReason,
   MatchLogErrorEvent,
   ServerShutdownEvent,
+
+  // Session resume (Task 9)
+  MatchResumeState,
+  MatchResumeWireErrorReason,
+  MatchResumeErrorReason,
+  SessionTokenEvent,
 
   // Commands acknowledgment
   SubmitCommandsAck,
