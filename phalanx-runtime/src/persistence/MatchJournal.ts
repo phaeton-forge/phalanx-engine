@@ -65,6 +65,12 @@ export class MatchJournal {
     snapshotted: false,
   };
   private headerPending = true;
+  /**
+   * A fresh match may reuse an id (the default is `'local'`). The first
+   * header write clears that id once. Resume and a retried header write
+   * leave this false so they do not delete snapshots or commands.
+   */
+  private replaceRecord = true;
   private entries: LogEntry[] = [];
   private cursor = -1;
   private lastCursor = -1;
@@ -100,6 +106,12 @@ export class MatchJournal {
     if (tick > this.cursor) this.cursor = tick;
     this.lastCursor = this.cursor;
     this.headerPending = false;
+    this.replaceRecord = false;
+  }
+
+  /** Highest tick noted for this match, or the resume cursor. */
+  public recordedThrough(): number {
+    return this.cursor;
   }
 
   /**
@@ -251,7 +263,13 @@ export class MatchJournal {
     this.entries = [];
     this.encoded = [];
     try {
-      if (header) await this.store.saveHeader(this.matchId, this.config);
+      if (header) {
+        if (this.replaceRecord) {
+          await this.store.clear(this.matchId);
+          this.replaceRecord = false;
+        }
+        await this.store.saveHeader(this.matchId, this.config);
+      }
       if (entries.length > 0 || cursor !== this.lastCursor) {
         await this.store.appendCommands(this.matchId, entries, cursor);
         this.lastCursor = cursor;

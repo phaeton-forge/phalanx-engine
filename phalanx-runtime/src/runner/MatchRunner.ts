@@ -315,8 +315,9 @@ export class MatchRunner<G extends AnyGameDefinition> {
    * never saved. Does not start the clock; call {@link start}. The restored
    * snapshot includes the input checkpoint (`systemSeq` and every slot's
    * controller mode). Catch-up fast-forwards empty ticks through the stored
-   * cursor. `options` sets the resumed transport's snapshot interval and
-   * pause-when-hidden flag, and the runner's hash interval.
+   * cursor. A snapshot that is already a finished match stays ended and
+   * does not catch up. `options` sets the resumed transport's snapshot
+   * interval and pause-when-hidden flag, and the runner's hash interval.
    */
   public static async resumeLocal<GDef extends AnyGameDefinition>(
     definition: GDef,
@@ -356,12 +357,14 @@ export class MatchRunner<G extends AnyGameDefinition> {
       transport,
       options
     );
-    runner.journal?.skipThrough(loaded.tick);
     try {
       if (loaded.snapshot !== undefined) {
         runner.restore(loaded.snapshot.bytes);
       }
-      if (loaded.tick > runner.tick) {
+      // After restore, so a snapshot at or above the fresh cursor (-1) is
+      // not treated as a rewind. Resume must not clear the stored record.
+      runner.journal?.skipThrough(loaded.tick);
+      if (runner.status !== 'ended' && loaded.tick > runner.tick) {
         await runner.fastForward(loaded.tail, {
           budgetMs: 80,
           throughTick: loaded.tick,
@@ -553,7 +556,9 @@ export class MatchRunner<G extends AnyGameDefinition> {
    * that checkpoint after the transport seek, because `start` will not run
    * again. The match RNG is reset to `config.seed` before `createWorld`;
    * `GameState.restore` then installs the saved generator. A transport that
-   * is already paused pauses the rebuilt world.
+   * is already paused pauses the rebuilt world. The terminal phase is
+   * recomputed from the restored state. While persistence is enabled, a
+   * snapshot older than the journal cursor is rejected.
    */
   public restore(bytes: SnapshotBytes): void {
     this.ensureLive();
@@ -581,6 +586,7 @@ export class MatchRunner<G extends AnyGameDefinition> {
         decision.reason ?? 'incompatible snapshot'
       );
     }
+    this.rejectBackwardRestore(decoded.header.tick);
     const body =
       decision.decision === 'migrate'
         ? migrateBody(
@@ -632,6 +638,32 @@ export class MatchRunner<G extends AnyGameDefinition> {
       this.transport.seek(decoded.header.tick + 1);
     }
     if (this.started) this.flushUnsent();
+    this.syncTerminalPhase();
+  }
+
+  /**
+   * A persisted journal still holds the abandoned timeline. Replaying an
+   * older snapshot would let a later flush keep that timeline, and
+   * `skipThrough` would drop the replacement ticks.
+   */
+  private rejectBackwardRestore(tick: number): void {
+    const recorded = this.journal?.recordedThrough();
+    if (recorded === undefined || tick >= recorded) return;
+    throw new Error(
+      `MatchRunner.restore: cannot rewind a persisted match from tick ${String(recorded)} to ${String(tick)}`
+    );
+  }
+
+  /** `start` must refuse a match whose restored state is already terminal. */
+  private syncTerminalPhase(): void {
+    const outcome = this.definition.checkOutcome(this.sim);
+    if (outcome !== null) {
+      const alreadyEnded = this.phase === 'ended';
+      this.phase = 'ended';
+      if (!alreadyEnded) this.outcomeListeners.emit(outcome);
+      return;
+    }
+    if (this.phase === 'ended') this.phase = 'active';
   }
 
   /** `digestBytes(GameState.save())` of the current tick. */
@@ -905,18 +937,20 @@ export class MatchRunner<G extends AnyGameDefinition> {
       }
     }
     this.completedTick = tick;
-    if (endedNow && outcome !== null) this.outcomeListeners.emit(outcome);
-    if (digest !== undefined && hashDue) {
-      this.digestListeners.emit(tick, digest);
-      this.transport.submitHash?.(tick, digest);
-    }
-    this.tickListeners.emit(tick);
+    // Journal before listeners. `dispose()` from a callback flushes
+    // immediately, and a flush that runs first would miss this tick.
     if (this.stopped) {
       this.sharedSealBody = null;
       this.sharedSealMs = 0;
     } else {
       this.recordPersistence(tick, entries);
     }
+    if (endedNow && outcome !== null) this.outcomeListeners.emit(outcome);
+    if (digest !== undefined && hashDue) {
+      this.digestListeners.emit(tick, digest);
+      this.transport.submitHash?.(tick, digest);
+    }
+    this.tickListeners.emit(tick);
     if (this.phase === 'ended') this.stop();
   }
 

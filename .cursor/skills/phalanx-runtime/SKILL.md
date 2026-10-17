@@ -314,7 +314,11 @@ resumed.start(); // resumeLocal does not start the clock
 ```
 
 Resume restores controller mode for every slot and `systemSeq`, then
-fast-forwards the tail through the stored cursor. `await runner.whenPersisted()`
+fast-forwards the tail through the stored cursor. A snapshot that is
+already terminal stays ended (`start` throws) and does not catch up. A
+fresh match reuses a stored id by clearing that record once; resume does
+not. `restore` rejects a snapshot older than the persisted cursor.
+Hiding the page pauses only a started transport. `await runner.whenPersisted()`
 before exiting the process. It rejects when the header or the command tail
 fails to write. A snapshot encode or snapshot write failure is reported
 with `runner.onPersistenceError` and still leaves the header and commands

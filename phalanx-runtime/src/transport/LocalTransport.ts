@@ -447,7 +447,9 @@ export class LocalTransport implements Transport {
 
   private readonly onVisibility = (): void => {
     if (!this.isHidden()) return;
-    if (this.pauseWhenHidden) this.requestPause();
+    // Catch-up runs before start(). Pausing then skips systems on the
+    // rebuilt world and the resumed state diverges.
+    if (this.pauseWhenHidden && this.clockStarted) this.requestPause();
     if (this.store !== undefined) this.emitFlush('hide');
   };
 

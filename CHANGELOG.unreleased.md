@@ -208,8 +208,14 @@ Entries collected per package until the synchronized 0.3.0 release
   `onPersistenceError` reports a failed snapshot without dropping the
   header or the command tail; header and command failures reject
   `whenPersisted`. A malformed envelope does not dedup away the player's
-  first real command in the same tick. Failed snapshot retries keep the
-  newest two. Catch-up does not save a snapshot for a tick already stored.
+  first real command in the same tick. Payload dedup sorts object keys.
+  Failed snapshot retries keep the newest two. Catch-up does not save a
+  snapshot for a tick already stored. A fresh match that reuses a stored
+  id clears that record once before the first header write; resume and a
+  retried header write do not. `restore` recomputes the terminal phase and
+  rejects a snapshot older than the persisted cursor. A tick is journaled
+  before outcome, digest, and tick listeners. Hiding the page pauses only
+  a started transport. A corrupt IndexedDB row rejects the read.
   The persistence perf test runs only when `PHALANX_PERF=1`.
   `IndexedDbMatchStore` uses `globalThis.indexedDB`.
 

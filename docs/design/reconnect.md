@@ -122,12 +122,16 @@ not ended.
 
 - Auto-pause on `visibilitychange: hidden` is `LocalTransport`'s
   `pauseWhenHidden` (default true, Task 7). A host with no `document`
-  ignores it. Becoming visible does not resume. The pause goes through the
-  runner-owned provider, so it never drops ticks.
+  ignores it. The pause applies only after the transport has started, so
+  a hide during resume catch-up does not skip systems. Becoming visible
+  does not resume. The pause goes through the runner-owned provider, so
+  it never drops ticks.
 - Resume with `MatchRunner.resumeLocal` from the latest stored snapshot
   plus the logged ticks after it, including empty ticks via the stored
-  cursor. The snapshot's controller modes and `systemSeq` come back with
-  the bot section and the input checkpoint.
+  cursor. A snapshot that is already a finished match stays ended and
+  does not catch up. The snapshot's controller modes and `systemSeq` come
+  back with the bot section and the input checkpoint. A fresh match that
+  reuses a stored id replaces that record; resume does not.
 - The snapshot's input checkpoint is re-submitted when the log has no tail.
   When the log continues through tick L, the checkpoint is discarded and
   hosted bot policies are advanced during catch-up: `decide` runs after

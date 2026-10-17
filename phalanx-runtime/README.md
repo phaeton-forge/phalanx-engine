@@ -229,8 +229,15 @@ tick, the runner saves the world once and passes that buffer to both
 off the tick: `setImmediate` in Node, `requestIdleCallback` in browsers,
 otherwise `MessageChannel` or `setTimeout(0)`. A microtask is not used
 for the digest. Writes batch every 5 seconds and on
-`visibilitychange: hidden` / `pagehide`. Only the last two snapshots are
-kept. The stored cursor includes empty ticks, so
+`visibilitychange: hidden` / `pagehide`. Hiding pauses only after
+`start`; a hide during resume catch-up does not skip systems. Only the
+last two snapshots are kept. A fresh match that reuses a stored id
+clears that record once before its first header write. Resume and a
+retried header write do not. `restore` recomputes the terminal phase, so
+a match that ended on the stored snapshot stays ended, and it rejects a
+snapshot older than the persisted cursor. A completed tick is journaled
+before outcome, digest, and tick listeners. The stored cursor includes
+empty ticks, so
 `MatchRunner.resumeLocal(definition, store, matchId, options?)` can
 fast-forward past the last command. `options` may set `snapshotEveryTicks`
 (default 300), `pauseWhenHidden` (default true), and `RunnerOptions`

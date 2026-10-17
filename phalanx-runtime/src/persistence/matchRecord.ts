@@ -19,6 +19,7 @@ export function emptyMatch(): StoredMatch {
   return { config: null, cursor: -1, commands: [], snapshots: [] };
 }
 
+/** Replace the config only. A fresh match clears the row before this runs. */
 export function applyHeader(row: StoredMatch, config: MatchConfig): void {
   row.config = cloneMatchConfig(config);
 }
@@ -152,7 +153,8 @@ function cloneEntry(entry: LogEntry): LogEntry {
 /**
  * Identity of one logged command. A malformed envelope is stored as `q: 0`,
  * which is also the player's first real command, so the key includes
- * `malformed` and the payload. Two copies of the same command still collapse.
+ * `malformed` and the payload. Object key order is not part of the identity.
+ * Two copies of the same command still collapse.
  */
 function entryKey(entry: LogEntry): string {
   const malformed = entry.malformed === true ? '1' : '0';
@@ -161,11 +163,22 @@ function entryKey(entry: LogEntry): string {
 
 function payloadKey(value: unknown): string {
   try {
-    const encoded = JSON.stringify(value);
+    const encoded = JSON.stringify(canonicalJson(value));
     return encoded === undefined ? '' : encoded;
   } catch {
     return '';
   }
+}
+
+/** Sort object keys so `{a,b}` and `{b,a}` dedupe. Arrays keep their order. */
+function canonicalJson(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalJson);
+  if (!isRecord(value)) return value;
+  const sorted: Record<string, unknown> = {};
+  for (const key of Object.keys(value).sort()) {
+    sorted[key] = canonicalJson(value[key]);
+  }
+  return sorted;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

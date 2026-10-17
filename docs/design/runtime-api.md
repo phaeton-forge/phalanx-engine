@@ -1337,9 +1337,15 @@ Literal instructions for each task; they override the original task text.
   command tail. `MatchRunner.resumeLocal(definition, store, matchId, options?)`
   restores the newest snapshot, including `systemSeq` and every slot's
   controller mode, then fast-forwards the command tail through the stored
-  cursor so empty ticks are not dropped. `options` carries
-  `snapshotEveryTicks`, `pauseWhenHidden`, and `RunnerOptions`. Only the
-  last two snapshots are kept.
+  cursor so empty ticks are not dropped. A fresh match clears a reused id
+  once before the first header write; resume and a retried header write do
+  not. `restore` recomputes the terminal phase and, while persistence is
+  on, rejects a snapshot older than the journal cursor. A tick is journaled
+  before outcome, digest, and tick listeners. Hiding the page pauses only a
+  started transport. A corrupt IndexedDB row rejects instead of leaving the
+  write queue pending. `options` carries `snapshotEveryTicks`,
+  `pauseWhenHidden`, and `RunnerOptions`. Only the last two snapshots are
+  kept. Command dedup sorts payload object keys.
 - **Task 8 (relay full log).** Store raw `PlayerCommand`s including the
   envelope; `match-log` chunks of ≤ 2000 ticks; `buildId`; SIGTERM.
 - **Task 9 (session token).** Derive `playerId` from the token / socket for

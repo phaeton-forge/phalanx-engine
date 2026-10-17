@@ -29,6 +29,10 @@ export interface LoadedMatch {
  * keeps the last two snapshots and drops older ones.
  */
 export interface MatchStore {
+  /**
+   * Replace the stored config. Does not clear commands, snapshots, or the
+   * cursor. The runner clears a reused match id once before the first write.
+   */
   saveHeader(matchId: string, config: MatchConfig): Promise<void>;
   /**
    * Append command entries. `cursorTick` is the highest completed tick,

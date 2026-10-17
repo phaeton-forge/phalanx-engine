@@ -161,9 +161,14 @@ function updateRow(
     const store = tx.objectStore(STORE_NAME);
     const get = store.get(matchId);
     get.onsuccess = () => {
-      const row = coerceRow(get.result);
-      update(row);
-      store.put(row, matchId);
+      try {
+        const row = coerceRow(get.result);
+        update(row);
+        store.put(row, matchId);
+      } catch (error) {
+        reject(errorOf(error, 'IndexedDbMatchStore: corrupt match record'));
+        tx.abort();
+      }
     };
     get.onerror = () => {
       reject(errorOf(get.error, 'IndexedDbMatchStore: failed to read'));
@@ -188,11 +193,15 @@ function getRow(
     const tx = db.transaction(STORE_NAME, 'readonly');
     const get = tx.objectStore(STORE_NAME).get(matchId);
     get.onsuccess = () => {
-      if (get.result === undefined) {
-        resolve(null);
-        return;
+      try {
+        if (get.result === undefined) {
+          resolve(null);
+          return;
+        }
+        resolve(coerceRow(get.result));
+      } catch (error) {
+        reject(errorOf(error, 'IndexedDbMatchStore: corrupt match record'));
       }
-      resolve(coerceRow(get.result));
     };
     get.onerror = () => {
       reject(errorOf(get.error, 'IndexedDbMatchStore: failed to read'));
@@ -290,6 +299,7 @@ interface StoreLike {
 interface TxLike {
   readonly error: unknown;
   objectStore(name: string): StoreLike;
+  abort(): void;
   oncomplete: (() => void) | null;
   onerror: (() => void) | null;
   onabort: (() => void) | null;
