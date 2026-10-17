@@ -226,6 +226,37 @@ describe.each([
     expect(afterOldest?.tail.map((item) => item.tick)).toEqual([18]);
   });
 
+  it('rejects deleting the only snapshot once covered commands are gone', async () => {
+    const store = openStore();
+    const matchId = nextId('final-snapshot');
+    await store.saveHeader(matchId, tinyConfig(matchId));
+    await store.appendCommands(matchId, [entry(1), entry(6)], 6);
+    await store.saveSnapshot(matchId, 5, new Uint8Array([5]));
+    await expect(store.deleteSnapshot(matchId, 5)).rejects.toThrow(
+      /final recovery snapshot/
+    );
+    const loaded = await store.load(matchId);
+    expect(loaded?.tick).toBe(6);
+    expect(loaded?.snapshot?.tick).toBe(5);
+    expect(loaded?.snapshot?.bytes).toEqual(new Uint8Array([5]));
+    expect(loaded?.tail.map((item) => item.tick)).toEqual([6]);
+    expect(await store.snapshotTicks(matchId)).toEqual([5]);
+  });
+
+  it('deletes the only snapshot when every command is still stored', async () => {
+    const store = openStore();
+    const matchId = nextId('complete-log');
+    await store.saveHeader(matchId, tinyConfig(matchId));
+    await store.appendCommands(matchId, [entry(6)], 6);
+    await store.saveSnapshot(matchId, 5, new Uint8Array([5]));
+    await store.deleteSnapshot(matchId, 5);
+    const loaded = await store.load(matchId);
+    expect(loaded?.tick).toBe(6);
+    expect(loaded?.snapshot).toBeUndefined();
+    expect(loaded?.tail.map((item) => item.tick)).toEqual([6]);
+    expect(await store.snapshotTicks(matchId)).toEqual([]);
+  });
+
   it('resumes a malformed envelope beside the first command', async () => {
     const store = openStore();
     const matchId = nextId('malformed');

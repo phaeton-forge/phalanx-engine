@@ -56,8 +56,10 @@ export interface MatchStore {
   clear(matchId: string): Promise<void>;
   /**
    * Drop one stored snapshot. Commands and the cursor stay. A tick that is
-   * not stored is a no-op. Optional: a store without it skips cleanup when
-   * resume falls back to an older snapshot.
+   * not stored is a no-op. Refuses to delete the only remaining snapshot
+   * after a command at or before a snapshot was discarded: resume would
+   * otherwise replay a partial log from tick 0. Optional: a store without
+   * it skips cleanup when resume falls back to an older snapshot.
    */
   deleteSnapshot?(matchId: string, tick: number): Promise<void>;
 }

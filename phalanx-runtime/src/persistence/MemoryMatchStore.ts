@@ -58,7 +58,16 @@ export class MemoryMatchStore implements MatchStore {
   public deleteSnapshot(matchId: string, tick: number): Promise<void> {
     assertMatchId(matchId);
     const row = this.rows.get(matchId);
-    if (row !== undefined) deleteStoredSnapshot(row, tick);
+    if (row === undefined) return Promise.resolve();
+    try {
+      deleteStoredSnapshot(row, tick);
+    } catch (error) {
+      return Promise.reject(
+        error instanceof Error
+          ? error
+          : new Error('MatchStore: deleteSnapshot failed')
+      );
+    }
     return Promise.resolve();
   }
 

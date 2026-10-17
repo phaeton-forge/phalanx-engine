@@ -135,7 +135,10 @@ not ended.
   cursor. A restore failure tries the previous snapshot on a new runner
   and deletes the rejected one after a successful catch-up
   (`resumeReport`, `onSnapshotFallback`, optional
-  `MatchStore.deleteSnapshot`). When every snapshot fails it throws
+  `MatchStore.deleteSnapshot`). `deleteSnapshot` refuses to remove the
+  only remaining snapshot once a command at or before a snapshot has been
+  dropped, so a tick-0 replay cannot silently drop that command. When
+  every snapshot fails it throws
   `MatchResumeError` and leaves the store unchanged. With no snapshot the
   whole log is replayed from tick 0. A snapshot that is already a finished
   match stays ended and does not catch up. The snapshot's controller modes

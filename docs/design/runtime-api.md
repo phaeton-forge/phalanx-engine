@@ -1357,7 +1357,9 @@ Literal instructions for each task; they override the original task text.
   fast-forward error does not fall back. Every snapshot failing throws
   `MatchResumeError` and does not clear the store. On a successful
   fallback the runner's `resumeReport` names the snapshot used, and
-  `deleteSnapshot?` removes the rejected ticks. `onSnapshotFallback`
+  `deleteSnapshot?` removes the rejected ticks. It refuses to delete the
+  only remaining snapshot once a command at or before a snapshot has been
+  dropped. `onSnapshotFallback`
   runs only when at least one snapshot was skipped.
 - **Task 8 (relay full log).** Store raw `PlayerCommand`s including the
   envelope; `match-log` chunks of ≤ 2000 ticks; `buildId`; SIGTERM.

@@ -249,7 +249,9 @@ runner. `runner.resumeReport` says which tick was used.
 `onSnapshotFallback` runs only when a newer snapshot was skipped. The
 rejected ticks are removed with optional `MatchStore.deleteSnapshot`; a
 cleanup failure is `resumeReport.cleanupError` and the match still
-resumes. If every snapshot fails, `resumeLocal` throws `MatchResumeError`
+resumes. `deleteSnapshot` refuses to remove the only remaining snapshot
+once a command at or before a snapshot has been dropped. Resume would
+otherwise replay a partial log from tick 0. If every snapshot fails, `resumeLocal` throws `MatchResumeError`
 and does not clear the store. With no snapshot the whole log is replayed
 from tick 0. A failed snapshot
 encode or snapshot write is reported with `onPersistenceError` and does

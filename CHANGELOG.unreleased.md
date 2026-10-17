@@ -222,7 +222,9 @@ Entries collected per package until the synchronized 0.3.0 release
   appends, pre-0.3.0 v1 data is dropped; `resumeLocal` falls back to the
   previous snapshot (`resumeReport`, `onSnapshotFallback`,
   `MatchResumeError`), rejected snapshots are deleted
-  (`MatchStore.deleteSnapshot?`).
+  (`MatchStore.deleteSnapshot?`). Deleting the only remaining snapshot is
+  refused once a command at or before a snapshot has been dropped, so
+  resume cannot replay a partial log from tick 0.
 - `decodeInputCheckpoint` throws `SnapshotRejectedError` when a format-2
   input checkpoint has no trailing `systemSeq` (snapshots written before
   setController / 6.5b). `ENGINE_SNAPSHOT_FORMAT` stays 2.

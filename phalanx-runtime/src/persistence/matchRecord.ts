@@ -14,10 +14,24 @@ export interface StoredMatch {
   cursor: number;
   commands: LogEntry[];
   snapshots: StoredSnapshot[];
+  /**
+   * True once a command at or before a retained snapshot was discarded.
+   * The only remaining snapshot is then the recovery point.
+   */
+  historyPruned: boolean;
+  /** Lowest command tick ever stored, including ticks later dropped. */
+  minEntryTick: number | null;
 }
 
 export function emptyMatch(): StoredMatch {
-  return { config: null, cursor: -1, commands: [], snapshots: [] };
+  return {
+    config: null,
+    cursor: -1,
+    commands: [],
+    snapshots: [],
+    historyPruned: false,
+    minEntryTick: null,
+  };
 }
 
 /** Replace the config only. A fresh match clears the row before this runs. */
@@ -32,6 +46,12 @@ export function applyCommands(
 ): void {
   const seen = new Set(row.commands.map(entryKey));
   const oldest = row.snapshots[0];
+  row.historyPruned = markPrunedHistory(
+    row.historyPruned,
+    oldest?.tick,
+    row.minEntryTick,
+    entries
+  );
   const applied = collectNewEntries(
     entries,
     row.cursor,
@@ -39,6 +59,7 @@ export function applyCommands(
     oldest?.tick,
     seen
   );
+  row.minEntryTick = noteMinEntryTick(row.minEntryTick, applied.kept);
   for (const entry of applied.kept) row.commands.push(entry);
   row.cursor = applied.cursor;
 }
@@ -176,6 +197,12 @@ export function applySnapshot(
   row.snapshots.sort((left, right) => left.tick - right.tick);
   while (row.snapshots.length > RETAINED_SNAPSHOTS) row.snapshots.shift();
   const oldest = row.snapshots[0];
+  row.historyPruned = markPrunedHistory(
+    row.historyPruned,
+    oldest?.tick,
+    row.minEntryTick,
+    row.commands
+  );
   if (oldest !== undefined) {
     row.commands = row.commands.filter((entry) => entry.tick > oldest.tick);
   }
@@ -221,10 +248,57 @@ export function entriesAfter(
   return tail;
 }
 
+/**
+ * True once a tick-0 replay would miss a command covered by `oldestTick`.
+ * `minEntryTick` remembers commands already dropped from the log.
+ */
+export function markPrunedHistory(
+  historyPruned: boolean,
+  oldestTick: number | undefined,
+  minEntryTick: number | null,
+  entries: readonly LogEntry[]
+): boolean {
+  if (historyPruned) return true;
+  if (oldestTick === undefined) return false;
+  if (minEntryTick !== null && minEntryTick <= oldestTick) return true;
+  for (const entry of entries) {
+    if (entry.tick <= oldestTick) return true;
+  }
+  return false;
+}
+
+/** Lowest tick among `entries`, keeping a previous minimum. */
+export function noteMinEntryTick(
+  minEntryTick: number | null,
+  entries: readonly LogEntry[]
+): number | null {
+  let min = minEntryTick;
+  for (const entry of entries) {
+    if (min === null || entry.tick < min) min = entry.tick;
+  }
+  return min;
+}
+
+/**
+ * The last snapshot is the only way to rebuild commands that were dropped.
+ * Deleting it would make a tick-0 replay a different match.
+ */
+export function assertFinalSnapshotKept(
+  snapshotCount: number,
+  historyPruned: boolean
+): void {
+  if (snapshotCount === 1 && historyPruned) {
+    throw new Error(
+      'MatchStore: cannot delete the final recovery snapshot after command history was pruned'
+    );
+  }
+}
+
 /** Drop one snapshot. Commands and the cursor stay. A missing tick is a no-op. */
 export function deleteStoredSnapshot(row: StoredMatch, tick: number): void {
   const index = row.snapshots.findIndex((snap) => snap.tick === tick);
   if (index < 0) return;
+  assertFinalSnapshotKept(row.snapshots.length, row.historyPruned);
   row.snapshots.splice(index, 1);
 }
 

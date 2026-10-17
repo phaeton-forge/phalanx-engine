@@ -320,7 +320,9 @@ Resume restores controller mode for every slot and `systemSeq`, then
 fast-forwards the tail through the stored cursor. `LoadedMatch.previous`
 is the older snapshot. A failed `restore` tries that snapshot on a new
 runner and, after catch-up, deletes the rejected tick when the store
-implements `deleteSnapshot`. `runner.resumeReport` is null until
+implements `deleteSnapshot`. That delete refuses to remove the only
+remaining snapshot once a covered command has been dropped.
+`runner.resumeReport` is null until
 `resumeLocal` returns. `onSnapshotFallback` runs only when a snapshot
 was skipped. Every snapshot failing throws `MatchResumeError` and leaves
 the store in place. No stored snapshot replays the log from tick 0. A

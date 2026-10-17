@@ -5,11 +5,14 @@ import {
   assertMatchId,
   assertSnapshotInput,
   chunkBounds,
+  assertFinalSnapshotKept,
   collectNewEntries,
   commandBatchOverlaps,
   emptyMatch,
   entriesAfter,
   lowestEntryTick,
+  markPrunedHistory,
+  noteMinEntryTick,
   planSnapshotTicks,
   rememberEntries,
 } from './matchRecord.js';
@@ -41,6 +44,8 @@ interface MatchMeta {
   cursor: number;
   nextSeq: number;
   maxEntryTick: number;
+  minEntryTick: number | null;
+  historyPruned: boolean;
   snapshotTicks: number[];
 }
 
@@ -179,6 +184,13 @@ export class IndexedDbMatchStore implements MatchStore {
               snapshotStore.delete([matchId, dropped]);
             }
             const cursor = tick > meta.cursor ? tick : meta.cursor;
+            const oldest = planned.ticks[0];
+            meta.historyPruned = markPrunedHistory(
+              meta.historyPruned,
+              oldest,
+              meta.minEntryTick,
+              []
+            );
             const commitMeta = (): void => {
               metaStore.put(
                 {
@@ -186,12 +198,13 @@ export class IndexedDbMatchStore implements MatchStore {
                   cursor,
                   nextSeq: meta.nextSeq,
                   maxEntryTick: meta.maxEntryTick,
+                  minEntryTick: meta.minEntryTick,
+                  historyPruned: meta.historyPruned,
                   snapshotTicks: planned.ticks,
                 },
                 matchId
               );
             };
-            const oldest = planned.ticks[0];
             if (oldest === undefined) {
               commitMeta();
               return;
@@ -253,6 +266,10 @@ export class IndexedDbMatchStore implements MatchStore {
             if (get.result === undefined) return;
             const meta = coerceMeta(get.result);
             if (!meta.snapshotTicks.includes(tick)) return;
+            assertFinalSnapshotKept(
+              meta.snapshotTicks.length,
+              meta.historyPruned
+            );
             tx.objectStore(SNAPSHOTS_STORE).delete([matchId, tick]);
             metaStore.put(
               {
@@ -260,6 +277,8 @@ export class IndexedDbMatchStore implements MatchStore {
                 cursor: meta.cursor,
                 nextSeq: meta.nextSeq,
                 maxEntryTick: meta.maxEntryTick,
+                minEntryTick: meta.minEntryTick,
+                historyPruned: meta.historyPruned,
                 snapshotTicks: meta.snapshotTicks.filter(
                   (stored) => stored !== tick
                 ),
@@ -400,6 +419,12 @@ function writeCommandBatch(
   oldest: number | undefined,
   seen: Set<string>
 ): void {
+  const historyPruned = markPrunedHistory(
+    meta.historyPruned,
+    oldest,
+    meta.minEntryTick,
+    entries
+  );
   const applied = collectNewEntries(
     entries,
     meta.cursor,
@@ -407,6 +432,7 @@ function writeCommandBatch(
     oldest,
     seen
   );
+  const minEntryTick = noteMinEntryTick(meta.minEntryTick, applied.kept);
   let nextSeq = meta.nextSeq;
   let maxEntryTick = meta.maxEntryTick;
   if (applied.kept.length > 0) {
@@ -429,7 +455,9 @@ function writeCommandBatch(
     applied.kept.length === 0 &&
     applied.cursor === meta.cursor &&
     nextSeq === meta.nextSeq &&
-    maxEntryTick === meta.maxEntryTick
+    maxEntryTick === meta.maxEntryTick &&
+    historyPruned === meta.historyPruned &&
+    minEntryTick === meta.minEntryTick
   ) {
     return;
   }
@@ -439,6 +467,8 @@ function writeCommandBatch(
       cursor: applied.cursor,
       nextSeq,
       maxEntryTick,
+      minEntryTick,
+      historyPruned,
       snapshotTicks: meta.snapshotTicks,
     },
     matchId
@@ -628,6 +658,8 @@ function emptyMeta(): MatchMeta {
     cursor: -1,
     nextSeq: 0,
     maxEntryTick: -1,
+    minEntryTick: null,
+    historyPruned: false,
     snapshotTicks: [],
   };
 }
@@ -640,6 +672,8 @@ function coerceMeta(value: unknown): MatchMeta {
   const cursor = value['cursor'];
   const nextSeq = value['nextSeq'];
   const maxEntryTick = value['maxEntryTick'];
+  const minEntryTick = value['minEntryTick'];
+  const historyPruned = value['historyPruned'];
   const snapshotTicks = value['snapshotTicks'];
   const config = value['config'];
   if (typeof cursor !== 'number' || !Number.isInteger(cursor)) {
@@ -653,6 +687,18 @@ function coerceMeta(value: unknown): MatchMeta {
     throw new Error('IndexedDbMatchStore: corrupt meta');
   }
   if (typeof maxEntryTick !== 'number' || !Number.isInteger(maxEntryTick)) {
+    throw new Error('IndexedDbMatchStore: corrupt meta');
+  }
+  if (
+    minEntryTick !== undefined &&
+    minEntryTick !== null &&
+    (typeof minEntryTick !== 'number' ||
+      !Number.isInteger(minEntryTick) ||
+      minEntryTick < 0)
+  ) {
+    throw new Error('IndexedDbMatchStore: corrupt meta');
+  }
+  if (historyPruned !== undefined && typeof historyPruned !== 'boolean') {
     throw new Error('IndexedDbMatchStore: corrupt meta');
   }
   if (
@@ -676,6 +722,8 @@ function coerceMeta(value: unknown): MatchMeta {
     cursor,
     nextSeq,
     maxEntryTick,
+    minEntryTick: typeof minEntryTick === 'number' ? minEntryTick : null,
+    historyPruned: historyPruned === true,
     snapshotTicks: ticks,
   };
 }
