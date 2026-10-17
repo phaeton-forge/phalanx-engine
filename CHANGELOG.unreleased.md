@@ -287,7 +287,7 @@ Entries collected per package until the synchronized 0.3.0 release
 
 ## @phalanx-engine/client
 
-- client: `resumeMatch()`, `MatchSessionStore`, `gameId` config, `sessionToken` event. A killed tab loads `phalanx.session.<gameId>` from `localStorage`, connects, and resumes with the opaque token. `match-end` clears the record.
+- client: `resumeMatch()`, `MatchSessionStore`, `gameId` config, `sessionToken` event. A killed tab loads `phalanx.session.<gameId>` from `localStorage`, connects, and resumes with the opaque token. `match-end` clears the record. A terminal `resumeMatch` rejection (`invalid`, `expired`, `match-ended`, `build-mismatch`) also clears it; `timeout` keeps it. `autoReconnect` tries `resumeMatch(token, lastTick)` when the store has this match, then `reconnectToMatch`. Giving up clears the store and emits `reconnectFailed`. Do not log the token.
 - `DeterministicRandom` is re-exported from `@phalanx-engine/math` under the
   same name. Instance methods are unchanged.
 - Opt-in relay catch-up: `PhalanxClientConfig.buildId` is sent on
@@ -301,7 +301,7 @@ Entries collected per package until the synchronized 0.3.0 release
 
 ## @phalanx-engine/server
 
-- server: opt-in HMAC session token (`session`), `match-resume` / `match-resume-state` / `match-resume-error`, `reconnect.requireSessionToken` (closes the `reconnect-match` identity hole, and in-match `room-recover`). `playerId` on resume comes from the token. An ended match answers `'match-ended'` for 10 minutes.
+- server: opt-in HMAC session token (`session`), `match-resume` / `match-resume-state` / `match-resume-error`, `reconnect.requireSessionToken` (closes the `reconnect-match` identity hole, and in-match `room-recover`). `playerId` on resume comes from the token. An ended match answers `'match-ended'` for 10 minutes. The token is signed, not encrypted; do not log it. `requireSessionToken` without `session.secret` throws at startup. A superseded socket leaves the room and cannot submit. In-match `room-error` for that gate sets `reason: 'session-token-required'` and keeps `message`.
 - server: opt-in absence timer in `playing`
   (`absence: { windowMs, matchBudgetMs }`, `player-absent`, `match-end`
   gains `winnerTeamId`, `reason: 'disconnect' | 'abandoned'`); public

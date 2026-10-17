@@ -1367,14 +1367,19 @@ Literal instructions for each task; they override the original task text.
 - **Task 8 (relay full log).** Store raw `PlayerCommand`s including the
   envelope; `match-log` chunks of ≤ 2000 ticks; `buildId`; SIGTERM.
 - **Task 9 (session token).** Opt-in `session`. `match-resume` takes
-  `playerId` from the HMAC token only. `reconnect.requireSessionToken`
-  (default false) rejects legacy `reconnect-match` and in-match
-  `room-recover`. Waiting-room `room-recover` and the pre-match
-  handlers (`queue-join`, `room-create`, `room-join`) are unchanged
-  here; those three are Task 9b, not "all five handlers". `slot` is
-  the index in `teams.flat()` (team 0 first, queue order within a
-  team), the same index Task 12 will use. `absentDeadline` is the
-  soonest other row from `GameRoom.getAbsences()`.
+  `playerId` from the HMAC token only. The token is signed, not
+  encrypted; do not log it or `session.secret`.
+  `reconnect.requireSessionToken` (default false) rejects legacy
+  `reconnect-match` and in-match `room-recover` (`room-error.reason`
+  is `'session-token-required'`, and `message` stays the same). The
+  flag throws at startup without `session.secret`. Waiting-room
+  `room-recover` and the pre-match handlers (`queue-join`,
+  `room-create`, `room-join`) are unchanged here; those three are
+  Task 9b, not "all five handlers". `slot` is the index in
+  `teams.flat()` (team 0 first, queue order within a team), the same
+  index Task 12 will use. `absentDeadline` is the soonest other row
+  from `GameRoom.getAbsences()`. A resume drops the previous socket
+  from the room. `autoReconnect` tries the stored token first.
 - **Task 10 (absence timer).** Public `GameRoom.endMatch`; 120 s window,
   180 s budget; `abandoned` when all humans are absent.
 - **Task 11 (SimHost).**

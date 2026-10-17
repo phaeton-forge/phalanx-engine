@@ -403,6 +403,7 @@ export class PrivateRoomService {
         if (this.config.reconnect?.requireSessionToken === true) {
           socket.emit('room-error', {
             message: 'session-token-required',
+            reason: 'session-token-required',
           } satisfies RoomErrorEvent);
           return false;
         }

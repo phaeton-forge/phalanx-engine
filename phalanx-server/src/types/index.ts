@@ -645,6 +645,12 @@ export interface RoomRecoveredEvent {
 /** Event sent when a private-room operation fails. */
 export interface RoomErrorEvent {
   message: string;
+  /**
+   * Typed gate. Set together with `message: 'session-token-required'`
+   * when an in-match `room-recover` is refused because
+   * `reconnect.requireSessionToken` is on. Other failures omit it.
+   */
+  reason?: 'session-token-required';
 }
 
 /**

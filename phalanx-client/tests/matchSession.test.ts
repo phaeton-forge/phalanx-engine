@@ -123,13 +123,22 @@ function clientWithSocket(options?: {
   gameId?: string;
   storage?: MemoryKeyValueStorage;
   connectionTimeoutMs?: number;
+  autoReconnect?: boolean;
+  maxReconnectAttempts?: number;
+  reconnectDelayMs?: number;
 }): { client: PhalanxClient; socket: MockSocket } {
   const client = new PhalanxClient({
     serverUrl: 'http://127.0.0.1:9',
     playerId: 'player-1',
     username: 'Player1',
-    autoReconnect: false,
+    autoReconnect: options?.autoReconnect ?? false,
     connectionTimeoutMs: options?.connectionTimeoutMs ?? 1000,
+    ...(options?.maxReconnectAttempts !== undefined
+      ? { maxReconnectAttempts: options.maxReconnectAttempts }
+      : {}),
+    ...(options?.reconnectDelayMs !== undefined
+      ? { reconnectDelayMs: options.reconnectDelayMs }
+      : {}),
     ...(options?.buildId !== undefined ? { buildId: options.buildId } : {}),
     ...(options?.gameId !== undefined ? { gameId: options.gameId } : {}),
     ...(options?.storage !== undefined
@@ -249,6 +258,44 @@ describe('resumeMatch', () => {
     }
   });
 
+  it('clears the store on a terminal rejection and keeps it on timeout', async () => {
+    const storage = new MemoryKeyValueStorage();
+    const reasons = [
+      'invalid',
+      'expired',
+      'match-ended',
+      'build-mismatch',
+    ] as const;
+    for (const reason of reasons) {
+      const { client, socket } = clientWithSocket({
+        gameId: 'legion',
+        storage,
+      });
+      new MatchSessionStore('legion', storage).save(session);
+      const pending = client.resumeMatch(session.token, 0);
+      await vi.waitFor(() => {
+        expect(socket.emit).toHaveBeenCalled();
+      });
+      socket.fire('match-resume-error', { reason });
+      await expect(pending).rejects.toMatchObject({ reason });
+      expect(new MatchSessionStore('legion', storage).load()).toBeNull();
+    }
+
+    const { client, socket } = clientWithSocket({
+      gameId: 'legion',
+      storage,
+      connectionTimeoutMs: 30,
+    });
+    new MatchSessionStore('legion', storage).save(session);
+    const pending = client.resumeMatch(session.token, 1);
+    await vi.waitFor(() => {
+      expect(socket.emit).toHaveBeenCalled();
+    });
+    await expect(pending).rejects.toMatchObject({ reason: 'timeout' });
+    expect(new MatchSessionStore('legion', storage).load()).toEqual(session);
+    socket.fire('match-resume-error', { reason: 'invalid' });
+  });
+
   it('rejects with timeout when the server does not answer', async () => {
     const { client } = clientWithSocket({ connectionTimeoutMs: 30 });
     const pending = client.resumeMatch('tok', 0);
@@ -299,6 +346,125 @@ describe('session-token persistence', () => {
     });
     expect(seen).toEqual(['opaque-token']);
     expect(storage.getItem('phalanx.session.legion')).toBeNull();
+  });
+});
+
+describe('autoReconnect', () => {
+  function reconnectingClient(storage: MemoryKeyValueStorage): {
+    client: PhalanxClient;
+    manager: SocketManager;
+  } {
+    const { client } = clientWithSocket({
+      gameId: 'legion',
+      storage,
+      autoReconnect: true,
+      maxReconnectAttempts: 1,
+      reconnectDelayMs: 0,
+    });
+    const manager = (client as unknown as { socketManager: SocketManager })
+      .socketManager;
+    vi.spyOn(manager, 'connect').mockResolvedValue(undefined);
+    return { client, manager };
+  }
+
+  function rememberMatch(client: PhalanxClient, socket: MockSocket): void {
+    socket.fire('match-found', {
+      matchId: 'match-1',
+      playerId: 'player-1',
+      teamId: 0,
+      teammates: [],
+      opponents: [],
+    });
+    socket.fire('commands-batch', { tick: 4, commands: [] });
+    expect(client.getMatchId()).toBe('match-1');
+    expect(client.getCurrentTick()).toBe(4);
+  }
+
+  it('tries the stored token for this match before reconnectToMatch', async () => {
+    const storage = new MemoryKeyValueStorage();
+    const { client, socket } = clientWithSocket({
+      gameId: 'legion',
+      storage,
+      autoReconnect: true,
+      maxReconnectAttempts: 2,
+      reconnectDelayMs: 0,
+    });
+    new MatchSessionStore('legion', storage).save(session);
+    rememberMatch(client, socket);
+    const manager = (client as unknown as { socketManager: SocketManager })
+      .socketManager;
+    vi.spyOn(manager, 'connect').mockResolvedValue(undefined);
+    const resume = vi
+      .spyOn(manager, 'resumeMatch')
+      .mockResolvedValue(resumeState);
+    const legacy = vi.spyOn(manager, 'reconnectToMatch').mockResolvedValue({
+      matchId: 'match-1',
+      currentTick: 4,
+      state: 'playing',
+      recentCommands: [],
+    });
+
+    await client.attemptReconnection();
+    expect(resume).toHaveBeenCalledWith('opaque-token', 4);
+    expect(legacy).not.toHaveBeenCalled();
+    expect(new MatchSessionStore('legion', storage).load()).toEqual(session);
+  });
+
+  it('falls back to reconnectToMatch and drops a refused token', async () => {
+    const storage = new MemoryKeyValueStorage();
+    const { client, socket } = clientWithSocket({
+      gameId: 'legion',
+      storage,
+      autoReconnect: true,
+      maxReconnectAttempts: 1,
+      reconnectDelayMs: 0,
+    });
+    new MatchSessionStore('legion', storage).save(session);
+    rememberMatch(client, socket);
+    const manager = (client as unknown as { socketManager: SocketManager })
+      .socketManager;
+    vi.spyOn(manager, 'connect').mockResolvedValue(undefined);
+    vi.spyOn(manager, 'resumeMatch').mockRejectedValue(
+      new MatchResumeRejected('invalid')
+    );
+    const legacy = vi.spyOn(manager, 'reconnectToMatch').mockResolvedValue({
+      matchId: 'match-1',
+      currentTick: 4,
+      state: 'playing',
+      recentCommands: [],
+    });
+    const failed = vi.fn();
+    client.on('reconnectFailed', failed);
+
+    await client.attemptReconnection();
+    expect(legacy).toHaveBeenCalledWith('match-1');
+    expect(failed).not.toHaveBeenCalled();
+    expect(new MatchSessionStore('legion', storage).load()).toBeNull();
+  });
+
+  it('clears the store and emits reconnectFailed when rejoining gives up', async () => {
+    const storage = new MemoryKeyValueStorage();
+    const { client, manager } = reconnectingClient(storage);
+    new MatchSessionStore('legion', storage).save({
+      ...session,
+      matchId: 'other-match',
+    });
+    const socket = (manager as unknown as { socket: MockSocket }).socket;
+    rememberMatch(client, socket);
+    const resume = vi.spyOn(manager, 'resumeMatch');
+    vi.spyOn(manager, 'reconnectToMatch').mockRejectedValue(
+      new Error('Reconnection failed')
+    );
+    const failed = new Promise<void>((resolve) => {
+      client.on('reconnectFailed', () => resolve());
+    });
+
+    await expect(client.attemptReconnection()).rejects.toThrow(
+      /Max reconnection attempts/
+    );
+    await failed;
+    expect(resume).not.toHaveBeenCalled();
+    expect(new MatchSessionStore('legion', storage).load()).toBeNull();
   });
 });
 

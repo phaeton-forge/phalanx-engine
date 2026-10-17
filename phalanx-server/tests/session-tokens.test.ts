@@ -193,6 +193,9 @@ describe('session config validation', () => {
         reconnect: { requireSessionToken: 'yes' as unknown as boolean },
       })
     ).toThrow(/requireSessionToken/);
+    expect(() =>
+      validateConfig({ reconnect: { requireSessionToken: true } })
+    ).toThrow(/session\.secret/);
   });
 
   it('leaves the feature off when session is omitted', () => {

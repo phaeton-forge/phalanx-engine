@@ -690,14 +690,15 @@ export class Phalanx extends EventEmitter {
         }
       });
 
-      // Handle player command
+      // Handle player command. A superseded socket still has a closure
+      // `playerId`; only the socket currently in `socketToPlayer` may act.
       socket.on('player-command', (command: PlayerCommand) => {
         if (!playerId) return;
 
         // Find the match this player is in (check both matchmaking and private rooms)
         const matchId = (socket.data as SocketData).matchId;
         const gameRoom = matchId ? this.findMatch(matchId) : undefined;
-        if (gameRoom) {
+        if (gameRoom && gameRoom.isParticipantSocket(socket.id)) {
           const accepted = gameRoom.handleCommand(playerId, command);
           socket.emit('command-ack', {
             tick: command.tick,
@@ -738,11 +739,11 @@ export class Phalanx extends EventEmitter {
         }
 
         const gameRoom = this.findMatch(matchId);
-        if (!gameRoom) {
+        if (!gameRoom || !gameRoom.isParticipantSocket(socket.id)) {
           socket.emit('submit-commands-ack', {
             tick,
             accepted: false,
-            reason: 'Match not found',
+            reason: gameRoom ? 'Not in a match' : 'Match not found',
           });
           return;
         }
