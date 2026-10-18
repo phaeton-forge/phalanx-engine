@@ -346,6 +346,26 @@ describe('GameRoom.endMatch', () => {
     ).toBe(false);
     room.stop();
   });
+
+  it('does not auto-ready a human whose id looks like a bot', () => {
+    const human = qp('bot:7', 'sock-bot');
+    const { room } = createRoom([[human]]);
+    room.start();
+    expect(room.getMatchInfo().state).toBe('waiting-for-ready');
+    room.handlePlayerReady('bot:7');
+    expect(room.getMatchInfo().state).toBe('playing');
+    room.stop();
+  });
+
+  it('auto-readies a slot whose kind is bot', () => {
+    const bot = { ...qp('bot:1', ''), kind: 'bot' as const };
+    const { room } = createRoom([[P1], [bot]]);
+    room.start();
+    expect(room.getMatchInfo().state).toBe('waiting-for-ready');
+    room.handlePlayerReady('p1');
+    expect(room.getMatchInfo().state).toBe('playing');
+    room.stop();
+  });
 });
 
 describe('endMatch through the player-command socket hook', () => {

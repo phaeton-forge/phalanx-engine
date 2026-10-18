@@ -414,7 +414,9 @@ const app = new Phalanx({
 fields are copied into that config only when the game's `configKeys` lists
 them. `maxMatches` is reserved when the room is created, including a room
 still waiting for humans, and released on cancel, expiry, or match end.
-The relay remains the only stamper. Bot player ids are `bot:<slot>`. A bot decides at sim tick `S`
+The relay remains the only stamper. `system` and `bot:<slot>` are rejected
+on `queue-join`, `room-create`, `room-join`, `room-recover`, and on human
+slots. A client command is stamped with the socket's player id. Bot player ids are `bot:<slot>`. A bot decides at sim tick `S`
 and targets `S + inputDelayTicks`, the same delay as a human, so the command
 is usually waiting before the relay broadcasts that tick. If this room's
 lead over the sim exceeds `inputDelayTicks - 1`, `sim-lag` pauses **this

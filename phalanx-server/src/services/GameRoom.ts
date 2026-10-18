@@ -279,7 +279,10 @@ export class GameRoom {
         if (qp.socketId.length > 0) {
           this.socketToPlayer.set(qp.socketId, qp.playerId);
         }
-        if (qp.kind === 'bot' || isBotPlayerId(qp.playerId)) {
+        // Auto-ready follows the slot role. A human id is never a bot,
+        // even when the string is `bot:<slot>` — those ids are rejected
+        // before a room is created.
+        if (qp.kind === 'bot') {
           this.botPlayers.add(qp.playerId);
         }
         // Initialize activity tracking with current time
@@ -922,8 +925,13 @@ export class GameRoom {
       return false;
     }
 
+    // The socket identity is the stamp. A client body cannot file
+    // `system` or `bot:<slot>`; RoomSim is the only producer of those.
+    const stamped: PlayerCommand =
+      command.playerId === playerId ? command : { ...command, playerId };
+
     // Validate tick range
-    const tickDiff = command.tick - this.currentTick;
+    const tickDiff = stamped.tick - this.currentTick;
     if (
       tickDiff < -this.config.maxTickBehind ||
       tickDiff > this.config.maxTickAhead
@@ -936,7 +944,7 @@ export class GameRoom {
     const result = this.eventEmitter(
       'player-command',
       playerId,
-      command,
+      stamped,
       this.commandContext
     );
     if (result === false || this.isFinished()) {
@@ -944,14 +952,14 @@ export class GameRoom {
     }
 
     // Store command for the specified tick
-    const targetTick = Math.max(command.tick, this.currentTick);
+    const targetTick = Math.max(stamped.tick, this.currentTick);
     if (!this.pendingCommands.has(targetTick)) {
       this.pendingCommands.set(targetTick, []);
     }
-    this.pendingCommands.get(targetTick)!.push(command);
+    this.pendingCommands.get(targetTick)!.push(stamped);
 
     // Update player's last tick
-    player.lastTick = command.tick;
+    player.lastTick = stamped.tick;
 
     return true;
   }
@@ -1031,6 +1039,9 @@ export class GameRoom {
           return { accepted: false };
         }
       }
+    }
+    for (const command of validCommands) {
+      command.playerId = playerId;
     }
 
     // Hooks run before the command is logged. If one of them ends the

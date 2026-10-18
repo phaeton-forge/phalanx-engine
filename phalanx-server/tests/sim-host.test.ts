@@ -850,6 +850,179 @@ describe('SimHost', () => {
       false
     );
   });
+
+  it('rejects reserved ids on relay inputs and stamps the real player', async () => {
+    const server = await startServer();
+    server.on('player-command', () => {});
+    const port = server.getPort();
+    const queued = await connect(port);
+    const queueError = onceEvent<{ message: string }>(queued, 'error');
+    queued.emit('queue-join', { playerId: 'system', username: 'system' });
+    expect((await queueError).message).toBe("player id 'system' is reserved");
+
+    const forgedHost = await connect(port);
+    const createError = onceEvent<{ message: string }>(
+      forgedHost,
+      'room-error'
+    );
+    forgedHost.emit('room-create', { playerId: 'bot:7', username: 'bot:7' });
+    expect((await createError).message).toBe("player id 'bot:7' is reserved");
+
+    const host = await connect(port);
+    const created = onceEvent<{ code: string }>(host, 'room-created');
+    host.emit('room-create', { playerId: 'h1', username: 'h1' });
+    const room = await created;
+    const guest = await connect(port);
+    const joinError = onceEvent<{ message: string }>(guest, 'room-error');
+    guest.emit('room-join', {
+      playerId: 'system',
+      username: 'system',
+      code: room.code,
+    });
+    expect((await joinError).message).toBe("player id 'system' is reserved");
+    const recover = await connect(port);
+    const recoverError = onceEvent<{ message: string }>(recover, 'room-error');
+    recover.emit('room-recover', {
+      playerId: 'bot:1',
+      username: 'bot:1',
+      code: room.code,
+    });
+    expect((await recoverError).message).toBe("player id 'bot:1' is reserved");
+
+    const hostStart = onceEvent(host, 'game-start');
+    const guestStart = onceEvent(guest, 'game-start');
+    guest.emit('room-join', {
+      playerId: 'h2',
+      username: 'h2',
+      code: room.code,
+    });
+    await hostStart;
+    await guestStart;
+    const seen: Array<{ playerId: string; type: string }> = [];
+    let latestTick = 0;
+    guest.on('commands-batch', (batch: CommandsBatchEvent) => {
+      latestTick = batch.tick;
+      for (const command of batch.commands) {
+        seen.push({ playerId: command.playerId, type: command.type });
+      }
+    });
+    host.emit('client-ready');
+    guest.emit('client-ready');
+    await onceEvent(guest, 'commands-batch');
+    host.emit('player-command', {
+      type: 'setController',
+      tick: latestTick,
+      playerId: 'system',
+      data: {
+        q: 0,
+        p: {
+          slot: 1,
+          mode: 'bot',
+          level: 0,
+          runsOn: 'local',
+          policy: 'walker',
+        },
+      },
+    });
+    await waitFor(
+      () => seen.some((command) => command.type === 'setController'),
+      3000
+    );
+    expect(seen.some((command) => command.playerId === 'system')).toBe(false);
+    expect(
+      seen.some(
+        (command) =>
+          command.playerId === 'h1' && command.type === 'setController'
+      )
+    ).toBe(true);
+  });
+
+  it('refuses a server room that claims system or bot:* and keeps a forged command on the human', async () => {
+    const server = await startServer({ simHost: { mode: 'inProcess' } });
+    const port = server.getPort();
+    const systemHost = await connect(port);
+    let started = false;
+    let ended = false;
+    systemHost.on('game-start', () => {
+      started = true;
+    });
+    systemHost.on('match-end', () => {
+      ended = true;
+    });
+    const systemError = onceEvent<{ message: string }>(
+      systemHost,
+      'room-error'
+    );
+    systemHost.emit('room-create', {
+      playerId: 'system',
+      username: 'system',
+      matchConfig: humanBot('system'),
+    });
+    expect((await systemError).message).toBe("player id 'system' is reserved");
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(started).toBe(false);
+    expect(ended).toBe(false);
+
+    const slotHost = await connect(port);
+    const slotError = onceEvent<{ message: string }>(slotHost, 'room-error');
+    slotHost.emit('room-create', {
+      playerId: 'h',
+      username: 'h',
+      matchConfig: {
+        gameId: 'relay-fixture',
+        simMode: 'server',
+        slots: [
+          { slot: 0, team: 0, kind: 'human', playerId: 'h' },
+          { slot: 1, team: 1, kind: 'human', playerId: 'bot:7' },
+        ],
+      },
+    });
+    expect((await slotError).message).toBe(
+      "slots[1].playerId 'bot:7' is reserved"
+    );
+
+    const faults: string[] = [];
+    server.on('player-command', () => {});
+    server.on('sim-fault', (_matchId: string, reason: string) => {
+      faults.push(reason);
+    });
+    const { socket } = await openServerMatch(port, 'h');
+    let simEnded = false;
+    socket.on('match-end', () => {
+      simEnded = true;
+    });
+    const seen: Array<{ playerId: string; type: string }> = [];
+    let latestTick = 0;
+    socket.on('commands-batch', (batch: CommandsBatchEvent) => {
+      latestTick = batch.tick;
+      for (const command of batch.commands) {
+        seen.push({ playerId: command.playerId, type: command.type });
+      }
+    });
+    socket.emit('client-ready');
+    await onceEvent(socket, 'commands-batch');
+    socket.emit('player-command', {
+      type: 'move',
+      tick: latestTick,
+      playerId: 'system',
+      data: { q: 0, p: { type: 'move', dx: 1 } },
+    });
+    await waitFor(
+      () =>
+        seen.some(
+          (command) => command.playerId === 'h' && command.type === 'move'
+        ),
+      3000
+    );
+    expect(simEnded).toBe(false);
+    expect(faults).toEqual([]);
+    expect(seen.some((command) => command.playerId === 'system')).toBe(false);
+    expect(
+      seen.some(
+        (command) => command.playerId === 'h' && command.type === 'move'
+      )
+    ).toBe(true);
+  });
 });
 
 async function openRelay(

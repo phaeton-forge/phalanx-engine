@@ -15,6 +15,7 @@ import {
   DEFAULT_SERVER_SNAPSHOT_EVERY_TICKS,
   type AnyGameDefinition,
 } from '@phalanx-engine/runtime';
+import { reservedPlayerMessage } from './reservedPlayerId.js';
 import type {
   PhalanxConfig,
   MatchInfo,
@@ -845,6 +846,11 @@ export class Phalanx extends EventEmitter {
           gameType?: string;
           buildId?: unknown;
         }) => {
+          const reserved = reservedPlayerMessage(data.playerId);
+          if (reserved !== null) {
+            socket.emit('error', { message: reserved });
+            return;
+          }
           playerId = data.playerId;
           const username = data.username ?? data.playerId;
           this.matchmaking!.joinQueue(
@@ -874,6 +880,11 @@ export class Phalanx extends EventEmitter {
           buildId?: unknown;
           matchConfig?: unknown;
         }) => {
+          const reserved = reservedPlayerMessage(data.playerId);
+          if (reserved !== null) {
+            socket.emit('room-error', { message: reserved });
+            return;
+          }
           playerId = data.playerId;
           const username = data.username ?? data.playerId;
           this.privateRooms!.createRoom(
@@ -896,6 +907,11 @@ export class Phalanx extends EventEmitter {
           code: string;
           buildId?: unknown;
         }) => {
+          const reserved = reservedPlayerMessage(data.playerId);
+          if (reserved !== null) {
+            socket.emit('room-error', { message: reserved });
+            return;
+          }
           playerId = data.playerId;
           const username = data.username ?? data.playerId;
           this.privateRooms!.joinRoom(
@@ -951,6 +967,11 @@ export class Phalanx extends EventEmitter {
         }
         if (typeof data.playerId !== 'string' || data.playerId.length === 0) {
           socket.emit('room-error', { message: 'Room expired' });
+          return;
+        }
+        const reserved = reservedPlayerMessage(data.playerId);
+        if (reserved !== null) {
+          socket.emit('room-error', { message: reserved });
           return;
         }
         const recovered = this.privateRooms!.recoverRoom(

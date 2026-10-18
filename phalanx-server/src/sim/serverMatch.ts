@@ -2,6 +2,7 @@ import {
   botPlayerId,
   DEFAULT_INPUT_DELAY_TICKS,
 } from '@phalanx-engine/runtime';
+import { reservedPlayerMessage } from '../reservedPlayerId.js';
 import type { SlotConfig } from '@phalanx-engine/runtime';
 import type { PhalanxConfig, QueuedPlayer } from '../types/index.js';
 import type { RegisteredGame } from './loadGames.js';
@@ -66,6 +67,9 @@ function parseSlot(value: unknown, index: number): SlotConfig | string {
     const playerId = value['playerId'];
     if (typeof playerId !== 'string' || playerId.length === 0) {
       return `slots[${String(index)}].playerId must be a non-empty string`;
+    }
+    if (reservedPlayerMessage(playerId) !== null) {
+      return `slots[${String(index)}].playerId '${playerId}' is reserved`;
     }
     return { slot, team, kind: 'human', playerId };
   }

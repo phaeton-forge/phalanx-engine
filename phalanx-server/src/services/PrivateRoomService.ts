@@ -12,6 +12,7 @@ import {
   type PreparedServerMatch,
 } from '../sim/serverMatch.js';
 import type { RegisteredGame } from '../sim/loadGames.js';
+import { reservedPlayerMessage } from '../reservedPlayerId.js';
 import { GameRoom } from './GameRoom.js';
 
 // Re-export private-room event types from this module for backward
@@ -141,6 +142,14 @@ export class PrivateRoomService {
     buildId?: string,
     matchConfig?: unknown
   ): void {
+    const reserved = reservedPlayerMessage(playerId);
+    if (reserved !== null) {
+      socket.emit('room-error', {
+        message: reserved,
+      } satisfies RoomErrorEvent);
+      return;
+    }
+
     // Reject if player is already in a match
     if ((socket.data as { matchId?: string }).matchId) {
       socket.emit('room-error', {
@@ -232,6 +241,11 @@ export class PrivateRoomService {
     username: string,
     gameType?: string
   ): CreateDisconnectedHostRoomResult {
+    const reserved = reservedPlayerMessage(playerId);
+    if (reserved !== null) {
+      throw new Error(reserved);
+    }
+
     if (this.isPlayerQueued?.(playerId)) {
       throw new Error('Already in matchmaking queue');
     }
@@ -301,6 +315,14 @@ export class PrivateRoomService {
     code: string,
     buildId?: string
   ): void {
+    const reserved = reservedPlayerMessage(playerId);
+    if (reserved !== null) {
+      socket.emit('room-error', {
+        message: reserved,
+      } satisfies RoomErrorEvent);
+      return;
+    }
+
     // Reject if player is already in a match
     if ((socket.data as { matchId?: string }).matchId) {
       socket.emit('room-error', {
@@ -577,6 +599,14 @@ export class PrivateRoomService {
    * Returns `true` on success, `false` on failure.
    */
   recoverRoom(playerId: string, socket: Socket, code: string): boolean {
+    const reserved = reservedPlayerMessage(playerId);
+    if (reserved !== null) {
+      socket.emit('room-error', {
+        message: reserved,
+      } satisfies RoomErrorEvent);
+      return false;
+    }
+
     const normalizedCode = code.toUpperCase();
 
     // Case 1: live room, caller is the host.

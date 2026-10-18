@@ -165,6 +165,18 @@ that worker. A later `room-create` gets `room-error` with reason
 that match only. `process.exit` inside a match is `sim-crash` for that
 match; a normal host `close` is not.
 
+`system` commands are produced only by `RoomSim`. The relay rejects player
+ids `system` and `bot:<slot>` on `queue-join`, `room-create`, `room-join`,
+and `room-recover`, and rejects them on a human `matchConfig` slot. A
+client `player-command` is stamped with the socket's player id, so the
+body cannot file `system`. `MatchRunner` applies a `system` entry from a
+`commands-batch` only when the match has a server peer (`side: 'server'`
+or transport kind `server-peer`). A relay or local client rejects it. Bot
+auto-ready follows slot `kind`, not the id string. Private-room
+`matchConfig` is the only 0.3 way into a server match. Practice rooms and
+matchmaking bot auto-fill are a later task. A dead worker is not respawned
+until Task 17.
+
 ## 5. Multiple matches in one process
 
 `SimHost` runs many `MatchRunner`s in one Node process. Two pieces of
@@ -260,6 +272,7 @@ Decided 2026-10-14. Two ways into a human-vs-server-bot match, both
   arrives within a timeout, the empty slots are filled with server bots
   (the Lands / Chapaev behaviour) and the match starts.
 
-Private rooms stay two humans. Task 11 adds both paths; the timeout value
-is game config, not an engine constant. A process restart still drops the
-queue and any in-memory match ("no result"); Redis is out of 0.3.
+Private-room `matchConfig` is the only 0.3 entry. Practice rooms and
+matchmaking bot auto-fill are a later task; `resolveMatchConfig` is not
+implemented. A process restart still drops the queue and any in-memory
+match ("no result"); Redis is out of 0.3.
