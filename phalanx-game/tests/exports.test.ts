@@ -402,10 +402,35 @@ function declarationFor(specifier: string): string {
   return resolved;
 }
 
-function namesOf(files: readonly string[]): Map<string, readonly string[]> {
+interface ModuleExports {
+  readonly names: readonly string[];
+  readonly values: readonly string[];
+}
+
+function isRuntimeValue(symbol: ts.Symbol, checker: ts.TypeChecker): boolean {
+  const target =
+    (symbol.flags & ts.SymbolFlags.Alias) !== 0
+      ? checker.getAliasedSymbol(symbol)
+      : symbol;
+  if ((target.flags & ts.SymbolFlags.Value) === 0) return false;
+  const declaration = symbol.declarations?.[0];
+  if (declaration === undefined || !ts.isExportSpecifier(declaration)) {
+    return true;
+  }
+  const clause = declaration.parent.parent;
+  const typeOnly =
+    declaration.isTypeOnly ||
+    (ts.isExportDeclaration(clause) && clause.isTypeOnly);
+  // `export type { FPVector2 as FPVector2Interface }` aliases a merged
+  // value. A type-only export of the value's own name (`SystemRegistry`)
+  // stays in this set, so it no longer matches `Object.keys`.
+  return !typeOnly || symbol.getName() === target.getName();
+}
+
+function namesOf(files: readonly string[]): Map<string, ModuleExports> {
   const program = ts.createProgram([...files], COMPILER_OPTIONS);
   const checker = program.getTypeChecker();
-  const names = new Map<string, readonly string[]>();
+  const names = new Map<string, ModuleExports>();
   for (const file of files) {
     const source = program.getSourceFile(file);
     const symbol =
@@ -413,13 +438,14 @@ function namesOf(files: readonly string[]): Map<string, readonly string[]> {
     if (symbol === undefined) {
       throw new Error(`no module symbol for ${file}`);
     }
-    names.set(
-      file,
-      checker
-        .getExportsOfModule(symbol)
+    const exported = checker.getExportsOfModule(symbol);
+    names.set(file, {
+      names: exported.map((item) => item.getName()).sort(),
+      values: exported
+        .filter((item) => isRuntimeValue(item, checker))
         .map((item) => item.getName())
-        .sort()
-    );
+        .sort(),
+    });
   }
   return names;
 }
@@ -461,18 +487,18 @@ describe('@phalanx-engine/game subpath exports', () => {
 
   it('matches the checked-in name snapshot, types included', () => {
     for (const entry of resolved) {
-      expect(actual.get(entry.file)).toEqual(entry.names);
+      expect(actual.get(entry.file)?.names).toEqual(entry.names);
     }
-    expect(resolved.map((entry) => actual.get(entry.file)?.length)).toEqual([
-      186, 9, 33, 85, 18,
-    ]);
+    expect(
+      resolved.map((entry) => actual.get(entry.file)?.names.length)
+    ).toEqual([186, 9, 33, 85, 18]);
   });
 
   it('keeps the five name sets pairwise disjoint', () => {
     expect(
       overlap(
         resolved.map((entry) => {
-          const names = actual.get(entry.file);
+          const names = actual.get(entry.file)?.names;
           if (names === undefined) {
             throw new Error(entry.specifier);
           }
@@ -485,10 +511,11 @@ describe('@phalanx-engine/game subpath exports', () => {
   it('loads each subpath by package name', async () => {
     for (const entry of resolved) {
       const loaded: unknown = await import(entry.specifier);
-      const declared = new Set(entry.names);
-      expect(
-        Object.keys(loaded as object).filter((name) => !declared.has(name))
-      ).toEqual([]);
+      const values = actual.get(entry.file)?.values;
+      if (values === undefined) {
+        throw new Error(entry.specifier);
+      }
+      expect(Object.keys(loaded as object).sort()).toEqual(values);
     }
   });
 });
