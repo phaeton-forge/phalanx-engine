@@ -1,4 +1,5 @@
 import { once } from 'node:events';
+import { writeFileSync } from 'node:fs';
 import { MessageChannel } from 'node:worker_threads';
 import { io, type Socket } from 'socket.io-client';
 import { MatchRunner, type AnyGameDefinition } from '@phalanx-engine/runtime';
@@ -10,6 +11,7 @@ import { postSimOut } from '../src/sim/postTransfer.js';
 import { RelayFeedTransport } from '../src/sim/RelayFeedTransport.js';
 import type { SimCommand, SimIn, SimOut } from '../src/sim/messages.js';
 import { WorkerSimHost, simWorkersSpawned } from '../src/sim/WorkerSimHost.js';
+import { holdReleasePath } from '../src/sim/fixtures/relayGame.js';
 import type { SimHost } from '../src/sim/SimHost.js';
 
 const fixtureHref = new URL(
@@ -453,14 +455,19 @@ describe('SimHost', () => {
         serverDigests.set(tick, digest);
       }
     );
-    server.on('sim-lag', () => {
-      lags += 1;
-    });
-    const { socket, matchConfig } = await openServerMatch(
+    const { socket, matchId, matchConfig } = await openServerMatch(
       server.getPort(),
       'slow',
-      { blockMs: 40 }
+      { stall: 1 }
     );
+    // The worker blocks in tick 0 until this file exists. Writing it
+    // from `sim-lag` is what releases the sim, so the lead is forced
+    // instead of racing a wall-clock spin against the relay timer.
+    const releasePath = holdReleasePath(matchId);
+    server.on('sim-lag', () => {
+      lags += 1;
+      writeFileSync(releasePath, '1');
+    });
     const definition = await loadFixture();
     const transport = new RelayFeedTransport();
     const runner = new MatchRunner(
@@ -469,38 +476,45 @@ describe('SimHost', () => {
       transport,
       { hashEveryTicks: 60 }
     );
-    const clientDigests = new Map<number, string>();
-    let sawBot = false;
-    let lateBot = false;
-    runner.onDigest((tick, digest) => {
-      clientDigests.set(tick, digest);
-    });
-    runner.start();
-    socket.emit('client-ready');
-    await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(
-        () => reject(new Error('slow sim ticks timed out')),
-        15000
-      );
-      socket.on('commands-batch', (batch: CommandsBatchEvent) => {
-        for (const command of batch.commands) {
-          if (!command.playerId.startsWith('bot:')) continue;
-          sawBot = true;
-          if (command.tick !== batch.tick) lateBot = true;
-        }
-        transport.deliver(batch.tick, batch.commands);
-        if (batch.tick >= 60) {
-          clearTimeout(timer);
-          resolve();
-        }
+    try {
+      const clientDigests = new Map<number, string>();
+      let sawBot = false;
+      let botOnDelayTick = false;
+      let lateBot = false;
+      runner.onDigest((tick, digest) => {
+        clientDigests.set(tick, digest);
       });
-    });
-    await waitFor(() => clientDigests.has(60) && serverDigests.has(60), 5000);
-    expect(sawBot).toBe(true);
-    expect(lateBot).toBe(false);
-    expect(lags).toBeGreaterThan(0);
-    expect(clientDigests.get(60)).toBe(serverDigests.get(60));
-    runner.dispose();
+      runner.start();
+      socket.emit('client-ready');
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(
+          () => reject(new Error('slow sim ticks timed out')),
+          15000
+        );
+        socket.on('commands-batch', (batch: CommandsBatchEvent) => {
+          for (const command of batch.commands) {
+            if (!command.playerId.startsWith('bot:')) continue;
+            sawBot = true;
+            if (batch.tick === 2) botOnDelayTick = true;
+            if (command.tick !== batch.tick) lateBot = true;
+          }
+          transport.deliver(batch.tick, batch.commands);
+          if (batch.tick >= 60) {
+            clearTimeout(timer);
+            resolve();
+          }
+        });
+      });
+      await waitFor(() => clientDigests.has(60) && serverDigests.has(60), 5000);
+      expect(sawBot).toBe(true);
+      expect(botOnDelayTick).toBe(true);
+      expect(lateBot).toBe(false);
+      expect(lags).toBeGreaterThan(0);
+      expect(clientDigests.get(60)).toBe(serverDigests.get(60));
+    } finally {
+      writeFileSync(releasePath, '1');
+      runner.dispose();
+    }
   }, 20000);
 
   it('stops the room when the sim reports an outcome', async () => {

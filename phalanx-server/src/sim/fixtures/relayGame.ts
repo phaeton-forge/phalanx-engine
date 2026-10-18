@@ -1,3 +1,6 @@
+import { existsSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { GameSystem, type GameWorld } from '@phalanx-engine/ecs';
 import {
   defineCommands,
@@ -20,6 +23,11 @@ export interface RelayConfig extends MatchConfigBase {
   readonly blockMs?: number;
   readonly allocMb?: number;
   readonly winAt?: number;
+  /**
+   * Worker only: tick 0 waits until {@link holdReleasePath} exists.
+   * The relay can run ahead and emit `sim-lag`. Does not change `x`.
+   */
+  readonly stall?: number;
 }
 
 export interface RelaySim {
@@ -32,6 +40,13 @@ export interface RelaySim {
 const commands = defineCommands({
   move: { dx: 'i32' },
 });
+
+const STALL_PAUSE = new Int32Array(new SharedArrayBuffer(4));
+
+/** File the test creates after it has observed `sim-lag`. */
+export function holdReleasePath(matchId: string): string {
+  return join(tmpdir(), `phalanx-sim-hold-${matchId}`);
+}
 
 type RelayCommand = { readonly type: 'move'; readonly dx: number };
 
@@ -84,6 +99,13 @@ class RelayHooks extends GameSystem {
         );
       }
       throw new Error('out of memory');
+    }
+    const stall = knob(this.config.stall);
+    if (stall > 0 && tick === 0 && process.env['PHALANX_SIM_WORKER'] === '1') {
+      const release = holdReleasePath(this.config.matchId);
+      while (!existsSync(release)) {
+        Atomics.wait(STALL_PAUSE, 0, 0, 20);
+      }
     }
     const blockMs = knob(this.config.blockMs);
     if (blockMs > 0) {
