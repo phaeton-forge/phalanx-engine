@@ -269,7 +269,13 @@ import { GAME_MODES } from '@phalanx-engine/server';
 ## Session token and match-resume
 
 Opt-in. Set `session.secret` (at least 32 characters) to issue an
-HMAC-SHA256 token at `game-start`. `ttlMs` defaults to 60 minutes.
+HMAC-SHA256 token at `match-found` (and again at `game-start`).
+`ttlMs` defaults to 60 minutes. A drop during countdown can resume.
+A match declined or cancelled before start (`ready-timeout`,
+`players-not-connected`, `stop` during countdown) tombstones that
+`matchId`, so the token is rejected. The token cannot join a
+different match.
+
 The token is `base64url(JSON {matchId, playerId, slot, exp})` plus a
 MAC of that base64url string. It is signed, not encrypted: the JSON
 payload is readable. Do not log the token or `session.secret`.
@@ -470,7 +476,7 @@ class Phalanx {
 | `reconnect-match`           | ✅   |         | Attempt to rejoin a match. Rejected with `session-token-required` when `reconnect.requireSessionToken` is set.                                   |
 | `reconnect-status`          |      | ✅      | Reconnection result                                                                                                                              |
 | `reconnect-state`           |      | ✅      | Game state for reconnection. Payload unchanged by session tokens.                                                                                |
-| `session-token`             |      | ✅      | Opaque HMAC token plus `matchId` and `slot`. Sent at `game-start`, and after `reconnect-state` once `game-start` has been emitted.               |
+| `session-token`             |      | ✅      | Opaque HMAC token plus `matchId` and `slot`. Sent at `match-found`, again at `game-start`, and after `reconnect-state` (including countdown).    |
 | `match-resume`              | ✅   |         | `{ token, buildId?, haveTick }`. `playerId` in the body is ignored.                                                                              |
 | `match-resume-state`        |      | ✅      | `{ matchId, slot, currentTick, state, absentDeadline? }`. Sent after `reconnect-state`.                                                          |
 | `match-resume-error`        |      | ✅      | `{ reason: 'invalid' \| 'expired' \| 'match-ended' \| 'build-mismatch' }`. No extra detail.                                                      |

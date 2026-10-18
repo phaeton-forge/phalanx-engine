@@ -1366,7 +1366,11 @@ Literal instructions for each task; they override the original task text.
   runs only when at least one snapshot was skipped.
 - **Task 8 (relay full log).** Store raw `PlayerCommand`s including the
   envelope; `match-log` chunks of ≤ 2000 ticks; `buildId`; SIGTERM.
-- **Task 9 (session token).** Opt-in `session`. `match-resume` takes
+- **Task 9 (session token).** Opt-in `session`. The token is issued
+  at `match-found`, bound to that `matchId` and `playerId`, and a
+  pre-start ending tombstones the id. The client store overwrites
+  the token when the next match sends `session-token`.
+  `match-resume` takes
   `playerId` from the HMAC token only. The token is signed, not
   encrypted; do not log it or `session.secret`.
   `reconnect.requireSessionToken` (default false) rejects legacy

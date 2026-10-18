@@ -334,6 +334,35 @@ describe('session-token persistence', () => {
     expect(new MatchSessionStore('legion', storage).load()).toBeNull();
   });
 
+  it('overwrites the stored token when the next match issues session-token', () => {
+    const storage = new MemoryKeyValueStorage();
+    const { client, socket } = clientWithSocket({
+      gameId: 'legion',
+      buildId: 'build-a',
+      storage,
+    });
+    const seen: string[] = [];
+    client.on('sessionToken', (event) => seen.push(event.token));
+
+    socket.fire('session-token', {
+      token: 'token-a',
+      matchId: 'match-a',
+      slot: 0,
+    });
+    socket.fire('session-token', {
+      token: 'token-b',
+      matchId: 'match-b',
+      slot: 1,
+    });
+    expect(seen).toEqual(['token-a', 'token-b']);
+    expect(new MatchSessionStore('legion', storage).load()).toEqual({
+      token: 'token-b',
+      matchId: 'match-b',
+      slot: 1,
+      buildId: 'build-a',
+    });
+  });
+
   it('emits sessionToken without writing when gameId is omitted', () => {
     const storage = new MemoryKeyValueStorage();
     const { client, socket } = clientWithSocket({ storage });

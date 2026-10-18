@@ -458,7 +458,7 @@ export class GameRoom {
     }
   }
 
-  /** `session-token` for every socket that just received `game-start`. */
+  /** `session-token` for every socket still connected at `game-start`. */
   private emitSessionTokensToConnectedPlayers(): void {
     if (!this.sessionIssuer) return;
     for (const [socketId, playerId] of this.socketToPlayer) {
@@ -613,7 +613,10 @@ export class GameRoom {
             teamId,
             team
           );
-          if (payload) socket.emit('match-found', payload);
+          if (payload) {
+            socket.emit('match-found', payload);
+            this.emitSessionToken(socket, player.playerId);
+          }
         }
       });
     });
@@ -1634,6 +1637,7 @@ export class GameRoom {
         const matchFoundPayload = this.buildMatchFoundPayload(playerId);
         if (matchFoundPayload) {
           socket.emit('match-found', matchFoundPayload);
+          this.emitSessionToken(socket, playerId);
         }
         socket.to(this.roomId).emit('player-reconnected', { playerId });
         // Look up the team info for the right teammates/opponents
@@ -1685,11 +1689,9 @@ export class GameRoom {
         randomSeed: this.randomSeed,
       });
 
-      // A player who missed `game-start` (or is rebinding after it)
-      // gets the token as its own event. `reconnect-state` is unchanged.
-      if (this.gameStartEmitted) {
-        this.emitSessionToken(socket, playerId);
-      }
+      // The token is issued at `match-found`, so a rebind during
+      // countdown still gets one. `reconnect-state` is unchanged.
+      this.emitSessionToken(socket, playerId);
 
       // Notify other players
       socket.to(this.roomId).emit('player-reconnected', { playerId });

@@ -610,8 +610,10 @@ await client.attemptReconnection();
 
 ### Tab killed: session token and match-resume
 
-The server issues `session-token` at `game-start` when `session` is
-configured. With `gameId` set, the client writes
+The server issues `session-token` at `match-found` when `session` is
+configured, so a tab killed during the countdown can resume. A later
+`session-token` overwrites the stored record, including the next
+match. With `gameId` set, the client writes
 `{ token, matchId, slot, buildId }` to `localStorage` under
 `phalanx.session.<gameId>` (not `sessionStorage`). `match-end` deletes
 it. The token is opaque and signed, not encrypted. Do not log

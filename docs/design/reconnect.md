@@ -22,6 +22,10 @@ online and in local (bot) matches.
   `reconnect.requireSessionToken` is set. `queue-join`, `room-create`,
   `room-join`, and waiting-room `room-recover` stay on the body id
   until Task 9b.
+- When `session` is set, the HMAC token is issued at `match-found`,
+  bound to that `matchId` and `playerId`. A drop during the countdown
+  resumes with `match-resume`. A match declined or cancelled before
+  start tombstones that `matchId`, so the token is rejected. See §4.
 - `reconnectGracePeriodMs` only applies in `waiting-for-ready`. During
   `playing` a disconnected player never loses.
 - `commandHistoryTicks` defaults to 200 ticks
@@ -112,14 +116,20 @@ base64url(HMAC-SHA256(secret, payloadPart))`.
 - `slot` is the player's index in `teams.flat()`: team 0 first, and
   within a team the queue order. That is the `match-found` order.
   Task 12 uses the same index.
-- At `game-start` every connected socket gets `session-token { token,
-matchId, slot }` as its own event (both countdown paths). `matchId`
-  and `slot` ride along because the client does not parse the token.
-  A player who binds after `gameStartEmitted` (`reconnect-match`,
-  `room-recover`, or `match-resume`) gets the same event **after**
-  `reconnect-state`. The `reconnect-state` payload is unchanged.
-  `GameRoom` does not see the secret; `Phalanx` installs the issuer
-  on `match-created`, before `start()`.
+- The token is issued at `match-found`. Each connected socket gets
+  `session-token { token, matchId, slot }` immediately after its
+  personal `match-found`, including a retroactive `match-found` while
+  `waiting-for-players`. `matchId` and `slot` ride along because the
+  client does not parse the token. Connected sockets receive a fresh
+  token again at `game-start` (both countdown paths).
+  `handleReconnect` sends one after `reconnect-state` with no
+  `gameStartEmitted` gate, so a rebind during countdown still gets a
+  token. The `reconnect-state` payload is unchanged. `GameRoom` does
+  not see the secret; `Phalanx` installs the issuer on
+  `match-created`, before `start()`.
+- The token is bound to `matchId` and `playerId`. `match-resume`
+  looks up that match only, so a token from match A never joins
+  match B.
 - `match-resume { token, buildId?, haveTick }` →
   `match-resume-state { matchId, slot, currentTick, state, absentDeadline? }`.
   `snapshot?` is Task 11 and is not sent. Check order:
@@ -146,7 +156,11 @@ matchId, slot }` as its own event (both countdown paths). `matchId`
   as Task 10. The field is omitted when nobody else is absent.
 - An ended match is remembered for 10 minutes (`matchId → endedAt`) so
   resume can answer `'match-ended'` rather than `'invalid'`. A timer
-  drops stale rows. Individual tokens are not revoked.
+  drops stale rows. Individual tokens are not revoked. The
+  `match-ended` listener records that tombstone for every ending,
+  including before start (`ready-timeout`, `players-not-connected`,
+  and `stop` during countdown), and in the same listener archives a
+  started match via `takeArchive`.
 - `requireSessionToken: true` rejects `reconnect-match` with
   `reconnect-status { success: false, reason: 'session-token-required' }`
   and rejects `room-recover` into a match already in progress with
@@ -159,6 +173,8 @@ matchId, slot }` as its own event (both countdown paths). `matchId`
   `phalanx.session.<gameId>` in `localStorage` (not `sessionStorage`,
   which iOS drops when the tab is killed). No `gameId` means the store
   is not created and the token is not saved. `match-end` clears it.
+  A later `session-token` overwrites the same key, so the next match
+  replaces the previous token.
   `PhalanxClient.resumeMatch(token, haveTick)` sends `match-resume`
   (with `buildId` when the client has one) and rejects
   `MatchResumeRejected`. A rejection of `invalid`, `expired`,

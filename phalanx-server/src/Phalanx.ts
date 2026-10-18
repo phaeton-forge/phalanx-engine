@@ -381,7 +381,7 @@ export class Phalanx extends EventEmitter {
     );
 
     // `match-created` is emitted before `GameRoom.start()`, so the
-    // issuer is installed before `game-start`.
+    // issuer is installed before the `match-found` token.
     this.on('match-created', (match) => {
       this.bindSessionIssuer(match.id);
     });

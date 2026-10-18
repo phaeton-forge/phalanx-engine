@@ -138,7 +138,11 @@ function onceEvent<T>(socket: Socket, event: string): Promise<T> {
 async function openMatch(
   url: string,
   buildIds?: { host?: string; guest?: string },
-  waitForTokens = true
+  waitForTokens = true,
+  ids: { hostId: string; guestId: string } = {
+    hostId: 'player1',
+    guestId: 'player2',
+  }
 ): Promise<Opened> {
   const host = await connect(url);
   const guest = await connect(url);
@@ -156,14 +160,14 @@ async function openMatch(
     ? onceEvent<SessionTokenEvent>(guest, 'session-token')
     : Promise.resolve(undefined);
   host.emit('room-create', {
-    playerId: 'player1',
-    username: 'Player1',
+    playerId: ids.hostId,
+    username: ids.hostId,
     ...(buildIds?.host !== undefined ? { buildId: buildIds.host } : {}),
   });
   const { code } = await created;
   guest.emit('room-join', {
-    playerId: 'player2',
-    username: 'Player2',
+    playerId: ids.guestId,
+    username: ids.guestId,
     code,
     ...(buildIds?.guest !== undefined ? { buildId: buildIds.guest } : {}),
   });
@@ -222,7 +226,7 @@ async function playTick(
 }
 
 describe('match-resume', () => {
-  it('issues slot tokens at game-start and does not issue them without session', async () => {
+  it('issues slot tokens at match-found and does not issue them without session', async () => {
     const enabled = await startServer();
     const match = await openMatch(enabled.url);
     expect(match.hostToken.length).toBeGreaterThan(0);
@@ -527,10 +531,7 @@ describe('match-resume', () => {
     const { url } = await startServer({ countdownSeconds: 1 });
     const host = await connect(url);
     const guest = await connect(url);
-    let tokenBeforeDisconnect = false;
-    host.on('session-token', () => {
-      tokenBeforeDisconnect = true;
-    });
+    const earlyToken = onceEvent<SessionTokenEvent>(host, 'session-token');
     const created = onceEvent<{ code: string }>(host, 'room-created');
     const found = onceEvent<MatchFoundEvent>(host, 'match-found');
     const countdown = onceEvent(host, 'countdown');
@@ -542,11 +543,13 @@ describe('match-resume', () => {
       username: 'Player2',
       code,
     });
-    await found;
+    const match = await found;
+    const early = await earlyToken;
     await countdown;
+    expect(early.matchId).toBe(match.matchId);
+    expect(early.slot).toBe(0);
     host.disconnect();
     await guestStarted;
-    expect(tokenBeforeDisconnect).toBe(false);
 
     const next = await connect(url);
     const order: string[] = [];
@@ -555,7 +558,7 @@ describe('match-resume', () => {
     const token = onceEvent<SessionTokenEvent>(next, 'session-token');
     next.emit('reconnect-match', {
       playerId: 'player1',
-      matchId: (await found).matchId,
+      matchId: match.matchId,
     });
     const issued = await token;
     expect(order).toEqual(['reconnect-state', 'session-token']);
@@ -797,5 +800,180 @@ describe('match-resume', () => {
     expect(withAbsence.absentDeadline).toEqual(expect.any(Number));
     expect(withAbsence.absentDeadline).toBeGreaterThan(0);
     expect(withAbsence.absentDeadline).toBeLessThanOrEqual(60_000);
+  });
+
+  it('resumes with the match-found token after a drop during countdown', async () => {
+    const { server, url } = await startServer({ countdownSeconds: 30 });
+    const host = await connect(url);
+    const guest = await connect(url);
+    const created = onceEvent<{ code: string }>(host, 'room-created');
+    const found = onceEvent<MatchFoundEvent>(host, 'match-found');
+    const tokenEvent = onceEvent<SessionTokenEvent>(host, 'session-token');
+    const countdown = onceEvent(host, 'countdown');
+    let gameStarted = false;
+    host.on('game-start', () => {
+      gameStarted = true;
+    });
+    host.emit('room-create', { playerId: 'player1', username: 'Player1' });
+    const { code } = await created;
+    guest.emit('room-join', {
+      playerId: 'player2',
+      username: 'Player2',
+      code,
+    });
+    const match = await found;
+    const issued = await tokenEvent;
+    await countdown;
+    expect(gameStarted).toBe(false);
+    expect(issued.matchId).toBe(match.matchId);
+    expect(issued.slot).toBe(0);
+    host.disconnect();
+
+    const next = await connect(url);
+    const state = onceEvent<MatchResumeStateEvent>(next, 'match-resume-state');
+    next.emit('match-resume', { token: issued.token, haveTick: -1 });
+    const resumed = await state;
+    expect(resumed.matchId).toBe(match.matchId);
+    expect(resumed.slot).toBe(0);
+    expect(resumed.state).toBe('countdown');
+    expect(findRoom(server, match.matchId).isParticipantSocket(next.id)).toBe(
+      true
+    );
+  });
+
+  it('rejects a token from a match declined before start', async () => {
+    const { url } = await startServer({
+      countdownSeconds: 0,
+      readyTimeoutMs: 200,
+    });
+    const host = await connect(url);
+    const guest = await connect(url);
+    const created = onceEvent<{ code: string }>(host, 'room-created');
+    const found = onceEvent<MatchFoundEvent>(host, 'match-found');
+    const tokenEvent = onceEvent<SessionTokenEvent>(host, 'session-token');
+    const ended = onceEvent<{ reason: string }>(host, 'match-end');
+    host.emit('room-create', { playerId: 'player1', username: 'Player1' });
+    const { code } = await created;
+    guest.emit('room-join', {
+      playerId: 'player2',
+      username: 'Player2',
+      code,
+    });
+    const match = await found;
+    const issued = await tokenEvent;
+    expect(issued.matchId).toBe(match.matchId);
+    expect((await ended).reason).toBe('ready-timeout');
+
+    const next = await connect(url);
+    const error = onceEvent<{ reason: string }>(next, 'match-resume-error');
+    next.emit('match-resume', { token: issued.token, haveTick: -1 });
+    expect((await error).reason).toBe('match-ended');
+  });
+
+  it('rejects a token when the match is cancelled before start', async () => {
+    const stopped = await startServer({ countdownSeconds: 30 });
+    const host = await connect(stopped.url);
+    const guest = await connect(stopped.url);
+    const created = onceEvent<{ code: string }>(host, 'room-created');
+    const found = onceEvent<MatchFoundEvent>(host, 'match-found');
+    const tokenEvent = onceEvent<SessionTokenEvent>(host, 'session-token');
+    const countdown = onceEvent(host, 'countdown');
+    host.emit('room-create', { playerId: 'player1', username: 'Player1' });
+    const { code } = await created;
+    guest.emit('room-join', {
+      playerId: 'player2',
+      username: 'Player2',
+      code,
+    });
+    const match = await found;
+    const issued = await tokenEvent;
+    await countdown;
+    const ended = onceEvent<{ reason: string }>(guest, 'match-end');
+    findRoom(stopped.server, match.matchId).stop();
+    expect((await ended).reason).toBe('stopped');
+    const afterStop = await connect(stopped.url);
+    const stopError = onceEvent<{ reason: string }>(
+      afterStop,
+      'match-resume-error'
+    );
+    afterStop.emit('match-resume', { token: issued.token, haveTick: -1 });
+    expect((await stopError).reason).toBe('match-ended');
+
+    const missing = await startServer({
+      countdownSeconds: 0,
+      readyTimeoutMs: 30_000,
+      playersConnectTimeoutMs: 80,
+    });
+    const waitingHost = await connect(missing.url);
+    const waitingGuest = await connect(missing.url);
+    const waitingCreated = onceEvent<{ code: string }>(
+      waitingHost,
+      'room-created'
+    );
+    const waitingFound = onceEvent<MatchFoundEvent>(waitingHost, 'match-found');
+    const waitingToken = onceEvent<SessionTokenEvent>(
+      waitingHost,
+      'session-token'
+    );
+    const waitingEnded = onceEvent<{ reason: string }>(
+      waitingHost,
+      'match-end'
+    );
+    waitingHost.emit('room-create', {
+      playerId: 'player1',
+      username: 'Player1',
+    });
+    const waitingRoom = await waitingCreated;
+    waitingGuest.emit('room-join', {
+      playerId: 'player2',
+      username: 'Player2',
+      code: waitingRoom.code,
+    });
+    await waitingFound;
+    const waitingIssued = await waitingToken;
+    waitingGuest.disconnect();
+    expect((await waitingEnded).reason).toBe('players-not-connected');
+    const afterMissing = await connect(missing.url);
+    const missingError = onceEvent<{ reason: string }>(
+      afterMissing,
+      'match-resume-error'
+    );
+    afterMissing.emit('match-resume', {
+      token: waitingIssued.token,
+      haveTick: -1,
+    });
+    expect((await missingError).reason).toBe('match-ended');
+  });
+
+  it('does not bind a token from match A into match B', async () => {
+    const { server, url } = await startServer();
+    const matchA = await openMatch(url);
+    const matchB = await openMatch(url, undefined, true, {
+      hostId: 'player3',
+      guestId: 'player4',
+    });
+    const next = await connect(url);
+    const state = onceEvent<MatchResumeStateEvent>(next, 'match-resume-state');
+    next.emit('match-resume', { token: matchA.hostToken, haveTick: -1 });
+    const resumed = await state;
+    expect(resumed.matchId).toBe(matchA.matchId);
+    expect(resumed.slot).toBe(0);
+
+    const roomA = findRoom(server, matchA.matchId);
+    const roomB = findRoom(server, matchB.matchId);
+    expect(roomA.isParticipantSocket(next.id)).toBe(true);
+    expect(roomB.isParticipantSocket(next.id)).toBe(false);
+    expect(roomA.isParticipantSocket(matchB.host.id)).toBe(false);
+    expect(roomB.isParticipantSocket(matchB.host.id)).toBe(true);
+
+    const verified = new SessionTokens({ secret: SECRET }).verify(
+      matchA.hostToken,
+      Date.now()
+    );
+    expect(verified.ok && verified.claims.matchId).toBe(matchA.matchId);
+    expect(verified.ok && verified.claims.playerId).toBe('player1');
+    expect(verified.ok && verified.claims.matchId === matchB.matchId).toBe(
+      false
+    );
   });
 });
