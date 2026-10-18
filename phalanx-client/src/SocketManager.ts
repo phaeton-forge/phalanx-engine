@@ -41,6 +41,7 @@ import type {
   ServerShutdownEvent,
   MatchResumeState,
   MatchResumeWireErrorReason,
+  SessionSupersededEvent,
   SessionTokenEvent,
 } from './types.js';
 
@@ -75,6 +76,12 @@ export interface SocketManagerConfig {
   reconnectDelayMs: number;
   /** Enable debug logging */
   debug: boolean;
+  /**
+   * When true, the server refuses `reconnect-match`. A resume timeout
+   * must not call it. Omitted means unknown, and the legacy rebind
+   * still runs.
+   */
+  requireSessionToken?: boolean;
 }
 
 /**
@@ -125,6 +132,9 @@ export interface SocketManagerCallbacks {
 
   /** Optional so existing callers do not have to supply it. */
   onSessionToken?: (data: SessionTokenEvent) => void;
+
+  /** Optional so existing callers do not have to supply it. */
+  onSessionSuperseded?: (data: SessionSupersededEvent) => void;
 
   // State queries (for reconnection logic)
   isPlaying: () => boolean;
@@ -864,6 +874,8 @@ export class SocketManager {
    * only when that resume does not bind the socket. A terminal
    * refusal drops the token before the legacy attempt; a timeout
    * keeps it so a later attempt can try the token again.
+   * When `requireSessionToken` is known to be on, a timeout does not
+   * call `reconnectToMatch`: that server always refuses it.
    */
   private async rejoinSavedMatch(matchId: string): Promise<void> {
     const session = this.callbacks.loadMatchSession?.() ?? null;
@@ -875,6 +887,11 @@ export class SocketManager {
       } catch (error) {
         if (isTerminalResumeRejection(error)) {
           this.callbacks.clearMatchSession?.();
+        } else if (
+          this.config.requireSessionToken === true &&
+          isResumeTimeout(error)
+        ) {
+          throw error;
         }
       }
     }
@@ -946,6 +963,10 @@ export class SocketManager {
 
     this.socket.on('session-token', (data: SessionTokenEvent) => {
       this.callbacks.onSessionToken?.(data);
+    });
+
+    this.socket.on('session-superseded', (data: SessionSupersededEvent) => {
+      this.callbacks.onSessionSuperseded?.(data);
     });
 
     // Reconnect-state — unlike `reconnectToMatch` which attaches a
@@ -1122,6 +1143,10 @@ function isTerminalResumeRejection(
     error instanceof MatchResumeRejected &&
     isMatchResumeWireReason(error.reason)
   );
+}
+
+function isResumeTimeout(error: unknown): error is MatchResumeRejected {
+  return error instanceof MatchResumeRejected && error.reason === 'timeout';
 }
 
 /** `buildId` is included only when the config actually set one. */

@@ -649,9 +649,14 @@ describe('match-resume', () => {
     const { server, url } = await startServer();
     const opened = await openMatch(url);
     const next = await connect(url);
+    const replaced = onceEvent<{ matchId: string }>(
+      opened.host,
+      'session-superseded'
+    );
     const state = onceEvent<MatchResumeStateEvent>(next, 'match-resume-state');
     next.emit('match-resume', { token: opened.hostToken, haveTick: -1 });
     await state;
+    expect((await replaced).matchId).toBe(opened.matchId);
 
     const room = findRoom(server, opened.matchId);
     expect(room.isParticipantSocket(opened.host.id)).toBe(false);
@@ -727,6 +732,103 @@ describe('match-resume', () => {
     });
     expect((await rejected).accepted).toBe(false);
     expect(room.isParticipantSocket(active[0]!.id)).toBe(true);
+  });
+
+  it('rejects commands when a replaced socket still carries matchId', async () => {
+    const { server, url } = await startServer();
+    const opened = await openMatch(url);
+    const next = await connect(url);
+    const state = onceEvent<MatchResumeStateEvent>(next, 'match-resume-state');
+    next.emit('match-resume', { token: opened.hostToken, haveTick: -1 });
+    await state;
+
+    const room = findRoom(server, opened.matchId);
+    expect(room.isParticipantSocket(opened.host.id)).toBe(false);
+    const superseded = serverSocket(server, opened.host.id);
+    expect(superseded).toBeDefined();
+    superseded!.data.matchId = opened.matchId;
+
+    const commandAck = onceEvent<{ tick: number; accepted: boolean }>(
+      opened.host,
+      'command-ack'
+    );
+    opened.host.emit('player-command', {
+      type: 'ping',
+      data: { n: 1 },
+      tick: 0,
+    });
+    expect(await commandAck).toEqual({ tick: 0, accepted: false });
+
+    const submitAck = onceEvent<{
+      accepted: boolean;
+      reason?: string;
+    }>(opened.host, 'submit-commands-ack');
+    opened.host.emit('submit-commands', {
+      tick: 0,
+      commands: [{ type: 'ping', data: { n: 1 } }],
+    });
+    expect(await submitAck).toEqual({
+      tick: 0,
+      accepted: false,
+      reason: 'Not in a match',
+    });
+    expect(room.isParticipantSocket(next.id)).toBe(true);
+  });
+
+  it('issues a token on room-recover when the player missed match-found', async () => {
+    const { server, url } = await startServer({
+      reconnect: { requireSessionToken: true },
+      countdownSeconds: 30,
+      playersConnectTimeoutMs: 20000,
+    });
+    const host = await connect(url);
+    const created = onceEvent<{ code: string }>(host, 'room-created');
+    host.emit('room-create', { playerId: 'player1', username: 'Player1' });
+    const { code } = await created;
+    host.disconnect();
+    await new Promise((resolve) => setTimeout(resolve, 40));
+
+    const guest = await connect(url);
+    const waiting = onceEvent<{
+      matchId: string;
+      missingPlayerIds: string[];
+    }>(guest, 'match-waiting-for-players');
+    guest.emit('room-join', {
+      playerId: 'player2',
+      username: 'Player2',
+      code,
+    });
+    const waited = await waiting;
+    expect(waited.missingPlayerIds).toContain('player1');
+    expect(findRoom(server, waited.matchId).getMatchInfo().state).toBe(
+      'waiting-for-players'
+    );
+
+    const returned = await connect(url);
+    const tokenEvent = onceEvent<SessionTokenEvent>(returned, 'session-token');
+    const recovered = onceEvent<{ code: string }>(returned, 'room-recovered');
+    returned.emit('room-recover', {
+      playerId: 'player1',
+      username: 'Player1',
+      code,
+    });
+    expect((await recovered).code).toBe(code);
+    const issued = await tokenEvent;
+    expect(issued.matchId).toBe(waited.matchId);
+    expect(issued.slot).toBe(0);
+
+    const next = await connect(url);
+    const resumed = onceEvent<MatchResumeStateEvent>(
+      next,
+      'match-resume-state'
+    );
+    next.emit('match-resume', { token: issued.token, haveTick: -1 });
+    const state = await resumed;
+    expect(state.matchId).toBe(waited.matchId);
+    expect(state.slot).toBe(0);
+    expect(findRoom(server, waited.matchId).isParticipantSocket(next.id)).toBe(
+      true
+    );
   });
 
   it('stops the absence timer when match-resume rebinds the player', async () => {

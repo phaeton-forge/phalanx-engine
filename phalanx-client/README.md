@@ -656,8 +656,12 @@ clear the stored session. `timeout` keeps it. With `autoReconnect`
 on, a disconnect tries `resumeMatch(token, lastTick)` first when the
 store has a token for the current match, and calls
 `reconnectToMatch` only if that resume does not bind. A terminal
-refusal drops the token before the legacy attempt. Giving up clears
-the store and emits `reconnectFailed`.
+refusal drops the token before the legacy attempt. With
+`requireSessionToken: true` on the client (the server has that flag),
+a timeout does not call `reconnectToMatch`.
+Giving up clears the store and emits `reconnectFailed`.
+`sessionSuperseded` fires with `{ matchId }` when another socket
+takes this player.
 
 ### Events
 

@@ -51,6 +51,7 @@ export type {
   MatchResumeErrorReason,
   MatchResumeStateEvent,
   SessionTokenEvent,
+  SessionSupersededEvent,
   StateHashEvent,
   DesyncDetectedEvent,
   PhalanxEventType,

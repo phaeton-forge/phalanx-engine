@@ -85,6 +85,7 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
       | 'buildId'
       | 'gameId'
       | 'matchSessionStorage'
+      | 'requireSessionToken'
     >
   > &
     Pick<
@@ -98,6 +99,7 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
       | 'buildId'
       | 'gameId'
       | 'matchSessionStorage'
+      | 'requireSessionToken'
     >;
   private socketManager: SocketManager;
   /**
@@ -201,6 +203,7 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
         maxReconnectAttempts: this.config.maxReconnectAttempts,
         reconnectDelayMs: this.config.reconnectDelayMs,
         debug: this.config.debug,
+        requireSessionToken: this.config.requireSessionToken,
       },
       {
         // Connection events
@@ -228,6 +231,7 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
           this.emit('matchEnd', data);
         },
         onSessionToken: (event) => this.handleSessionToken(event),
+        onSessionSuperseded: (event) => this.emit('sessionSuperseded', event),
 
         // Tick events
         onTickSync: (data) => {

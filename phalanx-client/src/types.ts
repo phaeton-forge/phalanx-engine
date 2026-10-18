@@ -77,6 +77,15 @@ export interface PhalanxClientConfig {
   gameId?: string;
 
   /**
+   * The server was started with `reconnect.requireSessionToken`.
+   * When true, a resume timeout does not fall through to
+   * `reconnect-match`, which that server always refuses.
+   * Omitted means the client does not know, and the legacy rebind
+   * still runs after a timeout.
+   */
+  requireSessionToken?: boolean;
+
+  /**
    * Storage for `MatchSessionStore`. Defaults to `localStorage`
    * (`LocalStorageAdapter`), with an in-memory fallback when the DOM
    * is unavailable. Ignored when `gameId` is omitted.
@@ -493,6 +502,11 @@ export interface SessionTokenEvent {
   slot: number;
 }
 
+/** The server bound this player to a different socket. */
+export interface SessionSupersededEvent {
+  matchId: string;
+}
+
 /**
  * The relay is about to stop. In-memory matches end with no result.
  */
@@ -691,6 +705,9 @@ export interface PhalanxClientEvents {
 
   /** A session token was issued. The client does not parse `token`. */
   sessionToken: (event: { token: string }) => void;
+
+  /** This socket was replaced. It is no longer in the match. */
+  sessionSuperseded: (event: SessionSupersededEvent) => void;
 }
 
 /**

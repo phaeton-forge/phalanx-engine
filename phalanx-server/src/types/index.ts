@@ -394,8 +394,11 @@ export interface SessionConfig {
 export interface ReconnectConfig {
   /**
    * When true, `reconnect-match` and `room-recover` into a match
-   * already in progress are rejected. Waiting-room `room-recover`
-   * is unchanged. Resume goes through `match-resume`.
+   * that has left `waiting-for-players` are rejected.
+   * `room-recover` during `waiting-for-players` stays open so a
+   * player who missed `match-found` can receive the first token.
+   * Waiting-room `room-recover` (no match yet) is unchanged.
+   * Resume goes through `match-resume`.
    * Default: false.
    */
   requireSessionToken?: boolean;
@@ -420,15 +423,24 @@ export interface MatchResumeStateEvent {
 }
 
 /**
- * Issued next to `game-start`, and again after `reconnect-state` for a
- * player who binds once `game-start` has already been emitted.
- * `matchId` and `slot` are beside `token` because the client does not
- * parse the token. `slot` is the index in `teams.flat()`.
+ * Issued at `match-found`. A later issue at `game-start` and on each
+ * rebind replaces it. `exp` is that issue time plus `ttlMs`, so the
+ * new token extends the lifetime. `matchId` and `slot` are beside
+ * `token` because the client does not parse the token. `slot` is the
+ * index in `teams.flat()`.
  */
 export interface SessionTokenEvent {
   token: string;
   matchId: string;
   slot: number;
+}
+
+/**
+ * The socket this player was bound to has been replaced.
+ * `matchId` is the match it no longer belongs to.
+ */
+export interface SessionSupersededEvent {
+  matchId: string;
 }
 
 /**

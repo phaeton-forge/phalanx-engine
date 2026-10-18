@@ -16,6 +16,7 @@ import type {
   PlayerCommandContext,
   MatchLogEntry,
   MatchArchive,
+  SessionSupersededEvent,
   SessionTokenEvent,
 } from '../types/index.js';
 import { DEFAULT_CONFIG } from '../config/defaults.js';
@@ -1585,6 +1586,14 @@ export class GameRoom {
             delete oldData.playerId;
             if (typeof oldSocket.leave === 'function') {
               void oldSocket.leave(this.roomId);
+            }
+            // The old socket is no longer this player. Tell it now,
+            // so it does not discover that only by a later
+            // `Not in a match` ack.
+            if (typeof oldSocket.emit === 'function') {
+              oldSocket.emit('session-superseded', {
+                matchId: this.id,
+              } satisfies SessionSupersededEvent);
             }
           }
         }

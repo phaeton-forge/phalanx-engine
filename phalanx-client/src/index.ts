@@ -217,6 +217,7 @@ export type {
   MatchResumeWireErrorReason,
   MatchResumeErrorReason,
   SessionTokenEvent,
+  SessionSupersededEvent,
 
   // Commands acknowledgment
   SubmitCommandsAck,

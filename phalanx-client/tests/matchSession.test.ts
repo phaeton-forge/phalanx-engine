@@ -126,6 +126,7 @@ function clientWithSocket(options?: {
   autoReconnect?: boolean;
   maxReconnectAttempts?: number;
   reconnectDelayMs?: number;
+  requireSessionToken?: boolean;
 }): { client: PhalanxClient; socket: MockSocket } {
   const client = new PhalanxClient({
     serverUrl: 'http://127.0.0.1:9',
@@ -138,6 +139,9 @@ function clientWithSocket(options?: {
       : {}),
     ...(options?.reconnectDelayMs !== undefined
       ? { reconnectDelayMs: options.reconnectDelayMs }
+      : {}),
+    ...(options?.requireSessionToken !== undefined
+      ? { requireSessionToken: options.requireSessionToken }
       : {}),
     ...(options?.buildId !== undefined ? { buildId: options.buildId } : {}),
     ...(options?.gameId !== undefined ? { gameId: options.gameId } : {}),
@@ -469,6 +473,66 @@ describe('autoReconnect', () => {
     expect(legacy).toHaveBeenCalledWith('match-1');
     expect(failed).not.toHaveBeenCalled();
     expect(new MatchSessionStore('legion', storage).load()).toBeNull();
+  });
+
+  it('does not call reconnectToMatch after a timeout when requireSessionToken is on', async () => {
+    const storage = new MemoryKeyValueStorage();
+    const { client, socket } = clientWithSocket({
+      gameId: 'legion',
+      storage,
+      autoReconnect: true,
+      maxReconnectAttempts: 1,
+      reconnectDelayMs: 0,
+      requireSessionToken: true,
+    });
+    new MatchSessionStore('legion', storage).save(session);
+    rememberMatch(client, socket);
+    const manager = (client as unknown as { socketManager: SocketManager })
+      .socketManager;
+    vi.spyOn(manager, 'connect').mockResolvedValue(undefined);
+    vi.spyOn(manager, 'resumeMatch').mockRejectedValue(
+      new MatchResumeRejected('timeout')
+    );
+    const legacy = vi.spyOn(manager, 'reconnectToMatch').mockResolvedValue({
+      matchId: 'match-1',
+      currentTick: 4,
+      state: 'playing',
+      recentCommands: [],
+    });
+
+    await expect(client.attemptReconnection()).rejects.toThrow(
+      /Max reconnection attempts/
+    );
+    expect(legacy).not.toHaveBeenCalled();
+  });
+
+  it('still calls reconnectToMatch after a timeout when the flag is unknown', async () => {
+    const storage = new MemoryKeyValueStorage();
+    const { client, socket } = clientWithSocket({
+      gameId: 'legion',
+      storage,
+      autoReconnect: true,
+      maxReconnectAttempts: 1,
+      reconnectDelayMs: 0,
+    });
+    new MatchSessionStore('legion', storage).save(session);
+    rememberMatch(client, socket);
+    const manager = (client as unknown as { socketManager: SocketManager })
+      .socketManager;
+    vi.spyOn(manager, 'connect').mockResolvedValue(undefined);
+    vi.spyOn(manager, 'resumeMatch').mockRejectedValue(
+      new MatchResumeRejected('timeout')
+    );
+    const legacy = vi.spyOn(manager, 'reconnectToMatch').mockResolvedValue({
+      matchId: 'match-1',
+      currentTick: 4,
+      state: 'playing',
+      recentCommands: [],
+    });
+
+    await client.attemptReconnection();
+    expect(legacy).toHaveBeenCalledWith('match-1');
+    expect(new MatchSessionStore('legion', storage).load()).toEqual(session);
   });
 
   it('clears the store and emits reconnectFailed when rejoining gives up', async () => {
