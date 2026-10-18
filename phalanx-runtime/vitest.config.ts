@@ -6,12 +6,28 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   resolve: {
-    alias: {
-      '@phalanx-engine/engine': path.resolve(
-        root,
-        '../phalanx-engine/dist/index.js'
-      ),
-    },
+    alias: [
+      {
+        find: /^@phalanx-engine\/game\/math$/,
+        replacement: path.resolve(root, '../phalanx-game/dist/math.js'),
+      },
+      {
+        find: /^@phalanx-engine\/game\/physics$/,
+        replacement: path.resolve(root, '../phalanx-game/dist/physics.js'),
+      },
+      {
+        find: /^@phalanx-engine\/game\/abilities$/,
+        replacement: path.resolve(root, '../phalanx-game/dist/abilities.js'),
+      },
+      {
+        find: /^@phalanx-engine\/game\/advanced$/,
+        replacement: path.resolve(root, '../phalanx-game/dist/advanced.js'),
+      },
+      {
+        find: /^@phalanx-engine\/game$/,
+        replacement: path.resolve(root, '../phalanx-game/dist/index.js'),
+      },
+    ],
   },
   test: {
     globals: true,

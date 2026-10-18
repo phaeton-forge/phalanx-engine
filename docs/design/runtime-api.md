@@ -56,8 +56,10 @@ it; a write after despawn throws. Importing `@phalanx-engine/runtime` installs
 the world-module host. Without it, save/restore/spawn/despawn/each throw
 `GameWorld: world modules are not installed. Import @phalanx-engine/runtime before using save, restore, spawn, despawn, or each.`
 
-`@phalanx-engine/engine` re-exports the game-facing surface of runtime, ecs,
-abilities, physics and math. It does not export `advanced`.
+`@phalanx-engine/game` re-exports the game-facing surface. The root is
+runtime plus the explicit ecs list. `/math`, `/physics` and `/abilities`
+are separate subpaths. Fixed-point math is only on `/math`. Advanced
+helpers are `@phalanx-engine/game/advanced`.
 
 Initial GAS `pendingAdd` effects are captured on the first pool return and
 copied back by `AbilitySystemComponent.onEnable`. `world.restore` calls

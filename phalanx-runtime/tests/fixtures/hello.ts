@@ -1,4 +1,4 @@
-import * as engine from '@phalanx-engine/engine';
+import * as engine from '@phalanx-engine/game';
 const Unit = engine.defineComponent('Unit', { x: 'i64' });
 const commands = engine.defineCommands({ move: { dx: 'i64' } });
 const pace = [{ type: 'move' as const, dx: 1n }];

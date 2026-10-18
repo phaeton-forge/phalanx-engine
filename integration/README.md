@@ -6,7 +6,7 @@ published, and it has no `build` or `test` script, so root
 
 The suite sees the engine only through `SimDriver` (`src/driver`) and
 `GameFacade` (`src/facade/GameFacade.ts`). The default driver is
-`adapters/v65.ts` (`createV65Driver`) on `@phalanx-engine/engine`.
+`adapters/v65.ts` (`createV65Driver`) on `@phalanx-engine/game`.
 `facade/v65.ts` binds `defineGame`; the sim glue lives in
 `facade/skirmishWorld.ts`. Rules and bots are pure functions in
 `game/skirmish/`. `runConformance` is the acceptance test for a future
@@ -159,9 +159,8 @@ checks that shrink.
 3. Point `src/run.ts` at the new driver.
 4. `runConformance` and `pnpm run it:unit` must pass.
 
-`src/facade/` and `src/adapters/` import `@phalanx-engine/engine` only.
-`@phalanx-engine/runtime/advanced` is allowed in an adapter when the
-facade does not export the symbol, and the file must say why.
+`src/facade/` and `src/adapters/` import only `@phalanx-engine/game` and
+its subpaths `/math`, `/physics`, `/abilities` and `/advanced`.
 `src/suites/packageSmoke.ts` may import the individual packages.
 `pnpm run lint` and `tests/imports.test.ts` enforce that.
 

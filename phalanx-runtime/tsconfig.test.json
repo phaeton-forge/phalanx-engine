@@ -5,7 +5,11 @@
     "noEmit": true,
     "baseUrl": ".",
     "paths": {
-      "@phalanx-engine/engine": ["../phalanx-engine/dist/index.d.ts"]
+      "@phalanx-engine/game": ["../phalanx-game/dist/index.d.ts"],
+      "@phalanx-engine/game/math": ["../phalanx-game/dist/math.d.ts"],
+      "@phalanx-engine/game/physics": ["../phalanx-game/dist/physics.d.ts"],
+      "@phalanx-engine/game/abilities": ["../phalanx-game/dist/abilities.d.ts"],
+      "@phalanx-engine/game/advanced": ["../phalanx-game/dist/advanced.d.ts"]
     }
   },
   "include": ["src/**/*", "tests/**/*", "bench/**/*"],

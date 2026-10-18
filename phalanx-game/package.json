@@ -1,0 +1,58 @@
+{
+  "name": "@phalanx-engine/game",
+  "version": "0.3.0",
+  "private": true,
+  "description": "Game-facing facade for Phalanx Engine 0.3. Root re-exports runtime and the explicit ecs surface. Math, physics, abilities and advanced helpers are subpath exports.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./math": {
+      "types": "./dist/math.d.ts",
+      "import": "./dist/math.js"
+    },
+    "./physics": {
+      "types": "./dist/physics.d.ts",
+      "import": "./dist/physics.js"
+    },
+    "./abilities": {
+      "types": "./dist/abilities.d.ts",
+      "import": "./dist/abilities.js"
+    },
+    "./advanced": {
+      "types": "./dist/advanced.d.ts",
+      "import": "./dist/advanced.js"
+    }
+  },
+  "dependencies": {
+    "@phalanx-engine/abilities": "workspace:*",
+    "@phalanx-engine/ecs": "workspace:*",
+    "@phalanx-engine/math": "workspace:*",
+    "@phalanx-engine/physics": "workspace:*",
+    "@phalanx-engine/runtime": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.3",
+    "vitest": "^1.0.0"
+  },
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "test": "tsc -p tsconfig.test.json && vitest run && node --input-type=module -e \"await import('./dist/index.js'); await import('./dist/math.js'); await import('./dist/physics.js'); await import('./dist/abilities.js'); await import('./dist/advanced.js')\""
+  },
+  "keywords": [
+    "phalanx",
+    "lockstep",
+    "deterministic"
+  ],
+  "author": "",
+  "license": "MIT",
+  "files": [
+    "dist",
+    "README.md"
+  ]
+}
