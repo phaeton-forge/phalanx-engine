@@ -2,15 +2,7 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "rootDir": "..",
-    "noEmit": true,
-    "baseUrl": ".",
-    "paths": {
-      "@phalanx-engine/game": ["dist/index.d.ts"],
-      "@phalanx-engine/game/math": ["dist/math.d.ts"],
-      "@phalanx-engine/game/physics": ["dist/physics.d.ts"],
-      "@phalanx-engine/game/abilities": ["dist/abilities.d.ts"],
-      "@phalanx-engine/game/advanced": ["dist/advanced.d.ts"]
-    }
+    "noEmit": true
   },
   "include": ["src/**/*", "tests/**/*"],
   "exclude": ["node_modules", "dist"]
