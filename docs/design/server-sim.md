@@ -4,6 +4,17 @@ Status: design approved 2026-10-14; contracts in `@phalanx-engine/runtime`
 (skeleton, Task 1). Implementation follows Tasks 2–13
 (see [runtime-api.md § Task map](./runtime-api.md#task-map)).
 
+**Task 11 as shipped.** The prompt (rev 17.10) requires one
+`worker_threads` sim (or `inProcess` for tests), serializable messages, and
+a relay that does not block on the sim. This document's §4 and §6 describe
+a synchronous in-process sim and drop workers until a later task. The code
+follows the prompt: `PhalanxConfig.games` plus `simHost.mode`
+`'worker' | 'inProcess'`, one worker, private rooms opt in with
+`matchConfig`, and bot commands return to the relay to be stamped. A real
+worker death ends every server match on that worker. Practice rooms and
+matchmaking auto-fill are not in this change. Per-tick cost was not
+measured.
+
 Related: [runtime-api.md](./runtime-api.md) (contracts and review),
 [reconnect.md](./reconnect.md).
 

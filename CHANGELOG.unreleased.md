@@ -5,6 +5,10 @@ Entries collected per package until the synchronized 0.3.0 release
 
 ## @phalanx-engine/runtime
 
+- A `setController` command stamped into a relay `commands-batch` (player id
+  `system`) is applied on every peer. The same command already applied
+  locally is skipped by envelope `q`, so a server and a client do not
+  double-apply it.
 - New package `@phalanx-engine/runtime` (0.3.0, `private` until release):
   contracts and skeleton for server-side simulation, snapshots and
   reconnect (Task 1). Adds `defineGame`, `GameDefinition`, `MatchConfigBase`
@@ -301,6 +305,9 @@ Entries collected per package until the synchronized 0.3.0 release
 
 ## @phalanx-engine/server
 
+- server: opt-in server-sim mode — `games` + `simHost` config,
+  per-room `matchConfig {gameId, simMode:'server', slots}`, SimHost in a worker_thread (inProcess for tests), server bots `bot:<slot>`,
+  hash arbiter, snapshots, public `Phalanx.endMatch`.
 - server: opt-in `onMatchArchived(rec: MatchArchive)` hook — the full
   command log plus seed, `buildId`, teams and end reason is handed to the
   game once per started match; the engine stores nothing; without the hook

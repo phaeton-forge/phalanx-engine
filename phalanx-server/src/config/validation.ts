@@ -151,7 +151,74 @@ export function validateConfig(
     );
   }
 
+  // Task 11. Absent `games` means a pure relay and no worker.
+  validateSimHost(config);
+
   return config;
+}
+
+const RESOURCE_LIMIT_KEYS = [
+  'maxYoungGenerationSizeMb',
+  'maxOldGenerationSizeMb',
+  'codeRangeSizeMb',
+  'stackSizeMb',
+] as const;
+
+function validateSimHost(config: PhalanxConfig): void {
+  const games = config.games;
+  if (games !== undefined && !Array.isArray(games)) {
+    throw new Error('Invalid games: must be an array.');
+  }
+  const sim = config.simHost;
+  if (sim === undefined) return;
+  if (typeof sim !== 'object') {
+    throw new Error('Invalid simHost: must be an object.');
+  }
+  if (
+    sim.mode !== undefined &&
+    sim.mode !== 'worker' &&
+    sim.mode !== 'inProcess'
+  ) {
+    throw new Error(
+      `Invalid simHost.mode: ${String(sim.mode)}. Must be 'worker' or 'inProcess'.`
+    );
+  }
+  if (sim.workers !== undefined && sim.workers !== 1) {
+    throw new Error(
+      `Invalid simHost.workers: ${String(sim.workers)}. Only 1 worker is supported.`
+    );
+  }
+  if (
+    sim.snapshotEveryTicks !== undefined &&
+    (!Number.isInteger(sim.snapshotEveryTicks) || sim.snapshotEveryTicks < 1)
+  ) {
+    throw new Error(
+      `Invalid simHost.snapshotEveryTicks: ${String(sim.snapshotEveryTicks)}. Must be an integer >= 1.`
+    );
+  }
+  if (
+    sim.maxMatches !== undefined &&
+    (!Number.isInteger(sim.maxMatches) || sim.maxMatches < 1)
+  ) {
+    throw new Error(
+      `Invalid simHost.maxMatches: ${String(sim.maxMatches)}. Must be an integer >= 1.`
+    );
+  }
+  const limits = sim.resourceLimits;
+  if (limits !== undefined) {
+    if (typeof limits !== 'object' || limits === null) {
+      throw new Error('Invalid simHost.resourceLimits: must be an object.');
+    }
+    for (const key of RESOURCE_LIMIT_KEYS) {
+      const value = limits[key];
+      if (value === undefined) continue;
+      if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) {
+        throw new Error(
+          `Invalid simHost.resourceLimits.${key}: must be a finite number > 0.`
+        );
+      }
+    }
+  }
 }
 
 /**

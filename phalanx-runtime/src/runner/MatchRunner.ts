@@ -1054,9 +1054,21 @@ export class MatchRunner<G extends AnyGameDefinition> {
   }
 
   private runTick(tick: number, batch: CommandsBatch, plan: TickPlan): void {
-    const game = entriesFromBatch(tick, batch, this.slotByPlayerId);
-    const system = this.systemEntriesFor(tick);
-    this.runPreparedTick(tick, [...system, ...game], plan);
+    const fromBatch = entriesFromBatch(tick, batch, this.slotByPlayerId);
+    const localSystem = this.systemEntriesFor(tick);
+    const seen = new Set(localSystem.map((entry) => entry.data.q));
+    const batchSystem: LogEntry[] = [];
+    const game: LogEntry[] = [];
+    for (const entry of fromBatch) {
+      if (entry.playerId !== SYSTEM_PLAYER_ID) {
+        game.push(entry);
+        continue;
+      }
+      if (seen.has(entry.data.q)) continue;
+      seen.add(entry.data.q);
+      batchSystem.push(entry);
+    }
+    this.runPreparedTick(tick, [...localSystem, ...batchSystem, ...game], plan);
   }
 
   /** Tick body when the log entries are already known (fast-forward). */
@@ -2294,9 +2306,43 @@ function entriesFromBatch(
   }[] = [];
   let index = 0;
   for (const playerId of Object.keys(batch.commands)) {
-    const slot = slotByPlayerId.get(playerId);
     const commands = batch.commands[playerId];
-    if (slot === undefined || commands === undefined) continue;
+    if (commands === undefined) continue;
+    if (playerId === SYSTEM_PLAYER_ID) {
+      for (const command of commands) {
+        const envelope = readEnvelope(command.data);
+        if (envelope === null) {
+          ranked.push({
+            slot: -1,
+            seq: 0,
+            index,
+            entry: {
+              tick,
+              playerId,
+              type: typeof command.type === 'string' ? command.type : '',
+              data: { q: 0, p: null },
+              malformed: true,
+            },
+          });
+        } else {
+          ranked.push({
+            slot: -1,
+            seq: envelope.q,
+            index,
+            entry: {
+              tick,
+              playerId,
+              type: command.type,
+              data: { q: envelope.q, p: canonicalJsonValue(envelope.p) },
+            },
+          });
+        }
+        index += 1;
+      }
+      continue;
+    }
+    const slot = slotByPlayerId.get(playerId);
+    if (slot === undefined) continue;
     for (const command of commands) {
       const envelope = readEnvelope(command.data);
       if (envelope === null) {

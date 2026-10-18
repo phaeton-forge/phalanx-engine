@@ -250,9 +250,15 @@ importers:
 
   phalanx-server:
     dependencies:
+      '@phalanx-engine/ecs':
+        specifier: workspace:*
+        version: link:../phalanx-ecs
       '@phalanx-engine/math':
         specifier: workspace:*
         version: link:../phalanx-math
+      '@phalanx-engine/runtime':
+        specifier: workspace:*
+        version: link:../phalanx-runtime
       socket.io:
         specifier: ^4.7.0
         version: 4.8.3

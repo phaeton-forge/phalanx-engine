@@ -13,6 +13,7 @@ For a high-level overview of engine features, see the [root README](../README.md
 - [Configuration Reference](#configuration-reference)
 - [Game Types](#game-types)
 - [Game Modes](#game-modes)
+- [Server simulation](#server-simulation)
 - [Event Hooks](#event-hooks)
 - [API](#api)
   - [Phalanx Class](#phalanx-class)
@@ -382,6 +383,56 @@ returns the current absences with
 `deadlineMs` / `budgetLeftMs` in the same millisecond sense (Task 9
 reads the resume deadline from it).
 
+## Server simulation
+
+Opt-in. With no `games` entry the process stays a pure relay and does not
+spawn a worker. A private room opts in by passing `matchConfig` on
+`room-create`:
+
+```typescript
+import { Phalanx } from '@phalanx-engine/server';
+
+const app = new Phalanx({
+  tickRate: 64,
+  games: [{ module: '/abs/path/to/game.js', export: 'RelayGame' }],
+  simHost: {
+    mode: 'worker', // 'inProcess' runs the same queue on the relay thread
+    snapshotEveryTicks: 1000,
+    maxMatches: 8,
+  },
+});
+```
+
+`simMode: 'server'` plus a registered `gameId` and `slots` starts a
+`MatchRunner` (`side: 'server'`) in one shared worker. The relay remains the
+only stamper: human commands, then bot commands for that tick, then the
+broadcast `commands-batch`, then the same batch is posted to the sim. Bot
+player ids are `bot:<slot>`. A command that arrives after its tick is filed
+under the current tick and the server emits `bot-commands-late`.
+
+The sim's digest is compared with each client's `state-hash`. A mismatch
+emits `desync` `{ playerId, tick }` to that player only and the match
+continues. Relay rooms (no server sim) keep the previous all-client desync
+behaviour. Snapshots are stored in memory (latest only): every
+`snapshotEveryTicks`, and on `match-snapshot-request`, which is answered
+with `match-snapshot` `{ tick, bytes, requestId }`. `match-resume-state`
+includes `snapshot: { tick }` when one exists.
+
+`Phalanx.endMatch(matchId, result)` ends a live match the same way a sim
+outcome does. `onMatchArchived` still runs once. `getPort()` returns the
+bound port (`0` in config is the ephemeral port after `start()`).
+
+A worker fault (`sim-error`, `sim-crash`, `sim-oom`) ends the affected
+match and does not restart it. `process.exit` inside a match is turned into
+`sim-crash` for that match. A dead worker ends every match it was hosting.
+Relay rooms are not on that thread. `shutdown` / `stop` posts `end` for
+every server match, then closes the host.
+
+When `absence` is set and the room config includes `absencePolicy`, an
+absent human is replaced with that bot policy via `setController`, and
+restored to `human` on return. Without `absencePolicy`, expiry still ends
+the match as in Task 10.
+
 ## Event Hooks
 
 ```typescript
@@ -433,6 +484,10 @@ class Phalanx {
    * because archives for matches this call stops are queued inside stop().
    */
   shutdown(reason: string): Promise<void>;
+  /** End one live match. False when the id is unknown or already finished. */
+  endMatch(matchId: string, result: EndMatchResult): boolean;
+  /** Bound port after start. Config port 0 becomes the ephemeral port. */
+  getPort(): number;
 
   // Trusted server-side integrations
   createPrivateRoomForHost(params: {

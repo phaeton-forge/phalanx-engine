@@ -1,6 +1,8 @@
 import { randomBytes } from 'crypto';
 import { performance } from 'node:perf_hooks';
 import type { Server as SocketIOServer } from 'socket.io';
+import { isBotPlayerId } from '@phalanx-engine/runtime';
+import type { RoomSim } from '../sim/RoomSim.js';
 import type {
   PhalanxConfig,
   QueuedPlayer,
@@ -195,6 +197,8 @@ export class GameRoom {
   // one timer per absent player. Idle unless `config.absence` is set.
   private readonly commandContext: PlayerCommandContext;
   private absencePolicy: AbsencePolicy;
+  private serverSession: RoomSim | null = null;
+  private readonly botPlayers: Set<string> = new Set();
   private readonly activeAbsences: Map<string, AbsenceRecord> = new Map();
   private readonly absenceBudgets: Map<string, number> = new Map();
 
@@ -266,7 +270,12 @@ export class GameRoom {
           lastTick: 0,
         };
         this.players.set(qp.playerId, playerInfo);
-        this.socketToPlayer.set(qp.socketId, qp.playerId);
+        if (qp.socketId.length > 0) {
+          this.socketToPlayer.set(qp.socketId, qp.playerId);
+        }
+        if (qp.kind === 'bot' || isBotPlayerId(qp.playerId)) {
+          this.botPlayers.add(qp.playerId);
+        }
         // Initialize activity tracking with current time
         this.lastMessageTime.set(qp.playerId, Date.now());
       });
@@ -318,6 +327,10 @@ export class GameRoom {
       team.forEach((player) => {
         const socket = this.io.sockets.sockets.get(player.socketId);
         const playerInfo = this.players.get(player.playerId);
+        if (this.botPlayers.has(player.playerId)) {
+          if (playerInfo) playerInfo.connected = true;
+          return;
+        }
         if (socket) {
           // Assign match data to socket
           const socketData = socket.data as SocketData;
@@ -493,10 +506,10 @@ export class GameRoom {
       // No deadline to record: the countdown phase is effectively zero
       // length, so a reconnecting client should observe `gameStartEmitted`.
       this.gameStartEmitted = true;
-      this.emitLifecycleToConnectedPlayers('game-start', {
-        matchId: this.id,
-        randomSeed: this.randomSeed,
-      });
+      this.emitLifecycleToConnectedPlayers(
+        'game-start',
+        this.gameStartPayload()
+      );
       this.emitSessionTokensToConnectedPlayers();
       this.enterWaitingForReady();
       return;
@@ -528,10 +541,10 @@ export class GameRoom {
         this.countdownDeadline = null;
         this.gameStartEmitted = true;
         // Emit game-start event with random seed for deterministic RNG
-        this.emitLifecycleToConnectedPlayers('game-start', {
-          matchId: this.id,
-          randomSeed: this.randomSeed,
-        });
+        this.emitLifecycleToConnectedPlayers(
+          'game-start',
+          this.gameStartPayload()
+        );
         this.emitSessionTokensToConnectedPlayers();
         this.enterWaitingForReady();
       }
@@ -545,7 +558,34 @@ export class GameRoom {
   private enterWaitingForReady(): void {
     this.state = 'waiting-for-ready';
     this.readyPlayers.clear();
+    for (const playerId of this.botPlayers) {
+      this.readyPlayers.add(playerId);
+    }
+    if (this.areAllPlayersConnectedAndReady()) {
+      this.clearReadyTimeout('bots ready');
+      this.startGame();
+      return;
+    }
     this.armReadyTimeout();
+  }
+
+  private gameStartPayload(): {
+    matchId: string;
+    randomSeed: number;
+    matchConfig?: { readonly [key: string]: unknown };
+  } {
+    const payload: {
+      matchId: string;
+      randomSeed: number;
+      matchConfig?: { readonly [key: string]: unknown };
+    } = {
+      matchId: this.id,
+      randomSeed: this.randomSeed,
+    };
+    if (this.serverSession) {
+      payload.matchConfig = this.serverSession.matchConfig;
+    }
+    return payload;
   }
 
   private armReadyTimeout(): void {
@@ -805,12 +845,17 @@ export class GameRoom {
       commands,
     });
 
+    // Server sim sees the same stamped batch. It must not block this loop.
+    const publishedTick = this.currentTick;
+    this.serverSession?.publishBatch(publishedTick, commands);
+
     // Clean up old commands and tick data
     this.pendingCommands.delete(this.currentTick);
     this.clearOldTicks(this.currentTick);
 
     // Advance tick
     this.currentTick++;
+    this.serverSession?.noteRelayTick(this.currentTick);
   }
 
   /**
@@ -819,6 +864,12 @@ export class GameRoom {
   handleCommand(playerId: string, command: PlayerCommand): boolean {
     const player = this.players.get(playerId);
     if (!player || this.state !== 'playing') {
+      return false;
+    }
+    if (
+      this.serverSession &&
+      !this.serverSession.acceptCommand(playerId, command.data)
+    ) {
       return false;
     }
 
@@ -923,6 +974,14 @@ export class GameRoom {
     } else {
       // No validation - accept all commands
       validCommands.push(...commands);
+    }
+
+    if (this.serverSession) {
+      for (const command of validCommands) {
+        if (!this.serverSession.acceptCommand(playerId, command.data)) {
+          return { accepted: false };
+        }
+      }
     }
 
     // Hooks run before the command is logged. If one of them ends the
@@ -1096,6 +1155,7 @@ export class GameRoom {
 
     for (const [playerId, playerInfo] of this.players) {
       if (!playerInfo.connected) continue;
+      if (this.botPlayers.has(playerId)) continue;
 
       const lastMessage = this.lastMessageTime.get(playerId) || 0;
       const msSinceLastMessage = now - lastMessage;
@@ -1519,6 +1579,7 @@ export class GameRoom {
       this.turnTimeout = null;
     }
     this.clearAbsenceTimers();
+    this.endServerSim();
     this.state = 'finished';
 
     if (!skipNotify) {
@@ -1904,6 +1965,65 @@ export class GameRoom {
   }
 
   /**
+   * Attach the server simulation for this room. Called from `match-created`,
+   * before `start()`.
+   */
+  attachServerSim(session: RoomSim): void {
+    this.serverSession = session;
+  }
+
+  /** Tell the sim this match is over. Safe to call more than once. */
+  endServerSim(): void {
+    this.serverSession?.end();
+    this.serverSession = null;
+  }
+
+  hasServerSim(): boolean {
+    return this.serverSession !== null;
+  }
+
+  /**
+   * File already-stamped commands (bots, `setController`) without the
+   * human command hook. A command whose tick has already been broadcast
+   * is filed under the current tick.
+   */
+  enqueueStamped(commands: readonly PlayerCommand[]): void {
+    if (this.isFinished()) return;
+    for (const command of commands) {
+      const filed = Math.max(command.tick, this.currentTick);
+      if (filed !== command.tick && isBotPlayerId(command.playerId)) {
+        this.eventEmitter(
+          'bot-commands-late',
+          this.id,
+          command.tick,
+          filed,
+          command.playerId
+        );
+      }
+      const stored =
+        filed === command.tick ? command : { ...command, tick: filed };
+      const list = this.pendingCommands.get(filed) ?? [];
+      list.push(stored);
+      this.pendingCommands.set(filed, list);
+    }
+  }
+
+  emitToPlayer(playerId: string, event: string, payload: unknown): void {
+    for (const [socketId, id] of this.socketToPlayer) {
+      if (id !== playerId) continue;
+      this.io.sockets.sockets.get(socketId)?.emit(event, payload);
+    }
+  }
+
+  latestSnapshotTick(): number | undefined {
+    return this.serverSession?.latestSnapshotTick();
+  }
+
+  requestSnapshot(playerId: string, requestId: number): void {
+    this.serverSession?.requestSnapshot(playerId, requestId);
+  }
+
+  /**
    * Start the absence timer when a player becomes disconnected during
    * `playing`. A timer that is already running is left alone. A zero
    * budget schedules `setTimeout(…, 0)` and does not end the match
@@ -1912,6 +2032,7 @@ export class GameRoom {
   private beginAbsence(playerId: string): void {
     const absence = this.config.absence;
     if (!absence || this.state !== 'playing') return;
+    if (this.botPlayers.has(playerId)) return;
     if (this.activeAbsences.has(playerId)) return;
 
     const budgetLeft =
@@ -1997,13 +2118,15 @@ export class GameRoom {
     }
   }
 
-  /** Every participant is a human until Task 11 adds bot slots. */
+  /** True when every human is disconnected. Bot slots do not count. */
   private areAllHumansAbsent(): boolean {
-    if (this.players.size === 0) return false;
-    for (const player of this.players.values()) {
+    let humans = 0;
+    for (const [playerId, player] of this.players) {
+      if (this.botPlayers.has(playerId)) continue;
+      humans += 1;
       if (player.connected) return false;
     }
-    return true;
+    return humans > 0;
   }
 
   private hasTeam(teamId: number): boolean {
@@ -2058,6 +2181,13 @@ export class GameRoom {
    * @param hash - The state hash string
    */
   receiveStateHash(playerId: string, tick: number, hash: string): void {
+    // Server sim compares each client to the server digest and keeps
+    // the match running. Relay rooms keep the all-client check below.
+    if (this.serverSession) {
+      this.serverSession.clientHash(playerId, tick, hash);
+      return;
+    }
+
     // Only process if state hashing is enabled
     if (!this.config.enableStateHashing) {
       return;

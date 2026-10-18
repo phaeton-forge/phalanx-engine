@@ -4,6 +4,8 @@
  */
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import type { ResourceLimits } from 'node:worker_threads';
+import type { AnyGameDefinition, SlotConfig } from '@phalanx-engine/runtime';
 
 /**
  * Game mode preset string
@@ -362,6 +364,50 @@ export interface PhalanxConfig {
     req: IncomingMessage,
     res: ServerResponse
   ) => boolean | Promise<boolean>;
+
+  // Task 11
+  /**
+   * Games this process can simulate. Omit it, or pass an empty list,
+   * and the server stays a pure relay: no worker is spawned.
+   * A worker loads each game by module path. An in-process host may
+   * also take a `GameDefinition` object.
+   */
+  games?: ReadonlyArray<AnyGameDefinition | GameModuleSpec>;
+  /** Opt-in server simulation. Default mode is one worker thread. */
+  simHost?: SimHostConfig;
+}
+
+/** Module path a worker imports. `export` defaults to `default`, then `RelayGame`. */
+export interface GameModuleSpec {
+  module: string;
+  export?: string;
+}
+
+/**
+ * Server-sim host. `workers` is accepted only as `1` (a pool is a later task).
+ * `snapshotEveryTicks` defaults to 1000. `maxMatches` caps concurrent
+ * `simMode: 'server'` rooms.
+ */
+export interface SimHostConfig {
+  mode?: 'worker' | 'inProcess';
+  workers?: 1;
+  resourceLimits?: ResourceLimits;
+  snapshotEveryTicks?: number;
+  maxMatches?: number;
+}
+
+/**
+ * `room-create` body that starts a server-simulated match.
+ * Further integer fields are copied onto the runner config.
+ */
+export interface ServerRoomMatchConfig {
+  gameId: string;
+  simMode: 'server';
+  slots: readonly SlotConfig[];
+  inputDelayTicks?: number;
+  /** Bot policy used when an absent human is replaced. Requires `absence`. */
+  absencePolicy?: string;
+  [extra: string]: unknown;
 }
 
 /**
@@ -420,6 +466,8 @@ export interface MatchResumeStateEvent {
   currentTick: number;
   state: MatchInfo['state'];
   absentDeadline?: number;
+  /** Present in server-sim mode when a snapshot has been stored. Tick only. */
+  snapshot?: { tick: number };
 }
 
 /**
@@ -554,6 +602,12 @@ export interface GameStartEvent {
   matchId: string;
   /** Random seed for deterministic RNG (optional for backward compatibility) */
   randomSeed?: number;
+  /**
+   * Server-sim runner config (`side: 'server'`). Present only when this
+   * match has a server simulation. A client copies it and sets `side`
+   * to `'client'`.
+   */
+  matchConfig?: { readonly [key: string]: unknown };
 }
 
 /**
@@ -598,6 +652,8 @@ export interface QueuedPlayer {
   gameType?: string;
   /** Client build id from queue-join / room-create / room-join, when valid. */
   buildId?: string;
+  /** Bot slots have no socket. Omitted means human (today's rooms). */
+  kind?: 'human' | 'bot';
 }
 
 /**
@@ -758,7 +814,11 @@ export type PhalanxEventType =
   | 'player-timeout'
   | 'player-reconnected'
   | 'player-disconnected'
-  | 'desync-detected';
+  | 'desync-detected'
+  | 'sim-digest'
+  | 'sim-lag'
+  | 'bot-commands-late'
+  | 'sim-fault';
 
 /**
  * Event handler types
@@ -782,4 +842,18 @@ export interface PhalanxEventHandlers {
     tick: number,
     hashes: { [playerId: string]: string }
   ) => void;
+  'sim-digest': (matchId: string, tick: number, digest: string) => void;
+  'sim-lag': (
+    matchId: string,
+    relayTick: number,
+    simTick: number,
+    gap: number
+  ) => void;
+  'bot-commands-late': (
+    matchId: string,
+    fromTick: number,
+    filedTick: number,
+    playerId: string
+  ) => void;
+  'sim-fault': (matchId: string, reason: string, message: string) => void;
 }
