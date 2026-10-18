@@ -6,19 +6,16 @@ export interface SimPort {
 }
 
 /**
- * Post a simulation message. Snapshot bytes are copied into a fresh
- * ArrayBuffer and transferred, which detaches that buffer in the sender.
+ * Post a simulation message. Snapshot `bytes` are the one copy the sim
+ * made; this transfers that buffer and detaches it in the sender.
  */
 export function postSimOut(port: SimPort, message: SimOut): void {
   if (message.t !== 'snapshot') {
     port.postMessage(message);
     return;
   }
-  const view = new Uint8Array(message.bytes);
-  const copy = new Uint8Array(view.byteLength);
-  copy.set(view);
-  const buffer = copy.buffer;
-  port.postMessage({ ...message, bytes: buffer }, [buffer]);
+  const buffer = message.bytes;
+  port.postMessage(message, [buffer]);
   if (buffer.byteLength !== 0) {
     throw new Error('snapshot buffer was not detached');
   }

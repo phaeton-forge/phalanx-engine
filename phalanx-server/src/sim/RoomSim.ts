@@ -6,6 +6,7 @@ import {
   type SlotConfig,
   type SlotInfo,
 } from '@phalanx-engine/runtime';
+import { logger } from '../logger.js';
 import type { EndMatchResult, PlayerCommand } from '../types/index.js';
 import type { RegisteredGame } from './loadGames.js';
 import type { SimHost } from './SimHost.js';
@@ -31,6 +32,8 @@ export interface RoomSimOptions {
     payload: unknown
   ) => void;
   readonly emitServer: (event: string, ...args: unknown[]) => void;
+  readonly haltRelay: () => void;
+  readonly releaseHold: () => void;
   readonly onClosed: () => void;
 }
 
@@ -51,9 +54,13 @@ export class RoomSim {
   private readonly reported = new Set<string>();
   private closed = false;
   private dead = false;
+  private finished = false;
   private lastAck = -1;
   private lastGap = 0;
   private systemSeq = 0;
+  private endWait: Promise<void> | null = null;
+  private endResolve: (() => void) | null = null;
+  private endTimer: ReturnType<typeof setTimeout> | null = null;
   readonly matchConfig: { readonly [key: string]: unknown };
 
   public constructor(options: RoomSimOptions) {
@@ -111,8 +118,12 @@ export class RoomSim {
   }
 
   public onMessage(message: SimOut): void {
-    if (this.closed) return;
     if (message.matchId !== this.options.matchId) return;
+    if (message.t === 'ended') {
+      this.finishEnd();
+      return;
+    }
+    if (this.closed || this.dead) return;
     switch (message.t) {
       case 'botCommands':
         this.options.enqueue(message.commands.map(toPlayerCommand));
@@ -129,12 +140,17 @@ export class RoomSim {
         return;
       case 'tick':
         this.lastAck = message.tick;
+        if (this.leadExceeded(this.options.currentTick())) return;
         this.lastGap = 0;
+        this.options.releaseHold();
         return;
       case 'snapshot':
         this.keepSnapshot(message.tick, message.bytes, message.requestId);
         return;
       case 'event':
+        this.dead = true;
+        this.dropPending();
+        this.options.haltRelay();
         this.options.endMatch(outcomeResult(message.outcome));
         return;
       case 'sim-error':
@@ -143,7 +159,6 @@ export class RoomSim {
         this.fail(message.t, message.message);
         return;
       case 'opened':
-      case 'ended':
         return;
       default:
         return;
@@ -161,20 +176,28 @@ export class RoomSim {
     this.options.host.post(message);
   }
 
-  public noteRelayTick(currentTick: number): void {
-    if (this.closed || this.dead) return;
-    const completed = currentTick - 1;
-    const gap = completed - this.lastAck;
-    if (gap > 10 && gap > this.lastGap) {
+  /**
+   * True when the relay is far enough ahead that bot commands for
+   * `nextTick` may not have been stamped yet. The bound is
+   * `inputDelayTicks - 1`, so a sim that keeps up does not pause the room.
+   * Crossing it emits `sim-lag` and the room stops its own tick loop.
+   */
+  public leadExceeded(nextTick: number): boolean {
+    if (this.closed || this.dead) return false;
+    const bound = this.options.inputDelayTicks - 1;
+    const gap = nextTick - 1 - this.lastAck;
+    if (gap <= bound) return false;
+    if (gap > this.lastGap) {
       this.lastGap = gap;
       this.options.emitServer(
         'sim-lag',
         this.options.matchId,
-        completed,
+        nextTick - 1,
         this.lastAck,
         gap
       );
     }
+    return true;
   }
 
   public clientHash(playerId: string, tick: number, hash: string): void {
@@ -262,12 +285,21 @@ export class RoomSim {
     });
   }
 
-  public end(): void {
-    if (this.closed) return;
+  /** Ask the sim to drop the match. Resolves on `ended`, or after 2s. */
+  public end(): Promise<void> {
+    if (this.endWait) return this.endWait;
     this.closed = true;
+    this.dead = true;
+    this.dropPending();
     this.options.store.delete(this.options.matchId);
+    this.endWait = new Promise<void>((resolve) => {
+      this.endResolve = resolve;
+    });
+    this.endTimer = setTimeout(() => {
+      this.finishEnd();
+    }, 2000);
     this.options.host.post({ t: 'end', matchId: this.options.matchId });
-    this.options.onClosed();
+    return this.endWait;
   }
 
   private readonly pendingRequests = new Map<number, string>();
@@ -317,11 +349,32 @@ export class RoomSim {
     this.options.emitPlayer(playerId, 'desync', { playerId, tick });
   }
 
+  private dropPending(): void {
+    this.pendingHashes.length = 0;
+    this.pendingRequests.clear();
+  }
+
+  private finishEnd(): void {
+    if (this.finished) return;
+    this.finished = true;
+    if (this.endTimer !== null) {
+      clearTimeout(this.endTimer);
+      this.endTimer = null;
+    }
+    this.dropPending();
+    this.options.onClosed();
+    const resolve = this.endResolve;
+    this.endResolve = null;
+    resolve?.();
+  }
+
   private fail(reason: string, message: string): void {
     if (this.dead) return;
     this.dead = true;
+    this.dropPending();
+    this.options.haltRelay();
     this.options.emitServer('sim-fault', this.options.matchId, reason, message);
-    console.error(
+    logger.error(
       `[SimHost] ${reason} in match ${this.options.matchId}: ${message}`
     );
     this.options.endMatch({ reason });

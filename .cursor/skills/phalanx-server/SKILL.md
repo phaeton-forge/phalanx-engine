@@ -530,13 +530,13 @@ Omit `games` and the server stays a relay: no worker is spawned. To simulate:
 - `games: [{ module, export? }]` (a worker imports the module; an `inProcess` host may also take a `GameDefinition` object).
 - `simHost?: { mode?: 'worker' | 'inProcess'; workers?: 1; resourceLimits?; snapshotEveryTicks?; maxMatches? }`. Default mode is `worker`. `workers` must be `1`.
 - `room-create` may include `matchConfig: { gameId, simMode: 'server', slots, inputDelayTicks?, absencePolicy? }` plus extra integer fields copied into the runner config. Omitted `matchConfig` keeps the two-human room.
-- The relay stamps. Server bots appear as `bot:<slot>`. Late bot commands are filed on the current tick (`bot-commands-late`).
+- The relay stamps. Server bots appear as `bot:<slot>` and target `S + inputDelayTicks`. If that room leads the sim by more than `inputDelayTicks - 1`, `sim-lag` pauses that room only. Late bot commands are not retargeted (`bot-commands-late`).
 - Hash arbiter: sim digest vs that client's `state-hash` → `desync { playerId, tick }` to that socket only. The match continues. Relay rooms still end on a client-vs-client desync when `enableStateHashing` is on.
 - `match-snapshot-request` → `match-snapshot { tick, bytes, requestId }`. `match-resume-state.snapshot` is `{ tick }` when a server snapshot exists.
 - `Phalanx.endMatch(matchId, result)` and sim outcomes share `GameRoom.endMatch`. `onMatchArchived` fires once.
 - `Phalanx.getPort()` is the bound port.
-- Faults `sim-error` / `sim-crash` / `sim-oom` end the affected match. No restart. `stop()` ends every server match, then closes the host.
-- With `absence` and `absencePolicy`, absence sends `setController` (`bot` / `human`) instead of ending the match.
+- A thrown tick or in-worker `process.exit` ends that match. A worker OOM or thread crash ends every server match on it until Task 17. `stop()` ends every server match, waits for `ended`, then closes the host.
+- With `absence` and `absencePolicy`, absence sends `setController` (`bot` while absent, `human` on return). Window expiry still forfeits (`disconnect` / `abandoned`).
 
 Startup throws if a game's `tickRate` differs from the resolved server tick rate, or `tickMode` is not `continuous`. `inputDelayTicks` must be an integer from 1 through `maxTickAhead`.
 

@@ -71,12 +71,7 @@ export class InProcessSimHost implements SimHost {
   }
 
   private clone(message: SimOut): SimOut {
-    if (message.t !== 'snapshot') {
-      return structuredClone(message);
-    }
-    const view = new Uint8Array(message.bytes);
-    const copy = new ArrayBuffer(view.byteLength);
-    new Uint8Array(copy).set(view);
-    return { ...message, bytes: copy };
+    if (message.t === 'snapshot') return message;
+    return structuredClone(message);
   }
 }

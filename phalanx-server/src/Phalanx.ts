@@ -492,6 +492,12 @@ export class Phalanx extends EventEmitter {
       },
       currentTick: () => room.getCurrentTick(),
       endMatch: (result) => room.endMatch(result),
+      haltRelay: () => {
+        room.haltForSim();
+      },
+      releaseHold: () => {
+        room.releaseSimHold();
+      },
       emitPlayer: (playerId, event, payload) => {
         room.emitToPlayer(playerId, event, payload);
       },
@@ -515,18 +521,28 @@ export class Phalanx extends EventEmitter {
         onReturn: (playerId) => {
           session.setController(playerId, 'human');
         },
-        onExpire: () => {},
+        onExpire: (playerId) => {
+          room.forfeitAbsent(playerId);
+        },
       });
     }
   }
 
+  /**
+   * End each server match and wait for the sim to drop it, close the
+   * host, then detach. Unsubscribing first would discard `ended`.
+   */
   private async closeSimHost(): Promise<void> {
+    const host = this.simHost;
+    const endings = [...this.serverSims.values()].map((session) =>
+      session.end()
+    );
+    await Promise.all(endings);
+    if (host) await host.close();
     this.simUnsub?.();
     this.simUnsub = null;
-    const host = this.simHost;
     this.simHost = null;
     this.serverSims.clear();
-    if (host) await host.close();
   }
 
   /**

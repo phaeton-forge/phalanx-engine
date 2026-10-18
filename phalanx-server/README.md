@@ -405,10 +405,13 @@ const app = new Phalanx({
 
 `simMode: 'server'` plus a registered `gameId` and `slots` starts a
 `MatchRunner` (`side: 'server'`) in one shared worker. The relay remains the
-only stamper: human commands, then bot commands for that tick, then the
-broadcast `commands-batch`, then the same batch is posted to the sim. Bot
-player ids are `bot:<slot>`. A command that arrives after its tick is filed
-under the current tick and the server emits `bot-commands-late`.
+only stamper. Bot player ids are `bot:<slot>`. A bot decides at sim tick `S`
+and targets `S + inputDelayTicks`, the same delay as a human, so the command
+is usually waiting before the relay broadcasts that tick. If this room's
+lead over the sim exceeds `inputDelayTicks - 1`, `sim-lag` pauses **this
+room's** tick loop until the sim catches up. Other rooms keep ticking. A bot
+command that still arrives after its tick is reported as `bot-commands-late`
+and is not moved onto a later tick.
 
 The sim's digest is compared with each client's `state-hash`. A mismatch
 emits `desync` `{ playerId, tick }` to that player only and the match
@@ -422,16 +425,18 @@ includes `snapshot: { tick }` when one exists.
 outcome does. `onMatchArchived` still runs once. `getPort()` returns the
 bound port (`0` in config is the ephemeral port after `start()`).
 
-A worker fault (`sim-error`, `sim-crash`, `sim-oom`) ends the affected
-match and does not restart it. `process.exit` inside a match is turned into
-`sim-crash` for that match. A dead worker ends every match it was hosting.
-Relay rooms are not on that thread. `shutdown` / `stop` posts `end` for
-every server match, then closes the host.
+A thrown tick is `sim-error` for that match. `process.exit` inside a match
+is `sim-crash` for that match. A worker OOM or a dead thread (`sim-oom` /
+`sim-crash`) ends **every** server match on that worker. Nothing respawns
+the worker (that is Task 17). Relay rooms are not on that thread.
+`shutdown` / `stop` posts `end` for every server match, waits for the sim
+to drop them, then closes the host.
 
 When `absence` is set and the room config includes `absencePolicy`, an
-absent human is replaced with that bot policy via `setController`, and
-restored to `human` on return. Without `absencePolicy`, expiry still ends
-the match as in Task 10.
+absent human is driven by that bot policy until the absence window expires,
+then the Task 10 forfeit still runs (`disconnect`, or `abandoned` when
+every human is gone). Return before expiry restores `human`. Without
+`absencePolicy`, expiry ends the match immediately, as in Task 10.
 
 ## Event Hooks
 

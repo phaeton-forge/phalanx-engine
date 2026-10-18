@@ -270,6 +270,7 @@ export class SimProcess {
       this.fault(matchId, 'sim-error', errorMessage(error));
       return;
     }
+    // One copy. The worker transfers it; the in-process host keeps it.
     const copy = new ArrayBuffer(bytes.byteLength);
     new Uint8Array(copy).set(bytes);
     const message: SimOut = {

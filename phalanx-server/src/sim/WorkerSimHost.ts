@@ -77,6 +77,7 @@ export class WorkerSimHost implements SimHost {
     if (message.t === 'close') this.matches.clear();
     if (this.fatal !== null) {
       if (message.t === 'open') this.queueFault(message.matchId);
+      if (message.t === 'end') this.queueEnded(message.matchId);
       return;
     }
     try {
@@ -86,6 +87,7 @@ export class WorkerSimHost implements SimHost {
       const text = errorText(error);
       this.markFatal(kind, text.length > 0 ? text : 'worker post failed');
       if (message.t === 'open') this.queueFault(message.matchId);
+      if (message.t === 'end') this.queueEnded(message.matchId);
     }
   }
 
@@ -105,6 +107,7 @@ export class WorkerSimHost implements SimHost {
     this.closed = true;
     this.exitWait = new Promise<void>((resolve) => {
       const timer = setTimeout(() => {
+        this.worker.removeAllListeners();
         void this.worker.terminate().then(() => resolve());
       }, 2000);
       this.worker.once('exit', () => {
@@ -115,6 +118,7 @@ export class WorkerSimHost implements SimHost {
         this.worker.postMessage({ t: 'close' } satisfies SimIn);
       } catch {
         clearTimeout(timer);
+        this.worker.removeAllListeners();
         void this.worker.terminate().then(() => resolve());
       }
     });
@@ -136,6 +140,14 @@ export class WorkerSimHost implements SimHost {
    * A worker that died before `open` never sees that match. Deliver the
    * fault after the caller has registered the session and joined sockets.
    */
+  private queueEnded(matchId: string): void {
+    this.matches.delete(matchId);
+    queueMicrotask(() => {
+      const ended: SimOut = { t: 'ended', matchId };
+      for (const handler of this.handlers) handler(ended);
+    });
+  }
+
   private queueFault(matchId: string): void {
     const fatal = this.fatal;
     if (fatal === null) return;

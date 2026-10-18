@@ -10,8 +10,11 @@ a relay that does not block on the sim. This document's §4 and §6 describe
 a synchronous in-process sim and drop workers until a later task. The code
 follows the prompt: `PhalanxConfig.games` plus `simHost.mode`
 `'worker' | 'inProcess'`, one worker, private rooms opt in with
-`matchConfig`, and bot commands return to the relay to be stamped. A real
-worker death ends every server match on that worker. Practice rooms and
+`matchConfig`, and bot commands return to the relay to be stamped. Bots
+target `S + inputDelayTicks`. A room whose lead exceeds
+`inputDelayTicks - 1` pauses its own tick loop (`sim-lag`); the rest of
+the relay does not. A real worker death ends every server match on that
+worker and is not restarted here (Task 17). Practice rooms and
 matchmaking auto-fill are not in this change. Per-tick cost was not
 measured.
 

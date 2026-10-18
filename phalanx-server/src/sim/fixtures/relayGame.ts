@@ -19,11 +19,13 @@ export interface RelayConfig extends MatchConfigBase {
   readonly exitAt?: number;
   readonly blockMs?: number;
   readonly allocMb?: number;
+  readonly winAt?: number;
 }
 
 export interface RelaySim {
   readonly world: GameWorld;
   x: number;
+  tick: number;
   readonly config: RelayConfig;
 }
 
@@ -39,14 +41,17 @@ function knob(value: number | undefined): number {
 
 class RelayHooks extends GameSystem {
   private readonly config: RelayConfig;
+  private readonly sim: RelaySim;
   private readonly retained: Uint8Array[] = [];
 
-  public constructor(config: RelayConfig) {
+  public constructor(config: RelayConfig, sim: RelaySim) {
     super();
     this.config = config;
+    this.sim = sim;
   }
 
   public override processTick(tick: number): void {
+    this.sim.tick = tick;
     const throwAt = knob(this.config.throwAt);
     if (throwAt > 0 && tick === throwAt) {
       throw new Error('relay fixture throw');
@@ -91,6 +96,7 @@ class RelayHooks extends GameSystem {
 }
 
 let booting: RelayConfig | null = null;
+let bootingSim: RelaySim | null = null;
 
 export const RelayGame = defineGame<RelayConfig, RelayCommand, RelaySim>({
   id: 'relay-fixture',
@@ -99,24 +105,35 @@ export const RelayGame = defineGame<RelayConfig, RelayCommand, RelaySim>({
   commands,
   systems: [
     () => {
-      if (booting === null) {
+      if (booting === null || bootingSim === null) {
         throw new Error('relay fixture system built outside onStart');
       }
-      return new RelayHooks(booting);
+      return new RelayHooks(booting, bootingSim);
     },
   ],
   onStart(ctx) {
-    const sim: RelaySim = { world: ctx.world, x: 0, config: ctx.config };
+    const sim: RelaySim = {
+      world: ctx.world,
+      x: 0,
+      tick: -1,
+      config: ctx.config,
+    };
     booting = ctx.config;
+    bootingSim = sim;
     ctx.open();
     booting = null;
+    bootingSim = null;
     return sim;
   },
   onCommand(ctx, stamped) {
     if (stamped.command.type !== 'move') return;
     ctx.sim.x += stamped.command.dx;
   },
-  checkOutcome() {
+  checkOutcome(sim) {
+    const winAt = knob(sim.config.winAt);
+    if (winAt > 0 && sim.tick === winAt) {
+      return { kind: 'win', winnerTeam: 0, reason: 'fixture-win' };
+    }
     return null;
   },
   bots: {

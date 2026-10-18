@@ -155,7 +155,7 @@ describe('SimHost', () => {
       tick: 1,
       bytes: original,
     });
-    expect(original.byteLength).toBe(4);
+    expect(original.byteLength).toBe(0);
     const [message] = await received;
     expect(message.t).toBe('snapshot');
     if (message.t !== 'snapshot') return;
@@ -441,6 +441,119 @@ describe('SimHost', () => {
     await new Promise((resolve) => setImmediate(resolve));
     await new Promise((resolve) => setImmediate(resolve));
     expect(archives).toBe(1);
+  });
+
+  it('keeps bot commands on their tick when the sim is slow', async () => {
+    const server = await startServer();
+    const serverDigests = new Map<number, string>();
+    let lags = 0;
+    server.on(
+      'sim-digest',
+      (_matchId: string, tick: number, digest: string) => {
+        serverDigests.set(tick, digest);
+      }
+    );
+    server.on('sim-lag', () => {
+      lags += 1;
+    });
+    const { socket, matchConfig } = await openServerMatch(
+      server.getPort(),
+      'slow',
+      { blockMs: 40 }
+    );
+    const definition = await loadFixture();
+    const transport = new RelayFeedTransport();
+    const runner = new MatchRunner(
+      definition,
+      { ...matchConfig, side: 'client' } as never,
+      transport,
+      { hashEveryTicks: 60 }
+    );
+    const clientDigests = new Map<number, string>();
+    let sawBot = false;
+    let lateBot = false;
+    runner.onDigest((tick, digest) => {
+      clientDigests.set(tick, digest);
+    });
+    runner.start();
+    socket.emit('client-ready');
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error('slow sim ticks timed out')),
+        15000
+      );
+      socket.on('commands-batch', (batch: CommandsBatchEvent) => {
+        for (const command of batch.commands) {
+          if (!command.playerId.startsWith('bot:')) continue;
+          sawBot = true;
+          if (command.tick !== batch.tick) lateBot = true;
+        }
+        transport.deliver(batch.tick, batch.commands);
+        if (batch.tick >= 60) {
+          clearTimeout(timer);
+          resolve();
+        }
+      });
+    });
+    await waitFor(() => clientDigests.has(60) && serverDigests.has(60), 5000);
+    expect(sawBot).toBe(true);
+    expect(lateBot).toBe(false);
+    expect(lags).toBeGreaterThan(0);
+    expect(clientDigests.get(60)).toBe(serverDigests.get(60));
+    runner.dispose();
+  }, 20000);
+
+  it('stops the room when the sim reports an outcome', async () => {
+    const server = await startServer();
+    const { socket } = await openServerMatch(server.getPort(), 'win', {
+      winAt: 3,
+    });
+    const ticks: number[] = [];
+    socket.on('commands-batch', (batch: CommandsBatchEvent) => {
+      ticks.push(batch.tick);
+    });
+    const ended = onceEvent<{ reason: string; winnerTeamId?: number }>(
+      socket,
+      'match-end'
+    );
+    socket.emit('client-ready');
+    const payload = await ended;
+    expect(payload.reason).toBe('fixture-win');
+    expect(payload.winnerTeamId).toBe(0);
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    expect(ticks.length).toBeGreaterThan(0);
+    expect(Math.max(...ticks)).toBeLessThanOrEqual(3);
+  });
+
+  it('shutdown waits for an async archive hook on a live server match', async () => {
+    let archived = 0;
+    let release: () => void = () => {};
+    const hook = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const server = await startServer({
+      shutdownGraceMs: 2000,
+      onMatchArchived: () => {
+        archived += 1;
+        return hook;
+      },
+    });
+    const { socket } = await openServerMatch(server.getPort(), 'arch');
+    const playing = onceEvent(socket, 'commands-batch');
+    socket.emit('client-ready');
+    await playing;
+    let settled = false;
+    const pending = server.shutdown('deploy');
+    void pending.then(() => {
+      settled = true;
+    });
+    await waitFor(() => archived === 1, 2000);
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(settled).toBe(false);
+    release();
+    await pending;
+    expect(settled).toBe(true);
+    expect(archived).toBe(1);
   });
 });
 

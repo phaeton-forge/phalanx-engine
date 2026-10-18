@@ -306,8 +306,8 @@ Entries collected per package until the synchronized 0.3.0 release
 ## @phalanx-engine/server
 
 - server: opt-in server-sim mode — `games` + `simHost` config,
-  per-room `matchConfig {gameId, simMode:'server', slots}`, SimHost in a worker_thread (inProcess for tests), server bots `bot:<slot>`,
-  hash arbiter, snapshots, public `Phalanx.endMatch`.
+  per-room `matchConfig {gameId, simMode:'server', slots}`, SimHost in a worker_thread (inProcess for tests), server bots `bot:<slot>` stamped at `S + inputDelayTicks` (the room pauses on `sim-lag` when its lead exceeds `inputDelayTicks - 1`),
+  hash arbiter, snapshots, public `Phalanx.endMatch`. A worker OOM or thread crash ends every server match on that worker.
 - server: opt-in `onMatchArchived(rec: MatchArchive)` hook — the full
   command log plus seed, `buildId`, teams and end reason is handed to the
   game once per started match; the engine stores nothing; without the hook

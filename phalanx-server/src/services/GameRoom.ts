@@ -81,6 +81,12 @@ export class GameRoom {
     | 'finished' = 'waiting-for-players';
   private createdAt: Date;
   private tickInterval: NodeJS.Timeout | null = null;
+  /** Chained timer for a server-sim room. Relay rooms keep `tickInterval`. */
+  private tickTimer: ReturnType<typeof setTimeout> | null = null;
+  /** This room is waiting for the sim before broadcasting another tick. */
+  private simHeld = false;
+  /** Sim outcome or fault: do not broadcast or post another batch. */
+  private simHalted = false;
   private countdownTimer: NodeJS.Timeout | null = null;
   private countdownInterval: NodeJS.Timeout | null = null;
   /**
@@ -799,11 +805,16 @@ export class GameRoom {
     this.eventEmitter('match-started', this.getMatchInfo());
 
     if (this.tickMode === 'continuous') {
-      // Start tick loop for continuous mode
-      const tickIntervalMs = 1000 / this.config.tickRate;
-      this.tickInterval = setInterval(() => {
-        this.processTick();
-      }, tickIntervalMs);
+      if (this.serverSession) {
+        // Yield once after the timer so a sim `event` queued in the same
+        // turn is applied before the next broadcast.
+        this.scheduleServerTicks();
+      } else {
+        const tickIntervalMs = 1000 / this.config.tickRate;
+        this.tickInterval = setInterval(() => {
+          this.processTick();
+        }, tickIntervalMs);
+      }
     } else {
       // Event mode: no tick loop — start turn timeout
       this.resetTurnTimeout();
@@ -811,9 +822,47 @@ export class GameRoom {
   }
 
   /**
-   * Process a single tick
+   * Chain the next server-sim tick. The immediate runs after pending
+   * worker messages, so an outcome can halt the room before this broadcasts.
    */
-  private processTick(): void {
+  private scheduleServerTicks(): void {
+    if (this.simHalted || this.simHeld || this.state !== 'playing') return;
+    if (this.tickTimer) return;
+    const wait = 1000 / this.config.tickRate;
+    this.tickTimer = setTimeout(() => {
+      this.tickTimer = null;
+      setImmediate(() => {
+        if (this.simHalted || this.simHeld || this.state !== 'playing') return;
+        const held = this.processTick();
+        if (!held && !this.simHalted && this.state === 'playing') {
+          this.scheduleServerTicks();
+        }
+      });
+    }, wait);
+  }
+
+  private clearTickClock(): void {
+    if (this.tickInterval) {
+      clearInterval(this.tickInterval);
+      this.tickInterval = null;
+    }
+    if (this.tickTimer) {
+      clearTimeout(this.tickTimer);
+      this.tickTimer = null;
+    }
+  }
+
+  /**
+   * Process a single tick. Returns true when this server-sim room is
+   * holding for the sim and must not schedule another tick yet.
+   */
+  private processTick(): boolean {
+    if (this.simHalted || this.isFinished()) return false;
+    if (this.serverSession?.leadExceeded(this.currentTick)) {
+      this.simHeld = true;
+      this.clearTickClock();
+      return true;
+    }
     // Broadcast tick-sync to all players every tick
     this.io.to(this.roomId).emit('tick-sync', {
       tick: this.currentTick,
@@ -845,7 +894,7 @@ export class GameRoom {
       commands,
     });
 
-    // Server sim sees the same stamped batch. It must not block this loop.
+    // Server sim sees the same stamped batch. Posting does not wait on it.
     const publishedTick = this.currentTick;
     this.serverSession?.publishBatch(publishedTick, commands);
 
@@ -855,7 +904,7 @@ export class GameRoom {
 
     // Advance tick
     this.currentTick++;
-    this.serverSession?.noteRelayTick(this.currentTick);
+    return false;
   }
 
   /**
@@ -1460,10 +1509,7 @@ export class GameRoom {
     }
 
     // Stop sending ticks — the current tick has already been emitted
-    if (this.tickInterval) {
-      clearInterval(this.tickInterval);
-      this.tickInterval = null;
-    }
+    this.clearTickClock();
     if (this.turnTimeout) {
       clearTimeout(this.turnTimeout);
       this.turnTimeout = null;
@@ -1528,11 +1574,15 @@ export class GameRoom {
     });
 
     if (this.tickMode === 'continuous') {
-      // Restart tick loop
-      const tickIntervalMs = 1000 / this.config.tickRate;
-      this.tickInterval = setInterval(() => {
-        this.processTick();
-      }, tickIntervalMs);
+      if (this.serverSession) {
+        this.simHeld = false;
+        this.scheduleServerTicks();
+      } else {
+        const tickIntervalMs = 1000 / this.config.tickRate;
+        this.tickInterval = setInterval(() => {
+          this.processTick();
+        }, tickIntervalMs);
+      }
     } else {
       // Event mode: restart turn timeout
       this.resetTurnTimeout();
@@ -1554,10 +1604,8 @@ export class GameRoom {
    * @param skipNotify - If true, skip emitting match-ended events (used when already handled)
    */
   stop(skipNotify: boolean = false): void {
-    if (this.tickInterval) {
-      clearInterval(this.tickInterval);
-      this.tickInterval = null;
-    }
+    this.simHalted = true;
+    this.clearTickClock();
     if (this.countdownTimer) {
       clearTimeout(this.countdownTimer);
       this.countdownTimer = null;
@@ -1974,8 +2022,9 @@ export class GameRoom {
 
   /** Tell the sim this match is over. Safe to call more than once. */
   endServerSim(): void {
-    this.serverSession?.end();
+    const session = this.serverSession;
     this.serverSession = null;
+    if (session) void session.end();
   }
 
   hasServerSim(): boolean {
@@ -1984,28 +2033,66 @@ export class GameRoom {
 
   /**
    * File already-stamped commands (bots, `setController`) without the
-   * human command hook. A command whose tick has already been broadcast
-   * is filed under the current tick.
+   * human command hook. Bot commands keep the tick the sim chose
+   * (`S + inputDelayTicks`). A bot command for a tick already broadcast
+   * is reported and dropped, not moved onto a later tick.
    */
   enqueueStamped(commands: readonly PlayerCommand[]): void {
     if (this.isFinished()) return;
     for (const command of commands) {
-      const filed = Math.max(command.tick, this.currentTick);
-      if (filed !== command.tick && isBotPlayerId(command.playerId)) {
+      if (isBotPlayerId(command.playerId) && command.tick < this.currentTick) {
         this.eventEmitter(
           'bot-commands-late',
           this.id,
           command.tick,
-          filed,
+          command.tick,
           command.playerId
         );
+        continue;
       }
+      const filed = isBotPlayerId(command.playerId)
+        ? command.tick
+        : Math.max(command.tick, this.currentTick);
       const stored =
         filed === command.tick ? command : { ...command, tick: filed };
       const list = this.pendingCommands.get(filed) ?? [];
       list.push(stored);
       this.pendingCommands.set(filed, list);
     }
+  }
+
+  /** Stop this room's tick loop. Other rooms are not affected. */
+  haltForSim(): void {
+    this.simHalted = true;
+    this.simHeld = false;
+    this.clearTickClock();
+  }
+
+  /** Sim caught up. Broadcast the next tick if this room is still playing. */
+  releaseSimHold(): void {
+    if (!this.simHeld) return;
+    if (this.simHalted || this.state !== 'playing') return;
+    if (this.serverSession?.leadExceeded(this.currentTick)) {
+      this.simHeld = true;
+      return;
+    }
+    this.simHeld = false;
+    if (this.tickTimer) return;
+    setImmediate(() => {
+      if (this.simHalted || this.simHeld || this.state !== 'playing') return;
+      const held = this.processTick();
+      if (!held && !this.simHalted && this.state === 'playing') {
+        this.scheduleServerTicks();
+      }
+    });
+  }
+
+  /**
+   * Task 10 expiry after a server-sim bot has been standing in.
+   * Disconnect forfeit, or abandoned when every human is already gone.
+   */
+  forfeitAbsent(playerId: string): void {
+    this.expireAbsenceDefault(playerId);
   }
 
   emitToPlayer(playerId: string, event: string, payload: unknown): void {
