@@ -381,6 +381,12 @@ export interface PhalanxConfig {
 export interface GameModuleSpec {
   module: string;
   export?: string;
+  /**
+   * Integer `matchConfig` keys copied into the runner config.
+   * Every other extra key is rejected. Engine fields (`seed`, `side`,
+   * `matchId`, …) are filled by the server and cannot be listed here.
+   */
+  configKeys?: readonly string[];
 }
 
 /**
@@ -398,7 +404,8 @@ export interface SimHostConfig {
 
 /**
  * `room-create` body that starts a server-simulated match.
- * Further integer fields are copied onto the runner config.
+ * Further integer fields are copied only when the game's `configKeys`
+ * lists them.
  */
 export interface ServerRoomMatchConfig {
   gameId: string;
@@ -778,11 +785,12 @@ export interface RoomRecoveredEvent {
 export interface RoomErrorEvent {
   message: string;
   /**
-   * Typed gate. Set together with `message: 'session-token-required'`
-   * when an in-match `room-recover` is refused because
-   * `reconnect.requireSessionToken` is on. Other failures omit it.
+   * Typed gate. `session-token-required` refuses an in-match
+   * `room-recover` when `reconnect.requireSessionToken` is on.
+   * `sim-unavailable` refuses a server room after the sim worker has
+   * died. Other failures omit it.
    */
-  reason?: 'session-token-required';
+  reason?: 'session-token-required' | 'sim-unavailable';
 }
 
 /**

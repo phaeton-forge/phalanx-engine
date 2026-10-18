@@ -394,7 +394,13 @@ import { Phalanx } from '@phalanx-engine/server';
 
 const app = new Phalanx({
   tickRate: 64,
-  games: [{ module: '/abs/path/to/game.js', export: 'RelayGame' }],
+  games: [
+    {
+      module: '/abs/path/to/game.js',
+      export: 'RelayGame',
+      configKeys: ['mapId'],
+    },
+  ],
   simHost: {
     mode: 'worker', // 'inProcess' runs the same queue on the relay thread
     snapshotEveryTicks: 1000,
@@ -404,8 +410,11 @@ const app = new Phalanx({
 ```
 
 `simMode: 'server'` plus a registered `gameId` and `slots` starts a
-`MatchRunner` (`side: 'server'`) in one shared worker. The relay remains the
-only stamper. Bot player ids are `bot:<slot>`. A bot decides at sim tick `S`
+`MatchRunner` (`side: 'server'`) in one shared worker. Integer `matchConfig`
+fields are copied into that config only when the game's `configKeys` lists
+them. `maxMatches` is reserved when the room is created, including a room
+still waiting for humans, and released on cancel, expiry, or match end.
+The relay remains the only stamper. Bot player ids are `bot:<slot>`. A bot decides at sim tick `S`
 and targets `S + inputDelayTicks`, the same delay as a human, so the command
 is usually waiting before the relay broadcasts that tick. If this room's
 lead over the sim exceeds `inputDelayTicks - 1`, `sim-lag` pauses **this
@@ -417,18 +426,23 @@ The sim's digest is compared with each client's `state-hash`. A mismatch
 emits `desync` `{ playerId, tick }` to that player only and the match
 continues. Relay rooms (no server sim) keep the previous all-client desync
 behaviour. Snapshots are stored in memory (latest only): every
-`snapshotEveryTicks`, and on `match-snapshot-request`, which is answered
-with `match-snapshot` `{ tick, bytes, requestId }`. `match-resume-state`
-includes `snapshot: { tick }` when one exists.
+`snapshotEveryTicks`, and on `match-snapshot-request`. Requests already in
+flight share one snapshot. The reply goes only to the socket that asked,
+with that player's `requestId` (two players may both use `1`).
+`match-resume-state` includes `snapshot: { tick }` when one exists.
 
 `Phalanx.endMatch(matchId, result)` ends a live match the same way a sim
 outcome does. `onMatchArchived` still runs once. `getPort()` returns the
 bound port (`0` in config is the ephemeral port after `start()`).
 
-A thrown tick is `sim-error` for that match. `process.exit` inside a match
-is `sim-crash` for that match. A worker OOM or a dead thread (`sim-oom` /
-`sim-crash`) ends **every** server match on that worker. Nothing respawns
-the worker (that is Task 17). Relay rooms are not on that thread.
+A thrown tick is `sim-error` for that match, including a game error whose
+text says "out of memory". `process.exit` inside a match is `sim-crash` for
+that match. A worker heap limit (`ERR_WORKER_OUT_OF_MEMORY`) or a dead
+thread ends **every** server match on that worker as `sim-oom` /
+`sim-crash`. A later `room-create` gets `room-error` with reason
+`sim-unavailable` and does not start. Nothing respawns the worker (that
+is Task 17). Relay rooms are not on that thread. A normal `close` is not a
+`sim-crash`.
 `shutdown` / `stop` posts `end` for every server match, waits for the sim
 to drop them, then closes the host.
 

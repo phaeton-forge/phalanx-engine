@@ -28,6 +28,19 @@ const KNOWN_KEYS = new Set([
   'absencePolicy',
 ]);
 
+/** Never copied from a client `matchConfig` into the runner config. */
+export const ENGINE_MATCH_CONFIG_KEYS = new Set([
+  'matchId',
+  'gameId',
+  'simVersion',
+  'seed',
+  'side',
+  'slots',
+  'inputDelayTicks',
+  'simMode',
+  'absencePolicy',
+]);
+
 function fail(message: string): ParseMatchResult {
   return { ok: false, message };
 }
@@ -235,9 +248,13 @@ export function parseServerMatch(options: {
     }
     absencePolicy = absenceRaw;
   }
+  const allowed = new Set(game.configKeys);
   const extras: Record<string, number> = {};
   for (const key of Object.keys(raw).sort()) {
     if (KNOWN_KEYS.has(key)) continue;
+    if (!allowed.has(key)) {
+      return fail(`matchConfig.${key} is not allowed`);
+    }
     const value = raw[key];
     if (typeof value !== 'number' || !Number.isInteger(value)) {
       return fail(`matchConfig.${key} must be an integer`);

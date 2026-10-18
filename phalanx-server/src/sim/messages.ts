@@ -75,9 +75,15 @@ export function simFaultKind(
   if (error instanceof Error && error.name === 'SimCrashError') {
     return 'sim-crash';
   }
-  const message = error instanceof Error ? error.message : String(error);
-  if (/out of memory|allocation failed/i.test(message)) return 'sim-oom';
+  if (isHeapOom(error)) return 'sim-oom';
   return 'sim-error';
+}
+
+/** Real isolate failures only. A game `Error` message is not an OOM. */
+function isHeapOom(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const code = (error as { code?: unknown }).code;
+  return code === 'ERR_WORKER_OUT_OF_MEMORY' || code === 'ERR_OUT_OF_MEMORY';
 }
 
 export function errorMessage(error: unknown): string {

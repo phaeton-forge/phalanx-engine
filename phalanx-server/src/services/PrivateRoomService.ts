@@ -86,6 +86,8 @@ export class PrivateRoomService {
   private serverCatalog: readonly RegisteredGame[] = [];
   private serverMatchCount = 0;
   private maxServerMatches: number | undefined;
+  /** False after the sim worker has died. */
+  private simAvailable: (() => boolean) | null = null;
   /** Called once the GameRoom exists and before `start()`. */
   private attachServerMatch:
     ((room: GameRoom, prepared: PreparedServerMatch) => void) | null = null;
@@ -114,10 +116,12 @@ export class PrivateRoomService {
   setServerSim(options: {
     catalog: readonly RegisteredGame[];
     maxMatches?: number;
+    available: () => boolean;
     attach: (room: GameRoom, prepared: PreparedServerMatch) => void;
   }): void {
     this.serverCatalog = options.catalog;
     this.maxServerMatches = options.maxMatches;
+    this.simAvailable = options.available;
     this.attachServerMatch = options.attach;
   }
 
@@ -412,10 +416,14 @@ export class PrivateRoomService {
       } satisfies RoomErrorEvent);
       return;
     }
-    if (
-      this.maxServerMatches !== undefined &&
-      this.serverMatchCount >= this.maxServerMatches
-    ) {
+    if (this.simAvailable !== null && !this.simAvailable()) {
+      socket.emit('room-error', {
+        message: 'Server simulation is unavailable',
+        reason: 'sim-unavailable',
+      } satisfies RoomErrorEvent);
+      return;
+    }
+    if (!this.reserveServerMatch()) {
       socket.emit('room-error', {
         message: 'Server match capacity reached',
       } satisfies RoomErrorEvent);
@@ -444,8 +452,19 @@ export class PrivateRoomService {
       socket.emit('room-created', { code } satisfies RoomCreatedEvent);
       return;
     }
-    this.serverMatchCount += 1;
     this.beginPreparedMatch(parsed.prepared, gameType);
+  }
+
+  /** Count a server match. False when `maxMatches` is already taken. */
+  private reserveServerMatch(): boolean {
+    if (
+      this.maxServerMatches !== undefined &&
+      this.serverMatchCount >= this.maxServerMatches
+    ) {
+      return false;
+    }
+    this.serverMatchCount += 1;
+    return true;
   }
 
   private joinServerRoom(
@@ -458,6 +477,14 @@ export class PrivateRoomService {
   ): void {
     const prepared = room.serverMatch;
     if (prepared === undefined) return;
+    if (this.simAvailable !== null && !this.simAvailable()) {
+      this.removeRoom(code);
+      socket.emit('room-error', {
+        message: 'Server simulation is unavailable',
+        reason: 'sim-unavailable',
+      } satisfies RoomErrorEvent);
+      return;
+    }
     const guest: QueuedPlayer = {
       playerId,
       username,
@@ -474,8 +501,7 @@ export class PrivateRoomService {
     }
     room.serverMatch = filled;
     if (filled.waitingHumanIds.length > 0) return;
-    this.removeRoom(code);
-    this.serverMatchCount += 1;
+    this.removeRoom(code, false);
     this.beginPreparedMatch(filled, room.gameType, code);
   }
 
@@ -674,11 +700,13 @@ export class PrivateRoomService {
   /**
    * Remove a room and clear its pending TTL timer.
    */
-  private removeRoom(code: string): void {
+  private removeRoom(code: string, releaseReservation = true): void {
     const room = this.rooms.get(code);
-    if (room) {
-      clearTimeout(room.expirationTimer);
-      this.rooms.delete(code);
+    if (!room) return;
+    clearTimeout(room.expirationTimer);
+    this.rooms.delete(code);
+    if (releaseReservation && room.serverMatch !== undefined) {
+      this.releaseServerMatch();
     }
   }
 
@@ -694,6 +722,7 @@ export class PrivateRoomService {
     this.originalCodeByMatch.clear();
     for (const room of this.rooms.values()) {
       clearTimeout(room.expirationTimer);
+      if (room.serverMatch !== undefined) this.releaseServerMatch();
     }
     this.rooms.clear();
   }

@@ -13,6 +13,9 @@ import type { SimHost } from './SimHost.js';
 import type { SimCommand, SimIn, SimOut } from './messages.js';
 import { SnapshotStore } from './SnapshotStore.js';
 
+/** On-cadence hashes waiting for the sim digest. Older rows drop first. */
+const PENDING_HASH_CAP = 32;
+
 export interface RoomSimOptions {
   readonly matchId: string;
   readonly host: SimHost;
@@ -21,6 +24,7 @@ export interface RoomSimOptions {
   readonly seed: number;
   readonly slots: readonly SlotConfig[];
   readonly inputDelayTicks: number;
+  readonly maxTickAhead: number;
   readonly snapshotEveryTicks: number;
   readonly extras: Readonly<Record<string, number>>;
   readonly enqueue: (commands: readonly PlayerCommand[]) => void;
@@ -202,21 +206,42 @@ export class RoomSim {
 
   public clientHash(playerId: string, tick: number, hash: string): void {
     if (this.closed) return;
+    if (!Number.isInteger(tick) || tick < 0) return;
+    if (tick % DEFAULT_HASH_EVERY_TICKS !== 0) return;
+    const limit = this.options.currentTick() + this.options.maxTickAhead;
+    if (tick > limit) return;
     const digest = this.digests.get(tick);
-    if (digest === undefined) {
-      this.pendingHashes.push({ playerId, tick, hash });
+    if (digest !== undefined) {
+      this.compare(playerId, tick, hash, digest);
       return;
     }
-    this.compare(playerId, tick, hash, digest);
+    if (this.pendingHashes.length >= PENDING_HASH_CAP) {
+      this.pendingHashes.shift();
+    }
+    this.pendingHashes.push({ playerId, tick, hash });
   }
 
   public requestSnapshot(playerId: string, requestId: number): void {
     if (this.closed || this.dead) return;
-    this.pendingRequests.set(requestId, playerId);
+    if (!Number.isInteger(requestId) || requestId < 0) return;
+    const key = `${playerId}\0${String(requestId)}`;
+    if (this.pendingRequests.has(key)) return;
+    const stored = this.options.store.get(this.options.matchId);
+    if (
+      stored !== undefined &&
+      this.lastAck >= 0 &&
+      stored.tick >= this.lastAck
+    ) {
+      this.deliverSnapshot(playerId, requestId, stored.tick, stored.bytes);
+      return;
+    }
+    this.pendingRequests.set(key, { playerId, requestId });
+    if (this.snapshotInFlight) return;
+    this.snapshotInFlight = true;
     this.options.host.post({
       t: 'snapshot',
       matchId: this.options.matchId,
-      requestId,
+      requestId: 0,
     });
   }
 
@@ -302,22 +327,38 @@ export class RoomSim {
     return this.endWait;
   }
 
-  private readonly pendingRequests = new Map<number, string>();
+  private readonly pendingRequests = new Map<
+    string,
+    { playerId: string; requestId: number }
+  >();
+  private snapshotInFlight = false;
 
   private keepSnapshot(
     tick: number,
     bytes: ArrayBuffer,
-    requestId: number | undefined
+    _requestId: number | undefined
   ): void {
     const view = new Uint8Array(bytes);
     this.options.store.put(this.options.matchId, tick, view);
-    if (requestId === undefined) return;
-    const playerId = this.pendingRequests.get(requestId);
-    this.pendingRequests.delete(requestId);
-    if (playerId === undefined) return;
+    const waiting = [...this.pendingRequests.values()];
+    this.pendingRequests.clear();
+    this.snapshotInFlight = false;
+    for (const waiter of waiting) {
+      this.deliverSnapshot(waiter.playerId, waiter.requestId, tick, view);
+    }
+  }
+
+  private deliverSnapshot(
+    playerId: string,
+    requestId: number,
+    tick: number,
+    bytes: Uint8Array
+  ): void {
+    const copy = new Uint8Array(bytes.byteLength);
+    copy.set(bytes);
     this.options.emitPlayer(playerId, 'match-snapshot', {
       tick,
-      bytes: view,
+      bytes: copy,
       requestId,
     });
   }
@@ -352,6 +393,7 @@ export class RoomSim {
   private dropPending(): void {
     this.pendingHashes.length = 0;
     this.pendingRequests.clear();
+    this.snapshotInFlight = false;
   }
 
   private finishEnd(): void {

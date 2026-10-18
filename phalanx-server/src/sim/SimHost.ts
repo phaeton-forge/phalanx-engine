@@ -10,6 +10,8 @@ export interface SimHost {
   subscribe(handler: (message: SimOut) => void): () => void;
   close(): Promise<void>;
   activeMatches(): number;
+  /** False after a worker death or `close()`. New rooms must not open. */
+  healthy(): boolean;
 }
 
 export interface CreateSimHostOptions {

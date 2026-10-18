@@ -2,6 +2,7 @@ import { pathToFileURL } from 'node:url';
 import { isAbsolute } from 'node:path';
 import type { AnyGameDefinition } from '@phalanx-engine/runtime';
 import type { GameModuleSpec, PhalanxConfig } from '../types/index.js';
+import { ENGINE_MATCH_CONFIG_KEYS } from './serverMatch.js';
 
 export interface RegisteredGame {
   readonly id: string;
@@ -12,6 +13,8 @@ export interface RegisteredGame {
   readonly exportName?: string;
   readonly definition: AnyGameDefinition;
   readonly inline: boolean;
+  /** Client integer keys copied into the runner config. */
+  readonly configKeys: readonly string[];
 }
 
 function isModuleSpec(value: unknown): value is GameModuleSpec {
@@ -48,6 +51,33 @@ function pickExport(
     return record[exportName];
   }
   return record['default'] ?? record['RelayGame'];
+}
+
+function readConfigKeys(entry: GameModuleSpec): readonly string[] {
+  const keys = entry.configKeys;
+  if (keys === undefined) return [];
+  if (!Array.isArray(keys)) {
+    throw new Error(
+      `game module '${entry.module}' configKeys must be an array`
+    );
+  }
+  const allowed: string[] = [];
+  const seen = new Set<string>();
+  for (const key of keys) {
+    if (typeof key !== 'string' || key.length === 0) {
+      throw new Error(
+        `game module '${entry.module}' configKeys must be non-empty strings`
+      );
+    }
+    if (ENGINE_MATCH_CONFIG_KEYS.has(key) || seen.has(key)) {
+      throw new Error(
+        `game module '${entry.module}' configKeys cannot include '${key}'`
+      );
+    }
+    seen.add(key);
+    allowed.push(key);
+  }
+  return allowed;
 }
 
 function assertTick(config: PhalanxConfig, game: RegisteredGame): void {
@@ -97,6 +127,7 @@ export async function loadGameCatalog(
         ...(entry.export !== undefined ? { exportName: entry.export } : {}),
         definition,
         inline: false,
+        configKeys: readConfigKeys(entry),
       };
     } else if (isDefinition(entry)) {
       if (mode !== 'inProcess') {
@@ -111,6 +142,7 @@ export async function loadGameCatalog(
         moduleHref: '',
         definition: entry,
         inline: true,
+        configKeys: [],
       };
     } else {
       throw new Error(

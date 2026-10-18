@@ -26,8 +26,7 @@ function errorText(error: unknown): string {
 function isOom(error: unknown): boolean {
   if (typeof error !== 'object' || error === null) return false;
   const code = (error as { code?: unknown }).code;
-  if (code === 'ERR_WORKER_OUT_OF_MEMORY') return true;
-  return /out of memory/i.test(errorText(error));
+  return code === 'ERR_WORKER_OUT_OF_MEMORY';
 }
 
 /**
@@ -43,6 +42,7 @@ export class WorkerSimHost implements SimHost {
   private closed = false;
   private fatal: { kind: 'sim-crash' | 'sim-oom'; message: string } | null =
     null;
+  private exited = false;
   private exitWait: Promise<void> | null = null;
 
   public constructor(resourceLimits?: ResourceLimits) {
@@ -61,10 +61,12 @@ export class WorkerSimHost implements SimHost {
       for (const handler of this.handlers) handler(message);
     });
     this.worker.on('error', (error) => {
+      if (this.closed) return;
       const kind = isOom(error) ? 'sim-oom' : 'sim-crash';
       this.markFatal(kind, error.message);
     });
     this.worker.on('exit', (code) => {
+      this.exited = true;
       if (this.closed || this.fatal !== null) return;
       this.markFatal('sim-crash', `worker exited (${String(code)})`);
     });
@@ -102,9 +104,17 @@ export class WorkerSimHost implements SimHost {
     return this.matches.size;
   }
 
+  public healthy(): boolean {
+    return !this.closed && this.fatal === null && !this.exited;
+  }
+
   public close(): Promise<void> {
     if (this.exitWait !== null) return this.exitWait;
     this.closed = true;
+    if (this.exited) {
+      this.exitWait = Promise.resolve();
+      return this.exitWait;
+    }
     this.exitWait = new Promise<void>((resolve) => {
       const timer = setTimeout(() => {
         this.worker.removeAllListeners();

@@ -11,13 +11,10 @@ import { postSimOut } from '../src/sim/postTransfer.js';
 import { RelayFeedTransport } from '../src/sim/RelayFeedTransport.js';
 import type { SimCommand, SimIn, SimOut } from '../src/sim/messages.js';
 import { WorkerSimHost, simWorkersSpawned } from '../src/sim/WorkerSimHost.js';
-import { holdReleasePath } from '../src/sim/fixtures/relayGame.js';
+import { holdReleasePath, RELAY_CONFIG_KEYS } from './fixtures/relayGame.js';
 import type { SimHost } from '../src/sim/SimHost.js';
 
-const fixtureHref = new URL(
-  '../dist/sim/fixtures/relayGame.js',
-  import.meta.url
-).href;
+const fixtureHref = new URL('./fixtures/relayGame.ts', import.meta.url).href;
 
 const servers: Phalanx[] = [];
 const sockets: Socket[] = [];
@@ -43,7 +40,13 @@ function relayConfig(
     timeoutTicks: 10000,
     playersConnectTimeoutMs: 20000,
     readyTimeoutMs: 10000,
-    games: [{ module: fixtureHref, export: 'RelayGame' }],
+    games: [
+      {
+        module: fixtureHref,
+        export: 'RelayGame',
+        configKeys: [...RELAY_CONFIG_KEYS],
+      },
+    ],
     simHost: { mode: 'worker' },
     ...extra,
   };
@@ -74,6 +77,17 @@ function onceEvent<T>(socket: Socket, event: string): Promise<T> {
   return new Promise((resolve) => {
     socket.once(event, (data: T) => resolve(data));
   });
+}
+
+function twoHumans(hostId: string, guestId: string) {
+  return {
+    gameId: 'relay-fixture',
+    simMode: 'server' as const,
+    slots: [
+      { slot: 0, team: 0, kind: 'human' as const, playerId: hostId },
+      { slot: 1, team: 1, kind: 'human' as const, playerId: guestId },
+    ],
+  };
 }
 
 function humanBot(playerId: string, extra: Record<string, number> = {}) {
@@ -331,8 +345,12 @@ describe('SimHost', () => {
     guest.emit('client-ready');
     await onceEvent(host, 'commands-batch');
     let guestDesync = false;
+    let hostDesyncs = 0;
     guest.on('desync', () => {
       guestDesync = true;
+    });
+    host.on('desync', () => {
+      hostDesyncs += 1;
     });
     const desync = onceEvent<{ playerId: string; tick: number }>(
       host,
@@ -341,8 +359,12 @@ describe('SimHost', () => {
     host.emit('state-hash', { tick: 0, hash: 'not-the-server-digest' });
     const payload = await desync;
     expect(payload).toEqual({ playerId: 'h1', tick: 0 });
+    host.emit('state-hash', { tick: 0, hash: 'still-wrong' });
+    host.emit('state-hash', { tick: 60, hash: 'also-wrong' });
     const later = onceEvent(host, 'commands-batch');
     await later;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(hostDesyncs).toBe(1);
     expect(guestDesync).toBe(false);
   });
 
@@ -380,7 +402,7 @@ describe('SimHost', () => {
     const server = await startServer({
       simHost: {
         mode: 'worker',
-        resourceLimits: { maxOldGenerationSizeMb: 8 },
+        resourceLimits: { maxOldGenerationSizeMb: 16 },
       },
     });
     const relay = await openRelay(server.getPort());
@@ -390,7 +412,7 @@ describe('SimHost', () => {
     socket.emit('room-create', {
       playerId: 'oom',
       username: 'oom',
-      matchConfig: humanBot('oom', { allocMb: 4 }),
+      matchConfig: humanBot('oom', { allocMb: 64 }),
     });
     await started;
     socket.emit('client-ready');
@@ -398,6 +420,29 @@ describe('SimHost', () => {
     const before = relay.batches.length;
     await onceEvent(relay.a, 'commands-batch');
     expect(relay.batches.length).toBeGreaterThan(before);
+    const next = await connect(server.getPort());
+    let sawStart = false;
+    next.on('game-start', () => {
+      sawStart = true;
+    });
+    const refused = onceEvent<{ message: string; reason?: string }>(
+      next,
+      'room-error'
+    );
+    next.emit('room-create', {
+      playerId: 'next',
+      username: 'next',
+      matchConfig: humanBot('next'),
+    });
+    expect(await refused).toEqual({
+      message: 'Server simulation is unavailable',
+      reason: 'sim-unavailable',
+    });
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(sawStart).toBe(false);
+    const stopped = Date.now();
+    await server.stop();
+    expect(Date.now() - stopped).toBeLessThan(1000);
   }, 20000);
 
   it('keeps a relay room ticking while a worker tick is heavy', async () => {
@@ -568,6 +613,242 @@ describe('SimHost', () => {
     await pending;
     expect(settled).toBe(true);
     expect(archived).toBe(1);
+  });
+
+  it('reserves maxMatches on create and does not count the join again', async () => {
+    const server = await startServer({
+      simHost: { mode: 'worker', maxMatches: 1 },
+    });
+    const host = await connect(server.getPort());
+    const guest = await connect(server.getPort());
+    const other = await connect(server.getPort());
+    const created = onceEvent<{ code: string }>(host, 'room-created');
+    host.emit('room-create', {
+      playerId: 'h1',
+      username: 'h1',
+      matchConfig: twoHumans('h1', 'h2'),
+    });
+    const room = await created;
+    const blocked = onceEvent<{ message: string }>(other, 'room-error');
+    other.emit('room-create', {
+      playerId: 'other',
+      username: 'other',
+      matchConfig: humanBot('other'),
+    });
+    expect((await blocked).message).toBe('Server match capacity reached');
+    const hostStart = onceEvent<{ matchId: string }>(host, 'game-start');
+    const guestStart = onceEvent(guest, 'game-start');
+    guest.emit('room-join', {
+      playerId: 'h2',
+      username: 'h2',
+      code: room.code,
+    });
+    const started = await hostStart;
+    await guestStart;
+    const stillFull = onceEvent<{ message: string }>(other, 'room-error');
+    other.emit('room-create', {
+      playerId: 'other',
+      username: 'other',
+      matchConfig: humanBot('other'),
+    });
+    expect((await stillFull).message).toBe('Server match capacity reached');
+    const ended = onceEvent(host, 'match-end');
+    expect(server.endMatch(started.matchId, { reason: 'forfeit' })).toBe(true);
+    await ended;
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    const again = onceEvent(other, 'game-start');
+    other.emit('room-create', {
+      playerId: 'other',
+      username: 'other',
+      matchConfig: humanBot('other'),
+    });
+    await again;
+  });
+
+  it('releases maxMatches when a waiting server room is cancelled', async () => {
+    const server = await startServer({
+      simHost: { mode: 'worker', maxMatches: 1 },
+    });
+    const host = await connect(server.getPort());
+    const created = onceEvent<{ code: string }>(host, 'room-created');
+    host.emit('room-create', {
+      playerId: 'h1',
+      username: 'h1',
+      matchConfig: twoHumans('h1', 'h2'),
+    });
+    await created;
+    const cancelled = onceEvent(host, 'room-cancelled');
+    host.emit('room-cancel');
+    await cancelled;
+    const next = onceEvent(host, 'game-start');
+    host.emit('room-create', {
+      playerId: 'h1',
+      username: 'h1',
+      matchConfig: humanBot('h1'),
+    });
+    await next;
+  });
+
+  it('forfeits an absent human after the stand-in bot expires', async () => {
+    const server = await startServer({
+      absence: { windowMs: 80, matchBudgetMs: 80 },
+      simHost: { mode: 'inProcess' },
+    });
+    const host = await connect(server.getPort());
+    const guest = await connect(server.getPort());
+    const created = onceEvent<{ code: string }>(host, 'room-created');
+    host.emit('room-create', {
+      playerId: 'h1',
+      username: 'h1',
+      matchConfig: {
+        ...twoHumans('h1', 'h2'),
+        absencePolicy: 'walker',
+      },
+    });
+    const room = await created;
+    const hostStart = onceEvent(host, 'game-start');
+    const guestStart = onceEvent(guest, 'game-start');
+    guest.emit('room-join', {
+      playerId: 'h2',
+      username: 'h2',
+      code: room.code,
+    });
+    await hostStart;
+    await guestStart;
+    host.emit('client-ready');
+    guest.emit('client-ready');
+    await onceEvent(guest, 'commands-batch');
+    const ended = onceEvent<{ reason: string }>(guest, 'match-end');
+    host.disconnect();
+    expect((await ended).reason).toBe('disconnect');
+  });
+
+  it('names each bot command by its slot', async () => {
+    const server = await startServer();
+    const socket = await connect(server.getPort());
+    const started = onceEvent(socket, 'game-start');
+    socket.emit('room-create', {
+      playerId: 'h',
+      username: 'h',
+      matchConfig: {
+        gameId: 'relay-fixture',
+        simMode: 'server',
+        slots: [
+          { slot: 0, team: 0, kind: 'human', playerId: 'h' },
+          {
+            slot: 1,
+            team: 0,
+            kind: 'bot',
+            policy: 'walker',
+            level: 0,
+            runsOn: 'server',
+          },
+          {
+            slot: 2,
+            team: 1,
+            kind: 'bot',
+            policy: 'walker',
+            level: 0,
+            runsOn: 'server',
+          },
+        ],
+      },
+    });
+    await started;
+    const ids = new Set<string>();
+    const done = new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(new Error('bot slots timed out')),
+        5000
+      );
+      socket.on('commands-batch', (batch: CommandsBatchEvent) => {
+        for (const command of batch.commands) {
+          if (command.playerId.startsWith('bot:')) ids.add(command.playerId);
+        }
+        if (batch.tick >= 4) {
+          clearTimeout(timer);
+          resolve();
+        }
+      });
+    });
+    socket.emit('client-ready');
+    await done;
+    expect(ids.has('bot:1')).toBe(true);
+    expect(ids.has('bot:2')).toBe(true);
+    expect(ids.has('bot:0')).toBe(false);
+  });
+
+  it('answers each snapshot request to that player only', async () => {
+    const server = await startServer({ simHost: { mode: 'inProcess' } });
+    const host = await connect(server.getPort());
+    const guest = await connect(server.getPort());
+    const created = onceEvent<{ code: string }>(host, 'room-created');
+    host.emit('room-create', {
+      playerId: 'h1',
+      username: 'h1',
+      matchConfig: twoHumans('h1', 'h2'),
+    });
+    const room = await created;
+    const hostStart = onceEvent(host, 'game-start');
+    const guestStart = onceEvent(guest, 'game-start');
+    guest.emit('room-join', {
+      playerId: 'h2',
+      username: 'h2',
+      code: room.code,
+    });
+    await hostStart;
+    await guestStart;
+    host.emit('client-ready');
+    guest.emit('client-ready');
+    await onceEvent(host, 'commands-batch');
+    const hostSnap = onceEvent<{ requestId: number }>(host, 'match-snapshot');
+    const guestSnap = onceEvent<{ requestId: number }>(guest, 'match-snapshot');
+    host.emit('match-snapshot-request', { requestId: 1 });
+    guest.emit('match-snapshot-request', { requestId: 1 });
+    expect((await hostSnap).requestId).toBe(1);
+    expect((await guestSnap).requestId).toBe(1);
+    let guestExtra = 0;
+    guest.on('match-snapshot', () => {
+      guestExtra += 1;
+    });
+    const onlyHost = onceEvent<{ requestId: number }>(host, 'match-snapshot');
+    host.emit('match-snapshot-request', { requestId: 9 });
+    expect((await onlyHost).requestId).toBe(9);
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(guestExtra).toBe(0);
+  });
+
+  it('rejects matchConfig keys the game did not allow', async () => {
+    const server = await startServer();
+    const socket = await connect(server.getPort());
+    const error = onceEvent<{ message: string }>(socket, 'room-error');
+    socket.emit('room-create', {
+      playerId: 'h',
+      username: 'h',
+      matchConfig: { ...humanBot('h'), injected: 1 },
+    });
+    expect((await error).message).toBe('matchConfig.injected is not allowed');
+  });
+
+  it('closes the host after each sim has ended', async () => {
+    const server = await startServer();
+    const faults: string[] = [];
+    server.on(
+      'sim-fault',
+      (_matchId: string, _reason: string, message: string) => {
+        faults.push(message);
+      }
+    );
+    const { socket } = await openServerMatch(server.getPort(), 'bye');
+    const playing = onceEvent(socket, 'commands-batch');
+    socket.emit('client-ready');
+    await playing;
+    const started = Date.now();
+    await server.stop();
+    expect(Date.now() - started).toBeLessThan(1500);
+    expect(faults.some((message) => message.includes('process.exit(0)'))).toBe(
+      false
+    );
   });
 });
 

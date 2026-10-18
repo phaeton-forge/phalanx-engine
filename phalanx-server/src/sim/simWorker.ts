@@ -9,7 +9,9 @@ import type { SimIn } from './messages.js';
  * Shutdown calls the real exit after the queue drains.
  */
 const realExit = process.exit.bind(process);
+let closing = false;
 process.exit = (code?: number): never => {
+  if (closing) realExit(code);
   const error = new Error(`process.exit(${String(code ?? 0)})`);
   error.name = 'SimCrashError';
   throw error;
@@ -30,9 +32,11 @@ const sim = new SimProcess(
 );
 
 port.on('message', (message: SimIn) => {
+  if (message.t === 'close') closing = true;
   sim.push(message);
   if (message.t === 'close') {
     void sim.whenIdle().then(() => {
+      closing = true;
       realExit(0);
     });
   }

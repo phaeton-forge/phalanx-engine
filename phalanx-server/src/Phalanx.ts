@@ -463,6 +463,7 @@ export class Phalanx extends EventEmitter {
       ...(this.config.simHost?.maxMatches !== undefined
         ? { maxMatches: this.config.simHost.maxMatches }
         : {}),
+      available: () => this.simHost?.healthy() ?? false,
       attach: (room, prepared) => {
         this.attachPrepared(room, prepared, every);
       },
@@ -485,6 +486,7 @@ export class Phalanx extends EventEmitter {
       seed: room.getRandomSeed(),
       slots: prepared.slots,
       inputDelayTicks: prepared.inputDelayTicks,
+      maxTickAhead: this.config.maxTickAhead,
       snapshotEveryTicks,
       extras: prepared.extras,
       enqueue: (commands) => {

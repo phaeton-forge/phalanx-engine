@@ -43,6 +43,16 @@ const commands = defineCommands({
 
 const STALL_PAUSE = new Int32Array(new SharedArrayBuffer(4));
 
+/** Integer knobs the server test allow-lists onto the runner config. */
+export const RELAY_CONFIG_KEYS = [
+  'throwAt',
+  'exitAt',
+  'blockMs',
+  'allocMb',
+  'winAt',
+  'stall',
+] as const;
+
 /** File the test creates after it has observed `sim-lag`. */
 export function holdReleasePath(matchId: string): string {
   return join(tmpdir(), `phalanx-sim-hold-${matchId}`);
@@ -57,7 +67,7 @@ function knob(value: number | undefined): number {
 class RelayHooks extends GameSystem {
   private readonly config: RelayConfig;
   private readonly sim: RelaySim;
-  private readonly retained: Uint8Array[] = [];
+  private readonly retained: unknown[] = [];
 
   public constructor(config: RelayConfig, sim: RelaySim) {
     super();
@@ -82,23 +92,16 @@ class RelayHooks extends GameSystem {
     }
     const allocMb = knob(this.config.allocMb);
     if (allocMb > 0 && tick === 1) {
-      const chunkBytes = 1024 * 1024;
-      const target = allocMb * chunkBytes;
-      let allocated = 0;
-      try {
-        while (allocated < target) {
-          const chunk = new Uint8Array(chunkBytes);
-          chunk[0] = 1;
-          this.retained.push(chunk);
-          allocated += chunk.byteLength;
-        }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : '';
-        throw new Error(
-          `out of memory: ${message.length > 0 ? message : 'allocation failed'}`
-        );
+      // JS strings live on the V8 heap. A Uint8Array would not trip
+      // maxOldGenerationSizeMb. The worker is killed by the limit; this
+      // loop does not throw a fake out-of-memory error.
+      const junk: string[] = [];
+      const piece = 'heap-object-'.repeat(32);
+      const chunks = allocMb * 4096;
+      for (let index = 0; index < chunks; index += 1) {
+        junk.push(piece + String(index));
       }
-      throw new Error('out of memory');
+      this.retained.push(junk);
     }
     const stall = knob(this.config.stall);
     if (stall > 0 && tick === 0 && process.env['PHALANX_SIM_WORKER'] === '1') {

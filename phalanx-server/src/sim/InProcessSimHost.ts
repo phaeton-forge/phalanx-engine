@@ -50,6 +50,10 @@ export class InProcessSimHost implements SimHost {
     return this.matches.size;
   }
 
+  public healthy(): boolean {
+    return !this.closed;
+  }
+
   public async close(): Promise<void> {
     if (this.closed) return;
     this.closed = true;

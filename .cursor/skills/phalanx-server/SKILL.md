@@ -527,15 +527,15 @@ await phalanx.start();
 
 Omit `games` and the server stays a relay: no worker is spawned. To simulate:
 
-- `games: [{ module, export? }]` (a worker imports the module; an `inProcess` host may also take a `GameDefinition` object).
+- `games: [{ module, export?, configKeys? }]` (a worker imports the module; an `inProcess` host may also take a `GameDefinition` object). `configKeys` is the allow-list of integer `matchConfig` fields copied into the runner config.
 - `simHost?: { mode?: 'worker' | 'inProcess'; workers?: 1; resourceLimits?; snapshotEveryTicks?; maxMatches? }`. Default mode is `worker`. `workers` must be `1`.
-- `room-create` may include `matchConfig: { gameId, simMode: 'server', slots, inputDelayTicks?, absencePolicy? }` plus extra integer fields copied into the runner config. Omitted `matchConfig` keeps the two-human room.
+- `room-create` may include `matchConfig: { gameId, simMode: 'server', slots, inputDelayTicks?, absencePolicy? }` plus integer fields named in that game's `configKeys`. Other extras are rejected. Omitted `matchConfig` keeps the two-human room. `maxMatches` is reserved at create, including a waiting room, and released on cancel, expiry, or match end.
 - The relay stamps. Server bots appear as `bot:<slot>` and target `S + inputDelayTicks`. If that room leads the sim by more than `inputDelayTicks - 1`, `sim-lag` pauses that room only. Late bot commands are not retargeted (`bot-commands-late`).
 - Hash arbiter: sim digest vs that client's `state-hash` → `desync { playerId, tick }` to that socket only. The match continues. Relay rooms still end on a client-vs-client desync when `enableStateHashing` is on.
-- `match-snapshot-request` → `match-snapshot { tick, bytes, requestId }`. `match-resume-state.snapshot` is `{ tick }` when a server snapshot exists.
+- `match-snapshot-request` → `match-snapshot { tick, bytes, requestId }` to that player only. In-flight requests share one snapshot. `requestId` is per player. `match-resume-state.snapshot` is `{ tick }` when a server snapshot exists.
 - `Phalanx.endMatch(matchId, result)` and sim outcomes share `GameRoom.endMatch`. `onMatchArchived` fires once.
 - `Phalanx.getPort()` is the bound port.
-- A thrown tick or in-worker `process.exit` ends that match. A worker OOM or thread crash ends every server match on it until Task 17. `stop()` ends every server match, waits for `ended`, then closes the host.
+- A thrown tick or in-worker `process.exit` ends that match. A worker OOM (`ERR_WORKER_OUT_OF_MEMORY`) or thread crash ends every server match on it until Task 17. A new `room-create` then gets `room-error` `{ reason: 'sim-unavailable' }`. `stop()` ends every server match, waits for `ended`, then closes the host.
 - With `absence` and `absencePolicy`, absence sends `setController` (`bot` while absent, `human` on return). Window expiry still forfeits (`disconnect` / `abandoned`).
 
 Startup throws if a game's `tickRate` differs from the resolved server tick rate, or `tickMode` is not `continuous`. `inputDelayTicks` must be an integer from 1 through `maxTickAhead`.
