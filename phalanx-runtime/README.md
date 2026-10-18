@@ -174,7 +174,9 @@ never calls `decide` and has no `start` or `submit`. Drive it with
 `play({ budgetMs })` or `fastForward(throughTick)`. A final-digest
 mismatch throws. `runner.setController(slot, 'human' | 'bot', { fromTick?, policy? })`
 records a system command (player id `system`), applied at the start of
-`fromTick` before game commands. The default `fromTick` is
+`fromTick` before game commands. A `commands-batch` entry with that id is
+applied only when the runner has a server peer (`side: 'server'` or a
+`server-peer` transport). A relay or local client rejects it. The default `fromTick` is
 `tick + inputDelayTicks`. `inputDelayTicks` defaults to 2. `gameId` and
 `simVersion` are filled from the definition. `WorldScope.run` isolates the entity id counter and the
 SoA entity manager so two matches can share a process.

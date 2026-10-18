@@ -11,6 +11,11 @@ import {
   Server as HttpsServer,
 } from 'https';
 import { readFileSync } from 'fs';
+import {
+  DEFAULT_SERVER_SNAPSHOT_EVERY_TICKS,
+  type AnyGameDefinition,
+} from '@phalanx-engine/runtime';
+import { reservedPlayerMessage } from './reservedPlayerId.js';
 import type {
   PhalanxConfig,
   MatchInfo,
@@ -22,11 +27,17 @@ import type {
   MatchArchive,
   MatchResumeErrorReason,
   MatchResumeStateEvent,
+  EndMatchResult,
 } from './types/index.js';
 import { validateConfig } from './config/validation.js';
 import { MatchmakingService } from './services/MatchmakingService.js';
 import { PrivateRoomService } from './services/PrivateRoomService.js';
 import { GameRoom } from './services/GameRoom.js';
+import { loadGameCatalog, type RegisteredGame } from './sim/loadGames.js';
+import { createSimHost, type SimHost } from './sim/SimHost.js';
+import { RoomSim } from './sim/RoomSim.js';
+import { SnapshotStore } from './sim/SnapshotStore.js';
+import type { PreparedServerMatch } from './sim/serverMatch.js';
 import {
   SessionTokens,
   SESSION_TOMBSTONE_TTL_MS,
@@ -95,6 +106,13 @@ export class Phalanx extends EventEmitter {
   private readonly endedMatches = new Map<string, number>();
   /** Sweeps `endedMatches`. Not tied to the tick loop. */
   private tombstoneTimer: NodeJS.Timeout | null = null;
+  /** Present only when `games` is non-empty. */
+  private simHost: SimHost | null = null;
+  private simUnsub: (() => void) | null = null;
+  private readonly snapshots = new SnapshotStore();
+  private readonly serverSims = new Map<string, RoomSim>();
+  private catalog: readonly RegisteredGame[] = [];
+  private snapshotRequestSeq = 1;
 
   constructor(config?: Partial<PhalanxConfig>) {
     super();
@@ -369,6 +387,7 @@ export class Phalanx extends EventEmitter {
       ((matchId: string, reason: string) => {
         const room = this.findMatch(matchId);
         if (room) {
+          room.endServerSim();
           const taken = room.takeArchive(reason);
           if (taken) this.scheduleArchiveHook(taken.archive, taken.hook);
         }
@@ -396,14 +415,155 @@ export class Phalanx extends EventEmitter {
     return new Promise((resolve, reject) => {
       this.httpServer!.listen(this.config.port, () => {
         this.isRunning = true;
-        this.registerSigterm();
-        resolve();
+        void this.bootSim()
+          .then(() => {
+            this.registerSigterm();
+            resolve();
+          })
+          .catch((error: unknown) => {
+            void this.stop().then(() => {
+              reject(error instanceof Error ? error : new Error(String(error)));
+            });
+          });
       });
 
       this.httpServer!.on('error', (err) => {
         reject(err);
       });
     });
+  }
+
+  /**
+   * Load configured games and start the sim host. No `games` means the
+   * relay is unchanged and no worker is spawned.
+   */
+  private async bootSim(): Promise<void> {
+    const games = this.config.games;
+    if (games === undefined || games.length === 0) return;
+    this.catalog = await loadGameCatalog(this.config);
+    const inline = new Map<string, AnyGameDefinition>();
+    for (const game of this.catalog) {
+      if (game.inline) inline.set(game.id, game.definition);
+    }
+    const mode = this.config.simHost?.mode ?? 'worker';
+    const limits = this.config.simHost?.resourceLimits;
+    this.simHost = createSimHost({
+      mode,
+      inline,
+      ...(limits !== undefined ? { resourceLimits: limits } : {}),
+    });
+    this.simUnsub = this.simHost.subscribe((message) => {
+      if (!('matchId' in message)) return;
+      this.serverSims.get(message.matchId)?.onMessage(message);
+    });
+    const every =
+      this.config.simHost?.snapshotEveryTicks ??
+      DEFAULT_SERVER_SNAPSHOT_EVERY_TICKS;
+    this.privateRooms?.setServerSim({
+      catalog: this.catalog,
+      ...(this.config.simHost?.maxMatches !== undefined
+        ? { maxMatches: this.config.simHost.maxMatches }
+        : {}),
+      available: () => this.simHost?.healthy() ?? false,
+      attach: (room, prepared) => {
+        this.attachPrepared(room, prepared, every);
+      },
+    });
+  }
+
+  private attachPrepared(
+    room: GameRoom,
+    prepared: PreparedServerMatch,
+    snapshotEveryTicks: number
+  ): void {
+    const host = this.simHost;
+    if (host === null) return;
+    const matchId = room.getId();
+    const rooms = this.privateRooms;
+    const session = new RoomSim({
+      matchId,
+      host,
+      store: this.snapshots,
+      game: prepared.game,
+      seed: room.getRandomSeed(),
+      slots: prepared.slots,
+      inputDelayTicks: prepared.inputDelayTicks,
+      maxTickAhead: this.config.maxTickAhead,
+      snapshotEveryTicks,
+      extras: prepared.extras,
+      enqueue: (commands) => {
+        room.enqueueStamped(commands);
+      },
+      currentTick: () => room.getCurrentTick(),
+      endMatch: (result) => room.endMatch(result),
+      haltRelay: () => {
+        room.haltForSim();
+      },
+      releaseHold: () => {
+        room.releaseSimHold();
+      },
+      emitPlayer: (playerId, event, payload) => {
+        room.emitToPlayer(playerId, event, payload);
+      },
+      emitServer: (event, ...args) => {
+        this.emit(event, ...args);
+      },
+      onClosed: () => {
+        this.serverSims.delete(matchId);
+        this.snapshots.delete(matchId);
+        rooms?.releaseServerMatch();
+      },
+    });
+    this.serverSims.set(matchId, session);
+    room.attachServerSim(session);
+    const policyName = prepared.absencePolicy;
+    if (policyName !== undefined && this.config.absence) {
+      room.setAbsencePolicy({
+        onAbsent: (playerId) => {
+          session.setController(playerId, 'bot', policyName);
+        },
+        onReturn: (playerId) => {
+          session.setController(playerId, 'human');
+        },
+        onExpire: (playerId) => {
+          room.forfeitAbsent(playerId);
+        },
+      });
+    }
+  }
+
+  /**
+   * End each server match and wait for the sim to drop it, close the
+   * host, then detach. Unsubscribing first would discard `ended`.
+   */
+  private async closeSimHost(): Promise<void> {
+    const host = this.simHost;
+    const endings = [...this.serverSims.values()].map((session) =>
+      session.end()
+    );
+    await Promise.all(endings);
+    if (host) await host.close();
+    this.simUnsub?.();
+    this.simUnsub = null;
+    this.simHost = null;
+    this.serverSims.clear();
+  }
+
+  /**
+   * End a live match. Returns false when the id is unknown or the match
+   * has already finished. The sim outcome path uses the same room method.
+   */
+  endMatch(matchId: string, result: EndMatchResult): boolean {
+    const room = this.findMatch(matchId);
+    if (!room) return false;
+    return room.endMatch(result);
+  }
+
+  /** Bound port. `0` in config becomes the ephemeral port after `start()`. */
+  getPort(): number {
+    const address = this.httpServer?.address();
+    if (address && typeof address === 'object') return address.port;
+    return this.config.port;
   }
 
   /**
@@ -577,6 +737,7 @@ export class Phalanx extends EventEmitter {
     this.unregisterSigterm();
     this.clearSessionBookkeeping();
     if (!this.isRunning) {
+      await this.closeSimHost();
       return;
     }
 
@@ -588,11 +749,13 @@ export class Phalanx extends EventEmitter {
       this.matchmaking = null;
     }
 
-    // Stop private rooms
+    // Stop private rooms while the sim host can still take `end`.
     if (this.privateRooms) {
       this.privateRooms.stop();
       this.privateRooms = null;
     }
+
+    await this.closeSimHost();
 
     // Disconnect all sockets first
     if (this.io) {
@@ -684,6 +847,11 @@ export class Phalanx extends EventEmitter {
           gameType?: string;
           buildId?: unknown;
         }) => {
+          const reserved = reservedPlayerMessage(data.playerId);
+          if (reserved !== null) {
+            socket.emit('error', { message: reserved });
+            return;
+          }
           playerId = data.playerId;
           const username = data.username ?? data.playerId;
           this.matchmaking!.joinQueue(
@@ -711,7 +879,13 @@ export class Phalanx extends EventEmitter {
           username?: string;
           gameType?: string;
           buildId?: unknown;
+          matchConfig?: unknown;
         }) => {
+          const reserved = reservedPlayerMessage(data.playerId);
+          if (reserved !== null) {
+            socket.emit('room-error', { message: reserved });
+            return;
+          }
           playerId = data.playerId;
           const username = data.username ?? data.playerId;
           this.privateRooms!.createRoom(
@@ -719,7 +893,8 @@ export class Phalanx extends EventEmitter {
             username,
             socket,
             data.gameType,
-            readOptionalBuildId(data.buildId)
+            readOptionalBuildId(data.buildId),
+            data.matchConfig
           );
         }
       );
@@ -733,6 +908,11 @@ export class Phalanx extends EventEmitter {
           code: string;
           buildId?: unknown;
         }) => {
+          const reserved = reservedPlayerMessage(data.playerId);
+          if (reserved !== null) {
+            socket.emit('room-error', { message: reserved });
+            return;
+          }
           playerId = data.playerId;
           const username = data.username ?? data.playerId;
           this.privateRooms!.joinRoom(
@@ -788,6 +968,11 @@ export class Phalanx extends EventEmitter {
         }
         if (typeof data.playerId !== 'string' || data.playerId.length === 0) {
           socket.emit('room-error', { message: 'Room expired' });
+          return;
+        }
+        const reserved = reservedPlayerMessage(data.playerId);
+        if (reserved !== null) {
+          socket.emit('room-error', { message: reserved });
           return;
         }
         const recovered = this.privateRooms!.recoverRoom(
@@ -895,6 +1080,15 @@ export class Phalanx extends EventEmitter {
             rejectedCount: result.invalidCommands.length,
           }),
         });
+      });
+
+      socket.on('match-snapshot-request', (payload: unknown) => {
+        if (!playerId) return;
+        const matchId = (socket.data as SocketData).matchId;
+        if (!matchId) return;
+        const gameRoom = this.findMatch(matchId);
+        if (!gameRoom || !gameRoom.isParticipantSocket(socket.id)) return;
+        gameRoom.requestSnapshot(playerId, this.readSnapshotRequestId(payload));
       });
 
       // Handle state-hash for desync detection (2.1.3)
@@ -1206,8 +1400,28 @@ export class Phalanx extends EventEmitter {
     if (absentDeadline !== undefined) {
       response.absentDeadline = absentDeadline;
     }
+    const snapshotTick = gameRoom.latestSnapshotTick();
+    if (snapshotTick !== undefined) {
+      response.snapshot = { tick: snapshotTick };
+    }
     socket.emit('match-resume-state', response);
     return tokenPlayerId;
+  }
+
+  private readSnapshotRequestId(payload: unknown): number {
+    if (payload && typeof payload === 'object' && 'requestId' in payload) {
+      const requestId = (payload as { requestId?: unknown }).requestId;
+      if (
+        typeof requestId === 'number' &&
+        Number.isInteger(requestId) &&
+        requestId >= 0
+      ) {
+        return requestId;
+      }
+    }
+    const requestId = this.snapshotRequestSeq;
+    this.snapshotRequestSeq += 1;
+    return requestId;
   }
 
   private bindSessionIssuer(matchId: string): void {

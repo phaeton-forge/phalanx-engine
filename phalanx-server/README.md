@@ -13,6 +13,7 @@ For a high-level overview of engine features, see the [root README](../README.md
 - [Configuration Reference](#configuration-reference)
 - [Game Types](#game-types)
 - [Game Modes](#game-modes)
+- [Server simulation](#server-simulation)
 - [Event Hooks](#event-hooks)
 - [API](#api)
   - [Phalanx Class](#phalanx-class)
@@ -382,6 +383,81 @@ returns the current absences with
 `deadlineMs` / `budgetLeftMs` in the same millisecond sense (Task 9
 reads the resume deadline from it).
 
+## Server simulation
+
+Opt-in. With no `games` entry the process stays a pure relay and does not
+spawn a worker. A private room opts in by passing `matchConfig` on
+`room-create`:
+
+```typescript
+import { Phalanx } from '@phalanx-engine/server';
+
+const app = new Phalanx({
+  tickRate: 64,
+  games: [
+    {
+      module: '/abs/path/to/game.js',
+      export: 'RelayGame',
+      configKeys: ['mapId'],
+    },
+  ],
+  simHost: {
+    mode: 'worker', // 'inProcess' runs the same queue on the relay thread
+    snapshotEveryTicks: 1000,
+    maxMatches: 8,
+  },
+});
+```
+
+`simMode: 'server'` plus a registered `gameId` and `slots` starts a
+`MatchRunner` (`side: 'server'`) in one shared worker. Integer `matchConfig`
+fields are copied into that config only when the game's `configKeys` lists
+them. `maxMatches` is reserved when the room is created, including a room
+still waiting for humans, and released on cancel, expiry, or match end.
+The relay remains the only stamper. `system` and `bot:<slot>` are rejected
+on `queue-join`, `room-create`, `room-join`, `room-recover`, and on human
+slots. A client command is stamped with the socket's player id. Bot player ids are `bot:<slot>`. A bot decides at sim tick `S`
+and targets `S + inputDelayTicks`, the same delay as a human, so the command
+is usually waiting before the relay broadcasts that tick. If this room's
+lead over the sim exceeds `inputDelayTicks - 1`, `sim-lag` pauses **this
+room's** tick loop until the sim catches up. Other rooms keep ticking. A bot
+command that still arrives after its tick is reported as `bot-commands-late`
+and is not moved onto a later tick.
+
+The sim's digest is compared with each client's `state-hash`. A mismatch
+emits `desync` `{ playerId, tick }` to that player only and the match
+continues. Relay rooms (no server sim) keep the previous all-client desync
+behaviour. Snapshots are stored in memory (latest only): every
+`snapshotEveryTicks`, and on `match-snapshot-request`. Each player has one
+pending request; a newer `requestId` replaces the older one, and those
+waiters share one snapshot. A player is answered at most once a
+second, whether the bytes come from the store or a new sim snapshot. A
+request inside that interval is kept (the latest id wins) and answered
+when it elapses. The reply goes only to the socket that
+asked, with that player's `requestId` (two players may both use `1`).
+`match-resume-state` includes `snapshot: { tick }` when one exists.
+
+`Phalanx.endMatch(matchId, result)` ends a live match the same way a sim
+outcome does. `onMatchArchived` still runs once. `getPort()` returns the
+bound port (`0` in config is the ephemeral port after `start()`).
+
+A thrown tick is `sim-error` for that match, including a game error whose
+text says "out of memory". `process.exit` inside a match is `sim-crash` for
+that match. A worker heap limit (`ERR_WORKER_OUT_OF_MEMORY`) or a dead
+thread ends **every** server match on that worker as `sim-oom` /
+`sim-crash`. A later `room-create` gets `room-error` with reason
+`sim-unavailable` and does not start. Nothing respawns the worker (that
+is Task 17). Relay rooms are not on that thread. A normal `close` is not a
+`sim-crash`.
+`shutdown` / `stop` posts `end` for every server match, waits for the sim
+to drop them, then closes the host.
+
+When `absence` is set and the room config includes `absencePolicy`, an
+absent human is driven by that bot policy until the absence window expires,
+then the Task 10 forfeit still runs (`disconnect`, or `abandoned` when
+every human is gone). Return before expiry restores `human`. Without
+`absencePolicy`, expiry ends the match immediately, as in Task 10.
+
 ## Event Hooks
 
 ```typescript
@@ -433,6 +509,10 @@ class Phalanx {
    * because archives for matches this call stops are queued inside stop().
    */
   shutdown(reason: string): Promise<void>;
+  /** End one live match. False when the id is unknown or already finished. */
+  endMatch(matchId: string, result: EndMatchResult): boolean;
+  /** Bound port after start. Config port 0 becomes the ephemeral port. */
+  getPort(): number;
 
   // Trusted server-side integrations
   createPrivateRoomForHost(params: {

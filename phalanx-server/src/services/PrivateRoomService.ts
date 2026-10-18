@@ -6,6 +6,13 @@ import type {
   RoomRecoveredEvent,
   RoomErrorEvent,
 } from '../types/index.js';
+import {
+  fillHumanSlot,
+  parseServerMatch,
+  type PreparedServerMatch,
+} from '../sim/serverMatch.js';
+import type { RegisteredGame } from '../sim/loadGames.js';
+import { reservedPlayerMessage } from '../reservedPlayerId.js';
 import { GameRoom } from './GameRoom.js';
 
 // Re-export private-room event types from this module for backward
@@ -32,6 +39,8 @@ interface PrivateRoom {
   readonly gameType: string;
   readonly createdAt: number;
   expirationTimer: ReturnType<typeof setTimeout>;
+  /** Set when `room-create` asked for a server match that still needs humans. */
+  serverMatch?: PreparedServerMatch;
 }
 
 export interface CreateDisconnectedHostRoomResult extends RoomCreatedEvent {
@@ -75,6 +84,14 @@ export class PrivateRoomService {
   ) => boolean | void;
   private readonly resolveGameTypeConfig: (gameType: string) => PhalanxConfig;
   private readonly isPlayerQueued?: (playerId: string) => boolean;
+  private serverCatalog: readonly RegisteredGame[] = [];
+  private serverMatchCount = 0;
+  private maxServerMatches: number | undefined;
+  /** False after the sim worker has died. */
+  private simAvailable: (() => boolean) | null = null;
+  /** Called once the GameRoom exists and before `start()`. */
+  private attachServerMatch:
+    ((room: GameRoom, prepared: PreparedServerMatch) => void) | null = null;
 
   /** TTL for rooms in ms (5 minutes). */
   private static readonly ROOM_TTL_MS = 5 * 60 * 1000;
@@ -94,6 +111,27 @@ export class PrivateRoomService {
   }
 
   /**
+   * Install the server-sim catalog. Absent means `matchConfig` is rejected
+   * and ordinary rooms are unchanged.
+   */
+  setServerSim(options: {
+    catalog: readonly RegisteredGame[];
+    maxMatches?: number;
+    available: () => boolean;
+    attach: (room: GameRoom, prepared: PreparedServerMatch) => void;
+  }): void {
+    this.serverCatalog = options.catalog;
+    this.maxServerMatches = options.maxMatches;
+    this.simAvailable = options.available;
+    this.attachServerMatch = options.attach;
+  }
+
+  /** Drop a reserved server match when its room ends. */
+  releaseServerMatch(): void {
+    if (this.serverMatchCount > 0) this.serverMatchCount -= 1;
+  }
+
+  /**
    * Create a private room for the given host player.
    */
   createRoom(
@@ -101,8 +139,17 @@ export class PrivateRoomService {
     username: string,
     socket: Socket,
     gameType?: string,
-    buildId?: string
+    buildId?: string,
+    matchConfig?: unknown
   ): void {
+    const reserved = reservedPlayerMessage(playerId);
+    if (reserved !== null) {
+      socket.emit('room-error', {
+        message: reserved,
+      } satisfies RoomErrorEvent);
+      return;
+    }
+
     // Reject if player is already in a match
     if ((socket.data as { matchId?: string }).matchId) {
       socket.emit('room-error', {
@@ -129,8 +176,20 @@ export class PrivateRoomService {
       }
     }
 
-    const code = this.generateCode();
     const resolvedGameType = gameType ?? 'default';
+    if (matchConfig !== undefined) {
+      this.createServerRoom(
+        playerId,
+        username,
+        socket,
+        resolvedGameType,
+        buildId,
+        matchConfig
+      );
+      return;
+    }
+
+    const code = this.generateCode();
 
     // Auto-expire room after TTL.
     //
@@ -182,6 +241,11 @@ export class PrivateRoomService {
     username: string,
     gameType?: string
   ): CreateDisconnectedHostRoomResult {
+    const reserved = reservedPlayerMessage(playerId);
+    if (reserved !== null) {
+      throw new Error(reserved);
+    }
+
     if (this.isPlayerQueued?.(playerId)) {
       throw new Error('Already in matchmaking queue');
     }
@@ -251,6 +315,14 @@ export class PrivateRoomService {
     code: string,
     buildId?: string
   ): void {
+    const reserved = reservedPlayerMessage(playerId);
+    if (reserved !== null) {
+      socket.emit('room-error', {
+        message: reserved,
+      } satisfies RoomErrorEvent);
+      return;
+    }
+
     // Reject if player is already in a match
     if ((socket.data as { matchId?: string }).matchId) {
       socket.emit('room-error', {
@@ -281,6 +353,18 @@ export class PrivateRoomService {
       socket.emit('room-error', {
         message: 'Cannot join your own room',
       } satisfies RoomErrorEvent);
+      return;
+    }
+
+    if (room.serverMatch) {
+      this.joinServerRoom(
+        room,
+        normalizedCode,
+        playerId,
+        username,
+        socket,
+        buildId
+      );
       return;
     }
 
@@ -322,6 +406,150 @@ export class PrivateRoomService {
     console.log(
       `[PrivateRoom] Room ${code} → match ${matchId} (${room.host.playerId} vs ${playerId})`
     );
+  }
+
+  private createServerRoom(
+    playerId: string,
+    username: string,
+    socket: Socket,
+    gameType: string,
+    buildId: string | undefined,
+    matchConfig: unknown
+  ): void {
+    const host: QueuedPlayer = {
+      playerId,
+      username,
+      socketId: socket.id,
+      joinedAt: Date.now(),
+      gameType,
+      kind: 'human',
+      ...(buildId !== undefined ? { buildId } : {}),
+    };
+    const parsed = parseServerMatch({
+      raw: matchConfig,
+      host,
+      gameType,
+      catalog: this.serverCatalog,
+      config: this.resolveGameTypeConfig(gameType),
+    });
+    if (!parsed.ok) {
+      socket.emit('room-error', {
+        message: parsed.message,
+      } satisfies RoomErrorEvent);
+      return;
+    }
+    if (this.simAvailable !== null && !this.simAvailable()) {
+      socket.emit('room-error', {
+        message: 'Server simulation is unavailable',
+        reason: 'sim-unavailable',
+      } satisfies RoomErrorEvent);
+      return;
+    }
+    if (!this.reserveServerMatch()) {
+      socket.emit('room-error', {
+        message: 'Server match capacity reached',
+      } satisfies RoomErrorEvent);
+      return;
+    }
+    if (parsed.prepared.waitingHumanIds.length > 0) {
+      const code = this.generateCode();
+      const expirationTimer = setTimeout(() => {
+        const expired = this.rooms.get(code);
+        if (expired) {
+          this.removeRoom(code);
+          expired.hostSocket?.emit('room-expired', { code });
+        }
+      }, PrivateRoomService.ROOM_TTL_MS);
+      const room: PrivateRoom = {
+        code,
+        host,
+        hostSocket: socket,
+        hostSocketId: socket.id,
+        gameType,
+        createdAt: Date.now(),
+        expirationTimer,
+        serverMatch: parsed.prepared,
+      };
+      this.rooms.set(code, room);
+      socket.emit('room-created', { code } satisfies RoomCreatedEvent);
+      return;
+    }
+    this.beginPreparedMatch(parsed.prepared, gameType);
+  }
+
+  /** Count a server match. False when `maxMatches` is already taken. */
+  private reserveServerMatch(): boolean {
+    if (
+      this.maxServerMatches !== undefined &&
+      this.serverMatchCount >= this.maxServerMatches
+    ) {
+      return false;
+    }
+    this.serverMatchCount += 1;
+    return true;
+  }
+
+  private joinServerRoom(
+    room: PrivateRoom,
+    code: string,
+    playerId: string,
+    username: string,
+    socket: Socket,
+    buildId: string | undefined
+  ): void {
+    const prepared = room.serverMatch;
+    if (prepared === undefined) return;
+    if (this.simAvailable !== null && !this.simAvailable()) {
+      this.removeRoom(code);
+      socket.emit('room-error', {
+        message: 'Server simulation is unavailable',
+        reason: 'sim-unavailable',
+      } satisfies RoomErrorEvent);
+      return;
+    }
+    const guest: QueuedPlayer = {
+      playerId,
+      username,
+      socketId: socket.id,
+      joinedAt: Date.now(),
+      gameType: room.gameType,
+      kind: 'human',
+      ...(buildId !== undefined ? { buildId } : {}),
+    };
+    const filled = fillHumanSlot(prepared, guest);
+    if (typeof filled === 'string') {
+      socket.emit('room-error', { message: filled } satisfies RoomErrorEvent);
+      return;
+    }
+    room.serverMatch = filled;
+    if (filled.waitingHumanIds.length > 0) return;
+    this.removeRoom(code, false);
+    this.beginPreparedMatch(filled, room.gameType, code);
+  }
+
+  private beginPreparedMatch(
+    prepared: PreparedServerMatch,
+    gameType: string,
+    code?: string
+  ): void {
+    const resolvedConfig = this.resolveGameTypeConfig(gameType);
+    const matchId = `match-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+    const gameRoom = new GameRoom(
+      matchId,
+      this.io,
+      resolvedConfig,
+      prepared.teams,
+      this.eventEmitter,
+      gameType
+    );
+    this.matches.set(matchId, gameRoom);
+    if (code !== undefined) {
+      this.matchByOriginalCode.set(code, matchId);
+      this.originalCodeByMatch.set(matchId, code);
+    }
+    this.attachServerMatch?.(gameRoom, prepared);
+    this.eventEmitter('match-created', gameRoom.getMatchInfo());
+    gameRoom.start();
   }
 
   /**
@@ -371,6 +599,14 @@ export class PrivateRoomService {
    * Returns `true` on success, `false` on failure.
    */
   recoverRoom(playerId: string, socket: Socket, code: string): boolean {
+    const reserved = reservedPlayerMessage(playerId);
+    if (reserved !== null) {
+      socket.emit('room-error', {
+        message: reserved,
+      } satisfies RoomErrorEvent);
+      return false;
+    }
+
     const normalizedCode = code.toUpperCase();
 
     // Case 1: live room, caller is the host.
@@ -494,11 +730,13 @@ export class PrivateRoomService {
   /**
    * Remove a room and clear its pending TTL timer.
    */
-  private removeRoom(code: string): void {
+  private removeRoom(code: string, releaseReservation = true): void {
     const room = this.rooms.get(code);
-    if (room) {
-      clearTimeout(room.expirationTimer);
-      this.rooms.delete(code);
+    if (!room) return;
+    clearTimeout(room.expirationTimer);
+    this.rooms.delete(code);
+    if (releaseReservation && room.serverMatch !== undefined) {
+      this.releaseServerMatch();
     }
   }
 
@@ -514,6 +752,7 @@ export class PrivateRoomService {
     this.originalCodeByMatch.clear();
     for (const room of this.rooms.values()) {
       clearTimeout(room.expirationTimer);
+      if (room.serverMatch !== undefined) this.releaseServerMatch();
     }
     this.rooms.clear();
   }

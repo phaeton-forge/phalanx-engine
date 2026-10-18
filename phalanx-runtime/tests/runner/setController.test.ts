@@ -1,4 +1,10 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import type {
+  CommandsBatch,
+  FrameHandler,
+  TickHandler,
+  Unsubscribe,
+} from '@phalanx-engine/ecs';
 import { DeterministicRandom } from '@phalanx-engine/math';
 import {
   BinaryStateReader,
@@ -11,6 +17,7 @@ import {
   botSlotSeed,
   runLocalMatch,
   type Digest,
+  type Transport,
 } from '../../src/index.js';
 import {
   TinyGame,
@@ -416,7 +423,92 @@ describe('setController', () => {
       })
     ).toThrow(/player id 'system' is reserved/);
   });
+
+  it('applies a batch system command only when a server peer exists', () => {
+    const forged: CommandsBatch = {
+      tick: 1,
+      commands: {
+        system: [
+          {
+            type: 'setController',
+            playerId: 'system',
+            data: {
+              q: 0,
+              p: {
+                slot: 0,
+                mode: 'bot',
+                level: 0,
+                runsOn: 'local',
+                policy: 'walker',
+              },
+            },
+          },
+        ],
+      },
+    };
+
+    const relay = new ScriptedTransport('relay-lockstep');
+    const relayRunner = keep(
+      new MatchRunner(TinyGame, config(), relay, { localSlots: [0] })
+    );
+    const reasons: string[] = [];
+    relayRunner.onRejected((_entry, reason) => {
+      reasons.push(reason);
+    });
+    relayRunner.start();
+    relay.emitTick(0, { tick: 0, commands: {} });
+    relay.emitTick(1, forged);
+    relay.emitTick(2, { tick: 2, commands: {} });
+    expect(reasons).toEqual(['system command without a server peer']);
+    expect(tinyBotCalls).toEqual([]);
+    expect(
+      relayRunner.log
+        .entriesAfter(-1)
+        .some((entry) => entry.playerId === 'system')
+    ).toBe(false);
+
+    resetTinyBotCalls();
+    const peer = new ScriptedTransport('server-peer');
+    const peerRunner = keep(
+      new MatchRunner(TinyGame, config(), peer, { localSlots: [0] })
+    );
+    peerRunner.start();
+    peer.emitTick(0, { tick: 0, commands: {} });
+    peer.emitTick(1, { ...forged, tick: 1 });
+    expect(tinyBotCalls.length).toBeGreaterThan(0);
+    expect(
+      peerRunner.log
+        .entriesAfter(-1)
+        .some(
+          (entry) =>
+            entry.playerId === 'system' && entry.type === 'setController'
+        )
+    ).toBe(true);
+  });
 });
+
+class ScriptedTransport implements Transport {
+  public constructor(public readonly kind: 'relay-lockstep' | 'server-peer') {}
+  private readonly ticks: TickHandler[] = [];
+
+  public onTick(handler: TickHandler): Unsubscribe {
+    this.ticks.push(handler);
+    return () => {
+      const index = this.ticks.indexOf(handler);
+      if (index !== -1) this.ticks.splice(index, 1);
+    };
+  }
+
+  public onFrame(_handler: FrameHandler): Unsubscribe {
+    return () => {};
+  }
+
+  public submit(): void {}
+
+  public emitTick(tick: number, batch: CommandsBatch): void {
+    for (const handler of this.ticks.slice()) handler(tick, batch);
+  }
+}
 
 function botSlotConfig(policy: string, level: number): TinyConfig {
   return {

@@ -1054,9 +1054,42 @@ export class MatchRunner<G extends AnyGameDefinition> {
   }
 
   private runTick(tick: number, batch: CommandsBatch, plan: TickPlan): void {
-    const game = entriesFromBatch(tick, batch, this.slotByPlayerId);
-    const system = this.systemEntriesFor(tick);
-    this.runPreparedTick(tick, [...system, ...game], plan);
+    // RoomSim is the only producer of `system` commands. A relay or
+    // local client has no server peer and must not apply a batch copy.
+    const serverPeer = this.hasServerPeer();
+    const parsed = entriesFromBatch(
+      tick,
+      batch,
+      this.slotByPlayerId,
+      serverPeer
+    );
+    for (const entry of parsed.rejectedSystem) {
+      this.rejectedListeners.emit(
+        entry,
+        'system command without a server peer'
+      );
+    }
+    const localSystem = this.systemEntriesFor(tick);
+    const seen = new Set(localSystem.map((entry) => entry.data.q));
+    const batchSystem: LogEntry[] = [];
+    const game: LogEntry[] = [];
+    for (const entry of parsed.entries) {
+      if (entry.playerId !== SYSTEM_PLAYER_ID) {
+        game.push(entry);
+        continue;
+      }
+      if (!serverPeer) {
+        this.rejectedListeners.emit(
+          entry,
+          'system command without a server peer'
+        );
+        continue;
+      }
+      if (seen.has(entry.data.q)) continue;
+      seen.add(entry.data.q);
+      batchSystem.push(entry);
+    }
+    this.runPreparedTick(tick, [...localSystem, ...batchSystem, ...game], plan);
   }
 
   /** Tick body when the log entries are already known (fast-forward). */
@@ -2284,19 +2317,54 @@ function emptyCommands(): CommandsBatch['commands'] {
 function entriesFromBatch(
   tick: number,
   batch: CommandsBatch,
-  slotByPlayerId: ReadonlyMap<string, number>
-): LogEntry[] {
+  slotByPlayerId: ReadonlyMap<string, number>,
+  acceptSystem: boolean
+): { entries: LogEntry[]; rejectedSystem: LogEntry[] } {
   const ranked: {
     slot: number;
     seq: number;
     index: number;
     entry: LogEntry;
   }[] = [];
+  const rejectedSystem: LogEntry[] = [];
   let index = 0;
   for (const playerId of Object.keys(batch.commands)) {
-    const slot = slotByPlayerId.get(playerId);
     const commands = batch.commands[playerId];
-    if (slot === undefined || commands === undefined) continue;
+    if (commands === undefined) continue;
+    if (playerId === SYSTEM_PLAYER_ID) {
+      for (const command of commands) {
+        const envelope = readEnvelope(command.data);
+        const entry: LogEntry =
+          envelope === null
+            ? {
+                tick,
+                playerId,
+                type: typeof command.type === 'string' ? command.type : '',
+                data: { q: 0, p: null },
+                malformed: true,
+              }
+            : {
+                tick,
+                playerId,
+                type: command.type,
+                data: { q: envelope.q, p: canonicalJsonValue(envelope.p) },
+              };
+        if (!acceptSystem) {
+          rejectedSystem.push(entry);
+          continue;
+        }
+        ranked.push({
+          slot: -1,
+          seq: envelope === null ? 0 : envelope.q,
+          index,
+          entry,
+        });
+        index += 1;
+      }
+      continue;
+    }
+    const slot = slotByPlayerId.get(playerId);
+    if (slot === undefined) continue;
     for (const command of commands) {
       const envelope = readEnvelope(command.data);
       if (envelope === null) {
@@ -2330,7 +2398,10 @@ function entriesFromBatch(
     }
   }
   ranked.sort((a, b) => a.slot - b.slot || a.seq - b.seq || a.index - b.index);
-  return ranked.map((item) => item.entry);
+  return {
+    entries: ranked.map((item) => item.entry),
+    rejectedSystem,
+  };
 }
 
 function readEnvelope(data: unknown): CommandEnvelope | null {

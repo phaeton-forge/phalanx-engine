@@ -77,7 +77,12 @@ export type {
   EndMatchResult,
   PlayerAbsentEvent,
   PlayerCommandContext,
+  // Task 11
+  GameModuleSpec,
+  SimHostConfig,
+  ServerRoomMatchConfig,
 } from './types/index.js';
+export type { AnyGameDefinition, SlotConfig } from '@phalanx-engine/runtime';
 
 // Constants
 export {

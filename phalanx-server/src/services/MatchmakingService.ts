@@ -6,6 +6,7 @@ import type {
   QueueStatusEvent,
 } from '../types/index.js';
 import { resolveGameMode } from '../config/validation.js';
+import { reservedPlayerMessage } from '../reservedPlayerId.js';
 import { GameRoom } from './GameRoom.js';
 
 /**
@@ -113,6 +114,12 @@ export class MatchmakingService {
     gameType?: string,
     buildId?: string
   ): void {
+    const reserved = reservedPlayerMessage(playerId);
+    if (reserved !== null) {
+      socket.emit('error', { message: reserved });
+      return;
+    }
+
     // Check not already in any queue
     if (this.isInAnyQueue(playerId)) {
       socket.emit('error', { message: 'Already in queue' });

@@ -346,6 +346,26 @@ describe('GameRoom.endMatch', () => {
     ).toBe(false);
     room.stop();
   });
+
+  it('does not auto-ready a human whose id looks like a bot', () => {
+    const human = qp('bot:7', 'sock-bot');
+    const { room } = createRoom([[human]]);
+    room.start();
+    expect(room.getMatchInfo().state).toBe('waiting-for-ready');
+    room.handlePlayerReady('bot:7');
+    expect(room.getMatchInfo().state).toBe('playing');
+    room.stop();
+  });
+
+  it('auto-readies a slot whose kind is bot', () => {
+    const bot = { ...qp('bot:1', ''), kind: 'bot' as const };
+    const { room } = createRoom([[P1], [bot]]);
+    room.start();
+    expect(room.getMatchInfo().state).toBe('waiting-for-ready');
+    room.handlePlayerReady('p1');
+    expect(room.getMatchInfo().state).toBe('playing');
+    room.stop();
+  });
 });
 
 describe('endMatch through the player-command socket hook', () => {
@@ -371,6 +391,7 @@ describe('endMatch through the player-command socket hook', () => {
   }
 
   afterEach(async () => {
+    vi.useRealTimers();
     for (const client of clients) client.disconnect();
     clients.length = 0;
     if (server) {
@@ -485,5 +506,38 @@ describe('endMatch through the player-command socket hook', () => {
     });
     expect(order).toEqual(['match-end']);
     expect(server?.getActiveMatches()).toEqual([]);
+  });
+
+  it('drops a late bot command instead of filing it on a later tick', () => {
+    vi.useFakeTimers();
+    const { room, log } = createRoom([[P1], [P2]]);
+    reachPlaying(room, ['p1', 'p2']);
+    vi.advanceTimersByTime(250);
+    expect(room.getCurrentTick()).toBeGreaterThan(0);
+    room.enqueueStamped([
+      {
+        type: 'move',
+        tick: 0,
+        playerId: 'bot:1',
+        data: { dx: 1 },
+      },
+    ]);
+    expect(
+      log.filter((entry) => entry.event === 'bot-commands-late')
+    ).toHaveLength(1);
+    vi.advanceTimersByTime(100);
+    const leaked = log.filter((entry) => {
+      if (entry.event !== 'commands-batch' || !isRecord(entry.payload)) {
+        return false;
+      }
+      const commands = entry.payload['commands'];
+      if (!Array.isArray(commands)) return false;
+      return commands.some(
+        (command) => isRecord(command) && command['playerId'] === 'bot:1'
+      );
+    });
+    expect(leaked).toEqual([]);
+    room.stop();
+    vi.useRealTimers();
   });
 });
