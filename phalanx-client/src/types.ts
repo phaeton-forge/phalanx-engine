@@ -64,9 +64,33 @@ export interface PhalanxClientConfig {
   /**
    * Client build id sent with `queue-join`, `room-create`, and `room-join`.
    * Omitted from those payloads when unset. The server ignores values that
-   * are not strings of length 1–128.
+   * are not strings of length 1–128. Also sent on `match-resume` and
+   * stored next to the session token when `gameId` is set.
    */
   buildId?: string;
+
+  /**
+   * Game id for the session-token record (`phalanx.session.<gameId>`).
+   * When omitted, the client does not create a `MatchSessionStore` and
+   * does not persist `session-token`. There is no default.
+   */
+  gameId?: string;
+
+  /**
+   * The server was started with `reconnect.requireSessionToken`.
+   * When true, a resume timeout does not fall through to
+   * `reconnect-match`, which that server always refuses.
+   * Omitted means the client does not know, and the legacy rebind
+   * still runs after a timeout.
+   */
+  requireSessionToken?: boolean;
+
+  /**
+   * Storage for `MatchSessionStore`. Defaults to `localStorage`
+   * (`LocalStorageAdapter`), with an in-memory fallback when the DOM
+   * is unavailable. Ignored when `gameId` is omitted.
+   */
+  matchSessionStorage?: KeyValueStorage;
 
   /**
    * Authentication token (e.g., Google ID token).
@@ -425,6 +449,64 @@ export interface MatchLogErrorEvent {
   reason: MatchLogWireErrorReason;
 }
 
+/** Reasons the server sends on `match-resume-error`. */
+export type MatchResumeWireErrorReason =
+  'invalid' | 'expired' | 'match-ended' | 'build-mismatch';
+
+/**
+ * Why `resumeMatch` rejected.
+ * `MatchResumeWireErrorReason` arrives on `match-resume-error`.
+ * `'timeout'` is local, when `connectionTimeoutMs` elapses with no
+ * answer. The server does not send it.
+ */
+export type MatchResumeErrorReason = MatchResumeWireErrorReason | 'timeout';
+
+/**
+ * Thrown by `PhalanxClient.resumeMatch` when the server emits
+ * `match-resume-error`, or when the request times out.
+ * Named `MatchResumeRejected` because `MatchResumeError` is the
+ * runtime's local-resume error.
+ */
+export class MatchResumeRejected extends Error {
+  readonly reason: MatchResumeErrorReason;
+
+  constructor(reason: MatchResumeErrorReason) {
+    super(`match-resume rejected: ${reason}`);
+    this.name = 'MatchResumeRejected';
+    this.reason = reason;
+  }
+}
+
+/**
+ * Successful `match-resume`. `absentDeadline`, when present, is
+ * milliseconds until another player's absence expires.
+ */
+export interface MatchResumeState {
+  matchId: string;
+  slot: number;
+  currentTick: number;
+  state:
+    | 'waiting-for-players'
+    | 'countdown'
+    | 'waiting-for-ready'
+    | 'playing'
+    | 'paused'
+    | 'finished';
+  absentDeadline?: number;
+}
+
+/** `session-token` from the server. The token itself is opaque. */
+export interface SessionTokenEvent {
+  token: string;
+  matchId: string;
+  slot: number;
+}
+
+/** The server bound this player to a different socket. */
+export interface SessionSupersededEvent {
+  matchId: string;
+}
+
 /**
  * The relay is about to stop. In-memory matches end with no result.
  */
@@ -620,6 +702,12 @@ export interface PhalanxClientEvents {
 
   /** Process is shutting down. Matches on this relay will end. */
   serverShutdown: (event: ServerShutdownEvent) => void;
+
+  /** A session token was issued. The client does not parse `token`. */
+  sessionToken: (event: { token: string }) => void;
+
+  /** This socket was replaced. It is no longer in the match. */
+  sessionSuperseded: (event: SessionSupersededEvent) => void;
 }
 
 /**
@@ -631,9 +719,12 @@ export interface RoomCreatedEvent {
 
 /**
  * Event emitted when a room operation fails.
+ * `reason` is set only for the in-match session-token gate.
+ * `message` stays `'session-token-required'` in that case.
  */
 export interface RoomErrorEvent {
   message: string;
+  reason?: 'session-token-required';
 }
 
 /**

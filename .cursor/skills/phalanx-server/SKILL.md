@@ -180,6 +180,8 @@ interface PhalanxConfig {
   shutdownGraceMs?: number;        // Default: 0. Wait after server-shutdown before stop(), then again for archive hooks
   handleSignals?: boolean;         // Default: false. true → SIGTERM calls shutdown('sigterm')
   onMatchArchived?: (rec: MatchArchive) => void | Promise<void>; // Default: omitted. Once per started match; engine stores nothing
+  session?: { secret: string; ttlMs?: number }; // Opt-in HMAC token. secret ≥ 32 chars. ttlMs default 60 min
+  reconnect?: { requireSessionToken?: boolean }; // Default false. true rejects legacy rebind into a live match
 
   // === Determinism Features ===
   validateInputSequence?: boolean; // Default: false
@@ -196,6 +198,8 @@ interface PhalanxConfig {
   pause?: Partial<PauseConfig>;
 }
 ```
+
+`session` issues `session-token { token, matchId, slot }` at `match-found` (right after the personal payload, and again at `game-start`). `exp` is that issue time plus `ttlMs`; the `game-start` token and a rebind extend it. `handleReconnect` sends one after `reconnect-state` with no `gameStartEmitted` gate, including during countdown. A token is bound to that `matchId` and `playerId` and cannot join another match. A match that ends before start (`ready-timeout`, `players-not-connected`, or `stop` during countdown) is tombstoned, so resume answers `match-ended`. `slot` is the index in `teams.flat()`. The token is HMAC-signed, not encrypted, so the payload is readable. Never log the token or `session.secret`. `match-resume { token, buildId?, haveTick }` verifies the HMAC, then the 10-minute ended-match tombstone, then `buildId`, then rebinds with `handleReconnect` using the player id from the token. The previous socket leaves the room, loses `matchId` / `playerId`, and receives `session-superseded`. `player-command` and `submit-commands` require `isParticipantSocket` even if the old socket still has `matchId`. `match-resume-state` follows `reconnect-state` and may include `absentDeadline` (milliseconds until the soonest *other* absence). `reconnect.requireSessionToken` rejects `reconnect-match` and `room-recover` after `waiting-for-players` (`room-error` `message` and `reason` are both `'session-token-required'`). Recover during `waiting-for-players` stays open so a player who missed `match-found` gets the token. The flag throws at startup without `session.secret`. Omit `session` and today's rebind behaviour is unchanged.
 
 `commandHistoryTicks: 'full'` stores only non-empty ticks for the whole match. `match-log` replies with `match-log-chunk` events of at most 2000 ticks, only to the requesting member socket. A new `match-log` or `match-log-cancel` stops the previous stream on that socket. Optional `requestId` is echoed on chunks and errors. `Phalanx.shutdown(reason)` emits `server-shutdown` to every active room, waits `shutdownGraceMs`, then calls `stop()`, then waits for `onMatchArchived` hooks up to `shutdownGraceMs` again. Set `handleSignals: true` to bind that to `SIGTERM`. The engine never calls `process.exit`. With `requireBuildId`, a missing or differing `buildId` emits `match-error` (`build-mismatch`) and removes the match before `match-found`. `GameRoom.getBuildId()` returns the first non-empty id in team order.
 
@@ -407,6 +411,11 @@ interface PlayerInfo {
 | `reconnect-match`     | Client → Server  | Attempt to rejoin a match         |
 | `reconnect-status`    | Server → Client  | Reconnection result               |
 | `reconnect-state`     | Server → Client  | Game state for reconnection       |
+| `session-token`       | Server → Client  | `{ token, matchId, slot }` at match-found, game-start (extends `exp`), and after reconnect-state |
+| `session-superseded`  | Server → Client  | `{ matchId }` when this socket is replaced |
+| `match-resume`        | Client → Server  | `{ token, buildId?, haveTick }`   |
+| `match-resume-state`  | Server → Client  | Resume accepted, after reconnect-state |
+| `match-resume-error`  | Server → Client  | `invalid`, `expired`, `match-ended`, `build-mismatch` |
 | `state-hash`          | Client → Server  | Submit state hash for desync check|
 | `pause-game`          | Client → Server  | Request game pause                |
 | `resume-game`         | Client → Server  | Request game resume               |

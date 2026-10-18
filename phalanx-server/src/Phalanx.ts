@@ -20,11 +20,17 @@ import type {
   PhalanxEventHandlers,
   SubmitCommandsEvent,
   MatchArchive,
+  MatchResumeErrorReason,
+  MatchResumeStateEvent,
 } from './types/index.js';
 import { validateConfig } from './config/validation.js';
 import { MatchmakingService } from './services/MatchmakingService.js';
 import { PrivateRoomService } from './services/PrivateRoomService.js';
 import { GameRoom } from './services/GameRoom.js';
+import {
+  SessionTokens,
+  SESSION_TOMBSTONE_TTL_MS,
+} from './services/SessionTokens.js';
 import { TokenValidatorService } from './services/TokenValidator.js';
 import {
   OAuthExchangeService,
@@ -83,6 +89,12 @@ export class Phalanx extends EventEmitter {
   private archiveHooksScheduled: number = 0;
   /** Hooks whose function has been entered (sync or async). */
   private archiveHooksStarted: number = 0;
+  /** Present only when `config.session` is set. The rooms never see it. */
+  private sessionTokens: SessionTokens | null = null;
+  /** Ended match → epoch ms it ended. Answers `'match-ended'` for 10 min. */
+  private readonly endedMatches = new Map<string, number>();
+  /** Sweeps `endedMatches`. Not tied to the tick loop. */
+  private tombstoneTimer: NodeJS.Timeout | null = null;
 
   constructor(config?: Partial<PhalanxConfig>) {
     super();
@@ -321,6 +333,18 @@ export class Phalanx extends EventEmitter {
       console.log('[Phalanx] Authentication disabled (development mode)');
     }
 
+    // Task 9. No `session` config: no tokens, no tombstones, and
+    // `match-resume` answers `'invalid'`.
+    this.sessionTokens = this.config.session
+      ? new SessionTokens(this.config.session)
+      : null;
+    if (this.sessionTokens) {
+      this.tombstoneTimer = setInterval(() => {
+        this.pruneTombstones(Date.now());
+      }, TOMBSTONE_SWEEP_MS);
+      this.tombstoneTimer.unref();
+    }
+
     // Create matchmaking service
     this.matchmaking = new MatchmakingService(
       this.io,
@@ -337,9 +361,9 @@ export class Phalanx extends EventEmitter {
       (playerId: string) => this.matchmaking!.isInAnyQueue(playerId)
     );
 
-    // Wire up match-ended event to hand off the archive, then prune
-    // the match from both services. One listener covers every ending,
-    // including `stop()` → `match.stop()` → `match-ended`.
+    // Archive a started match, tombstone the id so a session token
+    // answers `'match-ended'`, then prune both services. One listener
+    // covers every ending, including `stop()` during countdown.
     this.on(
       'match-ended' as PhalanxEventType,
       ((matchId: string, reason: string) => {
@@ -348,10 +372,19 @@ export class Phalanx extends EventEmitter {
           const taken = room.takeArchive(reason);
           if (taken) this.scheduleArchiveHook(taken.archive, taken.hook);
         }
+        if (this.sessionTokens) {
+          this.endedMatches.set(matchId, Date.now());
+        }
         this.matchmaking?.removeMatch(matchId);
         this.privateRooms?.removeMatch(matchId);
       }) as PhalanxEventHandlers[PhalanxEventType]
     );
+
+    // `match-created` is emitted before `GameRoom.start()`, so the
+    // issuer is installed before the `match-found` token.
+    this.on('match-created', (match) => {
+      this.bindSessionIssuer(match.id);
+    });
 
     // Setup socket handlers
     this.setupSocketHandlers();
@@ -542,6 +575,7 @@ export class Phalanx extends EventEmitter {
    */
   async stop(): Promise<void> {
     this.unregisterSigterm();
+    this.clearSessionBookkeeping();
     if (!this.isRunning) {
       return;
     }
@@ -766,14 +800,15 @@ export class Phalanx extends EventEmitter {
         }
       });
 
-      // Handle player command
+      // Handle player command. A superseded socket still has a closure
+      // `playerId`; only the socket currently in `socketToPlayer` may act.
       socket.on('player-command', (command: PlayerCommand) => {
         if (!playerId) return;
 
         // Find the match this player is in (check both matchmaking and private rooms)
         const matchId = (socket.data as SocketData).matchId;
         const gameRoom = matchId ? this.findMatch(matchId) : undefined;
-        if (gameRoom) {
+        if (gameRoom && gameRoom.isParticipantSocket(socket.id)) {
           const accepted = gameRoom.handleCommand(playerId, command);
           socket.emit('command-ack', {
             tick: command.tick,
@@ -814,11 +849,11 @@ export class Phalanx extends EventEmitter {
         }
 
         const gameRoom = this.findMatch(matchId);
-        if (!gameRoom) {
+        if (!gameRoom || !gameRoom.isParticipantSocket(socket.id)) {
           socket.emit('submit-commands-ack', {
             tick,
             accepted: false,
-            reason: 'Match not found',
+            reason: gameRoom ? 'Not in a match' : 'Match not found',
           });
           return;
         }
@@ -928,10 +963,25 @@ export class Phalanx extends EventEmitter {
         this.cancelMatchLog(socket, readOptionalRequestId(payload));
       });
 
-      // Handle reconnection
+      // Resume into a live match by session token. The body `playerId`
+      // is ignored. With no `session` config every request is `'invalid'`.
+      socket.on('match-resume', (payload: unknown) => {
+        const bound = this.handleMatchResume(socket, payload);
+        if (bound !== null) playerId = bound;
+      });
+
+      // Handle reconnection. `requireSessionToken` closes this body-id
+      // path; the default leaves it unchanged and logs nothing.
       socket.on(
         'reconnect-match',
         (data: { playerId: string; matchId: string }) => {
+          if (this.config.reconnect?.requireSessionToken === true) {
+            socket.emit('reconnect-status', {
+              success: false,
+              reason: 'session-token-required',
+            });
+            return;
+          }
           playerId = data.playerId;
           const gameRoom = this.findMatch(data.matchId);
           if (gameRoom) {
@@ -1085,6 +1135,117 @@ export class Phalanx extends EventEmitter {
   }
 
   /**
+   * Bind `playerId` from a verified token and answer `match-resume-state`.
+   * Returns the bound player id, or `null` when the resume was refused.
+   * Check order: verify, tombstone, build id, `handleReconnect`.
+   * `haveTick` is only checked for shape. The client catches up with
+   * `match-log` from `haveTick + 1`. It is not logged: a log line here
+   * would sit next to the token.
+   */
+  private handleMatchResume(socket: Socket, payload: unknown): string | null {
+    const fail = (reason: MatchResumeErrorReason): null => {
+      socket.emit('match-resume-error', { reason });
+      return null;
+    };
+
+    if (!payload || typeof payload !== 'object') return fail('invalid');
+    const data = payload as {
+      token?: unknown;
+      buildId?: unknown;
+      haveTick?: unknown;
+    };
+    if (typeof data.token !== 'string' || data.token.length === 0) {
+      return fail('invalid');
+    }
+    if (!isHaveTick(data.haveTick)) return fail('invalid');
+    if (data.buildId !== undefined && typeof data.buildId !== 'string') {
+      return fail('invalid');
+    }
+    if (!this.sessionTokens) return fail('invalid');
+
+    const nowMs = Date.now();
+    const verified = this.sessionTokens.verify(data.token, nowMs);
+    if (!verified.ok) return fail(verified.reason);
+
+    const gameRoom = this.findMatch(verified.claims.matchId);
+    if (!gameRoom) {
+      return fail(
+        this.hasFreshTombstone(verified.claims.matchId, nowMs)
+          ? 'match-ended'
+          : 'invalid'
+      );
+    }
+
+    const clientBuildId =
+      typeof data.buildId === 'string' ? data.buildId : undefined;
+    const matchBuildId = gameRoom.getBuildId();
+    if (
+      matchBuildId !== undefined &&
+      clientBuildId !== undefined &&
+      clientBuildId !== matchBuildId
+    ) {
+      return fail('build-mismatch');
+    }
+    if (clientBuildId === undefined && (this.config.requireBuildId ?? false)) {
+      return fail('build-mismatch');
+    }
+
+    const tokenPlayerId = verified.claims.playerId;
+    if (!gameRoom.handleReconnect(tokenPlayerId, socket.id)) {
+      return fail('invalid');
+    }
+
+    const info = gameRoom.getMatchInfo();
+    const response: MatchResumeStateEvent = {
+      matchId: verified.claims.matchId,
+      slot: gameRoom.getPlayerSlot(tokenPlayerId),
+      currentTick: info.currentTick,
+      state: info.state,
+    };
+    const absentDeadline = nearestOtherAbsence(gameRoom, tokenPlayerId);
+    if (absentDeadline !== undefined) {
+      response.absentDeadline = absentDeadline;
+    }
+    socket.emit('match-resume-state', response);
+    return tokenPlayerId;
+  }
+
+  private bindSessionIssuer(matchId: string): void {
+    const tokens = this.sessionTokens;
+    if (!tokens) return;
+    const room = this.findMatch(matchId);
+    if (!room) return;
+    room.setSessionIssuer((claims) => tokens.issue(claims));
+  }
+
+  private hasFreshTombstone(matchId: string, nowMs: number): boolean {
+    const endedAt = this.endedMatches.get(matchId);
+    if (endedAt === undefined) return false;
+    if (nowMs >= endedAt + SESSION_TOMBSTONE_TTL_MS) {
+      this.endedMatches.delete(matchId);
+      return false;
+    }
+    return true;
+  }
+
+  private pruneTombstones(nowMs: number): void {
+    for (const [matchId, endedAt] of this.endedMatches) {
+      if (nowMs >= endedAt + SESSION_TOMBSTONE_TTL_MS) {
+        this.endedMatches.delete(matchId);
+      }
+    }
+  }
+
+  private clearSessionBookkeeping(): void {
+    if (this.tombstoneTimer) {
+      clearInterval(this.tombstoneTimer);
+      this.tombstoneTimer = null;
+    }
+    this.endedMatches.clear();
+    this.sessionTokens = null;
+  }
+
+  /**
    * Find a GameRoom by matchId across both matchmaking and private room services.
    */
   private findMatch(matchId: string): GameRoom | undefined {
@@ -1141,6 +1302,8 @@ export class Phalanx extends EventEmitter {
 
 /** Inclusive tick span of one `match-log-chunk`. */
 const MATCH_LOG_CHUNK_SPAN = 2000;
+/** How often ended-match tombstones are dropped. Not a simulation tick. */
+const TOMBSTONE_SWEEP_MS = 60_000;
 
 function isThenable(value: unknown): value is PromiseLike<void> {
   return (
@@ -1148,6 +1311,29 @@ function isThenable(value: unknown): value is PromiseLike<void> {
     value !== null &&
     typeof (value as { then?: unknown }).then === 'function'
   );
+}
+
+function isHaveTick(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= -1;
+}
+
+/**
+ * Soonest `deadlineMs` among absences that are not `selfId`.
+ * `handleReconnect` has already stopped `selfId`'s timer.
+ * Omitted when nobody else is absent.
+ */
+function nearestOtherAbsence(
+  room: GameRoom,
+  selfId: string
+): number | undefined {
+  let nearest: number | undefined;
+  for (const row of room.getAbsences()) {
+    if (row.playerId === selfId) continue;
+    if (nearest === undefined || row.deadlineMs < nearest) {
+      nearest = row.deadlineMs;
+    }
+  }
+  return nearest;
 }
 const BUILD_ID_MAX_LENGTH = 128;
 

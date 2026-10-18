@@ -397,6 +397,23 @@ export class PrivateRoomService {
     if (matchId) {
       const match = this.matches.get(matchId);
       if (match && match.hasPlayer(playerId)) {
+        // Task 9. Waiting-room recover (case 1) is unchanged. A
+        // player who was offline at `match-found` is still in
+        // `waiting-for-players` and has no token yet: `room-recover`
+        // stays open so `handleReconnect` can send the retro
+        // `match-found` and the first token. Once the match has left
+        // that state, an in-match rebind must present a session
+        // token when the flag is on.
+        if (
+          this.config.reconnect?.requireSessionToken === true &&
+          match.getMatchInfo().state !== 'waiting-for-players'
+        ) {
+          socket.emit('room-error', {
+            message: 'session-token-required',
+            reason: 'session-token-required',
+          } satisfies RoomErrorEvent);
+          return false;
+        }
         socket.emit('room-recovered', {
           code: normalizedCode,
         } satisfies RoomRecoveredEvent);

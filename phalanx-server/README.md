@@ -155,6 +155,15 @@ const config: Partial<PhalanxConfig> = {
     requireSamePlayerToResume: true,
   },
 
+  // === Session token (Task 9, opt-in) ===
+  // Omit `session` and no token is issued. `match-resume` then
+  // answers `{ reason: 'invalid' }`.
+  session: {
+    secret: 'replace-with-a-secret-of-at-least-32-chars',
+    // ttlMs: 60 * 60 * 1000, // default 60 minutes
+  },
+  // reconnect: { requireSessionToken: false }, // true closes legacy rebind
+
   // === Absence (Task 10, opt-in) ===
   // Omit `absence` to keep today's behaviour (no timer).
   // import { DEFAULT_ABSENCE } from '@phalanx-engine/server';
@@ -256,6 +265,44 @@ import { GAME_MODES } from '@phalanx-engine/server';
 // '4v4'  - 8 players, 2 teams
 // 'FFA4' - 4 players, 4 teams (Free For All)
 ```
+
+## Session token and match-resume
+
+Opt-in. Set `session.secret` (at least 32 characters) to issue an
+HMAC-SHA256 token at `match-found` (and again at `game-start`).
+`exp` is the issue time plus `ttlMs`: first at `match-found`, then
+extended when a new token is issued at `game-start` and on rebind.
+`ttlMs` defaults to 60 minutes. A drop during countdown can resume.
+A match declined or cancelled before start (`ready-timeout`,
+`players-not-connected`, `stop` during countdown) tombstones that
+`matchId`, so the token is rejected. The token cannot join a
+different match.
+
+The token is `base64url(JSON {matchId, playerId, slot, exp})` plus a
+MAC of that base64url string. It is signed, not encrypted: the JSON
+payload is readable. Do not log the token or `session.secret`.
+`slot` is the index in `teams.flat()`
+(team 0 first, queue order inside a team).
+
+`match-resume` checks, in order: signature and expiry, a 10-minute
+tombstone of an ended match (`'match-ended'` vs `'invalid'`), `buildId`
+against `GameRoom.getBuildId()` (`requireBuildId` rejects a missing
+id), then `handleReconnect` with the **token's** `playerId`.
+`absentDeadline` is the soonest other absence from `getAbsences()`,
+in milliseconds left, and is omitted when nobody else is absent.
+
+`reconnect.requireSessionToken: true` rejects `reconnect-match` and
+`room-recover` once the match has left `waiting-for-players`
+(`room-error` keeps `message: 'session-token-required'` and adds
+`reason: 'session-token-required'`). Recover during
+`waiting-for-players` stays open, so a player who missed
+`match-found` gets the token and can `match-resume`. The flag throws
+at startup when `session.secret` is not set. A waiting room can still
+be recovered with its code. The default is `false`, which keeps the
+previous rebind behaviour. A resume replaces the previous socket:
+that socket leaves the room, loses `matchId` / `playerId`, receives
+`session-superseded`, and `player-command` / `submit-commands` are
+accepted only from the socket `isParticipantSocket` still names.
 
 ## Absence while playing
 
@@ -430,9 +477,14 @@ class Phalanx {
 | `resume-game`               | ✅   |         | Request game resume                                                                                                                              |
 | `game-paused`               |      | ✅      | Game was paused                                                                                                                                  |
 | `game-resumed`              |      | ✅      | Game was resumed                                                                                                                                 |
-| `reconnect-match`           | ✅   |         | Attempt to rejoin a match                                                                                                                        |
+| `reconnect-match`           | ✅   |         | Attempt to rejoin a match. Rejected with `session-token-required` when `reconnect.requireSessionToken` is set.                                   |
 | `reconnect-status`          |      | ✅      | Reconnection result                                                                                                                              |
-| `reconnect-state`           |      | ✅      | Game state for reconnection                                                                                                                      |
+| `reconnect-state`           |      | ✅      | Game state for reconnection. Payload unchanged by session tokens.                                                                                |
+| `session-token`             |      | ✅      | Opaque HMAC token plus `matchId` and `slot`. Sent at `match-found`, again at `game-start` (extends `exp`), and after `reconnect-state`.          |
+| `session-superseded`        |      | ✅      | `{ matchId }`. The previous socket was replaced and is no longer in the match.                                                                   |
+| `match-resume`              | ✅   |         | `{ token, buildId?, haveTick }`. `playerId` in the body is ignored.                                                                              |
+| `match-resume-state`        |      | ✅      | `{ matchId, slot, currentTick, state, absentDeadline? }`. Sent after `reconnect-state`.                                                          |
+| `match-resume-error`        |      | ✅      | `{ reason: 'invalid' \| 'expired' \| 'match-ended' \| 'build-mismatch' }`. No extra detail.                                                      |
 | `player-disconnected`       |      | ✅      | Another player disconnected                                                                                                                      |
 | `player-reconnected`        |      | ✅      | Another player reconnected                                                                                                                       |
 | `room-create`               | ✅   |         | Create a private room                                                                                                                            |
