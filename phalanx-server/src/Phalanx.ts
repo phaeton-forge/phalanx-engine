@@ -19,6 +19,7 @@ import type {
   PhalanxEventType,
   PhalanxEventHandlers,
   SubmitCommandsEvent,
+  MatchArchive,
 } from './types/index.js';
 import { validateConfig } from './config/validation.js';
 import { MatchmakingService } from './services/MatchmakingService.js';
@@ -73,6 +74,15 @@ export class Phalanx extends EventEmitter {
    * stops the previous `sendNext` chain.
    */
   private readonly matchLogStreams = new WeakMap<Socket, MatchLogStream>();
+  /**
+   * Archive hooks whose call has been scheduled and not yet settled.
+   * Sync hooks leave the set inside the turn that runs them.
+   */
+  private readonly pendingArchives = new Set<Promise<void>>();
+  /** Hooks queued by `scheduleArchiveHook` and not yet entered. */
+  private archiveHooksScheduled: number = 0;
+  /** Hooks whose function has been entered (sync or async). */
+  private archiveHooksStarted: number = 0;
 
   constructor(config?: Partial<PhalanxConfig>) {
     super();
@@ -284,6 +294,9 @@ export class Phalanx extends EventEmitter {
     }
 
     this.shutdownPromise = null;
+    this.pendingArchives.clear();
+    this.archiveHooksScheduled = 0;
+    this.archiveHooksStarted = 0;
 
     // Create HTTP/HTTPS server with health check endpoint
     this.httpServer = this.createServer();
@@ -324,10 +337,17 @@ export class Phalanx extends EventEmitter {
       (playerId: string) => this.matchmaking!.isInAnyQueue(playerId)
     );
 
-    // Wire up match-ended event to prune finished matches from both services
+    // Wire up match-ended event to hand off the archive, then prune
+    // the match from both services. One listener covers every ending,
+    // including `stop()` → `match.stop()` → `match-ended`.
     this.on(
       'match-ended' as PhalanxEventType,
-      ((matchId: string) => {
+      ((matchId: string, reason: string) => {
+        const room = this.findMatch(matchId);
+        if (room) {
+          const taken = room.takeArchive(reason);
+          if (taken) this.scheduleArchiveHook(taken.archive, taken.hook);
+        }
         this.matchmaking?.removeMatch(matchId);
         this.privateRooms?.removeMatch(matchId);
       }) as PhalanxEventHandlers[PhalanxEventType]
@@ -376,8 +396,11 @@ export class Phalanx extends EventEmitter {
 
   /**
    * Tell every active match the process is going away, wait
-   * `shutdownGraceMs`, then `stop()`. A second call returns the same
-   * promise and does not emit again. Does not call `process.exit`.
+   * `shutdownGraceMs`, then `stop()`. After `stop()`, wait for archive
+   * hooks that are still running, again up to `shutdownGraceMs`.
+   * Hooks for matches this call stops are queued inside `stop()`, so
+   * the wait has to follow it. A second call returns the same promise
+   * and does not emit again. Does not call `process.exit`.
    */
   shutdown(reason: string): Promise<void> {
     if (this.shutdownPromise) return this.shutdownPromise;
@@ -408,6 +431,95 @@ export class Phalanx extends EventEmitter {
     }
 
     await this.stop();
+    // Matches stopped above queue their hooks inside `stop()`. Waiting
+    // before `stop()` would drop those logs. Worst case is about
+    // 2 × `shutdownGraceMs` plus closing the server.
+    await this.waitForArchiveHooks();
+  }
+
+  /**
+   * Run `onMatchArchived` after `match-end` has been emitted.
+   * `stop()` emits `match-ended` before `match-end`, so the call is
+   * deferred. A second `setImmediate` lands in the check phase after
+   * the poll that delivers `match-end` to local clients.
+   * The tracked promise stays in `pendingArchives` until the hook
+   * returns or its promise settles, including a throw or rejection.
+   * `hook` is the function `takeArchive` used to build `archive`.
+   */
+  private scheduleArchiveHook(
+    archive: MatchArchive,
+    hook: (rec: MatchArchive) => void | Promise<void>
+  ): void {
+    let settle = (): void => {};
+    const tracked = new Promise<void>((resolve) => {
+      settle = resolve;
+    });
+    this.pendingArchives.add(tracked);
+    this.archiveHooksScheduled += 1;
+
+    const finish = (): void => {
+      this.pendingArchives.delete(tracked);
+      settle();
+    };
+    const run = (): void => {
+      this.archiveHooksStarted += 1;
+      try {
+        const result = hook(archive);
+        if (isThenable(result)) {
+          void result
+            .then(
+              () => undefined,
+              (error: unknown) => {
+                this.logArchiveHookError(archive.matchId, error);
+              }
+            )
+            .finally(finish);
+          return;
+        }
+        finish();
+      } catch (error) {
+        this.logArchiveHookError(archive.matchId, error);
+        finish();
+      }
+    };
+
+    setImmediate(() => {
+      setImmediate(run);
+    });
+  }
+
+  /**
+   * Let scheduled hooks start, then wait up to `shutdownGraceMs`.
+   * Grace `0` or unset returns once the hooks have been called and
+   * does not await async hooks. The timer is cleared when the hooks
+   * finish first so it does not hold the process.
+   */
+  private async waitForArchiveHooks(): Promise<void> {
+    while (this.archiveHooksStarted < this.archiveHooksScheduled) {
+      await new Promise<void>((resolve) => {
+        setImmediate(resolve);
+      });
+    }
+
+    const grace = this.config.shutdownGraceMs ?? 0;
+    if (grace === 0 || this.pendingArchives.size === 0) return;
+
+    await new Promise<void>((resolve) => {
+      const timer = setTimeout(() => {
+        resolve();
+      }, grace);
+      void Promise.allSettled([...this.pendingArchives]).then(() => {
+        clearTimeout(timer);
+        resolve();
+      });
+    });
+  }
+
+  private logArchiveHookError(matchId: string, error: unknown): void {
+    console.error(
+      `[Phalanx] onMatchArchived failed for match ${matchId}:`,
+      error
+    );
   }
 
   private registerSigterm(): void {
@@ -927,6 +1039,12 @@ export class Phalanx extends EventEmitter {
 
     let cursor = parsed.fromTick;
     const sendNext = (): void => {
+      // Match end drops the history. Do not emit an empty tail from
+      // the cleared map; the read is over.
+      if (gameRoom.isLogReleased()) {
+        emitError(parsed.matchId, 'not-found');
+        return;
+      }
       const chunkEnd = Math.min(
         requestedEnd,
         cursor + MATCH_LOG_CHUNK_SPAN - 1
@@ -1023,6 +1141,14 @@ export class Phalanx extends EventEmitter {
 
 /** Inclusive tick span of one `match-log-chunk`. */
 const MATCH_LOG_CHUNK_SPAN = 2000;
+
+function isThenable(value: unknown): value is PromiseLike<void> {
+  return (
+    (typeof value === 'object' || typeof value === 'function') &&
+    value !== null &&
+    typeof (value as { then?: unknown }).then === 'function'
+  );
+}
 const BUILD_ID_MAX_LENGTH = 128;
 
 /**

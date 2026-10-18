@@ -473,7 +473,8 @@ declare function applyChunk(chunk: LogChunk): void;
 
 `MatchLogError.reason` is `MatchLogErrorReason`: the four wire values
 `not-member`, `not-found`, `invalid`, and `truncated`, plus the
-client-only `disconnected` and `aborted`.
+client-only `disconnected` and `aborted`. A partial match-log followed
+by `not-found` must be discarded.
 
 #### sendReady(): void
 

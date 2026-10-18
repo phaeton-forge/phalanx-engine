@@ -68,6 +68,22 @@ online and in local (bot) matches.
   `handleSignals: true` (default false) registers
   `process.once('SIGTERM')` → `shutdown('sigterm')` and `stop()` removes
   it. The engine does not call `process.exit`. Redis is not part of 0.3.
+- **Match archive (Task 8.1).** `PhalanxConfig.onMatchArchived?: (rec: MatchArchive) => void | Promise<void>`.
+  After a match that reached `startGame()` ends, the relay calls the hook
+  once with the full stored command log plus seed, `buildId` (omitted when
+  absent), teams, `endReason`, and `winnerTeamId` only when `endMatch`
+  resolved one. The engine does not write a file, object storage, or a
+  database. Omit the hook and the room drops the log at match end with
+  nothing built. The hook is not called before start (`build-mismatch`,
+  `players-not-connected`, `ready-timeout`, or `stop` / `shutdown` during
+  countdown or waiting-for-ready). `shutdown` still ends those matches as
+  `stopped` when they had started; it waits for hooks up to
+  `shutdownGraceMs` **after** `stop()` (a second grace; the archives do
+  not exist until `stop()` runs). With grace 0 or unset, shutdown does
+  not await async hooks. `log` entries are the stored
+  `PlayerCommand[]` arrays, not copies. A `match-log` stream still in
+  flight when the history is released ends with
+  `match-log-error { reason: 'not-found' }`.
 
 ## 4. Session token (Task 9)
 

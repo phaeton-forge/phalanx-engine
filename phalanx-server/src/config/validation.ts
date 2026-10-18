@@ -112,6 +112,16 @@ export function validateConfig(
     );
   }
 
+  // Task 8.1. Absent means the match log is released and not archived.
+  if (
+    config.onMatchArchived !== undefined &&
+    typeof config.onMatchArchived !== 'function'
+  ) {
+    throw new Error(
+      `Invalid onMatchArchived: ${String(config.onMatchArchived)}. Must be a function.`
+    );
+  }
+
   return config;
 }
 

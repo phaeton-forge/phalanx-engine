@@ -300,6 +300,13 @@ Entries collected per package until the synchronized 0.3.0 release
 
 ## @phalanx-engine/server
 
+- server: opt-in `onMatchArchived(rec: MatchArchive)` hook — the full
+  command log plus seed, `buildId`, teams and end reason is handed to the
+  game once per started match; the engine stores nothing; without the hook
+  the match log is released at match end; `shutdown()` waits for pending
+  archive hooks up to `shutdownGraceMs`. An in-flight `match-log` now ends
+  with `match-log-error` `{ reason: 'not-found' }` when the match gets
+  archived.
 - server: opt-in absence timer in `playing`
   (`absence: { windowMs, matchBudgetMs }`, `player-absent`, `match-end`
   gains `winnerTeamId`, `reason: 'disconnect' | 'abandoned'`); public

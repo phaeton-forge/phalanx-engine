@@ -133,8 +133,9 @@ const config: Partial<PhalanxConfig> = {
   // === Command History (for reconnection) ===
   commandHistoryTicks: 200, // Ticks of command history to keep, or 'full'
   // requireBuildId: false,  // reject the match when build ids differ
-  // shutdownGraceMs: 0,     // wait after server-shutdown before stop()
+  // shutdownGraceMs: 0,     // wait after server-shutdown before stop(), and again for archive hooks
   // handleSignals: false,   // SIGTERM → shutdown('sigterm')
+  // onMatchArchived: (rec) => {}, // Task 8.1. Omit: log is released, nothing is stored
 
   // === Ready Handshake ===
   readyTimeoutMs: 30000, // Max time for clients to send ready (default: 30000)
@@ -378,7 +379,12 @@ class Phalanx {
   // Lifecycle
   start(): Promise<void>;
   stop(): Promise<void>;
-  /** Notify rooms, wait shutdownGraceMs, then stop(). Idempotent. */
+  /**
+   * Notify rooms, wait shutdownGraceMs, then stop(). Then wait for
+   * onMatchArchived hooks up to shutdownGraceMs again. Idempotent.
+   * Worst case is about 2 × shutdownGraceMs plus closing the server,
+   * because archives for matches this call stops are queued inside stop().
+   */
   shutdown(reason: string): Promise<void>;
 
   // Trusted server-side integrations
@@ -444,6 +450,20 @@ class Phalanx {
 | `match-log-error`           |      | ✅      | Log request refused (`not-member`, `not-found`, `invalid`, `truncated`). `matchId` is omitted when it is not a non-empty string.                 |
 | `match-error`               |      | ✅      | Match cannot start (`build-mismatch` when `requireBuildId` is set)                                                                               |
 | `server-shutdown`           |      | ✅      | Process is stopping; `Phalanx.shutdown()` sends this before `stop()`                                                                             |
+
+## Match archive
+
+`onMatchArchived` is optional. When it is set, the relay calls it **once** after a match that reached `startGame()` ends (`stopped`, `shutdown` — which ends as `stopped` — `desync`, `turn-timeout`, `disconnect`, `abandoned`, and any `endMatch` reason). The argument is a `MatchArchive`: seed, `buildId` (omitted when nobody sent one), teams, end reason, `winnerTeamId` only when `endMatch` resolved one, and the command log.
+
+The hook is **not** called if the match never started: `build-mismatch`, `players-not-connected`, `ready-timeout`, or `stop()` / `shutdown()` during countdown or waiting-for-ready. There is no log yet.
+
+The engine does not write a file, object storage, or a database. That is the game's hook. Without the hook, nothing is built and the room drops its command history when the match ends.
+
+`archive.log` is the stored `PlayerCommand[]` arrays (the same ones broadcast in `commands-batch` and returned by `match-log`), not copies, and not re-serialized by the engine. After the call the relay does not read them. Do not mutate them if something else still holds those arrays.
+
+The hook runs on the main thread. Compress or upload asynchronously (`zlib` async, a stream into storage). A synchronous throw or a rejected promise is logged with the match id; the relay keeps running and other matches keep their ticks. `stop()` alone fires the hook and does not wait. `shutdown()` waits for hooks that are still in flight, up to `shutdownGraceMs` **after** `stop()`. With `shutdownGraceMs` of 0 or unset, shutdown does not await async hooks.
+
+A `match-log` read that is still streaming when the match ends finishes with `match-log-error` `{ reason: 'not-found' }` instead of an empty tail from the released history.
 
 ## Game Start Synchronization
 
