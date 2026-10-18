@@ -50,7 +50,7 @@ function pickExport(
   if (exportName !== undefined && exportName.length > 0) {
     return record[exportName];
   }
-  return record['default'] ?? record['RelayGame'];
+  return record['default'];
 }
 
 function readConfigKeys(entry: GameModuleSpec): readonly string[] {

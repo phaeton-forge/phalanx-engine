@@ -584,6 +584,33 @@ describe('SimHost', () => {
     expect(Math.max(...ticks)).toBeLessThanOrEqual(3);
   });
 
+  it('frees the server match slot when an outcome ends the match', async () => {
+    const server = await startServer({
+      simHost: { mode: 'worker', maxMatches: 1 },
+    });
+    const { socket } = await openServerMatch(server.getPort(), 'win', {
+      winAt: 2,
+    });
+    const ended = onceEvent<{ reason: string }>(socket, 'match-end');
+    socket.emit('client-ready');
+    expect((await ended).reason).toBe('fixture-win');
+    expect(server.getActiveMatches()).toHaveLength(0);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    const next = await connect(server.getPort());
+    const started = onceEvent(next, 'game-start');
+    const refused = onceEvent<{ message: string }>(next, 'room-error');
+    next.emit('room-create', {
+      playerId: 'next',
+      username: 'next',
+      matchConfig: humanBot('next'),
+    });
+    const result = await Promise.race([
+      started.then(() => 'started'),
+      refused.then((error) => error.message),
+    ]);
+    expect(result).toBe('started');
+  });
+
   it('shutdown waits for an async archive hook on a live server match', async () => {
     let archived = 0;
     let release: () => void = () => {};
@@ -849,6 +876,61 @@ describe('SimHost', () => {
     expect(faults.some((message) => message.includes('process.exit(0)'))).toBe(
       false
     );
+  });
+
+  it('drops an invalid server-sim payload before the batch', async () => {
+    const server = await startServer();
+    server.on('player-command', () => {});
+    const { socket } = await openServerMatch(server.getPort(), 'h');
+    const seen: string[] = [];
+    let latestTick = 0;
+    socket.on('commands-batch', (batch: CommandsBatchEvent) => {
+      latestTick = batch.tick;
+      for (const command of batch.commands) {
+        seen.push(`${command.playerId}:${JSON.stringify(command.data)}`);
+      }
+    });
+    socket.emit('client-ready');
+    await onceEvent(socket, 'commands-batch');
+    const rejected = onceEvent<{ accepted: boolean }>(socket, 'command-ack');
+    socket.emit('player-command', {
+      type: 'move',
+      tick: latestTick,
+      playerId: 'h',
+      data: { nope: true },
+    });
+    expect((await rejected).accepted).toBe(false);
+    const submit = onceEvent<{ accepted: boolean }>(
+      socket,
+      'submit-commands-ack'
+    );
+    socket.emit('submit-commands', {
+      tick: latestTick,
+      commands: [
+        { type: 'move', data: { q: 0, p: { type: 'not-a-command' } } },
+      ],
+    });
+    expect((await submit).accepted).toBe(false);
+    const accepted = onceEvent<{ accepted: boolean }>(socket, 'command-ack');
+    socket.emit('player-command', {
+      type: 'move',
+      tick: latestTick,
+      playerId: 'someone-else',
+      data: { q: 0, p: { type: 'move', dx: 1 } },
+    });
+    expect((await accepted).accepted).toBe(true);
+    await waitFor(
+      () =>
+        seen.some(
+          (row) =>
+            row.startsWith('h:') &&
+            row.includes('"dx":1') &&
+            row.includes('"q"')
+        ),
+      3000
+    );
+    expect(seen.some((data) => data.includes('nope'))).toBe(false);
+    expect(seen.some((data) => data.includes('not-a-command'))).toBe(false);
   });
 
   it('rejects reserved ids on relay inputs and stamps the real player', async () => {

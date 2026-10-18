@@ -370,7 +370,7 @@ function pickExport(
   if (exportName !== undefined && exportName.length > 0) {
     return record[exportName];
   }
-  return record['default'] ?? record['RelayGame'];
+  return record['default'];
 }
 
 function isGame(value: unknown): value is AnyGameDefinition {

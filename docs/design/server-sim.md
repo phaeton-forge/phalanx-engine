@@ -128,10 +128,12 @@ Per relay tick T, in `GameRoom.processTick`:
    unchanged: `receiveStateHash` still ends the match when
    `enableStateHashing` is on.
 6. Snapshots: every `snapshotEveryTicks` (default 1000, tick 0 excluded)
-   and on `match-snapshot-request`. Many requests in flight share one
-   `snapshot()` call. The bytes go only to the sockets that asked, each
-   with its own `requestId`. A request id is per player, so two players
-   can both use `1`.
+   and on `match-snapshot-request`. Each player has one pending request;
+   a newer id replaces the previous one, and those waiters share one
+   `snapshot()` call. A snapshot already in the store is sent at most
+   once a second per player. The bytes go only to the sockets that asked,
+   each with its own `requestId`. A request id is per player, so two
+   players can both use `1`.
 
 ```mermaid
 sequenceDiagram

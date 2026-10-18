@@ -15,6 +15,8 @@ import { SnapshotStore } from './SnapshotStore.js';
 
 /** On-cadence hashes waiting for the sim digest. Older rows drop first. */
 const PENDING_HASH_CAP = 32;
+/** A stored snapshot is sent at most this often, per player. */
+const SNAPSHOT_STORE_INTERVAL_MS = 1000;
 
 export interface RoomSimOptions {
   readonly matchId: string;
@@ -224,18 +226,19 @@ export class RoomSim {
   public requestSnapshot(playerId: string, requestId: number): void {
     if (this.closed || this.dead) return;
     if (!Number.isInteger(requestId) || requestId < 0) return;
-    const key = `${playerId}\0${String(requestId)}`;
-    if (this.pendingRequests.has(key)) return;
     const stored = this.options.store.get(this.options.matchId);
     if (
       stored !== undefined &&
       this.lastAck >= 0 &&
       stored.tick >= this.lastAck
     ) {
+      if (!this.storeAnswerDue(playerId)) return;
+      this.lastStoreAnswerAt.set(playerId, Date.now());
       this.deliverSnapshot(playerId, requestId, stored.tick, stored.bytes);
       return;
     }
-    this.pendingRequests.set(key, { playerId, requestId });
+    // One outstanding request per player. A newer id replaces the old one.
+    this.pendingRequests.set(playerId, requestId);
     if (this.snapshotInFlight) return;
     this.snapshotInFlight = true;
     this.options.host.post({
@@ -327,11 +330,17 @@ export class RoomSim {
     return this.endWait;
   }
 
-  private readonly pendingRequests = new Map<
-    string,
-    { playerId: string; requestId: number }
-  >();
+  /** Latest `requestId` still waiting on the sim, keyed by player. */
+  private readonly pendingRequests = new Map<string, number>();
+  /** `Date.now()` of the last snapshot served from the store. */
+  private readonly lastStoreAnswerAt = new Map<string, number>();
   private snapshotInFlight = false;
+
+  private storeAnswerDue(playerId: string): boolean {
+    const last = this.lastStoreAnswerAt.get(playerId);
+    if (last === undefined) return true;
+    return Date.now() - last >= SNAPSHOT_STORE_INTERVAL_MS;
+  }
 
   private keepSnapshot(
     tick: number,
@@ -340,11 +349,11 @@ export class RoomSim {
   ): void {
     const view = new Uint8Array(bytes);
     this.options.store.put(this.options.matchId, tick, view);
-    const waiting = [...this.pendingRequests.values()];
+    const waiting = [...this.pendingRequests.entries()];
     this.pendingRequests.clear();
     this.snapshotInFlight = false;
-    for (const waiter of waiting) {
-      this.deliverSnapshot(waiter.playerId, waiter.requestId, tick, view);
+    for (const [playerId, requestId] of waiting) {
+      this.deliverSnapshot(playerId, requestId, tick, view);
     }
   }
 
@@ -393,6 +402,7 @@ export class RoomSim {
   private dropPending(): void {
     this.pendingHashes.length = 0;
     this.pendingRequests.clear();
+    this.lastStoreAnswerAt.clear();
     this.snapshotInFlight = false;
   }
 

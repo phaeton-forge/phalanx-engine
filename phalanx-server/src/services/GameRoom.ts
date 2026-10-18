@@ -1638,7 +1638,8 @@ export class GameRoom {
       this.turnTimeout = null;
     }
     this.clearAbsenceTimers();
-    this.endServerSim();
+    // The `match-ended` listener calls `endServerSim`. That is what
+    // releases the server-match slot when an outcome ends the room.
     this.state = 'finished';
 
     if (!skipNotify) {

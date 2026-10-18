@@ -428,9 +428,11 @@ The sim's digest is compared with each client's `state-hash`. A mismatch
 emits `desync` `{ playerId, tick }` to that player only and the match
 continues. Relay rooms (no server sim) keep the previous all-client desync
 behaviour. Snapshots are stored in memory (latest only): every
-`snapshotEveryTicks`, and on `match-snapshot-request`. Requests already in
-flight share one snapshot. The reply goes only to the socket that asked,
-with that player's `requestId` (two players may both use `1`).
+`snapshotEveryTicks`, and on `match-snapshot-request`. Each player has one
+pending request; a newer `requestId` replaces the older one, and those
+waiters share one snapshot. A snapshot already in the store is sent at
+most once a second per player. The reply goes only to the socket that
+asked, with that player's `requestId` (two players may both use `1`).
 `match-resume-state` includes `snapshot: { tick }` when one exists.
 
 `Phalanx.endMatch(matchId, result)` ends a live match the same way a sim

@@ -96,33 +96,28 @@ function harness(): {
 }
 
 describe('RoomSim', () => {
-  it('coalesces snapshot requests and keeps each player request id', () => {
+  it('delivers at most two snapshots for many request ids', () => {
     const { posts, delivered, sim } = harness();
-    sim.requestSnapshot('p1', 1);
-    sim.requestSnapshot('p2', 1);
-    for (let requestId = 2; requestId < 200; requestId += 1) {
+    const count = 40;
+    for (let requestId = 1; requestId <= count; requestId += 1) {
       sim.requestSnapshot('p1', requestId);
     }
     const shots = posts.filter((message) => message.t === 'snapshot');
     expect(shots).toHaveLength(1);
-    const bytes = new ArrayBuffer(4);
+    sim.onMessage({ t: 'tick', matchId: 'm', tick: 4 });
     sim.onMessage({
       t: 'snapshot',
       matchId: 'm',
-      tick: 3,
+      tick: 4,
       requestId: 0,
-      bytes,
+      bytes: new ArrayBuffer(4),
     });
-    expect(delivered).toHaveLength(200);
-    expect(
-      delivered.some((row) => row.playerId === 'p1' && row.requestId === 1)
-    ).toBe(true);
-    expect(
-      delivered.some((row) => row.playerId === 'p2' && row.requestId === 1)
-    ).toBe(true);
-    expect(delivered.filter((row) => row.playerId === 'p2')).toEqual([
-      { playerId: 'p2', requestId: 1 },
-    ]);
+    for (let requestId = count + 1; requestId <= count * 2; requestId += 1) {
+      sim.requestSnapshot('p1', requestId);
+    }
+    expect(delivered.length).toBeLessThanOrEqual(2);
+    expect(delivered.length).toBeGreaterThan(0);
+    expect(delivered[0]).toEqual({ playerId: 'p1', requestId: count });
   });
 
   it('drops off-cadence, far-ahead, and excess pending hashes', () => {

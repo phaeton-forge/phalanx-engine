@@ -78,7 +78,7 @@ export class WorkerSimHost implements SimHost {
     if (message.t === 'end') this.matches.delete(message.matchId);
     if (message.t === 'close') this.matches.clear();
     if (this.fatal !== null) {
-      if (message.t === 'open') this.queueFault(message.matchId);
+      if (message.t === 'open') this.matches.delete(message.matchId);
       if (message.t === 'end') this.queueEnded(message.matchId);
       return;
     }
@@ -88,7 +88,6 @@ export class WorkerSimHost implements SimHost {
       const kind = isOom(error) ? 'sim-oom' : 'sim-crash';
       const text = errorText(error);
       this.markFatal(kind, text.length > 0 ? text : 'worker post failed');
-      if (message.t === 'open') this.queueFault(message.matchId);
       if (message.t === 'end') this.queueEnded(message.matchId);
     }
   }
@@ -146,29 +145,12 @@ export class WorkerSimHost implements SimHost {
     }
   }
 
-  /**
-   * A worker that died before `open` never sees that match. Deliver the
-   * fault after the caller has registered the session and joined sockets.
-   */
+  /** `end` after the thread is already dead still resolves the caller. */
   private queueEnded(matchId: string): void {
     this.matches.delete(matchId);
     queueMicrotask(() => {
       const ended: SimOut = { t: 'ended', matchId };
       for (const handler of this.handlers) handler(ended);
-    });
-  }
-
-  private queueFault(matchId: string): void {
-    const fatal = this.fatal;
-    if (fatal === null) return;
-    this.matches.delete(matchId);
-    queueMicrotask(() => {
-      const fault: SimOut = {
-        t: fatal.kind,
-        matchId,
-        message: fatal.message,
-      };
-      for (const handler of this.handlers) handler(fault);
     });
   }
 

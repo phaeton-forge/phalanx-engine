@@ -377,7 +377,7 @@ export interface PhalanxConfig {
   simHost?: SimHostConfig;
 }
 
-/** Module path a worker imports. `export` defaults to `default`, then `RelayGame`. */
+/** Module path a worker imports. `export` defaults to `default`. */
 export interface GameModuleSpec {
   module: string;
   export?: string;
