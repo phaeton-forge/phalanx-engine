@@ -25,10 +25,10 @@ The root re-exports `@phalanx-engine/runtime` (including `MatchStore`,
 `MemoryMatchStore`, `IndexedDbMatchStore` and `MatchRunner.resumeLocal`)
 and the ecs names games use (`GameWorld`, `GameSystem`, `Entity`, …).
 
-`StateHelpers`, `spawnWithId`, `SaveHandler`, `CommandSchema`,
-`WorldScope`, `setWorldModuleHost`, `setEntityIdCounter`, `nextEntityId`,
-`PoolManager`, `SoAComponentStore`, `TickFrameManager`,
-`TYPED_ARRAY_CONSTRUCTORS` and `DebugPanel` are
+`StateHelpers`, `spawnWithId`, `rebuildBroadphaseFromTransforms`,
+`SaveHandler`, `CommandSchema`, `WorldScope`, `setWorldModuleHost`,
+`setEntityIdCounter`, `nextEntityId`, `PoolManager`, `SoAComponentStore`,
+`TickFrameManager`, `TYPED_ARRAY_CONSTRUCTORS` and `DebugPanel` are
 `@phalanx-engine/game/advanced`.
 
 `InterpolatedTransformSample` is `@phalanx-engine/game/physics`.

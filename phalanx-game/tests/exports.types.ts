@@ -275,6 +275,18 @@ export type {
 import type { FixedPoint as FixedPointFromRoot } from '@phalanx-engine/game';
 export type _FixedPointFromRoot = FixedPointFromRoot;
 
+// @ts-expect-error FP is only exported from @phalanx-engine/game/math
+import type { FP as FPFromRoot } from '@phalanx-engine/game';
+export type _FPFromRoot = FPFromRoot;
+
+// @ts-expect-error PhysicsWorld is only exported from @phalanx-engine/game/physics
+import type { PhysicsWorld as PhysicsWorldFromRoot } from '@phalanx-engine/game';
+export type _PhysicsWorldFromRoot = PhysicsWorldFromRoot;
+
+// @ts-expect-error defineAbility is only exported from @phalanx-engine/game/abilities
+import type { defineAbility as DefineAbilityFromRoot } from '@phalanx-engine/game';
+export type _DefineAbilityFromRoot = DefineAbilityFromRoot;
+
 // @ts-expect-error InterpolatedTransformSample is only exported from @phalanx-engine/game/physics
 import type { InterpolatedTransformSample as InterpolatedFromRoot } from '@phalanx-engine/game';
 export type _InterpolatedFromRoot = InterpolatedFromRoot;

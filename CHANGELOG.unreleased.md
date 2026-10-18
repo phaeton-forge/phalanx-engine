@@ -208,8 +208,10 @@ Entries collected per package until the synchronized 0.3.0 release
   from the definition. `ENGINE_SNAPSHOT_FORMAT` is 2 (format 1 is rejected).
   Initial GAS `pendingAdd` effects are reseeded by `onEnable`; restore
   passes `'restore'` and does not reseed. New package
-  `@phalanx-engine/game` (private, not version-bumped) re-exports the
-  game-facing surface. `CommandSchema` and `SaveHandler` are advanced-only.
+  `@phalanx-engine/game` (private, not version-bumped) re-exports runtime
+  and the explicit ecs list from the root. Math, physics, abilities and
+  advanced are subpath-only. `CommandSchema` and `SaveHandler` are
+  `@phalanx-engine/game/advanced`.
 - Local persistence (Task 7): `MatchStore`, `MemoryMatchStore` and
   `IndexedDbMatchStore` in `@phalanx-engine/runtime`. `LocalTransport`
   accepts `store`, `snapshotEveryTicks` (default 300) and `pauseWhenHidden`
