@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SlotConfig } from '@phalanx-engine/runtime';
 import { RoomSim } from '../src/sim/RoomSim.js';
 import { SimProcess } from '../src/sim/simCore.js';
@@ -96,7 +96,35 @@ function harness(): {
 }
 
 describe('RoomSim', () => {
+  afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
+  });
+
+  it('coalesces two players onto one sim snapshot and keeps each request id', () => {
+    const { posts, delivered, sim } = harness();
+    sim.requestSnapshot('p1', 1);
+    sim.requestSnapshot('p2', 7);
+    expect(posts.filter((message) => message.t === 'snapshot')).toHaveLength(1);
+    sim.onMessage({
+      t: 'snapshot',
+      matchId: 'm',
+      tick: 3,
+      requestId: 0,
+      bytes: new ArrayBuffer(4),
+    });
+    expect(delivered).toHaveLength(2);
+    expect(delivered).toEqual(
+      expect.arrayContaining([
+        { playerId: 'p1', requestId: 1 },
+        { playerId: 'p2', requestId: 7 },
+      ])
+    );
+  });
+
   it('delivers at most two snapshots for many request ids', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2020-01-01T00:00:00.000Z'));
     const { posts, delivered, sim } = harness();
     const count = 40;
     for (let requestId = 1; requestId <= count; requestId += 1) {
@@ -118,6 +146,31 @@ describe('RoomSim', () => {
     expect(delivered.length).toBeLessThanOrEqual(2);
     expect(delivered.length).toBeGreaterThan(0);
     expect(delivered[0]).toEqual({ playerId: 'p1', requestId: count });
+  });
+
+  it('sends at most three snapshots across two seconds of requests', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2020-01-01T00:00:00.000Z'));
+    const { posts, delivered, sim } = harness();
+    for (let step = 0; step < 100; step += 1) {
+      const ack = step + 1;
+      sim.onMessage({ t: 'tick', matchId: 'm', tick: ack });
+      sim.requestSnapshot('p1', step);
+      const shots = posts.filter((message) => message.t === 'snapshot');
+      if (shots.length > delivered.length) {
+        sim.onMessage({
+          t: 'snapshot',
+          matchId: 'm',
+          tick: ack - 1,
+          bytes: new ArrayBuffer(1),
+        });
+      }
+      vi.advanceTimersByTime(20);
+    }
+    const shots = posts.filter((message) => message.t === 'snapshot');
+    expect(shots.length).toBeLessThanOrEqual(3);
+    expect(delivered.length).toBeLessThanOrEqual(3);
+    expect(delivered.length).toBeGreaterThan(0);
   });
 
   it('drops off-cadence, far-ahead, and excess pending hashes', () => {

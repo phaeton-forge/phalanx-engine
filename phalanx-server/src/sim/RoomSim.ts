@@ -15,8 +15,8 @@ import { SnapshotStore } from './SnapshotStore.js';
 
 /** On-cadence hashes waiting for the sim digest. Older rows drop first. */
 const PENDING_HASH_CAP = 32;
-/** A stored snapshot is sent at most this often, per player. */
-const SNAPSHOT_STORE_INTERVAL_MS = 1000;
+/** Minimum gap between snapshot replies to one player. */
+const SNAPSHOT_INTERVAL_MS = 1000;
 
 export interface RoomSimOptions {
   readonly matchId: string;
@@ -226,26 +226,12 @@ export class RoomSim {
   public requestSnapshot(playerId: string, requestId: number): void {
     if (this.closed || this.dead) return;
     if (!Number.isInteger(requestId) || requestId < 0) return;
-    const stored = this.options.store.get(this.options.matchId);
-    if (
-      stored !== undefined &&
-      this.lastAck >= 0 &&
-      stored.tick >= this.lastAck
-    ) {
-      if (!this.storeAnswerDue(playerId)) return;
-      this.lastStoreAnswerAt.set(playerId, Date.now());
-      this.deliverSnapshot(playerId, requestId, stored.tick, stored.bytes);
+    if (!this.answerDue(playerId)) {
+      this.defer(playerId, requestId);
       return;
     }
-    // One outstanding request per player. A newer id replaces the old one.
-    this.pendingRequests.set(playerId, requestId);
-    if (this.snapshotInFlight) return;
-    this.snapshotInFlight = true;
-    this.options.host.post({
-      t: 'snapshot',
-      matchId: this.options.matchId,
-      requestId: 0,
-    });
+    this.clearDeferred(playerId);
+    this.orderSnapshot(playerId, requestId);
   }
 
   public latestSnapshotTick(): number | undefined {
@@ -332,14 +318,74 @@ export class RoomSim {
 
   /** Latest `requestId` still waiting on the sim, keyed by player. */
   private readonly pendingRequests = new Map<string, number>();
-  /** `Date.now()` of the last snapshot served from the store. */
-  private readonly lastStoreAnswerAt = new Map<string, number>();
+  /** Latest `requestId` held until this player's interval elapses. */
+  private readonly deferred = new Map<string, number>();
+  private readonly deferredTimers = new Map<
+    string,
+    ReturnType<typeof setTimeout>
+  >();
+  /** `Date.now()` of the last snapshot sent to this player. */
+  private readonly lastDeliveredAt = new Map<string, number>();
   private snapshotInFlight = false;
 
-  private storeAnswerDue(playerId: string): boolean {
-    const last = this.lastStoreAnswerAt.get(playerId);
+  private answerDue(playerId: string): boolean {
+    const last = this.lastDeliveredAt.get(playerId);
     if (last === undefined) return true;
-    return Date.now() - last >= SNAPSHOT_STORE_INTERVAL_MS;
+    return Date.now() - last >= SNAPSHOT_INTERVAL_MS;
+  }
+
+  /** An early request replaces the previous one and is answered once due. */
+  private defer(playerId: string, requestId: number): void {
+    this.deferred.set(playerId, requestId);
+    if (this.deferredTimers.has(playerId)) return;
+    const last = this.lastDeliveredAt.get(playerId) ?? Date.now();
+    const wait = Math.max(0, SNAPSHOT_INTERVAL_MS - (Date.now() - last));
+    const timer = setTimeout(() => {
+      this.deferredTimers.delete(playerId);
+      this.flushDeferred(playerId);
+    }, wait);
+    this.deferredTimers.set(playerId, timer);
+  }
+
+  private flushDeferred(playerId: string): void {
+    if (this.closed || this.dead) return;
+    const requestId = this.deferred.get(playerId);
+    if (requestId === undefined) return;
+    this.deferred.delete(playerId);
+    if (!this.answerDue(playerId)) {
+      this.defer(playerId, requestId);
+      return;
+    }
+    this.orderSnapshot(playerId, requestId);
+  }
+
+  private clearDeferred(playerId: string): void {
+    const timer = this.deferredTimers.get(playerId);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      this.deferredTimers.delete(playerId);
+    }
+    this.deferred.delete(playerId);
+  }
+
+  private orderSnapshot(playerId: string, requestId: number): void {
+    const stored = this.options.store.get(this.options.matchId);
+    if (
+      stored !== undefined &&
+      this.lastAck >= 0 &&
+      stored.tick >= this.lastAck
+    ) {
+      this.deliverSnapshot(playerId, requestId, stored.tick, stored.bytes);
+      return;
+    }
+    this.pendingRequests.set(playerId, requestId);
+    if (this.snapshotInFlight) return;
+    this.snapshotInFlight = true;
+    this.options.host.post({
+      t: 'snapshot',
+      matchId: this.options.matchId,
+      requestId: 0,
+    });
   }
 
   private keepSnapshot(
@@ -363,6 +409,7 @@ export class RoomSim {
     tick: number,
     bytes: Uint8Array
   ): void {
+    this.lastDeliveredAt.set(playerId, Date.now());
     const copy = new Uint8Array(bytes.byteLength);
     copy.set(bytes);
     this.options.emitPlayer(playerId, 'match-snapshot', {
@@ -402,7 +449,10 @@ export class RoomSim {
   private dropPending(): void {
     this.pendingHashes.length = 0;
     this.pendingRequests.clear();
-    this.lastStoreAnswerAt.clear();
+    this.deferred.clear();
+    for (const timer of this.deferredTimers.values()) clearTimeout(timer);
+    this.deferredTimers.clear();
+    this.lastDeliveredAt.clear();
     this.snapshotInFlight = false;
   }
 

@@ -185,7 +185,7 @@ function validateSimHost(config: PhalanxConfig): void {
   }
   if (sim.workers !== undefined && sim.workers !== 1) {
     throw new Error(
-      `Invalid simHost.workers: ${String(sim.workers)}. Only 1 worker is supported.`
+      `Invalid simHost.workers: ${String(sim.workers)}. Reserved until Task 17; only 1 is accepted.`
     );
   }
   if (

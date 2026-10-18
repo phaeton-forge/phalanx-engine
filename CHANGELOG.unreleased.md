@@ -302,12 +302,16 @@ Entries collected per package until the synchronized 0.3.0 release
   A socket drop rejects with reason `disconnected`, and breaking out
   of the read rejects with `aborted` and sends `match-log-cancel`.
   `serverShutdown` fires for `server-shutdown`.
+- client: does not yet handle server-sim `desync`, `match-snapshot` /
+  `match-snapshot-request`, or `room-error` reason `sim-unavailable`
+  (Task 12).
 
 ## @phalanx-engine/server
 
 - server: opt-in server-sim mode — `games` + `simHost` config,
   per-room `matchConfig {gameId, simMode:'server', slots}`, SimHost in a worker_thread (inProcess for tests), server bots `bot:<slot>` stamped at `S + inputDelayTicks` (the room pauses on `sim-lag` when its lead exceeds `inputDelayTicks - 1`),
-  hash arbiter, snapshots, public `Phalanx.endMatch`. A worker OOM or thread crash ends every server match on that worker. `maxMatches` is reserved at room create. After the worker dies, `room-create` returns `room-error` `{ reason: 'sim-unavailable' }`. Only `configKeys` integers from `matchConfig` enter the runner config. Player ids `system` and `bot:<slot>` are rejected on queue and room inputs and on human slots. A batch `system` command is applied only when the runner has a server peer. Private-room `matchConfig` is the only 0.3 server-sim entry. Snapshot requests keep one pending id per player, and a stored snapshot is sent at most once a second per player. A worker that dies prints the original error, not `process.exit(0)`. Game modules resolve `export` or `default` only.
+  hash arbiter, snapshots, public `Phalanx.endMatch`. A worker OOM or thread crash ends every server match on that worker. `maxMatches` is reserved at room create. After the worker dies, `room-create` returns `room-error` `{ reason: 'sim-unavailable' }`. Only `configKeys` integers from `matchConfig` enter the runner config. Player ids `system` and `bot:<slot>` are rejected on queue and room inputs and on human slots. A batch `system` command is applied only when the runner has a server peer. Private-room `matchConfig` is the only 0.3 server-sim entry. Snapshot requests keep one pending id per player. A player is answered at most once a second; an earlier request is kept and answered when that interval elapses. A worker that dies prints the original error, not `process.exit(0)`. Game modules resolve `export` or `default` only.
+- server: public sim surface — server events `sim-digest (matchId, tick, digest)` and `sim-fault (matchId, reason, message)` with `reason` `sim-error` | `sim-crash` | `sim-oom`; socket `desync { playerId, tick }` and `match-snapshot-request` / `match-snapshot { tick, bytes, requestId }`; `simHost.resourceLimits`; `Phalanx.getPort()`; types `GameModuleSpec`, `SimHostConfig`, `ServerRoomMatchConfig<Extra>`. `simHost.workers` is reserved until Task 17 (only `1` is accepted). `bot-commands-late` is `(matchId, tick, playerId)`.
 - server: opt-in `onMatchArchived(rec: MatchArchive)` hook — the full
   command log plus seed, `buildId`, teams and end reason is handed to the
   game once per started match; the engine stores nothing; without the hook

@@ -130,8 +130,10 @@ Per relay tick T, in `GameRoom.processTick`:
 6. Snapshots: every `snapshotEveryTicks` (default 1000, tick 0 excluded)
    and on `match-snapshot-request`. Each player has one pending request;
    a newer id replaces the previous one, and those waiters share one
-   `snapshot()` call. A snapshot already in the store is sent at most
-   once a second per player. The bytes go only to the sockets that asked,
+   `snapshot()` call. A player is answered at most once a second, from
+   the store or from a new sim snapshot. A request inside that interval
+   is kept (the latest id wins) and answered when it elapses. The bytes
+   go only to the sockets that asked,
    each with its own `requestId`. A request id is per player, so two
    players can both use `1`.
 
@@ -215,7 +217,7 @@ interface PhalanxConfig {
   simHost?: {
     /** Default `'worker'`. `'inProcess'` runs the same queue on the relay thread. */
     mode?: 'worker' | 'inProcess';
-    /** Only `1`. A pool is Task 17. */
+    /** Reserved until Task 17. Only `1` is accepted. */
     workers?: 1;
     resourceLimits?: ResourceLimits;
     /** Default DEFAULT_SERVER_SNAPSHOT_EVERY_TICKS (1000). */

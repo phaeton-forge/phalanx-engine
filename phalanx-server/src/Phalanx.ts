@@ -479,6 +479,7 @@ export class Phalanx extends EventEmitter {
     const host = this.simHost;
     if (host === null) return;
     const matchId = room.getId();
+    const rooms = this.privateRooms;
     const session = new RoomSim({
       matchId,
       host,
@@ -510,7 +511,7 @@ export class Phalanx extends EventEmitter {
       onClosed: () => {
         this.serverSims.delete(matchId);
         this.snapshots.delete(matchId);
-        this.privateRooms?.releaseServerMatch();
+        rooms?.releaseServerMatch();
       },
     });
     this.serverSims.set(matchId, session);

@@ -430,8 +430,10 @@ continues. Relay rooms (no server sim) keep the previous all-client desync
 behaviour. Snapshots are stored in memory (latest only): every
 `snapshotEveryTicks`, and on `match-snapshot-request`. Each player has one
 pending request; a newer `requestId` replaces the older one, and those
-waiters share one snapshot. A snapshot already in the store is sent at
-most once a second per player. The reply goes only to the socket that
+waiters share one snapshot. A player is answered at most once a
+second, whether the bytes come from the store or a new sim snapshot. A
+request inside that interval is kept (the latest id wins) and answered
+when it elapses. The reply goes only to the socket that
 asked, with that player's `requestId` (two players may both use `1`).
 `match-resume-state` includes `snapshot: { tick }` when one exists.
 

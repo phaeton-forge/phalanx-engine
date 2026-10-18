@@ -2057,7 +2057,6 @@ export class GameRoom {
           'bot-commands-late',
           this.id,
           command.tick,
-          command.tick,
           command.playerId
         );
         continue;

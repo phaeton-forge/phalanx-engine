@@ -390,12 +390,15 @@ export interface GameModuleSpec {
 }
 
 /**
- * Server-sim host. `workers` is accepted only as `1` (a pool is a later task).
- * `snapshotEveryTicks` defaults to 1000. `maxMatches` caps concurrent
- * `simMode: 'server'` rooms.
+ * Server-sim host. `snapshotEveryTicks` defaults to 1000. `maxMatches`
+ * caps concurrent `simMode: 'server'` rooms.
  */
 export interface SimHostConfig {
   mode?: 'worker' | 'inProcess';
+  /**
+   * Reserved until Task 17. Only `1` is accepted; a worker pool is not
+   * implemented.
+   */
   workers?: 1;
   resourceLimits?: ResourceLimits;
   snapshotEveryTicks?: number;
@@ -404,18 +407,20 @@ export interface SimHostConfig {
 
 /**
  * `room-create` body that starts a server-simulated match.
- * Further integer fields are copied only when the game's `configKeys`
- * lists them.
+ * `Extra` is that game's `configKeys`. A key outside this type fails
+ * at compile time. The server still copies an integer only when
+ * `configKeys` lists it.
  */
-export interface ServerRoomMatchConfig {
+export type ServerRoomMatchConfig<
+  Extra extends Record<string, number> = Record<never, never>,
+> = {
   gameId: string;
   simMode: 'server';
   slots: readonly SlotConfig[];
   inputDelayTicks?: number;
   /** Bot policy used when an absent human is replaced. Requires `absence`. */
   absencePolicy?: string;
-  [extra: string]: unknown;
-}
+} & Extra;
 
 /**
  * Player command sent from client
@@ -859,8 +864,7 @@ export interface PhalanxEventHandlers {
   ) => void;
   'bot-commands-late': (
     matchId: string,
-    fromTick: number,
-    filedTick: number,
+    tick: number,
     playerId: string
   ) => void;
   'sim-fault': (matchId: string, reason: string, message: string) => void;
