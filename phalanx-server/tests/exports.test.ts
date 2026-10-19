@@ -51,6 +51,7 @@ const ROOT_NAMES = [
   'MatchLogRequest',
   'MatchResumeErrorReason',
   'MatchResumeState',
+  'MatchState',
   'PauseConfig',
   'Phalanx',
   'PhalanxConfig',
@@ -80,6 +81,7 @@ const ROOT_NAMES = [
   'SlotConfig',
   'StateHashEvent',
   'SubmitCommandsEvent',
+  'SubmittedCommand',
   'TickCommands',
   'TickMode',
   'TickSyncEvent',
@@ -91,11 +93,29 @@ const ROOT_NAMES = [
   'createEndpointValidator',
 ];
 
+const ROOT_VALUES = [
+  'DEFAULT_ABSENCE',
+  'DEFAULT_SESSION_TTL_MS',
+  'DeterministicRandom',
+  'FP',
+  'FPVector2',
+  'FPVector3',
+  'FixedPoint',
+  'GAME_MODES',
+  'Phalanx',
+  'SESSION_TOMBSTONE_TTL_MS',
+  'SessionTokens',
+  'TokenValidatorService',
+  'createDevValidator',
+  'createEndpointValidator',
+];
+
 const ENTRIES = [
   {
     specifier: '@phalanx-engine/server',
     declaration: 'dist/index.d.ts',
     names: ROOT_NAMES,
+    values: ROOT_VALUES,
   },
 ] as const;
 
@@ -161,6 +181,7 @@ const resolved = ENTRIES.map((entry) => ({
   specifier: entry.specifier,
   declaration: entry.declaration,
   names: entry.names,
+  values: entry.values,
   file: declarationFor(entry.specifier),
 }));
 const actual = namesOf(resolved.map((entry) => entry.file));
@@ -175,20 +196,20 @@ describe('@phalanx-engine/server exports', () => {
   it('matches the checked-in name snapshot, types included', () => {
     for (const entry of resolved) {
       expect(actual.get(entry.file)?.names).toEqual(entry.names);
+      expect(actual.get(entry.file)?.values).toEqual(entry.values);
     }
     expect(
       resolved.map((entry) => actual.get(entry.file)?.names.length)
-    ).toEqual([74]);
+    ).toEqual([76]);
+    expect(
+      resolved.map((entry) => actual.get(entry.file)?.values.length)
+    ).toEqual([14]);
   });
 
   it('loads each entry by package name', async () => {
     for (const entry of resolved) {
       const loaded: unknown = await import(entry.specifier);
-      const values = actual.get(entry.file)?.values;
-      if (values === undefined) {
-        throw new Error(entry.specifier);
-      }
-      expect(Object.keys(loaded as object).sort()).toEqual(values);
+      expect(Object.keys(loaded as object).sort()).toEqual(entry.values);
     }
   });
 });

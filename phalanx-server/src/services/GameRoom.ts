@@ -1853,9 +1853,7 @@ export class GameRoom {
         countdownSecondsRemaining,
         gameStartEmitted: this.gameStartEmitted,
         randomSeed: this.randomSeed,
-      };
-      const { players: _players, ...reconnectContract } = reconnectState;
-      reconnectContract satisfies ReconnectStateEvent;
+      } satisfies ReconnectStateEvent & { players: unknown[] };
       socket.emit('reconnect-state', reconnectState);
 
       // The token is issued at `match-found`, so a rebind during

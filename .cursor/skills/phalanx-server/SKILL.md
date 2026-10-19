@@ -572,11 +572,11 @@ import type {
 // Types — Events & Data
 import type {
   PhalanxEventType, PhalanxEventHandlers,
-  PlayerCommand, TickCommands, SubmitCommandsEvent,
+  PlayerCommand, TickCommands, SubmitCommandsEvent, SubmittedCommand,
   PlayerInfo, MatchInfo, MatchFoundEvent,
   GameStartEvent, TickSyncEvent, CommandsBatchEvent,
   QueuedPlayer, QueueStatusEvent,
-  StateHashEvent, MatchResumeState,
+  StateHashEvent, MatchResumeState, MatchState,
 } from '@phalanx-engine/server';
 ```
 

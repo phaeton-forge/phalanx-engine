@@ -330,11 +330,16 @@ Entries collected per package until the synchronized 0.3.0 release
 - Wire types now come from `@phalanx-engine/protocol`. Removed the local
   copies. `LogChunk` is `MatchLogChunkEvent`. `TickCommandsHistory` is
   `MatchLogEntry`. `MatchLogWireErrorReason` is `MatchLogErrorReason`.
-  `MatchResumeWireErrorReason` is `MatchResumeErrorReason`. The local
-  supersets are `MatchLogFailureReason` (`MatchLogError.reason`) and
-  `MatchResumeFailureReason` (`MatchResumeRejected.reason`).
-  `submitCommands` takes `SubmittedCommand[]`. `PlayerCommand` is the
-  stamped command. `GameStartEvent` includes optional `matchConfig`.
+  `MatchResumeWireErrorReason` is `MatchResumeErrorReason`.
+  `PlayerCommand.playerId` and `PlayerCommand.tick` are required
+  (`sequence` stays optional). `SubmittedCommand` is a new export, and
+  `submitCommands` takes `SubmittedCommand[]`. The exported
+  `MatchLogErrorReason` and `MatchResumeErrorReason` are the wire unions
+  only: they no longer include `'disconnected'`, `'aborted'`, or
+  `'timeout'`. Those local reasons stay on `MatchLogFailureReason`
+  (`MatchLogError.reason`) and `MatchResumeFailureReason`
+  (`MatchResumeRejected.reason`). `GameStartEvent` includes optional
+  `matchConfig`.
   `MatchResumeState` includes optional `snapshot`. `RoomErrorEvent.reason`
   includes `'sim-unavailable'`. `PlayerDisconnectedEvent` includes
   `matchId`. `SubmitCommandsAck` includes `tick` and optional
@@ -358,9 +363,12 @@ Entries collected per package until the synchronized 0.3.0 release
 
 - Wire types moved to `@phalanx-engine/protocol` and are re-exported.
   `MatchResumeStateEvent` is `MatchResumeState`. `DesyncDetectedEvent`
-  is removed; `hash-comparison` is `HashComparisonEvent` in the protocol
-  package. `SlotConfig` is imported from the protocol package.
+  is removed. `HashComparisonEvent` is the `hash-comparison` payload in
+  the protocol package and is not exported from this package.
+  `SlotConfig` is imported from the protocol package.
   `SubmitCommandsEvent.commands` is `SubmittedCommand[]`.
+  `SubmittedCommand` and `MatchState` are exported: they are the element
+  type of `SubmitCommandsEvent.commands` and the type of `MatchInfo.state`.
 - server: opt-in server-sim mode — `games` + `simHost` config,
   per-room `matchConfig {gameId, simMode:'server', slots}`, SimHost in a worker_thread (inProcess for tests), server bots `bot:<slot>` stamped at `S + inputDelayTicks` (the room pauses on `sim-lag` when its lead exceeds `inputDelayTicks - 1`),
   hash arbiter, snapshots, public `Phalanx.endMatch`. A worker OOM or thread crash ends every server match on that worker. `maxMatches` is reserved at room create. After the worker dies, `room-create` returns `room-error` `{ reason: 'sim-unavailable' }`. Only `configKeys` integers from `matchConfig` enter the runner config. Player ids `system` and `bot:<slot>` are rejected on queue and room inputs and on human slots. A batch `system` command is applied only when the runner has a server peer. Private-room `matchConfig` is the only 0.3 server-sim entry. Snapshot requests keep one pending id per player. A player is answered at most once a second; an earlier request is kept and answered when that interval elapses. A worker that dies prints the original error, not `process.exit(0)`. Game modules resolve `export` or `default` only.

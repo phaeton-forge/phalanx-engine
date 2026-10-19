@@ -17,10 +17,8 @@ import {
 } from '@phalanx-engine/runtime';
 import { reservedPlayerMessage } from './reservedPlayerId.js';
 import type {
-  MatchLogCancelRequest,
   MatchLogChunkEvent,
   MatchLogErrorEvent,
-  MatchLogRequest,
   MatchResumeErrorReason,
   MatchResumeState,
   PlayerCommand,
@@ -1173,10 +1171,10 @@ export class Phalanx extends EventEmitter {
       // Command log for catch-up (Task 8). Only the requesting socket
       // receives chunks; the tick loop of other matches is not blocked.
       // A new request or `match-log-cancel` stops the previous stream.
-      socket.on('match-log', (payload: MatchLogRequest) => {
+      socket.on('match-log', (payload: unknown) => {
         this.handleMatchLog(socket, payload);
       });
-      socket.on('match-log-cancel', (payload: MatchLogCancelRequest) => {
+      socket.on('match-log-cancel', (payload: unknown) => {
         this.cancelMatchLog(socket, readOptionalRequestId(payload));
       });
 

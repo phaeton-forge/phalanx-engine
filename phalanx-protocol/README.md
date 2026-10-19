@@ -58,3 +58,19 @@ Slot types (`HumanSlotConfig`, `BotSlotConfig`, `SlotConfig`,
 
 `room-create.matchConfig` uses `ServerRoomMatchConfig`. `MatchState` is
 the match lifecycle union on `MatchResumeState.state`.
+
+## Ещё не в protocol
+
+These socket names are still untyped here.
+
+Server → client: `command-ack`, `command-rejected`, `error`,
+`queue-error`, `queue-left`, `match-waiting-for-players`,
+`player-timeout`, `player-lagging`.
+
+Client → server requests that are not in the table: `queue-join`,
+`queue-leave`, `room-create`, `room-join`, `room-cancel`, `room-recover`,
+`client-ready`, `pause-game`, `resume-game`, `match-resume`,
+`match-snapshot-request`.
+
+`player-command`, `submit-commands`, `state-hash`, `match-log`, and
+`match-log-cancel` are already in the table.

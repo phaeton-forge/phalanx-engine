@@ -56,5 +56,9 @@ describe('package metadata', () => {
     expect(parsed.phalanx).toEqual({ layer: 'contracts' });
     expect('dependencies' in parsed).toBe(false);
     expect('peerDependencies' in parsed).toBe(false);
+    if (!('sideEffects' in parsed)) {
+      throw new Error('package.json is missing sideEffects');
+    }
+    expect(parsed.sideEffects).toBe(false);
   });
 });

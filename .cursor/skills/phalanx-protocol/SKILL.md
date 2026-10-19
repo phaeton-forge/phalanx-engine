@@ -29,3 +29,10 @@ array, which the server still sends.
 
 Event names and payload fields are the wire format. Change them only when
 a task says the wire format changes.
+
+`command-ack`, `command-rejected`, `error`, `queue-error`, `queue-left`,
+`match-waiting-for-players`, `player-timeout`, `player-lagging`, and the
+untyped client→server requests (`queue-join`, `queue-leave`,
+`room-create`, `room-join`, `room-cancel`, `room-recover`,
+`client-ready`, `pause-game`, `resume-game`, `match-resume`,
+`match-snapshot-request`) are not in this package yet. See the README.

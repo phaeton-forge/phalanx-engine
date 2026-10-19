@@ -66,11 +66,19 @@ const ROOT_NAMES = [
   'isBotPlayerId',
 ];
 
+const ROOT_VALUES = [
+  'BOT_PLAYER_ID_PREFIX',
+  'SYSTEM_PLAYER_ID',
+  'botPlayerId',
+  'isBotPlayerId',
+];
+
 const ENTRIES = [
   {
     specifier: '@phalanx-engine/protocol',
     declaration: 'dist/index.d.ts',
     names: ROOT_NAMES,
+    values: ROOT_VALUES,
   },
 ] as const;
 
@@ -136,6 +144,7 @@ const resolved = ENTRIES.map((entry) => ({
   specifier: entry.specifier,
   declaration: entry.declaration,
   names: entry.names,
+  values: entry.values,
   file: declarationFor(entry.specifier),
 }));
 const actual = namesOf(resolved.map((entry) => entry.file));
@@ -150,20 +159,20 @@ describe('@phalanx-engine/protocol exports', () => {
   it('matches the checked-in name snapshot, types included', () => {
     for (const entry of resolved) {
       expect(actual.get(entry.file)?.names).toEqual(entry.names);
+      expect(actual.get(entry.file)?.values).toEqual(entry.values);
     }
     expect(
       resolved.map((entry) => actual.get(entry.file)?.names.length)
     ).toEqual([49]);
+    expect(
+      resolved.map((entry) => actual.get(entry.file)?.values.length)
+    ).toEqual([4]);
   });
 
   it('loads each entry by package name', async () => {
     for (const entry of resolved) {
       const loaded: unknown = await import(entry.specifier);
-      const values = actual.get(entry.file)?.values;
-      if (values === undefined) {
-        throw new Error(entry.specifier);
-      }
-      expect(Object.keys(loaded as object).sort()).toEqual(values);
+      expect(Object.keys(loaded as object).sort()).toEqual(entry.values);
     }
   });
 });

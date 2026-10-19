@@ -133,6 +133,39 @@ const ROOT_NAMES = [
   'resolveMatchRandomSeed',
 ];
 
+const ROOT_VALUES = [
+  'AuthManager',
+  'DEFAULT_RECOVER_TIMEOUT_BUDGET',
+  'DesyncDetector',
+  'DeterministicRandom',
+  'EventEmitter',
+  'FP',
+  'FPVector2',
+  'FPVector3',
+  'FixedPoint',
+  'GoogleOAuthAdapter',
+  'LocalStorageAdapter',
+  'MatchLogError',
+  'MatchResumeRejected',
+  'MatchSessionStore',
+  'MemoryKeyValueStorage',
+  'MemoryStorageAdapter',
+  'PhalanxClient',
+  'RenderLoop',
+  'RoomPersistence',
+  'RoomRecoveryController',
+  'SocketManager',
+  'StateHasher',
+  'armBrowserLifecycle',
+  'defaultKeyValueStorage',
+  'deriveMatchRandomSeed',
+  'getRecoverTimeoutMs',
+  'isMobileBrowser',
+  'loadOrCreateGuestPlayerId',
+  'pickMobileFriendlyTransports',
+  'resolveMatchRandomSeed',
+];
+
 const AUTH_NAMES = [
   'AuthAdapter',
   'AuthError',
@@ -154,16 +187,26 @@ const AUTH_NAMES = [
   'computeCodeChallenge',
 ];
 
+const AUTH_VALUES = [
+  'AuthManager',
+  'GoogleOAuthAdapter',
+  'LocalStorageAdapter',
+  'MemoryStorageAdapter',
+  'computeCodeChallenge',
+];
+
 const ENTRIES = [
   {
     specifier: '@phalanx-engine/client',
     declaration: 'dist/index.d.ts',
     names: ROOT_NAMES,
+    values: ROOT_VALUES,
   },
   {
     specifier: '@phalanx-engine/client/auth',
     declaration: 'dist/auth/index.d.ts',
     names: AUTH_NAMES,
+    values: AUTH_VALUES,
   },
 ] as const;
 
@@ -229,6 +272,7 @@ const resolved = ENTRIES.map((entry) => ({
   specifier: entry.specifier,
   declaration: entry.declaration,
   names: entry.names,
+  values: entry.values,
   file: declarationFor(entry.specifier),
 }));
 const actual = namesOf(resolved.map((entry) => entry.file));
@@ -243,20 +287,20 @@ describe('@phalanx-engine/client exports', () => {
   it('matches the checked-in name snapshot, types included', () => {
     for (const entry of resolved) {
       expect(actual.get(entry.file)?.names).toEqual(entry.names);
+      expect(actual.get(entry.file)?.values).toEqual(entry.values);
     }
     expect(
       resolved.map((entry) => actual.get(entry.file)?.names.length)
     ).toEqual([116, 18]);
+    expect(
+      resolved.map((entry) => actual.get(entry.file)?.values.length)
+    ).toEqual([30, 5]);
   });
 
   it('loads each entry by package name', async () => {
     for (const entry of resolved) {
       const loaded: unknown = await import(entry.specifier);
-      const values = actual.get(entry.file)?.values;
-      if (values === undefined) {
-        throw new Error(entry.specifier);
-      }
-      expect(Object.keys(loaded as object).sort()).toEqual(values);
+      expect(Object.keys(loaded as object).sort()).toEqual(entry.values);
     }
   });
 });
