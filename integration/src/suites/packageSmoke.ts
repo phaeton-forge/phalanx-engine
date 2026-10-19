@@ -15,6 +15,7 @@ import { parseJson } from '../util/json.js';
 
 const PACKAGES = [
   '@phalanx-engine/math',
+  '@phalanx-engine/protocol',
   '@phalanx-engine/ecs',
   '@phalanx-engine/physics',
   '@phalanx-engine/abilities',

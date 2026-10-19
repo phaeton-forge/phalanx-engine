@@ -10,6 +10,41 @@ import type {
 } from './recovery/RoomRecoveryController.js';
 import type { KeyValueStorage } from './recovery/KeyValueStorage.js';
 import type { RecoverTimeoutBudget } from './recovery/NetworkQuality.js';
+import type {
+  CommandsBatchEvent,
+  CountdownEvent,
+  GamePausedEvent,
+  GameResumedEvent,
+  GameStartEvent,
+  HashComparisonEvent,
+  MatchEndEvent,
+  MatchFoundEvent,
+  MatchLogChunkEvent,
+  MatchLogEntry,
+  MatchLogErrorEvent,
+  MatchLogErrorReason,
+  MatchPlayerInfo,
+  MatchResumeErrorReason,
+  MatchResumeState,
+  PlayerCommand,
+  PlayerDisconnectedEvent,
+  PlayerReadyEvent,
+  PlayerReconnectedEvent,
+  QueueStatusEvent,
+  ReconnectStateEvent,
+  ReconnectStatusEvent,
+  RoomCancelledEvent,
+  RoomCreatedEvent,
+  RoomErrorEvent,
+  RoomExpiredEvent,
+  RoomRecoveredEvent,
+  ServerShutdownEvent,
+  SessionSupersededEvent,
+  SessionTokenEvent,
+  SubmitCommandsAck,
+  SubmittedCommand,
+  TickSyncEvent,
+} from '@phalanx-engine/protocol';
 
 // Re-export DesyncEvent for convenience
 export type { DesyncEvent };
@@ -258,170 +293,61 @@ export interface PhalanxAuthConfig {
   };
 }
 
-/**
- * A command sent from or to players
- * When received from server, includes playerId and tick added by server
- */
-export interface PlayerCommand {
-  type: string;
-  data: unknown;
-  /** Added by server when broadcasting - identifies the player who sent the command */
-  playerId?: string;
-  /** Added by server when broadcasting - the tick this command was submitted for */
-  tick?: number;
-}
-
-/**
- * Information about a player in match-found event
- */
-export interface MatchPlayerInfo {
-  playerId: string;
-  username: string;
-}
-
-/**
- * Event received when a match is found
- */
-export interface MatchFoundEvent {
-  matchId: string;
-  playerId: string;
-  teamId: number;
-  teammates: MatchPlayerInfo[];
-  opponents: MatchPlayerInfo[];
-}
-
-/**
- * Event received during countdown before game starts
- */
-export interface CountdownEvent {
-  seconds: number;
-}
-
-/**
- * Event received when the game starts
- */
-export interface GameStartEvent {
-  matchId: string;
-  /** Random seed for deterministic RNG (optional for backward compatibility) */
-  randomSeed?: number;
-}
-
-/**
- * Event received on each tick for synchronization
- */
-export interface TickSyncEvent {
-  tick: number;
-  timestamp: number;
-}
-
-/**
- * Commands batch received each tick from the server
- */
-export interface CommandsBatchEvent {
-  tick: number;
-  commands: PlayerCommand[];
-}
-
-/**
- * Queue status event received after joining queue
- */
-export interface QueueStatusEvent {
-  position: number;
-  waitTime: number;
-}
-
-/**
- * Event received when another player disconnects
- */
-export interface PlayerDisconnectedEvent {
-  playerId: string;
-  gracePeriodMs: number;
-}
-
-/**
- * Event received when another player reconnects
- */
-export interface PlayerReconnectedEvent {
-  playerId: string;
-}
-
-/**
- * Event received when a player reports ready during the loading phase
- */
-export interface PlayerReadyEvent {
-  playerId: string;
-}
-
-/**
- * State received when reconnecting to a match.
- *
- * Includes a snapshot of the countdown / game-start phase so a client
- * that reconnected mid-countdown (e.g. a private-room host whose mobile
- * browser killed the WebSocket while they were sharing the invite link)
- * can render the correct remaining number without waiting for the next
- * 1Hz broadcast tick, and so a client that reconnected after `game-start`
- * already fired can synthesize the event locally and enter the playing
- * phase without waiting for an event it will never receive again.
- *
- * The countdown/gameStart fields are optional for wire-compatibility
- * with older servers that don't populate them.
- */
-export interface ReconnectStateEvent {
-  matchId: string;
-  currentTick: number;
-  state: 'countdown' | 'waiting-for-ready' | 'playing' | 'paused' | 'finished';
-  recentCommands: TickCommandsHistory[];
-  /**
-   * Integer number of seconds left on the countdown at the moment this
-   * snapshot was taken, or `null` if the countdown is no longer running
-   * (either it never started with a positive duration, or `game-start`
-   * has already been emitted).
-   */
-  countdownSecondsRemaining?: number | null;
-  /**
-   * True if `game-start` has already been broadcast for this match.
-   * Clients should treat this as a signal to synthesize a local
-   * `game-start` event rather than waiting for the server to emit one.
-   */
-  gameStartEmitted?: boolean;
-  /**
-   * The match's deterministic RNG seed. Forwarded here so clients that
-   * missed the original `game-start` broadcast can still feed the seed
-   * into their deterministic simulation on the synthesized start.
-   */
-  randomSeed?: number;
-}
-
-/**
- * Commands history for a specific tick (used in reconnection)
- */
-export interface TickCommandsHistory {
-  tick: number;
-  commands: PlayerCommand[];
-}
-
-/** Reasons the server sends on `match-log-error`. */
-export type MatchLogWireErrorReason =
-  'not-member' | 'not-found' | 'invalid' | 'truncated';
+export type {
+  CommandsBatchEvent,
+  CountdownEvent,
+  GamePausedEvent,
+  GameResumedEvent,
+  GameStartEvent,
+  HashComparisonEvent,
+  MatchEndEvent,
+  MatchFoundEvent,
+  MatchLogChunkEvent,
+  MatchLogEntry,
+  MatchLogErrorEvent,
+  MatchLogErrorReason,
+  MatchPlayerInfo,
+  MatchResumeErrorReason,
+  MatchResumeState,
+  PlayerCommand,
+  PlayerDisconnectedEvent,
+  PlayerReadyEvent,
+  PlayerReconnectedEvent,
+  QueueStatusEvent,
+  ReconnectStateEvent,
+  ReconnectStatusEvent,
+  RoomCancelledEvent,
+  RoomCreatedEvent,
+  RoomErrorEvent,
+  RoomExpiredEvent,
+  RoomRecoveredEvent,
+  ServerShutdownEvent,
+  SessionSupersededEvent,
+  SessionTokenEvent,
+  SubmitCommandsAck,
+  SubmittedCommand,
+  TickSyncEvent,
+};
 
 /**
  * Why `fetchMatchLog` stopped.
- * `MatchLogWireErrorReason` arrives on `match-log-error`.
+ * `MatchLogErrorReason` from `@phalanx-engine/protocol` arrives on
+ * `match-log-error`.
  * `'disconnected'` is local, when the socket closes mid-read.
  * `'aborted'` is local, when the caller breaks or a newer fetch
  * replaces this one. The server does not send either.
  */
-export type MatchLogErrorReason =
-  MatchLogWireErrorReason | 'disconnected' | 'aborted';
+export type MatchLogFailureReason =
+  MatchLogErrorReason | 'disconnected' | 'aborted';
 
 /**
  * Thrown by `PhalanxClient.fetchMatchLog` when the server emits
  * `match-log-error`, when the socket drops, or when this read is aborted.
  */
 export class MatchLogError extends Error {
-  readonly reason: MatchLogErrorReason;
+  readonly reason: MatchLogFailureReason;
 
-  constructor(reason: MatchLogErrorReason) {
+  constructor(reason: MatchLogFailureReason) {
     super(`match-log failed: ${reason}`);
     this.name = 'MatchLogError';
     this.reason = reason;
@@ -429,37 +355,13 @@ export class MatchLogError extends Error {
 }
 
 /**
- * One `match-log-chunk`. `toTick` is inclusive. `entries` contains only
- * non-empty ticks. The iterator finishes on `done: true`.
- */
-export interface LogChunk {
-  matchId: string;
-  fromTick: number;
-  toTick: number;
-  entries: TickCommandsHistory[];
-  done: boolean;
-  /** Echo of the id this read sent. Chunks for another id are ignored. */
-  requestId?: string;
-}
-
-/** Payload of `match-log-error`. `reason` is a wire value only. */
-export interface MatchLogErrorEvent {
-  matchId?: string;
-  requestId?: string;
-  reason: MatchLogWireErrorReason;
-}
-
-/** Reasons the server sends on `match-resume-error`. */
-export type MatchResumeWireErrorReason =
-  'invalid' | 'expired' | 'match-ended' | 'build-mismatch';
-
-/**
  * Why `resumeMatch` rejected.
- * `MatchResumeWireErrorReason` arrives on `match-resume-error`.
+ * `MatchResumeErrorReason` from `@phalanx-engine/protocol` arrives on
+ * `match-resume-error`.
  * `'timeout'` is local, when `connectionTimeoutMs` elapses with no
  * answer. The server does not send it.
  */
-export type MatchResumeErrorReason = MatchResumeWireErrorReason | 'timeout';
+export type MatchResumeFailureReason = MatchResumeErrorReason | 'timeout';
 
 /**
  * Thrown by `PhalanxClient.resumeMatch` when the server emits
@@ -468,101 +370,13 @@ export type MatchResumeErrorReason = MatchResumeWireErrorReason | 'timeout';
  * runtime's local-resume error.
  */
 export class MatchResumeRejected extends Error {
-  readonly reason: MatchResumeErrorReason;
+  readonly reason: MatchResumeFailureReason;
 
-  constructor(reason: MatchResumeErrorReason) {
+  constructor(reason: MatchResumeFailureReason) {
     super(`match-resume rejected: ${reason}`);
     this.name = 'MatchResumeRejected';
     this.reason = reason;
   }
-}
-
-/**
- * Successful `match-resume`. `absentDeadline`, when present, is
- * milliseconds until another player's absence expires.
- */
-export interface MatchResumeState {
-  matchId: string;
-  slot: number;
-  currentTick: number;
-  state:
-    | 'waiting-for-players'
-    | 'countdown'
-    | 'waiting-for-ready'
-    | 'playing'
-    | 'paused'
-    | 'finished';
-  absentDeadline?: number;
-}
-
-/** `session-token` from the server. The token itself is opaque. */
-export interface SessionTokenEvent {
-  token: string;
-  matchId: string;
-  slot: number;
-}
-
-/** The server bound this player to a different socket. */
-export interface SessionSupersededEvent {
-  matchId: string;
-}
-
-/**
- * The relay is about to stop. In-memory matches end with no result.
- */
-export interface ServerShutdownEvent {
-  reason: string;
-  matchIds: string[];
-}
-
-/**
- * Reconnection status response
- */
-export interface ReconnectStatusEvent {
-  success: boolean;
-  reason?: string;
-}
-
-/**
- * Acknowledgment for submitted commands
- */
-export interface SubmitCommandsAck {
-  accepted: boolean;
-  reason?: string;
-}
-
-/**
- * Event received when match ends
- */
-export interface MatchEndEvent {
-  reason: string;
-  /** Additional details about the match end (e.g., desync info) */
-  details?: unknown;
-  /** Winner information (null on desync) */
-  winner?: string | null;
-}
-
-/**
- * Event received when the game is paused
- */
-export interface GamePausedEvent {
-  requestedBy: string;
-  lastTick: number;
-}
-
-/**
- * Event received when the game is resumed
- */
-export interface GameResumedEvent {
-  requestedBy: string;
-}
-
-/**
- * Hash comparison data received from server
- */
-export interface HashComparisonEvent {
-  tick: number;
-  hashes: Record<string, string>;
 }
 
 /**
@@ -708,51 +522,4 @@ export interface PhalanxClientEvents {
 
   /** This socket was replaced. It is no longer in the match. */
   sessionSuperseded: (event: SessionSupersededEvent) => void;
-}
-
-/**
- * Event emitted when a private room is created.
- */
-export interface RoomCreatedEvent {
-  code: string;
-}
-
-/**
- * Event emitted when a room operation fails.
- * `reason` is set only for the in-match session-token gate.
- * `message` stays `'session-token-required'` in that case.
- */
-export interface RoomErrorEvent {
-  message: string;
-  reason?: 'session-token-required';
-}
-
-/**
- * Event emitted when a room expires (TTL exceeded).
- */
-export interface RoomExpiredEvent {
-  code: string;
-}
-
-/**
- * Event emitted when a room is cancelled.
- */
-export interface RoomCancelledEvent {
-  code: string;
-}
-
-/**
- * Event emitted when a host successfully reclaims a private room after a
- * transient socket disconnect (e.g. mobile browser killing the WebSocket
- * when the user switches to a messenger to share the invite link).
- *
- * The returned `code` is the canonical server-side value — callers should
- * prefer it over whatever they passed into `recoverRoom`. In practice
- * this differs from the caller's input only in casing: the server
- * uppercases the provided code and rejects anything else with
- * `room-error: "Room expired"`. Echoing the stored code lets callers
- * update any cached value that drifted in case only.
- */
-export interface RoomRecoveredEvent {
-  code: string;
 }

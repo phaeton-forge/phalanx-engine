@@ -20,6 +20,12 @@ Entries collected per package until the synchronized 0.3.0 release
 
 ## @phalanx-engine/runtime
 
+- `SYSTEM_PLAYER_ID`, `BOT_PLAYER_ID_PREFIX`, `botPlayerId`, and
+  `isBotPlayerId` are defined in `@phalanx-engine/protocol` and
+  re-exported. `BotHostSide`, `HumanSlotConfig`, `BotSlotConfig`, and
+  `SlotConfig` are defined there and re-exported from `MatchConfig`.
+  Names on this package are unchanged. `SimMode` and `MatchConfigBase`
+  stay here.
 - A `setController` command stamped into a relay `commands-batch` (player id
   `system`) is applied on every peer. The same command already applied
   locally is skipped by envelope `q`, so a server and a client do not
@@ -306,25 +312,62 @@ Entries collected per package until the synchronized 0.3.0 release
   / `setState` / `fromState`. The generator methods expose `pure-rand`'s
   `RandomGenerator` on the public math API.
 
+## @phalanx-engine/protocol
+
+- New private package `@phalanx-engine/protocol` (`0.3.0`,
+  `phalanx.layer: contracts`, no dependencies). It is the wire contract:
+  message types, `SlotConfig` / `ServerRoomMatchConfig`, and
+  `SYSTEM_PLAYER_ID` / `BOT_PLAYER_ID_PREFIX` / `botPlayerId` /
+  `isBotPlayerId`. Not published and not in `PACKAGE_DIRS`.
+- `PlayerCommand` is the server-stamped command. `SubmittedCommand` is
+  the `submit-commands` body (`type`, `data`, optional `sequence`).
+- `MatchResumeState` is the `match-resume-state` payload.
+  `HashComparisonEvent` is the `hash-comparison` payload.
+  `MatchState` is the match lifecycle union.
+
 ## @phalanx-engine/client
 
+- Wire types now come from `@phalanx-engine/protocol`. Removed the local
+  copies. `LogChunk` is `MatchLogChunkEvent`. `TickCommandsHistory` is
+  `MatchLogEntry`. The client has one reason name per operation:
+  `MatchLogFailureReason` (`MatchLogError.reason`) and
+  `MatchResumeFailureReason` (`MatchResumeRejected.reason`).
+  `MatchLogErrorReason`, `MatchResumeErrorReason`,
+  `MatchLogWireErrorReason`, and `MatchResumeWireErrorReason` are
+  removed from the client with no replacement.
+  `PlayerCommand.playerId` and `PlayerCommand.tick` are required
+  (`sequence` stays optional). `SubmittedCommand` is a new export, and
+  `submitCommands` takes `SubmittedCommand[]`. `GameStartEvent` includes optional
+  `matchConfig`.
+  `MatchResumeState` includes optional `snapshot`. `RoomErrorEvent.reason`
+  includes `'sim-unavailable'`. `PlayerDisconnectedEvent` includes
+  `matchId`. `SubmitCommandsAck` includes `tick` and optional
+  `rejectedCount`. `MatchEndEvent` includes optional `winnerTeamId`.
 - client: `resumeMatch()`, `MatchSessionStore`, `gameId` config, `sessionToken` event. A killed tab loads `phalanx.session.<gameId>` from `localStorage`, connects, and resumes with the opaque token. `match-end` clears the record. A terminal `resumeMatch` rejection (`invalid`, `expired`, `match-ended`, `build-mismatch`) also clears it; `timeout` keeps it. A new match's `session-token` overwrites the stored token. `autoReconnect` tries `resumeMatch(token, lastTick)` when the store has this match, then `reconnectToMatch`. With `requireSessionToken: true`, a resume timeout does not call `reconnectToMatch`. Giving up clears the store and emits `reconnectFailed`. `sessionSuperseded` fires when this socket is replaced. Do not log the token.
 - `DeterministicRandom` is re-exported from `@phalanx-engine/math` under the
   same name. Instance methods are unchanged.
 - Opt-in relay catch-up: `PhalanxClientConfig.buildId` is sent on
   `queue-join` / `room-create` / `room-join` only when set.
-  `fetchMatchLog(fromTick)` is an `AsyncIterable` of `LogChunk`
+  `fetchMatchLog(fromTick)` is an `AsyncIterable` of `MatchLogChunkEvent`
   (`match-log` / `match-log-chunk`). One read per socket; a second call
   aborts the first. `match-log-error` rejects with `MatchLogError`.
   A socket drop rejects with reason `disconnected`, and breaking out
   of the read rejects with `aborted` and sends `match-log-cancel`.
   `serverShutdown` fires for `server-shutdown`.
-- client: does not yet handle server-sim `desync`, `match-snapshot` /
-  `match-snapshot-request`, or `room-error` reason `sim-unavailable`
-  (Task 12).
+- client: types `room-error` reason `sim-unavailable`,
+  `game-start.matchConfig`, and `match-resume-state.snapshot`. It does
+  not yet handle `desync` or `match-snapshot` (Task 12).
 
 ## @phalanx-engine/server
 
+- Wire types moved to `@phalanx-engine/protocol` and are re-exported.
+  `MatchResumeStateEvent` is `MatchResumeState`. `DesyncDetectedEvent`
+  is removed. `HashComparisonEvent` is the `hash-comparison` payload in
+  the protocol package and is not exported from this package.
+  `SlotConfig` is imported from the protocol package.
+  `SubmitCommandsEvent.commands` is `SubmittedCommand[]`.
+  `SubmittedCommand` and `MatchState` are exported: they are the element
+  type of `SubmitCommandsEvent.commands` and the type of `MatchInfo.state`.
 - server: opt-in server-sim mode — `games` + `simHost` config,
   per-room `matchConfig {gameId, simMode:'server', slots}`, SimHost in a worker_thread (inProcess for tests), server bots `bot:<slot>` stamped at `S + inputDelayTicks` (the room pauses on `sim-lag` when its lead exceeds `inputDelayTicks - 1`),
   hash arbiter, snapshots, public `Phalanx.endMatch`. A worker OOM or thread crash ends every server match on that worker. `maxMatches` is reserved at room create. After the worker dies, `room-create` returns `room-error` `{ reason: 'sim-unavailable' }`. Only `configKeys` integers from `matchConfig` enter the runner config. Player ids `system` and `bot:<slot>` are rejected on queue and room inputs and on human slots. A batch `system` command is applied only when the runner has a server peer. Private-room `matchConfig` is the only 0.3 server-sim entry. Snapshot requests keep one pending id per player. A player is answered at most once a second; an earlier request is kept and answered when that interval elapses. A worker that dies prints the original error, not `process.exit(0)`. Game modules resolve `export` or `default` only.

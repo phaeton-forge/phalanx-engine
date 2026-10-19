@@ -24,11 +24,13 @@ export {
   DEFAULT_CLIENT_SNAPSHOT_EVERY_TICKS,
   DEFAULT_HASH_EVERY_TICKS,
   DEFAULT_INPUT_DELAY_TICKS,
+} from './constants.js';
+export {
   BOT_PLAYER_ID_PREFIX,
   SYSTEM_PLAYER_ID,
   botPlayerId,
   isBotPlayerId,
-} from './constants.js';
+} from '@phalanx-engine/protocol';
 export { NotImplementedError } from './notImplemented.js';
 
 export * from './game/index.js';

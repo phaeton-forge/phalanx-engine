@@ -11,7 +11,7 @@ import type {
   BotSlotConfig,
   BotSlotInfo,
 } from '../game/MatchConfig.js';
-import { botPlayerId } from '../constants.js';
+import { botPlayerId } from '@phalanx-engine/protocol';
 import { BinaryStateReader, BinaryStateWriter } from '../state/BinaryState.js';
 import type { StateReader, StateWriter } from '../state/StateIO.js';
 import { botSlotSeed } from './botSeed.js';

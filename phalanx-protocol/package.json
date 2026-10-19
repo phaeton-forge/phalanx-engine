@@ -1,0 +1,46 @@
+{
+  "name": "@phalanx-engine/protocol",
+  "version": "0.3.0",
+  "private": true,
+  "description": "Client-server wire contract for Phalanx Engine: message types and player-id constants. No runtime dependencies.",
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "test": "vitest run && node --input-type=module -e \"await import('./dist/index.js')\""
+  },
+  "devDependencies": {
+    "typescript": "~5.9.3",
+    "vitest": "^1.0.0"
+  },
+  "keywords": [
+    "lockstep",
+    "protocol",
+    "phalanx"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/phaeton-forge/phalanx-engine.git",
+    "directory": "phalanx-protocol"
+  },
+  "bugs": "https://github.com/phaeton-forge/phalanx-engine/issues",
+  "homepage": "https://github.com/phaeton-forge/phalanx-engine/tree/main/phalanx-protocol#readme",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "phalanx": {
+    "layer": "contracts"
+  }
+}

@@ -442,7 +442,7 @@ client.sendReady();
 ### Match log
 
 ```typescript
-import { MatchLogError, type LogChunk } from '@phalanx-engine/client';
+import { MatchLogError, type MatchLogChunkEvent } from '@phalanx-engine/client';
 
 // buildId is sent only when set on the client config.
 const client = await PhalanxClient.create({
@@ -469,13 +469,13 @@ try {
   }
 }
 
-declare function applyChunk(chunk: LogChunk): void;
+declare function applyChunk(chunk: MatchLogChunkEvent): void;
 ```
 
-`MatchLogError.reason` is `MatchLogErrorReason`: the four wire values
-`not-member`, `not-found`, `invalid`, and `truncated`, plus the
-client-only `disconnected` and `aborted`. A partial match-log followed
-by `not-found` must be discarded.
+`MatchLogError.reason` is `MatchLogFailureReason`: the wire
+`MatchLogErrorReason` values `not-member`, `not-found`, `invalid`, and
+`truncated`, plus the client-only `disconnected` and `aborted`. A partial
+match-log followed by `not-found` must be discarded.
 
 #### sendReady(): void
 
@@ -1173,11 +1173,12 @@ import {
   PhalanxClient,
   TickSyncEvent,
   PlayerCommand,
+  SubmittedCommand,
 } from '@phalanx-engine/client';
 
 class LegacyGameClient {
   private client: PhalanxClient;
-  private pendingCommands: PlayerCommand[] = [];
+  private pendingCommands: SubmittedCommand[] = [];
 
   constructor(serverUrl: string, playerId: string, username: string) {
     this.client = new PhalanxClient({

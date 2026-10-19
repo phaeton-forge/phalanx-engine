@@ -133,6 +133,9 @@ importers:
       '@phalanx-engine/math':
         specifier: workspace:*
         version: link:../phalanx-math
+      '@phalanx-engine/protocol':
+        specifier: workspace:*
+        version: link:../phalanx-protocol
       socket.io-client:
         specifier: ^4.7.0
         version: 4.8.3
@@ -224,6 +227,15 @@ importers:
         specifier: ^1.0.0
         version: 1.6.1(@types/node@20.19.43)(happy-dom@20.10.6)(lightningcss@1.32.0)
 
+  phalanx-protocol:
+    devDependencies:
+      typescript:
+        specifier: ~5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^1.0.0
+        version: 1.6.1(@types/node@20.19.43)(happy-dom@20.10.6)(lightningcss@1.32.0)
+
   phalanx-runtime:
     dependencies:
       '@phalanx-engine/abilities':
@@ -232,6 +244,9 @@ importers:
       '@phalanx-engine/ecs':
         specifier: workspace:*
         version: link:../phalanx-ecs
+      '@phalanx-engine/protocol':
+        specifier: workspace:*
+        version: link:../phalanx-protocol
     devDependencies:
       '@phalanx-engine/math':
         specifier: workspace:*
@@ -263,6 +278,9 @@ importers:
       '@phalanx-engine/math':
         specifier: workspace:*
         version: link:../phalanx-math
+      '@phalanx-engine/protocol':
+        specifier: workspace:*
+        version: link:../phalanx-protocol
       '@phalanx-engine/runtime':
         specifier: workspace:*
         version: link:../phalanx-runtime

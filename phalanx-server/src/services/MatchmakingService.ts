@@ -1,10 +1,6 @@
 import type { Server as SocketIOServer, Socket } from 'socket.io';
-import type {
-  PhalanxConfig,
-  QueuedPlayer,
-  MatchInfo,
-  QueueStatusEvent,
-} from '../types/index.js';
+import type { QueueStatusEvent } from '@phalanx-engine/protocol';
+import type { PhalanxConfig, QueuedPlayer, MatchInfo } from '../types/index.js';
 import { resolveGameMode } from '../config/validation.js';
 import { reservedPlayerMessage } from '../reservedPlayerId.js';
 import { GameRoom } from './GameRoom.js';
@@ -149,7 +145,7 @@ export class MatchmakingService {
     socket.emit('queue-status', {
       position,
       waitTime,
-    } as QueueStatusEvent);
+    } satisfies QueueStatusEvent);
   }
 
   /**

@@ -1,7 +1,23 @@
 import { randomBytes } from 'crypto';
 import { performance } from 'node:perf_hooks';
 import type { Server as SocketIOServer } from 'socket.io';
-import { isBotPlayerId } from '@phalanx-engine/runtime';
+import { isBotPlayerId } from '@phalanx-engine/protocol';
+import type {
+  CommandsBatchEvent,
+  CountdownEvent,
+  GamePausedEvent,
+  GameResumedEvent,
+  GameStartEvent,
+  HashComparisonEvent,
+  MatchEndEvent,
+  MatchErrorEvent,
+  MatchFoundEvent,
+  PlayerDisconnectedEvent,
+  PlayerReadyEvent,
+  PlayerReconnectedEvent,
+  ReconnectStateEvent,
+  TickSyncEvent,
+} from '@phalanx-engine/protocol';
 import type { RoomSim } from '../sim/RoomSim.js';
 import type {
   PhalanxConfig,
@@ -393,7 +409,7 @@ export class GameRoom {
       this.clearAbsenceTimers();
       this.io.to(this.roomId).emit('match-end', {
         reason: 'players-not-connected',
-      });
+      } satisfies MatchEndEvent);
       this.state = 'finished';
       this.eventEmitter('match-ended', this.id, 'players-not-connected');
     }, this.playersConnectTimeoutMs);
@@ -470,8 +486,16 @@ export class GameRoom {
    * pre-game lifecycle level with the personalized match-found path.
    */
   private emitLifecycleToConnectedPlayers(
+    eventName: 'countdown',
+    payload: CountdownEvent
+  ): void;
+  private emitLifecycleToConnectedPlayers(
+    eventName: 'game-start',
+    payload: GameStartEvent
+  ): void;
+  private emitLifecycleToConnectedPlayers(
     eventName: 'countdown' | 'game-start',
-    payload: unknown
+    payload: CountdownEvent | GameStartEvent
   ): void {
     for (const [socketId, playerId] of this.socketToPlayer) {
       const player = this.players.get(playerId);
@@ -502,7 +526,11 @@ export class GameRoom {
     const slot = this.getPlayerSlot(playerId);
     if (slot < 0) return;
     const token = issuer({ matchId: this.id, playerId, slot });
-    socket.emit('session-token', { token, matchId: this.id, slot });
+    socket.emit('session-token', {
+      token,
+      matchId: this.id,
+      slot,
+    } satisfies SessionTokenEvent);
   }
 
   /**
@@ -531,11 +559,15 @@ export class GameRoom {
     this.countdownDeadline = Date.now() + countdown * 1000;
 
     // Emit initial countdown
-    this.emitLifecycleToConnectedPlayers('countdown', { seconds: countdown });
+    this.emitLifecycleToConnectedPlayers('countdown', {
+      seconds: countdown,
+    } satisfies CountdownEvent);
     countdown--;
 
     this.countdownInterval = setInterval(() => {
-      this.emitLifecycleToConnectedPlayers('countdown', { seconds: countdown });
+      this.emitLifecycleToConnectedPlayers('countdown', {
+        seconds: countdown,
+      } satisfies CountdownEvent);
       countdown--;
 
       if (countdown < 0) {
@@ -578,16 +610,8 @@ export class GameRoom {
     this.armReadyTimeout();
   }
 
-  private gameStartPayload(): {
-    matchId: string;
-    randomSeed: number;
-    matchConfig?: { readonly [key: string]: unknown };
-  } {
-    const payload: {
-      matchId: string;
-      randomSeed: number;
-      matchConfig?: { readonly [key: string]: unknown };
-    } = {
+  private gameStartPayload(): GameStartEvent {
+    const payload: GameStartEvent = {
       matchId: this.id,
       randomSeed: this.randomSeed,
     };
@@ -637,7 +661,7 @@ export class GameRoom {
       this.clearAbsenceTimers();
       this.io.to(this.roomId).emit('match-end', {
         reason: 'players-not-connected',
-      });
+      } satisfies MatchEndEvent);
       this.state = 'finished';
       this.eventEmitter('match-ended', this.id, 'players-not-connected');
     }, this.playersConnectTimeoutMs);
@@ -664,7 +688,7 @@ export class GameRoom {
             team
           );
           if (payload) {
-            socket.emit('match-found', payload);
+            socket.emit('match-found', payload satisfies MatchFoundEvent);
             this.emitSessionToken(socket, player.playerId);
           }
         }
@@ -758,7 +782,9 @@ export class GameRoom {
     this.readyPlayers.add(playerId);
 
     // Broadcast player-ready to the room so clients can update loading screens
-    this.io.to(this.roomId).emit('player-ready', { playerId });
+    this.io
+      .to(this.roomId)
+      .emit('player-ready', { playerId } satisfies PlayerReadyEvent);
 
     if (this.areAllPlayersConnectedAndReady()) {
       this.clearReadyTimeout('all players ready');
@@ -783,7 +809,7 @@ export class GameRoom {
 
     this.io.to(this.roomId).emit('match-end', {
       reason: 'ready-timeout',
-    });
+    } satisfies MatchEndEvent);
 
     this.eventEmitter('match-ended', this.id, 'ready-timeout');
   }
@@ -870,7 +896,7 @@ export class GameRoom {
     this.io.to(this.roomId).emit('tick-sync', {
       tick: this.currentTick,
       timestamp: Date.now(),
-    });
+    } satisfies TickSyncEvent);
 
     // Check for lagging/disconnected players (LOCKSTEP-5)
     this.checkPlayerTimeouts();
@@ -895,7 +921,7 @@ export class GameRoom {
     this.io.to(this.roomId).emit('commands-batch', {
       tick: this.currentTick,
       commands,
-    });
+    } satisfies CommandsBatchEvent);
 
     // Server sim sees the same stamped batch. Posting does not wait on it.
     const publishedTick = this.currentTick;
@@ -1096,7 +1122,7 @@ export class GameRoom {
       this.io.to(this.roomId).emit('commands-batch', {
         tick: this.currentTick,
         commands,
-      });
+      } satisfies CommandsBatchEvent);
 
       this.currentTick++;
       // Prune stale commandBuffer/tickSubmissions entries to prevent memory leak
@@ -1195,7 +1221,9 @@ export class GameRoom {
     player.connected = true;
     this.returnFromAbsence(playerId);
     this.eventEmitter('player-reconnected', playerId, this.id);
-    this.io.to(this.roomId).emit('player-reconnected', { playerId });
+    this.io.to(this.roomId).emit('player-reconnected', {
+      playerId,
+    } satisfies PlayerReconnectedEvent);
   }
 
   /**
@@ -1276,7 +1304,7 @@ export class GameRoom {
 
     this.io.to(this.roomId).emit('match-end', {
       reason: 'turn-timeout',
-    });
+    } satisfies MatchEndEvent);
 
     this.eventEmitter('match-ended', this.id, 'turn-timeout');
   }
@@ -1491,7 +1519,10 @@ export class GameRoom {
    * straight to each player's socket because the room has not started.
    */
   private rejectForBuildMismatch(): void {
-    const payload = { matchId: this.id, reason: 'build-mismatch' as const };
+    const payload = {
+      matchId: this.id,
+      reason: 'build-mismatch' as const,
+    } satisfies MatchErrorEvent;
     for (const player of this.teams.flat()) {
       this.io.sockets.sockets
         .get(player.socketId)
@@ -1536,7 +1567,7 @@ export class GameRoom {
     this.io.to(this.roomId).emit('game-paused', {
       requestedBy,
       lastTick: this.currentTick - 1,
-    });
+    } satisfies GamePausedEvent);
 
     this.eventEmitter('match-paused', this.id, requestedBy);
     return true;
@@ -1582,7 +1613,7 @@ export class GameRoom {
     // Broadcast to all clients so they unfreeze
     this.io.to(this.roomId).emit('game-resumed', {
       requestedBy,
-    });
+    } satisfies GameResumedEvent);
 
     if (this.tickMode === 'continuous') {
       if (this.serverSession) {
@@ -1649,7 +1680,7 @@ export class GameRoom {
       // Notify players
       this.io.to(this.roomId).emit('match-end', {
         reason: 'stopped',
-      });
+      } satisfies MatchEndEvent);
     }
   }
 
@@ -1679,7 +1710,7 @@ export class GameRoom {
         playerId,
         matchId: this.id,
         gracePeriodMs: this.config.reconnectGracePeriodMs,
-      });
+      } satisfies PlayerDisconnectedEvent);
       this.beginAbsence(playerId);
     }
   }
@@ -1766,10 +1797,15 @@ export class GameRoom {
       if (this.state === 'waiting-for-players') {
         const matchFoundPayload = this.buildMatchFoundPayload(playerId);
         if (matchFoundPayload) {
-          socket.emit('match-found', matchFoundPayload);
+          socket.emit(
+            'match-found',
+            matchFoundPayload satisfies MatchFoundEvent
+          );
           this.emitSessionToken(socket, playerId);
         }
-        socket.to(this.roomId).emit('player-reconnected', { playerId });
+        socket.to(this.roomId).emit('player-reconnected', {
+          playerId,
+        } satisfies PlayerReconnectedEvent);
         // Look up the team info for the right teammates/opponents
         // assignment on socket.data — same fields `start()` would
         // have set for them on the happy path.
@@ -1808,7 +1844,7 @@ export class GameRoom {
         this.countdownDeadline !== null
           ? Math.max(0, Math.ceil((this.countdownDeadline - Date.now()) / 1000))
           : null;
-      socket.emit('reconnect-state', {
+      const reconnectState = {
         matchId: this.id,
         currentTick: this.currentTick,
         state: this.state,
@@ -1817,14 +1853,17 @@ export class GameRoom {
         countdownSecondsRemaining,
         gameStartEmitted: this.gameStartEmitted,
         randomSeed: this.randomSeed,
-      });
+      } satisfies ReconnectStateEvent & { players: unknown[] };
+      socket.emit('reconnect-state', reconnectState);
 
       // The token is issued at `match-found`, so a rebind during
       // countdown still gets one. `reconnect-state` is unchanged.
       this.emitSessionToken(socket, playerId);
 
       // Notify other players
-      socket.to(this.roomId).emit('player-reconnected', { playerId });
+      socket.to(this.roomId).emit('player-reconnected', {
+        playerId,
+      } satisfies PlayerReconnectedEvent);
     }
 
     return true;
@@ -1986,7 +2025,7 @@ export class GameRoom {
       this.archiveWinnerTeamId = winnerTeamId;
     }
     this.stop(true);
-    const payload: { reason: string; winnerTeamId?: number } = {
+    const payload: MatchEndEvent = {
       reason: result.reason,
     };
     if (winnerTeamId !== undefined) {
@@ -2348,14 +2387,14 @@ export class GameRoom {
           this.io.to(this.roomId).emit('hash-comparison', {
             tick,
             hashes: hashObject,
-          });
+          } satisfies HashComparisonEvent);
         }
       } else {
         // Still within grace period - just broadcast for logging
         this.io.to(this.roomId).emit('hash-comparison', {
           tick,
           hashes: hashObject,
-        });
+        } satisfies HashComparisonEvent);
       }
     } else {
       // Hashes match - reset consecutive desync counter
@@ -2365,7 +2404,7 @@ export class GameRoom {
       this.io.to(this.roomId).emit('hash-comparison', {
         tick,
         hashes: hashObject,
-      });
+      } satisfies HashComparisonEvent);
     }
   }
 
@@ -2387,7 +2426,7 @@ export class GameRoom {
         hashes,
       },
       winner: null,
-    });
+    } satisfies MatchEndEvent);
 
     // Emit match-ended event
     this.eventEmitter('match-ended', this.id, 'desync');

@@ -7,7 +7,7 @@ import {
 } from '../src/SocketManager.js';
 import {
   MatchLogError,
-  type LogChunk,
+  type MatchLogChunkEvent,
   type ServerShutdownEvent,
 } from '../src/index.js';
 
@@ -143,7 +143,7 @@ const chunk = (
   toTick: number,
   done: boolean,
   requestId: string
-): LogChunk => ({
+): MatchLogChunkEvent => ({
   matchId: 'match-1',
   requestId,
   fromTick,
@@ -164,7 +164,7 @@ function matchLogCalls(socket: MockSocket): { requestId: string }[] {
 describe('fetchMatchLog', () => {
   it('yields chunks in order and finishes on done', async () => {
     const { client, socket } = clientWithSocket();
-    const collected: LogChunk[] = [];
+    const collected: MatchLogChunkEvent[] = [];
     const done = (async () => {
       for await (const item of client.fetchMatchLog(0)) {
         collected.push(item);
@@ -327,7 +327,7 @@ describe('fetchMatchLog', () => {
     });
     expect(socket.listenerCount('match-log-chunk')).toBe(0);
 
-    const collected: LogChunk[] = [];
+    const collected: MatchLogChunkEvent[] = [];
     const again = (async () => {
       for await (const item of client.fetchMatchLog(0)) {
         collected.push(item);
@@ -360,7 +360,7 @@ describe('fetchMatchLog', () => {
     });
     const firstId = matchLogCalls(socket)[0]!.requestId;
 
-    const collected: LogChunk[] = [];
+    const collected: MatchLogChunkEvent[] = [];
     const second = (async () => {
       for await (const item of client.fetchMatchLog(0)) {
         collected.push(item);

@@ -16,10 +16,12 @@ import {
   DEFAULT_INPUT_DELAY_TICKS,
   ENGINE_SNAPSHOT_FORMAT,
   REPLAY_FORMAT,
+} from '../constants.js';
+import {
   SYSTEM_PLAYER_ID,
   botPlayerId,
   isBotPlayerId,
-} from '../constants.js';
+} from '@phalanx-engine/protocol';
 import {
   isCommandRejection,
   type CommandEnvelope,

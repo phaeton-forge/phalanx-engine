@@ -12,7 +12,7 @@ import {
 import type {
   MatchFoundEvent,
   MatchLogChunkEvent,
-  MatchResumeStateEvent,
+  MatchResumeState,
   PhalanxConfig,
   PlayerCommand,
   SessionTokenEvent,
@@ -304,10 +304,7 @@ describe('match-resume', () => {
     next.on('reconnect-state', () => order.push('reconnect-state'));
     next.on('session-token', () => order.push('session-token'));
     next.on('match-resume-state', () => order.push('match-resume-state'));
-    const resumed = onceEvent<MatchResumeStateEvent>(
-      next,
-      'match-resume-state'
-    );
+    const resumed = onceEvent<MatchResumeState>(next, 'match-resume-state');
     next.emit('match-resume', {
       token: hostToken,
       haveTick: 2,
@@ -482,7 +479,7 @@ describe('match-resume', () => {
     mismatch.emit('match-resume', { token: opened.hostToken, haveTick: 0 });
     expect((await missing).reason).toBe('build-mismatch');
 
-    const ok = onceEvent<MatchResumeStateEvent>(mismatch, 'match-resume-state');
+    const ok = onceEvent<MatchResumeState>(mismatch, 'match-resume-state');
     mismatch.emit('match-resume', {
       token: opened.hostToken,
       haveTick: -1,
@@ -506,10 +503,7 @@ describe('match-resume', () => {
       buildId: 'build-b',
     });
     expect((await looseMismatch).reason).toBe('build-mismatch');
-    const allowed = onceEvent<MatchResumeStateEvent>(
-      other,
-      'match-resume-state'
-    );
+    const allowed = onceEvent<MatchResumeState>(other, 'match-resume-state');
     other.emit('match-resume', {
       token: looseMatch.hostToken,
       haveTick: -1,
@@ -653,7 +647,7 @@ describe('match-resume', () => {
       opened.host,
       'session-superseded'
     );
-    const state = onceEvent<MatchResumeStateEvent>(next, 'match-resume-state');
+    const state = onceEvent<MatchResumeState>(next, 'match-resume-state');
     next.emit('match-resume', { token: opened.hostToken, haveTick: -1 });
     await state;
     expect((await replaced).matchId).toBe(opened.matchId);
@@ -738,7 +732,7 @@ describe('match-resume', () => {
     const { server, url } = await startServer();
     const opened = await openMatch(url);
     const next = await connect(url);
-    const state = onceEvent<MatchResumeStateEvent>(next, 'match-resume-state');
+    const state = onceEvent<MatchResumeState>(next, 'match-resume-state');
     next.emit('match-resume', { token: opened.hostToken, haveTick: -1 });
     await state;
 
@@ -818,10 +812,7 @@ describe('match-resume', () => {
     expect(issued.slot).toBe(0);
 
     const next = await connect(url);
-    const resumed = onceEvent<MatchResumeStateEvent>(
-      next,
-      'match-resume-state'
-    );
+    const resumed = onceEvent<MatchResumeState>(next, 'match-resume-state');
     next.emit('match-resume', { token: issued.token, haveTick: -1 });
     const state = await resumed;
     expect(state.matchId).toBe(waited.matchId);
@@ -869,10 +860,7 @@ describe('match-resume', () => {
     present.host.disconnect();
     await presentGone;
     const alone = await connect(url);
-    const aloneState = onceEvent<MatchResumeStateEvent>(
-      alone,
-      'match-resume-state'
-    );
+    const aloneState = onceEvent<MatchResumeState>(alone, 'match-resume-state');
     alone.emit('match-resume', {
       token: present.hostToken,
       haveTick: -1,
@@ -890,7 +878,7 @@ describe('match-resume', () => {
     crowded.host.disconnect();
     await new Promise((resolve) => setTimeout(resolve, 30));
     const returned = await connect(url);
-    const returnedState = onceEvent<MatchResumeStateEvent>(
+    const returnedState = onceEvent<MatchResumeState>(
       returned,
       'match-resume-state'
     );
@@ -932,7 +920,7 @@ describe('match-resume', () => {
     host.disconnect();
 
     const next = await connect(url);
-    const state = onceEvent<MatchResumeStateEvent>(next, 'match-resume-state');
+    const state = onceEvent<MatchResumeState>(next, 'match-resume-state');
     next.emit('match-resume', { token: issued.token, haveTick: -1 });
     const resumed = await state;
     expect(resumed.matchId).toBe(match.matchId);
@@ -1055,7 +1043,7 @@ describe('match-resume', () => {
       guestId: 'player4',
     });
     const next = await connect(url);
-    const state = onceEvent<MatchResumeStateEvent>(next, 'match-resume-state');
+    const state = onceEvent<MatchResumeState>(next, 'match-resume-state');
     next.emit('match-resume', { token: matchA.hostToken, haveTick: -1 });
     const resumed = await state;
     expect(resumed.matchId).toBe(matchA.matchId);

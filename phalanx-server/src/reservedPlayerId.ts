@@ -1,4 +1,4 @@
-import { isBotPlayerId, SYSTEM_PLAYER_ID } from '@phalanx-engine/runtime';
+import { isBotPlayerId, SYSTEM_PLAYER_ID } from '@phalanx-engine/protocol';
 
 /**
  * `system` and `bot:<slot>` are produced by the server sim. A client

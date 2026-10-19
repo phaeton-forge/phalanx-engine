@@ -34,16 +34,22 @@ import type {
   GameResumedEvent,
   PhalanxError,
   ConnectionState,
-  PlayerCommand,
+  SubmittedCommand,
   SocketTransport,
-  LogChunk,
+  MatchLogChunkEvent,
   MatchLogErrorEvent,
   ServerShutdownEvent,
   MatchResumeState,
-  MatchResumeWireErrorReason,
+  MatchResumeErrorReason,
   SessionSupersededEvent,
   SessionTokenEvent,
 } from './types.js';
+import type {
+  MatchLogCancelRequest,
+  MatchLogRequest,
+  StateHashEvent,
+  SubmitCommandsEvent,
+} from '@phalanx-engine/protocol';
 
 /**
  * Configuration for SocketManager
@@ -510,7 +516,7 @@ export class SocketManager {
    */
   async submitCommands(
     tick: number,
-    commands: PlayerCommand[]
+    commands: SubmittedCommand[]
   ): Promise<SubmitCommandsAck> {
     this.ensureConnected();
 
@@ -519,16 +525,22 @@ export class SocketManager {
         resolve(ack);
       });
 
-      this.socket!.emit('submit-commands', { tick, commands });
+      this.socket!.emit('submit-commands', {
+        tick,
+        commands,
+      } satisfies SubmitCommandsEvent);
     });
   }
 
   /**
    * Submit commands without acknowledgment (fire and forget)
    */
-  submitCommandsAsync(tick: number, commands: PlayerCommand[]): void {
+  submitCommandsAsync(tick: number, commands: SubmittedCommand[]): void {
     this.ensureConnected();
-    this.socket!.emit('submit-commands', { tick, commands });
+    this.socket!.emit('submit-commands', {
+      tick,
+      commands,
+    } satisfies SubmitCommandsEvent);
   }
 
   /**
@@ -538,7 +550,7 @@ export class SocketManager {
    */
   sendStateHash(tick: number, hash: string): void {
     this.ensureConnected();
-    this.socket!.emit('state-hash', { tick, hash });
+    this.socket!.emit('state-hash', { tick, hash } satisfies StateHashEvent);
   }
 
   /**
@@ -578,7 +590,7 @@ export class SocketManager {
     matchId: string,
     fromTick: number,
     maxTicks?: number
-  ): AsyncIterable<LogChunk> {
+  ): AsyncIterable<MatchLogChunkEvent> {
     this.ensureConnected();
     const socket = this.socket!;
     this.matchLogRequestSeq += 1;
@@ -586,9 +598,9 @@ export class SocketManager {
 
     this.activeMatchLog?.abort();
 
-    const pending: LogChunk[] = [];
+    const pending: MatchLogChunkEvent[] = [];
     let waiter: {
-      resolve: (chunk: LogChunk) => void;
+      resolve: (chunk: MatchLogChunkEvent) => void;
       reject: (error: Error) => void;
     } | null = null;
     const logState: { error: MatchLogError | null } = { error: null };
@@ -617,7 +629,7 @@ export class SocketManager {
       if (this.activeMatchLog === session) this.activeMatchLog = null;
     };
     const takeWaiter = (): {
-      resolve: (chunk: LogChunk) => void;
+      resolve: (chunk: MatchLogChunkEvent) => void;
       reject: (error: Error) => void;
     } | null => {
       const current = waiter;
@@ -625,7 +637,7 @@ export class SocketManager {
       return current;
     };
 
-    const onChunk = (chunk: LogChunk): void => {
+    const onChunk = (chunk: MatchLogChunkEvent): void => {
       if (chunk.requestId !== requestId) return;
       if (chunk.matchId !== matchId) return;
       if (waiter) {
@@ -659,7 +671,7 @@ export class SocketManager {
         }, 0);
       });
 
-    const generator = (async function* (): AsyncGenerator<LogChunk> {
+    const generator = (async function* (): AsyncGenerator<MatchLogChunkEvent> {
       try {
         const initialError = logState.error;
         if (initialError !== null) {
@@ -674,7 +686,7 @@ export class SocketManager {
           fromTick,
           requestId,
           ...(maxTicks !== undefined ? { maxTicks } : {}),
-        });
+        } satisfies MatchLogRequest);
 
         let first = true;
         while (true) {
@@ -691,7 +703,7 @@ export class SocketManager {
           const chunk =
             pending.length > 0
               ? pending.shift()!
-              : await new Promise<LogChunk>((resolve, reject) => {
+              : await new Promise<MatchLogChunkEvent>((resolve, reject) => {
                   const queued = logState.error;
                   if (queued !== null) {
                     reject(queued);
@@ -717,7 +729,9 @@ export class SocketManager {
         }
         if (started && !completed && !cancelSent && socket.connected) {
           cancelSent = true;
-          socket.emit('match-log-cancel', { requestId });
+          socket.emit('match-log-cancel', {
+            requestId,
+          } satisfies MatchLogCancelRequest);
         }
         if (started) {
           socket.off('match-log-chunk', onChunk);
@@ -729,7 +743,7 @@ export class SocketManager {
     })();
 
     return {
-      [Symbol.asyncIterator](): AsyncIterator<LogChunk> {
+      [Symbol.asyncIterator](): AsyncIterator<MatchLogChunkEvent> {
         return {
           next: () => generator.next(),
           throw: (error: unknown) => generator.throw(error),
@@ -1120,7 +1134,7 @@ export class SocketManager {
   }
 }
 
-const MATCH_RESUME_WIRE_REASONS: readonly MatchResumeWireErrorReason[] = [
+const MATCH_RESUME_WIRE_REASONS: readonly MatchResumeErrorReason[] = [
   'invalid',
   'expired',
   'match-ended',
@@ -1129,7 +1143,7 @@ const MATCH_RESUME_WIRE_REASONS: readonly MatchResumeWireErrorReason[] = [
 
 function isMatchResumeWireReason(
   value: unknown
-): value is MatchResumeWireErrorReason {
+): value is MatchResumeErrorReason {
   return (
     typeof value === 'string' &&
     (MATCH_RESUME_WIRE_REASONS as readonly string[]).includes(value)

@@ -26,7 +26,7 @@ import type {
   PhalanxClientEvents,
   PhalanxAuthState,
   PhalanxAuthUser,
-  PlayerCommand,
+  SubmittedCommand,
   MatchFoundEvent,
   CountdownEvent,
   GameStartEvent,
@@ -41,7 +41,7 @@ import type {
   PauseHandler,
   RoomCreatedEvent,
   RoomRecoveredEvent,
-  LogChunk,
+  MatchLogChunkEvent,
   ServerShutdownEvent,
   MatchResumeState,
   SessionTokenEvent,
@@ -125,7 +125,7 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
   };
 
   // Pending commands queue
-  private pendingCommands: PlayerCommand[] = [];
+  private pendingCommands: SubmittedCommand[] = [];
 
   // ITickFrameProvider pause/resume handler arrays
   private pauseHandlers: PauseHandler[] = [];
@@ -802,7 +802,7 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
   fetchMatchLog(
     fromTick: number,
     options?: { maxTicks?: number }
-  ): AsyncIterable<LogChunk> {
+  ): AsyncIterable<MatchLogChunkEvent> {
     if (this.currentMatchId === null) {
       throw new Error('Not in a match');
     }
@@ -918,7 +918,7 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
    */
   async submitCommands(
     tick: number,
-    commands: PlayerCommand[]
+    commands: SubmittedCommand[]
   ): Promise<SubmitCommandsAck> {
     this.ensurePlaying();
     return this.socketManager.submitCommands(tick, commands);
@@ -929,7 +929,7 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
    * @param tick The tick number these commands are for
    * @param commands Array of commands to submit
    */
-  submitCommandsAsync(tick: number, commands: PlayerCommand[]): void {
+  submitCommandsAsync(tick: number, commands: SubmittedCommand[]): void {
     this.ensurePlaying();
     this.socketManager.submitCommandsAsync(tick, commands);
   }

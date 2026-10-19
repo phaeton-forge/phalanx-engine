@@ -28,6 +28,7 @@ export type {
   CommandsBatchEvent,
   TickCommands,
   SubmitCommandsEvent,
+  SubmittedCommand,
   PlayerInfo,
   MatchInfo,
   GameMode,
@@ -49,11 +50,11 @@ export type {
   SessionConfig,
   ReconnectConfig,
   MatchResumeErrorReason,
-  MatchResumeStateEvent,
+  MatchResumeState,
+  MatchState,
   SessionTokenEvent,
   SessionSupersededEvent,
   StateHashEvent,
-  DesyncDetectedEvent,
   PhalanxEventType,
   PhalanxEventHandlers,
   // Auth types
@@ -82,7 +83,8 @@ export type {
   SimHostConfig,
   ServerRoomMatchConfig,
 } from './types/index.js';
-export type { AnyGameDefinition, SlotConfig } from '@phalanx-engine/runtime';
+export type { AnyGameDefinition } from '@phalanx-engine/runtime';
+export type { SlotConfig } from '@phalanx-engine/protocol';
 
 // Constants
 export {

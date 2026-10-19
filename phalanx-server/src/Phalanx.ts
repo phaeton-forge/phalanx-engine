@@ -17,16 +17,25 @@ import {
 } from '@phalanx-engine/runtime';
 import { reservedPlayerMessage } from './reservedPlayerId.js';
 import type {
+  MatchLogChunkEvent,
+  MatchLogErrorEvent,
+  MatchResumeErrorReason,
+  MatchResumeState,
+  PlayerCommand,
+  ReconnectStatusEvent,
+  ServerShutdownEvent,
+  StateHashEvent,
+  RoomErrorEvent,
+  SubmitCommandsAck,
+  SubmitCommandsEvent,
+} from '@phalanx-engine/protocol';
+import type {
   PhalanxConfig,
   MatchInfo,
   RoomCreatedEvent,
-  PlayerCommand,
   PhalanxEventType,
   PhalanxEventHandlers,
-  SubmitCommandsEvent,
   MatchArchive,
-  MatchResumeErrorReason,
-  MatchResumeStateEvent,
   EndMatchResult,
 } from './types/index.js';
 import { validateConfig } from './config/validation.js';
@@ -603,7 +612,7 @@ export class Phalanx extends EventEmitter {
 
   private async performShutdown(reason: string): Promise<void> {
     const matchIds = this.getActiveMatches().map((match) => match.id);
-    const payload = { reason, matchIds };
+    const payload = { reason, matchIds } satisfies ServerShutdownEvent;
     if (this.io) {
       for (const matchId of matchIds) {
         this.io.to(matchId).emit('server-shutdown', payload);
@@ -883,7 +892,9 @@ export class Phalanx extends EventEmitter {
         }) => {
           const reserved = reservedPlayerMessage(data.playerId);
           if (reserved !== null) {
-            socket.emit('room-error', { message: reserved });
+            socket.emit('room-error', {
+              message: reserved,
+            } satisfies RoomErrorEvent);
             return;
           }
           playerId = data.playerId;
@@ -910,7 +921,9 @@ export class Phalanx extends EventEmitter {
         }) => {
           const reserved = reservedPlayerMessage(data.playerId);
           if (reserved !== null) {
-            socket.emit('room-error', { message: reserved });
+            socket.emit('room-error', {
+              message: reserved,
+            } satisfies RoomErrorEvent);
             return;
           }
           playerId = data.playerId;
@@ -954,7 +967,9 @@ export class Phalanx extends EventEmitter {
         // `room-cancel` would act on a playerId the socket was
         // never authenticated to own.
         if (!payload || typeof payload !== 'object') {
-          socket.emit('room-error', { message: 'Room expired' });
+          socket.emit('room-error', {
+            message: 'Room expired',
+          } satisfies RoomErrorEvent);
           return;
         }
         const data = payload as {
@@ -963,16 +978,22 @@ export class Phalanx extends EventEmitter {
           code?: unknown;
         };
         if (typeof data.code !== 'string' || data.code.length === 0) {
-          socket.emit('room-error', { message: 'Room expired' });
+          socket.emit('room-error', {
+            message: 'Room expired',
+          } satisfies RoomErrorEvent);
           return;
         }
         if (typeof data.playerId !== 'string' || data.playerId.length === 0) {
-          socket.emit('room-error', { message: 'Room expired' });
+          socket.emit('room-error', {
+            message: 'Room expired',
+          } satisfies RoomErrorEvent);
           return;
         }
         const reserved = reservedPlayerMessage(data.playerId);
         if (reserved !== null) {
-          socket.emit('room-error', { message: reserved });
+          socket.emit('room-error', {
+            message: reserved,
+          } satisfies RoomErrorEvent);
           return;
         }
         const recovered = this.privateRooms!.recoverRoom(
@@ -1018,7 +1039,7 @@ export class Phalanx extends EventEmitter {
             tick,
             accepted: false,
             reason: 'Invalid data',
-          });
+          } satisfies SubmitCommandsAck);
           return;
         }
 
@@ -1029,7 +1050,7 @@ export class Phalanx extends EventEmitter {
             tick,
             accepted: false,
             reason: 'Not in a match',
-          });
+          } satisfies SubmitCommandsAck);
           return;
         }
 
@@ -1039,7 +1060,7 @@ export class Phalanx extends EventEmitter {
             tick,
             accepted: false,
             reason: gameRoom ? 'Not in a match' : 'Match not found',
-          });
+          } satisfies SubmitCommandsAck);
           return;
         }
 
@@ -1079,7 +1100,7 @@ export class Phalanx extends EventEmitter {
           ...(result.invalidCommands && {
             rejectedCount: result.invalidCommands.length,
           }),
-        });
+        } satisfies SubmitCommandsAck);
       });
 
       socket.on('match-snapshot-request', (payload: unknown) => {
@@ -1092,7 +1113,7 @@ export class Phalanx extends EventEmitter {
       });
 
       // Handle state-hash for desync detection (2.1.3)
-      socket.on('state-hash', (data: { tick: number; hash: string }) => {
+      socket.on('state-hash', (data: StateHashEvent) => {
         if (!playerId) return;
 
         const { tick, hash } = data;
@@ -1173,19 +1194,21 @@ export class Phalanx extends EventEmitter {
             socket.emit('reconnect-status', {
               success: false,
               reason: 'session-token-required',
-            });
+            } satisfies ReconnectStatusEvent);
             return;
           }
           playerId = data.playerId;
           const gameRoom = this.findMatch(data.matchId);
           if (gameRoom) {
             const success = gameRoom.handleReconnect(playerId, socket.id);
-            socket.emit('reconnect-status', { success });
+            socket.emit('reconnect-status', {
+              success,
+            } satisfies ReconnectStatusEvent);
           } else {
             socket.emit('reconnect-status', {
               success: false,
               reason: 'Match not found',
-            });
+            } satisfies ReconnectStatusEvent);
           }
         }
       );
@@ -1223,7 +1246,7 @@ export class Phalanx extends EventEmitter {
         ...nonEmptyMatchId(matchId),
         ...requestField,
         reason,
-      });
+      } satisfies MatchLogErrorEvent);
     };
 
     if (!parsed.ok) {
@@ -1272,7 +1295,7 @@ export class Phalanx extends EventEmitter {
         toTick,
         entries,
         done,
-      });
+      } satisfies MatchLogChunkEvent);
       return true;
     };
 
@@ -1338,7 +1361,9 @@ export class Phalanx extends EventEmitter {
    */
   private handleMatchResume(socket: Socket, payload: unknown): string | null {
     const fail = (reason: MatchResumeErrorReason): null => {
-      socket.emit('match-resume-error', { reason });
+      socket.emit('match-resume-error', {
+        reason,
+      } satisfies { reason: MatchResumeErrorReason });
       return null;
     };
 
@@ -1390,7 +1415,7 @@ export class Phalanx extends EventEmitter {
     }
 
     const info = gameRoom.getMatchInfo();
-    const response: MatchResumeStateEvent = {
+    const response: MatchResumeState = {
       matchId: verified.claims.matchId,
       slot: gameRoom.getPlayerSlot(tokenPlayerId),
       currentTick: info.currentTick,
