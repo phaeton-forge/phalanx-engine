@@ -16,9 +16,12 @@
   "scripts": {
     "build": "tsc",
     "clean": "rm -rf dist",
-    "test": "vitest run && node --input-type=module -e \"await import('./dist/index.js')\""
+    "test": "tsc -p tsconfig.sim-hook.json && vitest run && node --input-type=module -e \"await import('./dist/index.js')\""
   },
   "devDependencies": {
+    "@phalanx-engine/runtime": "workspace:*",
+    "@phalanx-engine/server": "workspace:*",
+    "@types/node": "^20.0.0",
     "typescript": "~5.9.3",
     "vitest": "^1.0.0"
   },

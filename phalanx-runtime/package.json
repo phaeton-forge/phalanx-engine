@@ -14,6 +14,10 @@
     "./advanced": {
       "types": "./dist/advanced/index.d.ts",
       "import": "./dist/advanced/index.js"
+    },
+    "./server": {
+      "types": "./dist/server/index.d.ts",
+      "import": "./dist/server/index.js"
     }
   },
   "dependencies": {
@@ -27,7 +31,7 @@
     "rebuild": "npm run clean && npm run build",
     "pretest": "pnpm --filter @phalanx-engine/game build",
     "typecheck": "tsc -p tsconfig.test.json",
-    "test": "tsc -p tsconfig.test.json && vitest run && node --input-type=module -e \"await import('./dist/index.js'); await import('./dist/advanced/index.js')\"",
+    "test": "tsc -p tsconfig.test.json && vitest run && node --input-type=module -e \"await import('./dist/index.js'); await import('./dist/advanced/index.js'); await import('./dist/server/index.js')\"",
     "bench": "node --expose-gc --import tsx bench/snapshot.bench.ts",
     "build:xxh64": "node scripts/build-xxh64-wasm.mjs",
     "prepublishOnly": "npm run build"
@@ -48,7 +52,10 @@
     "@phalanx-engine/ecs": "workspace:*",
     "@phalanx-engine/math": "workspace:*",
     "@phalanx-engine/physics": "workspace:*",
+    "@phalanx-engine/server": "workspace:*",
+    "@types/node": "^20.0.0",
     "fake-indexeddb": "^6.2.2",
+    "socket.io-client": "^4.7.0",
     "tsx": "^4.23.15",
     "typescript": "~5.9.3",
     "vitest": "^1.0.0",

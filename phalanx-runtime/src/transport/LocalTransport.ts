@@ -7,10 +7,9 @@ import type {
   Unsubscribe,
 } from '@phalanx-engine/ecs';
 import { DEFAULT_CLIENT_SNAPSHOT_EVERY_TICKS } from '../constants.js';
-import type { WireCommand } from '../game/commands.js';
+import type { JsonValue } from '../game/commands.js';
 import { wallClock } from '../host/wallClock.js';
 import type { MatchStore } from '../persistence/MatchStore.js';
-import type { Transport, TransportKind } from './Transport.js';
 
 /** How far past the next tick a submit may target (default). */
 export const DEFAULT_MAX_AHEAD_TICKS = 8;
@@ -64,8 +63,8 @@ interface SlotBinding {
  * by player id. {@link stepped} does not start a timer; tests advance it
  * with {@link step}.
  */
-export class LocalTransport implements Transport {
-  public readonly kind: TransportKind = 'local';
+export class LocalTransport {
+  public readonly kind = 'local' as const;
   public readonly isStepped: boolean;
   private readonly tickRateValue: number;
   private readonly tickDuration: number;
@@ -226,7 +225,10 @@ export class LocalTransport implements Transport {
   public submit(
     targetTick: number,
     slot: number,
-    commands: readonly WireCommand[]
+    commands: readonly {
+      readonly type: string;
+      readonly data: { readonly q: number; readonly p: JsonValue };
+    }[]
   ): void {
     if (!Number.isInteger(targetTick) || targetTick < 0) {
       throw new Error(

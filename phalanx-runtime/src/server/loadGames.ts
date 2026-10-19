@@ -1,8 +1,20 @@
 import { pathToFileURL } from 'node:url';
 import { isAbsolute } from 'node:path';
-import type { AnyGameDefinition } from '@phalanx-engine/runtime';
-import type { GameModuleSpec, PhalanxConfig } from '../types/index.js';
-import { ENGINE_MATCH_CONFIG_KEYS } from './serverMatch.js';
+import type { AnyGameDefinition } from '../game/GameDefinition.js';
+import type { GameModuleSpec, ServerSimConfig } from './serverSimConfig.js';
+
+/** Never copied from a client `matchConfig` into the runner config. */
+export const ENGINE_MATCH_CONFIG_KEYS = new Set([
+  'matchId',
+  'gameId',
+  'simVersion',
+  'seed',
+  'side',
+  'slots',
+  'inputDelayTicks',
+  'simMode',
+  'absencePolicy',
+]);
 
 export interface RegisteredGame {
   readonly id: string;
@@ -80,32 +92,15 @@ function readConfigKeys(entry: GameModuleSpec): readonly string[] {
   return allowed;
 }
 
-function assertTick(config: PhalanxConfig, game: RegisteredGame): void {
-  const entry = config.gameTypes?.find((item) => item.gameType === game.id);
-  const tickRate = entry?.tickRate ?? config.tickRate;
-  const tickMode = entry?.tickMode ?? config.tickMode ?? 'continuous';
-  if (tickRate !== game.tickRate) {
-    throw new Error(
-      `game '${game.id}' tickRate ${String(game.tickRate)} does not match server tickRate ${String(tickRate)}`
-    );
-  }
-  if (tickMode !== 'continuous') {
-    throw new Error(
-      `game '${game.id}' requires continuous tickMode, got '${tickMode}'`
-    );
-  }
-}
-
 /**
- * Import every configured game on the relay so tick rates can be checked
- * and human commands can be prefiltered. The worker imports the module
- * again; the definition object is not posted across the thread.
+ * Import every configured game so the host can run it. The worker imports
+ * the module again; the definition object is not posted across the thread.
  */
 export async function loadGameCatalog(
-  config: PhalanxConfig
+  config: ServerSimConfig
 ): Promise<RegisteredGame[]> {
-  const games = config.games ?? [];
-  const mode = config.simHost?.mode ?? 'worker';
+  const games = config.games;
+  const mode = config.mode ?? 'worker';
   const catalog: RegisteredGame[] = [];
   const seen = new Set<string>();
   for (const entry of games) {
@@ -132,7 +127,7 @@ export async function loadGameCatalog(
     } else if (isDefinition(entry)) {
       if (mode !== 'inProcess') {
         throw new Error(
-          'worker simHost requires each game as { module, export? }'
+          'worker mode requires each game as { module, export? }'
         );
       }
       registered = {
@@ -153,7 +148,6 @@ export async function loadGameCatalog(
       throw new Error(`duplicate game id '${registered.id}'`);
     }
     seen.add(registered.id);
-    assertTick(config, registered);
     catalog.push(registered);
   }
   return catalog;

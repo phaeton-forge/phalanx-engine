@@ -14,6 +14,13 @@ Slot types (`HumanSlotConfig`, `BotSlotConfig`, `SlotConfig`,
 `BotHostSide`) and `ServerRoomMatchConfig` are defined here.
 `SimMode` and `MatchConfigBase` stay in the runtime.
 
+`ServerSimHook` is the only type the relay uses to run a simulation.
+`createServerSim` (runtime `./server`) returns one. The hook's types
+(`ServerSimInfo`, `ServerSimGame`, `ServerSimMatchSpec`, `ServerSimRoom`,
+`ServerSimMatch`, `ServerSimEvents`, `ServerDesyncEvent`, `MatchSnapshot`,
+`MatchSnapshotRequest`, `EndMatchResult`) and
+`DEFAULT_INPUT_DELAY_TICKS` (`2`) live here. They carry no engine types.
+
 `PlayerCommand` is the server-stamped command (`type`, `tick`, `playerId`,
 `data`, optional `sequence`). `SubmittedCommand` is what a client puts in
 `submit-commands` (`type`, `data`, optional `sequence`).

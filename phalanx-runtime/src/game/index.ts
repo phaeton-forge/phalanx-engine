@@ -15,8 +15,6 @@ export type {
   GameCommand,
   StampedCommand,
   CommandRejection,
-  CommandEnvelope,
-  WireCommand,
 } from './commands.js';
 export type {
   SimMode,

@@ -40,6 +40,8 @@ describe('wire types shared by client and server', () => {
     expectTypeOf<Client.MatchLogErrorEvent>().toEqualTypeOf<Protocol.MatchLogErrorEvent>();
     expectTypeOf<Server.MatchLogErrorEvent>().toEqualTypeOf<Protocol.MatchLogErrorEvent>();
     expectTypeOf<Server.MatchResumeErrorReason>().toEqualTypeOf<Protocol.MatchResumeErrorReason>();
+    expectTypeOf<Protocol.MatchLogErrorReason>().toMatchTypeOf<Client.MatchLogFailureReason>();
+    expectTypeOf<Protocol.MatchResumeErrorReason>().toMatchTypeOf<Client.MatchResumeFailureReason>();
     expectTypeOf<Client.MatchResumeState>().toEqualTypeOf<Protocol.MatchResumeState>();
     expectTypeOf<Server.MatchResumeState>().toEqualTypeOf<Protocol.MatchResumeState>();
   });

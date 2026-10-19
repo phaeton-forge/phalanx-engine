@@ -7,10 +7,14 @@
 > The package is `private` until the synchronized 0.3.0 release.
 
 Isomorphic match runtime for Phalanx games (no DOM, no sockets). A game
-describes itself as one `GameDefinition`; `MatchRunner` drives it from any
-`Transport`, records the command log, computes state digests and restores
-snapshots. The game-facing imports are re-exported from
-`@phalanx-engine/game`.
+describes itself as one `GameDefinition`; `MatchRunner` drives it from a
+transport, records the command log, computes state digests and restores
+snapshots. Games pass a `LocalTransport`. The port types (`Transport`,
+`TransportKind`, `TransportJoin`, `TransportCatchUp`, `CommandEnvelope`,
+`TransportCommand`) are `@phalanx-engine/runtime/advanced`. Server
+simulation is `@phalanx-engine/runtime/server` (`createServerSim`,
+`ServerSimConfig`, `GameModuleSpec`). The game-facing imports are
+re-exported from `@phalanx-engine/game` and `@phalanx-engine/game/server`.
 
 ## Two modes
 
@@ -121,8 +125,9 @@ not throw. `i64` is a canonical decimal string on the wire.
   id is already registered. `world.restore` does not.
 - **`BotPolicy`**: a bot is a command producer for its slot, not a
   simulation system. Its commands enter the same log as humans'.
-- **`Transport`**: extends ecs `ITickFrameProvider` with `submit` and
-  optional network methods. `LocalTransport` is the offline transport.
+- **Transport** (advanced): extends ecs `ITickFrameProvider` with `submit`
+  and optional network methods. `LocalTransport` on the root is the
+  offline transport. `submit` takes `TransportCommand`.
 - **`onStart`** receives the engine-owned world. Call `ctx.open()` before
   spawning pooled entities (it prewarms and calls `world.start()`). The
   engine calls `open` if `onStart` returns without it. Return a custom

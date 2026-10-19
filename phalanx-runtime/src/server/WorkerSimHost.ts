@@ -14,7 +14,9 @@ export function simWorkersSpawned(): number {
 export function resolveSimWorkerPath(): string {
   const beside = fileURLToPath(new URL('./simWorker.js', import.meta.url));
   if (existsSync(beside)) return beside;
-  return fileURLToPath(new URL('../../dist/sim/simWorker.js', import.meta.url));
+  return fileURLToPath(
+    new URL('../../dist/server/simWorker.js', import.meta.url)
+  );
 }
 
 function errorText(error: unknown): string {

@@ -33,10 +33,58 @@ export {
 } from '@phalanx-engine/protocol';
 export { NotImplementedError } from './notImplemented.js';
 
-export * from './game/index.js';
+export { defineGame } from './game/defineGame.js';
+export { defineCommands } from './game/defineCommands.js';
+export type {
+  CommandFieldSpec,
+  CommandFieldType,
+  CommandFromSpec,
+  CommandSchemaHash,
+  CommandSpec,
+  DefineCommandsOptions,
+  DefinedCommands,
+} from './game/defineCommands.js';
+export { rejectCommand, isCommandRejection } from './game/commands.js';
+export type {
+  JsonValue,
+  GameCommand,
+  StampedCommand,
+  CommandRejection,
+} from './game/commands.js';
+export type {
+  SimMode,
+  BotHostSide,
+  HumanSlotConfig,
+  BotSlotConfig,
+  SlotConfig,
+  MatchConfigBase,
+  SlotInfo,
+  BotSlotInfo,
+} from './game/MatchConfig.js';
+export type {
+  StartContext,
+  GameContext,
+  SimWorld,
+  MatchOutcome,
+  MatchOutcomeWin,
+  MatchOutcomeDraw,
+  CommandHandlerMap,
+  OnCommand,
+  GameComponent,
+  GameDefinition,
+  AnyGameDefinition,
+  ConfigOf,
+  CommandOf,
+  SimOf,
+  StampedCommandOf,
+} from './game/GameDefinition.js';
 export * from './state/index.js';
 export * from './runner/index.js';
-export * from './transport/index.js';
+export { LocalTransport } from './transport/LocalTransport.js';
+export type {
+  LocalTransportOptions,
+  PersistenceFlushReason,
+} from './transport/LocalTransport.js';
 export * from './persistence/index.js';
 export { defineComponent } from './world/defineComponent.js';
 export type {

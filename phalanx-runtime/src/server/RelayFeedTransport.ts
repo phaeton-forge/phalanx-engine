@@ -5,14 +5,14 @@ import type {
   TickHandler,
   Unsubscribe,
 } from '@phalanx-engine/ecs';
-import type { WireCommand } from '@phalanx-engine/runtime';
-import type { Transport, TransportKind } from '@phalanx-engine/runtime';
+import type { TransportCommand } from '../game/commands.js';
+import type { Transport, TransportKind } from '../transport/Transport.js';
 import type { SimCommand } from './messages.js';
 
-export interface SubmittedBotCommand {
+interface SubmittedBotCommand {
   readonly tick: number;
   readonly slot: number;
-  readonly commands: readonly WireCommand[];
+  readonly commands: readonly TransportCommand[];
 }
 
 /**
@@ -57,7 +57,7 @@ export class RelayFeedTransport implements Transport {
   public submit(
     targetTick: number,
     slot: number,
-    commands: readonly WireCommand[]
+    commands: readonly TransportCommand[]
   ): void {
     this.pendingSubmit.push({
       tick: targetTick,

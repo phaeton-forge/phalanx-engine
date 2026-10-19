@@ -22,6 +22,7 @@ const PACKAGES = [
   '@phalanx-engine/client',
   '@phalanx-engine/server',
   '@phalanx-engine/runtime',
+  '@phalanx-engine/game',
 ];
 
 const HELLO_JS = `import { FP } from '@phalanx-engine/math';
@@ -31,6 +32,7 @@ import { defineAttribute } from '@phalanx-engine/abilities';
 import { PhalanxClient } from '@phalanx-engine/client';
 import { Phalanx } from '@phalanx-engine/server';
 import { defineGame } from '@phalanx-engine/runtime';
+import { createServerSim } from '@phalanx-engine/game/server';
 
 const value = FP.FromInt(1);
 if (value === undefined) process.exit(1);
@@ -40,6 +42,7 @@ if (typeof defineAttribute !== 'function') process.exit(1);
 if (typeof PhalanxClient !== 'function') process.exit(1);
 if (typeof Phalanx !== 'function') process.exit(1);
 if (typeof defineGame !== 'function') process.exit(1);
+if (typeof createServerSim !== 'function') process.exit(1);
 process.stdout.write('ok\\n');
 `;
 
@@ -50,6 +53,7 @@ import { defineAttribute } from '@phalanx-engine/abilities';
 import { PhalanxClient } from '@phalanx-engine/client';
 import { Phalanx } from '@phalanx-engine/server';
 import { defineGame } from '@phalanx-engine/runtime';
+import { createServerSim } from '@phalanx-engine/game/server';
 
 export const ready = [
   FP.FromInt(1),
@@ -59,6 +63,7 @@ export const ready = [
   PhalanxClient,
   Phalanx,
   defineGame,
+  createServerSim,
 ];
 `;
 
@@ -148,6 +153,111 @@ export async function runPackageSmoke(): Promise<void> {
       ],
       app
     );
+    await runLandsSmoke();
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+}
+
+const LANDS_PACKAGES = [
+  '@phalanx-engine/protocol',
+  '@phalanx-engine/math',
+  '@phalanx-engine/client',
+  '@phalanx-engine/server',
+];
+
+const LANDS_JS = `import { readdirSync } from 'node:fs';
+import { Phalanx } from '@phalanx-engine/server';
+import { PhalanxClient } from '@phalanx-engine/client';
+
+const installed = readdirSync('node_modules/@phalanx-engine');
+for (const banned of ['runtime', 'ecs', 'game']) {
+  if (installed.includes(banned)) {
+    throw new Error('lands install pulled ' + banned);
+  }
+}
+const server = new Phalanx({
+  port: 0,
+  gameTypes: [{ gameType: 'lands', tickRate: 20, tickMode: 'continuous' }],
+});
+await server.start();
+const client = new PhalanxClient({
+  serverUrl: 'http://127.0.0.1:' + String(server.getPort()),
+  playerId: 'lands',
+  username: 'lands',
+});
+await client.connect();
+client.disconnect();
+await server.stop();
+process.stdout.write('ok\\n');
+`;
+
+/** Relay-only install: client + server, no runtime, ecs, or game. */
+async function runLandsSmoke(): Promise<void> {
+  const root = mkdtempSync(join(tmpdir(), 'phalanx-lands-'));
+  try {
+    const extracted = new Map<string, string>();
+    for (const name of LANDS_PACKAGES) {
+      const packed = join(root, 'packed', safe(name));
+      const dir = join(root, 'src', safe(name));
+      mkdirSync(packed, { recursive: true });
+      mkdirSync(dir, { recursive: true });
+      await exec(
+        'pnpm',
+        ['--filter', name, 'pack', '--pack-destination', packed],
+        REPO_ROOT
+      );
+      const tarball = newestTarball(packed);
+      await exec('tar', ['-xzf', tarball, '-C', dir], root);
+      extracted.set(name, join(dir, 'package'));
+    }
+    const finalDir = join(root, 'final');
+    mkdirSync(finalDir, { recursive: true });
+    const tarballs = new Map<string, string>();
+    for (const name of LANDS_PACKAGES) {
+      const dir = extracted.get(name);
+      if (dir === undefined) throw new Error(`missing extract ${name}`);
+      const pkg = readPackage(join(dir, 'package.json'));
+      const version = pkg['version'];
+      if (typeof version !== 'string') throw new Error(`${name}: no version`);
+      tarballs.set(name, join(finalDir, `${safe(name)}-${version}.tgz`));
+    }
+    for (const name of LANDS_PACKAGES) {
+      const dir = extracted.get(name);
+      if (dir === undefined) continue;
+      const pkgPath = join(dir, 'package.json');
+      const pkg = readPackage(pkgPath);
+      rewriteDeps(pkg, tarballs);
+      delete pkg['scripts'];
+      writeFileSync(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`);
+      await exec('npm', ['pack', '--pack-destination', finalDir], dir);
+    }
+    const app = join(root, 'app');
+    mkdirSync(app, { recursive: true });
+    const dependencies: Record<string, string> = {};
+    for (const name of LANDS_PACKAGES) {
+      const tarball = tarballs.get(name);
+      if (tarball === undefined) throw new Error(`missing tarball ${name}`);
+      dependencies[name] = `file:${tarball}`;
+    }
+    writeFileSync(
+      join(app, 'package.json'),
+      `${JSON.stringify({ name: 'phalanx-lands', private: true, type: 'module', dependencies }, null, 2)}\n`
+    );
+    writeFileSync(join(app, 'lands.mjs'), LANDS_JS);
+    await exec(
+      'npm',
+      ['install', '--no-fund', '--no-audit', '--legacy-peer-deps'],
+      app
+    );
+    const installed = readdirSync(join(app, 'node_modules', '@phalanx-engine'));
+    for (const banned of ['runtime', 'ecs', 'game']) {
+      if (installed.includes(banned)) {
+        throw new Error(`lands install pulled @phalanx-engine/${banned}`);
+      }
+    }
+    const output = await exec(process.execPath, ['lands.mjs'], app);
+    if (!output.includes('ok')) throw new Error(`lands output: ${output}`);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

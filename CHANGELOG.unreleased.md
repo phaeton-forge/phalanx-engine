@@ -5,6 +5,19 @@ Entries collected per package until the synchronized 0.3.0 release
 
 ## @phalanx-engine/game
 
+- New subpath `./server`: `createServerSim`, `ServerSimConfig`,
+  `GameModuleSpec`, re-exported from `@phalanx-engine/runtime/server`.
+  ```ts
+  import { createServerSim } from '@phalanx-engine/game/server';
+  new Phalanx({
+    sim: createServerSim({ games: [{ module: './myGame.js' }] }),
+  });
+  ```
+- Transport port types moved from the root to `./advanced`:
+  `CommandEnvelope`, `Transport`, `TransportKind`, `TransportJoin`,
+  `TransportCatchUp`, and `TransportCommand` (previously `WireCommand`).
+  The root still exports `LocalTransport`, `LocalTransportOptions` and
+  `PersistenceFlushReason`.
 - Renamed from `@phalanx-engine/engine` (still `private`, version `0.3.0`,
   not version-bumped). One package, five subpaths. Fixed-point math is
   only on `/math`. The root does not re-export math, physics, abilities
@@ -20,6 +33,21 @@ Entries collected per package until the synchronized 0.3.0 release
 
 ## @phalanx-engine/runtime
 
+- New subpath `./server`: `createServerSim`, `ServerSimConfig`,
+  `GameModuleSpec`. The server simulation that used to live in
+  `phalanx-server` runs behind a `ServerSimHook`.
+  ```ts
+  new Phalanx({
+    sim: createServerSim({ games: [{ module: './myGame.js' }] }),
+  });
+  ```
+- `WireCommand` is `TransportCommand` (same fields). `TransportCommand`,
+  `CommandEnvelope`, `Transport`, `TransportKind`, `TransportJoin` and
+  `TransportCatchUp` moved from the root to `./advanced`. The root keeps
+  `LocalTransport`, `LocalTransportOptions` and `PersistenceFlushReason`.
+  `MatchRunner` and `LocalTransport` no longer name those types in their
+  public signatures. `DEFAULT_INPUT_DELAY_TICKS` is defined in the
+  protocol package and re-exported.
 - `SYSTEM_PLAYER_ID`, `BOT_PLAYER_ID_PREFIX`, `botPlayerId`, and
   `isBotPlayerId` are defined in `@phalanx-engine/protocol` and
   re-exported. `BotHostSide`, `HumanSlotConfig`, `BotSlotConfig`, and
@@ -314,6 +342,11 @@ Entries collected per package until the synchronized 0.3.0 release
 
 ## @phalanx-engine/protocol
 
+- `ServerSimHook` and the types the relay and the sim share:
+  `ServerSimInfo`, `ServerSimGame`, `ServerSimMatchSpec`, `ServerSimRoom`,
+  `ServerSimMatch`, `ServerSimEvents`, `ServerDesyncEvent`,
+  `MatchSnapshot`, `MatchSnapshotRequest`, `EndMatchResult`.
+  `DEFAULT_INPUT_DELAY_TICKS` is `2`. No engine types and no `node:*`.
 - New private package `@phalanx-engine/protocol` (`0.3.0`,
   `phalanx.layer: contracts`, no dependencies). It is the wire contract:
   message types, `SlotConfig` / `ServerRoomMatchConfig`, and
@@ -327,6 +360,9 @@ Entries collected per package until the synchronized 0.3.0 release
 
 ## @phalanx-engine/client
 
+- `MatchLogFailureReason` and `MatchResumeFailureReason` are written as
+  string literals. The value set is unchanged. `MatchLogErrorReason` and
+  `MatchResumeErrorReason` stay re-exported from the protocol package.
 - Wire types now come from `@phalanx-engine/protocol`. Removed the local
   copies. `LogChunk` is `MatchLogChunkEvent`. `TickCommandsHistory` is
   `MatchLogEntry`. The client has one reason name per operation:
@@ -360,6 +396,17 @@ Entries collected per package until the synchronized 0.3.0 release
 
 ## @phalanx-engine/server
 
+- Removed `PhalanxConfig.games`, `PhalanxConfig.simHost`, `GameModuleSpec`,
+  `SimHostConfig` and the `AnyGameDefinition` re-export. Server simulation
+  is `sim: createServerSim(...)` (`ServerSimHook` from the protocol
+  package). This package no longer depends on `@phalanx-engine/runtime`
+  or `@phalanx-engine/ecs`. `EndMatchResult` is imported from the protocol
+  package and re-exported. `ServerSimHook` is re-exported.
+  ```ts
+  new Phalanx({
+    sim: createServerSim({ games: [{ module: './myGame.js' }] }),
+  });
+  ```
 - Wire types moved to `@phalanx-engine/protocol` and are re-exported.
   `MatchResumeStateEvent` is `MatchResumeState`. `DesyncDetectedEvent`
   is removed. `HashComparisonEvent` is the `hash-comparison` payload in

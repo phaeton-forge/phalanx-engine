@@ -27,6 +27,19 @@ metadata:
 > live. Later members throw `NotImplementedError` with
 > `not implemented: <member> (Task NN)`. Check `docs/design/runtime-api.md`
 > § Task map before relying on a member.
+> `./server` exports `createServerSim`, `ServerSimConfig` and
+> `GameModuleSpec`. The root does not import it.
+> `Transport`, `TransportKind`, `TransportJoin`, `TransportCatchUp`,
+> `CommandEnvelope` and `TransportCommand` are `./advanced`. Games pass
+> `LocalTransport` to `MatchRunner`.
+
+```ts
+import { createServerSim } from '@phalanx-engine/runtime/server';
+
+new Phalanx({
+  sim: createServerSim({ games: [{ module: './myGame.js' }] }),
+});
+```
 
 ## When to Use This Skill
 

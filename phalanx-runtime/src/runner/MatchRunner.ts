@@ -77,7 +77,6 @@ import {
   LocalTransport,
   type PersistenceFlushReason,
 } from '../transport/LocalTransport.js';
-import type { Transport } from '../transport/Transport.js';
 import { BotHost } from './BotHost.js';
 import { CommandLog, type LogEntry } from './CommandLog.js';
 import {
@@ -90,6 +89,27 @@ import {
 } from './InputCheckpoint.js';
 import { assertReplayRecord, type ReplayRecord } from './replay.js';
 import { WorldScope } from './WorldScope.js';
+
+/** What a runner reads from its transport. Not a package export. */
+interface RunnerInlet {
+  readonly kind: string;
+  onTick(handler: TickHandler): Unsubscribe;
+  onFrame(handler: FrameHandler): Unsubscribe;
+  onPause?(handler: PauseHandler): Unsubscribe;
+  onResume?(handler: PauseHandler): Unsubscribe;
+  requestPause?(): void;
+  requestResume?(): void;
+  submit(
+    targetTick: number,
+    slot: number,
+    commands: readonly {
+      readonly type: string;
+      readonly data: { readonly q: number; readonly p: JsonValue };
+    }[]
+  ): void;
+  submitHash?(tick: number, digest: Digest): void;
+  dispose?(): void;
+}
 
 /** Which bot slots a runner hosts: `'client'` → `runsOn: 'local'`. */
 export type RunnerSide = 'client' | 'server';
@@ -105,7 +125,7 @@ export type RunnerStatus =
 export interface RunnerOptions {
   /**
    * Human slots whose input `submit` accepts. Default: every human slot for
-   * a `'local'` transport; `TransportJoin.localSlots` for network ones.
+   * a `'local'` transport; the slots a network join reports for the others.
    */
   readonly localSlots?: readonly number[];
   /** Publish a digest every N ticks (default `DEFAULT_HASH_EVERY_TICKS`). */
@@ -184,7 +204,7 @@ export interface FastForwardOptions {
   /**
    * Last tick to execute, inclusive. Empty ticks still run: a command
    * iterable cannot express them. Replay passes `ReplayRecord.lastTick`.
-   * Server catch-up passes `TransportCatchUp.currentTick - 1`, because
+   * Server catch-up passes the relay's current tick minus 1, because
    * `GameRoom.currentTick` between ticks is the next tick to run
    * (`GameRoom.ts` increments it at the end of `processTick`).
    * Throws when `throughTick` is below the runner's current tick or when
@@ -222,7 +242,7 @@ interface TickPlan {
 }
 
 /**
- * Drives one `GameDefinition` from any `Transport`.
+ * Drives one `GameDefinition` from a transport.
  *
  * Per tick T (all inside `WorldScope.run`):
  *  1. take the batch of T from the transport, append it to the log;
@@ -239,7 +259,7 @@ interface TickPlan {
 export class MatchRunner<G extends AnyGameDefinition> {
   private readonly definition: G;
   private readonly config: ConfigOf<G>;
-  private readonly transport: Transport;
+  readonly #transport: RunnerInlet;
   private readonly side: RunnerSide;
   private readonly modes = new Map<number, 'human' | 'bot'>();
   private systemSeq = 0;
@@ -311,12 +331,30 @@ export class MatchRunner<G extends AnyGameDefinition> {
   public constructor(
     definition: G,
     config: ConfigInput<G>,
-    transport: Transport,
+    transport: {
+      readonly kind: string;
+      onTick(handler: TickHandler): Unsubscribe;
+      onFrame(handler: FrameHandler): Unsubscribe;
+      onPause?(handler: PauseHandler): Unsubscribe;
+      onResume?(handler: PauseHandler): Unsubscribe;
+      requestPause?(): void;
+      requestResume?(): void;
+      submit(
+        targetTick: number,
+        slot: number,
+        commands: readonly {
+          readonly type: string;
+          readonly data: { readonly q: number; readonly p: JsonValue };
+        }[]
+      ): void;
+      submitHash?(tick: number, digest: Digest): void;
+      dispose?(): void;
+    },
     options?: RunnerOptions
   ) {
     this.definition = definition;
     this.config = normalizeConfig(definition, config);
-    this.transport = transport;
+    this.#transport = transport;
     this.side = this.config.side;
     this.hashEveryTicks = resolveHashEvery(options?.hashEveryTicks);
     this.roundTripCheck = options?.roundTripCheck ?? true;
@@ -546,7 +584,25 @@ export class MatchRunner<G extends AnyGameDefinition> {
   /** Join (or resume) through a network transport's `join()`. */
   public static join<GDef extends AnyGameDefinition>(
     _definition: GDef,
-    _transport: Transport,
+    _transport: {
+      readonly kind: string;
+      onTick(handler: TickHandler): Unsubscribe;
+      onFrame(handler: FrameHandler): Unsubscribe;
+      onPause?(handler: PauseHandler): Unsubscribe;
+      onResume?(handler: PauseHandler): Unsubscribe;
+      requestPause?(): void;
+      requestResume?(): void;
+      submit(
+        targetTick: number,
+        slot: number,
+        commands: readonly {
+          readonly type: string;
+          readonly data: { readonly q: number; readonly p: JsonValue };
+        }[]
+      ): void;
+      submitHash?(tick: number, digest: Digest): void;
+      dispose?(): void;
+    },
     _options?: RunnerOptions
   ): Promise<MatchRunner<GDef>> {
     return notImplemented('MatchRunner.join', 12);
@@ -660,12 +716,12 @@ export class MatchRunner<G extends AnyGameDefinition> {
     void initDigest();
     this.started = true;
     this.flushUnsent();
-    if (this.transport instanceof LocalTransport) this.transport.start();
+    if (this.#transport instanceof LocalTransport) this.#transport.start();
   }
 
   public stop(): void {
     this.started = false;
-    if (this.transport instanceof LocalTransport) this.transport.stop();
+    if (this.#transport instanceof LocalTransport) this.#transport.stop();
   }
 
   public dispose(): void {
@@ -683,7 +739,7 @@ export class MatchRunner<G extends AnyGameDefinition> {
     this.unsubFrame();
     this.unsubPause();
     this.unsubResume();
-    this.transport.dispose?.();
+    this.#transport.dispose?.();
     this.scope.run(() => {
       this.destroySim();
     });
@@ -812,9 +868,9 @@ export class MatchRunner<G extends AnyGameDefinition> {
     ) {
       this.holdCheckpoint(decodeInputCheckpoint(decoded.inputCheckpoint));
     }
-    if (this.transport instanceof LocalTransport) {
-      this.transport.clearPending();
-      this.transport.seek(decoded.header.tick + 1);
+    if (this.#transport instanceof LocalTransport) {
+      this.#transport.clearPending();
+      this.#transport.seek(decoded.header.tick + 1);
     }
     if (this.started) this.flushUnsent();
     this.syncTerminalPhase();
@@ -952,8 +1008,8 @@ export class MatchRunner<G extends AnyGameDefinition> {
     } finally {
       this.fastForwarding = false;
       if (finished) {
-        if (this.transport instanceof LocalTransport) {
-          this.transport.seek(options.throughTick + 1);
+        if (this.#transport instanceof LocalTransport) {
+          this.#transport.seek(options.throughTick + 1);
         }
         this.drainBuffered(options.throughTick);
       }
@@ -1030,8 +1086,8 @@ export class MatchRunner<G extends AnyGameDefinition> {
     if (this.stopped || this.phase !== 'active') return;
     if (!this.started) {
       if (
-        this.transport instanceof LocalTransport &&
-        this.transport.isStepped
+        this.#transport instanceof LocalTransport &&
+        this.#transport.isStepped
       ) {
         throw new Error(
           'MatchRunner: call start() before stepping a stepped transport'
@@ -1113,8 +1169,8 @@ export class MatchRunner<G extends AnyGameDefinition> {
       );
     }
     this.executingTick = tick;
-    if (this.transport instanceof LocalTransport) {
-      this.transport.seek(tick + 1);
+    if (this.#transport instanceof LocalTransport) {
+      this.#transport.seek(tick + 1);
     }
     try {
       this.scope.run(() => {
@@ -1182,7 +1238,7 @@ export class MatchRunner<G extends AnyGameDefinition> {
     if (endedNow && outcome !== null) this.outcomeListeners.emit(outcome);
     if (syncDigest !== undefined && hashDue) {
       this.digestListeners.emit(tick, syncDigest);
-      this.transport.submitHash?.(tick, syncDigest);
+      this.#transport.submitHash?.(tick, syncDigest);
     } else if (deferredBody !== undefined) {
       this.enqueueDigest(tick, deferredBody);
     }
@@ -1193,8 +1249,8 @@ export class MatchRunner<G extends AnyGameDefinition> {
   /** True only for a transport-driven step of `LocalTransport.stepped()`. */
   private isLiveManualStep(): boolean {
     return (
-      this.transport instanceof LocalTransport &&
-      this.transport.isStepped &&
+      this.#transport instanceof LocalTransport &&
+      this.#transport.isStepped &&
       !this.fastForwarding &&
       !this.replayMode
     );
@@ -1379,7 +1435,7 @@ export class MatchRunner<G extends AnyGameDefinition> {
    * kind is `server-peer`. Relay and local matches have none.
    */
   private hasServerPeer(): boolean {
-    return this.side === 'server' || this.transport.kind === 'server-peer';
+    return this.side === 'server' || this.#transport.kind === 'server-peer';
   }
 
   /** Bot slots keep their configured host. Human handovers use the server when one exists. */
@@ -1539,10 +1595,10 @@ export class MatchRunner<G extends AnyGameDefinition> {
     const seq = this.allocateSeq(slot);
     const entry = this.entryFor(slot, command, seq, targetTick, playerId);
     this.remember(entry);
-    if (this.transport instanceof LocalTransport) {
-      this.transport.assignPlayerId(slot, playerId);
+    if (this.#transport instanceof LocalTransport) {
+      this.#transport.assignPlayerId(slot, playerId);
     }
-    this.transport.submit(targetTick, slot, [
+    this.#transport.submit(targetTick, slot, [
       { type: entry.type, data: entry.data },
     ]);
   }
@@ -1659,7 +1715,8 @@ export class MatchRunner<G extends AnyGameDefinition> {
     this.pendingByTick.clear();
     for (const entry of kept) this.remember(entry);
     this.unsent = kept.length > 0 ? kept.slice() : null;
-    if (this.transport instanceof LocalTransport) this.transport.clearPending();
+    if (this.#transport instanceof LocalTransport)
+      this.#transport.clearPending();
     if (this.started) this.flushUnsent();
   }
 
@@ -1671,24 +1728,24 @@ export class MatchRunner<G extends AnyGameDefinition> {
       if (entry.playerId === SYSTEM_PLAYER_ID) continue;
       const slot = this.slotByPlayerId.get(entry.playerId);
       if (slot === undefined) continue;
-      if (this.transport instanceof LocalTransport) {
-        this.transport.assignPlayerId(slot, entry.playerId);
+      if (this.#transport instanceof LocalTransport) {
+        this.#transport.assignPlayerId(slot, entry.playerId);
       }
-      this.transport.submit(entry.tick, slot, [
+      this.#transport.submit(entry.tick, slot, [
         { type: entry.type, data: entry.data },
       ]);
     }
   }
 
   private attachPersistence(): void {
-    if (!(this.transport instanceof LocalTransport)) return;
-    const store = this.transport.matchStore;
+    if (!(this.#transport instanceof LocalTransport)) return;
+    const store = this.#transport.matchStore;
     if (store === undefined) return;
     const journal = new MatchJournal(
       store,
       this.config.matchId,
       this.config,
-      this.transport.snapshotEveryTicks,
+      this.#transport.snapshotEveryTicks,
       {
         engineFormat: ENGINE_SNAPSHOT_FORMAT,
         gameId: this.definition.id,
@@ -1703,7 +1760,7 @@ export class MatchRunner<G extends AnyGameDefinition> {
       }
     );
     this.journal = journal;
-    this.unsubFlush = this.transport.onPersistenceFlush((reason) => {
+    this.unsubFlush = this.#transport.onPersistenceFlush((reason) => {
       this.persistDone = this.track(journal.flush(this.flushIsUrgent(reason)));
     });
   }
@@ -1783,7 +1840,7 @@ export class MatchRunner<G extends AnyGameDefinition> {
     try {
       const digest = digestBytes(job.body);
       this.digestListeners.emit(job.tick, digest);
-      this.transport.submitHash?.(job.tick, digest);
+      this.#transport.submitHash?.(job.tick, digest);
     } catch (error) {
       this.fail(job.tick, error);
     }
@@ -1997,10 +2054,14 @@ class RunnerProvider implements ITickFrameProvider {
   private readonly pauseHandlers: PauseHandler[] = [];
   private readonly resumeHandlers: PauseHandler[] = [];
 
+  readonly #transport: RunnerInlet;
+
   public constructor(
     public readonly random: IRandom,
-    private readonly transport: Transport
-  ) {}
+    transport: RunnerInlet
+  ) {
+    this.#transport = transport;
+  }
 
   public onTick(handler: TickHandler): Unsubscribe {
     this.tickHandlers.push(handler);
@@ -2031,17 +2092,17 @@ class RunnerProvider implements ITickFrameProvider {
   }
 
   public requestPause(): void {
-    if (!this.transport.requestPause) {
+    if (!this.#transport.requestPause) {
       throw new Error('MatchRunner: transport does not support pause');
     }
-    this.transport.requestPause();
+    this.#transport.requestPause();
   }
 
   public requestResume(): void {
-    if (!this.transport.requestResume) {
+    if (!this.#transport.requestResume) {
       throw new Error('MatchRunner: transport does not support resume');
     }
-    this.transport.requestResume();
+    this.#transport.requestResume();
   }
 
   public emitTick(tick: number): void {
@@ -2242,7 +2303,7 @@ function validateConfig<G extends AnyGameDefinition>(
 
 function resolveLocalSlots<G extends AnyGameDefinition>(
   config: ConfigOf<G>,
-  transport: Transport,
+  transport: RunnerInlet,
   requested: readonly number[] | undefined
 ): number[] {
   const humans: number[] = [];

@@ -1,4 +1,4 @@
-import type { CommandEnvelope } from '../game/commands.js';
+import type { JsonValue } from '../game/commands.js';
 
 /**
  * One command exactly as the runner received it in a tick batch. The log
@@ -11,7 +11,12 @@ export interface LogEntry {
   /** Batch key: human `playerId` or `bot:<slot>`. */
   readonly playerId: string;
   readonly type: string;
-  readonly data: CommandEnvelope;
+  readonly data: {
+    /** Per-slot sequence number. */
+    readonly q: number;
+    /** Encoded command (`CommandSchema.encode`). */
+    readonly p: JsonValue;
+  };
   /**
    * The wire `data` was not an envelope. Replay rejects it again with
    * `'malformed envelope'` instead of decoding `data`.
