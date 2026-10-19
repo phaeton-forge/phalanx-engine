@@ -25,6 +25,7 @@ import {
   type MagnitudeCalculation,
 } from '../src/index.js';
 import { readAbilities, writeAbilities } from '../src/save/abilities.js';
+import { manualTickProvider } from './support/manualTickProvider.js';
 
 const ENTITY_COUNT = 20;
 const LARGE_EFFECT_COUNT = 200_000;
@@ -148,7 +149,7 @@ function makeWorld(pipeline: AbilitySystemPipeline = 'full'): {
   world: GameWorld;
   abilities: AbilitySystem;
 } {
-  const world = new GameWorld({});
+  const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
   const abilities = createAbilitySystem(world, { definitions, pipeline });
   world.registerSystems([...abilities.tickSystems], []);
   return { world, abilities };
@@ -255,7 +256,7 @@ describe('ability state helpers', () => {
   });
 
   it('throws when the world has no ability system', () => {
-    const world = new GameWorld({});
+    const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
     expect(() => saveGas(world)).toThrow(
       /writeAbilities: world has no ability system/
     );
@@ -553,7 +554,7 @@ describe('ability state helpers', () => {
       world: GameWorld;
       abilities: AbilitySystem;
     } {
-      const world = new GameWorld({});
+      const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
       const abilities = createAbilitySystem(world, {
         definitions: defineAbilitySystem({
           attributes: [Health],

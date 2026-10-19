@@ -371,7 +371,6 @@ describe('world modules', () => {
       const world = new GameWorld({
         tickFrameProvider: silentProvider(),
         random: new DeterministicRandom(1),
-        tickRate: 10,
         pooling: {
           entityTypes: {
             pawn: {
@@ -677,7 +676,6 @@ function silentProvider() {
 function openWorld(component: DefinedComponent<{ hp: 'i64' }>): GameWorld {
   const world = new GameWorld({
     random: new DeterministicRandom(1),
-    tickRate: 10,
     tickFrameProvider: silentProvider(),
   });
   world.registerComponent(component);
@@ -797,7 +795,6 @@ function idsOf(entities: readonly { id: number }[]): number[] {
 function openRegistered(register: (world: GameWorld) => void): GameWorld {
   const world = new GameWorld({
     random: new DeterministicRandom(1),
-    tickRate: 10,
     tickFrameProvider: silentProvider(),
   });
   register(world);

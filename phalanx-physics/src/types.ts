@@ -5,7 +5,7 @@ import type { CollisionManifold } from './collision/CollisionManifold.js';
  * Bitmask-based collision filtering.
  * @remarks Defined for future use. Not yet integrated into PhysicsSystem.
  * The current per-pair callback filter (`setCollisionFilter`) is the active API.
- * Bitmask integration is planned for v2 as a performance optimization.
+ * Bitmask integration is planned for v2 as a speed optimization.
  */
 export interface CollisionFilter {
   /** Bitmask: what layer this entity is on */

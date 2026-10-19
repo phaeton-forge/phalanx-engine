@@ -17,7 +17,7 @@ import type { ProvidedTarget } from '../types/index.js';
  *    `Self` and direct `Entity` targets. Later stages such as Stage 6's
  *    `TargetResolutionSystem` may still resolve additional target kinds
  *    without changing the event shape.
- *  - Non-deterministic side effects (audio, Date.now, Math.random) MUST NOT
+ *  - Non-deterministic side effects (audio, wall clock, unseeded draws) MUST NOT
  *    be triggered from synchronous subscribers running inside the tick.
  *    Visual cues belong on the cue queue, dispatched only by clients.
  */

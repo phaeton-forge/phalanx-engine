@@ -23,6 +23,7 @@ import {
   type AbilitySystem,
 } from '../src';
 import { releasePooledAbilityState } from '../src/api/releasePooledAbilityState.js';
+import { manualTickProvider } from './support/manualTickProvider.js';
 
 const definitions = defineAbilitySystem({
   attributes: [
@@ -78,6 +79,7 @@ describe('pooled GAS reset', () => {
   it('clears transient effects and restores the factory shell', () => {
     const holder: { abilities?: AbilitySystem } = {};
     const world = new GameWorld({
+      tickFrameProvider: manualTickProvider(),
       pooling: {
         entityTypes: {
           minion: {
@@ -145,6 +147,7 @@ describe('pooled GAS reset', () => {
 
   it('removes GAS components a bare pooled entity gained after construction', () => {
     const world = new GameWorld({
+      tickFrameProvider: manualTickProvider(),
       pooling: {
         entityTypes: {
           bare: {
@@ -188,6 +191,7 @@ describe('pooled GAS reset', () => {
 
   it('keeps constructor GAS components and clears only transient state', () => {
     const world = new GameWorld({
+      tickFrameProvider: manualTickProvider(),
       pooling: {
         entityTypes: {
           shell: {
@@ -227,6 +231,7 @@ describe('pooled GAS reset', () => {
   it('matches a fresh spawn after three despawn and spawn cycles', () => {
     const holder: { abilities?: AbilitySystem } = {};
     const world = new GameWorld({
+      tickFrameProvider: manualTickProvider(),
       pooling: {
         entityTypes: {
           minion: {

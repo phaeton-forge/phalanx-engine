@@ -9,6 +9,7 @@ import {
   defineEffect,
 } from '../src';
 import type { AbilitySystemComponent } from '../src';
+import { manualTickProvider } from './support/manualTickProvider.js';
 import {
   HealthAttribute,
   ManaAttribute,
@@ -49,7 +50,7 @@ describe('attributes and aggregation', () => {
   });
 
   it('clamps defaults on the first tick when default violates min/max', () => {
-    const world = new GameWorld({});
+    const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
     const abilities = createAbilitySystem(world, {
       definitions: defineAbilitySystem({
         attributes: [
@@ -81,7 +82,7 @@ describe('attributes and aggregation', () => {
   });
 
   it('applies each clamp mode (both, min, max, none)', () => {
-    const world = new GameWorld({});
+    const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
     const abilities = createAbilitySystem(world, {
       definitions: defineAbilitySystem({
         attributes: [

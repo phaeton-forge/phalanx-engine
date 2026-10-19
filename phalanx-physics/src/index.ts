@@ -42,7 +42,5 @@ export { PhysicsEvents } from './events.js';
 
 // Tick providers
 export type { IPhysicsTickProvider } from './tick/IPhysicsTickProvider.js';
-export { AutonomousPhysicsTickProvider } from './tick/AutonomousPhysicsTickProvider.js';
-export type { AutonomousProviderOptions } from './tick/AutonomousPhysicsTickProvider.js';
 export { ExternalPhysicsTickProvider } from './tick/ExternalPhysicsTickProvider.js';
 export type { BoundsExitEvent } from './types.js';

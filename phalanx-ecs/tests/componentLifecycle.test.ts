@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { manualTickProvider } from './support/manualTickProvider.js';
 import {
   Entity,
   GameWorld,
@@ -57,6 +58,7 @@ describe('component lifecycle', () => {
 
   it('runs onEnable on pool spawn and onDisable when the entity returns', () => {
     const world = new GameWorld({
+      tickFrameProvider: manualTickProvider(),
       pooling: {
         entityTypes: {
           flag: { factory: () => new FlagEntity() },

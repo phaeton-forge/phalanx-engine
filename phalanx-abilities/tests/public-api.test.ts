@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Entity, GameWorld } from '@phalanx-engine/ecs';
 import { FP } from '@phalanx-engine/math';
+import { manualTickProvider } from './support/manualTickProvider.js';
 import {
   createAbilitySystem,
   defineAbility,
@@ -11,7 +12,7 @@ import {
 
 describe('public ability system API', () => {
   it('builds an initialized AbilitySystemComponent for direct entity attachment', () => {
-    const world = new GameWorld({});
+    const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
     const abilities = createAbilitySystem(world, {
       definitions: defineAbilitySystem({
         attributes: [
@@ -61,7 +62,7 @@ describe('public ability system API', () => {
   });
 
   it('activates only abilities granted by the component', () => {
-    const world = new GameWorld({});
+    const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
     const abilities = createAbilitySystem(world, {
       definitions: defineAbilitySystem({
         attributes: [
@@ -125,7 +126,7 @@ describe('public ability system API', () => {
   });
 
   it('throws near spawn code when initComponent references unknown ids', () => {
-    const world = new GameWorld({});
+    const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
     const abilities = createAbilitySystem(world, {
       definitions: defineAbilitySystem({
         attributes: [

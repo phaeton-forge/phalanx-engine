@@ -21,7 +21,8 @@ import type {
   Unsubscribe,
   CommandsBatch,
   PauseHandler,
-} from './ITickFrameProvider.js';
+} from '@phalanx-engine/ecs';
+import { wallClock } from './wallClock.js';
 
 export interface TickFrameManagerConfig {
   /** Target ticks per second (default: 60) */
@@ -93,8 +94,15 @@ export class TickFrameManager implements ITickFrameProvider {
       return;
     }
 
+    const clock = wallClock();
+    if (typeof clock.requestAnimationFrame !== 'function') {
+      throw new Error(
+        'TickFrameManager: this host has no requestAnimationFrame'
+      );
+    }
+
     this.isRunning = true;
-    this.lastTime = performance.now() / 1000; // Convert to seconds
+    this.lastTime = clock.performance.now() / 1000; // Convert to seconds
     this.accumulator = 0;
 
     this.loop();
@@ -106,7 +114,7 @@ export class TickFrameManager implements ITickFrameProvider {
   public stop(): void {
     this.isRunning = false;
     if (this.rafId !== null) {
-      cancelAnimationFrame(this.rafId);
+      wallClock().cancelAnimationFrame?.(this.rafId);
       this.rafId = null;
     }
   }
@@ -118,7 +126,8 @@ export class TickFrameManager implements ITickFrameProvider {
   private loop = (): void => {
     if (!this.isRunning) return;
 
-    const currentTime = performance.now() / 1000; // Convert to seconds
+    const clock = wallClock();
+    const currentTime = clock.performance.now() / 1000; // Convert to seconds
     let frameTime = currentTime - this.lastTime;
     this.lastTime = currentTime;
 
@@ -156,8 +165,13 @@ export class TickFrameManager implements ITickFrameProvider {
       callback(alpha, frameTime);
     }
 
-    // Schedule next frame
-    this.rafId = requestAnimationFrame(this.loop);
+    const requestFrame = clock.requestAnimationFrame;
+    if (typeof requestFrame !== 'function') {
+      throw new Error(
+        'TickFrameManager: this host has no requestAnimationFrame'
+      );
+    }
+    this.rafId = requestFrame.call(clock, this.loop);
   };
 
   // ── Pause / Resume (ITickFrameProvider optional methods) ─────────────

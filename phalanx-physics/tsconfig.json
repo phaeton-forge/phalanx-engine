@@ -2,7 +2,8 @@
   "compilerOptions": {
     "target": "ES2022",
     "module": "NodeNext",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": ["ES2022"],
+    "types": [],
     "declaration": true,
     "declarationMap": true,
     "outDir": "./dist",

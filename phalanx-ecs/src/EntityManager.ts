@@ -11,7 +11,7 @@ import type { SoASchema, SoASchemaDefinition } from './SoASchema.js';
  * rather than Sets, eliminating the need to sort on every query. Since entity
  * IDs are typically sequential, insertions are usually O(1) at the end.
  *
- * SoA Support: Can hold SoAComponentStore instances for high-performance
+ * SoA Support: Can hold SoAComponentStore instances for cache-friendly
  * component types. SoA stores are registered by schema type symbol and
  * provide cache-friendly iteration for hot-path systems.
  */
@@ -317,7 +317,7 @@ export class EntityManager {
 
   /**
    * Register a SoA component store
-   * Call this during initialization for high-performance component types
+   * Call this during initialization for cache-friendly component types
    *
    * @param store - The SoAComponentStore instance to register
    */
@@ -391,7 +391,7 @@ export class EntityManager {
     }
   }
 
-  // ============ Debug / Introspection ============
+  // ============ Introspection ============
 
   /**
    * Get a read-only view of all registered SoA component stores.

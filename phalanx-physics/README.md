@@ -54,8 +54,7 @@ A deterministic, fixed-point physics engine for the [Phalanx Engine](../README.m
 ### Tick Providers
 
 - **IPhysicsTickProvider**: Interface for custom tick scheduling strategies
-- **AutonomousPhysicsTickProvider**: Runs physics loop via `setImmediate` (Node.js) or `setTimeout(0)` (browser) until settled or `maxSteps` reached — ideal for turn-based games
-- **ExternalPhysicsTickProvider**: Delegates tick control to the caller (e.g. BabylonJS `onBeforeRenderObservable` or unit tests)
+- **ExternalPhysicsTickProvider**: Delegates tick control to the caller (e.g. a render callback or unit tests)
 
 ### Events
 
@@ -125,8 +124,6 @@ import {
 
   // Tick providers
   type IPhysicsTickProvider,
-  AutonomousPhysicsTickProvider,
-  type AutonomousProviderOptions,
   ExternalPhysicsTickProvider,
 
   // Misc types
@@ -237,64 +234,14 @@ physicsWorld.onCollision((event) => {
 
 > **Note:** `PhysicsSystem` reads and writes the built-in `TransformSoASchema` store directly — no `setTransformStore()` or consumer-defined transform schema is required. Register `Transform`, `Interpolation`, and `PhysicsBody` component types using the canonical symbols exported from phalanx-physics.
 
-## Turn-Based Physics (Tick Providers)
+## Tick Providers
 
-For turn-based games like Chapayev checkers, use a tick provider to decouple simulation from the server tick loop:
+`PhysicsWorld` is driven by the game tick, or by `ExternalPhysicsTickProvider` when the caller invokes `tick()` (a render callback or a unit test). There is no autonomous timer provider.
 
-```typescript
-import {
-  PhysicsWorld,
-  AutonomousPhysicsTickProvider,
-} from '@phalanx-engine/physics';
-import { FP } from '@phalanx-engine/math';
-
-// Game defines what "settled" means and what happens when it occurs
-let physicsWorld: PhysicsWorld;
-
-const provider = new AutonomousPhysicsTickProvider({
-  isSettled: () => physicsWorld.isSettled(),
-  onSettled: () => {
-    // Game-level logic: turn is over
-    sendTurnEnd(getCheckerPositions());
-  },
-});
-
-physicsWorld = new PhysicsWorld({
-  tickRate: 60,
-  subSteps: 3,
-  ejectOnBoundsExit: true,
-  worldBounds: {
-    minX: FP.FromFloat(-8),
-    maxX: FP.FromFloat(8),
-    minZ: FP.FromFloat(-8),
-    maxZ: FP.FromFloat(8),
-  },
-  tickProvider: provider,
-});
-
-// Player flicks a checker
-function onFlick(entityId: number, dirX: number, dirZ: number, power: number) {
-  const speed = power * 12;
-  physicsWorld.applyImpulse(
-    entityId,
-    FP.FromFloat(dirX * speed),
-    FP.FromFloat(dirZ * speed)
-  );
-}
-
-// Checker exits the board
-physicsWorld.onBoundsExit(({ entityId }) => {
-  removeChecker(entityId);
-});
-```
-
-### Tick Provider Options
-
-| Provider                        | Use Case                                                      |
-| ------------------------------- | ------------------------------------------------------------- |
-| _(none / default)_              | GameWorld `processTick()` drives simulation — real-time games |
-| `AutonomousPhysicsTickProvider` | Runs until settled or `maxSteps` — turn-based physics         |
-| `ExternalPhysicsTickProvider`   | Caller invokes `tick()` manually — BabylonJS rAF, unit tests  |
+| Provider                      | Use Case                                                       |
+| ----------------------------- | -------------------------------------------------------------- |
+| _(none / default)_            | GameWorld `processTick()` drives simulation — real-time games  |
+| `ExternalPhysicsTickProvider` | Caller invokes `tick()` manually — render callback, unit tests |
 
 ## API Reference
 
@@ -679,21 +626,6 @@ interface IPhysicsTickProvider {
   start(onStep: () => void): void;
   /** Stop the provider and release any timers/handles. */
   stop(): void;
-}
-
-interface AutonomousProviderOptions {
-  /** Called every step to decide whether to stop (defined by the game). */
-  isSettled: () => boolean;
-  /** Called once when simulation settles or `maxSteps` is reached. */
-  onSettled: () => void;
-  /** Max simulation steps before forcing a stop. Default: 10000. */
-  maxSteps?: number;
-}
-
-class AutonomousPhysicsTickProvider implements IPhysicsTickProvider {
-  constructor(options: AutonomousProviderOptions);
-  // Schedules `onStep` via setImmediate (Node) or setTimeout(0) (browser)
-  // until isSettled() returns true or maxSteps is reached.
 }
 
 class ExternalPhysicsTickProvider implements IPhysicsTickProvider {

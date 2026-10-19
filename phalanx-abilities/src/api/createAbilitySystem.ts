@@ -435,11 +435,7 @@ function buildTickSystems(
   const cueCleanup = new CueBufferCleanupSystem(runtime);
   const hasCues = Object.keys(cues).length > 0;
 
-  if (
-    pipeline === 'effects-retain-cues' &&
-    !hasCues &&
-    process.env.NODE_ENV !== 'production'
-  ) {
+  if (pipeline === 'effects-retain-cues' && !hasCues) {
     console.warn(
       '[phalanx-abilities] pipeline "effects-retain-cues" with no cues registered: ' +
         'the cue buffer is retained for manual inspection but nothing dispatches it.'

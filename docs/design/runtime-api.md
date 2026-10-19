@@ -165,7 +165,10 @@ call `world.save` / `world.restore`.
 
 **World construction rule.** `createWorld` MUST build its `GameWorld` with
 `{ tickFrameProvider: ctx.tickFrameProvider, random: ctx.random }` and call
-`world.start(hooks)` before returning. The runner then drives the standard
+`world.start(hooks)` before returning. `tickFrameProvider` is required.
+`GameWorld` does not start the provider and does not collect debug data.
+Single-player clocks and the debug overlay (`TickFrameManager`,
+`attachDebug`) live in `runtime/src/host`. The runner then drives the standard
 `start()` pipeline tick by tick (see [finding 3](#3-driving-ticks-simworldstep-vs-gameworld)).
 
 ## 2. Match config and slots

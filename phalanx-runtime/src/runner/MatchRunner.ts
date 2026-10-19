@@ -1885,7 +1885,6 @@ export class MatchRunner<G extends AnyGameDefinition> {
     const world = new GameWorld({
       tickFrameProvider: this.provider,
       random: this.random,
-      tickRate: this.definition.tickRate,
       pooling: this.definition.pooling,
     });
     for (const component of this.definition.components ?? []) {

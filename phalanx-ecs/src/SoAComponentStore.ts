@@ -1,7 +1,7 @@
 /**
  * SoA Component Store
  *
- * High-performance Structure-of-Arrays storage for ECS components.
+ * Cache-friendly Structure-of-Arrays storage for ECS components.
  * Provides cache-friendly memory layout by storing each field in contiguous typed arrays.
  *
  * Key features:

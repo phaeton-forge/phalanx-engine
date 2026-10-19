@@ -57,6 +57,22 @@ every machine, every CPU, every browser, forever.**
 - Anything that must be reproduced on a remote peer belongs in the tick path.
   Anything that must not affect the outcome belongs in the frame path.
 
+### 0.3 Domain ambient globals
+
+Domain packages compile with `"types": []` (`phalanx-math`, `phalanx-ecs`,
+`phalanx-physics`, `phalanx-abilities`). ecs and physics also use
+`lib: ["ES2022"]`, so DOM and Node globals are invisible. The only allowed
+way to declare a global in a domain package is an ambient file that already
+exists for that purpose:
+
+- `phalanx-ecs/src/textCodec.d.ts` — `TextEncoder` and `TextDecoder` for the
+  snapshot codec.
+- `phalanx-abilities/src/console.d.ts` — `console.warn` and `console.error`.
+
+No new globals in domain packages. Do not add another ambient `.d.ts`, and do
+not add names to those two files, unless an architecture task says so. Clocks,
+timers, and DOM stay in `@phalanx-engine/runtime`.
+
 ---
 
 ## 1. Toolchain, Language & Style
@@ -198,6 +214,12 @@ world.start({ beforeTick, afterTick, beforeFrame, afterFrame });
 client.sendReady();
 ```
 
+- `tickFrameProvider` is required. `GameWorld` subscribes in `start()` and
+  unsubscribes in `stop()`. It does not start or stop the provider. The
+  single-player provider is `TickFrameManager` in
+  `@phalanx-engine/runtime/advanced`. The caller calls `provider.start()`.
+- Debug snapshots are host code. Call `attachDebug(world, options)` from
+  `@phalanx-engine/runtime`. The world does not store a debug provider.
 - `GameWorld` resets entity ids on construction — do not call
   `resetEntityIdCounter()` in game bootstrap (only in isolated tests that build
   entities without a world). Never create entities before `new GameWorld(...)`.

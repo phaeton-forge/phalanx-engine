@@ -53,7 +53,7 @@ export interface MagnitudeCalcContext {
  * transforms a modifier's static `baseMagnitude` into an effective magnitude
  * at effect-application time.
  *
- * MUST be pure and FP-only: no floats, no `Math.random`, no `Date`, no
+ * MUST be pure and FP-only: no floats, no unseeded randomness, no wall clock, no
  * external/mutable state. Calculations that throw propagate to the caller
  * (same loud-failure philosophy as an unknown effect id) — authors must
  * ensure calculations do not throw for valid game states (e.g. a missing

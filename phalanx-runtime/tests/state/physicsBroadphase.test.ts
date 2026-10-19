@@ -22,6 +22,7 @@ import {
   writeBroadphase,
 } from '../../../phalanx-physics/dist/save/broadphase.js';
 import { StateHelpers } from '../../src/advanced/index.js';
+import { manualTickProvider } from '../support/manualTickProvider.js';
 
 const SCHEMAS = [TransformSoASchema, PhysicsSoASchema] as const;
 
@@ -56,7 +57,7 @@ function wiredWorld(cellSize: FixedPoint = FP.FromInt(4)): {
   world: GameWorld;
   physics: PhysicsWorld;
 } {
-  const world = new GameWorld({});
+  const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
   const physics = new PhysicsWorld({
     gridCellSize: cellSize,
     subSteps: 1,

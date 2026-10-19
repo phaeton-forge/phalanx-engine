@@ -20,6 +20,7 @@ import {
   TransformComponent,
 } from '../src/index.js';
 import type { PhysicsConfig } from '../src/types.js';
+import { manualTickProvider } from './support/manualTickProvider.js';
 import {
   readBroadphase,
   rebuildBroadphaseFromTransforms,
@@ -72,7 +73,7 @@ function wiredWorld(cellSize: FixedPoint = FP.FromInt(4)): {
   world: GameWorld;
   physics: PhysicsWorld;
 } {
-  const world = new GameWorld({});
+  const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
   const physics = new PhysicsWorld({
     gridCellSize: cellSize,
     subSteps: 1,
@@ -154,7 +155,7 @@ describe('physics state helpers', () => {
   });
 
   it('saves a registered CollisionSystem under collisionSystem', () => {
-    const world = new GameWorld({});
+    const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
     const collision = new CollisionSystem(FP.FromInt(4));
     world.registerSystems([collision], []);
     collision.restoreBroadphase([
@@ -171,7 +172,7 @@ describe('physics state helpers', () => {
     });
     expect(new TextDecoder().decode(bytes)).toContain('collisionSystem');
 
-    const restored = new GameWorld({});
+    const restored = new GameWorld({ tickFrameProvider: manualTickProvider() });
     const restoredCollision = new CollisionSystem(FP.FromInt(4));
     restored.registerSystems([restoredCollision], []);
     const reader = new BinaryStateReader(bytes);
@@ -190,13 +191,17 @@ describe('physics state helpers', () => {
     ]);
     expect(wired.world.saveSections[0]?.version).toBe(1);
 
-    const collisionOnly = new GameWorld({});
+    const collisionOnly = new GameWorld({
+      tickFrameProvider: manualTickProvider(),
+    });
     collisionOnly.registerSystems([new CollisionSystem(FP.FromInt(4))], []);
     expect(collisionOnly.saveSections.map((section) => section.key)).toEqual([
       'physics.broadphase',
     ]);
 
-    const physicsOnly = new GameWorld({});
+    const physicsOnly = new GameWorld({
+      tickFrameProvider: manualTickProvider(),
+    });
     new PhysicsWorld({
       gridCellSize: FP.FromInt(4),
       subSteps: 1,
@@ -205,7 +210,7 @@ describe('physics state helpers', () => {
       'physics.broadphase',
     ]);
 
-    const both = new GameWorld({});
+    const both = new GameWorld({ tickFrameProvider: manualTickProvider() });
     const physics = new PhysicsWorld({
       gridCellSize: FP.FromInt(4),
       subSteps: 1,
@@ -221,7 +226,7 @@ describe('physics state helpers', () => {
   });
 
   it('does not register a section when physics is only assigned', () => {
-    const world = new GameWorld({});
+    const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
     world.context.physics = new PhysicsWorld({
       gridCellSize: FP.FromInt(4),
       subSteps: 1,
@@ -239,13 +244,13 @@ describe('physics state helpers', () => {
 
   it('throws when attach is called with a different world', () => {
     const { physics } = wiredWorld();
-    expect(() => physics.attach(new GameWorld({}))).toThrow(
-      'PhysicsWorld.attach: already attached to another world'
-    );
+    expect(() =>
+      physics.attach(new GameWorld({ tickFrameProvider: manualTickProvider() }))
+    ).toThrow('PhysicsWorld.attach: already attached to another world');
   });
 
   it('registers physics.broadphase from PhysicsSystem without attach', () => {
-    const world = new GameWorld({});
+    const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
     world.registerSystems([new PhysicsSystem(physicsConfig())], []);
     expect(world.saveSections.map((section) => section.key)).toEqual([
       'physics.broadphase',
@@ -267,7 +272,7 @@ describe('physics state helpers', () => {
   });
 
   it('throws when the world has no broadphase', () => {
-    const world = new GameWorld({});
+    const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
     expect(() => rebuildBroadphaseFromTransforms(world)).toThrow(
       /no broadphase/
     );

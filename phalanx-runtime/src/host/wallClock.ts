@@ -18,7 +18,11 @@ export interface MessagePortPair {
 export interface WallClock {
   setTimeout(handler: () => void, timeout?: number): unknown;
   clearTimeout(handle: unknown): void;
+  setInterval(handler: () => void, timeout?: number): unknown;
+  clearInterval(handle: unknown): void;
   performance: { now(): number };
+  requestAnimationFrame?(cb: (t: number) => void): number;
+  cancelAnimationFrame?(handle: number): void;
   MessageChannel?: new () => MessagePortPair;
 }
 
@@ -37,6 +41,15 @@ function isWallClock(value: unknown): value is WallClock {
     return false;
   }
   if (!('clearTimeout' in value) || typeof value.clearTimeout !== 'function') {
+    return false;
+  }
+  if (!('setInterval' in value) || typeof value.setInterval !== 'function') {
+    return false;
+  }
+  if (
+    !('clearInterval' in value) ||
+    typeof value.clearInterval !== 'function'
+  ) {
     return false;
   }
   if (

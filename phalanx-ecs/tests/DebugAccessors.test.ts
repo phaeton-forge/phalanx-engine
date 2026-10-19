@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { Entity, resetEntityIdCounter } from '../../src/Entity';
-import { EntityManager } from '../../src/EntityManager';
-import { SoAComponent } from '../../src/SoAComponent';
-import { defineSoASchema } from '../../src/SoASchema';
-import type { IComponent } from '../../src/Component';
+import { Entity, resetEntityIdCounter } from '../src/Entity';
+import { EntityManager } from '../src/EntityManager';
+import { SoAComponent } from '../src/SoAComponent';
+import { defineSoASchema } from '../src/SoASchema';
+import type { IComponent } from '../src/Component';
 
 // ── Test fixtures ──────────────────────────────────────────────────
 

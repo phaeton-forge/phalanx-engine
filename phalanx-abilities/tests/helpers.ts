@@ -20,6 +20,7 @@ import {
   type GameplayCueDispatchedEvent,
 } from '../src';
 import { GAMEPLAY_CUE_EVENT } from '../src/events';
+import { manualTickProvider } from './support/manualTickProvider.js';
 
 /** Trivial instant cue for tests that only need dispatch enabled. */
 export class NoopCue extends Cue {
@@ -95,7 +96,7 @@ export interface TestWorld {
 
 /** Like {@link createTestWorld} but does not reset entity ids (for late-bound ability defs). */
 export function createActivationWorld(opts: TestWorldOpts = {}): TestWorld {
-  const world = new GameWorld({});
+  const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
   const cueLog: CueEvent[] = [];
   const hasCues = opts.cues !== undefined && Object.keys(opts.cues).length > 0;
 

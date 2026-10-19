@@ -51,6 +51,9 @@ const VALUE_EXPORTS = [
   'MemoryMatchStore',
   'IndexedDbMatchStore',
   'MatchResumeError',
+  // host
+  'DebugDataProvider',
+  'attachDebug',
 ] as const;
 
 const STATE_HELPERS = [

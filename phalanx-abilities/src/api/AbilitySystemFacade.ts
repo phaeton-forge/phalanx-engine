@@ -310,7 +310,7 @@ export class AbilitySystemFacade {
    * the activation tick, so the hook observes freshly-applied
    * cost/cooldown/self-effects on the caster.
    *
-   * Hooks MUST be deterministic — no `Date.now`, no `Math.random`, no
+   * Hooks MUST be deterministic — no wall clock, no unseeded randomness, no
    * non-replayable floating-point math. They may spawn entities (e.g.
    * projectiles, rockets) and write into the physics package; the
    * resulting state is observable on the next tick.

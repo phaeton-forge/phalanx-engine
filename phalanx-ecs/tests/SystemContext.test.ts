@@ -7,6 +7,7 @@ import type { IPhysicsWorld } from '../src/IPhysicsWorld';
 import type { IRandom } from '../src/IRandom';
 import type { ITickFrameProvider } from '../src/ITickFrameProvider';
 import type { SystemContext } from '../src/SystemContext';
+import { manualTickProvider } from './support/manualTickProvider.js';
 
 class CountingTickSystem extends GameSystem {
   public tickCount = 0;
@@ -43,6 +44,7 @@ describe('SystemContext shared services', () => {
 
   it('exposes pools on context when GameWorld pooling is configured', () => {
     const world = new GameWorld({
+      tickFrameProvider: manualTickProvider(),
       pooling: {
         entityTypes: {
           unit: {
@@ -58,13 +60,13 @@ describe('SystemContext shared services', () => {
   });
 
   it('sets pools to null when pooling is disabled', () => {
-    const world = new GameWorld({});
+    const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
     expect(world.context.pools).toBeNull();
     expect(world.pools).toBeNull();
   });
 
   it('allows optional physics to be set before registerSystems', () => {
-    const world = new GameWorld({});
+    const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
     const physics: IPhysicsWorld = {
       getInterpolatedTransform: () => undefined,
       getEntityPosition: () => undefined,
@@ -97,7 +99,10 @@ describe('SystemContext shared services', () => {
       shuffle: (arr) => arr,
     };
 
-    const world = new GameWorld({ random: rng });
+    const world = new GameWorld({
+      tickFrameProvider: manualTickProvider(),
+      random: rng,
+    });
     const probe = new RandomProbeSystem();
     world.registerSystems([], [probe]);
 
@@ -127,7 +132,7 @@ describe('SystemContext shared services', () => {
   });
 
   it('throws when context.random is accessed without configuration', () => {
-    const world = new GameWorld({});
+    const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
     expect(() => world.random).toThrow(
       /SystemContext.random is not configured/
     );
@@ -138,7 +143,7 @@ describe('SystemContext shared services', () => {
     const first = new Entity();
     expect(first.id).toBe(1);
 
-    const world = new GameWorld({});
+    const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
     const second = new Entity();
     expect(second.id).toBe(1);
     expect(world.entityManager).toBeDefined();
@@ -161,7 +166,7 @@ describe('SystemContext shared services', () => {
   });
 
   it('does not run ability tick systems twice when they are registered explicitly', () => {
-    const world = new GameWorld({});
+    const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
     const abilityTick = new CountingTickSystem();
     const abilities: IAbilitySystem = {
       tickSystems: [abilityTick],

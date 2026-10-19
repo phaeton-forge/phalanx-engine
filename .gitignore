@@ -20,6 +20,8 @@ dist/
 #
 # Some packages keep hand-written ambient type declarations in `src/`.
 !chapaev/src/globals.d.ts
+!phalanx-ecs/src/textCodec.d.ts
+!phalanx-abilities/src/console.d.ts
 
 # WASM files copied to public folders (generated)
 public/wasm/

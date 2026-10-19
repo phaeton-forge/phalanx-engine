@@ -91,8 +91,6 @@ export class SimulationContainer {
     this.world = new GameWorld({
       componentTypes: Object.values(ComponentType),
       tickFrameProvider: client,
-      debug: import.meta.env.DEV,
-      debugConfig: { updateInterval: 500 },
       pooling: {
         autoPrewarm: true,
         entityTypes: {

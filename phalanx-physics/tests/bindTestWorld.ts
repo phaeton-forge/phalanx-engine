@@ -1,3 +1,4 @@
+import { manualTickProvider } from './support/manualTickProvider.js';
 import {
   GameWorld,
   SoAComponent,
@@ -11,7 +12,7 @@ import {
  */
 export function bindTestWorld(context: SystemContext): GameWorld {
   const entityManager = context.entityManager;
-  const world = new GameWorld({});
+  const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
   context.world = world;
   SoAComponent.useEntityManager(entityManager);
   return world;

@@ -35,5 +35,8 @@ jobs:
       - name: Build @phalanx-engine packages
         run: pnpm --filter "@phalanx-engine/*" build
 
+      - name: Determinism lint
+        run: pnpm lint:determinism
+
       - name: Test @phalanx-engine packages
         run: pnpm --filter "@phalanx-engine/*" test

@@ -7,6 +7,7 @@ import {
   resetEntityIdCounter,
 } from '@phalanx-engine/ecs';
 import { WorldScope } from '../../src/runner/WorldScope.js';
+import { manualTickProvider } from '../support/manualTickProvider.js';
 
 const PROBE_SCHEMA = defineSoASchema({ n: 'i64' }, 'ScopeProbe');
 const PROBE_TYPE = Symbol('ScopeProbe');
@@ -32,7 +33,7 @@ describe('WorldScope', () => {
     let firstId = 0;
 
     scopeA.run(() => {
-      const world = new GameWorld({ tickRate: 10 });
+      const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
       worlds.push(world);
       const entity = new Entity();
       world.entityManager.addEntity(entity);
@@ -41,7 +42,7 @@ describe('WorldScope', () => {
     });
 
     scopeB.run(() => {
-      const worldB = new GameWorld({ tickRate: 10 });
+      const worldB = new GameWorld({ tickFrameProvider: manualTickProvider() });
       const entity = new Entity();
       worldB.entityManager.addEntity(entity);
       expect(entity.id).toBe(1);
@@ -68,13 +69,15 @@ describe('WorldScope', () => {
     const scopeB = new WorldScope();
     const worlds: GameWorld[] = [];
     scopeA.run(() => {
-      const worldA = new GameWorld({ tickRate: 10 });
+      const worldA = new GameWorld({ tickFrameProvider: manualTickProvider() });
       worlds.push(worldA);
       const first = new Entity();
       worldA.entityManager.addEntity(first);
       new Probe(first.id, 1n);
       scopeB.run(() => {
-        const worldB = new GameWorld({ tickRate: 10 });
+        const worldB = new GameWorld({
+          tickFrameProvider: manualTickProvider(),
+        });
         worlds.push(worldB);
         const inner = new Entity();
         worldB.entityManager.addEntity(inner);
@@ -103,7 +106,7 @@ describe('WorldScope', () => {
   it('does not rewind the counter when run re-enters the same scope', () => {
     const scope = new WorldScope();
     scope.run(() => {
-      new GameWorld({ tickRate: 10 });
+      new GameWorld({ tickFrameProvider: manualTickProvider() });
       const first = new Entity();
       scope.run(() => {
         const nested = new Entity();
