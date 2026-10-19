@@ -332,10 +332,9 @@ Entries collected per package until the synchronized 0.3.0 release
   `registerSaveSection: duplicate key '<key>'`. `GameWorld.saveSections`
   returns a copy sorted by UTF-16 code units.
   `SystemContext.physics` is a plain field: assigning it has no side
-  effects. `SystemContext.world` is `GameWorld | undefined`.
-  `GameSystem.world` throws `GameSystem.world: context.world is not set`
-  when the context has no world. Physics save registration is
-  `PhysicsWorld.attach(world)` in `@phalanx-engine/physics`.
+  effects. Physics save registration is `PhysicsWorld.attach(world)` in
+  `@phalanx-engine/physics`. `IPoolableComponent` is exported (names
+  82 → 83). `isPoolableComponent` stays internal.
 
 - Snapshot accessors (Task 3): `getEntityIdCounter` / `setEntityIdCounter`
   (module functions and `GameWorld` delegates), `SoAComponent.currentEntityManager()`,
@@ -366,8 +365,8 @@ Entries collected per package until the synchronized 0.3.0 release
 - Component lifecycle (Task 6.5a): `onCreate`, `onEnable`, `onDisable`,
   `onDestroy`. Spawn enables after `addEntity`. Despawn disables before
   `removeEntity`. `drain` disposes free entities so `onDestroy` runs.
-  `IPoolableComponent`, `isPoolableComponent` and the public story for
-  `addReturnToPoolHook` are internal. `registerComponent`, `componentNames`,
+  `isPoolableComponent` and the public story for `addReturnToPoolHook`
+  are internal. `IPoolableComponent` is exported. `registerComponent`, `componentNames`,
   `save`, `restore`, `spawn`, `despawn` and `each` are on `GameWorld`;
   the byte format is installed by importing `@phalanx-engine/runtime`.
 
@@ -541,8 +540,8 @@ Entries collected per package until the synchronized 0.3.0 release
 
 ## abilities-playground
 
-- `@phalanx-engine/*` dependencies are pinned to published npm `0.2.3`
-  (`npm:` alias) so this package keeps building against the previous API.
+- `@phalanx-engine/*` dependencies are `workspace:*`. Bootstrap calls
+  `PhysicsWorld.attach(world)`.
 
 ## @phalanx-engine/physics
 

@@ -109,6 +109,7 @@ const ROOT_NAMES = [
   'IComponent',
   'IPhysicsWorld',
   'IPoolable',
+  'IPoolableComponent',
   'IPoolableEntity',
   'IRandom',
   'ITickFrameProvider',
@@ -225,7 +226,7 @@ describe('@phalanx-engine/ecs exports', () => {
       'utf8'
     );
     expect(declaration).toMatch(/physics:\s*IPhysicsWorld \| undefined/);
-    expect(declaration).toMatch(/world:\s*GameWorld \| undefined/);
+    expect(declaration).toMatch(/world: GameWorld;/);
     expect(declaration).not.toContain('defineProperty');
     expect(declaration).not.toContain('phalanx.physics');
   });
@@ -237,7 +238,7 @@ describe('@phalanx-engine/ecs exports', () => {
     }
     expect(
       resolved.map((entry) => actual.get(entry.file)?.names.length)
-    ).toEqual([82]);
+    ).toEqual([83]);
     expect(
       resolved.map((entry) => actual.get(entry.file)?.values.length)
     ).toEqual([33]);

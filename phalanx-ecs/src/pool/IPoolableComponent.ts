@@ -5,8 +5,8 @@ import type { IComponent } from '../Component.js';
  *
  * Game code uses the component lifecycle (`onCreate` / `onEnable` /
  * `onDisable` / `onDestroy`). `PoolManager` still calls `onSpawn` /
- * `onDespawn` for components that implement this interface. That call is
- * not part of the public package export.
+ * `onDespawn` for components that implement this interface. The interface
+ * is exported. `isPoolableComponent` is not.
  */
 export interface IPoolableComponent extends IComponent {
   /** Restore backing storage to constructor defaults (e.g. re-add the SoA row). */

@@ -3,8 +3,11 @@ import {
   BinaryStateReader,
   BinaryStateWriter,
   Entity,
+  EntityManager,
+  EventBus,
   GameWorld,
   SoAComponent,
+  SystemContext,
   resetEntityIdCounter,
 } from '@phalanx-engine/ecs';
 import { FP } from '@phalanx-engine/math';
@@ -12,9 +15,11 @@ import type { FixedPoint } from '@phalanx-engine/math';
 import {
   CollisionSystem,
   PhysicsBodyComponent,
+  PhysicsSystem,
   PhysicsWorld,
   TransformComponent,
 } from '../src/index.js';
+import type { PhysicsConfig } from '../src/types.js';
 import {
   readBroadphase,
   rebuildBroadphaseFromTransforms,
@@ -40,6 +45,21 @@ class Disc extends Entity {
       })
     );
   }
+}
+
+function physicsConfig(): PhysicsConfig {
+  return {
+    tickDt: FP.FromFloat(0.05),
+    subSteps: 1,
+    maxVelocity: FP.FromFloat(100),
+    defaultFriction: FP.FromFloat(0.92),
+    pushStrength: FP.FromFloat(15),
+    gridCellSize: FP.FromInt(4),
+  };
+}
+
+function bareContext(): SystemContext {
+  return new SystemContext(new EventBus(), new EntityManager());
 }
 
 function finish(fill: (w: BinaryStateWriter) => void): Uint8Array {
@@ -221,6 +241,28 @@ describe('physics state helpers', () => {
     const { physics } = wiredWorld();
     expect(() => physics.attach(new GameWorld({}))).toThrow(
       'PhysicsWorld.attach: already attached to another world'
+    );
+  });
+
+  it('registers physics.broadphase from PhysicsSystem without attach', () => {
+    const world = new GameWorld({});
+    world.registerSystems([new PhysicsSystem(physicsConfig())], []);
+    expect(world.saveSections.map((section) => section.key)).toEqual([
+      'physics.broadphase',
+    ]);
+  });
+
+  it('throws when PhysicsSystem.init has no world', () => {
+    const system = new PhysicsSystem(physicsConfig());
+    expect(() => system.init(bareContext())).toThrow(
+      'PhysicsSystem.init: context.world is not set'
+    );
+  });
+
+  it('throws when CollisionSystem.init has no world', () => {
+    const system = new CollisionSystem(FP.FromInt(4));
+    expect(() => system.init(bareContext())).toThrow(
+      'CollisionSystem.init: context.world is not set'
     );
   });
 

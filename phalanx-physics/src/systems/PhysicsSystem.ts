@@ -1,6 +1,7 @@
 import {
   GameSystem,
   type EventBus,
+  type GameWorld,
   type SoAComponentStore,
   type SystemContext,
 } from '@phalanx-engine/ecs';
@@ -56,10 +57,12 @@ export class PhysicsSystem extends GameSystem {
 
   public override init(context: SystemContext): void {
     super.init(context);
-    if (context.world === undefined) {
+    // `world!` is set by GameWorld. A bare SystemContext leaves it unset.
+    const world = (context as unknown as { world?: GameWorld }).world;
+    if (world === undefined) {
       throw new Error('PhysicsSystem.init: context.world is not set');
     }
-    ensureBroadphaseSection(context.world);
+    ensureBroadphaseSection(world);
     this.physicsStore =
       this.entityManager.getOrCreateSoAStore(PhysicsSoASchema);
     this.transformStore =

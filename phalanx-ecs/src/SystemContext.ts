@@ -36,10 +36,9 @@ export class SystemContext {
 
   /**
    * The world that owns this context. Assigned by `GameWorld` after the
-   * registry exists. Undefined on a context built for an isolated test.
-   * Systems read it through `GameSystem.world`.
+   * registry exists. Systems read it through `GameSystem.world`.
    */
-  public world: GameWorld | undefined = undefined;
+  public world!: GameWorld;
 
   /** Internal registry of all systems for getSystem() lookup */
   private systemRegistry = new Map<SystemConstructor, GameSystem>();

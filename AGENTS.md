@@ -276,7 +276,8 @@ Pooling is **engine-driven**. Game code calls exactly two APIs:
     `onDisable` (the entity was never enabled).
 - `onEnable` also runs after `world.restore`. It must not overwrite saved
   fields. Per-spawn writes belong in entity `onSpawn`.
-- `addReturnToPoolHook` and `IPoolableComponent` are internal. Game code
+- `addReturnToPoolHook` and `isPoolableComponent` are internal.
+  `IPoolableComponent` is exported. Game code
   uses `onEnable` / `onDisable` / `onDestroy`. `SoAComponent.onSpawn` /
   `onDespawn` stay the storage reset.
 - `createAbilitySystem` registers an internal return-to-pool hook. The

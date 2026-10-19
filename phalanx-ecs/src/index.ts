@@ -35,6 +35,7 @@ export { setWorldModuleHost } from './worldHost.js';
 export { ObjectPool, EntityPool, PoolManager } from './pool/index.js';
 export type {
   IPoolable,
+  IPoolableComponent,
   IPoolableEntity,
   SpawnArgsOf,
   PoolConfig,

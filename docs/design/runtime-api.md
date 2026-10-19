@@ -542,8 +542,8 @@ Component lifecycle is `onCreate` (add), `onEnable` (pool spawn, `world.spawn`,
 and after restore), `onDisable` (return to pool or despawn) and `onDestroy`
 (`dispose`, including pool drain). Pool return resets SoA fields to schema
 defaults and GAS attributes, the granted ability set, and `initComponent`
-tags to the factory shell. `addReturnToPoolHook` and `IPoolableComponent`
-are internal.
+tags to the factory shell. `addReturnToPoolHook` and
+`isPoolableComponent` are internal. `IPoolableComponent` is exported.
 
 `src/advanced/StateHelpers.ts`, re-exported from `src/advanced/index.ts`.
 A plain `as const` object, not a TS `namespace`. The engine's world

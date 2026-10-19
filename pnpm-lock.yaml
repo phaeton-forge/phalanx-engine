@@ -30,23 +30,23 @@ importers:
   abilities-playground:
     dependencies:
       '@phalanx-engine/abilities':
-        specifier: npm:@phalanx-engine/abilities@0.2.3
-        version: 0.2.3(@phalanx-engine/ecs@0.2.3)(@phalanx-engine/math@0.2.3)
+        specifier: workspace:*
+        version: link:../phalanx-abilities
       '@phalanx-engine/client':
-        specifier: npm:@phalanx-engine/client@0.2.3
-        version: 0.2.3
+        specifier: workspace:*
+        version: link:../phalanx-client
       '@phalanx-engine/ecs':
-        specifier: npm:@phalanx-engine/ecs@0.2.3
-        version: 0.2.3
+        specifier: workspace:*
+        version: link:../phalanx-ecs
       '@phalanx-engine/math':
-        specifier: npm:@phalanx-engine/math@0.2.3
-        version: 0.2.3
+        specifier: workspace:*
+        version: link:../phalanx-math
       '@phalanx-engine/physics':
-        specifier: npm:@phalanx-engine/physics@0.2.3
-        version: 0.2.3(@phalanx-engine/ecs@0.2.3)(@phalanx-engine/math@0.2.3)
+        specifier: workspace:*
+        version: link:../phalanx-physics
       '@phalanx-engine/server':
-        specifier: npm:@phalanx-engine/server@0.2.3
-        version: 0.2.3
+        specifier: workspace:*
+        version: link:../phalanx-server
       three:
         specifier: ^0.175.0
         version: 0.175.0
@@ -770,33 +770,6 @@ packages:
 
   '@oxc-project/types@0.122.0':
     resolution: {integrity: sha512-oLAl5kBpV4w69UtFZ9xqcmTi+GENWOcPF7FCrczTiBbmC0ibXxCwyvZGbO39rCVEuLGAZM84DH0pUIyyv/YJzA==}
-
-  '@phalanx-engine/abilities@0.2.3':
-    resolution: {integrity: sha512-6rO1RwSJS/gjQUmVj8UX1J4wrxJZd6qJ7HYhx+Ac1e5qhnDqm1EoIbtndBJBf1KcVcNraG7Sis9gBRf4ixqZ6A==}
-    peerDependencies:
-      '@phalanx-engine/ecs': ^0.2.0
-      '@phalanx-engine/math': ^0.2.0
-
-  '@phalanx-engine/client@0.2.3':
-    resolution: {integrity: sha512-6/288icKhQyMj/2zEXI4WYv4TA963+3RpQTd+Eh6kHY+GoKX9ijEEorXiI9ToOrybeOWJU6YN1nGUYPCHywVvQ==}
-    engines: {node: '>=24.0.0 <25.0.0'}
-
-  '@phalanx-engine/ecs@0.2.3':
-    resolution: {integrity: sha512-0ZQTjIlq0yr+NFx86SHvtVG1uax9e/yEtU7m++CsJnr5isYvin1CrCzXnbrrdCdTu5NS7vzKodyhFR9c2LXrlQ==}
-
-  '@phalanx-engine/math@0.2.3':
-    resolution: {integrity: sha512-E4eZENjc5YKJ2s37WE+P8xf5fIF1AalrmAkN29JvwAil6qkLN4AHq7Blr0egppc3emidwWqWOYvv9DAs7YwErA==}
-    engines: {node: '>=24.0.0 <25.0.0'}
-
-  '@phalanx-engine/physics@0.2.3':
-    resolution: {integrity: sha512-eGa9LMGtxkpCN950A5LW/tSQzZqOL5YjBTswiPWQz7uU0CHZRJXbWb8aZpRr+ltN3huWS6k0na/ErkWnTfSpkg==}
-    peerDependencies:
-      '@phalanx-engine/ecs': ^0.2.0
-      '@phalanx-engine/math': ^0.2.0
-
-  '@phalanx-engine/server@0.2.3':
-    resolution: {integrity: sha512-Y/yifA3hC/Zygpyt7MFiSDKq1PCU83gj+TqSfbKYqhEDxAuOAmmjAf9XfW2S8Vpau279uTkwW8ywgZmtr5ZjVg==}
-    engines: {node: '>=24.0.0 <25.0.0'}
 
   '@pkgjs/parseargs@0.11.0':
     resolution: {integrity: sha512-+1VkjdD0QBLPodGrJUeqarH8VAIvQODIbwh9XpP5Syisf7YoQgsJKPNFoqqLQlu+VQ/tVSshMR6loPMn8U+dPg==}
@@ -2822,42 +2795,6 @@ snapshots:
     optional: true
 
   '@oxc-project/types@0.122.0': {}
-
-  '@phalanx-engine/abilities@0.2.3(@phalanx-engine/ecs@0.2.3)(@phalanx-engine/math@0.2.3)':
-    dependencies:
-      '@phalanx-engine/ecs': 0.2.3
-      '@phalanx-engine/math': 0.2.3
-
-  '@phalanx-engine/client@0.2.3':
-    dependencies:
-      '@phalanx-engine/math': 0.2.3
-      pure-rand: 7.0.1
-      socket.io-client: 4.8.3
-    transitivePeerDependencies:
-      - bufferutil
-      - supports-color
-      - utf-8-validate
-
-  '@phalanx-engine/ecs@0.2.3': {}
-
-  '@phalanx-engine/math@0.2.3':
-    dependencies:
-      '@hastom/fixed-point': 4.4.0
-
-  '@phalanx-engine/physics@0.2.3(@phalanx-engine/ecs@0.2.3)(@phalanx-engine/math@0.2.3)':
-    dependencies:
-      '@phalanx-engine/ecs': 0.2.3
-      '@phalanx-engine/math': 0.2.3
-
-  '@phalanx-engine/server@0.2.3':
-    dependencies:
-      '@phalanx-engine/math': 0.2.3
-      pure-rand: 7.0.1
-      socket.io: 4.8.3
-    transitivePeerDependencies:
-      - bufferutil
-      - supports-color
-      - utf-8-validate
 
   '@pkgjs/parseargs@0.11.0':
     optional: true
