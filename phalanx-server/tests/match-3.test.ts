@@ -9,12 +9,11 @@ import type { MatchFoundEvent } from '../src/types/index.js';
 describe('MATCH-3: Server Detects When Enough Players Are Ready for a Match', () => {
   let server: Phalanx;
   let clients: Socket[] = [];
-  const TEST_PORT = 3335;
 
   beforeEach(async () => {
     // Use a short matchmaking interval for faster tests
     server = new Phalanx({
-      port: TEST_PORT,
+      port: 0,
       matchmakingIntervalMs: 100,
       gameMode: '1v1', // 2 players per match
     });
@@ -36,7 +35,7 @@ describe('MATCH-3: Server Detects When Enough Players Are Ready for a Match', ()
   });
 
   function createClient(): Socket {
-    const client = io(`http://localhost:${TEST_PORT}`, {
+    const client = io(`http://localhost:${String(server.getPort())}`, {
       autoConnect: false,
       forceNew: true,
     });
@@ -171,7 +170,6 @@ describe('MATCH-3: Server Detects When Enough Players Are Ready for a Match', ()
 describe('MATCH-3: Game Mode Configuration', () => {
   let server: Phalanx;
   let clients: Socket[] = [];
-  const TEST_PORT = 3336;
 
   afterEach(async () => {
     for (const client of clients) {
@@ -187,7 +185,7 @@ describe('MATCH-3: Game Mode Configuration', () => {
   });
 
   function createClient(): Socket {
-    const client = io(`http://localhost:${TEST_PORT}`, {
+    const client = io(`http://localhost:${String(server.getPort())}`, {
       autoConnect: false,
       forceNew: true,
     });
@@ -204,7 +202,7 @@ describe('MATCH-3: Game Mode Configuration', () => {
 
   it('should support 2v2 game mode (4 players)', async () => {
     server = new Phalanx({
-      port: TEST_PORT,
+      port: 0,
       matchmakingIntervalMs: 100,
       gameMode: '2v2',
     });
@@ -250,7 +248,7 @@ describe('MATCH-3: Game Mode Configuration', () => {
 
   it('should support custom game mode configuration', async () => {
     server = new Phalanx({
-      port: TEST_PORT,
+      port: 0,
       matchmakingIntervalMs: 100,
       gameMode: { playersPerMatch: 4, teamsCount: 4 }, // FFA style
     });

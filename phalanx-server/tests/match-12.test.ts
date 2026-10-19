@@ -3,9 +3,6 @@ import { io, Socket } from 'socket.io-client';
 import { Phalanx, PlayerCommand } from '../src/index.js';
 import type { MatchFoundEvent, TickSyncEvent } from '../src/types/index.js';
 
-const TEST_PORT = 3032;
-const SERVER_URL = `http://localhost:${TEST_PORT}`;
-
 /**
  * NET-2: Server Handles Player Reconnection
  *
@@ -22,7 +19,7 @@ describe('NET-2: Server Handles Player Reconnection', () => {
 
   beforeEach(async () => {
     server = new Phalanx({
-      port: TEST_PORT,
+      port: 0,
       tickRate: 20,
       countdownSeconds: 0,
       reconnectGracePeriodMs: 30000,
@@ -31,8 +28,12 @@ describe('NET-2: Server Handles Player Reconnection', () => {
     });
     await server.start();
 
-    socket1 = io(SERVER_URL, { forceNew: true });
-    socket2 = io(SERVER_URL, { forceNew: true });
+    socket1 = io(`http://localhost:${String(server.getPort())}`, {
+      forceNew: true,
+    });
+    socket2 = io(`http://localhost:${String(server.getPort())}`, {
+      forceNew: true,
+    });
 
     await Promise.all([
       new Promise<void>((resolve) => socket1.on('connect', resolve)),
@@ -41,8 +42,12 @@ describe('NET-2: Server Handles Player Reconnection', () => {
 
     // Set up game-start listeners before joining queue (with countdownSeconds: 0, game-start fires immediately)
     const gameStartPromise = Promise.all([
-      new Promise<void>((resolve) => { socket1.once('game-start', () => resolve()); }),
-      new Promise<void>((resolve) => { socket2.once('game-start', () => resolve()); }),
+      new Promise<void>((resolve) => {
+        socket1.once('game-start', () => resolve());
+      }),
+      new Promise<void>((resolve) => {
+        socket2.once('game-start', () => resolve());
+      }),
     ]);
 
     // Join queue and wait for match
@@ -103,7 +108,9 @@ describe('NET-2: Server Handles Player Reconnection', () => {
     });
 
     // Player 2 reconnects with new socket
-    const newSocket = io(SERVER_URL, { forceNew: true });
+    const newSocket = io(`http://localhost:${String(server.getPort())}`, {
+      forceNew: true,
+    });
     await new Promise<void>((resolve) => newSocket.on('connect', resolve));
 
     const reconnectPromise = new Promise<{ success: boolean }>((resolve) => {
@@ -135,7 +142,9 @@ describe('NET-2: Server Handles Player Reconnection', () => {
     });
 
     // Player 2 reconnects
-    const newSocket = io(SERVER_URL, { forceNew: true });
+    const newSocket = io(`http://localhost:${String(server.getPort())}`, {
+      forceNew: true,
+    });
     await new Promise<void>((resolve) => newSocket.on('connect', resolve));
 
     const statePromise = new Promise<{
@@ -167,7 +176,9 @@ describe('NET-2: Server Handles Player Reconnection', () => {
     });
 
     // Player 2 reconnects
-    const newSocket = io(SERVER_URL, { forceNew: true });
+    const newSocket = io(`http://localhost:${String(server.getPort())}`, {
+      forceNew: true,
+    });
     await new Promise<void>((resolve) => newSocket.on('connect', resolve));
 
     const reconnectedPromise = new Promise<{ playerId: string }>((resolve) => {
@@ -191,7 +202,9 @@ describe('NET-2: Server Handles Player Reconnection', () => {
     });
 
     // Try to reconnect with wrong matchId
-    const newSocket = io(SERVER_URL, { forceNew: true });
+    const newSocket = io(`http://localhost:${String(server.getPort())}`, {
+      forceNew: true,
+    });
     await new Promise<void>((resolve) => newSocket.on('connect', resolve));
 
     const reconnectPromise = new Promise<{ success: boolean; reason?: string }>(
@@ -221,7 +234,9 @@ describe('NET-2: Server Handles Player Reconnection', () => {
     });
 
     // Player 2 reconnects
-    const newSocket = io(SERVER_URL, { forceNew: true });
+    const newSocket = io(`http://localhost:${String(server.getPort())}`, {
+      forceNew: true,
+    });
     await new Promise<void>((resolve) => newSocket.on('connect', resolve));
 
     await new Promise<void>((resolve) => {

@@ -12,12 +12,10 @@ import type {
  */
 describe('PhalanxClient Integration Tests', () => {
   let server: Phalanx;
-  const TEST_PORT = 3456;
-  const SERVER_URL = `http://localhost:${TEST_PORT}`;
 
   beforeEach(async () => {
     server = new Phalanx({
-      port: TEST_PORT,
+      port: 0,
       matchmakingIntervalMs: 100,
       gameMode: '1v1',
       countdownSeconds: 1,
@@ -34,7 +32,7 @@ describe('PhalanxClient Integration Tests', () => {
   describe('Connection', () => {
     it('should connect to server successfully', async () => {
       const client = new PhalanxClient({
-        serverUrl: SERVER_URL,
+        serverUrl: `http://localhost:${String(server.getPort())}`,
         playerId: 'player1',
         username: 'TestPlayer',
       });
@@ -49,7 +47,7 @@ describe('PhalanxClient Integration Tests', () => {
 
     it('should emit connected event on successful connection', async () => {
       const client = new PhalanxClient({
-        serverUrl: SERVER_URL,
+        serverUrl: `http://localhost:${String(server.getPort())}`,
         playerId: 'player1',
         username: 'TestPlayer',
       });
@@ -68,7 +66,7 @@ describe('PhalanxClient Integration Tests', () => {
 
     it('should update state on disconnect', async () => {
       const client = new PhalanxClient({
-        serverUrl: SERVER_URL,
+        serverUrl: `http://localhost:${String(server.getPort())}`,
         playerId: 'player1',
         username: 'TestPlayer',
       });
@@ -84,7 +82,7 @@ describe('PhalanxClient Integration Tests', () => {
   describe('Queue', () => {
     it('should join queue and receive status', async () => {
       const client = new PhalanxClient({
-        serverUrl: SERVER_URL,
+        serverUrl: `http://localhost:${String(server.getPort())}`,
         playerId: 'player1',
         username: 'TestPlayer',
       });
@@ -101,7 +99,7 @@ describe('PhalanxClient Integration Tests', () => {
 
     it('should leave queue', async () => {
       const client = new PhalanxClient({
-        serverUrl: SERVER_URL,
+        serverUrl: `http://localhost:${String(server.getPort())}`,
         playerId: 'player1',
         username: 'TestPlayer',
       });
@@ -119,12 +117,12 @@ describe('PhalanxClient Integration Tests', () => {
   describe('Matchmaking', () => {
     it('should find match when two players join queue', async () => {
       const client1 = new PhalanxClient({
-        serverUrl: SERVER_URL,
+        serverUrl: `http://localhost:${String(server.getPort())}`,
         playerId: 'player1',
         username: 'Player1',
       });
       const client2 = new PhalanxClient({
-        serverUrl: SERVER_URL,
+        serverUrl: `http://localhost:${String(server.getPort())}`,
         playerId: 'player2',
         username: 'Player2',
       });
@@ -152,12 +150,12 @@ describe('PhalanxClient Integration Tests', () => {
 
     it('should emit matchFound event', async () => {
       const client1 = new PhalanxClient({
-        serverUrl: SERVER_URL,
+        serverUrl: `http://localhost:${String(server.getPort())}`,
         playerId: 'player1',
         username: 'Player1',
       });
       const client2 = new PhalanxClient({
-        serverUrl: SERVER_URL,
+        serverUrl: `http://localhost:${String(server.getPort())}`,
         playerId: 'player2',
         username: 'Player2',
       });
@@ -191,12 +189,12 @@ describe('PhalanxClient Integration Tests', () => {
   describe('Game Lifecycle', () => {
     it('should receive countdown events', async () => {
       const client1 = new PhalanxClient({
-        serverUrl: SERVER_URL,
+        serverUrl: `http://localhost:${String(server.getPort())}`,
         playerId: 'player1',
         username: 'Player1',
       });
       const client2 = new PhalanxClient({
-        serverUrl: SERVER_URL,
+        serverUrl: `http://localhost:${String(server.getPort())}`,
         playerId: 'player2',
         username: 'Player2',
       });
@@ -223,12 +221,12 @@ describe('PhalanxClient Integration Tests', () => {
 
     it('should receive game start event', async () => {
       const client1 = new PhalanxClient({
-        serverUrl: SERVER_URL,
+        serverUrl: `http://localhost:${String(server.getPort())}`,
         playerId: 'player1',
         username: 'Player1',
       });
       const client2 = new PhalanxClient({
-        serverUrl: SERVER_URL,
+        serverUrl: `http://localhost:${String(server.getPort())}`,
         playerId: 'player2',
         username: 'Player2',
       });
@@ -258,12 +256,12 @@ describe('PhalanxClient Integration Tests', () => {
 
     it('should receive tick-sync events after game start', async () => {
       const client1 = new PhalanxClient({
-        serverUrl: SERVER_URL,
+        serverUrl: `http://localhost:${String(server.getPort())}`,
         playerId: 'player1',
         username: 'Player1',
       });
       const client2 = new PhalanxClient({
-        serverUrl: SERVER_URL,
+        serverUrl: `http://localhost:${String(server.getPort())}`,
         playerId: 'player2',
         username: 'Player2',
       });
@@ -306,13 +304,13 @@ describe('PhalanxClient Integration Tests', () => {
   describe('LobbyScene Flow', () => {
     it('should receive matchFound and gameStart via on() subscriptions', async () => {
       const client1 = await PhalanxClient.create({
-        serverUrl: SERVER_URL,
+        serverUrl: `http://localhost:${String(server.getPort())}`,
         playerId: 'player1',
         username: 'Player1',
         debug: true,
       });
       const client2 = await PhalanxClient.create({
-        serverUrl: SERVER_URL,
+        serverUrl: `http://localhost:${String(server.getPort())}`,
         playerId: 'player2',
         username: 'Player2',
         debug: true,
@@ -363,12 +361,12 @@ describe('PhalanxClient Integration Tests', () => {
   describe('Commands', () => {
     it('should submit commands and receive acknowledgment', async () => {
       const client1 = new PhalanxClient({
-        serverUrl: SERVER_URL,
+        serverUrl: `http://localhost:${String(server.getPort())}`,
         playerId: 'player1',
         username: 'Player1',
       });
       const client2 = new PhalanxClient({
-        serverUrl: SERVER_URL,
+        serverUrl: `http://localhost:${String(server.getPort())}`,
         playerId: 'player2',
         username: 'Player2',
       });

@@ -9,11 +9,10 @@ import type { MatchFoundEvent } from '../src/types/index.js';
 describe('MATCH-4: Server Creates Match Room and Assigns Players', () => {
   let server: Phalanx;
   let clients: Socket[] = [];
-  const TEST_PORT = 3336;
 
   beforeEach(async () => {
     server = new Phalanx({
-      port: TEST_PORT,
+      port: 0,
       matchmakingIntervalMs: 100,
       gameMode: '1v1',
     });
@@ -33,7 +32,7 @@ describe('MATCH-4: Server Creates Match Room and Assigns Players', () => {
   });
 
   function createClient(): Socket {
-    const client = io(`http://localhost:${TEST_PORT}`, {
+    const client = io(`http://localhost:${String(server.getPort())}`, {
       autoConnect: false,
       forceNew: true,
     });
@@ -157,11 +156,10 @@ describe('MATCH-4: Server Creates Match Room and Assigns Players', () => {
 describe('MATCH-4: Team Assignment for 2v2 Mode', () => {
   let server: Phalanx;
   let clients: Socket[] = [];
-  const TEST_PORT = 3337;
 
   beforeEach(async () => {
     server = new Phalanx({
-      port: TEST_PORT,
+      port: 0,
       matchmakingIntervalMs: 100,
       gameMode: '2v2', // 4 players, 2 teams
     });
@@ -181,7 +179,7 @@ describe('MATCH-4: Team Assignment for 2v2 Mode', () => {
   });
 
   function createClient(): Socket {
-    const client = io(`http://localhost:${TEST_PORT}`, {
+    const client = io(`http://localhost:${String(server.getPort())}`, {
       autoConnect: false,
       forceNew: true,
     });

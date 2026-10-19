@@ -14,11 +14,10 @@ import type {
 describe('PrivateRoomService', () => {
   let server: Phalanx;
   let clients: Socket[] = [];
-  const TEST_PORT = 3399;
 
   beforeEach(async () => {
     server = new Phalanx({
-      port: TEST_PORT,
+      port: 0,
       matchmakingIntervalMs: 100,
       gameMode: '1v1',
       countdownSeconds: 0,
@@ -39,7 +38,7 @@ describe('PrivateRoomService', () => {
   });
 
   function createClient(): Socket {
-    const client = io(`http://localhost:${TEST_PORT}`, {
+    const client = io(`http://localhost:${String(server.getPort())}`, {
       autoConnect: false,
       forceNew: true,
     });
@@ -157,7 +156,11 @@ describe('PrivateRoomService', () => {
       guest.on('match-found', (data: { matchId: string }) => resolve(data));
     });
 
-    guest.emit('room-join', { playerId: 'guest1', username: 'Guest', code: created.code });
+    guest.emit('room-join', {
+      playerId: 'guest1',
+      username: 'Guest',
+      code: created.code,
+    });
 
     const hostMatch = await hostMatchPromise;
     const guestMatch = await guestMatchPromise;
@@ -175,7 +178,11 @@ describe('PrivateRoomService', () => {
       guest.on('room-error', (data: RoomErrorEvent) => resolve(data));
     });
 
-    guest.emit('room-join', { playerId: 'guest1', username: 'Guest', code: 'ZZZZZZ' });
+    guest.emit('room-join', {
+      playerId: 'guest1',
+      username: 'Guest',
+      code: 'ZZZZZZ',
+    });
 
     const error = await errorPromise;
     expect(error.message).toBe('Room not found');
@@ -194,7 +201,11 @@ describe('PrivateRoomService', () => {
     const errorPromise = new Promise<RoomErrorEvent>((resolve) => {
       host.on('room-error', (data: RoomErrorEvent) => resolve(data));
     });
-    host.emit('room-join', { playerId: 'host1', username: 'Host', code: created.code });
+    host.emit('room-join', {
+      playerId: 'host1',
+      username: 'Host',
+      code: created.code,
+    });
 
     const error = await errorPromise;
     expect(error.message).toBe('Cannot join your own room');
@@ -227,7 +238,11 @@ describe('PrivateRoomService', () => {
     const errorPromise = new Promise<RoomErrorEvent>((resolve) => {
       guest.on('room-error', (data: RoomErrorEvent) => resolve(data));
     });
-    guest.emit('room-join', { playerId: 'guest1', username: 'Guest', code: created.code });
+    guest.emit('room-join', {
+      playerId: 'guest1',
+      username: 'Guest',
+      code: created.code,
+    });
 
     const error = await errorPromise;
     expect(error.message).toBe('Room not found');
@@ -256,7 +271,11 @@ describe('PrivateRoomService', () => {
     const hostMatchPromise = new Promise<void>((resolve) => {
       host.on('match-found', () => resolve());
     });
-    guest.emit('room-join', { playerId: 'guest1', username: 'Guest', code: created.code });
+    guest.emit('room-join', {
+      playerId: 'guest1',
+      username: 'Guest',
+      code: created.code,
+    });
     await hostMatchPromise;
 
     // Wait for game-start so matchId is assigned on sockets
@@ -290,7 +309,11 @@ describe('PrivateRoomService', () => {
     const guestMatchPromise = new Promise<void>((resolve) => {
       guest1.on('match-found', () => resolve());
     });
-    guest1.emit('room-join', { playerId: 'guest1', username: 'Guest1', code: created1.code });
+    guest1.emit('room-join', {
+      playerId: 'guest1',
+      username: 'Guest1',
+      code: created1.code,
+    });
     await guestMatchPromise;
 
     // Wait for game-start so matchId is assigned
@@ -307,7 +330,11 @@ describe('PrivateRoomService', () => {
     const errorPromise = new Promise<RoomErrorEvent>((resolve) => {
       guest1.on('room-error', (data: RoomErrorEvent) => resolve(data));
     });
-    guest1.emit('room-join', { playerId: 'guest1', username: 'Guest1', code: created2.code });
+    guest1.emit('room-join', {
+      playerId: 'guest1',
+      username: 'Guest1',
+      code: created2.code,
+    });
 
     const error = await errorPromise;
     expect(error.message).toBe('Already in a match');
@@ -463,7 +490,7 @@ describe('PrivateRoomService', () => {
           matchId: string;
           teamId: number;
           opponents: { playerId: string }[];
-        }) => resolve(data),
+        }) => resolve(data)
       );
     });
     host2.emit('room-recover', {
@@ -600,7 +627,7 @@ describe('PrivateRoomService', () => {
       (resolve) => {
         host.on('room-recovered', (data: RoomRecoveredEvent) => resolve(data));
         setTimeout(() => resolve(null), 300);
-      },
+      }
     );
     host.emit('room-recover', { playerId: 'host1', username: 'Host' });
 
@@ -652,12 +679,12 @@ describe('PrivateRoomService', () => {
     const unexpectedRecoverPromise = new Promise<RoomRecoveredEvent | null>(
       (resolve) => {
         attacker.on('room-recovered', (data: RoomRecoveredEvent) =>
-          resolve(data),
+          resolve(data)
         );
         // Give the server plenty of room to misbehave before we conclude
         // no recover event came back.
         setTimeout(() => resolve(null), 300);
-      },
+      }
     );
     attacker.emit('room-recover', {
       playerId: 'host1',
@@ -782,13 +809,12 @@ describe('PrivateRoomService', () => {
   // can assert that a host disconnect does not destroy a waiting room.
 
   it('should keep the room alive after host disconnect until TTL expires (unit)', async () => {
-    const { PrivateRoomService } = await import(
-      '../src/services/PrivateRoomService.js'
-    );
+    const { PrivateRoomService } =
+      await import('../src/services/PrivateRoomService.js');
     const { validateConfig } = await import('../src/config/validation.js');
 
     const config = validateConfig({
-      port: TEST_PORT,
+      port: 0,
       matchmakingIntervalMs: 100,
       gameMode: '1v1',
       countdownSeconds: 0,
@@ -814,7 +840,7 @@ describe('PrivateRoomService', () => {
         fakeIo,
         config,
         () => undefined,
-        () => config,
+        () => config
       );
 
       service.createRoom('host1', 'Host', hostSocket);
@@ -845,13 +871,12 @@ describe('PrivateRoomService', () => {
   it('should allow room-recover after long disconnect while room TTL has not expired (unit)', async () => {
     // With disconnect no longer starting a destroy timer, host should be
     // able to recover even after the old grace window elapsed.
-    const { PrivateRoomService } = await import(
-      '../src/services/PrivateRoomService.js'
-    );
+    const { PrivateRoomService } =
+      await import('../src/services/PrivateRoomService.js');
     const { validateConfig } = await import('../src/config/validation.js');
 
     const config = validateConfig({
-      port: TEST_PORT,
+      port: 0,
       matchmakingIntervalMs: 100,
       gameMode: '1v1',
       countdownSeconds: 0,
@@ -885,7 +910,7 @@ describe('PrivateRoomService', () => {
         fakeIo,
         config,
         () => undefined,
-        () => config,
+        () => config
       );
 
       service.createRoom('host1', 'Host', hostSocket1);
@@ -917,7 +942,7 @@ describe('PrivateRoomService', () => {
       const expired = emitted.find(
         (e) =>
           e.event === 'room-error' &&
-          (e.payload as { message: string }).message === 'Room expired',
+          (e.payload as { message: string }).message === 'Room expired'
       );
       expect(secondRecover).toBeDefined();
       expect(expired).toBeUndefined();
@@ -938,13 +963,12 @@ describe('PrivateRoomService', () => {
     // via room-recover that socket is dead, so the real host would never
     // see the expiry. The fix looks the room back up at expiry time and
     // emits on its *current* hostSocket.
-    const { PrivateRoomService } = await import(
-      '../src/services/PrivateRoomService.js'
-    );
+    const { PrivateRoomService } =
+      await import('../src/services/PrivateRoomService.js');
     const { validateConfig } = await import('../src/config/validation.js');
 
     const config = validateConfig({
-      port: TEST_PORT,
+      port: 0,
       matchmakingIntervalMs: 100,
       gameMode: '1v1',
       countdownSeconds: 0,
@@ -977,7 +1001,7 @@ describe('PrivateRoomService', () => {
         fakeIo,
         config,
         () => undefined,
-        () => config,
+        () => config
       );
 
       service.createRoom('host1', 'Host', hostSocket1);
@@ -1003,7 +1027,7 @@ describe('PrivateRoomService', () => {
       expect(expired[0]!.socket).toBe('sock-host-2');
 
       const expiredOnOriginal = emitted.find(
-        (e) => e.event === 'room-expired' && e.socket === 'sock-host-1',
+        (e) => e.event === 'room-expired' && e.socket === 'sock-host-1'
       );
       expect(expiredOnOriginal).toBeUndefined();
 
@@ -1040,11 +1064,10 @@ describe('PrivateRoomService', () => {
 describe('PrivateRoomService — host countdown recovery (snapshot)', () => {
   let server: Phalanx;
   let clients: Socket[] = [];
-  const TEST_PORT = 3400;
 
   beforeEach(async () => {
     server = new Phalanx({
-      port: TEST_PORT,
+      port: 0,
       matchmakingIntervalMs: 100,
       gameMode: '1v1',
       // Intentionally long: we want to observe the countdown mid-flight
@@ -1067,7 +1090,7 @@ describe('PrivateRoomService — host countdown recovery (snapshot)', () => {
   });
 
   function createClient(): Socket {
-    const client = io(`http://localhost:${TEST_PORT}`, {
+    const client = io(`http://localhost:${String(server.getPort())}`, {
       autoConnect: false,
       forceNew: true,
     });
@@ -1136,7 +1159,7 @@ describe('PrivateRoomService — host countdown recovery (snapshot)', () => {
     const hostMatchFoundPromise = new Promise<{ matchId: string }>(
       (resolve) => {
         host2.on('match-found', resolve);
-      },
+      }
     );
     const hostCountdownPromise = new Promise<{ seconds: number }>((resolve) => {
       host2.on('countdown', resolve);
@@ -1171,7 +1194,7 @@ describe('PrivateRoomService — host countdown recovery (snapshot)', () => {
     const guestGameStartPromise = new Promise<{ randomSeed: number }>(
       (resolve) => {
         guest.on('game-start', resolve);
-      },
+      }
     );
     guest.emit('room-join', {
       playerId: 'guest1',
@@ -1187,7 +1210,7 @@ describe('PrivateRoomService — host countdown recovery (snapshot)', () => {
     const hostGameStartPromise = new Promise<{ randomSeed: number }>(
       (resolve) => {
         host2.on('game-start', resolve);
-      },
+      }
     );
     host2.emit('room-recover', {
       playerId: 'host1',
@@ -1203,7 +1226,7 @@ describe('PrivateRoomService — host countdown recovery (snapshot)', () => {
   it('keeps a private match recoverable when host disconnects during waiting-for-ready', async () => {
     await server.stop();
     server = new Phalanx({
-      port: TEST_PORT,
+      port: 0,
       matchmakingIntervalMs: 100,
       gameMode: '1v1',
       countdownSeconds: 0,
@@ -1244,11 +1267,13 @@ describe('PrivateRoomService — host countdown recovery (snapshot)', () => {
     const recoveredPromise = new Promise<RoomRecoveredEvent>((resolve) => {
       host2.on('room-recovered', resolve);
     });
-    const reconnectStatePromise = new Promise<{ matchId: string; state: string; gameStartEmitted?: boolean }>(
-      (resolve) => {
-        host2.on('reconnect-state', resolve);
-      },
-    );
+    const reconnectStatePromise = new Promise<{
+      matchId: string;
+      state: string;
+      gameStartEmitted?: boolean;
+    }>((resolve) => {
+      host2.on('reconnect-state', resolve);
+    });
     host2.emit('room-recover', {
       playerId: 'host1',
       username: 'Host',

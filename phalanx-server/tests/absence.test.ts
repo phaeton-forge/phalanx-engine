@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { io, type Socket } from 'socket.io-client';
 import type { Server as SocketIOServer } from 'socket.io';
-import type { Server as HttpServer } from 'node:http';
 import { GameRoom } from '../src/services/GameRoom.js';
 import { Phalanx } from '../src/Phalanx.js';
 import { validateConfig } from '../src/config/validation.js';
@@ -685,15 +684,7 @@ describe('absence over real sockets', () => {
       ...config,
     });
     await server.start();
-    // Phalanx keeps the HTTP server private. Task 10 does not edit
-    // Phalanx.ts, so the test reads the port chosen by listen(0).
-    const httpServer = (server as unknown as { httpServer: HttpServer | null })
-      .httpServer;
-    const address = httpServer?.address();
-    if (!address || typeof address !== 'object') {
-      throw new Error('Phalanx is not listening');
-    }
-    const url = `http://127.0.0.1:${address.port}`;
+    const url = `http://127.0.0.1:${String(server!.getPort())}`;
     const client1 = track(io(url, { forceNew: true, autoConnect: false }));
     const client2 = track(io(url, { forceNew: true, autoConnect: false }));
     const found1 = once<MatchFoundEvent>(client1, 'match-found');
@@ -795,7 +786,7 @@ describe('absence over real sockets', () => {
     await expect(absent).resolves.toMatchObject({ playerId: 'player1' });
 
     const returned = track(
-      io(`http://127.0.0.1:${listenPort(server!)}`, {
+      io(`http://127.0.0.1:${String(server!.getPort())}`, {
         forceNew: true,
         autoConnect: false,
       })
@@ -846,13 +837,3 @@ describe('absence over real sockets', () => {
     expect(server?.getActiveMatches()).toEqual([]);
   });
 });
-
-function listenPort(phalanx: Phalanx): number {
-  const httpServer = (phalanx as unknown as { httpServer: HttpServer | null })
-    .httpServer;
-  const address = httpServer?.address();
-  if (!address || typeof address !== 'object') {
-    throw new Error('Phalanx is not listening');
-  }
-  return address.port;
-}

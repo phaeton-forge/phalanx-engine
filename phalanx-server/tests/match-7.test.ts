@@ -9,11 +9,10 @@ import type { TickSyncEvent, GameStartEvent } from '../src/types/index.js';
 describe('LOCKSTEP-1: Server Initializes Tick Clock and Synchronizes All Clients', () => {
   let server: Phalanx;
   let clients: Socket[] = [];
-  const TEST_PORT = 3344;
 
   beforeEach(async () => {
     server = new Phalanx({
-      port: TEST_PORT,
+      port: 0,
       matchmakingIntervalMs: 100,
       gameMode: '1v1',
       countdownSeconds: 1, // Short countdown for faster tests
@@ -35,7 +34,7 @@ describe('LOCKSTEP-1: Server Initializes Tick Clock and Synchronizes All Clients
   });
 
   function createClient(): Socket {
-    const client = io(`http://localhost:${TEST_PORT}`, {
+    const client = io(`http://localhost:${String(server.getPort())}`, {
       autoConnect: false,
       forceNew: true,
     });
@@ -271,11 +270,10 @@ describe('LOCKSTEP-1: Server Initializes Tick Clock and Synchronizes All Clients
 describe('LOCKSTEP-1: Independent Tick Counters Per Match', () => {
   let server: Phalanx;
   let clients: Socket[] = [];
-  const TEST_PORT = 3345;
 
   beforeEach(async () => {
     server = new Phalanx({
-      port: TEST_PORT,
+      port: 0,
       matchmakingIntervalMs: 100,
       gameMode: '1v1',
       countdownSeconds: 1,
@@ -297,7 +295,7 @@ describe('LOCKSTEP-1: Independent Tick Counters Per Match', () => {
   });
 
   function createClient(): Socket {
-    const client = io(`http://localhost:${TEST_PORT}`, {
+    const client = io(`http://localhost:${String(server.getPort())}`, {
       autoConnect: false,
       forceNew: true,
     });
@@ -331,8 +329,12 @@ describe('LOCKSTEP-1: Independent Tick Counters Per Match', () => {
     });
 
     const match1GameStart = Promise.all([
-      new Promise<void>((resolve) => { client1.once('game-start', () => resolve()); }),
-      new Promise<void>((resolve) => { client2.once('game-start', () => resolve()); }),
+      new Promise<void>((resolve) => {
+        client1.once('game-start', () => resolve());
+      }),
+      new Promise<void>((resolve) => {
+        client2.once('game-start', () => resolve());
+      }),
     ]);
 
     // Start first match
@@ -351,8 +353,12 @@ describe('LOCKSTEP-1: Independent Tick Counters Per Match', () => {
     });
 
     const match2GameStart = Promise.all([
-      new Promise<void>((resolve) => { client3.once('game-start', () => resolve()); }),
-      new Promise<void>((resolve) => { client4.once('game-start', () => resolve()); }),
+      new Promise<void>((resolve) => {
+        client3.once('game-start', () => resolve());
+      }),
+      new Promise<void>((resolve) => {
+        client4.once('game-start', () => resolve());
+      }),
     ]);
 
     // Start second match (delayed)
@@ -376,7 +382,6 @@ describe('LOCKSTEP-1: Independent Tick Counters Per Match', () => {
 describe('LOCKSTEP-1: Configurable Tick Rate', () => {
   let server: Phalanx;
   let clients: Socket[] = [];
-  const TEST_PORT = 3346;
 
   afterEach(async () => {
     for (const client of clients) {
@@ -392,7 +397,7 @@ describe('LOCKSTEP-1: Configurable Tick Rate', () => {
   });
 
   function createClient(): Socket {
-    const client = io(`http://localhost:${TEST_PORT}`, {
+    const client = io(`http://localhost:${String(server.getPort())}`, {
       autoConnect: false,
       forceNew: true,
     });
@@ -409,7 +414,7 @@ describe('LOCKSTEP-1: Configurable Tick Rate', () => {
 
   it('should use configurable tick rate (10 TPS = 100ms per tick)', async () => {
     server = new Phalanx({
-      port: TEST_PORT,
+      port: 0,
       matchmakingIntervalMs: 100,
       gameMode: '1v1',
       countdownSeconds: 1,
@@ -429,8 +434,12 @@ describe('LOCKSTEP-1: Configurable Tick Rate', () => {
     });
 
     const gameStartPromise = Promise.all([
-      new Promise<void>((resolve) => { client1.once('game-start', () => resolve()); }),
-      new Promise<void>((resolve) => { client2.once('game-start', () => resolve()); }),
+      new Promise<void>((resolve) => {
+        client1.once('game-start', () => resolve());
+      }),
+      new Promise<void>((resolve) => {
+        client2.once('game-start', () => resolve());
+      }),
     ]);
 
     client1.emit('queue-join', { playerId: 'player1', username: 'alice' });

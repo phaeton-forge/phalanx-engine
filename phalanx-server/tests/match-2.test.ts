@@ -9,10 +9,9 @@ import type { QueueStatusEvent } from '../src/types/index.js';
 describe('MATCH-2: Player Can Leave the Matchmaking Queue', () => {
   let server: Phalanx;
   let clients: Socket[] = [];
-  const TEST_PORT = 3334;
 
   beforeEach(async () => {
-    server = new Phalanx({ port: TEST_PORT });
+    server = new Phalanx({ port: 0 });
     await server.start();
     clients = [];
   });
@@ -31,7 +30,7 @@ describe('MATCH-2: Player Can Leave the Matchmaking Queue', () => {
   });
 
   function createClient(): Socket {
-    const client = io(`http://localhost:${TEST_PORT}`, {
+    const client = io(`http://localhost:${String(server.getPort())}`, {
       autoConnect: false,
       forceNew: true,
     });
