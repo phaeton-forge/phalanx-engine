@@ -10,7 +10,7 @@ Isomorphic match runtime for Phalanx games (no DOM, no sockets). A game
 describes itself as one `GameDefinition`; `MatchRunner` drives it from any
 `Transport`, records the command log, computes state digests and restores
 snapshots. The game-facing imports are re-exported from
-`@phalanx-engine/engine`.
+`@phalanx-engine/game`.
 
 ## Two modes
 
@@ -31,7 +31,7 @@ import {
   defineComponent,
   defineGame,
   runLocalMatch,
-} from '@phalanx-engine/engine';
+} from '@phalanx-engine/game';
 
 const Unit = defineComponent('Unit', { x: 'i64' });
 const commands = defineCommands({ move: { dx: 'i64' } });

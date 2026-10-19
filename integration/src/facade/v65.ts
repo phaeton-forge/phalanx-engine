@@ -1,21 +1,25 @@
 import {
-  FP,
-  PhysicsSoASchema,
-  PhysicsWorld,
-  TransformSoASchema,
   bindWorldSingletons,
-  createAbilitySystem,
   defineCommands,
   defineGame,
   rejectCommand,
-  type AbilitySystem,
   type BotPolicy,
   type BotSlotInfo,
-  type CollisionEvent,
   type IRandom,
   type StateReader,
   type StateWriter,
-} from '@phalanx-engine/engine';
+} from '@phalanx-engine/game';
+import {
+  createAbilitySystem,
+  type AbilitySystem,
+} from '@phalanx-engine/game/abilities';
+import { FP } from '@phalanx-engine/game/math';
+import {
+  PhysicsSoASchema,
+  PhysicsWorld,
+  TransformSoASchema,
+  type CollisionEvent,
+} from '@phalanx-engine/game/physics';
 import type { BotMemory } from './GameFacade.js';
 import { decideAggressive, decideDefensive } from '../game/skirmish/bots.js';
 import { tickLimitOutcome } from '../game/skirmish/outcome.js';

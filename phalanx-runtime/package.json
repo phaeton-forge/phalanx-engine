@@ -24,6 +24,7 @@
     "build": "tsc",
     "clean": "rm -rf dist",
     "rebuild": "npm run clean && npm run build",
+    "pretest": "pnpm --filter @phalanx-engine/game build",
     "typecheck": "tsc -p tsconfig.test.json",
     "test": "tsc -p tsconfig.test.json && vitest run && node --input-type=module -e \"await import('./dist/index.js'); await import('./dist/advanced/index.js')\"",
     "bench": "node --expose-gc --import tsx bench/snapshot.bench.ts",

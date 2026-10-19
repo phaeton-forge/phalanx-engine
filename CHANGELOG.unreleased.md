@@ -3,6 +3,21 @@
 Entries collected per package until the synchronized 0.3.0 release
 (Task 13 turns this file into `CHANGELOG.md`).
 
+## @phalanx-engine/game
+
+- Renamed from `@phalanx-engine/engine` (still `private`, version `0.3.0`,
+  not version-bumped). One package, five subpaths. Fixed-point math is
+  only on `/math`. The root does not re-export math, physics, abilities
+  or advanced.
+
+  | Old import                                                                  | New import                       |
+  | --------------------------------------------------------------------------- | -------------------------------- |
+  | runtime and the explicit ecs list                                           | `@phalanx-engine/game`           |
+  | math (`FP`, vectors, quaternions, `DeterministicRandom`, `FixedPoint`)      | `@phalanx-engine/game/math`      |
+  | physics                                                                     | `@phalanx-engine/game/physics`   |
+  | abilities                                                                   | `@phalanx-engine/game/abilities` |
+  | advanced (`StateHelpers`, `spawnWithId`, `WorldScope`, and the ecs helpers) | `@phalanx-engine/game/advanced`  |
+
 ## @phalanx-engine/runtime
 
 - A `setController` command stamped into a relay `commands-batch` (player id
@@ -193,8 +208,10 @@ Entries collected per package until the synchronized 0.3.0 release
   from the definition. `ENGINE_SNAPSHOT_FORMAT` is 2 (format 1 is rejected).
   Initial GAS `pendingAdd` effects are reseeded by `onEnable`; restore
   passes `'restore'` and does not reseed. New package
-  `@phalanx-engine/engine` (private, not version-bumped) re-exports the
-  game-facing surface. `CommandSchema` and `SaveHandler` are advanced-only.
+  `@phalanx-engine/game` (private, not version-bumped) re-exports runtime
+  and the explicit ecs list from the root. Math, physics, abilities and
+  advanced are subpath-only. `CommandSchema` and `SaveHandler` are
+  `@phalanx-engine/game/advanced`.
 - Local persistence (Task 7): `MatchStore`, `MemoryMatchStore` and
   `IndexedDbMatchStore` in `@phalanx-engine/runtime`. `LocalTransport`
   accepts `store`, `snapshotEveryTicks` (default 300) and `pauseWhenHidden`

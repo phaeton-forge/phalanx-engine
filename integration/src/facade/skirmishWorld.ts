@@ -6,29 +6,32 @@
  */
 import {
   Entity,
-  FP,
   GameSystem,
   GameWorld,
-  PHYSICS_BODY_COMPONENT_TYPE,
-  PhysicsBodyComponent,
-  PhysicsSoASchema,
   SoAComponent,
-  TransformComponent,
-  TransformSoASchema,
-  defineAbility,
-  defineAbilitySystem,
-  defineAttribute,
   defineComponent,
-  defineEffect,
-  getAbilitySystemComponent,
-  type AbilitySystem,
-  type FixedPoint,
   type IPoolableEntity,
   type IRandom,
   type MatchConfigBase,
   type StateReader,
   type StateWriter,
-} from '@phalanx-engine/engine';
+} from '@phalanx-engine/game';
+import {
+  defineAbility,
+  defineAbilitySystem,
+  defineAttribute,
+  defineEffect,
+  getAbilitySystemComponent,
+  type AbilitySystem,
+} from '@phalanx-engine/game/abilities';
+import { FP, type FixedPoint } from '@phalanx-engine/game/math';
+import {
+  PHYSICS_BODY_COMPONENT_TYPE,
+  PhysicsBodyComponent,
+  PhysicsSoASchema,
+  TransformComponent,
+  TransformSoASchema,
+} from '@phalanx-engine/game/physics';
 import type { BotNote, BotView, GameFacade, UnitView } from './GameFacade.js';
 import { contactsInclude, rememberContact } from '../game/skirmish/contacts.js';
 import {

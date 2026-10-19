@@ -1,20 +1,22 @@
 /**
- * Game-facing Phalanx surface. Advanced helpers (`StateHelpers`,
- * `spawnWithId`, `SaveHandler`, `CommandSchema`, `WorldScope`) stay on
- * `@phalanx-engine/runtime/advanced` and are not re-exported here.
+ * Game-facing Phalanx surface (`@phalanx-engine/game`).
  *
- * `InterpolatedTransformSample` is exported by both ecs and physics. The
- * physics type is the one games read from `getInterpolatedTransform`.
+ * This entry re-exports `@phalanx-engine/runtime` and the explicit ecs
+ * names below. Fixed-point math is `@phalanx-engine/game/math` only.
+ * Physics, abilities and advanced helpers are
+ * `@phalanx-engine/game/physics`, `@phalanx-engine/game/abilities` and
+ * `@phalanx-engine/game/advanced`.
+ *
+ * `InterpolatedTransformSample` is exported by both ecs and physics. It is
+ * not exported here; games import the physics type from
+ * `@phalanx-engine/game/physics`.
  *
  * Low-level ecs symbols (`setWorldModuleHost`, `setEntityIdCounter`,
  * `nextEntityId`, `PoolManager`, `SoAComponentStore`, `TickFrameManager`,
  * `TYPED_ARRAY_CONSTRUCTORS`, `DebugPanel`) are on
- * `@phalanx-engine/runtime/advanced`, not here.
+ * `@phalanx-engine/game/advanced`, not here.
  */
 export * from '@phalanx-engine/runtime';
-export * from '@phalanx-engine/abilities';
-export * from '@phalanx-engine/math';
-export * from '@phalanx-engine/physics';
 export {
   EntityManager,
   EventBus,

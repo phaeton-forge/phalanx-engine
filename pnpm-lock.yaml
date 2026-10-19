@@ -87,9 +87,9 @@ importers:
 
   integration:
     dependencies:
-      '@phalanx-engine/engine':
+      '@phalanx-engine/game':
         specifier: workspace:*
-        version: link:../phalanx-engine
+        version: link:../phalanx-game
     devDependencies:
       '@eslint/js':
         specifier: ^9.17.0
@@ -162,7 +162,7 @@ importers:
         specifier: ~5.9.3
         version: 5.9.3
 
-  phalanx-engine:
+  phalanx-game:
     dependencies:
       '@phalanx-engine/abilities':
         specifier: workspace:*
@@ -179,6 +179,13 @@ importers:
       '@phalanx-engine/runtime':
         specifier: workspace:*
         version: link:../phalanx-runtime
+    devDependencies:
+      typescript:
+        specifier: ~5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^1.0.0
+        version: 1.6.1(@types/node@20.19.43)(happy-dom@20.10.6)(lightningcss@1.32.0)
 
   phalanx-math:
     dependencies:

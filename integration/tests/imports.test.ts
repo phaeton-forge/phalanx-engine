@@ -25,7 +25,14 @@ describe('import rule', () => {
     expect(violations).toEqual([]);
   });
 
-  it('limits facade and adapters to @phalanx-engine/engine', () => {
+  it('limits facade and adapters to @phalanx-engine/game and its subpaths', () => {
+    const allowed = new Set([
+      '@phalanx-engine/game',
+      '@phalanx-engine/game/math',
+      '@phalanx-engine/game/physics',
+      '@phalanx-engine/game/abilities',
+      '@phalanx-engine/game/advanced',
+    ]);
     const violations: string[] = [];
     for (const file of walk(join(PACKAGE_ROOT, 'src'))) {
       const rel = relative(PACKAGE_ROOT, file).split('\\').join('/');
@@ -39,14 +46,7 @@ describe('import rule', () => {
       for (const match of specifiers) {
         const specifier = match[1];
         if (specifier === undefined) continue;
-        if (specifier === '@phalanx-engine/engine') continue;
-        if (
-          adapter &&
-          specifier === '@phalanx-engine/runtime/advanced' &&
-          /why|почему/i.test(text)
-        ) {
-          continue;
-        }
+        if (allowed.has(specifier)) continue;
         violations.push(`${rel} imports ${specifier}`);
       }
     }

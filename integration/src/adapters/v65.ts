@@ -9,7 +9,7 @@ import {
   type JsonValue,
   type LogEntry as EngineLogEntry,
   type ReplayRecord,
-} from '@phalanx-engine/engine';
+} from '@phalanx-engine/game';
 import { V65_CAPABILITIES } from '../driver/capabilities.js';
 import type {
   GameCommandJson,

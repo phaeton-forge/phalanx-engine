@@ -10,7 +10,7 @@
     "lint": "eslint -c eslint.config.js src"
   },
   "dependencies": {
-    "@phalanx-engine/engine": "workspace:*"
+    "@phalanx-engine/game": "workspace:*"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
