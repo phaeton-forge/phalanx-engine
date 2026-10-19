@@ -215,8 +215,11 @@ const BROADPHASE_SECTION: SaveSection = {
 /**
  * One section per world, the first time a grid owner is attached.
  * A second owner sees the key already in `saveSections` and returns.
+ * Unit tests construct a `SystemContext` with no world; there is nothing
+ * to register until `GameWorld` assigns one.
  */
-export function ensureBroadphaseSection(world: GameWorld): void {
+export function ensureBroadphaseSection(world: GameWorld | undefined): void {
+  if (world === undefined) return;
   if (
     world.saveSections.some((section) => section.key === BROADPHASE_SECTION.key)
   ) {
