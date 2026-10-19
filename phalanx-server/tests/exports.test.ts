@@ -24,14 +24,7 @@ const ROOT_NAMES = [
   'DEFAULT_SESSION_TTL_MS',
   'DesyncAction',
   'DesyncConfig',
-  'DeterministicRandom',
   'EndMatchResult',
-  'FP',
-  'FPVector2',
-  'FPVector2Interface',
-  'FPVector3',
-  'FPVector3Interface',
-  'FixedPoint',
   'GAME_MODES',
   'GameMode',
   'GameModePreset',
@@ -95,11 +88,6 @@ const ROOT_NAMES = [
 const ROOT_VALUES = [
   'DEFAULT_ABSENCE',
   'DEFAULT_SESSION_TTL_MS',
-  'DeterministicRandom',
-  'FP',
-  'FPVector2',
-  'FPVector3',
-  'FixedPoint',
   'GAME_MODES',
   'Phalanx',
   'SESSION_TOMBSTONE_TTL_MS',
@@ -199,10 +187,10 @@ describe('@phalanx-engine/server exports', () => {
     }
     expect(
       resolved.map((entry) => actual.get(entry.file)?.names.length)
-    ).toEqual([75]);
+    ).toEqual([68]);
     expect(
       resolved.map((entry) => actual.get(entry.file)?.values.length)
-    ).toEqual([14]);
+    ).toEqual([9]);
   });
 
   it('loads each entry by package name', async () => {

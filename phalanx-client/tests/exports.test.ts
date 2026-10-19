@@ -36,15 +36,8 @@ const ROOT_NAMES = [
   'DesyncConfig',
   'DesyncDetector',
   'DesyncEvent',
-  'DeterministicRandom',
   'DiscordOAuthConfig',
   'EventEmitter',
-  'FP',
-  'FPVector2',
-  'FPVector2Interface',
-  'FPVector3',
-  'FPVector3Interface',
-  'FixedPoint',
   'FrameHandler',
   'GamePausedEvent',
   'GameResumedEvent',
@@ -135,12 +128,7 @@ const ROOT_VALUES = [
   'AuthManager',
   'DEFAULT_RECOVER_TIMEOUT_BUDGET',
   'DesyncDetector',
-  'DeterministicRandom',
   'EventEmitter',
-  'FP',
-  'FPVector2',
-  'FPVector3',
-  'FixedPoint',
   'GoogleOAuthAdapter',
   'LocalStorageAdapter',
   'MatchLogError',
@@ -289,10 +277,10 @@ describe('@phalanx-engine/client exports', () => {
     }
     expect(
       resolved.map((entry) => actual.get(entry.file)?.names.length)
-    ).toEqual([114, 18]);
+    ).toEqual([107, 18]);
     expect(
       resolved.map((entry) => actual.get(entry.file)?.values.length)
-    ).toEqual([30, 5]);
+    ).toEqual([25, 5]);
   });
 
   it('loads each entry by package name', async () => {
