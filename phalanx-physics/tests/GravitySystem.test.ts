@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { bindTestWorld } from './bindTestWorld.js';
 import { FP } from '@phalanx-engine/math';
 import {
   EntityManager,
@@ -185,6 +186,7 @@ describe('GravitySystem', () => {
 
     // Now PhysicsSystem integrates the accumulated velocity into position.
     const physicsSystem = new PhysicsSystem(createPhysicsConfig());
+    bindTestWorld(context);
     physicsSystem.init(context);
     physicsSystem.processTick(1);
 

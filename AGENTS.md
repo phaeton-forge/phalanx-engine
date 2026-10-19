@@ -191,7 +191,7 @@ during iteration, then run the full suite once before finishing.
 await client.waitForGameStart(); // match RNG ready on client.random
 await assetManager.preloadAll();
 const world = new GameWorld({ tickFrameProvider: client, componentTypes: [...] });
-world.context.physics = physicsWorld;   // wire services BEFORE registerSystems
+physicsWorld.attach(world);             // wire services BEFORE registerSystems
 const abilities = createAbilitySystem(world, { definitions });
 world.registerSystems([...tickSystems], [...frameSystems]);
 world.start({ beforeTick, afterTick, beforeFrame, afterFrame });

@@ -1,4 +1,5 @@
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
+import { bindTestWorld } from './bindTestWorld.js';
 import { FP } from '@phalanx-engine/math';
 import {
   EntityManager,
@@ -40,6 +41,7 @@ describe('getEntityPosition', () => {
 
   it('PhysicsSystem returns fixed-point transform positions', () => {
     const system = new PhysicsSystem(createPhysicsConfig());
+    bindTestWorld(context);
     system.init(context);
     const physicsStore = entityManager.getOrCreateSoAStore(PhysicsSoASchema);
     const transformStore =
@@ -72,6 +74,7 @@ describe('getEntityPosition', () => {
   it('PhysicsWorld delegates getEntityPosition to PhysicsSystem', () => {
     const physicsWorld = new PhysicsWorld();
     const { physicsSystem } = physicsWorld.getSystems();
+    bindTestWorld(context);
     physicsSystem.init(context);
 
     const physicsStore = entityManager.getOrCreateSoAStore(PhysicsSoASchema);

@@ -173,7 +173,7 @@ export function createPersistBenchGame(unitCount: number) {
         gridCellSize: CELL,
         gravity: FP._0,
       });
-      ctx.world.context.physics = physics;
+      physics.attach(ctx.world);
       ctx.world.entityManager.getOrCreateSoAStore(TransformSoASchema);
       ctx.world.entityManager.getOrCreateSoAStore(PhysicsSoASchema);
       const { gravitySystem, physicsSystem } = physics.getSystems();

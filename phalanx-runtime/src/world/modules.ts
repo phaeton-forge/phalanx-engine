@@ -53,7 +53,7 @@ export function writeWorld(world: GameWorld, writer: StateWriter): void {
   writeSoAStores(writer, world, schemasOf(world));
   writeEntityIds(writer, world);
   writeRandom(writer, world.random);
-  writeModules(writer, world);
+  writeModuleSections(writer, world);
   singletonHooks(world)?.onSave?.(writer);
 }
 
@@ -86,7 +86,7 @@ export function readWorld(world: GameWorld, reader: StateReader): void {
     }
     readEntityIds(reader, world);
     readRandom(reader, world.random);
-    readModules(reader, world);
+    readModuleSections(reader, world);
     singletonHooks(world)?.onRestore?.(reader);
     enableLive(world);
   } finally {
@@ -148,7 +148,33 @@ interface ModuleEntry {
   readonly body: Uint8Array;
 }
 
-function writeModules(writer: StateWriter, world: GameWorld): void {
+const PHYSICS_BROADPHASE_SECTION = 'physics.broadphase';
+
+/**
+ * A physics facade that was assigned without `PhysicsWorld.attach` has
+ * no save section. Runtime does not import physics; the section key is
+ * the contract.
+ */
+function assertPhysicsBound(world: GameWorld): void {
+  if (world.context.physics === undefined) return;
+  if (
+    world.saveSections.some(
+      (section) => section.key === PHYSICS_BROADPHASE_SECTION
+    )
+  ) {
+    return;
+  }
+  throw new Error(
+    "save: physics is assigned but save section 'physics.broadphase' is not registered; call PhysicsWorld.attach(world)"
+  );
+}
+
+/** The `modules` container: registered sections in key order. */
+export function writeModuleSections(
+  writer: StateWriter,
+  world: GameWorld
+): void {
+  assertPhysicsBound(world);
   const sections = world.saveSections;
   writer.section(MODULES_SECTION, MODULES_VERSION, (section) => {
     section.list(sections, (saveSection, item) => {
@@ -159,7 +185,11 @@ function writeModules(writer: StateWriter, world: GameWorld): void {
   });
 }
 
-function readModules(reader: StateReader, world: GameWorld): void {
+/** Inverse of {@link writeModuleSections}. */
+export function readModuleSections(
+  reader: StateReader,
+  world: GameWorld
+): void {
   reader.section(MODULES_SECTION, (section, version) => {
     if (version !== MODULES_VERSION) {
       throw new Error(
@@ -182,6 +212,11 @@ function readModules(reader: StateReader, world: GameWorld): void {
   });
 }
 
+/**
+ * One entry is the byte layout `StateWriter.section` writes: `str` key,
+ * `varint` version, then `bytes` (a `varint` length and the raw body).
+ * `readModuleEntries` depends on that layout.
+ */
 function readModuleEntries(section: StateReader): ModuleEntry[] {
   const count = section.varint();
   const found: ModuleEntry[] = [];

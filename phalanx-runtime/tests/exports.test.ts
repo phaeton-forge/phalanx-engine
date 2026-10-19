@@ -65,6 +65,8 @@ const STATE_HELPERS = [
   'readPools',
   'writeRandom',
   'readRandom',
+  'writeModuleSections',
+  'readModuleSections',
 ] as const;
 
 function expectTask(fn: () => unknown, task: number): void {
@@ -94,6 +96,12 @@ describe('public exports', () => {
 
   it.each(STATE_HELPERS)('StateHelpers.%s is a function', (name) => {
     expect(typeof advanced.StateHelpers[name]).toBe('function');
+  });
+
+  it('StateHelpers members match the snapshot', () => {
+    expect(Object.keys(advanced.StateHelpers).sort()).toEqual(
+      [...STATE_HELPERS].sort()
+    );
   });
 
   it('keeps low-level helpers off the root export', () => {

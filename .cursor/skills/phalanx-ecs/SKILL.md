@@ -105,7 +105,7 @@ import { PhysicsWorld } from '@phalanx-engine/physics';
 import { createAbilitySystem } from '@phalanx-engine/abilities';
 
 const physicsWorld = new PhysicsWorld({ tickRate: 20 });
-world.context.physics = physicsWorld;
+physicsWorld.attach(world);
 
 const abilities = createAbilitySystem(world, { definitions: combatDefs });
 // createAbilitySystem sets world.context.abilities internally

@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { bindTestWorld } from './bindTestWorld.js';
 import { FP } from '@phalanx-engine/math';
 import {
   EntityManager,
@@ -73,6 +74,7 @@ describe('applyImpulse3D', () => {
 
   function setup(overrides?: Partial<PhysicsConfig>) {
     const physicsSystem = new PhysicsSystem(createPhysicsConfig(overrides));
+    bindTestWorld(context);
     physicsSystem.init(context);
     const gravitySystem = new GravitySystem(GRAVITY, 'y', TICK_DT);
     gravitySystem.init(context);
@@ -246,6 +248,7 @@ describe('applyImpulse3D', () => {
       const ctx = new SystemContext(eb, em);
       SoAComponent.useEntityManager(em);
       const phys = new PhysicsSystem(createPhysicsConfig());
+      bindTestWorld(ctx);
       phys.init(ctx);
       const grav = new GravitySystem(GRAVITY, 'y', TICK_DT);
       grav.init(ctx);

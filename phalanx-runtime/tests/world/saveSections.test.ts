@@ -266,6 +266,78 @@ describe('module save sections', () => {
     );
   });
 
+  it('rejects trailing bytes in a module section body', () => {
+    const source = world();
+    source.registerSaveSection({
+      key: 'a',
+      version: 1,
+      write(writer) {
+        writer.str('a');
+        writer.u8(1);
+      },
+      read(reader) {
+        expect(reader.str()).toBe('a');
+      },
+    });
+    const bytes = source.save();
+    const target = world();
+    target.registerSaveSection({
+      key: 'a',
+      version: 1,
+      write() {},
+      read(reader) {
+        expect(reader.str()).toBe('a');
+      },
+    });
+    expect(() => target.restore(bytes)).toThrow(
+      'StateReader.done: 1 unread byte(s) remain'
+    );
+  });
+
+  it('rejects a modules container whose version is not 1', () => {
+    const source = world();
+    const saved = source.save();
+    const reader = new BinaryStateReader(saved);
+    let start = -1;
+    let body: Uint8Array | undefined;
+    while (reader.remainingBytes().byteLength > 0) {
+      const at = saved.byteLength - reader.remainingBytes().byteLength;
+      const key = reader.str();
+      reader.varint();
+      const sectionBody = reader.bytes();
+      if (key === 'modules') {
+        start = at;
+        body = sectionBody;
+      }
+    }
+    if (start < 0 || body === undefined) {
+      throw new Error('modules section is not present');
+    }
+    const writer = new BinaryStateWriter();
+    writer.str('modules');
+    writer.varint(2);
+    writer.bytes(body);
+    const encoded = writer.finish();
+    const rewritten = new Uint8Array(start + encoded.byteLength);
+    rewritten.set(saved.subarray(0, start));
+    rewritten.set(encoded, start);
+    expect(() => world().restore(rewritten)).toThrow(
+      "restore: save section 'modules' has version 2, expected 1"
+    );
+  });
+
+  it('rejects a save when physics is assigned without its section', () => {
+    const source = world();
+    source.context.physics = {
+      getInterpolatedTransform: () => undefined,
+      getEntityPosition: () => undefined,
+      applyImpulse: () => {},
+    };
+    expect(() => source.save()).toThrow(
+      "save: physics is assigned but save section 'physics.broadphase' is not registered; call PhysicsWorld.attach(world)"
+    );
+  });
+
   it('round-trips a world that registered no sections', () => {
     const source = world();
     const bytes = source.save();

@@ -41,22 +41,26 @@ Entries collected per package until the synchronized 0.3.0 release
   is `section(key, version, body)`, sorted by UTF-16 code units.
   Format 2 is rejected with
   `unsupported engine snapshot format 2; expected 3`. There is no
-  migration. Dependencies are `@phalanx-engine/ecs`,
-  `@phalanx-engine/math` and `@phalanx-engine/protocol` (no peer
-  dependencies).
-- `StateWriter`, `StateReader`, `BinaryStateWriter` and
-  `BinaryStateReader` are re-exported from `@phalanx-engine/ecs`.
-- `./advanced` no longer exports `rebuildBroadphaseFromTransforms`.
-  `StateHelpers` no longer has `writeBroadphase`, `readBroadphase`,
-  `rebuildBroadphaseFromTransforms`, `writeAbilities` or `readAbilities`.
-  Unknown, missing, unordered and wrong-version module sections throw
+  migration. Unknown, missing, unordered and wrong-version module
+  sections throw
   `restore: unknown save section '<key>' (registered: <keys>)`,
   `restore: save section '<key>' is missing from the snapshot`,
   `restore: save sections out of order`, and
   `restore: save section '<key>' has version N, expected M`.
   A `modules` container whose version is not 1 throws
   `restore: save section 'modules' has version N, expected 1`.
-- `./server` is unchanged.
+  Saving a world whose `context.physics` is set without save section
+  `physics.broadphase` throws
+  `save: physics is assigned but save section 'physics.broadphase' is not registered; call PhysicsWorld.attach(world)`.
+  Dependencies are `@phalanx-engine/ecs`, `@phalanx-engine/math` and
+  `@phalanx-engine/protocol` (no peer dependencies).
+- `StateWriter`, `StateReader`, `BinaryStateWriter` and
+  `BinaryStateReader` are re-exported from `@phalanx-engine/ecs`.
+- `./advanced` no longer exports `rebuildBroadphaseFromTransforms`.
+  `StateHelpers` no longer has `writeBroadphase`, `readBroadphase`,
+  `rebuildBroadphaseFromTransforms`, `writeAbilities` or `readAbilities`.
+  `StateHelpers` gains `writeModuleSections` and `readModuleSections`
+  for a custom `GameState` that must write the `modules` container.
 - New subpath `./server`: `createServerSim`, `ServerSimConfig`,
   `GameModuleSpec`. The server simulation that used to live in
   `phalanx-server` runs behind a `ServerSimHook`.
@@ -327,6 +331,11 @@ Entries collected per package until the synchronized 0.3.0 release
   `registerSaveSection: key is empty`. A repeated key throws
   `registerSaveSection: duplicate key '<key>'`. `GameWorld.saveSections`
   returns a copy sorted by UTF-16 code units.
+  `SystemContext.physics` is a plain field: assigning it has no side
+  effects. `SystemContext.world` is `GameWorld | undefined`.
+  `GameSystem.world` throws `GameSystem.world: context.world is not set`
+  when the context has no world. Physics save registration is
+  `PhysicsWorld.attach(world)` in `@phalanx-engine/physics`.
 
 - Snapshot accessors (Task 3): `getEntityIdCounter` / `setEntityIdCounter`
   (module functions and `GameWorld` delegates), `SoAComponent.currentEntityManager()`,
@@ -537,12 +546,19 @@ Entries collected per package until the synchronized 0.3.0 release
 
 ## @phalanx-engine/physics
 
-- The first grid owner (`context.physics`, a `PhysicsSystem`, or a
-  `CollisionSystem`) registers save section `physics.broadphase`
-  (version 1). A second owner does not register again. The section is
-  not exported. Its body is the former `broadphase` list without a
-  `section('broadphase')` wrapper. Inner keys stay `physics`,
-  `physicsSystem` and `collisionSystem`.
+- `PhysicsWorld.attach(world)` sets `context.physics` and registers
+  save section `physics.broadphase` (version 1). A second `attach` of
+  the same world is a no-op. A different world throws
+  `PhysicsWorld.attach: already attached to another world`.
+  Assigning `context.physics` does not register the section.
+  `PhysicsSystem.init` and `CollisionSystem.init` register it once
+  when `context.world` is set, and throw
+  `PhysicsSystem.init: context.world is not set` or
+  `CollisionSystem.init: context.world is not set` when it is not.
+  The section is not a package export. Names stay 33 types and 19
+  values; `attach` is a method on `PhysicsWorld`. Its body is the
+  former `broadphase` list without a `section('broadphase')` wrapper.
+  Inner keys stay `physics`, `physicsSystem` and `collisionSystem`.
 
 - Built output is NodeNext ESM: relative specifiers end in `.js`, and
   directory imports (`./components`, `./systems`) point at `index.js`.

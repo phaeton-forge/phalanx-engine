@@ -179,7 +179,7 @@ export const ArenaGame = defineGame<ArenaConfig, ArenaCommand, ArenaSim>({
       gridCellSize: CELL,
       gravity: FP._0,
     });
-    ctx.world.context.physics = physics;
+    physics.attach(ctx.world);
     // Store order is the snapshot order. Gravity init would create
     // PhysicsBody first; the fixture's manual save lists Transform first.
     ctx.world.entityManager.getOrCreateSoAStore(TransformSoASchema);

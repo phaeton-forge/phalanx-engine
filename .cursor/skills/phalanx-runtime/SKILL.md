@@ -11,7 +11,10 @@ metadata:
 > **Status: Tasks 1–7, 7.1, 6.5a and 6.5b implemented. `MatchRunner.join` is still Task 12.**
 > Task 3 is engine hooks (ecs id counter, SoA context, pools, math RNG
 > state, ability runtime export, broadphase centers). Task 4 is
-> `StateHelpers` for engine sections. Ability and physics bytes are save sections those packages register (`abilities`, `physics.broadphase`).
+> `StateHelpers` for engine sections, including `writeModuleSections` /
+> `readModuleSections` for the `modules` container. Ability and physics
+> bytes are save sections those packages register (`abilities`,
+> `physics.broadphase`). Bind physics with `PhysicsWorld.attach(world)`.
 > Task 6 is `MatchRunner` (not `join`), `CommandLog`, `WorldScope`,
 > `BotHost` and `LocalTransport`. Task 7 is opt-in local persistence
 > (`MatchStore`, `MemoryMatchStore`, `IndexedDbMatchStore`,

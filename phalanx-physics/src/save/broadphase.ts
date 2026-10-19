@@ -213,13 +213,11 @@ const BROADPHASE_SECTION: SaveSection = {
 };
 
 /**
- * One section per world, the first time a grid owner is attached.
- * A second owner sees the key already in `saveSections` and returns.
- * Unit tests construct a `SystemContext` with no world; there is nothing
- * to register until `GameWorld` assigns one.
+ * One section per world. A second grid owner sees the key already in
+ * `saveSections` and returns. `world` is required: a missing world is a
+ * caller bug, not a skipped registration.
  */
-export function ensureBroadphaseSection(world: GameWorld | undefined): void {
-  if (world === undefined) return;
+export function ensureBroadphaseSection(world: GameWorld): void {
   if (
     world.saveSections.some((section) => section.key === BROADPHASE_SECTION.key)
   ) {
@@ -227,11 +225,6 @@ export function ensureBroadphaseSection(world: GameWorld | undefined): void {
   }
   world.registerSaveSection(BROADPHASE_SECTION);
 }
-
-/** Called by the context.physics setter when this object is assigned. */
-export const PHYSICS_SAVE_ATTACH = Symbol.for(
-  'phalanx.physics.attachSaveSection'
-);
 
 /** True when the world has at least one physics grid to snapshot. */
 export function hasBroadphase(world: GameWorld): boolean {

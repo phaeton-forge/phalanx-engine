@@ -12,12 +12,14 @@ import {
   writePools,
 } from '../state/sections/entities.js';
 import { readRandom, writeRandom } from '../state/sections/random.js';
+import { readModuleSections, writeModuleSections } from '../world/modules.js';
 
 /**
  * Optional engine helpers a game MAY call inside its own
  * `GameState.save`/`restore`. They are not the contract: the engine never
  * calls them by itself. Ability and physics bytes are save sections those
- * packages register; they are not helpers.
+ * packages register; they are not helpers. A custom `GameState` writes
+ * that container with `writeModuleSections` / `readModuleSections`.
  *
  * Restore order for these helpers (normative):
  *  1. `spawnWithId` for dynamic entities that are not in a pool,
@@ -45,4 +47,6 @@ export const StateHelpers = {
   readPools,
   writeRandom,
   readRandom,
+  writeModuleSections,
+  readModuleSections,
 } as const;

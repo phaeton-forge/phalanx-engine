@@ -574,6 +574,8 @@ export const StateHelpers: {
   readPools(r: StateReader, world: GameWorld): void;
   writeRandom(w: StateWriter, rng: IRandom): void;
   readRandom(r: StateReader, rng: IRandom): void;
+  writeModuleSections(w: StateWriter, world: GameWorld): void;
+  readModuleSections(r: StateReader, world: GameWorld): void;
 };
 ```
 
@@ -584,11 +586,13 @@ export const StateHelpers: {
 2. Overwrite row values (`readSoAStores`).
 3. `readEntityIds` sets the counter to the saved high-water mark.
 4. `readRandom`.
-5. The `modules` container: each registered section (`abilities`,
-   `physics.broadphase`, game sections) in ascending key order, then
-   game singletons. Ability and physics bytes are written by those
-   packages, not by `StateHelpers`. A grid rebuilt from transforms does
-   not reproduce pre-separation centers.
+5. `readModuleSections` reads the `modules` container: each registered
+   section (`abilities`, `physics.broadphase`, game sections) in
+   ascending key order, then game singletons. Ability and physics
+   bytes are written by those packages. A custom `GameState` calls
+   `writeModuleSections` / `readModuleSections` instead of copying the
+   container. A grid rebuilt from transforms does not reproduce
+   pre-separation centers.
 
 `save` writes the same sections in the same order.
 

@@ -1,8 +1,5 @@
 import { type EventBus, type GameWorld } from '@phalanx-engine/ecs';
-import {
-  ensureBroadphaseSection,
-  PHYSICS_SAVE_ATTACH,
-} from './save/broadphase.js';
+import { ensureBroadphaseSection } from './save/broadphase.js';
 import { FP } from '@phalanx-engine/math';
 import { PhysicsSystem } from './systems/PhysicsSystem.js';
 import { GravitySystem } from './systems/GravitySystem.js';
@@ -38,6 +35,7 @@ export class PhysicsWorld {
   private eventBusRef: EventBus | null = null;
   private readonly unsubscribers: (() => void)[] = [];
   private readonly settleThreshold: FixedPoint | undefined;
+  private attachedWorld: GameWorld | undefined;
 
   constructor(config?: PhysicsWorldConfig) {
     const tickRate = config?.tickRate ?? 20;
@@ -73,13 +71,20 @@ export class PhysicsWorld {
     if (config?.tickProvider) {
       this.physicsSystem.setTickProvider(config.tickProvider);
     }
+  }
 
-    Object.defineProperty(this, PHYSICS_SAVE_ATTACH, {
-      configurable: true,
-      value: (world: GameWorld) => {
-        ensureBroadphaseSection(world);
-      },
-    });
+  /**
+   * Bind this facade to `world`. Sets `world.context.physics` and
+   * registers save section `physics.broadphase` once. Calling again with
+   * the same world is a no-op. A different world throws.
+   */
+  public attach(world: GameWorld): void {
+    if (this.attachedWorld !== undefined && this.attachedWorld !== world) {
+      throw new Error('PhysicsWorld.attach: already attached to another world');
+    }
+    this.attachedWorld = world;
+    world.context.physics = this;
+    ensureBroadphaseSection(world);
   }
 
   /**

@@ -112,7 +112,9 @@ not throw. `i64` is a canonical decimal string on the wire.
 - **`@phalanx-engine/runtime/advanced`**: `StateHelpers`, `spawnWithId`
   and `WorldScope`. These are not on the package root.
   `rebuildBroadphaseFromTransforms`, `writeAbilities`, `readAbilities`,
-  `writeBroadphase` and `readBroadphase` are not exported. SoA rows
+  `writeBroadphase` and `readBroadphase` are not exported.
+  `StateHelpers.writeModuleSections` / `readModuleSections` write the
+  `modules` container for a custom `GameState`. SoA rows
   (explicit schema names; `f32` / `f64` skipped), the entity id counter,
   pool membership and RNG state are the helpers. Restore order for those
   helpers: `spawnWithId` for non-pooled entities, `readPools` (constructs
@@ -148,9 +150,10 @@ and the offline runner: `MatchRunner`, `ReplayPlayer`, `runLocalMatch`,
 `CommandLog`, `BotHost` and `LocalTransport` (timer or
 `LocalTransport.stepped()` + `step`). Local persistence is opt-in:
 `MemoryMatchStore`, `IndexedDbMatchStore` and `MatchRunner.resumeLocal`.
-`StateHelpers` (including `writeAbilities` / `readAbilities`,
-`section('gas', 1)`), `spawnWithId`, `rebuildBroadphaseFromTransforms`
-and `WorldScope` are exported from `@phalanx-engine/runtime/advanced`.
+`StateHelpers` (`writeModuleSections` / `readModuleSections` for the
+`modules` container; not `writeAbilities` / `readAbilities`),
+`spawnWithId` and `WorldScope` are exported from
+`@phalanx-engine/runtime/advanced`.
 There is no `f32` or `f64` writer.
 
 `MatchRunner` emits each tick on a runner-owned `ITickFrameProvider`.

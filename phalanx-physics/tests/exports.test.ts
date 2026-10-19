@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
@@ -153,6 +154,21 @@ describe('@phalanx-engine/physics exports', () => {
     for (const entry of resolved) {
       expect(entry.file).toBe(path.join(PACKAGE_ROOT, entry.declaration));
     }
+  });
+
+  it('records PhysicsWorld.attach without a new module export', () => {
+    const declaration = fs.readFileSync(
+      path.join(PACKAGE_ROOT, 'dist/PhysicsWorld.d.ts'),
+      'utf8'
+    );
+    expect(declaration).toContain('attach(world: GameWorld): void');
+    expect(declaration).not.toContain('PHYSICS_SAVE_ATTACH');
+    expect(
+      resolved.map((entry) => actual.get(entry.file)?.names.length)
+    ).toEqual([33]);
+    expect(
+      resolved.map((entry) => actual.get(entry.file)?.values.length)
+    ).toEqual([19]);
   });
 
   it('matches the checked-in name snapshot, types included', () => {

@@ -56,6 +56,9 @@ export class PhysicsSystem extends GameSystem {
 
   public override init(context: SystemContext): void {
     super.init(context);
+    if (context.world === undefined) {
+      throw new Error('PhysicsSystem.init: context.world is not set');
+    }
     ensureBroadphaseSection(context.world);
     this.physicsStore =
       this.entityManager.getOrCreateSoAStore(PhysicsSoASchema);

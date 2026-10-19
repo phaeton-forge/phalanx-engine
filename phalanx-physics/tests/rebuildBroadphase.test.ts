@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { bindTestWorld } from './bindTestWorld.js';
 import {
   EntityManager,
   EventBus,
@@ -132,6 +133,7 @@ describe('broadphase snapshot hooks', () => {
       subSteps: 1,
     });
     const { physicsSystem } = physicsWorld.getSystems();
+    bindTestWorld(context);
     physicsSystem.init(context);
 
     const physicsStore = entityManager.getOrCreateSoAStore(PhysicsSoASchema);
@@ -203,6 +205,7 @@ describe('broadphase snapshot hooks', () => {
   it('CollisionSystem exposes cached centers and an explicit transform rebuild', () => {
     const cellSize = FP.FromInt(4);
     const system = new CollisionSystem(cellSize);
+    bindTestWorld(context);
     system.init(context);
     const physicsStore = entityManager.getOrCreateSoAStore(PhysicsSoASchema);
     const transformStore =
@@ -320,6 +323,7 @@ describe('broadphase snapshot hooks', () => {
       subSteps: 1,
     });
     const { physicsSystem } = physicsWorld.getSystems();
+    bindTestWorld(context);
     physicsSystem.init(context);
 
     const physicsStore = entityManager.getOrCreateSoAStore(PhysicsSoASchema);

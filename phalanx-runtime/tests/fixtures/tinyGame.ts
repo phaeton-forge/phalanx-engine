@@ -261,13 +261,7 @@ export class TinyState {
     StateHelpers.writeSoAStores(w, this.sim.world, [TINY_UNIT_SCHEMA]);
     StateHelpers.writeEntityIds(w, this.sim.world);
     StateHelpers.writeRandom(w, this.sim.random);
-    w.section('modules', 1, (section) => {
-      section.list(this.sim.world.saveSections, (saveSection, item) => {
-        item.section(saveSection.key, saveSection.version, (body) => {
-          saveSection.write(body, this.sim.world);
-        });
-      });
-    });
+    StateHelpers.writeModuleSections(w, this.sim.world);
   }
 
   public restore(r: StateReader): void {
@@ -285,30 +279,7 @@ export class TinyState {
     StateHelpers.readSoAStores(r, this.sim.world, [TINY_UNIT_SCHEMA]);
     StateHelpers.readEntityIds(r, this.sim.world);
     StateHelpers.readRandom(r, this.sim.random);
-    r.section('modules', (section, version) => {
-      if (version !== 1) {
-        throw new Error(
-          `tiny: modules section has version ${String(version)}, expected 1`
-        );
-      }
-      const registered = this.sim.world.saveSections;
-      const count = section.varint();
-      if (count !== registered.length) {
-        throw new Error(
-          `tiny: expected ${String(registered.length)} module section(s), found ${String(count)}`
-        );
-      }
-      for (const saveSection of registered) {
-        section.section(saveSection.key, (body, sectionVersion) => {
-          if (sectionVersion !== saveSection.version) {
-            throw new Error(
-              `restore: save section '${saveSection.key}' has version ${String(sectionVersion)}, expected ${String(saveSection.version)}`
-            );
-          }
-          saveSection.read(body, this.sim.world);
-        });
-      }
-    });
+    StateHelpers.readModuleSections(r, this.sim.world);
     if (restoreBroken) this.corrupt();
   }
 

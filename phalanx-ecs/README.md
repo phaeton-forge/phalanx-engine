@@ -251,7 +251,7 @@ Set optional services on `world.context` before calling `registerSystems()`:
 import { PhysicsWorld } from '@phalanx-engine/physics';
 
 const physicsWorld = new PhysicsWorld({ tickRate: 20 });
-world.context.physics = physicsWorld;
+physicsWorld.attach(world);
 
 // Systems access it via the protected getter:
 class RenderSystem extends GameSystem {
@@ -719,6 +719,13 @@ export class CombatSystem extends GameSystem {
 ## Save sections
 
 `StateWriter`, `StateReader`, `BinaryStateWriter` and `BinaryStateReader` are the snapshot codec. A module implements `SaveSection` (`key`, `version`, `write`, `read`) and calls `world.registerSaveSection`. Keys sort by UTF-16 code units (`'Z' < 'a'`). `saveSections` returns a copy. An empty key throws `registerSaveSection: key is empty`. A repeated key throws `registerSaveSection: duplicate key '<key>'`. The runtime writes the registered sections; ecs does not.
+
+Restore rejects a modules container with:
+
+- `restore: unknown save section '<key>' (registered: a, b)`
+- `restore: save section '<key>' is missing from the snapshot`
+- `restore: save sections out of order`
+- `restore: save section '<key>' has version N, expected M`
 
 ## Snapshot accessors
 

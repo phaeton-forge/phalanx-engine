@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ts from 'typescript';
@@ -216,6 +217,17 @@ describe('@phalanx-engine/ecs exports', () => {
     for (const entry of resolved) {
       expect(entry.file).toBe(path.join(PACKAGE_ROOT, entry.declaration));
     }
+  });
+
+  it('keeps SystemContext.physics a plain field', () => {
+    const declaration = fs.readFileSync(
+      path.join(PACKAGE_ROOT, 'dist/SystemContext.d.ts'),
+      'utf8'
+    );
+    expect(declaration).toMatch(/physics:\s*IPhysicsWorld \| undefined/);
+    expect(declaration).toMatch(/world:\s*GameWorld \| undefined/);
+    expect(declaration).not.toContain('defineProperty');
+    expect(declaration).not.toContain('phalanx.physics');
   });
 
   it('matches the checked-in name snapshot, types included', () => {

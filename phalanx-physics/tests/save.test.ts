@@ -12,22 +12,14 @@ import type { FixedPoint } from '@phalanx-engine/math';
 import {
   CollisionSystem,
   PhysicsBodyComponent,
-  PhysicsSoASchema,
   PhysicsWorld,
   TransformComponent,
-  TransformSoASchema,
 } from '../src/index.js';
 import {
   readBroadphase,
   rebuildBroadphaseFromTransforms,
   writeBroadphase,
 } from '../src/save/broadphase.js';
-import {
-  readSoAStores,
-  writeSoAStores,
-} from '../../phalanx-runtime/src/state/sections/soa.js';
-
-const SCHEMAS = [TransformSoASchema, PhysicsSoASchema] as const;
 
 class Disc extends Entity {
   public constructor(x: number, z: number) {
@@ -65,7 +57,7 @@ function wiredWorld(cellSize: FixedPoint = FP.FromInt(4)): {
     gridCellSize: cellSize,
     subSteps: 1,
   });
-  world.context.physics = physics;
+  physics.attach(world);
   const { physicsSystem } = physics.getSystems();
   world.registerSystems([physicsSystem], []);
   return { world, physics };
@@ -81,79 +73,6 @@ describe('physics state helpers', () => {
   afterEach(() => {
     SoAComponent.resetContext();
     resetEntityIdCounter();
-  });
-
-  it('restores pre-separation centers, which a transform rebuild does not', () => {
-    const { world, physics } = wiredWorld();
-    addDisc(world, 0, 0);
-    addDisc(world, 1, 0);
-    physics.getSystems().physicsSystem.step();
-
-    const savedCenters = physics.getBroadphaseCenters();
-    const moved = savedCenters.find((center) => center.entityId === 1);
-    expect(moved).toBeDefined();
-    if (moved === undefined) {
-      throw new Error('missing cached center');
-    }
-    const transformStore = world.entityManager.getSoAStore(TransformSoASchema);
-    if (transformStore === undefined) {
-      throw new Error('missing transform store');
-    }
-    const transformIndex = transformStore.indexOf(1);
-    const transformX = transformStore.arrays.fpPositionX[transformIndex];
-    if (transformX === undefined) {
-      throw new Error('missing transform');
-    }
-    expect(FP.Eq(moved.x, FP.FromRaw(transformX))).toBe(false);
-
-    const liveQuery = [
-      ...physics.spatialGrid.queryRadius(moved.x, moved.z, FP._0),
-    ];
-    expect(liveQuery).toContain(1);
-
-    const bytes = finish((writer) => {
-      writeSoAStores(writer, world, SCHEMAS);
-      writeBroadphase(writer, world);
-    });
-
-    const restored = wiredWorld();
-    addDisc(restored.world, 0, 0);
-    addDisc(restored.world, 0, 0);
-    const reader = new BinaryStateReader(bytes);
-    readSoAStores(reader, restored.world, SCHEMAS);
-    readBroadphase(reader, restored.world);
-    reader.done();
-
-    const restoredQuery = [
-      ...restored.physics.spatialGrid.queryRadius(moved.x, moved.z, FP._0),
-    ];
-    expect(restoredQuery).toEqual(liveQuery);
-
-    const restoredCenter = restored.physics
-      .getBroadphaseCenters()
-      .find((center) => center.entityId === 1);
-    expect(restoredCenter).toBeDefined();
-    if (restoredCenter === undefined) {
-      throw new Error('missing restored center');
-    }
-    expect(restoredCenter.x.base).toBe(moved.x.base);
-    expect(restoredCenter.x.precision).toBe(moved.x.precision);
-    expect(restoredCenter.z.base).toBe(moved.z.base);
-    expect(restoredCenter.z.precision).toBe(moved.z.precision);
-    expect(restoredCenter.radius.base).toBe(moved.radius.base);
-    expect(restoredCenter.radius.precision).toBe(moved.radius.precision);
-
-    const again = finish((writer) => {
-      writeSoAStores(writer, restored.world, SCHEMAS);
-      writeBroadphase(writer, restored.world);
-    });
-    expect(again).toEqual(bytes);
-
-    rebuildBroadphaseFromTransforms(restored.world);
-    const rebuiltQuery = [
-      ...restored.physics.spatialGrid.queryRadius(moved.x, moved.z, FP._0),
-    ];
-    expect(rebuiltQuery).not.toEqual(liveQuery);
   });
 
   it('keeps a non-default precision through writeBroadphase', () => {
@@ -258,10 +177,10 @@ describe('physics state helpers', () => {
     ]);
 
     const physicsOnly = new GameWorld({});
-    physicsOnly.context.physics = new PhysicsWorld({
+    new PhysicsWorld({
       gridCellSize: FP.FromInt(4),
       subSteps: 1,
-    });
+    }).attach(physicsOnly);
     expect(physicsOnly.saveSections.map((section) => section.key)).toEqual([
       'physics.broadphase',
     ]);
@@ -271,7 +190,7 @@ describe('physics state helpers', () => {
       gridCellSize: FP.FromInt(4),
       subSteps: 1,
     });
-    both.context.physics = physics;
+    physics.attach(both);
     both.registerSystems(
       [new CollisionSystem(FP.FromInt(4)), physics.getSystems().physicsSystem],
       []
@@ -279,6 +198,30 @@ describe('physics state helpers', () => {
     expect(both.saveSections.map((section) => section.key)).toEqual([
       'physics.broadphase',
     ]);
+  });
+
+  it('does not register a section when physics is only assigned', () => {
+    const world = new GameWorld({});
+    world.context.physics = new PhysicsWorld({
+      gridCellSize: FP.FromInt(4),
+      subSteps: 1,
+    });
+    expect(world.saveSections).toEqual([]);
+  });
+
+  it('treats a second attach to the same world as a no-op', () => {
+    const { world, physics } = wiredWorld();
+    physics.attach(world);
+    expect(world.saveSections.map((section) => section.key)).toEqual([
+      'physics.broadphase',
+    ]);
+  });
+
+  it('throws when attach is called with a different world', () => {
+    const { physics } = wiredWorld();
+    expect(() => physics.attach(new GameWorld({}))).toThrow(
+      'PhysicsWorld.attach: already attached to another world'
+    );
   });
 
   it('throws when the world has no broadphase', () => {

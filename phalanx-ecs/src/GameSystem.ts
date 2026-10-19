@@ -29,7 +29,11 @@ export abstract class GameSystem {
 
   /** Convenience accessor for the world that owns this system. */
   protected get world(): GameWorld {
-    return this.context.world;
+    const world = this.context.world;
+    if (world === undefined) {
+      throw new Error('GameSystem.world: context.world is not set');
+    }
+    return world;
   }
 
   /** Convenience accessor for EventBus */

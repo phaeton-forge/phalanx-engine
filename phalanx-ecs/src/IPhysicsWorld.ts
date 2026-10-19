@@ -19,8 +19,9 @@ export interface InterpolatedTransformSample {
  * GameSystem exposes this as a protected `physics` getter; systems in
  * games that don't use phalanx-physics will simply receive `undefined`.
  *
- * Set on `SystemContext.physics` before `registerSystems()` is called,
- * typically by game bootstrap code or a `createPhysicsWorld()` helper.
+ * Set on `SystemContext.physics` before `registerSystems()` is called.
+ * `PhysicsWorld.attach(world)` does that. Assigning the field does not
+ * register a save section.
  */
 export interface IPhysicsWorld {
   /**

@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { bindTestWorld } from './bindTestWorld.js';
 import { FP } from '@phalanx-engine/math';
 import {
   EntityManager,
@@ -47,6 +48,7 @@ describe('step()', () => {
   function setupSystem(overrides?: Partial<PhysicsConfig>) {
     const config = createPhysicsConfig(overrides);
     const system = new PhysicsSystem(config);
+    bindTestWorld(context);
     system.init(context);
 
     const physicsStore = entityManager.getOrCreateSoAStore(PhysicsSoASchema);
@@ -93,6 +95,7 @@ describe('step()', () => {
 
       const config = createPhysicsConfig();
       const system = new PhysicsSystem(config);
+      bindTestWorld(ctx);
       system.init(ctx);
 
       const physicsStore = em.getOrCreateSoAStore(PhysicsSoASchema);
@@ -127,6 +130,7 @@ describe('step()', () => {
 
       const config = createPhysicsConfig();
       const system = new PhysicsSystem(config);
+      bindTestWorld(ctx);
       system.init(ctx);
 
       const physicsStore = em.getOrCreateSoAStore(PhysicsSoASchema);

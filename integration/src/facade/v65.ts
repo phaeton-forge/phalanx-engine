@@ -176,7 +176,7 @@ export function createSkirmishGame(
         gridCellSize: CELL,
         gravity: FP._0,
       });
-      world.context.physics = physics;
+      physics.attach(world);
       const sim = new SkirmishSim(
         world,
         ctx.rng,

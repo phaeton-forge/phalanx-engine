@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { bindTestWorld } from './bindTestWorld.js';
 import {
   Entity,
   EntityManager,
@@ -66,6 +67,7 @@ describe('PhysicsWorld', () => {
   it('applyImpulse3D delegates to PhysicsSystem and sets all three axes', () => {
     const physicsWorld = new PhysicsWorld();
     const { physicsSystem } = physicsWorld.getSystems();
+    bindTestWorld(context);
     physicsSystem.init(context);
 
     const physicsStore = physicsSystem.getPhysicsStore();

@@ -83,7 +83,7 @@ RenderSystem reads this.physics.getInterpolatedTransform(entityId)
 - **Built-in interpolation**: `InterpolationSystem` implements `IBeforeTick`, `IAfterTick`, `IBeforeFrame` — GameWorld invokes hooks automatically
 - **SoA storage**: `BigInt64Array` for FixedPoint values, `Uint8Array` for flags
 - **Entity iteration**: Always sorted by ID for lockstep determinism
-- **SystemContext integration**: Set `world.context.physics = physicsWorld` before `registerSystems()` — systems access via `this.physics` getter
+- **SystemContext integration**: Call `physicsWorld.attach(world)` before `registerSystems()` — systems access via `this.physics` getter. Assignment of `context.physics` does not register the save section.
 - **Collision filtering**: Game-specific logic injected via `setCollisionFilter()` callback
 
 ## Step-by-Step Instructions
@@ -117,7 +117,7 @@ const physicsWorld = new PhysicsWorld({
 import { GameWorld } from '@phalanx-engine/ecs';
 
 const world = new GameWorld({ /* ... */ });
-world.context.physics = physicsWorld;
+physicsWorld.attach(world);
 ```
 
 Systems access the facade via the protected `this.physics` getter on `GameSystem`:
@@ -414,7 +414,7 @@ grid.restoreBroadphase(grid.getCenters()); // clear, then insert saved centers
 physicsWorld.getBroadphaseCenters();
 physicsWorld.restoreBroadphase(savedCenters); // snapshot restore
 physicsWorld.rebuildBroadphase(); // transforms only; collision-free world
-// Assigning context.physics, or registering PhysicsSystem / CollisionSystem,
+// PhysicsWorld.attach(world), or registering PhysicsSystem / CollisionSystem,
 // registers save section 'physics.broadphase' (version 1) once. Not exported.
 ```
 
@@ -595,7 +595,7 @@ body-body collision resolution.
 
 ### Integration
 
-- Set `world.context.physics = physicsWorld` before `registerSystems()`
+- Call `physicsWorld.attach(world)` before `registerSystems()`
 - Register `gravitySystem` then `physicsSystem` as tick systems, `interpolationSystem` as frame system
 - Attach `TransformComponent` + `InterpolationComponent` on every entity that moves and renders
 - Use `this.physics.getInterpolatedTransform()` in render systems — do not maintain separate visual position caches

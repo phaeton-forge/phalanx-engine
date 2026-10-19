@@ -132,6 +132,7 @@ export class SimulationContainer {
         maxZ: FP.FromFloat(arenaParams.length / 2),
       },
     });
+    // Pinned to published physics 0.2.3, which has no PhysicsWorld.attach.
     this.world.context.physics = this.physicsWorld;
 
     this.abilities = createAbilitySystem(this.world, {
