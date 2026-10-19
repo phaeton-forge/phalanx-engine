@@ -33,7 +33,7 @@ metadata:
 - Defining a game for engine 0.3 (`defineComponent`, `defineCommands`, `defineGame`, `runLocalMatch`).
 - Custom snapshots (`save: { handler }`, advanced `SaveHandler`).
 - Writing bots as command producers (`BotPolicy`).
-- Choosing `side: 'client' | 'server'` and slots (`SlotConfig`). `runsOn` is independent of `side`.
+- Choosing `side: 'client' | 'server'` and slots (`SlotConfig`, defined in `@phalanx-engine/protocol` and re-exported here). `runsOn` is independent of `side`. `SYSTEM_PLAYER_ID`, `botPlayerId`, and `isBotPlayerId` are defined in the protocol package and re-exported.
 
 ## Modes
 

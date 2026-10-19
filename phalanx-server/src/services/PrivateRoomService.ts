@@ -1,11 +1,12 @@
 import type { Server as SocketIOServer, Socket } from 'socket.io';
 import type {
-  PhalanxConfig,
-  QueuedPlayer,
+  RoomCancelledEvent,
   RoomCreatedEvent,
-  RoomRecoveredEvent,
   RoomErrorEvent,
-} from '../types/index.js';
+  RoomExpiredEvent,
+  RoomRecoveredEvent,
+} from '@phalanx-engine/protocol';
+import type { PhalanxConfig, QueuedPlayer } from '../types/index.js';
 import {
   fillHumanSlot,
   parseServerMatch,
@@ -15,10 +16,11 @@ import type { RegisteredGame } from '../sim/loadGames.js';
 import { reservedPlayerMessage } from '../reservedPlayerId.js';
 import { GameRoom } from './GameRoom.js';
 
-// Re-export private-room event types from this module for backward
-// compatibility — callers (and existing tests) historically import them
-// from `services/PrivateRoomService.js`.
-export type { RoomCreatedEvent, RoomRecoveredEvent, RoomErrorEvent };
+export type {
+  RoomCreatedEvent,
+  RoomErrorEvent,
+  RoomRecoveredEvent,
+} from '@phalanx-engine/protocol';
 
 /**
  * Represents a private room waiting for a second player.
@@ -202,7 +204,9 @@ export class PrivateRoomService {
       const expired = this.rooms.get(code);
       if (expired) {
         this.removeRoom(code);
-        expired.hostSocket?.emit('room-expired', { code });
+        expired.hostSocket?.emit('room-expired', {
+          code,
+        } satisfies RoomExpiredEvent);
         console.log(`[PrivateRoom] Room ${code} expired`);
       }
     }, PrivateRoomService.ROOM_TTL_MS);
@@ -269,7 +273,9 @@ export class PrivateRoomService {
       const expired = this.rooms.get(code);
       if (expired) {
         this.removeRoom(code);
-        expired.hostSocket?.emit('room-expired', { code });
+        expired.hostSocket?.emit('room-expired', {
+          code,
+        } satisfies RoomExpiredEvent);
         console.log(`[PrivateRoom] Room ${code} expired`);
       }
     }, PrivateRoomService.ROOM_TTL_MS);
@@ -457,7 +463,9 @@ export class PrivateRoomService {
         const expired = this.rooms.get(code);
         if (expired) {
           this.removeRoom(code);
-          expired.hostSocket?.emit('room-expired', { code });
+          expired.hostSocket?.emit('room-expired', {
+            code,
+          } satisfies RoomExpiredEvent);
         }
       }, PrivateRoomService.ROOM_TTL_MS);
       const room: PrivateRoom = {
@@ -563,7 +571,7 @@ export class PrivateRoomService {
     for (const [code, room] of this.rooms) {
       if (room.host.playerId === playerId) {
         this.removeRoom(code);
-        socket.emit('room-cancelled', { code });
+        socket.emit('room-cancelled', { code } satisfies RoomCancelledEvent);
         console.log(`[PrivateRoom] Room ${code} cancelled by ${playerId}`);
         return;
       }

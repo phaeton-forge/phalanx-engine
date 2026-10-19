@@ -19,7 +19,7 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "clean": "rimraf dist",
-    "test": "vitest run && node --input-type=module -e \"await import('./dist/index.js')\"",
+    "test": "tsc -p tsconfig.protocol-types.json && vitest run && node --input-type=module -e \"await import('./dist/index.js')\"",
     "test:watch": "vitest",
     "prepublishOnly": "npm run build"
   },
@@ -54,6 +54,7 @@
   ],
   "dependencies": {
     "@phalanx-engine/math": "workspace:*",
+    "@phalanx-engine/protocol": "workspace:*",
     "socket.io-client": "^4.7.0"
   },
   "devDependencies": {

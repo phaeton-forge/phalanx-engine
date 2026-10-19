@@ -18,7 +18,8 @@
   },
   "dependencies": {
     "@phalanx-engine/abilities": "workspace:*",
-    "@phalanx-engine/ecs": "workspace:*"
+    "@phalanx-engine/ecs": "workspace:*",
+    "@phalanx-engine/protocol": "workspace:*"
   },
   "scripts": {
     "build": "tsc",

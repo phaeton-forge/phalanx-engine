@@ -54,19 +54,20 @@ const ROOT_NAMES = [
   'HashComparisonEvent',
   'KeyValueStorage',
   'LocalStorageAdapter',
-  'LogChunk',
   'LoginOptions',
   'MatchEndEvent',
   'MatchFoundEvent',
+  'MatchLogChunkEvent',
+  'MatchLogEntry',
   'MatchLogError',
   'MatchLogErrorEvent',
   'MatchLogErrorReason',
-  'MatchLogWireErrorReason',
+  'MatchLogFailureReason',
   'MatchPlayerInfo',
   'MatchResumeErrorReason',
+  'MatchResumeFailureReason',
   'MatchResumeRejected',
   'MatchResumeState',
-  'MatchResumeWireErrorReason',
   'MatchSession',
   'MatchSessionStore',
   'MemoryKeyValueStorage',
@@ -118,7 +119,7 @@ const ROOT_NAMES = [
   'SteamAuthConfig',
   'StoredAuthData',
   'SubmitCommandsAck',
-  'TickCommandsHistory',
+  'SubmittedCommand',
   'TickHandler',
   'TickSyncEvent',
   'Unsubscribe',
@@ -245,7 +246,7 @@ describe('@phalanx-engine/client exports', () => {
     }
     expect(
       resolved.map((entry) => actual.get(entry.file)?.names.length)
-    ).toEqual([115, 18]);
+    ).toEqual([116, 18]);
   });
 
   it('loads each entry by package name', async () => {

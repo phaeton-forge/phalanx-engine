@@ -51,6 +51,7 @@
   "dependencies": {
     "@phalanx-engine/ecs": "workspace:*",
     "@phalanx-engine/math": "workspace:*",
+    "@phalanx-engine/protocol": "workspace:*",
     "@phalanx-engine/runtime": "workspace:*",
     "socket.io": "^4.7.0"
   },

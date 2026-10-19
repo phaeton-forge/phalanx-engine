@@ -576,7 +576,7 @@ import type {
   PlayerInfo, MatchInfo, MatchFoundEvent,
   GameStartEvent, TickSyncEvent, CommandsBatchEvent,
   QueuedPlayer, QueueStatusEvent,
-  StateHashEvent, DesyncDetectedEvent,
+  StateHashEvent, MatchResumeState,
 } from '@phalanx-engine/server';
 ```
 

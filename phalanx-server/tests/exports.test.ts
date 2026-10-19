@@ -25,7 +25,6 @@ const ROOT_NAMES = [
   'DEFAULT_SESSION_TTL_MS',
   'DesyncAction',
   'DesyncConfig',
-  'DesyncDetectedEvent',
   'DeterministicRandom',
   'EndMatchResult',
   'FP',
@@ -51,7 +50,7 @@ const ROOT_NAMES = [
   'MatchLogErrorReason',
   'MatchLogRequest',
   'MatchResumeErrorReason',
-  'MatchResumeStateEvent',
+  'MatchResumeState',
   'PauseConfig',
   'Phalanx',
   'PhalanxConfig',
@@ -179,7 +178,7 @@ describe('@phalanx-engine/server exports', () => {
     }
     expect(
       resolved.map((entry) => actual.get(entry.file)?.names.length)
-    ).toEqual([75]);
+    ).toEqual([74]);
   });
 
   it('loads each entry by package name', async () => {

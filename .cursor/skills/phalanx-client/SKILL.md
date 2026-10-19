@@ -107,7 +107,7 @@ interface PhalanxClientConfig {
 
 Tab killed: `store.load()` → `connect()` → `resumeMatch(token, haveTick)` → `fetchMatchLog(haveTick + 1)`. `resumeMatch` resolves on `match-resume-state` and rejects `MatchResumeRejected`. `reconnect-state` uses the same path as `reconnectToMatch`, so the client is back in the match before the promise resolves. Pass `matchSessionStorage` to replace `localStorage` (tests use `MemoryKeyValueStorage`). `autoReconnect` tries `resumeMatch(token, lastTick)` when the store has a token for the current match, then `reconnectToMatch` if that resume does not bind. Set `requireSessionToken: true` when the server has that flag: a resume timeout then does not call `reconnectToMatch`. Giving up clears the store and emits `reconnectFailed`. `sessionSuperseded` fires when the server binds this player to another socket.
 
-`buildId` is copied onto `queue-join`, `room-create`, and `room-join` only when it is set. `resumeMatch` includes it on `match-resume` the same way. `fetchMatchLog(fromTick, { maxTicks })` returns an `AsyncIterable<LogChunk>` for the current match. One read per socket: a second call aborts the first with `MatchLogError` reason `'aborted'`. Chunks carry a `requestId`, so a replaced stream cannot mix in. The iterator stops on `done: true`. `match-log-error` rejects with `MatchLogError`. A socket drop rejects with `'disconnected'`. Breaking out of `for await` sends `match-log-cancel` and removes the socket listeners. `serverShutdown` carries `{ reason, matchIds }`. Wire reasons (`MatchLogWireErrorReason`) are separate from the client-only `'disconnected'` and `'aborted'`.
+`buildId` is copied onto `queue-join`, `room-create`, and `room-join` only when it is set. `resumeMatch` includes it on `match-resume` the same way. `fetchMatchLog(fromTick, { maxTicks })` returns an `AsyncIterable<MatchLogChunkEvent>` for the current match. One read per socket: a second call aborts the first with `MatchLogError` reason `'aborted'`. Chunks carry a `requestId`, so a replaced stream cannot mix in. The iterator stops on `done: true`. `match-log-error` rejects with `MatchLogError`. A socket drop rejects with `'disconnected'`. Breaking out of `for await` sends `match-log-cancel` and removes the socket listeners. `serverShutdown` carries `{ reason, matchIds }`. Wire reasons (`MatchLogErrorReason`, from `@phalanx-engine/protocol`) are separate from the client-only `'disconnected'` and `'aborted'` on `MatchLogFailureReason`. `MatchResumeErrorReason` is the wire resume refusal; `MatchResumeFailureReason` adds the local `'timeout'`.
 
 ### 4. Matchmaking Flow
 
@@ -620,7 +620,7 @@ import type {
   TickSyncEvent, CommandsBatchEvent, QueueStatusEvent,
   PlayerDisconnectedEvent, PlayerReconnectedEvent, PlayerReadyEvent,
   GamePausedEvent, GameResumedEvent,
-  ReconnectStateEvent, TickCommandsHistory, ReconnectStatusEvent,
+  ReconnectStateEvent, MatchLogEntry, ReconnectStatusEvent,
   SubmitCommandsAck, HashComparisonEvent,
   PhalanxError,
 } from '@phalanx-engine/client';

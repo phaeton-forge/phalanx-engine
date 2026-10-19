@@ -129,7 +129,9 @@ not throw. `i64` is a canonical decimal string on the wire.
   sim object, or return nothing and the engine keeps `{ world }`.
 
 Implemented today: `defineGame`, the constants (`ENGINE_SNAPSHOT_FORMAT`,
-snapshot intervals, …), `botPlayerId` / `isBotPlayerId`, `rejectCommand` /
+snapshot intervals, …), `botPlayerId` / `isBotPlayerId` (defined in
+`@phalanx-engine/protocol` and re-exported, with `SYSTEM_PLAYER_ID` and
+`SlotConfig`), `rejectCommand` /
 `isCommandRejection`, `NotImplementedError`, `BinaryStateWriter` /
 `BinaryStateReader` (`list` keeps order, `sortedBy` sorts unique integer
 keys), `encodeSnapshot` / `decodeSnapshot` (header, body, and optional bot

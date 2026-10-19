@@ -5,7 +5,49 @@
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { ResourceLimits } from 'node:worker_threads';
-import type { AnyGameDefinition, SlotConfig } from '@phalanx-engine/runtime';
+import type { AnyGameDefinition } from '@phalanx-engine/runtime';
+import type { MatchState, PlayerCommand } from '@phalanx-engine/protocol';
+
+export type {
+  CommandsBatchEvent,
+  CountdownEvent,
+  GameStartEvent,
+  HashComparisonEvent,
+  MatchErrorEvent,
+  MatchFoundEvent,
+  MatchLogCancelRequest,
+  MatchLogChunkEvent,
+  MatchLogEntry,
+  MatchLogErrorEvent,
+  MatchLogErrorReason,
+  MatchLogRequest,
+  MatchPlayerInfo,
+  MatchState,
+  MatchResumeErrorReason,
+  MatchResumeState,
+  PlayerAbsentEvent,
+  PlayerCommand,
+  PlayerDisconnectedEvent,
+  PlayerReadyEvent,
+  PlayerReconnectedEvent,
+  QueueStatusEvent,
+  ReconnectStateEvent,
+  ReconnectStatusEvent,
+  RoomCancelledEvent,
+  RoomCreatedEvent,
+  RoomErrorEvent,
+  RoomExpiredEvent,
+  RoomRecoveredEvent,
+  ServerRoomMatchConfig,
+  ServerShutdownEvent,
+  SessionSupersededEvent,
+  SessionTokenEvent,
+  StateHashEvent,
+  SubmitCommandsAck,
+  SubmitCommandsEvent,
+  SubmittedCommand,
+  TickSyncEvent,
+} from '@phalanx-engine/protocol';
 
 /**
  * Game mode preset string
@@ -406,35 +448,6 @@ export interface SimHostConfig {
 }
 
 /**
- * `room-create` body that starts a server-simulated match.
- * `Extra` is that game's `configKeys`. A key outside this type fails
- * at compile time. The server still copies an integer only when
- * `configKeys` lists it.
- */
-export type ServerRoomMatchConfig<
-  Extra extends Record<string, number> = Record<never, never>,
-> = {
-  gameId: string;
-  simMode: 'server';
-  slots: readonly SlotConfig[];
-  inputDelayTicks?: number;
-  /** Bot policy used when an absent human is replaced. Requires `absence`. */
-  absencePolicy?: string;
-} & Extra;
-
-/**
- * Player command sent from client
- */
-export interface PlayerCommand {
-  type: string;
-  tick: number;
-  playerId: string;
-  data: unknown;
-  /** Optional sequence number for input validation (monotonically increasing per player) */
-  sequence?: number;
-}
-
-/**
  * Opt-in session tokens (Task 9). `secret` signs every token for this
  * process. `ttlMs` defaults to 60 minutes.
  */
@@ -462,47 +475,6 @@ export interface ReconnectConfig {
   requireSessionToken?: boolean;
 }
 
-/** Why `match-resume` was refused. No extra detail is sent. */
-export type MatchResumeErrorReason =
-  'invalid' | 'expired' | 'match-ended' | 'build-mismatch';
-
-/**
- * Successful `match-resume`. `absentDeadline` is omitted when no other
- * player is absent. It is milliseconds until the soonest other absence
- * expires (`GameRoom.getAbsences()`), not an epoch time.
- * `snapshot` is Task 11.
- */
-export interface MatchResumeStateEvent {
-  matchId: string;
-  slot: number;
-  currentTick: number;
-  state: MatchInfo['state'];
-  absentDeadline?: number;
-  /** Present in server-sim mode when a snapshot has been stored. Tick only. */
-  snapshot?: { tick: number };
-}
-
-/**
- * Issued at `match-found`. A later issue at `game-start` and on each
- * rebind replaces it. `exp` is that issue time plus `ttlMs`, so the
- * new token extends the lifetime. `matchId` and `slot` are beside
- * `token` because the client does not parse the token. `slot` is the
- * index in `teams.flat()`.
- */
-export interface SessionTokenEvent {
-  token: string;
-  matchId: string;
-  slot: number;
-}
-
-/**
- * The socket this player was bound to has been replaced.
- * `matchId` is the match it no longer belongs to.
- */
-export interface SessionSupersededEvent {
-  matchId: string;
-}
-
 /**
  * Opt-in absence window (Task 10). Both durations are milliseconds.
  * `windowMs` may be longer than `matchBudgetMs`; the deadline is the
@@ -525,18 +497,6 @@ export interface EndMatchResult {
   reason: string;
   winnerTeamId?: number;
   loserIds?: string[];
-}
-
-/**
- * `player-absent` payload, and one row of `GameRoom.getAbsences()`.
- * Both durations are milliseconds remaining at the moment the payload
- * is produced (send time for the event, call time for the getter).
- * The client counts down from the moment it receives the event.
- */
-export interface PlayerAbsentEvent {
-  playerId: string;
-  deadlineMs: number;
-  budgetLeftMs: number;
 }
 
 /**
@@ -570,72 +530,9 @@ export interface MatchInfo {
   id: string;
   players: PlayerInfo[];
   currentTick: number;
-  state:
-    | 'waiting-for-players'
-    | 'countdown'
-    | 'waiting-for-ready'
-    | 'playing'
-    | 'paused'
-    | 'finished';
+  state: MatchState;
   createdAt: Date;
   gameType?: string;
-}
-
-/**
- * Player info for match-found event (minimal data)
- */
-export interface MatchPlayerInfo {
-  playerId: string;
-  username: string;
-}
-
-/**
- * Match found event payload - personalized for each player
- */
-export interface MatchFoundEvent {
-  matchId: string;
-  playerId: string;
-  teamId: number;
-  teammates: MatchPlayerInfo[];
-  opponents: MatchPlayerInfo[];
-}
-
-/**
- * Countdown event payload - sent every second before game starts
- */
-export interface CountdownEvent {
-  seconds: number;
-}
-
-/**
- * Game start event payload - sent when countdown reaches 0
- */
-export interface GameStartEvent {
-  matchId: string;
-  /** Random seed for deterministic RNG (optional for backward compatibility) */
-  randomSeed?: number;
-  /**
-   * Server-sim runner config (`side: 'server'`). Present only when this
-   * match has a server simulation. A client copies it and sets `side`
-   * to `'client'`.
-   */
-  matchConfig?: { readonly [key: string]: unknown };
-}
-
-/**
- * Tick sync event payload - sent every tick for synchronization
- */
-export interface TickSyncEvent {
-  tick: number;
-  timestamp: number;
-}
-
-/**
- * Commands batch event payload - sent to all clients each tick
- */
-export interface CommandsBatchEvent {
-  tick: number;
-  commands: PlayerCommand[];
 }
 
 /**
@@ -643,14 +540,6 @@ export interface CommandsBatchEvent {
  */
 export interface TickCommands {
   [playerId: string]: PlayerCommand[];
-}
-
-/**
- * Submit commands event payload from client
- */
-export interface SubmitCommandsEvent {
-  tick: number;
-  commands: PlayerCommand[];
 }
 
 /**
@@ -666,152 +555,6 @@ export interface QueuedPlayer {
   buildId?: string;
   /** Bot slots have no socket. Omitted means human (today's rooms). */
   kind?: 'human' | 'bot';
-}
-
-/**
- * Why a `match-log` request was refused.
- * `'truncated'` means numeric history no longer contains `fromTick`.
- */
-export type MatchLogErrorReason =
-  'not-member' | 'not-found' | 'invalid' | 'truncated';
-
-/**
- * Client → server request for the command log of a match.
- * `maxTicks` defaults to the whole remaining log on the server.
- */
-export interface MatchLogRequest {
-  matchId: string;
-  fromTick: number;
-  maxTicks?: number;
-  /**
-   * Client-chosen id for this read. Echoed on chunks and errors so a
-   * socket can ignore a stream that a later request replaced.
-   */
-  requestId?: string;
-}
-
-/** Client → server. Stops the `match-log` stream with this `requestId`. */
-export interface MatchLogCancelRequest {
-  requestId?: string;
-}
-
-/** One stored tick inside a `match-log-chunk`. Empty ticks are omitted. */
-export interface MatchLogEntry {
-  tick: number;
-  commands: PlayerCommand[];
-}
-
-/**
- * Server → requesting socket. `toTick` is inclusive. A chunk spans at
- * most 2000 ticks of the requested range (not 2000 entries). `matchId`
- * is present so a client can ignore a chunk from another match.
- */
-export interface MatchLogChunkEvent {
-  matchId: string;
-  fromTick: number;
-  toTick: number;
-  entries: MatchLogEntry[];
-  done: boolean;
-  /** Present when the request carried a `requestId`. */
-  requestId?: string;
-}
-
-/** Server → requesting socket when `match-log` is refused. */
-export interface MatchLogErrorEvent {
-  matchId?: string;
-  requestId?: string;
-  reason: MatchLogErrorReason;
-}
-
-/**
- * Sent to every player of a match before the process stops.
- * `matchIds` is the same list for every room.
- */
-export interface ServerShutdownEvent {
-  reason: string;
-  matchIds: string[];
-}
-
-/** Sent to match players when the match cannot start. */
-export interface MatchErrorEvent {
-  matchId: string;
-  reason: 'build-mismatch';
-}
-
-/**
- * Queue status response
- */
-export interface QueueStatusEvent {
-  position: number;
-  waitTime: number;
-}
-
-/**
- * Private room events — client/server wire contracts.
- *
- * These mirror the interfaces exported from
- * `services/PrivateRoomService.ts` and are documented here for
- * consistency with the rest of the public event surface.
- *
- * Socket events:
- *   • server → host:  `room-created`    → `RoomCreatedEvent`
- *   • server → host:  `room-recovered`  → `RoomRecoveredEvent`
- *   • server → host:  `room-cancelled`  → `{ code: string }`
- *   • server → host:  `room-expired`    → `{ code: string }`
- *   • server → peer:  `room-error`      → `RoomErrorEvent`
- *   • client → server: `room-create`    → `{ playerId, username?, gameType? }`
- *   • client → server: `room-join`      → `{ playerId, username?, code }`
- *   • client → server: `room-cancel`    → `{}`
- *   • client → server: `room-recover`   → `{ playerId, username?, code }`
- *
- * The `code` on `room-recover` is required: it proves the caller is
- * actually the host who created the room. In an unauthenticated
- * socket environment `playerId` alone is not a credential, so the
- * server refuses to recover without a matching code and emits
- * `room-error: "Room expired"` instead (same message as "no such
- * room" so we never leak whether a given playerId currently owns
- * a room).
- */
-
-/** Event sent to the host when a room is created. */
-export interface RoomCreatedEvent {
-  code: string;
-}
-
-/**
- * Event sent to the host when they successfully reclaim a room
- * via `room-recover` after a transient socket disconnect.
- */
-export interface RoomRecoveredEvent {
-  code: string;
-}
-
-/** Event sent when a private-room operation fails. */
-export interface RoomErrorEvent {
-  message: string;
-  /**
-   * Typed gate. `session-token-required` refuses an in-match
-   * `room-recover` when `reconnect.requireSessionToken` is on.
-   * `sim-unavailable` refuses a server room after the sim worker has
-   * died. Other failures omit it.
-   */
-  reason?: 'session-token-required' | 'sim-unavailable';
-}
-
-/**
- * State hash event from client (2.1.3)
- */
-export interface StateHashEvent {
-  tick: number;
-  hash: string;
-}
-
-/**
- * Desync detected event (2.1.3)
- */
-export interface DesyncDetectedEvent {
-  tick: number;
-  hashes: { [playerId: string]: string };
 }
 
 /**

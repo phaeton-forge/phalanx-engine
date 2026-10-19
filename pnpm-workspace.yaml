@@ -1,5 +1,6 @@
 packages:
   - 'phalanx-math'
+  - 'phalanx-protocol'
   - 'phalanx-server'
   - 'phalanx-client'
   - 'phalanx-ecs'

@@ -156,6 +156,42 @@ export type {
 // ============================================
 
 export type {
+  CommandsBatchEvent,
+  CountdownEvent,
+  GamePausedEvent,
+  GameResumedEvent,
+  GameStartEvent,
+  HashComparisonEvent,
+  MatchEndEvent,
+  MatchFoundEvent,
+  MatchLogChunkEvent,
+  MatchLogEntry,
+  MatchLogErrorEvent,
+  MatchLogErrorReason,
+  MatchPlayerInfo,
+  MatchResumeErrorReason,
+  MatchResumeState,
+  PlayerCommand,
+  PlayerDisconnectedEvent,
+  PlayerReadyEvent,
+  PlayerReconnectedEvent,
+  QueueStatusEvent,
+  ReconnectStateEvent,
+  ReconnectStatusEvent,
+  RoomCancelledEvent,
+  RoomCreatedEvent,
+  RoomErrorEvent,
+  RoomExpiredEvent,
+  RoomRecoveredEvent,
+  ServerShutdownEvent,
+  SessionSupersededEvent,
+  SessionTokenEvent,
+  SubmitCommandsAck,
+  SubmittedCommand,
+  TickSyncEvent,
+} from '@phalanx-engine/protocol';
+
+export type {
   // Configuration
   PhalanxClientConfig,
   PhalanxAuthConfig,
@@ -168,7 +204,6 @@ export type {
   PhalanxAuthUser,
 
   // Commands
-  PlayerCommand,
   CommandsBatch,
 
   // Handlers
@@ -177,50 +212,9 @@ export type {
   Unsubscribe,
   PauseHandler,
 
-  // Match events
-  MatchPlayerInfo,
-  MatchFoundEvent,
-  CountdownEvent,
-  GameStartEvent,
-  MatchEndEvent,
-
-  // Pause events
-  GamePausedEvent,
-  GameResumedEvent,
-
-  // Tick events
-  TickSyncEvent,
-  CommandsBatchEvent,
-
-  // Queue events
-  QueueStatusEvent,
-
-  // Player events
-  PlayerDisconnectedEvent,
-  PlayerReconnectedEvent,
-  PlayerReadyEvent,
-
-  // Reconnection
-  ReconnectStateEvent,
-  TickCommandsHistory,
-  ReconnectStatusEvent,
-
-  // Match log (Task 8)
-  LogChunk,
-  MatchLogWireErrorReason,
-  MatchLogErrorReason,
-  MatchLogErrorEvent,
-  ServerShutdownEvent,
-
-  // Session resume (Task 9)
-  MatchResumeState,
-  MatchResumeWireErrorReason,
-  MatchResumeErrorReason,
-  SessionTokenEvent,
-  SessionSupersededEvent,
-
-  // Commands acknowledgment
-  SubmitCommandsAck,
+  // Match log / resume failures that exist only on the client
+  MatchLogFailureReason,
+  MatchResumeFailureReason,
 
   // Errors
   PhalanxError,
@@ -228,16 +222,6 @@ export type {
   // State types
   ConnectionState,
   ClientState,
-
-  // Desync detection
-  HashComparisonEvent,
-
-  // Private rooms
-  RoomCreatedEvent,
-  RoomErrorEvent,
-  RoomExpiredEvent,
-  RoomCancelledEvent,
-  RoomRecoveredEvent,
 
   // Event handlers (for legacy 'on' API)
   PhalanxClientEvents,
