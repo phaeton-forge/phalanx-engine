@@ -17,6 +17,7 @@ const COMPILER_OPTIONS: ts.CompilerOptions = {
 
 const ROOT_NAMES: readonly string[] = [
   'AnyGameDefinition',
+  'AttachDebugOptions',
   'BOT_PLAYER_ID_PREFIX',
   'BinaryStateReader',
   'BinaryStateWriter',
@@ -47,6 +48,7 @@ const ROOT_NAMES: readonly string[] = [
   'DEFAULT_HASH_EVERY_TICKS',
   'DEFAULT_INPUT_DELAY_TICKS',
   'DEFAULT_SERVER_SNAPSHOT_EVERY_TICKS',
+  'DebugAttachment',
   'DebugComponentSnapshot',
   'DebugDataProvider',
   'DebugDataProviderConfig',
@@ -169,6 +171,7 @@ const ROOT_NAMES: readonly string[] = [
   'VersionDecision',
   'WorldModuleHost',
   'WorldSingletonHooks',
+  'attachDebug',
   'bindWorldSingletons',
   'botPlayerId',
   'botSlotSeed',
@@ -212,8 +215,6 @@ const MATH_NAMES: readonly string[] = [
 
 const PHYSICS_NAMES: readonly string[] = [
   'AABB',
-  'AutonomousPhysicsTickProvider',
-  'AutonomousProviderOptions',
   'BoundsExitEvent',
   'BroadphaseCenter',
   'CollisionEvent',
@@ -495,7 +496,7 @@ describe('@phalanx-engine/game subpath exports', () => {
     }
     expect(
       resolved.map((entry) => actual.get(entry.file)?.names.length)
-    ).toEqual([180, 9, 33, 85, 23, 3]);
+    ).toEqual([183, 9, 31, 85, 23, 3]);
   });
 
   it('keeps the name sets pairwise disjoint', () => {

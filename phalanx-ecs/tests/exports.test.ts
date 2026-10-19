@@ -80,15 +80,6 @@ const ROOT_NAMES = [
   'Component',
   'ComponentLifecycle',
   'ComponentRegistration',
-  'DebugComponentSnapshot',
-  'DebugDataProvider',
-  'DebugDataProviderConfig',
-  'DebugEntitySnapshot',
-  'DebugPanel',
-  'DebugPanelConfig',
-  'DebugPoolSnapshot',
-  'DebugSnapshot',
-  'DebugSoAStoreSnapshot',
   'Entity',
   'EntityManager',
   'EntityPool',
@@ -138,8 +129,6 @@ const ROOT_NAMES = [
   'SystemContext',
   'SystemRegistry',
   'TYPED_ARRAY_CONSTRUCTORS',
-  'TickFrameManager',
-  'TickFrameManagerConfig',
   'TickHandler',
   'TypedArrayLike',
   'Unsubscribe',
@@ -162,8 +151,6 @@ const ROOT_NAMES = [
 const ROOT_VALUES = [
   'BinaryStateReader',
   'BinaryStateWriter',
-  'DebugDataProvider',
-  'DebugPanel',
   'Entity',
   'EntityManager',
   'EntityPool',
@@ -179,7 +166,6 @@ const ROOT_VALUES = [
   'SystemContext',
   'SystemRegistry',
   'TYPED_ARRAY_CONSTRUCTORS',
-  'TickFrameManager',
   'calculateSchemaByteSize',
   'createComponentTypeRegistry',
   'defineSoASchema',
@@ -238,10 +224,10 @@ describe('@phalanx-engine/ecs exports', () => {
     }
     expect(
       resolved.map((entry) => actual.get(entry.file)?.names.length)
-    ).toEqual([83]);
+    ).toEqual([72]);
     expect(
       resolved.map((entry) => actual.get(entry.file)?.values.length)
-    ).toEqual([33]);
+    ).toEqual([30]);
   });
 
   it('loads each entry by package name', async () => {
