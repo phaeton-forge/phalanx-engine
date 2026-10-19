@@ -16,7 +16,6 @@ const COMPILER_OPTIONS: ts.CompilerOptions = {
 
 const ROOT_NAMES = [
   'AbsenceConfig',
-  'AnyGameDefinition',
   'AuthConfig',
   'CommandsBatchEvent',
   'CorsConfig',
@@ -36,7 +35,6 @@ const ROOT_NAMES = [
   'GAME_MODES',
   'GameMode',
   'GameModePreset',
-  'GameModuleSpec',
   'GameStartEvent',
   'GameTypeConfig',
   'MatchArchive',
@@ -70,6 +68,7 @@ const ROOT_NAMES = [
   'SESSION_TOMBSTONE_TTL_MS',
   'ServerRoomMatchConfig',
   'ServerShutdownEvent',
+  'ServerSimHook',
   'SessionClaims',
   'SessionConfig',
   'SessionIssueClaims',
@@ -77,7 +76,6 @@ const ROOT_NAMES = [
   'SessionTokenEvent',
   'SessionTokens',
   'SessionVerifyResult',
-  'SimHostConfig',
   'SlotConfig',
   'StateHashEvent',
   'SubmitCommandsEvent',
@@ -200,7 +198,7 @@ describe('@phalanx-engine/server exports', () => {
     }
     expect(
       resolved.map((entry) => actual.get(entry.file)?.names.length)
-    ).toEqual([76]);
+    ).toEqual([74]);
     expect(
       resolved.map((entry) => actual.get(entry.file)?.values.length)
     ).toEqual([14]);

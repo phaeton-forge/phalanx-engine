@@ -17,8 +17,8 @@ import {
   botSlotSeed,
   runLocalMatch,
   type Digest,
-  type Transport,
 } from '../../src/index.js';
+import type { Transport } from '../../src/transport/Transport.js';
 import {
   TinyGame,
   resetSentryBot,

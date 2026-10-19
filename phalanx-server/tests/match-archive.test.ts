@@ -1,5 +1,4 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import type { Server as HttpServer } from 'node:http';
 import { io, Socket } from 'socket.io-client';
 import { Phalanx } from '../src/index.js';
 import { validateConfig } from '../src/config/validation.js';
@@ -55,13 +54,7 @@ afterEach(async () => {
 });
 
 function listeningUrl(server: Phalanx): string {
-  const httpServer = (server as unknown as { httpServer: HttpServer | null })
-    .httpServer;
-  const address = httpServer?.address();
-  if (!address || typeof address !== 'object') {
-    throw new Error('Phalanx is not listening');
-  }
-  return `http://127.0.0.1:${address.port}`;
+  return `http://127.0.0.1:${String(server.getPort())}`;
 }
 
 async function startServer(

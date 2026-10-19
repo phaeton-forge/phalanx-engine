@@ -1,5 +1,5 @@
 import type { ITickFrameProvider, Unsubscribe } from '@phalanx-engine/ecs';
-import type { WireCommand } from '../game/commands.js';
+import type { TransportCommand } from '../game/commands.js';
 import type { LogEntry } from '../runner/CommandLog.js';
 import type { Digest, SnapshotBytes } from '../state/snapshot.js';
 
@@ -50,7 +50,7 @@ export interface Transport extends ITickFrameProvider {
   submit(
     targetTick: number,
     slot: number,
-    commands: readonly WireCommand[]
+    commands: readonly TransportCommand[]
   ): void;
   /** Network transports: join or resume a match. */
   join?(): Promise<TransportJoin>;

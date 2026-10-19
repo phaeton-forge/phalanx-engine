@@ -2,9 +2,6 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { io, Socket } from 'socket.io-client';
 import { Phalanx } from '../src/index.js';
 
-const TEST_PORT = 3030;
-const SERVER_URL = `http://localhost:${TEST_PORT}`;
-
 /**
  * NET-1: Server Validates Incoming Player Commands
  *
@@ -20,7 +17,7 @@ describe('NET-1: Server Validates Incoming Player Commands', () => {
 
   beforeEach(async () => {
     server = new Phalanx({
-      port: TEST_PORT,
+      port: 0,
       tickRate: 20,
       countdownSeconds: 0,
       maxTickBehind: 10,
@@ -29,8 +26,12 @@ describe('NET-1: Server Validates Incoming Player Commands', () => {
     });
     await server.start();
 
-    socket1 = io(SERVER_URL, { forceNew: true });
-    socket2 = io(SERVER_URL, { forceNew: true });
+    socket1 = io(`http://localhost:${String(server.getPort())}`, {
+      forceNew: true,
+    });
+    socket2 = io(`http://localhost:${String(server.getPort())}`, {
+      forceNew: true,
+    });
 
     await Promise.all([
       new Promise<void>((resolve) => socket1.on('connect', resolve)),
@@ -39,8 +40,12 @@ describe('NET-1: Server Validates Incoming Player Commands', () => {
 
     // Set up game-start listeners before joining queue (with countdownSeconds: 0, game-start fires immediately)
     const gameStartPromise = Promise.all([
-      new Promise<void>((resolve) => { socket1.once('game-start', () => resolve()); }),
-      new Promise<void>((resolve) => { socket2.once('game-start', () => resolve()); }),
+      new Promise<void>((resolve) => {
+        socket1.once('game-start', () => resolve());
+      }),
+      new Promise<void>((resolve) => {
+        socket2.once('game-start', () => resolve());
+      }),
     ]);
 
     // Join queue and wait for match

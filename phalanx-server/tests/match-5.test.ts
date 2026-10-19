@@ -9,11 +9,10 @@ import type { MatchFoundEvent } from '../src/types/index.js';
 describe('MATCH-5: Server Sends Match Found Notification to Players', () => {
   let server: Phalanx;
   let clients: Socket[] = [];
-  const TEST_PORT = 3339;
 
   beforeEach(async () => {
     server = new Phalanx({
-      port: TEST_PORT,
+      port: 0,
       matchmakingIntervalMs: 100,
       gameMode: '1v1',
     });
@@ -33,7 +32,7 @@ describe('MATCH-5: Server Sends Match Found Notification to Players', () => {
   });
 
   function createClient(): Socket {
-    const client = io(`http://localhost:${TEST_PORT}`, {
+    const client = io(`http://localhost:${String(server.getPort())}`, {
       autoConnect: false,
       forceNew: true,
     });
@@ -166,11 +165,10 @@ describe('MATCH-5: Server Sends Match Found Notification to Players', () => {
 describe('MATCH-5: Teammates and Opponents in 2v2', () => {
   let server: Phalanx;
   let clients: Socket[] = [];
-  const TEST_PORT = 3340;
 
   beforeEach(async () => {
     server = new Phalanx({
-      port: TEST_PORT,
+      port: 0,
       matchmakingIntervalMs: 100,
       gameMode: '2v2',
     });
@@ -190,7 +188,7 @@ describe('MATCH-5: Teammates and Opponents in 2v2', () => {
   });
 
   function createClient(): Socket {
-    const client = io(`http://localhost:${TEST_PORT}`, {
+    const client = io(`http://localhost:${String(server.getPort())}`, {
       autoConnect: false,
       forceNew: true,
     });
@@ -305,11 +303,10 @@ describe('MATCH-5: Teammates and Opponents in 2v2', () => {
 describe('MATCH-5: 3v3 Match Found Format', () => {
   let server: Phalanx;
   let clients: Socket[] = [];
-  const TEST_PORT = 3341;
 
   beforeEach(async () => {
     server = new Phalanx({
-      port: TEST_PORT,
+      port: 0,
       matchmakingIntervalMs: 100,
       gameMode: '3v3',
     });
@@ -329,7 +326,7 @@ describe('MATCH-5: 3v3 Match Found Format', () => {
   });
 
   function createClient(): Socket {
-    const client = io(`http://localhost:${TEST_PORT}`, {
+    const client = io(`http://localhost:${String(server.getPort())}`, {
       autoConnect: false,
       forceNew: true,
     });

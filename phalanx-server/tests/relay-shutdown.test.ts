@@ -1,5 +1,4 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import type { Server as HttpServer } from 'node:http';
 import { io, Socket } from 'socket.io-client';
 import { Phalanx } from '../src/index.js';
 import type {
@@ -34,13 +33,7 @@ async function startServer(
   });
   await server.start();
   servers.push(server);
-  const httpServer = (server as unknown as { httpServer: HttpServer | null })
-    .httpServer;
-  const address = httpServer?.address();
-  if (!address || typeof address !== 'object') {
-    throw new Error('Phalanx is not listening');
-  }
-  return { server, url: `http://127.0.0.1:${address.port}` };
+  return { server, url: `http://127.0.0.1:${String(server.getPort())}` };
 }
 
 function connect(url: string): Promise<Socket> {

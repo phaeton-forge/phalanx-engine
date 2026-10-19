@@ -20,5 +20,4 @@ export const DEFAULT_CLIENT_SNAPSHOT_EVERY_TICKS = 300;
 /** How often a runner computes and publishes its state digest. */
 export const DEFAULT_HASH_EVERY_TICKS = 60;
 
-/** Default delay between a decision at tick T and its execution tick. */
-export const DEFAULT_INPUT_DELAY_TICKS = 2;
+export { DEFAULT_INPUT_DELAY_TICKS } from '@phalanx-engine/protocol';

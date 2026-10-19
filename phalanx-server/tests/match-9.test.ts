@@ -7,9 +7,6 @@ import type {
   TickSyncEvent,
 } from '../src/types/index.js';
 
-const TEST_PORT = 3029;
-const SERVER_URL = `http://localhost:${TEST_PORT}`;
-
 /**
  * LOCKSTEP-3: Server Broadcasts Tick Commands on Timer
  *
@@ -27,7 +24,7 @@ describe('LOCKSTEP-3: Server Broadcasts Tick Commands on Timer', () => {
 
   beforeEach(async () => {
     server = new Phalanx({
-      port: TEST_PORT,
+      port: 0,
       tickRate: 20,
       countdownSeconds: 0, // No countdown for faster tests
       cors: { origin: '*' },
@@ -35,8 +32,12 @@ describe('LOCKSTEP-3: Server Broadcasts Tick Commands on Timer', () => {
     await server.start();
 
     // Connect both sockets
-    socket1 = io(SERVER_URL, { forceNew: true });
-    socket2 = io(SERVER_URL, { forceNew: true });
+    socket1 = io(`http://localhost:${String(server.getPort())}`, {
+      forceNew: true,
+    });
+    socket2 = io(`http://localhost:${String(server.getPort())}`, {
+      forceNew: true,
+    });
 
     await Promise.all([
       new Promise<void>((resolve) => socket1.on('connect', resolve)),
@@ -45,8 +46,12 @@ describe('LOCKSTEP-3: Server Broadcasts Tick Commands on Timer', () => {
 
     // Set up game-start listeners before joining queue (with countdownSeconds: 0, game-start fires immediately)
     const gameStartPromise = Promise.all([
-      new Promise<void>((resolve) => { socket1.once('game-start', () => resolve()); }),
-      new Promise<void>((resolve) => { socket2.once('game-start', () => resolve()); }),
+      new Promise<void>((resolve) => {
+        socket1.once('game-start', () => resolve());
+      }),
+      new Promise<void>((resolve) => {
+        socket2.once('game-start', () => resolve());
+      }),
     ]);
 
     // Join queue and wait for match

@@ -1,6 +1,6 @@
 # @phalanx-engine/game
 
-Game-facing facade for engine 0.3. One package, five subpaths. Fixed-point
+Game-facing facade for engine 0.3. One package, six subpaths. Fixed-point
 math is only on `/math`. The root does not re-export it.
 
 | Subpath      | Import                           | Contents                                               |
@@ -10,6 +10,7 @@ math is only on `/math`. The root does not re-export it.
 | `/physics`   | `@phalanx-engine/game/physics`   | `@phalanx-engine/physics`                              |
 | `/abilities` | `@phalanx-engine/game/abilities` | `@phalanx-engine/abilities`                            |
 | `/advanced`  | `@phalanx-engine/game/advanced`  | `@phalanx-engine/runtime/advanced`                     |
+| `/server`    | `@phalanx-engine/game/server`    | `@phalanx-engine/runtime/server`                       |
 
 ```ts
 import {
@@ -30,6 +31,19 @@ and the ecs names games use (`GameWorld`, `GameSystem`, `Entity`, …).
 `setWorldModuleHost`, `setEntityIdCounter`, `nextEntityId`, `PoolManager`,
 `SoAComponentStore`, `TickFrameManager`, `TickFrameManagerConfig`,
 `TYPED_ARRAY_CONSTRUCTORS`, `DebugPanel` and `DebugPanelConfig` are
-`@phalanx-engine/game/advanced`.
+`@phalanx-engine/game/advanced`, along with the transport port types
+`Transport`, `TransportKind`, `TransportJoin`, `TransportCatchUp`,
+`CommandEnvelope` and `TransportCommand`.
+
+`createServerSim`, `ServerSimConfig` and `GameModuleSpec` are
+`@phalanx-engine/game/server`:
+
+```ts
+import { createServerSim } from '@phalanx-engine/game/server';
+
+new Phalanx({
+  sim: createServerSim({ games: [{ module: './myGame.js' }] }),
+});
+```
 
 `InterpolatedTransformSample` is `@phalanx-engine/game/physics`.

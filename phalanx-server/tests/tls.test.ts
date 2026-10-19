@@ -17,7 +17,6 @@ interface HealthCheckResponse {
 describe('2.6.1: TLS/WSS Transport', () => {
   let server: Phalanx;
   let clients: Socket[] = [];
-  const TEST_PORT = 3400;
   const TEST_CERTS_DIR = join(process.cwd(), 'test-certs');
 
   // Generate self-signed certificates for testing
@@ -70,12 +69,12 @@ describe('2.6.1: TLS/WSS Transport', () => {
 
   describe('Without TLS (development mode)', () => {
     beforeEach(async () => {
-      server = new Phalanx({ port: TEST_PORT });
+      server = new Phalanx({ port: 0 });
       await server.start();
     });
 
     function createClient(): Socket {
-      const client = io(`http://localhost:${TEST_PORT}`, {
+      const client = io(`http://localhost:${String(server.getPort())}`, {
         autoConnect: false,
         forceNew: true,
       });
@@ -102,7 +101,9 @@ describe('2.6.1: TLS/WSS Transport', () => {
     });
 
     it('should return tls: false in health check when TLS is disabled', async () => {
-      const response = await fetch(`http://localhost:${TEST_PORT}/health`);
+      const response = await fetch(
+        `http://localhost:${String(server.getPort())}/health`
+      );
       const data = (await response.json()) as HealthCheckResponse;
       expect(data.status).toBe('ok');
       expect(data.tls).toBe(false);
@@ -132,7 +133,7 @@ describe('2.6.1: TLS/WSS Transport', () => {
       }
 
       server = new Phalanx({
-        port: TEST_PORT,
+        port: 0,
         tls: {
           enabled: true,
           keyPath: join(TEST_CERTS_DIR, 'key.pem'),
@@ -152,7 +153,7 @@ describe('2.6.1: TLS/WSS Transport', () => {
       }
 
       server = new Phalanx({
-        port: TEST_PORT,
+        port: 0,
         tls: {
           enabled: true,
           keyPath: join(TEST_CERTS_DIR, 'key.pem'),
@@ -161,7 +162,7 @@ describe('2.6.1: TLS/WSS Transport', () => {
       });
       await server.start();
 
-      const client = io(`https://localhost:${TEST_PORT}`, {
+      const client = io(`https://localhost:${String(server.getPort())}`, {
         autoConnect: false,
         forceNew: true,
         rejectUnauthorized: false, // Accept self-signed certs for testing
@@ -176,13 +177,12 @@ describe('2.6.1: TLS/WSS Transport', () => {
 
       expect(connected).toBe(true);
     });
-
   });
 
   describe('TLS error handling', () => {
     it('should throw error for invalid certificate paths', async () => {
       server = new Phalanx({
-        port: TEST_PORT,
+        port: 0,
         tls: {
           enabled: true,
           keyPath: '/nonexistent/key.pem',
@@ -197,7 +197,7 @@ describe('2.6.1: TLS/WSS Transport', () => {
 
     it('should not attempt to load certs when TLS is disabled even with paths', async () => {
       server = new Phalanx({
-        port: TEST_PORT,
+        port: 0,
         tls: {
           enabled: false,
           keyPath: '/nonexistent/key.pem',

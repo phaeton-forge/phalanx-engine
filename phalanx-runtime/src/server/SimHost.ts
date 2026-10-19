@@ -1,5 +1,5 @@
 import type { ResourceLimits } from 'node:worker_threads';
-import type { AnyGameDefinition } from '@phalanx-engine/runtime';
+import type { AnyGameDefinition } from '../game/GameDefinition.js';
 import { InProcessSimHost } from './InProcessSimHost.js';
 import type { SimIn, SimOut } from './messages.js';
 import { WorkerSimHost } from './WorkerSimHost.js';
@@ -27,7 +27,7 @@ export function createSimHost(options: CreateSimHostOptions): SimHost {
   }
   if (options.inline.size > 0) {
     throw new Error(
-      'worker simHost cannot load a GameDefinition object; pass { module, export? }'
+      'worker mode cannot load a GameDefinition object; pass { module, export? }'
     );
   }
   return new WorkerSimHost(options.resourceLimits);

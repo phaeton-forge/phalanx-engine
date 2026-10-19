@@ -20,6 +20,8 @@ const ROOT_NAMES = [
   'BotSlotConfig',
   'CommandsBatchEvent',
   'CountdownEvent',
+  'DEFAULT_INPUT_DELAY_TICKS',
+  'EndMatchResult',
   'GamePausedEvent',
   'GameResumedEvent',
   'GameStartEvent',
@@ -37,6 +39,8 @@ const ROOT_NAMES = [
   'MatchPlayerInfo',
   'MatchResumeErrorReason',
   'MatchResumeState',
+  'MatchSnapshot',
+  'MatchSnapshotRequest',
   'MatchState',
   'PlayerAbsentEvent',
   'PlayerCommand',
@@ -52,8 +56,17 @@ const ROOT_NAMES = [
   'RoomExpiredEvent',
   'RoomRecoveredEvent',
   'SYSTEM_PLAYER_ID',
+  'ServerDesyncEvent',
   'ServerRoomMatchConfig',
   'ServerShutdownEvent',
+  'ServerSimEvents',
+  'ServerSimGame',
+  'ServerSimHook',
+  'ServerSimInfo',
+  'ServerSimMatch',
+  'ServerSimMatchSpec',
+  'ServerSimPlayerEvents',
+  'ServerSimRoom',
   'SessionSupersededEvent',
   'SessionTokenEvent',
   'SlotConfig',
@@ -68,6 +81,7 @@ const ROOT_NAMES = [
 
 const ROOT_VALUES = [
   'BOT_PLAYER_ID_PREFIX',
+  'DEFAULT_INPUT_DELAY_TICKS',
   'SYSTEM_PLAYER_ID',
   'botPlayerId',
   'isBotPlayerId',
@@ -163,10 +177,10 @@ describe('@phalanx-engine/protocol exports', () => {
     }
     expect(
       resolved.map((entry) => actual.get(entry.file)?.names.length)
-    ).toEqual([49]);
+    ).toEqual([62]);
     expect(
       resolved.map((entry) => actual.get(entry.file)?.values.length)
-    ).toEqual([4]);
+    ).toEqual([5]);
   });
 
   it('loads each entry by package name', async () => {

@@ -4,9 +4,15 @@
  */
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import type { ResourceLimits } from 'node:worker_threads';
-import type { AnyGameDefinition } from '@phalanx-engine/runtime';
-import type { MatchState, PlayerCommand } from '@phalanx-engine/protocol';
+import type {
+  EndMatchResult,
+  MatchState,
+  PlayerCommand,
+  ServerSimEvents,
+  ServerSimHook,
+} from '@phalanx-engine/protocol';
+
+export type { EndMatchResult, ServerSimHook };
 
 export type {
   CommandsBatchEvent,
@@ -407,44 +413,11 @@ export interface PhalanxConfig {
     res: ServerResponse
   ) => boolean | Promise<boolean>;
 
-  // Task 11
   /**
-   * Games this process can simulate. Omit it, or pass an empty list,
-   * and the server stays a pure relay: no worker is spawned.
-   * A worker loads each game by module path. An in-process host may
-   * also take a `GameDefinition` object.
+   * Opt-in server simulation. Omit it and the server stays a pure relay:
+   * no worker is spawned. Build one with `createServerSim`.
    */
-  games?: ReadonlyArray<AnyGameDefinition | GameModuleSpec>;
-  /** Opt-in server simulation. Default mode is one worker thread. */
-  simHost?: SimHostConfig;
-}
-
-/** Module path a worker imports. `export` defaults to `default`. */
-export interface GameModuleSpec {
-  module: string;
-  export?: string;
-  /**
-   * Integer `matchConfig` keys copied into the runner config.
-   * Every other extra key is rejected. Engine fields (`seed`, `side`,
-   * `matchId`, …) are filled by the server and cannot be listed here.
-   */
-  configKeys?: readonly string[];
-}
-
-/**
- * Server-sim host. `snapshotEveryTicks` defaults to 1000. `maxMatches`
- * caps concurrent `simMode: 'server'` rooms.
- */
-export interface SimHostConfig {
-  mode?: 'worker' | 'inProcess';
-  /**
-   * Reserved until Task 17. Only `1` is accepted; a worker pool is not
-   * implemented.
-   */
-  workers?: 1;
-  resourceLimits?: ResourceLimits;
-  snapshotEveryTicks?: number;
-  maxMatches?: number;
+  sim?: ServerSimHook;
 }
 
 /**
@@ -485,18 +458,6 @@ export interface AbsenceConfig {
   windowMs: number;
   /** Milliseconds of absence budget for one player across the match. */
   matchBudgetMs: number;
-}
-
-/**
- * Result passed to `ctx.endMatch` on the `player-command` hook.
- * `winnerTeamId`, when present on the wire, is the team that won.
- * `loserIds` is an input only: the room derives `winnerTeamId` from it
- * when the caller did not pass one.
- */
-export interface EndMatchResult {
-  reason: string;
-  winnerTeamId?: number;
-  loserIds?: string[];
 }
 
 /**
@@ -579,7 +540,7 @@ export type PhalanxEventType =
 /**
  * Event handler types
  */
-export interface PhalanxEventHandlers {
+export interface PhalanxEventHandlers extends ServerSimEvents {
   'match-created': (match: MatchInfo) => void;
   'match-started': (match: MatchInfo) => void;
   'match-ended': (matchId: string, reason: string) => void;
@@ -593,22 +554,9 @@ export interface PhalanxEventHandlers {
   'player-timeout': (playerId: string, matchId: string) => void;
   'player-reconnected': (playerId: string, matchId: string) => void;
   'player-disconnected': (playerId: string, matchId: string) => void;
-  'desync-detected': (
-    matchId: string,
-    tick: number,
-    hashes: { [playerId: string]: string }
-  ) => void;
-  'sim-digest': (matchId: string, tick: number, digest: string) => void;
-  'sim-lag': (
-    matchId: string,
-    relayTick: number,
-    simTick: number,
-    gap: number
-  ) => void;
   'bot-commands-late': (
     matchId: string,
     tick: number,
     playerId: string
   ) => void;
-  'sim-fault': (matchId: string, reason: string, message: string) => void;
 }

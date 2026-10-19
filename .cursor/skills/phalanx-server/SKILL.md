@@ -525,10 +525,16 @@ await phalanx.start();
 
 ## Server simulation (Task 11)
 
-Omit `games` and the server stays a relay: no worker is spawned. To simulate:
+Omit `sim` and the server stays a relay: no worker is spawned. To simulate, pass `sim: createServerSim({ games })` from `@phalanx-engine/runtime/server` (re-exported by `@phalanx-engine/game/server`):
 
-- `games: [{ module, export?, configKeys? }]` (a worker imports the module; an `inProcess` host may also take a `GameDefinition` object). `configKeys` is the allow-list of integer `matchConfig` fields copied into the runner config.
-- `simHost?: { mode?: 'worker' | 'inProcess'; workers?: 1; resourceLimits?; snapshotEveryTicks?; maxMatches? }`. Default mode is `worker`. `workers` is reserved until Task 17; only `1` is accepted.
+```ts
+new Phalanx({
+  sim: createServerSim({ games: [{ module: './myGame.js' }] }),
+});
+```
+
+- `games: [{ module, export?, configKeys? }]` (a worker imports the module; an `inProcess` host may also take a `GameDefinition` object). `configKeys` is the allow-list of integer `matchConfig` fields copied into the runner config. `GameModuleSpec` and `ServerSimConfig` are exports of the runtime `./server` subpath, not of this package.
+- Host options on `createServerSim`: `{ mode?: 'worker' | 'inProcess'; workers?: 1; resourceLimits?; snapshotEveryTicks?; maxMatches? }`. Default mode is `worker`. `workers` is reserved until Task 17; only `1` is accepted.
 - `room-create` may include `matchConfig: { gameId, simMode: 'server', slots, inputDelayTicks?, absencePolicy? }` plus integer fields named in that game's `configKeys`. Other extras are rejected. Omitted `matchConfig` keeps the two-human room. `maxMatches` is reserved at create, including a waiting room, and released on cancel, expiry, or match end.
 - The relay stamps. Player ids `system` and `bot:<slot>` are rejected on `queue-join`, `room-create`, `room-join`, `room-recover`, and on human slots. A client command is stamped with the socket id; `RoomSim` is the only producer of `system` commands. Server bots appear as `bot:<slot>` and target `S + inputDelayTicks`. If that room leads the sim by more than `inputDelayTicks - 1`, `sim-lag` pauses that room only. Late bot commands are not retargeted (`bot-commands-late`).
 - Hash arbiter: sim digest vs that client's `state-hash` → `desync { playerId, tick }` to that socket only. The match continues. Relay rooms still end on a client-vs-client desync when `enableStateHashing` is on.
@@ -563,7 +569,7 @@ import type {
   CorsConfig, TlsConfig,
   DesyncConfig, DesyncAction,
   PauseConfig, AbsenceConfig, EndMatchResult,
-  GameModuleSpec, SimHostConfig, ServerRoomMatchConfig,
+  ServerSimHook, ServerRoomMatchConfig,
   PlayerAbsentEvent, PlayerCommandContext,
   GameMode, GameModePreset, CustomGameMode,
   TokenValidator, TokenValidationResult,

@@ -1,13 +1,17 @@
 import {
-  DEFAULT_HASH_EVERY_TICKS,
   botPlayerId,
   isBotPlayerId,
-  isCommandRejection,
+  type EndMatchResult,
+  type MatchSnapshot,
+  type PlayerCommand,
+  type ServerDesyncEvent,
+  type ServerSimMatch,
+  type ServerSimRoom,
   type SlotConfig,
-  type SlotInfo,
-} from '@phalanx-engine/runtime';
-import { logger } from '../logger.js';
-import type { EndMatchResult, PlayerCommand } from '../types/index.js';
+} from '@phalanx-engine/protocol';
+import { isCommandRejection } from '../game/commands.js';
+import type { SlotInfo } from '../game/MatchConfig.js';
+import { DEFAULT_HASH_EVERY_TICKS } from '../constants.js';
 import type { RegisteredGame } from './loadGames.js';
 import type { SimHost } from './SimHost.js';
 import type { SimCommand, SimIn, SimOut } from './messages.js';
@@ -29,18 +33,7 @@ export interface RoomSimOptions {
   readonly maxTickAhead: number;
   readonly snapshotEveryTicks: number;
   readonly extras: Readonly<Record<string, number>>;
-  readonly enqueue: (commands: readonly PlayerCommand[]) => void;
-  readonly currentTick: () => number;
-  readonly endMatch: (result: EndMatchResult) => boolean;
-  readonly emitPlayer: (
-    playerId: string,
-    event: string,
-    payload: unknown
-  ) => void;
-  readonly emitServer: (event: string, ...args: unknown[]) => void;
-  readonly haltRelay: () => void;
-  readonly releaseHold: () => void;
-  readonly onClosed: () => void;
+  readonly room: ServerSimRoom;
 }
 
 /**
@@ -48,7 +41,7 @@ export interface RoomSimOptions {
  * object forwards batches and applies sim replies. It does not share
  * objects with the simulation thread.
  */
-export class RoomSim {
+export class RoomSim implements ServerSimMatch {
   private readonly options: RoomSimOptions;
   private readonly slotByPlayer = new Map<string, SlotInfo>();
   private readonly digests = new Map<number, string>();
@@ -132,11 +125,11 @@ export class RoomSim {
     if (this.closed || this.dead) return;
     switch (message.t) {
       case 'botCommands':
-        this.options.enqueue(message.commands.map(toPlayerCommand));
+        this.options.room.enqueue(message.commands.map(toPlayerCommand));
         return;
       case 'digest':
         this.digests.set(message.tick, message.digest);
-        this.options.emitServer(
+        this.options.room.emitServerEvent(
           'sim-digest',
           this.options.matchId,
           message.tick,
@@ -146,9 +139,9 @@ export class RoomSim {
         return;
       case 'tick':
         this.lastAck = message.tick;
-        if (this.leadExceeded(this.options.currentTick())) return;
+        if (this.leadExceeded(this.options.room.currentTick())) return;
         this.lastGap = 0;
-        this.options.releaseHold();
+        this.options.room.releaseHold();
         return;
       case 'snapshot':
         this.keepSnapshot(message.tick, message.bytes, message.requestId);
@@ -156,8 +149,8 @@ export class RoomSim {
       case 'event':
         this.dead = true;
         this.dropPending();
-        this.options.haltRelay();
-        this.options.endMatch(outcomeResult(message.outcome));
+        this.options.room.haltRelay();
+        this.options.room.endMatch(outcomeResult(message.outcome));
         return;
       case 'sim-error':
       case 'sim-crash':
@@ -195,7 +188,7 @@ export class RoomSim {
     if (gap <= bound) return false;
     if (gap > this.lastGap) {
       this.lastGap = gap;
-      this.options.emitServer(
+      this.options.room.emitServerEvent(
         'sim-lag',
         this.options.matchId,
         nextTick - 1,
@@ -210,7 +203,7 @@ export class RoomSim {
     if (this.closed) return;
     if (!Number.isInteger(tick) || tick < 0) return;
     if (tick % DEFAULT_HASH_EVERY_TICKS !== 0) return;
-    const limit = this.options.currentTick() + this.options.maxTickAhead;
+    const limit = this.options.room.currentTick() + this.options.maxTickAhead;
     if (tick > limit) return;
     const digest = this.digests.get(tick);
     if (digest !== undefined) {
@@ -265,7 +258,8 @@ export class RoomSim {
     if (this.closed || this.dead) return;
     const info = this.slotByPlayer.get(playerId);
     if (info === undefined || isBotPlayerId(playerId)) return;
-    const fromTick = this.options.currentTick() + this.options.inputDelayTicks;
+    const fromTick =
+      this.options.room.currentTick() + this.options.inputDelayTicks;
     const slotConfig = this.options.slots.find(
       (slot) => slot.slot === info.slot
     );
@@ -291,7 +285,7 @@ export class RoomSim {
       data: { q: this.systemSeq, p: payload },
     };
     this.systemSeq += 1;
-    this.options.enqueue([command]);
+    this.options.room.enqueue([command]);
     this.options.host.post({
       t: 'setController',
       matchId: this.options.matchId,
@@ -412,11 +406,11 @@ export class RoomSim {
     this.lastDeliveredAt.set(playerId, Date.now());
     const copy = new Uint8Array(bytes.byteLength);
     copy.set(bytes);
-    this.options.emitPlayer(playerId, 'match-snapshot', {
+    this.options.room.emitToPlayer(playerId, 'match-snapshot', {
       tick,
       bytes: copy,
       requestId,
-    });
+    } satisfies MatchSnapshot);
   }
 
   private flushHashes(tick: number, digest: string): void {
@@ -439,11 +433,19 @@ export class RoomSim {
   ): void {
     if (hash === digest || this.reported.has(playerId)) return;
     this.reported.add(playerId);
-    this.options.emitServer('desync-detected', this.options.matchId, tick, {
-      [playerId]: hash,
-      server: digest,
-    });
-    this.options.emitPlayer(playerId, 'desync', { playerId, tick });
+    this.options.room.emitServerEvent(
+      'desync-detected',
+      this.options.matchId,
+      tick,
+      {
+        [playerId]: hash,
+        server: digest,
+      }
+    );
+    this.options.room.emitToPlayer(playerId, 'desync', {
+      playerId,
+      tick,
+    } satisfies ServerDesyncEvent);
   }
 
   private dropPending(): void {
@@ -464,7 +466,7 @@ export class RoomSim {
       this.endTimer = null;
     }
     this.dropPending();
-    this.options.onClosed();
+    this.options.room.onClosed();
     const resolve = this.endResolve;
     this.endResolve = null;
     resolve?.();
@@ -474,12 +476,17 @@ export class RoomSim {
     if (this.dead) return;
     this.dead = true;
     this.dropPending();
-    this.options.haltRelay();
-    this.options.emitServer('sim-fault', this.options.matchId, reason, message);
-    logger.error(
+    this.options.room.haltRelay();
+    this.options.room.emitServerEvent(
+      'sim-fault',
+      this.options.matchId,
+      reason,
+      message
+    );
+    console.error(
       `[SimHost] ${reason} in match ${this.options.matchId}: ${message}`
     );
-    this.options.endMatch({ reason });
+    this.options.room.endMatch({ reason });
   }
 }
 

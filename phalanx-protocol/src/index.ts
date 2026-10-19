@@ -7,6 +7,8 @@
  * @packageDocumentation
  */
 
+export { DEFAULT_INPUT_DELAY_TICKS } from './constants.js';
+
 export {
   BOT_PLAYER_ID_PREFIX,
   SYSTEM_PLAYER_ID,
@@ -79,3 +81,18 @@ export type {
   RoomExpiredEvent,
   RoomRecoveredEvent,
 } from './messages/room.js';
+
+export type {
+  EndMatchResult,
+  MatchSnapshot,
+  MatchSnapshotRequest,
+  ServerDesyncEvent,
+  ServerSimEvents,
+  ServerSimGame,
+  ServerSimPlayerEvents,
+  ServerSimHook,
+  ServerSimInfo,
+  ServerSimMatch,
+  ServerSimMatchSpec,
+  ServerSimRoom,
+} from './simHook.js';

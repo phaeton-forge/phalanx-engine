@@ -203,40 +203,30 @@ The entry point is `new Phalanx(config?: Partial<PhalanxConfig>)`. There is
 no `createPhalanxServer`. The Task 11 fields:
 
 ```ts
-interface PhalanxConfig {
-  // ...existing fields unchanged...
-  /** No games → pure relay, exactly as today. No worker is spawned. */
-  games?: ReadonlyArray<
-    | AnyGameDefinition
-    | {
-        module: string;
-        export?: string;
-        configKeys?: readonly string[];
-      }
-  >;
-  simHost?: {
-    /** Default `'worker'`. `'inProcess'` runs the same queue on the relay thread. */
-    mode?: 'worker' | 'inProcess';
-    /** Reserved until Task 17. Only `1` is accepted. */
-    workers?: 1;
-    resourceLimits?: ResourceLimits;
-    /** Default DEFAULT_SERVER_SNAPSHOT_EVERY_TICKS (1000). */
-    snapshotEveryTicks?: number;
-    /**
-     * Concurrent server matches. The count is reserved when the room is
-     * created (including a room still waiting for humans) and released
-     * on cancel, expiry, or when the live match ends.
-     */
-    maxMatches?: number;
-  };
-}
+import { createServerSim } from '@phalanx-engine/runtime/server';
+
+new Phalanx({
+  sim: createServerSim({
+    games: [{ module: './myGame.js' }],
+    snapshotEveryTicks: 1000,
+  }),
+});
 ```
 
-A worker loads each game by module path. An in-process host may also take
-a `GameDefinition` object. `configKeys` is the allow-list of integer
-`matchConfig` fields copied into the runner config. Any other extra key is
-rejected. The server fills `matchId`, `seed`, `side`, `simVersion`, and
-`inputDelayTicks`; those cannot be client extras.
+`PhalanxConfig.sim` is a `ServerSimHook`. Omit it and the process stays a
+pure relay: no worker is spawned. `createServerSim` takes the game list
+and host options (`mode`, `workers`, `resourceLimits`, `snapshotEveryTicks`,
+`maxMatches`). Default mode is one worker. `workers` is reserved until
+Task 17; only `1` is accepted. `snapshotEveryTicks` defaults to 1000.
+`maxMatches` caps concurrent server matches. The count is reserved when
+the room is created (including a room still waiting for humans) and
+released on cancel, expiry, or when the live match ends.
+
+A worker loads each game by module path (`GameModuleSpec`). An in-process
+host may also take a `GameDefinition` object. `configKeys` is the allow-list
+of integer `matchConfig` fields copied into the runner config. Any other
+extra key is rejected. The server fills `matchId`, `seed`, `side`,
+`simVersion`, and `inputDelayTicks`; those cannot be client extras.
 
 `room-create` opts in with `matchConfig: { gameId, simMode: 'server', slots,
 inputDelayTicks?, absencePolicy? }`. Omitted `matchConfig` stays the
@@ -244,7 +234,7 @@ two-human relay room. `GameDefinition.id` is the `gameId`. At startup the
 server checks that each game's `tickRate` equals the resolved server
 `tickRate` and that `tickMode` is continuous, and throws otherwise.
 
-`simHost.resolveMatchConfig` is not implemented. Slots come from
+Slots come from
 `matchConfig`. Practice rooms and matchmaking auto-fill are not in this
 change.
 

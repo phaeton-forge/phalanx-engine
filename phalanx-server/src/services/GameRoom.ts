@@ -18,7 +18,7 @@ import type {
   ReconnectStateEvent,
   TickSyncEvent,
 } from '@phalanx-engine/protocol';
-import type { RoomSim } from '../sim/RoomSim.js';
+import type { ServerSimMatch } from '@phalanx-engine/protocol';
 import type {
   PhalanxConfig,
   QueuedPlayer,
@@ -219,7 +219,7 @@ export class GameRoom {
   // one timer per absent player. Idle unless `config.absence` is set.
   private readonly commandContext: PlayerCommandContext;
   private absencePolicy: AbsencePolicy;
-  private serverSession: RoomSim | null = null;
+  private serverSession: ServerSimMatch | null = null;
   private readonly botPlayers: Set<string> = new Set();
   private readonly activeAbsences: Map<string, AbsenceRecord> = new Map();
   private readonly absenceBudgets: Map<string, number> = new Map();
@@ -2067,7 +2067,7 @@ export class GameRoom {
    * Attach the server simulation for this room. Called from `match-created`,
    * before `start()`.
    */
-  attachServerSim(session: RoomSim): void {
+  attachServerSim(session: ServerSimMatch): void {
     this.serverSession = session;
   }
 

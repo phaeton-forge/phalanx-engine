@@ -79,8 +79,8 @@ export interface CommandEnvelope {
   readonly p: JsonValue;
 }
 
-/** One command as handed to a transport. */
-export interface WireCommand {
+/** One command as handed to a transport's `submit`. */
+export interface TransportCommand {
   readonly type: string;
   readonly data: CommandEnvelope;
 }

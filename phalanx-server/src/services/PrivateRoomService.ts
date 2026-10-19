@@ -5,14 +5,15 @@ import type {
   RoomErrorEvent,
   RoomExpiredEvent,
   RoomRecoveredEvent,
+  ServerSimGame,
+  ServerSimInfo,
 } from '@phalanx-engine/protocol';
 import type { PhalanxConfig, QueuedPlayer } from '../types/index.js';
 import {
   fillHumanSlot,
   parseServerMatch,
   type PreparedServerMatch,
-} from '../sim/serverMatch.js';
-import type { RegisteredGame } from '../sim/loadGames.js';
+} from './serverMatch.js';
 import { reservedPlayerMessage } from '../reservedPlayerId.js';
 import { GameRoom } from './GameRoom.js';
 
@@ -86,7 +87,7 @@ export class PrivateRoomService {
   ) => boolean | void;
   private readonly resolveGameTypeConfig: (gameType: string) => PhalanxConfig;
   private readonly isPlayerQueued?: (playerId: string) => boolean;
-  private serverCatalog: readonly RegisteredGame[] = [];
+  private serverCatalog: readonly ServerSimGame[] = [];
   private serverMatchCount = 0;
   private maxServerMatches: number | undefined;
   /** False after the sim worker has died. */
@@ -117,13 +118,12 @@ export class PrivateRoomService {
    * and ordinary rooms are unchanged.
    */
   setServerSim(options: {
-    catalog: readonly RegisteredGame[];
-    maxMatches?: number;
+    info: ServerSimInfo;
     available: () => boolean;
     attach: (room: GameRoom, prepared: PreparedServerMatch) => void;
   }): void {
-    this.serverCatalog = options.catalog;
-    this.maxServerMatches = options.maxMatches;
+    this.serverCatalog = options.info.games;
+    this.maxServerMatches = options.info.maxMatches;
     this.simAvailable = options.available;
     this.attachServerMatch = options.attach;
   }

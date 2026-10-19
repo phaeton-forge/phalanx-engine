@@ -11,10 +11,6 @@ import {
   Server as HttpsServer,
 } from 'https';
 import { readFileSync } from 'fs';
-import {
-  DEFAULT_SERVER_SNAPSHOT_EVERY_TICKS,
-  type AnyGameDefinition,
-} from '@phalanx-engine/runtime';
 import { reservedPlayerMessage } from './reservedPlayerId.js';
 import type {
   MatchLogChunkEvent,
@@ -24,6 +20,8 @@ import type {
   PlayerCommand,
   ReconnectStatusEvent,
   ServerShutdownEvent,
+  ServerSimHook,
+  ServerSimInfo,
   StateHashEvent,
   RoomErrorEvent,
   SubmitCommandsAck,
@@ -42,11 +40,7 @@ import { validateConfig } from './config/validation.js';
 import { MatchmakingService } from './services/MatchmakingService.js';
 import { PrivateRoomService } from './services/PrivateRoomService.js';
 import { GameRoom } from './services/GameRoom.js';
-import { loadGameCatalog, type RegisteredGame } from './sim/loadGames.js';
-import { createSimHost, type SimHost } from './sim/SimHost.js';
-import { RoomSim } from './sim/RoomSim.js';
-import { SnapshotStore } from './sim/SnapshotStore.js';
-import type { PreparedServerMatch } from './sim/serverMatch.js';
+import type { PreparedServerMatch } from './services/serverMatch.js';
 import {
   SessionTokens,
   SESSION_TOMBSTONE_TTL_MS,
@@ -115,12 +109,8 @@ export class Phalanx extends EventEmitter {
   private readonly endedMatches = new Map<string, number>();
   /** Sweeps `endedMatches`. Not tied to the tick loop. */
   private tombstoneTimer: NodeJS.Timeout | null = null;
-  /** Present only when `games` is non-empty. */
-  private simHost: SimHost | null = null;
-  private simUnsub: (() => void) | null = null;
-  private readonly snapshots = new SnapshotStore();
-  private readonly serverSims = new Map<string, RoomSim>();
-  private catalog: readonly RegisteredGame[] = [];
+  /** Present only when `config.sim` is set and `start` has begun it. */
+  private sim: ServerSimHook | null = null;
   private snapshotRequestSeq = 1;
 
   constructor(config?: Partial<PhalanxConfig>) {
@@ -443,87 +433,88 @@ export class Phalanx extends EventEmitter {
   }
 
   /**
-   * Load configured games and start the sim host. No `games` means the
-   * relay is unchanged and no worker is spawned.
+   * Start the sim hook. No `sim` means the relay is unchanged and no
+   * worker is spawned. Tick rates are checked after `start`, against
+   * `gameTypes`.
    */
   private async bootSim(): Promise<void> {
-    const games = this.config.games;
-    if (games === undefined || games.length === 0) return;
-    this.catalog = await loadGameCatalog(this.config);
-    const inline = new Map<string, AnyGameDefinition>();
-    for (const game of this.catalog) {
-      if (game.inline) inline.set(game.id, game.definition);
+    const sim = this.config.sim;
+    if (sim === undefined) return;
+    const info = await sim.start();
+    this.sim = sim;
+    try {
+      this.assertSimTicks(info);
+    } catch (error) {
+      await sim.close();
+      this.sim = null;
+      throw error;
     }
-    const mode = this.config.simHost?.mode ?? 'worker';
-    const limits = this.config.simHost?.resourceLimits;
-    this.simHost = createSimHost({
-      mode,
-      inline,
-      ...(limits !== undefined ? { resourceLimits: limits } : {}),
-    });
-    this.simUnsub = this.simHost.subscribe((message) => {
-      if (!('matchId' in message)) return;
-      this.serverSims.get(message.matchId)?.onMessage(message);
-    });
-    const every =
-      this.config.simHost?.snapshotEveryTicks ??
-      DEFAULT_SERVER_SNAPSHOT_EVERY_TICKS;
     this.privateRooms?.setServerSim({
-      catalog: this.catalog,
-      ...(this.config.simHost?.maxMatches !== undefined
-        ? { maxMatches: this.config.simHost.maxMatches }
-        : {}),
-      available: () => this.simHost?.healthy() ?? false,
+      info,
+      available: () => sim.isAvailable(),
       attach: (room, prepared) => {
-        this.attachPrepared(room, prepared, every);
+        this.attachPrepared(room, prepared);
       },
     });
   }
 
-  private attachPrepared(
-    room: GameRoom,
-    prepared: PreparedServerMatch,
-    snapshotEveryTicks: number
-  ): void {
-    const host = this.simHost;
-    if (host === null) return;
-    const matchId = room.getId();
+  private assertSimTicks(info: ServerSimInfo): void {
+    for (const game of info.games) {
+      const entry = this.config.gameTypes?.find(
+        (item) => item.gameType === game.id
+      );
+      const tickRate = entry?.tickRate ?? this.config.tickRate;
+      const tickMode = entry?.tickMode ?? this.config.tickMode ?? 'continuous';
+      if (tickRate !== game.tickRate) {
+        throw new Error(
+          `game '${game.id}' tickRate ${String(game.tickRate)} does not match server tickRate ${String(tickRate)}`
+        );
+      }
+      if (tickMode !== 'continuous') {
+        throw new Error(
+          `game '${game.id}' requires continuous tickMode, got '${tickMode}'`
+        );
+      }
+    }
+  }
+
+  private attachPrepared(room: GameRoom, prepared: PreparedServerMatch): void {
+    const sim = this.sim;
+    if (sim === null) return;
     const rooms = this.privateRooms;
-    const session = new RoomSim({
-      matchId,
-      host,
-      store: this.snapshots,
-      game: prepared.game,
-      seed: room.getRandomSeed(),
-      slots: prepared.slots,
-      inputDelayTicks: prepared.inputDelayTicks,
-      maxTickAhead: this.config.maxTickAhead,
-      snapshotEveryTicks,
-      extras: prepared.extras,
-      enqueue: (commands) => {
-        room.enqueueStamped(commands);
+    const session = sim.openMatch(
+      {
+        matchId: room.getId(),
+        gameId: prepared.game.id,
+        seed: room.getRandomSeed(),
+        slots: prepared.slots,
+        inputDelayTicks: prepared.inputDelayTicks,
+        maxTickAhead: this.config.maxTickAhead,
+        extras: prepared.extras,
       },
-      currentTick: () => room.getCurrentTick(),
-      endMatch: (result) => room.endMatch(result),
-      haltRelay: () => {
-        room.haltForSim();
-      },
-      releaseHold: () => {
-        room.releaseSimHold();
-      },
-      emitPlayer: (playerId, event, payload) => {
-        room.emitToPlayer(playerId, event, payload);
-      },
-      emitServer: (event, ...args) => {
-        this.emit(event, ...args);
-      },
-      onClosed: () => {
-        this.serverSims.delete(matchId);
-        this.snapshots.delete(matchId);
-        rooms?.releaseServerMatch();
-      },
-    });
-    this.serverSims.set(matchId, session);
+      {
+        enqueue: (commands) => {
+          room.enqueueStamped(commands);
+        },
+        currentTick: () => room.getCurrentTick(),
+        endMatch: (result) => room.endMatch(result),
+        haltRelay: () => {
+          room.haltForSim();
+        },
+        releaseHold: () => {
+          room.releaseSimHold();
+        },
+        emitToPlayer: (playerId, event, payload) => {
+          room.emitToPlayer(playerId, event, payload);
+        },
+        emitServerEvent: (event, ...args) => {
+          this.emit(event, ...args);
+        },
+        onClosed: () => {
+          rooms?.releaseServerMatch();
+        },
+      }
+    );
     room.attachServerSim(session);
     const policyName = prepared.absencePolicy;
     if (policyName !== undefined && this.config.absence) {
@@ -542,20 +533,13 @@ export class Phalanx extends EventEmitter {
   }
 
   /**
-   * End each server match and wait for the sim to drop it, close the
-   * host, then detach. Unsubscribing first would discard `ended`.
+   * End each server match, then the host. The hook unsubscribes after
+   * `end`, so a late `ended` is still delivered.
    */
   private async closeSimHost(): Promise<void> {
-    const host = this.simHost;
-    const endings = [...this.serverSims.values()].map((session) =>
-      session.end()
-    );
-    await Promise.all(endings);
-    if (host) await host.close();
-    this.simUnsub?.();
-    this.simUnsub = null;
-    this.simHost = null;
-    this.serverSims.clear();
+    const sim = this.sim;
+    this.sim = null;
+    if (sim) await sim.close();
   }
 
   /**

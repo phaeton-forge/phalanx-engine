@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as runtime from '../src/index.js';
 import * as advanced from '../src/advanced/index.js';
+import type { Transport } from '../src/transport/Transport.js';
 
 const VALUE_EXPORTS = [
   // constants & helpers
@@ -212,7 +213,7 @@ describe('skeletons name their implementing task', () => {
       () =>
         runtime.MatchRunner.join(
           {} as runtime.AnyGameDefinition,
-          {} as runtime.Transport
+          {} as Transport
         ),
       12
     );

@@ -3,16 +3,26 @@ import { writeFileSync } from 'node:fs';
 import { MessageChannel } from 'node:worker_threads';
 import { io, type Socket } from 'socket.io-client';
 import { MatchRunner, type AnyGameDefinition } from '@phalanx-engine/runtime';
+import {
+  Phalanx,
+  type CommandsBatchEvent,
+  type PhalanxConfig,
+} from '@phalanx-engine/server';
 import { afterEach, describe, expect, it } from 'vitest';
-import { Phalanx } from '../src/Phalanx.js';
-import type { CommandsBatchEvent, PhalanxConfig } from '../src/types/index.js';
-import { InProcessSimHost } from '../src/sim/InProcessSimHost.js';
-import { postSimOut } from '../src/sim/postTransfer.js';
-import { RelayFeedTransport } from '../src/sim/RelayFeedTransport.js';
-import type { SimCommand, SimIn, SimOut } from '../src/sim/messages.js';
-import { WorkerSimHost, simWorkersSpawned } from '../src/sim/WorkerSimHost.js';
+import { InProcessSimHost } from '../../src/server/InProcessSimHost.js';
+import { postSimOut } from '../../src/server/postTransfer.js';
+import { RelayFeedTransport } from '../../src/server/RelayFeedTransport.js';
+import type { SimCommand, SimIn, SimOut } from '../../src/server/messages.js';
+import {
+  WorkerSimHost,
+  simWorkersSpawned,
+} from '../../src/server/WorkerSimHost.js';
+import {
+  createServerSim,
+  type ServerSimConfig,
+} from '../../src/server/createServerSim.js';
 import { holdReleasePath, RELAY_CONFIG_KEYS } from './fixtures/relayGame.js';
-import type { SimHost } from '../src/sim/SimHost.js';
+import type { SimHost } from '../../src/server/SimHost.js';
 
 const fixtureHref = new URL('./fixtures/relayGame.ts', import.meta.url).href;
 
@@ -29,6 +39,20 @@ afterEach(async () => {
   }
 });
 
+function relaySim(overrides: Omit<Partial<ServerSimConfig>, 'games'> = {}) {
+  return createServerSim({
+    games: [
+      {
+        module: fixtureHref,
+        export: 'RelayGame',
+        configKeys: [...RELAY_CONFIG_KEYS],
+      },
+    ],
+    mode: 'worker',
+    ...overrides,
+  });
+}
+
 function relayConfig(
   extra: Partial<PhalanxConfig> = {}
 ): Partial<PhalanxConfig> {
@@ -40,14 +64,7 @@ function relayConfig(
     timeoutTicks: 10000,
     playersConnectTimeoutMs: 20000,
     readyTimeoutMs: 10000,
-    games: [
-      {
-        module: fixtureHref,
-        export: 'RelayGame',
-        configKeys: [...RELAY_CONFIG_KEYS],
-      },
-    ],
-    simHost: { mode: 'worker' },
+    sim: relaySim(),
     ...extra,
   };
 }
@@ -400,10 +417,10 @@ describe('SimHost', () => {
 
   it('reports sim-oom for a tiny worker heap and keeps the relay ticking', async () => {
     const server = await startServer({
-      simHost: {
+      sim: relaySim({
         mode: 'worker',
         resourceLimits: { maxOldGenerationSizeMb: 16 },
-      },
+      }),
     });
     const relay = await openRelay(server.getPort());
     const socket = await connect(server.getPort());
@@ -462,7 +479,7 @@ describe('SimHost', () => {
   it('ends a match from Phalanx.endMatch and archives once', async () => {
     let archives = 0;
     const server = await startServer({
-      simHost: { mode: 'inProcess' },
+      sim: relaySim({ mode: 'inProcess' }),
       onMatchArchived: () => {
         archives += 1;
       },
@@ -586,7 +603,7 @@ describe('SimHost', () => {
 
   it('frees the server match slot when an outcome ends the match', async () => {
     const server = await startServer({
-      simHost: { mode: 'worker', maxMatches: 1 },
+      sim: relaySim({ mode: 'worker', maxMatches: 1 }),
     });
     const { socket } = await openServerMatch(server.getPort(), 'win', {
       winAt: 2,
@@ -644,7 +661,7 @@ describe('SimHost', () => {
 
   it('reserves maxMatches on create and does not count the join again', async () => {
     const server = await startServer({
-      simHost: { mode: 'worker', maxMatches: 1 },
+      sim: relaySim({ mode: 'worker', maxMatches: 1 }),
     });
     const host = await connect(server.getPort());
     const guest = await connect(server.getPort());
@@ -694,7 +711,7 @@ describe('SimHost', () => {
 
   it('releases maxMatches when a waiting server room is cancelled', async () => {
     const server = await startServer({
-      simHost: { mode: 'worker', maxMatches: 1 },
+      sim: relaySim({ mode: 'worker', maxMatches: 1 }),
     });
     const host = await connect(server.getPort());
     const created = onceEvent<{ code: string }>(host, 'room-created');
@@ -719,7 +736,7 @@ describe('SimHost', () => {
   it('forfeits an absent human after the stand-in bot expires', async () => {
     const server = await startServer({
       absence: { windowMs: 80, matchBudgetMs: 80 },
-      simHost: { mode: 'inProcess' },
+      sim: relaySim({ mode: 'inProcess' }),
     });
     const host = await connect(server.getPort());
     const guest = await connect(server.getPort());
@@ -806,7 +823,7 @@ describe('SimHost', () => {
   });
 
   it('answers each snapshot request to that player only', async () => {
-    const server = await startServer({ simHost: { mode: 'inProcess' } });
+    const server = await startServer({ sim: relaySim({ mode: 'inProcess' }) });
     const host = await connect(server.getPort());
     const guest = await connect(server.getPort());
     const created = onceEvent<{ code: string }>(host, 'room-created');
@@ -1020,7 +1037,7 @@ describe('SimHost', () => {
   });
 
   it('refuses a server room that claims system or bot:* and keeps a forged command on the human', async () => {
-    const server = await startServer({ simHost: { mode: 'inProcess' } });
+    const server = await startServer({ sim: relaySim({ mode: 'inProcess' }) });
     const port = server.getPort();
     const systemHost = await connect(port);
     let started = false;

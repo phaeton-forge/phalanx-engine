@@ -26,6 +26,10 @@
     "./advanced": {
       "types": "./dist/advanced.d.ts",
       "import": "./dist/advanced.js"
+    },
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "import": "./dist/server.js"
     }
   },
   "dependencies": {
@@ -42,7 +46,7 @@
   "scripts": {
     "build": "tsc",
     "clean": "rm -rf dist",
-    "test": "tsc -p tsconfig.test.json && vitest run && node --input-type=module -e \"await import('./dist/index.js'); await import('./dist/math.js'); await import('./dist/physics.js'); await import('./dist/abilities.js'); await import('./dist/advanced.js')\""
+    "test": "tsc -p tsconfig.test.json && vitest run && node --input-type=module -e \"await import('./dist/index.js'); await import('./dist/math.js'); await import('./dist/physics.js'); await import('./dist/abilities.js'); await import('./dist/advanced.js'); await import('./dist/server.js')\""
   },
   "keywords": [
     "phalanx",

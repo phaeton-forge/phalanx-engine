@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { io, type Socket } from 'socket.io-client';
 import type { Server as SocketIOServer } from 'socket.io';
-import type { Server as HttpServer } from 'node:http';
 import { GameRoom } from '../src/services/GameRoom.js';
 import { Phalanx } from '../src/Phalanx.js';
 import { validateConfig } from '../src/config/validation.js';
@@ -420,13 +419,7 @@ describe('endMatch through the player-command socket hook', () => {
       }
     });
     await server.start();
-    const httpServer = (server as unknown as { httpServer: HttpServer | null })
-      .httpServer;
-    const address = httpServer?.address();
-    if (!address || typeof address !== 'object') {
-      throw new Error('Phalanx is not listening');
-    }
-    const url = `http://127.0.0.1:${address.port}`;
+    const url = `http://127.0.0.1:${String(server!.getPort())}`;
     const client1 = track(io(url, { forceNew: true, autoConnect: false }));
     const client2 = track(io(url, { forceNew: true, autoConnect: false }));
     const found1 = once<MatchFoundEvent>(client1, 'match-found');

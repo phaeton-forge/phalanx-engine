@@ -13,11 +13,10 @@ import type {
 describe('MATCH-6: Server Sends Game Start Countdown', () => {
   let server: Phalanx;
   let clients: Socket[] = [];
-  const TEST_PORT = 3342;
 
   beforeEach(async () => {
     server = new Phalanx({
-      port: TEST_PORT,
+      port: 0,
       matchmakingIntervalMs: 100,
       gameMode: '1v1',
       countdownSeconds: 3, // Short countdown for faster tests
@@ -38,7 +37,7 @@ describe('MATCH-6: Server Sends Game Start Countdown', () => {
   });
 
   function createClient(): Socket {
-    const client = io(`http://localhost:${TEST_PORT}`, {
+    const client = io(`http://localhost:${String(server.getPort())}`, {
       autoConnect: false,
       forceNew: true,
     });
@@ -244,11 +243,10 @@ describe('MATCH-6: Server Sends Game Start Countdown', () => {
 describe('MATCH-6: Countdown with 5-second default', () => {
   let server: Phalanx;
   let clients: Socket[] = [];
-  const TEST_PORT = 3343;
 
   beforeEach(async () => {
     server = new Phalanx({
-      port: TEST_PORT,
+      port: 0,
       matchmakingIntervalMs: 100,
       gameMode: '1v1',
       countdownSeconds: 5, // Standard 5-second countdown as per story
@@ -269,7 +267,7 @@ describe('MATCH-6: Countdown with 5-second default', () => {
   });
 
   function createClient(): Socket {
-    const client = io(`http://localhost:${TEST_PORT}`, {
+    const client = io(`http://localhost:${String(server.getPort())}`, {
       autoConnect: false,
       forceNew: true,
     });

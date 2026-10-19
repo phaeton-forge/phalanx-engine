@@ -254,9 +254,18 @@ importers:
       '@phalanx-engine/physics':
         specifier: workspace:*
         version: link:../phalanx-physics
+      '@phalanx-engine/server':
+        specifier: workspace:*
+        version: link:../phalanx-server
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.43
       fake-indexeddb:
         specifier: ^6.2.2
         version: 6.2.6
+      socket.io-client:
+        specifier: ^4.7.0
+        version: 4.8.3
       tsx:
         specifier: ^4.23.15
         version: 4.23.15
@@ -272,18 +281,12 @@ importers:
 
   phalanx-server:
     dependencies:
-      '@phalanx-engine/ecs':
-        specifier: workspace:*
-        version: link:../phalanx-ecs
       '@phalanx-engine/math':
         specifier: workspace:*
         version: link:../phalanx-math
       '@phalanx-engine/protocol':
         specifier: workspace:*
         version: link:../phalanx-protocol
-      '@phalanx-engine/runtime':
-        specifier: workspace:*
-        version: link:../phalanx-runtime
       socket.io:
         specifier: ^4.7.0
         version: 4.8.3

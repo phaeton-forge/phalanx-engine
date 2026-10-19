@@ -1,11 +1,15 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { SlotConfig } from '@phalanx-engine/runtime';
-import { RoomSim } from '../src/sim/RoomSim.js';
-import { SimProcess } from '../src/sim/simCore.js';
-import { SnapshotStore } from '../src/sim/SnapshotStore.js';
-import { simFaultKind, type SimIn, type SimOut } from '../src/sim/messages.js';
-import type { RegisteredGame } from '../src/sim/loadGames.js';
-import type { SimHost } from '../src/sim/SimHost.js';
+import { RoomSim } from '../../src/server/RoomSim.js';
+import { SimProcess } from '../../src/server/simCore.js';
+import { SnapshotStore } from '../../src/server/SnapshotStore.js';
+import {
+  simFaultKind,
+  type SimIn,
+  type SimOut,
+} from '../../src/server/messages.js';
+import type { RegisteredGame } from '../../src/server/loadGames.js';
+import type { SimHost } from '../../src/server/SimHost.js';
 import { RelayGame } from './fixtures/relayGame.js';
 
 const slots: SlotConfig[] = [
@@ -67,30 +71,32 @@ function harness(): {
     maxTickAhead: 5,
     snapshotEveryTicks: 1000,
     extras: {},
-    enqueue() {},
-    currentTick: () => 0,
-    endMatch: () => true,
-    emitPlayer(playerId, _event, payload) {
-      if (
-        typeof payload === 'object' &&
-        payload !== null &&
-        'requestId' in payload &&
-        typeof payload.requestId === 'number'
-      ) {
-        delivered.push({ playerId, requestId: payload.requestId });
-      }
+    room: {
+      enqueue() {},
+      currentTick: () => 0,
+      endMatch: () => true,
+      emitToPlayer(playerId, _event, payload) {
+        if (
+          typeof payload === 'object' &&
+          payload !== null &&
+          'requestId' in payload &&
+          typeof payload.requestId === 'number'
+        ) {
+          delivered.push({ playerId, requestId: payload.requestId });
+        }
+      },
+      emitServerEvent(event, ...args) {
+        if (event !== 'desync-detected') return;
+        const hashes = args[2];
+        if (typeof hashes !== 'object' || hashes === null) return;
+        for (const playerId of Object.keys(hashes)) {
+          if (playerId !== 'server') desyncs.push(playerId);
+        }
+      },
+      haltRelay() {},
+      releaseHold() {},
+      onClosed() {},
     },
-    emitServer(event, ...args) {
-      if (event !== 'desync-detected') return;
-      const hashes = args[2];
-      if (typeof hashes !== 'object' || hashes === null) return;
-      for (const playerId of Object.keys(hashes)) {
-        if (playerId !== 'server') desyncs.push(playerId);
-      }
-    },
-    haltRelay() {},
-    releaseHold() {},
-    onClosed() {},
   });
   return { posts, delivered, desyncs, sim };
 }

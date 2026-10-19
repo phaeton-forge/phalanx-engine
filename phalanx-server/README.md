@@ -385,27 +385,28 @@ reads the resume deadline from it).
 
 ## Server simulation
 
-Opt-in. With no `games` entry the process stays a pure relay and does not
-spawn a worker. A private room opts in by passing `matchConfig` on
-`room-create`:
+Opt-in. With no `sim` the process stays a pure relay and does not spawn a
+worker. Pass a `ServerSimHook` from `createServerSim`. A private room opts
+in by passing `matchConfig` on `room-create`:
 
 ```typescript
 import { Phalanx } from '@phalanx-engine/server';
+import { createServerSim } from '@phalanx-engine/runtime/server';
 
 const app = new Phalanx({
   tickRate: 64,
-  games: [
-    {
-      module: '/abs/path/to/game.js',
-      export: 'RelayGame',
-      configKeys: ['mapId'],
-    },
-  ],
-  simHost: {
+  sim: createServerSim({
+    games: [
+      {
+        module: '/abs/path/to/game.js',
+        export: 'RelayGame',
+        configKeys: ['mapId'],
+      },
+    ],
     mode: 'worker', // 'inProcess' runs the same queue on the relay thread
     snapshotEveryTicks: 1000,
     maxMatches: 8,
-  },
+  }),
 });
 ```
 

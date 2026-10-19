@@ -272,7 +272,7 @@ export interface CommandEnvelope {
   readonly q: number;
   readonly p: JsonValue;
 }
-export interface WireCommand {
+export interface TransportCommand {
   readonly type: string;
   readonly data: CommandEnvelope;
 }
@@ -778,6 +778,10 @@ calls `decide`.
 ## 9. Transport
 
 `src/transport/Transport.ts`, `src/transport/LocalTransport.ts`.
+`Transport`, `TransportKind`, `TransportJoin`, `TransportCatchUp`,
+`CommandEnvelope` and `TransportCommand` are exported from
+`@phalanx-engine/runtime/advanced` (and `@phalanx-engine/game/advanced`).
+The root keeps `LocalTransport`.
 
 ```ts
 export type TransportKind = 'local' | 'relay-lockstep' | 'server-peer';
@@ -799,7 +803,7 @@ export interface Transport extends ITickFrameProvider {
   submit(
     targetTick: number,
     slot: number,
-    commands: readonly WireCommand[]
+    commands: readonly TransportCommand[]
   ): void;
   join?(): Promise<TransportJoin>;
   submitHash?(tick: number, digest: Digest): void;
@@ -982,8 +986,10 @@ const online = await MatchRunner.join(
 import { Phalanx } from '@phalanx-engine/server';
 const server = new Phalanx({
   gameTypes: [{ gameType: 'sketch-legion', tickRate: 10 /* ... */ }],
-  games: [SketchLegion],
-  simHost: { snapshotEveryTicks: 1000, resolveMatchConfig },
+  sim: createServerSim({
+    games: [{ module: './myGame.js' }],
+    snapshotEveryTicks: 1000,
+  }),
   // reconnect window/budget: Task 10 config fields
 });
 // Rooms with a server bot: a new room path in Task 11 (private rooms are
@@ -1040,7 +1046,7 @@ the correction lands.
   `currentTick` with no input delay (`PhalanxClient.ts:1040`); the server
   files late commands under `max(tick, currentTick)` (`GameRoom.ts:699`).
 - **Decision.** `Transport extends ITickFrameProvider` and adds
-  `submit(targetTick, slot, WireCommand[])` plus optional network methods.
+  `submit(targetTick, slot, TransportCommand[])` plus optional network methods.
   `PhalanxClient` satisfies the provider part structurally. The runner is
   the world's `tickFrameProvider`; the transport is the runner's upstream.
   - `playerId` ↔ slot comes from the config: human slot `playerId`, or
@@ -1177,12 +1183,11 @@ the correction lands.
   `commandHistoryTicks: 200` (`:49`), `enableStateHashing: false`,
   `stateHashInterval: 60` (`:53–54`).
 - **Decision.** Docs corrected to `new Phalanx({...})`. Additive fields
-  `games?` and `simHost?: { snapshotEveryTicks?, maxMatches?,
-resolveMatchConfig? }` (see [server-sim.md § 6](./server-sim.md#6-server-configuration-additive)).
+  `sim?: ServerSimHook`, built with `createServerSim({ games, snapshotEveryTicks?, maxMatches? })`
+  (see [server-sim.md § 6](./server-sim.md#6-server-configuration-additive)).
   `GameDefinition.id` = `gameType`; startup validates `tickRate` equality and
   continuous `tickMode`. Human-vs-server-bot rooms need a new room path
-  (Task 11). The draft's `simHost.workers` is dropped until the
-  `worker_threads` task.
+  (Task 11). `workers` is reserved until the `worker_threads` task.
 
 ### 8. Bot timing
 

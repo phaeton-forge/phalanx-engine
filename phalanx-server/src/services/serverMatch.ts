@@ -1,14 +1,14 @@
 import {
   botPlayerId,
   DEFAULT_INPUT_DELAY_TICKS,
-} from '@phalanx-engine/runtime';
+  type ServerSimGame,
+  type SlotConfig,
+} from '@phalanx-engine/protocol';
 import { reservedPlayerMessage } from '../reservedPlayerId.js';
-import type { SlotConfig } from '@phalanx-engine/runtime';
 import type { PhalanxConfig, QueuedPlayer } from '../types/index.js';
-import type { RegisteredGame } from './loadGames.js';
 
 export interface PreparedServerMatch {
-  readonly game: RegisteredGame;
+  readonly game: ServerSimGame;
   readonly slots: readonly SlotConfig[];
   readonly teams: QueuedPlayer[][];
   readonly inputDelayTicks: number;
@@ -26,19 +26,6 @@ const KNOWN_KEYS = new Set([
   'simMode',
   'slots',
   'inputDelayTicks',
-  'absencePolicy',
-]);
-
-/** Never copied from a client `matchConfig` into the runner config. */
-export const ENGINE_MATCH_CONFIG_KEYS = new Set([
-  'matchId',
-  'gameId',
-  'simVersion',
-  'seed',
-  'side',
-  'slots',
-  'inputDelayTicks',
-  'simMode',
   'absencePolicy',
 ]);
 
@@ -182,7 +169,7 @@ export function parseServerMatch(options: {
   raw: unknown;
   host: QueuedPlayer;
   gameType: string;
-  catalog: readonly RegisteredGame[];
+  catalog: readonly ServerSimGame[];
   config: PhalanxConfig;
 }): ParseMatchResult {
   const { raw, host, gameType, catalog, config } = options;

@@ -24,7 +24,17 @@ export type {
   DebugPanelConfig,
   TickFrameManagerConfig,
 } from '@phalanx-engine/ecs';
-export type { CommandSchema } from '../game/commands.js';
+export type {
+  CommandEnvelope,
+  CommandSchema,
+  TransportCommand,
+} from '../game/commands.js';
+export type {
+  Transport,
+  TransportCatchUp,
+  TransportJoin,
+  TransportKind,
+} from '../transport/Transport.js';
 export type {
   SaveHandler,
   SaveSpec,

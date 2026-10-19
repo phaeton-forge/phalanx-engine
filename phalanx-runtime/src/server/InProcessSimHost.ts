@@ -1,4 +1,4 @@
-import type { AnyGameDefinition } from '@phalanx-engine/runtime';
+import type { AnyGameDefinition } from '../game/GameDefinition.js';
 import type { SimIn, SimOut } from './messages.js';
 import { SimProcess } from './simCore.js';
 import type { SimHost } from './SimHost.js';

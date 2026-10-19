@@ -1,9 +1,9 @@
-import {
-  MatchRunner,
-  botPlayerId,
-  type AnyGameDefinition,
-  type MatchOutcome,
-} from '@phalanx-engine/runtime';
+import { botPlayerId } from '@phalanx-engine/protocol';
+import type {
+  AnyGameDefinition,
+  MatchOutcome,
+} from '../game/GameDefinition.js';
+import { MatchRunner } from '../runner/MatchRunner.js';
 import { RelayFeedTransport } from './RelayFeedTransport.js';
 import {
   errorMessage,

@@ -7,7 +7,7 @@ import type {
   Unsubscribe,
 } from '@phalanx-engine/ecs';
 import { DEFAULT_CLIENT_SNAPSHOT_EVERY_TICKS } from '../constants.js';
-import type { WireCommand } from '../game/commands.js';
+import type { TransportCommand } from '../game/commands.js';
 import { wallClock } from '../host/wallClock.js';
 import type { MatchStore } from '../persistence/MatchStore.js';
 import type { Transport, TransportKind } from './Transport.js';
@@ -226,7 +226,7 @@ export class LocalTransport implements Transport {
   public submit(
     targetTick: number,
     slot: number,
-    commands: readonly WireCommand[]
+    commands: readonly TransportCommand[]
   ): void {
     if (!Number.isInteger(targetTick) || targetTick < 0) {
       throw new Error(

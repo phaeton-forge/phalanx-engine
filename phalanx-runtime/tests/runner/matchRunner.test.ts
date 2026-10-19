@@ -12,8 +12,8 @@ import {
   botPlayerId,
   type Digest,
   type SnapshotBytes,
-  type Transport,
 } from '../../src/index.js';
+import type { Transport } from '../../src/transport/Transport.js';
 import { decodeSnapshot } from '../../src/state/snapshot.js';
 import { decodeInputCheckpoint } from '../../src/runner/InputCheckpoint.js';
 import { DeterministicRandom } from '@phalanx-engine/math';

@@ -17,6 +17,13 @@ Client, server, and runtime import message types and
 `isBotPlayerId` from here. Runtime still re-exports those names.
 `SimMode` and `MatchConfigBase` stay in the runtime.
 
+`ServerSimHook` is how a relay runs a simulation. `createServerSim` in
+`@phalanx-engine/runtime/server` returns one. Related types:
+`ServerSimInfo`, `ServerSimGame`, `ServerSimMatchSpec`, `ServerSimRoom`,
+`ServerSimMatch`, `ServerSimEvents`, `ServerDesyncEvent`, `MatchSnapshot`,
+`MatchSnapshotRequest`, `EndMatchResult`. `DEFAULT_INPUT_DELAY_TICKS` is
+`2`. None of these carry engine types.
+
 `PlayerCommand` is the stamped command in batches, the log, and
 `player-command`. `SubmittedCommand` is the client body of
 `submit-commands` (`type`, `data`, optional `sequence`).

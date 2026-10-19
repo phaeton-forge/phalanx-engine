@@ -331,14 +331,19 @@ export type {
 
 /**
  * Why `fetchMatchLog` stopped.
- * `MatchLogErrorReason` from `@phalanx-engine/protocol` arrives on
+ * `'not-member'`, `'not-found'`, `'invalid'` and `'truncated'` arrive on
  * `match-log-error`.
  * `'disconnected'` is local, when the socket closes mid-read.
  * `'aborted'` is local, when the caller breaks or a newer fetch
  * replaces this one. The server does not send either.
  */
 export type MatchLogFailureReason =
-  MatchLogErrorReason | 'disconnected' | 'aborted';
+  | 'not-member'
+  | 'not-found'
+  | 'invalid'
+  | 'truncated'
+  | 'disconnected'
+  | 'aborted';
 
 /**
  * Thrown by `PhalanxClient.fetchMatchLog` when the server emits
@@ -356,12 +361,13 @@ export class MatchLogError extends Error {
 
 /**
  * Why `resumeMatch` rejected.
- * `MatchResumeErrorReason` from `@phalanx-engine/protocol` arrives on
- * `match-resume-error`.
+ * `'invalid'`, `'expired'`, `'match-ended'` and `'build-mismatch'` arrive
+ * on `match-resume-error`.
  * `'timeout'` is local, when `connectionTimeoutMs` elapses with no
  * answer. The server does not send it.
  */
-export type MatchResumeFailureReason = MatchResumeErrorReason | 'timeout';
+export type MatchResumeFailureReason =
+  'invalid' | 'expired' | 'match-ended' | 'build-mismatch' | 'timeout';
 
 /**
  * Thrown by `PhalanxClient.resumeMatch` when the server emits

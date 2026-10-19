@@ -3,9 +3,6 @@ import { io, Socket } from 'socket.io-client';
 import { Phalanx } from '../src/index.js';
 import type { TickSyncEvent } from '../src/types/index.js';
 
-const TEST_PORT = 3031;
-const SERVER_URL = `http://localhost:${TEST_PORT}`;
-
 /**
  * LOCKSTEP-5: Server Detects Unresponsive Players via Activity Tracking
  *
@@ -21,7 +18,7 @@ describe('LOCKSTEP-5: Server Detects Unresponsive Players via Activity Tracking'
 
   beforeEach(async () => {
     server = new Phalanx({
-      port: TEST_PORT,
+      port: 0,
       tickRate: 20,
       countdownSeconds: 0,
       timeoutTicks: 10, // 0.5 sec at 20 TPS - lagging threshold
@@ -30,8 +27,12 @@ describe('LOCKSTEP-5: Server Detects Unresponsive Players via Activity Tracking'
     });
     await server.start();
 
-    socket1 = io(SERVER_URL, { forceNew: true });
-    socket2 = io(SERVER_URL, { forceNew: true });
+    socket1 = io(`http://localhost:${String(server.getPort())}`, {
+      forceNew: true,
+    });
+    socket2 = io(`http://localhost:${String(server.getPort())}`, {
+      forceNew: true,
+    });
 
     await Promise.all([
       new Promise<void>((resolve) => socket1.on('connect', resolve)),
@@ -40,8 +41,12 @@ describe('LOCKSTEP-5: Server Detects Unresponsive Players via Activity Tracking'
 
     // Set up game-start listeners before joining queue (with countdownSeconds: 0, game-start fires immediately)
     const gameStartPromise = Promise.all([
-      new Promise<void>((resolve) => { socket1.once('game-start', () => resolve()); }),
-      new Promise<void>((resolve) => { socket2.once('game-start', () => resolve()); }),
+      new Promise<void>((resolve) => {
+        socket1.once('game-start', () => resolve());
+      }),
+      new Promise<void>((resolve) => {
+        socket2.once('game-start', () => resolve());
+      }),
     ]);
 
     // Join queue and wait for match
