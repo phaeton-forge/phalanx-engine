@@ -1,13 +1,6 @@
 import { SystemRegistry } from './SystemRegistry.js';
-import { TickFrameManager } from './TickFrameManager.js';
 import { SoAComponent } from './SoAComponent.js';
 import { PoolManager } from './pool/PoolManager.js';
-import { DebugDataProvider } from './debug/DebugDataProvider.js';
-import { DebugPanel } from './debug/DebugPanel.js';
-import type {
-  DebugDataProviderConfig,
-  DebugPanelConfig,
-} from './debug/types.js';
 import type { PoolingConfig } from './pool/types.js';
 import type { ITickFrameProvider, Unsubscribe } from './ITickFrameProvider.js';
 import type { EventBus } from './EventBus.js';
@@ -57,27 +50,14 @@ export const GameWorldEvents = {
 export interface GameWorldConfig {
   /** Optional component type symbols for EntityManager indexing */
   componentTypes?: symbol[];
-  /** Target ticks per second (default: 60, only used when no tickFrameProvider) */
-  tickRate?: number;
-  /** Maximum time per frame in seconds (default: 0.25, only used when no tickFrameProvider) */
-  maxFrameTime?: number;
-  /** External tick/frame provider (e.g. PhalanxClient for multiplayer). If omitted, an internal TickFrameManager is created. */
-  tickFrameProvider?: ITickFrameProvider;
+  /**
+   * Tick/frame provider. Required. `GameWorld` subscribes to it and does not
+   * start or stop it. Single-player hosts pass the provider from
+   * `@phalanx-engine/runtime/advanced`.
+   */
+  tickFrameProvider: ITickFrameProvider;
   /** Object pooling configuration. If omitted, pooling is disabled. */
   pooling?: PoolingConfig;
-  /** Enable debug data collection. When true, a DebugDataProvider is created. Default: false */
-  debug?: boolean;
-  /** Configuration for the debug data provider (update interval, etc.). Only used when debug is true. */
-  debugConfig?: DebugDataProviderConfig;
-  /**
-   * Configuration for the built-in DebugPanel DOM overlay.
-   * Only used when `debug` is true.
-   *
-   * When provided (even as `{}`), a DebugPanel is auto-created in `start()`
-   * if a DOM environment is detected. Omit to use DebugDataProvider without
-   * the built-in panel (e.g. for custom tooling or headless environments).
-   */
-  debugPanelConfig?: DebugPanelConfig;
   /**
    * Match-scoped deterministic RNG for single-player or test worlds.
    * When omitted, {@link GameWorld} reads `tickFrameProvider.random` if set.
@@ -116,13 +96,16 @@ export interface GameWorldHooks {
 /**
  * GameWorld - High-level facade for the ECS engine
  *
- * Replaces the manual wiring of SystemRegistry + TickFrameManager + NetworkCoordinator
- * with a single entry point. Completely renderer-agnostic.
+ * Replaces the manual wiring of SystemRegistry and a tick provider with a
+ * single entry point. Completely renderer-agnostic. The caller owns the
+ * provider and starts it. The single-player provider lives in
+ * `@phalanx-engine/runtime`.
  *
- * Single-player usage:
+ * Single-player usage (provider from `@phalanx-engine/runtime/advanced`):
  * ```ts
- * const world = new GameWorld({ componentTypes });
+ * const world = new GameWorld({ componentTypes, tickFrameProvider: provider });
  * world.registerSystems(tickSystems, frameSystems);
+ * provider.start();
  * world.start({
  *   afterFrame(alpha, dt) { scene.render(); },
  * });
@@ -143,12 +126,8 @@ export interface GameWorldHooks {
 export class GameWorld {
   private readonly systemRegistry: SystemRegistry;
   private readonly provider: ITickFrameProvider;
-  private readonly ownsProvider: boolean;
   private readonly _pools: PoolManager | null;
   private readonly _poolingConfig: PoolingConfig | undefined;
-  private readonly _debugProvider: DebugDataProvider | null;
-  private readonly _debugPanelConfig: DebugPanelConfig | undefined;
-  private _debugPanel: DebugPanel | null = null;
 
   // Cached systems that implement the optional lifecycle hook interfaces.
   // Built lazily on first registerSystems() call; rebuilt on subsequent calls.
@@ -199,34 +178,11 @@ export class GameWorld {
     this.systemRegistry.getContext().pools = this._pools;
     this.systemRegistry.getContext().world = this;
 
-    // Use external provider or create internal TickFrameManager
-    if (config.tickFrameProvider) {
-      this.provider = config.tickFrameProvider;
-      this.ownsProvider = false;
-    } else {
-      this.provider = new TickFrameManager({
-        tickRate: config.tickRate,
-        maxFrameTime: config.maxFrameTime,
-      });
-      this.ownsProvider = true;
-    }
+    this.provider = config.tickFrameProvider;
 
     const resolvedRandom = this.resolveConfiguredRandom(config);
     if (resolvedRandom) {
       this.systemRegistry.getContext().random = resolvedRandom;
-    }
-
-    // Setup debug data provider if configured
-    if (config.debug) {
-      this._debugProvider = new DebugDataProvider(
-        this.systemRegistry.entityManager,
-        this._pools,
-        config.debugConfig
-      );
-      this._debugPanelConfig = config.debugPanelConfig;
-    } else {
-      this._debugProvider = null;
-      this._debugPanelConfig = undefined;
     }
   }
 
@@ -254,8 +210,9 @@ export class GameWorld {
   /**
    * Pause the game world.
    *
-   * If the provider implements requestPause (both TickFrameManager and
-   * PhalanxClient do), the request is forwarded to the provider. The world
+   * If the provider implements requestPause (the runtime single-player
+   * provider and PhalanxClient do), the request is
+   * forwarded to the provider. The world
    * will actually freeze only when the provider fires the onPause callback —
    * this ensures multiplayer clients all freeze at the same deterministic
    * point after server confirmation, while single-player pauses immediately.
@@ -272,7 +229,6 @@ export class GameWorld {
     } else {
       // Fallback for providers that don't support pause
       this._paused = true;
-      if (this._debugProvider) this._debugProvider.paused = true;
       this.systemRegistry.eventBus.emit(GameWorldEvents.PAUSED, {});
     }
   }
@@ -292,7 +248,6 @@ export class GameWorld {
     } else {
       // Fallback for providers that don't support resume
       this._paused = false;
-      if (this._debugProvider) this._debugProvider.paused = false;
       this.systemRegistry.eventBus.emit(GameWorldEvents.RESUMED, {});
     }
   }
@@ -317,29 +272,6 @@ export class GameWorld {
   /** Pool manager. null if pooling is not configured. */
   public get pools(): PoolManager | null {
     return this._pools;
-  }
-
-  /**
-   * Debug data provider. null if debug mode is not enabled.
-   *
-   * Use this to subscribe to periodic debug snapshots or pull
-   * snapshots on demand for custom debug tooling.
-   *
-   * @example
-   * ```ts
-   * const world = new GameWorld({ debug: true });
-   * const unsub = world.debugProvider!.subscribe((snap) => {
-   *   console.log('Entities:', snap.world.entityCount);
-   * });
-   * ```
-   */
-  public get debugProvider(): DebugDataProvider | null {
-    return this._debugProvider;
-  }
-
-  /** Debug panel DOM renderer. null if debug mode is not enabled or panel not yet created. */
-  public get debugPanel(): DebugPanel | null {
-    return this._debugPanel;
   }
 
   /** System context (for advanced use) */
@@ -527,14 +459,12 @@ export class GameWorld {
     if (this.provider.onPause) {
       this.unsubscribePause = this.provider.onPause(() => {
         this._paused = true;
-        if (this._debugProvider) this._debugProvider.paused = true;
         this.systemRegistry.eventBus.emit(GameWorldEvents.PAUSED, {});
       });
     }
     if (this.provider.onResume) {
       this.unsubscribeResume = this.provider.onResume(() => {
         this._paused = false;
-        if (this._debugProvider) this._debugProvider.paused = false;
         this.systemRegistry.eventBus.emit(GameWorldEvents.RESUMED, {});
       });
     }
@@ -558,34 +488,10 @@ export class GameWorld {
       for (const s of this.afterFrameSystems) s.afterFrame(alpha, dt);
       hooks?.afterFrame?.(alpha, dt);
     });
-
-    // Start internal TickFrameManager if we own it
-    if (this.ownsProvider && this.provider instanceof TickFrameManager) {
-      this.provider.start();
-    }
-
-    // Start debug data provider if configured
-    if (this._debugProvider) {
-      this._debugProvider.start();
-
-      // Auto-create panel only when debugPanelConfig was explicitly provided
-      // and a DOM environment is available. This keeps the overlay opt-in so
-      // consumers who only need DebugDataProvider aren't surprised by DOM
-      // side effects.
-      if (
-        this._debugPanelConfig !== undefined &&
-        typeof document !== 'undefined'
-      ) {
-        this._debugPanel = new DebugPanel(
-          this._debugProvider,
-          this._debugPanelConfig
-        );
-      }
-    }
   }
 
   /**
-   * Stop the tick/frame loop (unsubscribe callbacks, stop internal provider).
+   * Stop the tick/frame loop (unsubscribe callbacks). Does not stop the provider.
    */
   public stop(): void {
     if (this.unsubscribeTick) {
@@ -604,21 +510,6 @@ export class GameWorld {
       this.unsubscribeResume();
       this.unsubscribeResume = null;
     }
-
-    if (this.ownsProvider && this.provider instanceof TickFrameManager) {
-      this.provider.stop();
-    }
-
-    // Destroy debug panel
-    if (this._debugPanel) {
-      this._debugPanel.destroy();
-      this._debugPanel = null;
-    }
-
-    // Stop debug data provider
-    if (this._debugProvider) {
-      this._debugProvider.stop();
-    }
   }
 
   /**
@@ -626,9 +517,6 @@ export class GameWorld {
    */
   public dispose(): void {
     this.stop();
-    if (this._debugProvider) {
-      this._debugProvider.dispose();
-    }
     if (this._pools) {
       this._pools.drainAll();
     }
@@ -641,10 +529,6 @@ export class GameWorld {
   ): IRandom | undefined {
     if (config.random) {
       return config.random;
-    }
-
-    if (!config.tickFrameProvider) {
-      return undefined;
     }
 
     try {

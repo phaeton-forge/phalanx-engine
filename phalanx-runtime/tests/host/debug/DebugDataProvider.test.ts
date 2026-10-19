@@ -1,13 +1,16 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { Entity, resetEntityIdCounter } from '../../src/Entity';
-import { EntityManager } from '../../src/EntityManager';
-import { SoAComponent } from '../../src/SoAComponent';
-import { defineSoASchema } from '../../src/SoASchema';
-import { PoolManager } from '../../src/pool/PoolManager';
-import { DebugDataProvider } from '../../src/debug/DebugDataProvider';
-import type { IComponent } from '../../src/Component';
-import type { IPoolableEntity } from '../../src/pool/IPoolableEntity';
-import type { DebugSnapshot } from '../../src/debug/types';
+import {
+  Entity,
+  EntityManager,
+  PoolManager,
+  SoAComponent,
+  defineSoASchema,
+  resetEntityIdCounter,
+  type IComponent,
+  type IPoolableEntity,
+} from '@phalanx-engine/ecs';
+import { DebugDataProvider } from '../../../src/host/debug/DebugDataProvider.js';
+import type { DebugSnapshot } from '../../../src/host/debug/types.js';
 
 class PoolableEntity extends Entity implements IPoolableEntity {
   onSpawn(): void {}
@@ -111,17 +114,21 @@ describe('DebugDataProvider', () => {
       const snap = createProvider(em).getSnapshot();
 
       expect(snap.entities).toHaveLength(1);
-      expect(snap.entities[0].id).toBe(entity.id);
-      expect(snap.entities[0].destroyed).toBe(false);
-      expect(snap.entities[0].components).toHaveLength(2);
+      const entitySnap = snap.entities[0];
+      if (entitySnap === undefined) {
+        throw new Error('expected an entity snapshot');
+      }
+      expect(entitySnap.id).toBe(entity.id);
+      expect(entitySnap.destroyed).toBe(false);
+      expect(entitySnap.components).toHaveLength(2);
 
-      const healthSnap = snap.entities[0].components.find(
+      const healthSnap = entitySnap.components.find(
         (c) => c.typeName === 'Health'
       );
       expect(healthSnap).toBeDefined();
       expect(healthSnap!.data.hp).toBe(75);
 
-      const armorSnap = snap.entities[0].components.find(
+      const armorSnap = entitySnap.components.find(
         (c) => c.typeName === 'Armor'
       );
       expect(armorSnap).toBeDefined();
@@ -137,6 +144,9 @@ describe('DebugDataProvider', () => {
 
       expect(snap.soaStores).toHaveLength(1);
       const store = snap.soaStores[0];
+      if (store === undefined) {
+        throw new Error('expected a store snapshot');
+      }
       expect(store.name).toBe('PhysicsBody');
       expect(store.fieldNames).toEqual([
         'velocityX',
@@ -159,12 +169,16 @@ describe('DebugDataProvider', () => {
 
       const snap = createProvider(em).getSnapshot();
       const storeSnap = snap.soaStores[0];
+      const stored = storeSnap?.entities[0];
+      if (storeSnap === undefined || stored === undefined) {
+        throw new Error('expected a stored entity');
+      }
 
       expect(storeSnap.entities).toHaveLength(1);
-      expect(storeSnap.entities[0].entityId).toBe(entity.id);
-      expect(storeSnap.entities[0].fields.velocityX).toBe(0n);
-      expect(storeSnap.entities[0].fields.radius).toBeCloseTo(3.14);
-      expect(storeSnap.entities[0].fields.isStatic).toBe(0);
+      expect(stored.entityId).toBe(entity.id);
+      expect(stored.fields.velocityX).toBe(0n);
+      expect(stored.fields.radius).toBeCloseTo(3.14);
+      expect(stored.fields.isStatic).toBe(0);
     });
 
     it('reports soaStoreCount in world summary', () => {
@@ -187,9 +201,13 @@ describe('DebugDataProvider', () => {
       const snap = createProvider(em, pools).getSnapshot();
 
       expect(snap.pools).toHaveLength(1);
-      expect(snap.pools[0].typeKey).toBe('projectile');
-      expect(snap.pools[0].stats.available).toBe(10);
-      expect(snap.pools[0].stats.totalCreated).toBe(10);
+      const pool = snap.pools[0];
+      if (pool === undefined) {
+        throw new Error('expected a pool snapshot');
+      }
+      expect(pool.typeKey).toBe('projectile');
+      expect(pool.stats.available).toBe(10);
+      expect(pool.stats.totalCreated).toBe(10);
     });
 
     it('returns empty pools array when no PoolManager', () => {
@@ -228,7 +246,11 @@ describe('DebugDataProvider', () => {
       vi.advanceTimersByTime(350);
 
       expect(snapshots.length).toBe(3);
-      expect(snapshots[0].world.entityCount).toBe(1);
+      const first = snapshots[0];
+      if (first === undefined) {
+        throw new Error('expected a snapshot');
+      }
+      expect(first.world.entityCount).toBe(1);
 
       provider.dispose();
     });
@@ -343,60 +365,6 @@ describe('DebugDataProvider', () => {
       expect(snapshots.length).toBe(1); // not 3
 
       provider.dispose();
-    });
-  });
-
-  // ── GameWorld integration ───────────────────────────────────────
-
-  describe('GameWorld integration', () => {
-    // We test this by importing GameWorld directly
-    it('GameWorld creates provider when debug is true', async () => {
-      // Dynamic import to avoid circular issues in test setup
-      const { GameWorld } = await import('../../src/GameWorld');
-
-      const world = new GameWorld({
-        componentTypes: [HealthType],
-        debug: true,
-        debugConfig: { updateInterval: 0 },
-      });
-
-      expect(world.debugProvider).not.toBeNull();
-      expect(world.debugProvider).toBeInstanceOf(DebugDataProvider);
-
-      // Snapshot works
-      const snap = world.debugProvider!.getSnapshot();
-      expect(snap.world.entityCount).toBe(0);
-
-      world.dispose();
-    });
-
-    it('GameWorld does not create provider when debug is false', async () => {
-      const { GameWorld } = await import('../../src/GameWorld');
-
-      const world = new GameWorld({ componentTypes: [HealthType] });
-      expect(world.debugProvider).toBeNull();
-
-      world.dispose();
-    });
-
-    it('GameWorld provider reflects entities added to the world', async () => {
-      const { GameWorld } = await import('../../src/GameWorld');
-
-      const world = new GameWorld({
-        componentTypes: [HealthType],
-        debug: true,
-        debugConfig: { updateInterval: 0 },
-      });
-
-      const entity = new Entity();
-      entity.addComponent(new HealthComponent(50));
-      world.entityManager.addEntity(entity);
-
-      const snap = world.debugProvider!.getSnapshot();
-      expect(snap.world.entityCount).toBe(1);
-      expect(snap.entities[0].components[0].data.hp).toBe(50);
-
-      world.dispose();
     });
   });
 });

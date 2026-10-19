@@ -5,6 +5,7 @@ import {
   resetEntityIdCounter,
 } from '../../src/index.js';
 import type { SaveSection } from '../../src/index.js';
+import { manualTickProvider } from '../support/manualTickProvider.js';
 
 function section(key: string): SaveSection {
   return {
@@ -22,7 +23,7 @@ describe('save sections', () => {
   });
 
   it('sorts keys by UTF-16 code units regardless of registration order', () => {
-    const world = new GameWorld({});
+    const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
     for (const key of ['b', 'a', 'physics.broadphase', 'abilities']) {
       world.registerSaveSection(section(key));
     }
@@ -35,7 +36,7 @@ describe('save sections', () => {
   });
 
   it("orders 'Z' before 'a'", () => {
-    const world = new GameWorld({});
+    const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
     world.registerSaveSection(section('a'));
     world.registerSaveSection(section('Z'));
     expect('Z' < 'a').toBe(true);
@@ -43,7 +44,7 @@ describe('save sections', () => {
   });
 
   it('rejects an empty key and a duplicate key', () => {
-    const world = new GameWorld({});
+    const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
     world.registerSaveSection(section('a'));
     expect(() => world.registerSaveSection(section(''))).toThrow(
       'registerSaveSection: key is empty'
@@ -55,7 +56,7 @@ describe('save sections', () => {
   });
 
   it('returns a copy from saveSections', () => {
-    const world = new GameWorld({});
+    const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
     world.registerSaveSection(section('a'));
     world.registerSaveSection(section('b'));
     const listed = world.saveSections as SaveSection[];

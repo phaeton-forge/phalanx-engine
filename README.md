@@ -68,7 +68,7 @@ It is a good fit for RTS, MOBA, tactical, and turn-based games where simulation 
            └────────────────────────────┘
 ```
 
-`@phalanx-engine/client` and `@phalanx-engine/ecs` both implement the `ITickFrameProvider` interface, so a `GameWorld` can be driven by either an internal `TickFrameManager` (single-player) or by the multiplayer client (`PhalanxClient` is fed the server's authoritative ticks).
+`GameWorld` requires an `ITickFrameProvider`. Single-player games pass `TickFrameManager` from `@phalanx-engine/runtime`. Multiplayer games pass `PhalanxClient`, which is fed the server's authoritative ticks.
 
 ## Quick Start
 
@@ -97,8 +97,8 @@ For npm package setup and per-library docs, see [Installation](#installation) an
 
 > 🚧 More examples are coming soon.
 
-| Example                                          | Status    | Description                                                                 |
-| ------------------------------------------------ | --------- | --------------------------------------------------------------------------- |
+| Example                                          | Status    | Description                                                               |
+| ------------------------------------------------ | --------- | ------------------------------------------------------------------------- |
 | [`abilities-playground`](./abilities-playground) | Available | Local multiplayer sandbox — see [Quick Start](#quick-start) for run steps |
 
 ## Packages

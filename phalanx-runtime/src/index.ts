@@ -1,5 +1,6 @@
 /**
- * @phalanx-engine/runtime — isomorphic match runtime (no DOM, no sockets).
+ * @phalanx-engine/runtime — isomorphic match runtime (no sockets).
+ * The debug panel is the only DOM surface. Simulation code stays DOM-free.
  *
  * Status: Tasks 1–7, 7.1, 6.5a and 6.5b are implemented. Games use
  * `defineComponent`, `defineCommands`, `defineGame` and `runLocalMatch`.
@@ -93,5 +94,19 @@ export type {
 } from './world/defineComponent.js';
 export { bindWorldSingletons } from './world/singletons.js';
 export type { WorldSingletonHooks } from './world/singletons.js';
+export { DebugDataProvider } from './host/debug/DebugDataProvider.js';
+export { attachDebug } from './host/debug/attachDebug.js';
+export type {
+  DebugSnapshot,
+  DebugEntitySnapshot,
+  DebugComponentSnapshot,
+  DebugSoAStoreSnapshot,
+  DebugPoolSnapshot,
+  DebugDataProviderConfig,
+} from './host/debug/types.js';
+export type {
+  AttachDebugOptions,
+  DebugAttachment,
+} from './host/debug/attachDebug.js';
 
 setWorldModuleHost(worldModules);

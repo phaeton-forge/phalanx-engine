@@ -2,22 +2,24 @@
  * ITickFrameProvider - Interface for tick/frame loop providers
  *
  * This is the shared contract between:
- * - TickFrameManager (single-player, local tick generation)
+ * - the single-player provider in `@phalanx-engine/runtime` (local ticks)
  * - PhalanxClient (multiplayer, server-synchronized ticks)
  *
  * Game code should depend on this interface rather than concrete implementations,
  * allowing easy switching between single-player and multiplayer modes.
+ * `GameWorld` requires a provider and does not start or stop it.
  *
- * Usage Pattern A: Single-player with TickFrameManager
+ * Usage Pattern A: Single-player with the runtime provider
  * ```typescript
- * const world = new GameWorld({ engine, scene });
+ * const world = new GameWorld({ tickFrameProvider: provider });
  * world.registerSystems(tickSystems, frameSystems);
- * world.start(); // auto-runs processAllTicks, updateAll, scene.render()
+ * provider.start();
+ * world.start();
  * ```
  *
  * Usage Pattern B: Multiplayer with PhalanxClient
  * ```typescript
- * const world = new GameWorld({ engine, scene, tickFrameProvider: client });
+ * const world = new GameWorld({ tickFrameProvider: client });
  * world.registerSystems(tickSystems, frameSystems);
  * world.start({
  *   beforeTick(tick, commands) { lockstepManager.processTick(tick, commands); },
@@ -76,14 +78,14 @@ export type PauseHandler = () => void;
 /**
  * ITickFrameProvider - The minimal interface for tick/frame loop providers
  *
- * Both TickFrameManager and PhalanxClient satisfy this interface,
- * allowing game code to be written against the interface and
+ * The runtime single-player provider and PhalanxClient both satisfy this
+ * interface, allowing game code to be written against the interface and
  * swap implementations at initialization time.
  *
  * The optional pause/resume methods allow GameWorld.pause()/resume() to
  * work transparently in both single-player and multiplayer:
  *
- * - **Single-player (TickFrameManager):** requestPause() stops the loop
+ * - **Single-player (runtime provider):** requestPause() stops the loop
  *   immediately and fires onPause handlers synchronously.
  * - **Multiplayer (PhalanxClient):** requestPause() sends a message to the
  *   server. The actual pause happens only when the server broadcasts

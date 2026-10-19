@@ -10,19 +10,17 @@ export { StateHelpers } from './StateHelpers.js';
 export { spawnWithId } from '../state/sections/entities.js';
 export { WorldScope } from '../runner/WorldScope.js';
 export {
-  DebugPanel,
   PoolManager,
   SoAComponentStore,
-  TickFrameManager,
   TYPED_ARRAY_CONSTRUCTORS,
   nextEntityId,
   setEntityIdCounter,
   setWorldModuleHost,
 } from '@phalanx-engine/ecs';
-export type {
-  DebugPanelConfig,
-  TickFrameManagerConfig,
-} from '@phalanx-engine/ecs';
+export { DebugPanel } from '../host/debug/DebugPanel.js';
+export { TickFrameManager } from '../host/TickFrameManager.js';
+export type { DebugPanelConfig } from '../host/debug/types.js';
+export type { TickFrameManagerConfig } from '../host/TickFrameManager.js';
 export type {
   CommandEnvelope,
   CommandSchema,

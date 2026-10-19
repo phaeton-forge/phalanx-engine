@@ -44,7 +44,7 @@ export type {
   PoolingConfig,
 } from './pool/index.js';
 
-// SoA (Structure-of-Arrays) high-performance storage
+// SoA (Structure-of-Arrays) cache-friendly storage
 export { SoAComponentStore } from './SoAComponentStore.js';
 export type { SoAComponentStoreOptions } from './SoAComponentStore.js';
 export { SoAComponent } from './SoAComponent.js';
@@ -64,18 +64,6 @@ export type {
   SoAArrayType,
   TypedArrayLike,
 } from './SoASchema.js';
-
-// Debug / Introspection
-export { DebugDataProvider, DebugPanel } from './debug/index.js';
-export type {
-  DebugSnapshot,
-  DebugEntitySnapshot,
-  DebugComponentSnapshot,
-  DebugSoAStoreSnapshot,
-  DebugPoolSnapshot,
-  DebugDataProviderConfig,
-  DebugPanelConfig,
-} from './debug/index.js';
 
 // Optional system lifecycle hook interfaces
 export type {
@@ -109,8 +97,6 @@ export type { SaveSection } from './state/sections.js';
 export { BinaryStateWriter, BinaryStateReader } from './state/BinaryState.js';
 
 // Tick/Frame Management
-export { TickFrameManager } from './TickFrameManager.js';
-export type { TickFrameManagerConfig } from './TickFrameManager.js';
 export type {
   ITickFrameProvider,
   TickHandler,

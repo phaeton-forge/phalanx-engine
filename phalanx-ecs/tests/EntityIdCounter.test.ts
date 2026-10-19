@@ -1,4 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
+import { manualTickProvider } from './support/manualTickProvider.js';
 import {
   Entity,
   GameWorld,
@@ -48,7 +49,7 @@ describe('entity id counter', () => {
 
   it('GameWorld delegates get and set, and construction still resets the counter', () => {
     setEntityIdCounter(9);
-    const world = new GameWorld({});
+    const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
     expect(world.getEntityIdCounter()).toBe(0);
     expect(SoAComponent.currentEntityManager()).toBe(world.entityManager);
 
@@ -62,7 +63,7 @@ describe('entity id counter', () => {
 
   it('SoAComponent.currentEntityManager is null after resetContext', () => {
     expect(SoAComponent.currentEntityManager()).toBeNull();
-    const world = new GameWorld({});
+    const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
     expect(SoAComponent.currentEntityManager()).toBe(world.entityManager);
     SoAComponent.resetContext();
     expect(SoAComponent.currentEntityManager()).toBeNull();

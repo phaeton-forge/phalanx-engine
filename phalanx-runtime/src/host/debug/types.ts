@@ -1,5 +1,4 @@
-import type { PoolStats } from '../pool/types.js';
-import type { SoAFieldType } from '../SoASchema.js';
+import type { PoolStats, SoAFieldType } from '@phalanx-engine/ecs';
 
 /**
  * Serialised snapshot of a single IComponent attached to an entity.

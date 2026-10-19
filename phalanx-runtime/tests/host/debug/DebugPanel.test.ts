@@ -1,14 +1,17 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { Entity, resetEntityIdCounter } from '../../src/Entity';
-import { EntityManager } from '../../src/EntityManager';
-import { SoAComponent } from '../../src/SoAComponent';
-import { defineSoASchema } from '../../src/SoASchema';
-import { PoolManager } from '../../src/pool/PoolManager';
-import { DebugDataProvider } from '../../src/debug/DebugDataProvider';
-import { DebugPanel } from '../../src/debug/DebugPanel';
-import type { IComponent } from '../../src/Component';
-import type { IPoolableEntity } from '../../src/pool/IPoolableEntity';
+import {
+  Entity,
+  EntityManager,
+  PoolManager,
+  SoAComponent,
+  defineSoASchema,
+  resetEntityIdCounter,
+  type IComponent,
+  type IPoolableEntity,
+} from '@phalanx-engine/ecs';
+import { DebugDataProvider } from '../../../src/host/debug/DebugDataProvider.js';
+import { DebugPanel } from '../../../src/host/debug/DebugPanel.js';
 
 class PoolableEntity extends Entity implements IPoolableEntity {
   onSpawn(): void {}

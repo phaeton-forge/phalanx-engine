@@ -3,8 +3,23 @@
 Entries collected per package until the synchronized 0.3.0 release
 (Task 13 turns this file into `CHANGELOG.md`).
 
+## CI
+
+- `pnpm lint:determinism` checks `phalanx-{math,ecs,physics,abilities}/src`
+  for wall-clock globals, DOM globals and `Math.random`, with no allowlist.
+  The workflow runs it after build.
+
 ## @phalanx-engine/game
 
+- Root gains `attachDebug`, `AttachDebugOptions` and `DebugAttachment`
+  from runtime. `DebugDataProvider` and the six debug snapshot types
+  (`DebugSnapshot`, `DebugEntitySnapshot`, `DebugComponentSnapshot`,
+  `DebugSoAStoreSnapshot`, `DebugPoolSnapshot`, `DebugDataProviderConfig`)
+  now come from runtime. The explicit ecs re-export of those names is gone.
+  Name count `[180, 9, 33, 85, 23, 3]` → `[183, 9, 31, 85, 23, 3]`
+  (root +3, `./physics` −2). `./advanced` stays 23 names.
+  `TickFrameManager`, `TickFrameManagerConfig`, `DebugPanel` and
+  `DebugPanelConfig` are still `./advanced`, now implemented in runtime.
 - `./advanced` no longer exports `rebuildBroadphaseFromTransforms`.
 - New subpath `./server`: `createServerSim`, `ServerSimConfig`,
   `GameModuleSpec`, re-exported from `@phalanx-engine/runtime/server`.
@@ -34,6 +49,18 @@ Entries collected per package until the synchronized 0.3.0 release
 
 ## @phalanx-engine/runtime
 
+- Host code moved here from ecs. `TickFrameManager` and `DebugPanel` are
+  implemented in `src/host` and still exported from `./advanced` (same
+  names, not an ecs re-export). The root exports `DebugDataProvider`,
+  `attachDebug`, `AttachDebugOptions`, `DebugAttachment`, and the six
+  debug snapshot types. `WallClock` requires `setInterval` and
+  `clearInterval`, and optionally `requestAnimationFrame` /
+  `cancelAnimationFrame`. `TickFrameManager.start()` without
+  `requestAnimationFrame` throws
+  `TickFrameManager: this host has no requestAnimationFrame`.
+  `attachDebug(world, { panel })` without a DOM throws
+  `attachDebug: panel requires a DOM`. The package `lib` includes `DOM`
+  for the panel only.
 - `ENGINE_SNAPSHOT_FORMAT` is 3. World bytes are roster (when any
   non-pooled entity exists), pools, SoA stores, entity ids, RNG, one
   `modules` container, then game singletons. The container is written
@@ -325,6 +352,15 @@ Entries collected per package until the synchronized 0.3.0 release
 
 ## @phalanx-engine/ecs
 
+- Removed `TickFrameManager`, `DebugDataProvider` and `DebugPanel`, and
+  the types `TickFrameManagerConfig`, `DebugSnapshot`,
+  `DebugEntitySnapshot`, `DebugComponentSnapshot`, `DebugSoAStoreSnapshot`,
+  `DebugPoolSnapshot`, `DebugDataProviderConfig` and `DebugPanelConfig`.
+  Name count `[83]/[33]` → `[72]/[30]`. `GameWorldConfig.tickFrameProvider`
+  is required. `tickRate`, `maxFrameTime`, `debug`, `debugConfig` and
+  `debugPanelConfig` are gone, as are `GameWorld.debugProvider` and
+  `debugPanel`. `start()` / `stop()` subscribe and unsubscribe only; they
+  do not start or stop the provider.
 - Exports `StateWriter`, `StateReader`, `SaveSection`, `BinaryStateWriter`
   and `BinaryStateReader` (moved from runtime). `GameWorld.registerSaveSection`
   stores a module section. An empty key throws
@@ -495,6 +531,9 @@ Entries collected per package until the synchronized 0.3.0 release
 
 ## @phalanx-engine/abilities
 
+- The `effects-retain-cues` warning no longer checks `process.env.NODE_ENV`.
+  Domain sources cannot see `process`. The same `console.warn` text now
+  runs whenever that pipeline is selected and no cues are registered.
 - `createAbilitySystem` registers save section `abilities` (version 1).
   The section is not exported. Its body is the former `gas` payload
   without a `section('gas')` wrapper.
@@ -540,11 +579,17 @@ Entries collected per package until the synchronized 0.3.0 release
 
 ## abilities-playground
 
+- `SimulationContainer` no longer passes `debug` or `debugConfig` to
+  `GameWorld`. The playground does not depend on runtime for a debug
+  overlay.
 - `@phalanx-engine/*` dependencies are `workspace:*`. Bootstrap calls
   `PhysicsWorld.attach(world)`.
 
 ## @phalanx-engine/physics
 
+- Removed `AutonomousPhysicsTickProvider` and `AutonomousProviderOptions`.
+  No replacement. `IPhysicsTickProvider` and `ExternalPhysicsTickProvider`
+  stay. Name count `[33]/[19]` → `[31]/[18]`.
 - `PhysicsWorld.attach(world)` sets `context.physics` and registers
   save section `physics.broadphase` (version 1). A second `attach` of
   the same world is a no-op. A different world throws
@@ -554,8 +599,8 @@ Entries collected per package until the synchronized 0.3.0 release
   when `context.world` is set, and throw
   `PhysicsSystem.init: context.world is not set` or
   `CollisionSystem.init: context.world is not set` when it is not.
-  The section is not a package export. Names stay 33 types and 19
-  values; `attach` is a method on `PhysicsWorld`. Its body is the
+  The section is not a package export. `attach` is a method on
+  `PhysicsWorld` and did not add an export. Its body is the
   former `broadphase` list without a `section('broadphase')` wrapper.
   Inner keys stay `physics`, `physicsSystem` and `collisionSystem`.
 

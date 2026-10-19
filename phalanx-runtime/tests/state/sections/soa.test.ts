@@ -19,6 +19,7 @@ import {
 } from '@phalanx-engine/physics';
 import { StateHelpers } from '../../../src/advanced/StateHelpers.js';
 import { BinaryStateReader, BinaryStateWriter } from '@phalanx-engine/ecs';
+import { manualTickProvider } from '../../support/manualTickProvider.js';
 
 const ENTITY_COUNT = 50;
 
@@ -162,7 +163,7 @@ function requireStore<S extends SoASchemaDefinition>(
 }
 
 function buildWorld(): GameWorld {
-  const world = new GameWorld({});
+  const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
   for (let id = ENTITY_COUNT; id >= 1; id -= 1) {
     StateHelpers.spawnWithId(world, id, () => new Body());
   }
@@ -221,7 +222,7 @@ describe('SoA state helpers', () => {
     expect(withoutFloats.byteLength).toBe(bytes.byteLength);
     expect(withoutFloats).toEqual(bytes);
 
-    const restored = new GameWorld({});
+    const restored = new GameWorld({ tickFrameProvider: manualTickProvider() });
     for (let id = 1; id <= ENTITY_COUNT; id += 1) {
       StateHelpers.spawnWithId(restored, id, () => new Body());
     }
@@ -271,7 +272,7 @@ describe('SoA state helpers', () => {
 
   it('omits an f64 field from the byte length', () => {
     const schema = defineSoASchema({ a: 'u8', hidden: 'f64', b: 'u8' }, 'Tiny');
-    const world = new GameWorld({});
+    const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
     const store = world.entityManager.getOrCreateSoAStore(schema);
     store.add(1, { a: 2, hidden: 99.5, b: 3 });
 
@@ -309,7 +310,7 @@ describe('SoA state helpers', () => {
       }
     }
 
-    const source = new GameWorld({});
+    const source = new GameWorld({ tickFrameProvider: manualTickProvider() });
     const entity = new FlagEntity();
     source.entityManager.addEntity(entity);
     source.entityManager.removeEntity(entity);
@@ -321,7 +322,7 @@ describe('SoA state helpers', () => {
       StateHelpers.writeSoAStores(writer, source, [FlagSchema]);
     });
 
-    const restored = new GameWorld({});
+    const restored = new GameWorld({ tickFrameProvider: manualTickProvider() });
     expect(restored.entityManager.getSoAStore(FlagSchema)).toBeUndefined();
     const reader = new BinaryStateReader(bytes);
     StateHelpers.readSoAStores(reader, restored, [FlagSchema]);
@@ -338,12 +339,12 @@ describe('SoA state helpers', () => {
 
   it('keeps the missing-row error when a nonempty section has no store', () => {
     const schema = defineSoASchema({ a: 'u8' }, 'Lone');
-    const source = new GameWorld({});
+    const source = new GameWorld({ tickFrameProvider: manualTickProvider() });
     source.entityManager.getOrCreateSoAStore(schema).add(7, { a: 1 });
     const bytes = finish((writer) => {
       StateHelpers.writeSoAStores(writer, source, [schema]);
     });
-    const restored = new GameWorld({});
+    const restored = new GameWorld({ tickFrameProvider: manualTickProvider() });
     const reader = new BinaryStateReader(bytes);
     expect(() =>
       StateHelpers.readSoAStores(reader, restored, [schema])
@@ -352,14 +353,14 @@ describe('SoA state helpers', () => {
 
   it('throws when the store has an entity the section omitted', () => {
     const schema = defineSoASchema({ a: 'u8' }, 'Extra');
-    const source = new GameWorld({});
+    const source = new GameWorld({ tickFrameProvider: manualTickProvider() });
     const store = source.entityManager.getOrCreateSoAStore(schema);
     store.add(1, { a: 1 });
     const bytes = finish((writer) => {
       StateHelpers.writeSoAStore(writer, store);
     });
 
-    const restored = new GameWorld({});
+    const restored = new GameWorld({ tickFrameProvider: manualTickProvider() });
     const restoredStore = restored.entityManager.getOrCreateSoAStore(schema);
     restoredStore.add(1, { a: 0 });
     restoredStore.add(2, { a: 0 });
@@ -374,7 +375,7 @@ describe('SoA state helpers', () => {
     const bytes = finish((writer) => {
       StateHelpers.writeSoAStores(writer, source, SCHEMAS);
     });
-    const restored = new GameWorld({});
+    const restored = new GameWorld({ tickFrameProvider: manualTickProvider() });
     for (let id = 1; id < ENTITY_COUNT; id += 1) {
       StateHelpers.spawnWithId(restored, id, () => new Body());
     }
@@ -389,7 +390,7 @@ describe('SoA state helpers', () => {
   });
 
   it('requires an explicit unique schema name', () => {
-    const world = new GameWorld({});
+    const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
     const unnamed = defineSoASchema({ a: 'i32' });
     const store = world.entityManager.getOrCreateSoAStore(unnamed);
     store.add(1, { a: 4 });

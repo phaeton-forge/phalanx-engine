@@ -23,8 +23,10 @@ import { FP } from '@phalanx-engine/game/math';
 ```
 
 The root re-exports `@phalanx-engine/runtime` (including `MatchStore`,
-`MemoryMatchStore`, `IndexedDbMatchStore` and `MatchRunner.resumeLocal`)
-and the ecs names games use (`GameWorld`, `GameSystem`, `Entity`, …).
+`MemoryMatchStore`, `IndexedDbMatchStore`, `MatchRunner.resumeLocal`,
+`attachDebug`, `AttachDebugOptions`, `DebugAttachment` and
+`DebugDataProvider`) and the ecs names games use (`GameWorld`,
+`GameSystem`, `Entity`, …).
 
 `StateHelpers`, `spawnWithId`,
 `SaveHandler`, `CommandSchema`, `SaveSpec`, `StateMigration`, `WorldScope`,

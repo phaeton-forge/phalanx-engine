@@ -121,7 +121,8 @@ const combatDefinitions = defineAbilitySystem({
 
 resetEntityIdCounter();
 
-const world = new GameWorld({ tickRate: 20 });
+// The host supplies the tick provider (a client, or TickFrameManager from runtime).
+const world = new GameWorld({ tickFrameProvider });
 
 // 2. Create the ability system and register tick systems on the world.
 const abilities = createAbilitySystem(world, {

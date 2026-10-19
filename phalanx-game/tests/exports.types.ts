@@ -1,5 +1,6 @@
 export type {
   AnyGameDefinition,
+  AttachDebugOptions,
   BinaryStateReader,
   BinaryStateWriter,
   BotDecision,
@@ -25,6 +26,7 @@ export type {
   ComponentRegistration,
   ComponentSchemaHash,
   ConfigOf,
+  DebugAttachment,
   DebugComponentSnapshot,
   DebugDataProvider,
   DebugDataProviderConfig,
@@ -141,6 +143,7 @@ export type {
   VersionDecision,
   WorldModuleHost,
   WorldSingletonHooks,
+  attachDebug,
 } from '@phalanx-engine/game';
 
 export type {
@@ -156,8 +159,6 @@ export type {
 
 export type {
   AABB,
-  AutonomousPhysicsTickProvider,
-  AutonomousProviderOptions,
   BoundsExitEvent,
   BroadphaseCenter,
   CollisionEvent,

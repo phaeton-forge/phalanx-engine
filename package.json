@@ -14,6 +14,7 @@
     "dev:server": "pnpm --filter @phalanx-engine/server dev",
     "dev:client": "pnpm --filter @phalanx-engine/client dev",
     "lint": "eslint . --ext .ts,.tsx",
+    "lint:determinism": "eslint -c eslint.determinism.config.js phalanx-math/src phalanx-ecs/src phalanx-physics/src phalanx-abilities/src",
     "lint:fix": "eslint . --ext .ts,.tsx --fix",
     "format": "prettier --write \"**/*.{ts,tsx,json,md}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,json,md}\"",
@@ -37,7 +38,9 @@
     "node": ">=24.0.0 <25.0.0"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["better-sqlite3"]
+    "onlyBuiltDependencies": [
+      "better-sqlite3"
+    ]
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",

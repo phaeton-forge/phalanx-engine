@@ -17,8 +17,8 @@ import type { AbilityActivationContext } from '../types/index.js';
  * Hook implementation contract:
  *  - Hooks MUST be deterministic. They may spawn entities (projectiles,
  *    rockets), enqueue commands into the physics package, or read attributes
- *    via `AbilitySystemFacade` — but they must not call `Date.now`,
- *    `Math.random`, or any floating-point math whose results are not
+ *    via `AbilitySystemFacade` — but they must not read the wall clock,
+ *    draw unseeded randomness, or use floating-point math whose results are not
  *    reproducible across peers.
  *  - Hooks that need to apply additional effects should go through the
  *    facade's `applyEffect` — those effects land on the NEXT tick because

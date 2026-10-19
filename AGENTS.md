@@ -198,6 +198,12 @@ world.start({ beforeTick, afterTick, beforeFrame, afterFrame });
 client.sendReady();
 ```
 
+- `tickFrameProvider` is required. `GameWorld` subscribes in `start()` and
+  unsubscribes in `stop()`. It does not start or stop the provider. The
+  single-player provider is `TickFrameManager` in
+  `@phalanx-engine/runtime/advanced`. The caller calls `provider.start()`.
+- Debug snapshots are host code. Call `attachDebug(world, options)` from
+  `@phalanx-engine/runtime`. The world does not store a debug provider.
 - `GameWorld` resets entity ids on construction — do not call
   `resetEntityIdCounter()` in game bootstrap (only in isolated tests that build
   entities without a world). Never create entities before `new GameWorld(...)`.

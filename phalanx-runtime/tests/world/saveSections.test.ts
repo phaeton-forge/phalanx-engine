@@ -20,9 +20,13 @@ import {
   encodeSnapshot,
 } from '../../src/index.js';
 import { TinyGame, type TinyConfig } from '../fixtures/tinyGame.js';
+import { manualTickProvider } from '../support/manualTickProvider.js';
 
 function world(): GameWorld {
-  return new GameWorld({ random: new DeterministicRandom(1) });
+  return new GameWorld({
+    tickFrameProvider: manualTickProvider(),
+    random: new DeterministicRandom(1),
+  });
 }
 
 function probe(key: string, seen: string[]): SaveSection {

@@ -38,7 +38,7 @@ A lightweight, renderer-agnostic Entity-Component-System (ECS) library with opti
 
 ### Tick/Frame Management
 
-- **TickFrameManager**: Built-in no-op client for single-player games
+- **ITickFrameProvider**: Required clock. The single-player provider lives in `@phalanx-engine/runtime`
 - Compatible with PhalanxClient for multiplayer
 
 ### SoA (Structure-of-Arrays) Storage
@@ -67,12 +67,10 @@ npm install @phalanx-engine/ecs
 
 ```typescript
 import { GameWorld } from '@phalanx-engine/ecs';
+import { TickFrameManager } from '@phalanx-engine/runtime/advanced';
 
-// Create GameWorld (no rendering dependencies)
-const world = new GameWorld({
-  tickRate: 60, // optional, default 60
-  maxFrameTime: 0.25, // optional, default 0.25
-});
+const provider = new TickFrameManager({ tickRate: 60, maxFrameTime: 0.25 });
+const world = new GameWorld({ tickFrameProvider: provider });
 
 // Create and register your systems
 const movementSystem = new MovementSystem();
@@ -83,9 +81,8 @@ world.registerSystems(
   [renderSystem] // Frame systems (visual)
 );
 
-// Start the game loop
-// Automatically runs: processAllTicks(tick), updateAll(dt)
-// Note: scene.render() is NOT called automatically — call it in afterFrame hook if needed
+// The caller starts the provider. GameWorld only subscribes.
+provider.start();
 world.start();
 ```
 
@@ -138,7 +135,8 @@ await client.connect();
 For advanced use-cases you can still use `SystemRegistry` and `ITickFrameProvider` directly:
 
 ```typescript
-import { SystemRegistry, TickFrameManager } from '@phalanx-engine/ecs';
+import { SystemRegistry } from '@phalanx-engine/ecs';
+import { TickFrameManager } from '@phalanx-engine/runtime/advanced';
 
 const registry = new SystemRegistry(componentTypes);
 registry.registerSystems(tickSystems, frameSystems);
@@ -189,13 +187,9 @@ class GameWorld {
 
 interface GameWorldConfig {
   componentTypes?: symbol[];
-  tickRate?: number; // default 60
-  maxFrameTime?: number; // default 0.25
-  tickFrameProvider?: ITickFrameProvider; // e.g. PhalanxClient
+  tickFrameProvider: ITickFrameProvider; // required; GameWorld does not start it
   pooling?: PoolingConfig; // Object pooling configuration
-  debug?: boolean; // Enable debug features (default: false)
-  debugConfig?: DebugDataProviderConfig;
-  debugPanelConfig?: DebugPanelConfig;
+  random?: IRandom;
 }
 
 interface GameWorldHooks {
@@ -336,31 +330,13 @@ class EventBus {
 }
 ```
 
-### TickFrameManager
+### Tick provider
 
-```typescript
-class TickFrameManager implements ITickFrameProvider {
-  constructor(config?: { tickRate?: number; maxFrameTime?: number });
-  onTick(
-    callback: (tick: number, commands: CommandsBatch) => void
-  ): Unsubscribe;
-  onFrame(callback: (alpha: number, deltaTime: number) => void): Unsubscribe;
-  onPause(handler: PauseHandler): Unsubscribe;
-  onResume(handler: PauseHandler): Unsubscribe;
-  start(): void;
-  stop(): void;
-  requestPause(): void;
-  requestResume(): void;
-  dispose(): void;
-  getCurrentTick(): number;
-  getTickRate(): number;
-  isActive(): boolean;
-}
-```
+`TickFrameManager` and the debug overlay (`attachDebug`, `DebugDataProvider`, `DebugPanel`) live in `@phalanx-engine/runtime`. `GameWorld` does not construct them. `start()` / `stop()` subscribe and unsubscribe; they do not start or stop the provider.
 
 ### ITickFrameProvider
 
-The shared interface that both `TickFrameManager` and `PhalanxClient` satisfy.
+The shared interface that both the runtime single-player provider and `PhalanxClient` satisfy.
 Game code should depend on this interface to allow easy switching between
 single-player and multiplayer modes.
 

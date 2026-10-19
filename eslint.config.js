@@ -33,6 +33,22 @@ export default tseslint.config(
     },
   },
   {
+    files: ['phalanx-runtime/src/**/*.ts'],
+    ignores: [
+      'phalanx-runtime/src/host/debug/DebugPanel.ts',
+      'phalanx-runtime/src/host/wallClock.ts',
+    ],
+    rules: {
+      'no-restricted-globals': [
+        'error',
+        'document',
+        'window',
+        'requestAnimationFrame',
+        'cancelAnimationFrame',
+      ],
+    },
+  },
+  {
     ignores: [
       '**/dist/**',
       '**/node_modules/**',

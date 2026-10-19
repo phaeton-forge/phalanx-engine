@@ -29,6 +29,7 @@ import {
 } from '../../../phalanx-abilities/dist/save/abilities.js';
 import { digestBytes } from '../../src/index.js';
 import { StateHelpers } from '../../src/advanced/index.js';
+import { manualTickProvider } from '../support/manualTickProvider.js';
 
 const bonusDamage: MagnitudeCalculation = (ctx) => {
   const raw = ctx.setByCaller?.get('bonus');
@@ -387,6 +388,7 @@ class PooledMinion
 function silentPoolWorld(): { world: GameWorld; abilities: AbilitySystem } {
   const holder: { abilities?: AbilitySystem } = {};
   const world = new GameWorld({
+    tickFrameProvider: manualTickProvider(),
     pooling: {
       entityTypes: {
         silent: {
@@ -412,6 +414,7 @@ function silentPoolWorld(): { world: GameWorld; abilities: AbilitySystem } {
 
 function barePoolWorld(): { world: GameWorld; abilities: AbilitySystem } {
   const world = new GameWorld({
+    tickFrameProvider: manualTickProvider(),
     pooling: {
       entityTypes: {
         bare: {
@@ -431,6 +434,7 @@ function barePoolWorld(): { world: GameWorld; abilities: AbilitySystem } {
 function pooledGasWorld(): { world: GameWorld; abilities: AbilitySystem } {
   const holder: { abilities?: AbilitySystem } = {};
   const world = new GameWorld({
+    tickFrameProvider: manualTickProvider(),
     pooling: {
       entityTypes: {
         minion: {

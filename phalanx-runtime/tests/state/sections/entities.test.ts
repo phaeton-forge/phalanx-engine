@@ -10,6 +10,7 @@ import {
 } from '@phalanx-engine/ecs';
 import { StateHelpers } from '../../../src/advanced/StateHelpers.js';
 import { BinaryStateReader, BinaryStateWriter } from '@phalanx-engine/ecs';
+import { manualTickProvider } from '../../support/manualTickProvider.js';
 
 class Unit extends Entity implements IPoolableEntity<{ hp: number }> {
   public hp = 0;
@@ -46,6 +47,7 @@ class SpawnSystem extends GameSystem {
 
 function poolingWorld(): GameWorld {
   return new GameWorld({
+    tickFrameProvider: manualTickProvider(),
     pooling: {
       entityTypes: {
         unit: { factory: () => new Unit() },
@@ -79,7 +81,7 @@ describe('entity and pool state helpers', () => {
   });
 
   it('saves and restores the entity id counter only', () => {
-    const source = new GameWorld({});
+    const source = new GameWorld({ tickFrameProvider: manualTickProvider() });
     const first = new Entity();
     const second = new Entity();
     source.entityManager.addEntity(first);
@@ -90,7 +92,7 @@ describe('entity and pool state helpers', () => {
       StateHelpers.writeEntityIds(writer, source);
     });
 
-    const restored = new GameWorld({});
+    const restored = new GameWorld({ tickFrameProvider: manualTickProvider() });
     const reader = new BinaryStateReader(bytes);
     StateHelpers.readEntityIds(reader, restored);
     reader.done();
@@ -101,7 +103,7 @@ describe('entity and pool state helpers', () => {
   });
 
   it('spawnWithId constructs one entity with that id', () => {
-    const world = new GameWorld({});
+    const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
     const high = StateHelpers.spawnWithId(world, 5, () => new Entity());
     expect(high.id).toBe(5);
     expect(world.entityManager.getEntity(5)).toBe(high);

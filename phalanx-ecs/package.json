@@ -41,7 +41,6 @@
     "README.md"
   ],
   "devDependencies": {
-    "happy-dom": "^20.8.4",
     "typescript": "~5.9.3"
   }
 }

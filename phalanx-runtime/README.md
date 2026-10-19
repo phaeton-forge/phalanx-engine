@@ -6,7 +6,8 @@
 > `@phalanx-engine/runtime/advanced`. `MatchRunner.join` is still Task 12.
 > The package is `private` until the synchronized 0.3.0 release.
 
-Isomorphic match runtime for Phalanx games (no DOM, no sockets). A game
+Isomorphic match runtime for Phalanx games (no sockets). The debug panel
+is the only DOM surface. A game
 describes itself as one `GameDefinition`; `MatchRunner` drives it from a
 transport, records the command log, computes state digests and restores
 snapshots. Games pass a `LocalTransport`. The port types (`Transport`,
@@ -15,6 +16,29 @@ snapshots. Games pass a `LocalTransport`. The port types (`Transport`,
 simulation is `@phalanx-engine/runtime/server` (`createServerSim`,
 `ServerSimConfig`, `GameModuleSpec`). The game-facing imports are
 re-exported from `@phalanx-engine/game` and `@phalanx-engine/game/server`.
+
+## Host
+
+`TickFrameManager` (`runtime/src/host/TickFrameManager.ts`) is the
+single-player `ITickFrameProvider`. It reads the frame clock through
+`wallClock()` (`setInterval`, `clearInterval`, `performance.now`, and
+optional `requestAnimationFrame` / `cancelAnimationFrame`). `start()` on a
+host without `requestAnimationFrame` throws
+`TickFrameManager: this host has no requestAnimationFrame`. Pass it to
+`new GameWorld({ tickFrameProvider })` and call `provider.start()` yourself.
+`GameWorld.start()` only subscribes.
+
+`attachDebug(world, options)` builds a `DebugDataProvider` over
+`world.entityManager` and `world.pools`, mirrors `world.paused`, and
+listens for `gameWorld:paused` / `gameWorld:resumed`. A panel is created
+only when `options.panel` is set. Without a DOM that throws
+`attachDebug: panel requires a DOM`. `detach()` unsubscribes, destroys the
+panel, and disposes the provider. The world does not store the attachment.
+`TickFrameManager` and `DebugPanel` are exported from `./advanced`.
+`attachDebug` and `DebugDataProvider` are exported from the package root.
+The package `lib` includes `DOM` for the panel. Other runtime sources must
+not touch `document`, `window`, `requestAnimationFrame`, or
+`cancelAnimationFrame`.
 
 ## Two modes
 

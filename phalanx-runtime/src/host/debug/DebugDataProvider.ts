@@ -1,6 +1,10 @@
-import type { EntityManager } from '../EntityManager.js';
-import type { PoolManager } from '../pool/PoolManager.js';
-import { calculateSchemaByteSize, type SoASchema } from '../SoASchema.js';
+import {
+  calculateSchemaByteSize,
+  type EntityManager,
+  type PoolManager,
+  type SoASchema,
+} from '@phalanx-engine/ecs';
+import { wallClock } from '../wallClock.js';
 import type {
   DebugSnapshot,
   DebugEntitySnapshot,
@@ -53,7 +57,7 @@ export class DebugDataProvider {
   private readonly updateInterval: number;
 
   private subscribers: Set<SnapshotCallback> = new Set();
-  private intervalId: ReturnType<typeof setInterval> | null = null;
+  private intervalId: unknown = null;
   private _paused: boolean = false;
 
   /** Externally settable — GameWorld updates this so the snapshot reflects pause state */
@@ -103,7 +107,8 @@ export class DebugDataProvider {
     if (this.intervalId !== null) return; // already running
     if (this.updateInterval <= 0) return; // pull-only mode
 
-    this.intervalId = setInterval(() => {
+    const clock = wallClock();
+    this.intervalId = clock.setInterval(() => {
       this.push();
     }, this.updateInterval);
   }
@@ -113,7 +118,7 @@ export class DebugDataProvider {
    */
   public stop(): void {
     if (this.intervalId !== null) {
-      clearInterval(this.intervalId);
+      wallClock().clearInterval(this.intervalId);
       this.intervalId = null;
     }
   }
@@ -139,7 +144,7 @@ export class DebugDataProvider {
   private collectSnapshot(): DebugSnapshot {
     const soaStores = this.collectSoAStores();
     return {
-      timestamp: Date.now(),
+      timestamp: wallClock().performance.now(),
       world: {
         entityCount: this.entityManager.count,
         soaStoreCount: soaStores.length,
@@ -159,17 +164,10 @@ export class DebugDataProvider {
       const components: DebugComponentSnapshot[] = [];
 
       for (const [typeSymbol, component] of entity.getComponents()) {
-        const data: Record<string, unknown> = {};
-        // Shallow-copy own enumerable properties, skip the `type` symbol key
-        for (const key of Object.keys(component)) {
-          if (key === 'type') continue;
-          data[key] = (component as unknown as Record<string, unknown>)[key];
-        }
-
         components.push({
           typeName: typeSymbol.description ?? 'unknown',
           typeSymbol,
-          data,
+          data: copyOwnData(component),
         });
       }
 
@@ -188,9 +186,8 @@ export class DebugDataProvider {
     const result: DebugSoAStoreSnapshot[] = [];
 
     for (const raw of stores.values()) {
-      // The registry erases each store's schema generic. The view restores a
-      // concrete schema so debug snapshots do not touch `any`.
-      const store = raw as unknown as DebugSoAStore;
+      if (!isDebugSoAStore(raw)) continue;
+      const store = raw;
       const schema = store.schema;
 
       const entities: DebugSoAStoreSnapshot['entities'] = [];
@@ -230,4 +227,64 @@ export class DebugDataProvider {
 
     return result;
   }
+}
+
+function copyOwnData(component: object): Record<string, unknown> {
+  const data: Record<string, unknown> = {};
+  for (const key of Object.keys(component)) {
+    if (key === 'type') continue;
+    const descriptor = Object.getOwnPropertyDescriptor(component, key);
+    if (descriptor === undefined) continue;
+    data[key] = descriptorValue(descriptor);
+  }
+  return data;
+}
+
+function descriptorValue(descriptor: PropertyDescriptor): unknown {
+  const boxed: { readonly value?: unknown } = descriptor;
+  return boxed.value;
+}
+
+function isDebugSoAStore(value: object): value is DebugSoAStore {
+  if (
+    !('schema' in value) ||
+    !('count' in value) ||
+    !('capacity' in value) ||
+    !('entityIds' in value) ||
+    !('get' in value)
+  ) {
+    return false;
+  }
+  const schema: unknown = value.schema;
+  const count: unknown = value.count;
+  const capacity: unknown = value.capacity;
+  const entityIds: unknown = value.entityIds;
+  const get: unknown = value.get;
+  return (
+    isSoASchema(schema) &&
+    typeof count === 'number' &&
+    typeof capacity === 'number' &&
+    typeof entityIds === 'function' &&
+    typeof get === 'function'
+  );
+}
+
+function isSoASchema(value: unknown): value is SoASchema {
+  if (typeof value !== 'object' || value === null) return false;
+  if (
+    !('type' in value) ||
+    !('fieldNames' in value) ||
+    !('fieldTypes' in value)
+  ) {
+    return false;
+  }
+  const type: unknown = value.type;
+  const fieldNames: unknown = value.fieldNames;
+  const fieldTypes: unknown = value.fieldTypes;
+  return (
+    typeof type === 'symbol' &&
+    Array.isArray(fieldNames) &&
+    typeof fieldTypes === 'object' &&
+    fieldTypes !== null
+  );
 }

@@ -14,6 +14,7 @@ import {
   defineAttribute,
 } from '../src';
 import type { CueEvent } from '../src';
+import { manualTickProvider } from './support/manualTickProvider.js';
 
 describe('InstanceIdCounter.set', () => {
   it('accepts any integer >= 0, including a lower mark', () => {
@@ -58,7 +59,7 @@ describe('ability runtime state', () => {
     abilities: ReturnType<typeof createAbilitySystem>;
     caster: Entity;
   } {
-    const world = new GameWorld({});
+    const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
     worlds.push(world);
     const abilities = createAbilitySystem(world, {
       definitions: defineAbilitySystem({
