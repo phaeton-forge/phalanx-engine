@@ -1,10 +1,10 @@
 {
-  "extends": "./tsconfig.json",
+  "extends": "../../tsconfig.json",
   "compilerOptions": {
     "noEmit": true,
-    "rootDir": ".",
+    "rootDir": "../..",
     "types": ["node"]
   },
-  "include": ["tests/simHook.types.test.ts"],
+  "include": ["simHook.types.test.ts"],
   "exclude": ["node_modules", "dist"]
 }

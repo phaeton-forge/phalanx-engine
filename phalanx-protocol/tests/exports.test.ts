@@ -65,6 +65,7 @@ const ROOT_NAMES = [
   'ServerSimInfo',
   'ServerSimMatch',
   'ServerSimMatchSpec',
+  'ServerSimPlayerEvents',
   'ServerSimRoom',
   'SessionSupersededEvent',
   'SessionTokenEvent',
@@ -176,7 +177,7 @@ describe('@phalanx-engine/protocol exports', () => {
     }
     expect(
       resolved.map((entry) => actual.get(entry.file)?.names.length)
-    ).toEqual([61]);
+    ).toEqual([62]);
     expect(
       resolved.map((entry) => actual.get(entry.file)?.values.length)
     ).toEqual([5]);

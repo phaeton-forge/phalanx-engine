@@ -229,15 +229,6 @@ importers:
 
   phalanx-protocol:
     devDependencies:
-      '@phalanx-engine/runtime':
-        specifier: workspace:*
-        version: link:../phalanx-runtime
-      '@phalanx-engine/server':
-        specifier: workspace:*
-        version: link:../phalanx-server
-      '@types/node':
-        specifier: ^20.0.0
-        version: 20.19.43
       typescript:
         specifier: ~5.9.3
         version: 5.9.3

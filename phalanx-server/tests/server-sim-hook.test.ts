@@ -1,11 +1,14 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { io, type Socket } from 'socket.io-client';
-import type {
-  PlayerCommand,
-  ServerSimHook,
-  ServerSimMatch,
-  ServerSimMatchSpec,
-  ServerSimRoom,
+import {
+  DEFAULT_INPUT_DELAY_TICKS,
+  type GameStartEvent,
+  type PlayerCommand,
+  type ServerSimHook,
+  type ServerSimInfo,
+  type ServerSimMatch,
+  type ServerSimMatchSpec,
+  type ServerSimRoom,
 } from '@phalanx-engine/protocol';
 import { Phalanx } from '../src/Phalanx.js';
 
@@ -218,4 +221,90 @@ describe('server sim hook', () => {
     });
     expect((await error).message).toBe('Server match capacity reached');
   });
+
+  it('rejects a sim tick rate that does not match and closes the hook', async () => {
+    const probe = tickingHook({ tickRate: 30 });
+    await expect(start({ sim: probe.hook })).rejects.toThrow(
+      "game 'fake' tickRate 30 does not match server tickRate 20"
+    );
+    expect(probe.closes).toBe(1);
+  });
+
+  it('rejects a non-continuous tick mode and closes the hook', async () => {
+    const probe = tickingHook({ tickRate: 20 });
+    await expect(start({ sim: probe.hook, tickMode: 'event' })).rejects.toThrow(
+      "game 'fake' requires continuous tickMode, got 'event'"
+    );
+    expect(probe.closes).toBe(1);
+  });
+
+  it('opens a match with the relay spec unchanged', async () => {
+    const specs: ServerSimMatchSpec[] = [];
+    const sim = fakeSim();
+    const hook: ServerSimHook = {
+      ...sim.hook,
+      openMatch(spec, room) {
+        specs.push(spec);
+        return sim.hook.openMatch(spec, room);
+      },
+    };
+    const server = await start({ sim: hook, maxTickAhead: 9 });
+    const socket = await connect(server.getPort());
+    const started = onceEvent<GameStartEvent>(socket, 'game-start');
+    socket.emit('room-create', {
+      playerId: 'host',
+      username: 'host',
+      matchConfig: { ...humanBot('host'), inputDelayTicks: 3 },
+    });
+    const gameStart = await started;
+    expect(specs).toHaveLength(1);
+    const spec = specs[0];
+    expect(spec).toBeDefined();
+    if (spec === undefined) return;
+    expect(spec.matchId).toBe(gameStart.matchId);
+    expect(spec.gameId).toBe('fake');
+    expect(spec.seed).toBe(gameStart.randomSeed);
+    expect(spec.inputDelayTicks).toBe(3);
+    expect(spec.inputDelayTicks).not.toBe(DEFAULT_INPUT_DELAY_TICKS);
+    expect(spec.maxTickAhead).toBe(9);
+    expect(spec.extras).toEqual({});
+    expect(spec.slots).toEqual([
+      { slot: 0, team: 0, kind: 'human', playerId: 'host' },
+      {
+        slot: 1,
+        team: 1,
+        kind: 'bot',
+        policy: 'walker',
+        level: 0,
+        runsOn: 'server',
+      },
+    ]);
+  });
 });
+
+function tickingHook(game: { tickRate: number }): {
+  hook: ServerSimHook;
+  closes: number;
+} {
+  const state = { closes: 0 };
+  const info: ServerSimInfo = {
+    games: [{ id: 'fake', tickRate: game.tickRate, configKeys: [] }],
+  };
+  const hook: ServerSimHook = {
+    start: () => Promise.resolve(info),
+    isAvailable: () => true,
+    openMatch(): ServerSimMatch {
+      throw new Error('tick check should reject before openMatch');
+    },
+    close: () => {
+      state.closes += 1;
+      return Promise.resolve();
+    },
+  };
+  return {
+    hook,
+    get closes() {
+      return state.closes;
+    },
+  };
+}

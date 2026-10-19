@@ -43,6 +43,7 @@ export default tseslint.config(
       '**/*.d.ts',
       '**/vite.config.ts',
       '**/vitest.config.ts',
+      '**/vitest.workspace.ts',
       '**/tests/**',
       'eslint.config.js',
     ],

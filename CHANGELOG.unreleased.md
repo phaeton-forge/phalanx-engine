@@ -45,8 +45,9 @@ Entries collected per package until the synchronized 0.3.0 release
   `CommandEnvelope`, `Transport`, `TransportKind`, `TransportJoin` and
   `TransportCatchUp` moved from the root to `./advanced`. The root keeps
   `LocalTransport`, `LocalTransportOptions` and `PersistenceFlushReason`.
-  `MatchRunner` and `LocalTransport` no longer name those types in their
-  public signatures. `DEFAULT_INPUT_DELAY_TICKS` is defined in the
+  `MatchRunner` and `LocalTransport` public signatures reference those
+  `./advanced` types (`Transport`, `TransportKind`, `TransportCommand`,
+  `CommandEnvelope`). `DEFAULT_INPUT_DELAY_TICKS` is defined in the
   protocol package and re-exported.
 - `SYSTEM_PLAYER_ID`, `BOT_PLAYER_ID_PREFIX`, `botPlayerId`, and
   `isBotPlayerId` are defined in `@phalanx-engine/protocol` and
@@ -344,8 +345,9 @@ Entries collected per package until the synchronized 0.3.0 release
 
 - `ServerSimHook` and the types the relay and the sim share:
   `ServerSimInfo`, `ServerSimGame`, `ServerSimMatchSpec`, `ServerSimRoom`,
-  `ServerSimMatch`, `ServerSimEvents`, `ServerDesyncEvent`,
-  `MatchSnapshot`, `MatchSnapshotRequest`, `EndMatchResult`.
+  `ServerSimMatch`, `ServerSimEvents`, `ServerSimPlayerEvents`,
+  `ServerDesyncEvent`, `MatchSnapshot`, `MatchSnapshotRequest`,
+  `EndMatchResult`.
   `DEFAULT_INPUT_DELAY_TICKS` is `2`. No engine types and no `node:*`.
 - New private package `@phalanx-engine/protocol` (`0.3.0`,
   `phalanx.layer: contracts`, no dependencies). It is the wire contract:
@@ -402,6 +404,13 @@ Entries collected per package until the synchronized 0.3.0 release
   package). This package no longer depends on `@phalanx-engine/runtime`
   or `@phalanx-engine/ecs`. `EndMatchResult` is imported from the protocol
   package and re-exported. `ServerSimHook` is re-exported.
+  Validation errors that used to say `Invalid simHost.*` now say
+  `Invalid sim.*` (`Invalid sim`, `Invalid sim.mode`, `Invalid sim.workers`,
+  `Invalid sim.snapshotEveryTicks`, `Invalid sim.maxMatches`,
+  `Invalid sim.resourceLimits`). `Invalid games: must be an array.` is
+  unchanged. `createServerSim({ games: [] })` throws
+  `Invalid games: must be a non-empty array.` On main an empty `games`
+  list left the process a relay.
   ```ts
   new Phalanx({
     sim: createServerSim({ games: [{ module: './myGame.js' }] }),

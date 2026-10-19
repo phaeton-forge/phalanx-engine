@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import type { SlotConfig } from '@phalanx-engine/protocol';
 import { createServerSim } from '../../src/server/createServerSim.js';
+import { SnapshotStore } from '../../src/server/SnapshotStore.js';
+import { RelayGame } from './fixtures/relayGame.js';
 
 const game = {
   module: './game.js',
@@ -75,5 +78,100 @@ describe('createServerSim validation', () => {
     ).toThrow(
       'Invalid sim.resourceLimits.maxOldGenerationSizeMb: must be a finite number > 0.'
     );
+  });
+});
+
+const SLOTS: SlotConfig[] = [
+  { slot: 0, team: 0, kind: 'human', playerId: 'p1' },
+  {
+    slot: 1,
+    team: 1,
+    kind: 'bot',
+    policy: 'walker',
+    level: 0,
+    runsOn: 'server',
+  },
+];
+
+describe('createServerSim close', () => {
+  it('ends the match and drops its snapshot before the host closes', async () => {
+    const deleted: string[] = [];
+    const original = SnapshotStore.prototype.delete;
+    SnapshotStore.prototype.delete = function (
+      this: SnapshotStore,
+      matchId: string
+    ): void {
+      deleted.push(matchId);
+      original.call(this, matchId);
+    };
+    const delivered: number[] = [];
+    let availableAtClose: boolean | null = null;
+    try {
+      const hook = createServerSim({
+        games: [RelayGame],
+        mode: 'inProcess',
+        snapshotEveryTicks: 1,
+      });
+      await hook.start();
+      const match = hook.openMatch(
+        {
+          matchId: 'm-close',
+          gameId: RelayGame.id,
+          seed: 1,
+          slots: SLOTS,
+          inputDelayTicks: 2,
+          maxTickAhead: 5,
+          extras: {},
+        },
+        {
+          enqueue() {},
+          currentTick: () => 0,
+          endMatch: () => true,
+          haltRelay() {},
+          releaseHold() {},
+          emitToPlayer(_playerId, _event, payload) {
+            if (
+              typeof payload === 'object' &&
+              payload !== null &&
+              'requestId' in payload &&
+              typeof payload.requestId === 'number'
+            ) {
+              delivered.push(payload.requestId);
+            }
+          },
+          emitServerEvent() {},
+          onClosed() {
+            availableAtClose = hook.isAvailable();
+          },
+        }
+      );
+      match.publishBatch(0, []);
+      match.publishBatch(1, []);
+      const deadline = Date.now() + 2000;
+      while (match.latestSnapshotTick() === undefined) {
+        if (Date.now() > deadline) break;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(match.latestSnapshotTick()).toBeDefined();
+      match.requestSnapshot('p1', 1);
+      const answer = Date.now() + 2000;
+      while (delivered.length === 0) {
+        if (Date.now() > answer) break;
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(delivered).toEqual([1]);
+      const before = delivered.length;
+      await hook.close();
+      expect(availableAtClose).toBe(true);
+      expect(
+        deleted.filter((id) => id === 'm-close').length
+      ).toBeGreaterThanOrEqual(2);
+      match.requestSnapshot('p1', 99);
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      expect(delivered.length).toBe(before);
+      expect(match.latestSnapshotTick()).toBeUndefined();
+    } finally {
+      SnapshotStore.prototype.delete = original;
+    }
   });
 });

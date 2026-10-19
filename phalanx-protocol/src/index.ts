@@ -89,6 +89,7 @@ export type {
   ServerDesyncEvent,
   ServerSimEvents,
   ServerSimGame,
+  ServerSimPlayerEvents,
   ServerSimHook,
   ServerSimInfo,
   ServerSimMatch,

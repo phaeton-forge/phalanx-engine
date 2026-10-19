@@ -17,7 +17,8 @@ Slot types (`HumanSlotConfig`, `BotSlotConfig`, `SlotConfig`,
 `ServerSimHook` is the only type the relay uses to run a simulation.
 `createServerSim` (runtime `./server`) returns one. The hook's types
 (`ServerSimInfo`, `ServerSimGame`, `ServerSimMatchSpec`, `ServerSimRoom`,
-`ServerSimMatch`, `ServerSimEvents`, `ServerDesyncEvent`, `MatchSnapshot`,
+`ServerSimMatch`, `ServerSimEvents`, `ServerSimPlayerEvents`,
+`ServerDesyncEvent`, `MatchSnapshot`,
 `MatchSnapshotRequest`, `EndMatchResult`) and
 `DEFAULT_INPUT_DELAY_TICKS` (`2`) live here. They carry no engine types.
 

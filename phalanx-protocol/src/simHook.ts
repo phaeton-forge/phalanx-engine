@@ -2,9 +2,10 @@ import type { PlayerCommand } from './messages/commands.js';
 import type { SlotConfig } from './matchConfig.js';
 
 /**
- * Why a server-simulated match ended. The sim and the relay share this
- * shape. `loserIds` is an input only: the room derives `winnerTeamId`
- * from it when the caller did not pass one.
+ * Result passed to `ctx.endMatch` on the `player-command` hook.
+ * The sim and the relay share this shape. `winnerTeamId`, when present
+ * on the wire, is the team that won. `loserIds` is an input only: the
+ * room derives `winnerTeamId` from it when the caller did not pass one.
  */
 export interface EndMatchResult {
   reason: string;
@@ -74,7 +75,7 @@ export interface ServerSimEvents {
   ) => void;
 }
 
-interface ServerSimPlayerEvents {
+export interface ServerSimPlayerEvents {
   desync: ServerDesyncEvent;
   'match-snapshot': MatchSnapshot;
 }

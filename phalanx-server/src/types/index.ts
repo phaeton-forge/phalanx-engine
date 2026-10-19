@@ -8,6 +8,7 @@ import type {
   EndMatchResult,
   MatchState,
   PlayerCommand,
+  ServerSimEvents,
   ServerSimHook,
 } from '@phalanx-engine/protocol';
 
@@ -539,7 +540,7 @@ export type PhalanxEventType =
 /**
  * Event handler types
  */
-export interface PhalanxEventHandlers {
+export interface PhalanxEventHandlers extends ServerSimEvents {
   'match-created': (match: MatchInfo) => void;
   'match-started': (match: MatchInfo) => void;
   'match-ended': (matchId: string, reason: string) => void;
@@ -553,22 +554,9 @@ export interface PhalanxEventHandlers {
   'player-timeout': (playerId: string, matchId: string) => void;
   'player-reconnected': (playerId: string, matchId: string) => void;
   'player-disconnected': (playerId: string, matchId: string) => void;
-  'desync-detected': (
-    matchId: string,
-    tick: number,
-    hashes: { [playerId: string]: string }
-  ) => void;
-  'sim-digest': (matchId: string, tick: number, digest: string) => void;
-  'sim-lag': (
-    matchId: string,
-    relayTick: number,
-    simTick: number,
-    gap: number
-  ) => void;
   'bot-commands-late': (
     matchId: string,
     tick: number,
     playerId: string
   ) => void;
-  'sim-fault': (matchId: string, reason: string, message: string) => void;
 }
