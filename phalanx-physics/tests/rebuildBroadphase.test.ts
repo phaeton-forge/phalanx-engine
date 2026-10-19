@@ -306,15 +306,10 @@ describe('broadphase snapshot hooks', () => {
 
     const restored = new SpatialHashGrid(cellSize);
     restored.restoreBroadphase([...centers].reverse());
-    expect([...restored.queryRadius(probeX, FP._0, reach)]).toEqual(
-      liveRadius
-    );
+    expect([...restored.queryRadius(probeX, FP._0, reach)]).toEqual(liveRadius);
     expect(copyPairs(restored.queryPairs())).toEqual(livePairs);
     expect(() =>
-      restored.restoreBroadphase([
-        centers[0] ?? wide,
-        centers[0] ?? wide,
-      ])
+      restored.restoreBroadphase([centers[0] ?? wide, centers[0] ?? wide])
     ).toThrow(/duplicate/);
   });
 

@@ -13,7 +13,9 @@ import { TransformSoASchema } from '../src/components/TransformComponent';
 import type { PhysicsConfig } from '../src/types';
 import { addTransformRow } from './testTransformHelpers';
 
-function createPhysicsConfig(overrides?: Partial<PhysicsConfig>): PhysicsConfig {
+function createPhysicsConfig(
+  overrides?: Partial<PhysicsConfig>
+): PhysicsConfig {
   return {
     tickDt: FP.FromFloat(0.05),
     subSteps: 1,
@@ -47,7 +49,8 @@ describe('applyImpulse', () => {
     system.init(context);
 
     const physicsStore = entityManager.getOrCreateSoAStore(PhysicsSoASchema);
-    const transformStore = entityManager.getOrCreateSoAStore(TransformSoASchema);
+    const transformStore =
+      entityManager.getOrCreateSoAStore(TransformSoASchema);
 
     return { system, physicsStore, transformStore };
   }
@@ -57,7 +60,7 @@ describe('applyImpulse', () => {
     transformStore: SoAComponentStore<typeof TransformSoASchema.definition>,
     entityId: number,
     posX: number,
-    posZ: number,
+    posZ: number
   ): void {
     physicsStore.add(entityId, {
       velocityX: FP.ToRaw(FP._0),
@@ -84,8 +87,12 @@ describe('applyImpulse', () => {
     system.applyImpulse(1, FP.FromFloat(5), FP.FromFloat(3));
 
     const idx = physicsStore.indexOf(1);
-    expect(FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityX[idx]))).toBeCloseTo(5, 2);
-    expect(FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityZ[idx]))).toBeCloseTo(3, 2);
+    expect(
+      FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityX[idx]))
+    ).toBeCloseTo(5, 2);
+    expect(
+      FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityZ[idx]))
+    ).toBeCloseTo(3, 2);
   });
 
   it('replaces existing velocity (does not accumulate)', () => {
@@ -98,8 +105,12 @@ describe('applyImpulse', () => {
     system.applyImpulse(1, FP.FromFloat(3), FP.FromFloat(7));
 
     const idx = physicsStore.indexOf(1);
-    expect(FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityX[idx]))).toBeCloseTo(3, 2);
-    expect(FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityZ[idx]))).toBeCloseTo(7, 2);
+    expect(
+      FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityX[idx]))
+    ).toBeCloseTo(3, 2);
+    expect(
+      FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityZ[idx]))
+    ).toBeCloseTo(7, 2);
   });
 
   it('re-enables ignorePhysics flag when applying impulse', () => {
@@ -141,6 +152,8 @@ describe('applyImpulse', () => {
 
     // Existing entity is unaffected
     const idx = physicsStore.indexOf(1);
-    expect(FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityX[idx]))).toBeCloseTo(0, 2);
+    expect(
+      FP.ToFloat(FP.FromRaw(physicsStore.arrays.velocityX[idx]))
+    ).toBeCloseTo(0, 2);
   });
 });
