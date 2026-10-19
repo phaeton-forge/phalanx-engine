@@ -9,7 +9,6 @@ export type {
   BotPolicyFactory,
   BotSlotConfig,
   BotSlotInfo,
-  CommandEnvelope,
   CommandFieldSpec,
   CommandFieldType,
   CommandFromSpec,
@@ -137,14 +136,9 @@ export type {
   SystemContext,
   SystemRegistry,
   TickHandler,
-  Transport,
-  TransportCatchUp,
-  TransportJoin,
-  TransportKind,
   TypedArrayLike,
   Unsubscribe,
   VersionDecision,
-  WireCommand,
   WorldModuleHost,
   WorldSingletonHooks,
 } from '@phalanx-engine/game';
@@ -258,6 +252,7 @@ export type {
 } from '@phalanx-engine/game/abilities';
 
 export type {
+  CommandEnvelope,
   CommandSchema,
   DebugPanel,
   DebugPanelConfig,
@@ -268,8 +263,18 @@ export type {
   StateMigration,
   TickFrameManager,
   TickFrameManagerConfig,
+  Transport,
+  TransportCatchUp,
+  TransportCommand,
+  TransportJoin,
+  TransportKind,
   WorldScope,
 } from '@phalanx-engine/game/advanced';
+
+export type {
+  GameModuleSpec,
+  ServerSimConfig,
+} from '@phalanx-engine/game/server';
 
 // @ts-expect-error FixedPoint is only exported from @phalanx-engine/game/math
 import type { FixedPoint as FixedPointFromRoot } from '@phalanx-engine/game';

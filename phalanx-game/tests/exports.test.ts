@@ -27,7 +27,6 @@ const ROOT_NAMES: readonly string[] = [
   'BotPolicyFactory',
   'BotSlotConfig',
   'BotSlotInfo',
-  'CommandEnvelope',
   'CommandFieldSpec',
   'CommandFieldType',
   'CommandFromSpec',
@@ -165,14 +164,9 @@ const ROOT_NAMES: readonly string[] = [
   'SystemContext',
   'SystemRegistry',
   'TickHandler',
-  'Transport',
-  'TransportCatchUp',
-  'TransportJoin',
-  'TransportKind',
   'TypedArrayLike',
   'Unsubscribe',
   'VersionDecision',
-  'WireCommand',
   'WorldModuleHost',
   'WorldSingletonHooks',
   'bindWorldSingletons',
@@ -341,6 +335,7 @@ const ABILITIES_NAMES: readonly string[] = [
 ];
 
 const ADVANCED_NAMES: readonly string[] = [
+  'CommandEnvelope',
   'CommandSchema',
   'DebugPanel',
   'DebugPanelConfig',
@@ -353,6 +348,11 @@ const ADVANCED_NAMES: readonly string[] = [
   'TYPED_ARRAY_CONSTRUCTORS',
   'TickFrameManager',
   'TickFrameManagerConfig',
+  'Transport',
+  'TransportCatchUp',
+  'TransportCommand',
+  'TransportJoin',
+  'TransportKind',
   'WorldScope',
   'nextEntityId',
   'rebuildBroadphaseFromTransforms',
@@ -386,6 +386,11 @@ const ENTRIES = [
     specifier: '@phalanx-engine/game/advanced',
     declaration: 'dist/advanced.d.ts',
     names: ADVANCED_NAMES,
+  },
+  {
+    specifier: '@phalanx-engine/game/server',
+    declaration: 'dist/server.d.ts',
+    names: ['GameModuleSpec', 'ServerSimConfig', 'createServerSim'],
   },
 ] as const;
 
@@ -491,10 +496,10 @@ describe('@phalanx-engine/game subpath exports', () => {
     }
     expect(
       resolved.map((entry) => actual.get(entry.file)?.names.length)
-    ).toEqual([186, 9, 33, 85, 18]);
+    ).toEqual([180, 9, 33, 85, 24, 3]);
   });
 
-  it('keeps the five name sets pairwise disjoint', () => {
+  it('keeps the name sets pairwise disjoint', () => {
     expect(
       overlap(
         resolved.map((entry) => {
