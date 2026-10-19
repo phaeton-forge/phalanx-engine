@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  BinaryStateReader,
+  BinaryStateWriter,
   Entity,
   GameWorld,
   SoAComponent,
@@ -22,13 +24,15 @@ import {
   type AbilitySystem,
   type AbilitySystemPipeline,
   type MagnitudeCalculation,
-} from '@phalanx-engine/abilities';
-import { StateHelpers } from '../../src/helpers/StateHelpers.js';
+} from '../src/index.js';
+import { readAbilities, writeAbilities } from '../src/save/abilities.js';
 import {
-  BinaryStateReader,
-  BinaryStateWriter,
-} from '../../src/state/BinaryState.js';
-import { digestBytes } from '../../src/state/digest.js';
+  readEntityIds,
+  readPools,
+  writeEntityIds,
+  writePools,
+} from '../../phalanx-runtime/src/state/sections/entities.js';
+import { digestBytes } from '../../phalanx-runtime/src/state/digest.js';
 
 const ENTITY_COUNT = 20;
 const LARGE_EFFECT_COUNT = 200_000;
@@ -138,13 +142,13 @@ function finish(fill: (w: BinaryStateWriter) => void): Uint8Array {
 
 function saveGas(world: GameWorld): Uint8Array {
   return finish((writer) => {
-    StateHelpers.writeAbilities(writer, world);
+    writeAbilities(writer, world);
   });
 }
 
 function loadGas(bytes: Uint8Array, world: GameWorld): void {
   const reader = new BinaryStateReader(bytes);
-  StateHelpers.readAbilities(reader, world);
+  readAbilities(reader, world);
   reader.done();
 }
 
@@ -248,6 +252,14 @@ describe('ability state helpers', () => {
   afterEach(() => {
     SoAComponent.resetContext();
     resetEntityIdCounter();
+  });
+
+  it('registers the abilities section once', () => {
+    const { world } = makeWorld();
+    expect(world.saveSections.map((section) => section.key)).toEqual([
+      'abilities',
+    ]);
+    expect(world.saveSections[0]?.version).toBe(1);
   });
 
   it('throws when the world has no ability system', () => {
@@ -1186,16 +1198,16 @@ function pendingIds(entity: Entity): string[] {
 
 function saveMatch(world: GameWorld): Uint8Array {
   return finish((writer) => {
-    StateHelpers.writePools(writer, world);
-    StateHelpers.writeAbilities(writer, world);
-    StateHelpers.writeEntityIds(writer, world);
+    writePools(writer, world);
+    writeAbilities(writer, world);
+    writeEntityIds(writer, world);
   });
 }
 
 function loadMatch(bytes: Uint8Array, world: GameWorld): void {
   const reader = new BinaryStateReader(bytes);
-  StateHelpers.readPools(reader, world);
-  StateHelpers.readAbilities(reader, world);
-  StateHelpers.readEntityIds(reader, world);
+  readPools(reader, world);
+  readAbilities(reader, world);
+  readEntityIds(reader, world);
   reader.done();
 }

@@ -17,11 +17,8 @@ import {
   TransformComponent,
   TransformSoASchema,
 } from '@phalanx-engine/physics';
-import { StateHelpers } from '../../src/helpers/StateHelpers.js';
-import {
-  BinaryStateReader,
-  BinaryStateWriter,
-} from '../../src/state/BinaryState.js';
+import { StateHelpers } from '../../../src/advanced/StateHelpers.js';
+import { BinaryStateReader, BinaryStateWriter } from '@phalanx-engine/ecs';
 
 const ENTITY_COUNT = 50;
 

@@ -1,13 +1,14 @@
-import type { Entity, GameWorld } from '@phalanx-engine/ecs';
-import type { StateReader, StateWriter } from '../state/StateIO.js';
-import {
-  assertSectionVersion,
-  HELPER_SECTION_VERSION,
-} from './sectionVersion.js';
+import type {
+  Entity,
+  GameWorld,
+  StateReader,
+  StateWriter,
+} from '@phalanx-engine/ecs';
+import { assertSectionVersion, ENGINE_SECTION_VERSION } from './version.js';
 
 /** Entity id counter high-water mark. The next allocation returns this + 1. */
 export function writeEntityIds(w: StateWriter, world: GameWorld): void {
-  w.section('entityIds', HELPER_SECTION_VERSION, (section) => {
+  w.section('entityIds', ENGINE_SECTION_VERSION, (section) => {
     section.varint(world.getEntityIdCounter());
   });
 }
@@ -95,7 +96,7 @@ interface PoolRecord {
  */
 export function writePools(w: StateWriter, world: GameWorld): void {
   const pools = world.pools;
-  w.section('pools', HELPER_SECTION_VERSION, (section) => {
+  w.section('pools', ENGINE_SECTION_VERSION, (section) => {
     const typeKeys = pools === null ? [] : pools.typeKeys();
     section.list(typeKeys, (typeKey, item) => {
       if (pools === null) {

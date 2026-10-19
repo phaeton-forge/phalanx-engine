@@ -1,46 +1,49 @@
 import {
+  BinaryStateReader,
+  BinaryStateWriter,
   Entity,
   SoAComponent,
   type ComponentRegistration,
   type GameWorld,
+  type SaveSection,
   type SoAComponentStore,
   type SoAFieldType,
   type SoAFieldsOf,
   type SoASchema,
   type SoASchemaDefinition,
+  type StateReader,
+  type StateWriter,
   type TypedArrayLike,
 } from '@phalanx-engine/ecs';
-import { BinaryStateReader, BinaryStateWriter } from '../state/BinaryState.js';
-import type { StateReader, StateWriter } from '../state/StateIO.js';
-import { readAbilities, writeAbilities } from '../helpers/abilities.js';
-import { readPools, spawnWithId, writePools } from '../helpers/entities.js';
-import { readEntityIds, writeEntityIds } from '../helpers/entities.js';
 import {
-  hasBroadphase,
-  readBroadphase,
-  writeBroadphase,
-} from '../helpers/physics.js';
-import { readRandom, writeRandom } from '../helpers/random.js';
-import { readSoAStore, writeSoAStores } from '../helpers/soa.js';
+  readPools,
+  spawnWithId,
+  writePools,
+} from '../state/sections/entities.js';
+import { readEntityIds, writeEntityIds } from '../state/sections/entities.js';
+import { readRandom, writeRandom } from '../state/sections/random.js';
+import { readSoAStore, writeSoAStores } from '../state/sections/soa.js';
 import {
   assertSectionVersion,
-  HELPER_SECTION_VERSION,
-} from '../helpers/sectionVersion.js';
+  ENGINE_SECTION_VERSION,
+} from '../state/sections/version.js';
 import { singletonHooks } from './singletons.js';
 
 const ROSTER_SECTION = 'roster';
+const MODULES_SECTION = 'modules';
+const MODULES_VERSION = 1;
 
 /**
- * Engine sections in the historical StateHelpers order.
+ * Engine sections, then one `modules` container, then game singletons.
  *
- * Roster is omitted when every live entity is pooled, so a physics
- * fixture that never wrote a roster stays byte-identical. Abilities and
- * broadphase are omitted when those systems are not attached.
+ * Roster is omitted when every live entity is pooled. The modules
+ * container is written even when nothing is registered. Inside it, each
+ * registered section is `section(key, version, body)`, sorted by key.
  */
 export function writeWorld(world: GameWorld, writer: StateWriter): void {
   const roster = nonPooledIds(world);
   if (roster.length > 0) {
-    writer.section(ROSTER_SECTION, HELPER_SECTION_VERSION, (section) => {
+    writer.section(ROSTER_SECTION, ENGINE_SECTION_VERSION, (section) => {
       section.list(roster, (id, item) => {
         item.u32(id);
       });
@@ -48,10 +51,9 @@ export function writeWorld(world: GameWorld, writer: StateWriter): void {
   }
   writePools(writer, world);
   writeSoAStores(writer, world, schemasOf(world));
-  if (hasAbilities(world)) writeAbilities(writer, world);
   writeEntityIds(writer, world);
   writeRandom(writer, world.random);
-  if (hasBroadphase(world)) writeBroadphase(writer, world);
+  writeModules(writer, world);
   singletonHooks(world)?.onSave?.(writer);
 }
 
@@ -82,10 +84,9 @@ export function readWorld(world: GameWorld, reader: StateReader): void {
     for (const entity of pending.values()) {
       world.entityManager.addEntity(entity);
     }
-    if (hasAbilities(world)) readAbilities(reader, world);
     readEntityIds(reader, world);
     readRandom(reader, world.random);
-    if (hasBroadphase(world)) readBroadphase(reader, world);
+    readModules(reader, world);
     singletonHooks(world)?.onRestore?.(reader);
     enableLive(world);
   } finally {
@@ -141,14 +142,98 @@ function schemasOf(world: GameWorld): SoASchema<SoASchemaDefinition>[] {
   return schemas;
 }
 
-function hasAbilities(world: GameWorld): boolean {
-  const abilities: unknown = world.context.abilities;
-  if (typeof abilities !== 'object' || abilities === null) return false;
-  const record = abilities as Record<string, unknown>;
-  return (
-    typeof record['exportRuntimeState'] === 'function' &&
-    typeof record['importRuntimeState'] === 'function'
-  );
+interface ModuleEntry {
+  readonly key: string;
+  readonly version: number;
+  readonly body: Uint8Array;
+}
+
+function writeModules(writer: StateWriter, world: GameWorld): void {
+  const sections = world.saveSections;
+  writer.section(MODULES_SECTION, MODULES_VERSION, (section) => {
+    section.list(sections, (saveSection, item) => {
+      item.section(saveSection.key, saveSection.version, (body) => {
+        saveSection.write(body, world);
+      });
+    });
+  });
+}
+
+function readModules(reader: StateReader, world: GameWorld): void {
+  reader.section(MODULES_SECTION, (section, version) => {
+    if (version !== MODULES_VERSION) {
+      throw new Error(
+        `restore: save section '${MODULES_SECTION}' has version ${String(version)}, expected ${String(MODULES_VERSION)}`
+      );
+    }
+    const registered = world.saveSections;
+    const found = readModuleEntries(section);
+    assertModuleEntries(registered, found);
+    for (let index = 0; index < registered.length; index += 1) {
+      const saveSection = registered[index];
+      const entry = found[index];
+      if (saveSection === undefined || entry === undefined) {
+        throw new Error('restore: save sections out of order');
+      }
+      const body = new BinaryStateReader(entry.body);
+      saveSection.read(body, world);
+      body.done();
+    }
+  });
+}
+
+function readModuleEntries(section: StateReader): ModuleEntry[] {
+  const count = section.varint();
+  const found: ModuleEntry[] = [];
+  for (let index = 0; index < count; index += 1) {
+    found.push({
+      key: section.str(),
+      version: section.varint(),
+      body: section.bytes(),
+    });
+  }
+  return found;
+}
+
+function assertModuleEntries(
+  registered: readonly SaveSection[],
+  found: readonly ModuleEntry[]
+): void {
+  const registeredKeys = registered.map((section) => section.key);
+  const known = new Set(registeredKeys);
+  for (const entry of found) {
+    if (!known.has(entry.key)) {
+      throw new Error(
+        `restore: unknown save section '${entry.key}' (registered: ${registeredKeys.join(', ')})`
+      );
+    }
+  }
+  const present = new Set(found.map((entry) => entry.key));
+  for (const key of registeredKeys) {
+    if (!present.has(key)) {
+      throw new Error(
+        `restore: save section '${key}' is missing from the snapshot`
+      );
+    }
+  }
+  if (
+    found.length !== registered.length ||
+    found.some((entry, index) => entry.key !== registered[index]?.key)
+  ) {
+    throw new Error('restore: save sections out of order');
+  }
+  for (let index = 0; index < registered.length; index += 1) {
+    const saveSection = registered[index];
+    const entry = found[index];
+    if (saveSection === undefined || entry === undefined) {
+      throw new Error('restore: save sections out of order');
+    }
+    if (entry.version !== saveSection.version) {
+      throw new Error(
+        `restore: save section '${saveSection.key}' has version ${String(entry.version)}, expected ${String(saveSection.version)}`
+      );
+    }
+  }
 }
 
 /**
@@ -229,7 +314,7 @@ function peekSoAEntityIds(
   if (reader.remainingBytes().byteLength === 0) return null;
   const copy = new BinaryStateReader(reader.remainingBytes());
   if (copy.str() !== name) return null;
-  if (copy.varint() !== HELPER_SECTION_VERSION) return null;
+  if (copy.varint() !== ENGINE_SECTION_VERSION) return null;
   const body = new BinaryStateReader(copy.bytes());
   const count = body.varint();
   const ids: number[] = [];

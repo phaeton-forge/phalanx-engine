@@ -23,6 +23,7 @@ import type {
   SoASchemaDefinition,
 } from './SoASchema.js';
 import { requireWorldModules } from './worldHost.js';
+import { compareSaveSectionKeys, type SaveSection } from './state/sections.js';
 import {
   getEntityIdCounter,
   resetEntityIdCounter,
@@ -169,6 +170,9 @@ export class GameWorld {
 
   /** `registerComponent` order. Snapshot schema order and `configHash`. */
   private readonly _components: ComponentRegistration[] = [];
+
+  /** Module save sections, kept sorted by key. */
+  private readonly _saveSections: SaveSection[] = [];
 
   constructor(config: GameWorldConfig) {
     resetEntityIdCounter();
@@ -364,6 +368,29 @@ export class GameWorld {
     this.entityManager.getOrCreateSoAStore(component.schema);
   }
 
+  /**
+   * Register a module save section. Keys are sorted by UTF-16 code units.
+   *
+   * @throws If `key` is empty or already registered.
+   */
+  public registerSaveSection(section: SaveSection): void {
+    if (section.key.length === 0) {
+      throw new Error('registerSaveSection: key is empty');
+    }
+    if (this._saveSections.some((existing) => existing.key === section.key)) {
+      throw new Error(`registerSaveSection: duplicate key '${section.key}'`);
+    }
+    this._saveSections.push(section);
+    this._saveSections.sort((left, right) =>
+      compareSaveSectionKeys(left.key, right.key)
+    );
+  }
+
+  /** Registered save sections, sorted by key. A copy: mutating it does nothing. */
+  public get saveSections(): readonly SaveSection[] {
+    return this._saveSections.slice();
+  }
+
   /** Registered component names in registration order. */
   public componentNames(): readonly string[] {
     return this._components.map((component) => component.name);
@@ -376,8 +403,8 @@ export class GameWorld {
 
   /**
    * Canonical simulation bytes: roster (when any non-pooled entity exists),
-   * pools, SoA stores, abilities, the entity id counter, RNG, broadphase,
-   * then optional singleton hooks. Section layout matches `StateHelpers`.
+   * pools, SoA stores, the entity id counter, RNG, one `modules` container
+   * of registered save sections, then optional singleton hooks.
    */
   public save(): Uint8Array {
     return requireWorldModules().save(this);

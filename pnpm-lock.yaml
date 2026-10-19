@@ -238,19 +238,19 @@ importers:
 
   phalanx-runtime:
     dependencies:
-      '@phalanx-engine/abilities':
-        specifier: workspace:*
-        version: link:../phalanx-abilities
       '@phalanx-engine/ecs':
         specifier: workspace:*
         version: link:../phalanx-ecs
+      '@phalanx-engine/math':
+        specifier: workspace:*
+        version: link:../phalanx-math
       '@phalanx-engine/protocol':
         specifier: workspace:*
         version: link:../phalanx-protocol
     devDependencies:
-      '@phalanx-engine/math':
+      '@phalanx-engine/abilities':
         specifier: workspace:*
-        version: link:../phalanx-math
+        version: link:../phalanx-abilities
       '@phalanx-engine/physics':
         specifier: workspace:*
         version: link:../phalanx-physics

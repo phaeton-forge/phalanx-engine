@@ -10,6 +10,12 @@ import type { PoolManager } from './pool/PoolManager.js';
 import type { IRandom } from './IRandom.js';
 
 /**
+ * Physics installs this on a broadphase owner. Assigning `context.physics`
+ * calls it so the package can register its save section without a new export.
+ */
+const PHYSICS_SAVE_ATTACH = Symbol.for('phalanx.physics.attachSaveSection');
+
+/**
  * SystemContext - Shared dependencies container for all game systems
  *
  * This class provides a centralized way to pass common dependencies
@@ -71,6 +77,30 @@ export class SystemContext {
   constructor(eventBus: EventBus, entityManager: EntityManager) {
     this.eventBus = eventBus;
     this.entityManager = entityManager;
+    this.observePhysicsAssignment();
+  }
+
+  /**
+   * Keep the public field declaration. The runtime accessor notifies physics
+   * when a broadphase owner is assigned, which is not visible on the type.
+   */
+  private observePhysicsAssignment(): void {
+    let current = this.physics;
+    Object.defineProperty(this, 'physics', {
+      configurable: true,
+      enumerable: true,
+      get: () => current,
+      set: (value: IPhysicsWorld | undefined) => {
+        current = value;
+        if (value === undefined) return;
+        // The symbol is a physics-owned callback, not part of IPhysicsWorld.
+        const attach = (value as unknown as Record<symbol, unknown>)[
+          PHYSICS_SAVE_ATTACH
+        ];
+        if (typeof attach !== 'function') return;
+        (attach as (world: GameWorld) => void).call(value, this.world);
+      },
+    });
   }
 
   /**

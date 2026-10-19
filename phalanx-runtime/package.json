@@ -21,8 +21,8 @@
     }
   },
   "dependencies": {
-    "@phalanx-engine/abilities": "workspace:*",
     "@phalanx-engine/ecs": "workspace:*",
+    "@phalanx-engine/math": "workspace:*",
     "@phalanx-engine/protocol": "workspace:*"
   },
   "scripts": {
@@ -35,17 +35,6 @@
     "bench": "node --expose-gc --import tsx bench/snapshot.bench.ts",
     "build:xxh64": "node scripts/build-xxh64-wasm.mjs",
     "prepublishOnly": "npm run build"
-  },
-  "peerDependencies": {
-    "@phalanx-engine/abilities": "workspace:^",
-    "@phalanx-engine/ecs": "workspace:^",
-    "@phalanx-engine/math": "workspace:^",
-    "@phalanx-engine/physics": "workspace:^"
-  },
-  "peerDependenciesMeta": {
-    "@phalanx-engine/physics": {
-      "optional": true
-    }
   },
   "devDependencies": {
     "@phalanx-engine/abilities": "workspace:*",

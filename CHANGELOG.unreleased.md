@@ -5,6 +5,7 @@ Entries collected per package until the synchronized 0.3.0 release
 
 ## @phalanx-engine/game
 
+- `./advanced` no longer exports `rebuildBroadphaseFromTransforms`.
 - New subpath `./server`: `createServerSim`, `ServerSimConfig`,
   `GameModuleSpec`, re-exported from `@phalanx-engine/runtime/server`.
   ```ts
@@ -33,6 +34,29 @@ Entries collected per package until the synchronized 0.3.0 release
 
 ## @phalanx-engine/runtime
 
+- `ENGINE_SNAPSHOT_FORMAT` is 3. World bytes are roster (when any
+  non-pooled entity exists), pools, SoA stores, entity ids, RNG, one
+  `modules` container, then game singletons. The container is written
+  even when no section is registered. Inside it, each registered section
+  is `section(key, version, body)`, sorted by UTF-16 code units.
+  Format 2 is rejected with
+  `unsupported engine snapshot format 2; expected 3`. There is no
+  migration. Dependencies are `@phalanx-engine/ecs`,
+  `@phalanx-engine/math` and `@phalanx-engine/protocol` (no peer
+  dependencies).
+- `StateWriter`, `StateReader`, `BinaryStateWriter` and
+  `BinaryStateReader` are re-exported from `@phalanx-engine/ecs`.
+- `./advanced` no longer exports `rebuildBroadphaseFromTransforms`.
+  `StateHelpers` no longer has `writeBroadphase`, `readBroadphase`,
+  `rebuildBroadphaseFromTransforms`, `writeAbilities` or `readAbilities`.
+  Unknown, missing, unordered and wrong-version module sections throw
+  `restore: unknown save section '<key>' (registered: <keys>)`,
+  `restore: save section '<key>' is missing from the snapshot`,
+  `restore: save sections out of order`, and
+  `restore: save section '<key>' has version N, expected M`.
+  A `modules` container whose version is not 1 throws
+  `restore: save section 'modules' has version N, expected 1`.
+- `./server` is unchanged.
 - New subpath `./server`: `createServerSim`, `ServerSimConfig`,
   `GameModuleSpec`. The server simulation that used to live in
   `phalanx-server` runs behind a `ServerSimHook`.
@@ -297,6 +321,13 @@ Entries collected per package until the synchronized 0.3.0 release
 
 ## @phalanx-engine/ecs
 
+- Exports `StateWriter`, `StateReader`, `SaveSection`, `BinaryStateWriter`
+  and `BinaryStateReader` (moved from runtime). `GameWorld.registerSaveSection`
+  stores a module section. An empty key throws
+  `registerSaveSection: key is empty`. A repeated key throws
+  `registerSaveSection: duplicate key '<key>'`. `GameWorld.saveSections`
+  returns a copy sorted by UTF-16 code units.
+
 - Snapshot accessors (Task 3): `getEntityIdCounter` / `setEntityIdCounter`
   (module functions and `GameWorld` delegates), `SoAComponent.currentEntityManager()`,
   and pool `typeKeys` / `ownedIds` / `freeListIds`. Allocation order, the
@@ -398,6 +429,8 @@ Entries collected per package until the synchronized 0.3.0 release
 
 ## @phalanx-engine/server
 
+- Re-exports the type `ServerSimEvents` from `@phalanx-engine/protocol`.
+
 - Removed `PhalanxConfig.games`, `PhalanxConfig.simHost`, `GameModuleSpec`,
   `SimHostConfig` and the `AnyGameDefinition` re-export. Server simulation
   is `sim: createServerSim(...)` (`ServerSimHook` from the protocol
@@ -454,6 +487,10 @@ Entries collected per package until the synchronized 0.3.0 release
 
 ## @phalanx-engine/abilities
 
+- `createAbilitySystem` registers save section `abilities` (version 1).
+  The section is not exported. Its body is the former `gas` payload
+  without a `section('gas')` wrapper.
+
 - Built output is NodeNext ESM: relative specifiers end in `.js`, and
   directory imports (`./api`, `./components`, `./runtime`, and the other
   barrels) point at `index.js`. Native Node can import
@@ -499,6 +536,13 @@ Entries collected per package until the synchronized 0.3.0 release
   (`npm:` alias) so this package keeps building against the previous API.
 
 ## @phalanx-engine/physics
+
+- The first grid owner (`context.physics`, a `PhysicsSystem`, or a
+  `CollisionSystem`) registers save section `physics.broadphase`
+  (version 1). A second owner does not register again. The section is
+  not exported. Its body is the former `broadphase` list without a
+  `section('broadphase')` wrapper. Inner keys stay `physics`,
+  `physicsSystem` and `collisionSystem`.
 
 - Built output is NodeNext ESM: relative specifiers end in `.js`, and
   directory imports (`./components`, `./systems`) point at `index.js`.

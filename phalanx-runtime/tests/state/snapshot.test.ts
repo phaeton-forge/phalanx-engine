@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BinaryStateReader } from '../../src/state/BinaryState.js';
+import { BinaryStateReader } from '@phalanx-engine/ecs';
 import { SnapshotRejectedError } from '../../src/state/errors.js';
 import {
   canonicalConfigBytes,

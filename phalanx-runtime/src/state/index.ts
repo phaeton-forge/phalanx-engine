@@ -1,5 +1,5 @@
-export type { StateWriter, StateReader } from './StateIO.js';
-export { BinaryStateWriter, BinaryStateReader } from './BinaryState.js';
+export type { StateWriter, StateReader } from '@phalanx-engine/ecs';
+export { BinaryStateWriter, BinaryStateReader } from '@phalanx-engine/ecs';
 export {
   encodeSnapshot,
   decodeSnapshot,

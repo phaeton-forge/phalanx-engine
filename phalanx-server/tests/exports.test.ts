@@ -68,6 +68,7 @@ const ROOT_NAMES = [
   'SESSION_TOMBSTONE_TTL_MS',
   'ServerRoomMatchConfig',
   'ServerShutdownEvent',
+  'ServerSimEvents',
   'ServerSimHook',
   'SessionClaims',
   'SessionConfig',
@@ -198,7 +199,7 @@ describe('@phalanx-engine/server exports', () => {
     }
     expect(
       resolved.map((entry) => actual.get(entry.file)?.names.length)
-    ).toEqual([74]);
+    ).toEqual([75]);
     expect(
       resolved.map((entry) => actual.get(entry.file)?.values.length)
     ).toEqual([14]);

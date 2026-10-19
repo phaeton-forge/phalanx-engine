@@ -102,6 +102,11 @@ export type {
 // Match-scoped deterministic RNG contract
 export type { IRandom } from './IRandom.js';
 
+// Snapshot port. Modules register sections; the runtime writes them.
+export type { StateWriter, StateReader } from './state/StateIO.js';
+export type { SaveSection } from './state/sections.js';
+export { BinaryStateWriter, BinaryStateReader } from './state/BinaryState.js';
+
 // Tick/Frame Management
 export { TickFrameManager } from './TickFrameManager.js';
 export type { TickFrameManagerConfig } from './TickFrameManager.js';

@@ -3,6 +3,7 @@ import {
   type SoAComponentStore,
   type SystemContext,
 } from '@phalanx-engine/ecs';
+import { ensureBroadphaseSection } from '../save/broadphase.js';
 import { FP, type FixedPoint } from '@phalanx-engine/math';
 import { PhysicsSoASchema } from '../components/PhysicsBodyComponent.js';
 import { TransformSoASchema } from '../components/TransformComponent.js';
@@ -52,6 +53,7 @@ export class CollisionSystem extends GameSystem {
 
   public override init(context: SystemContext): void {
     super.init(context);
+    ensureBroadphaseSection(context.world);
     this.physicsStore =
       this.entityManager.getOrCreateSoAStore(PhysicsSoASchema);
     this.transformStore =

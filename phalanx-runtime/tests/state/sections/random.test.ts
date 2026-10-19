@@ -1,11 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { IRandom } from '@phalanx-engine/ecs';
 import { DeterministicRandom } from '@phalanx-engine/math';
-import { StateHelpers } from '../../src/helpers/StateHelpers.js';
-import {
-  BinaryStateReader,
-  BinaryStateWriter,
-} from '../../src/state/BinaryState.js';
+import { StateHelpers } from '../../../src/advanced/StateHelpers.js';
+import { BinaryStateReader, BinaryStateWriter } from '@phalanx-engine/ecs';
 
 function finish(fill: (w: BinaryStateWriter) => void): Uint8Array {
   const writer = new BinaryStateWriter();

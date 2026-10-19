@@ -73,6 +73,8 @@ function namesOf(files: readonly string[]): Map<string, ModuleExports> {
 }
 
 const ROOT_NAMES = [
+  'BinaryStateReader',
+  'BinaryStateWriter',
   'CommandsBatch',
   'Component',
   'ComponentLifecycle',
@@ -117,6 +119,7 @@ const ROOT_NAMES = [
   'PoolManager',
   'PoolStats',
   'PoolingConfig',
+  'SaveSection',
   'SoAArrayType',
   'SoAArraysOf',
   'SoAComponent',
@@ -128,6 +131,8 @@ const ROOT_NAMES = [
   'SoASchemaDefinition',
   'SoAValueType',
   'SpawnArgsOf',
+  'StateReader',
+  'StateWriter',
   'SystemContext',
   'SystemRegistry',
   'TYPED_ARRAY_CONSTRUCTORS',
@@ -153,6 +158,8 @@ const ROOT_NAMES = [
 ];
 
 const ROOT_VALUES = [
+  'BinaryStateReader',
+  'BinaryStateWriter',
   'DebugDataProvider',
   'DebugPanel',
   'Entity',
@@ -218,10 +225,10 @@ describe('@phalanx-engine/ecs exports', () => {
     }
     expect(
       resolved.map((entry) => actual.get(entry.file)?.names.length)
-    ).toEqual([77]);
+    ).toEqual([82]);
     expect(
       resolved.map((entry) => actual.get(entry.file)?.values.length)
-    ).toEqual([31]);
+    ).toEqual([33]);
   });
 
   it('loads each entry by package name', async () => {

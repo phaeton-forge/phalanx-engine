@@ -1,7 +1,7 @@
 import type { IRandom } from '@phalanx-engine/ecs';
 import type { GameCommand } from '../game/commands.js';
 import type { BotSlotInfo, MatchConfigBase } from '../game/MatchConfig.js';
-import type { StateReader, StateWriter } from '../state/StateIO.js';
+import type { StateReader, StateWriter } from '@phalanx-engine/ecs';
 
 /**
  * A bot is a command producer, not a simulation system. It reads the

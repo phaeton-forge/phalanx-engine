@@ -1,15 +1,13 @@
-import type { GameWorld } from '@phalanx-engine/ecs';
+import type {
+  GameWorld,
+  SaveSection,
+  StateReader,
+  StateWriter,
+} from '@phalanx-engine/ecs';
 import { FixedPoint } from '@phalanx-engine/math';
-import {
-  CollisionSystem,
-  PhysicsSystem,
-  type BroadphaseCenter,
-} from '@phalanx-engine/physics';
-import type { StateReader, StateWriter } from '../state/StateIO.js';
-import {
-  assertSectionVersion,
-  HELPER_SECTION_VERSION,
-} from './sectionVersion.js';
+import type { BroadphaseCenter } from '../collision/SpatialHashGrid.js';
+import { CollisionSystem } from '../systems/CollisionSystem.js';
+import { PhysicsSystem } from '../systems/PhysicsSystem.js';
 
 /** `context.physics` when it exposes the broadphase hooks. */
 const PHYSICS_KEY = 'physics';
@@ -165,15 +163,13 @@ function readCenter(r: StateReader): BroadphaseCenter {
  */
 export function writeBroadphase(w: StateWriter, world: GameWorld): void {
   const grids = requireBroadphases(world, 'writeBroadphase');
-  w.section('broadphase', HELPER_SECTION_VERSION, (section) => {
-    section.list(grids, (grid, item) => {
-      item.str(grid.key);
-      item.list(grid.owner.getBroadphaseCenters(), (center, centerWriter) => {
-        centerWriter.u32(center.entityId);
-        writeFixedPoint(centerWriter, center.x);
-        writeFixedPoint(centerWriter, center.z);
-        writeFixedPoint(centerWriter, center.radius);
-      });
+  w.list(grids, (grid, item) => {
+    item.str(grid.key);
+    item.list(grid.owner.getBroadphaseCenters(), (center, centerWriter) => {
+      centerWriter.u32(center.entityId);
+      writeFixedPoint(centerWriter, center.x);
+      writeFixedPoint(centerWriter, center.z);
+      writeFixedPoint(centerWriter, center.radius);
     });
   });
 }
@@ -181,32 +177,58 @@ export function writeBroadphase(w: StateWriter, world: GameWorld): void {
 /** Re-inserts the centers saved by {@link writeBroadphase}. */
 export function readBroadphase(r: StateReader, world: GameWorld): void {
   const grids = requireBroadphases(world, 'readBroadphase');
-  r.section('broadphase', (section, version) => {
-    assertSectionVersion('readBroadphase', version);
-    const saved = section.list((item) => ({
-      key: item.str(),
-      centers: item.list((centerReader) => readCenter(centerReader)),
-    }));
-    if (saved.length !== grids.length) {
+  const saved = r.list((item) => ({
+    key: item.str(),
+    centers: item.list((centerReader) => readCenter(centerReader)),
+  }));
+  if (saved.length !== grids.length) {
+    throw new Error(
+      `readBroadphase: expected ${String(grids.length)} grid(s), found ${String(saved.length)}`
+    );
+  }
+  for (let index = 0; index < grids.length; index += 1) {
+    const live = grids[index];
+    const item = saved[index];
+    if (live === undefined || item === undefined) {
+      throw new Error('readBroadphase: missing grid');
+    }
+    if (item.key !== live.key) {
       throw new Error(
-        `readBroadphase: expected ${String(grids.length)} grid(s), found ${String(saved.length)}`
+        `readBroadphase: expected grid '${live.key}', found '${item.key}'`
       );
     }
-    for (let index = 0; index < grids.length; index += 1) {
-      const live = grids[index];
-      const item = saved[index];
-      if (live === undefined || item === undefined) {
-        throw new Error('readBroadphase: missing grid');
-      }
-      if (item.key !== live.key) {
-        throw new Error(
-          `readBroadphase: expected grid '${live.key}', found '${item.key}'`
-        );
-      }
-      live.owner.restoreBroadphase(item.centers);
-    }
-  });
+    live.owner.restoreBroadphase(item.centers);
+  }
 }
+
+const BROADPHASE_SECTION: SaveSection = {
+  key: 'physics.broadphase',
+  version: 1,
+  write(writer, world) {
+    writeBroadphase(writer, world);
+  },
+  read(reader, world) {
+    readBroadphase(reader, world);
+  },
+};
+
+/**
+ * One section per world, the first time a grid owner is attached.
+ * A second owner sees the key already in `saveSections` and returns.
+ */
+export function ensureBroadphaseSection(world: GameWorld): void {
+  if (
+    world.saveSections.some((section) => section.key === BROADPHASE_SECTION.key)
+  ) {
+    return;
+  }
+  world.registerSaveSection(BROADPHASE_SECTION);
+}
+
+/** Called by the context.physics setter when this object is assigned. */
+export const PHYSICS_SAVE_ATTACH = Symbol.for(
+  'phalanx.physics.attachSaveSection'
+);
 
 /** True when the world has at least one physics grid to snapshot. */
 export function hasBroadphase(world: GameWorld): boolean {

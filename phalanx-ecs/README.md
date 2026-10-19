@@ -716,6 +716,10 @@ export class CombatSystem extends GameSystem {
 
 **Rule of thumb:** if every client will compute the same result from the same game state, call the system directly. If the action originates from a specific player's input, send it through the network.
 
+## Save sections
+
+`StateWriter`, `StateReader`, `BinaryStateWriter` and `BinaryStateReader` are the snapshot codec. A module implements `SaveSection` (`key`, `version`, `write`, `read`) and calls `world.registerSaveSection`. Keys sort by UTF-16 code units (`'Z' < 'a'`). `saveSections` returns a copy. An empty key throws `registerSaveSection: key is empty`. A repeated key throws `registerSaveSection: duplicate key '<key>'`. The runtime writes the registered sections; ecs does not.
+
 ## Snapshot accessors
 
 Additive reads and writes for process-global sim registers. Existing allocation order is unchanged. `new GameWorld()` still resets the entity id counter to `0`.

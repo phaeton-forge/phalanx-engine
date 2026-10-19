@@ -20,6 +20,7 @@ import {
   EffectApplicationSystem,
   EffectTickSystem,
 } from '../systems/index.js';
+import { abilitiesSaveSection } from '../save/abilities.js';
 import { createAbilitySystemRegistries } from '../registry/index.js';
 import type { AbilitySystemRegistries } from '../registry/index.js';
 import { createAbilitySystemRuntime } from '../runtime/index.js';
@@ -170,6 +171,7 @@ export function createAbilitySystem(
   // Must be called before world.registerSystems() so that init() can safely
   // read this.abilities during system initialisation.
   world.context.abilities = abilitySystem;
+  world.registerSaveSection(abilitiesSaveSection);
 
   // Free-list entities are omitted from the GAS snapshot. Clearing here
   // makes a respawn after restore match a respawn that never snapshotted.

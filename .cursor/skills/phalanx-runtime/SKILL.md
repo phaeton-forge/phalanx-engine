@@ -1,6 +1,6 @@
 ---
 name: phalanx-runtime
-description: Describe a Phalanx game as one GameDefinition and run it with MatchRunner from @phalanx-engine/runtime (engine 0.3). Use when defining games with defineGame, defineCommands, defineComponent, onCommand, runLocalMatch, ReplayPlayer, setController, world.save/restore, writing BotPolicy bots, choosing side 'client' vs 'server', snapshots, replays, reconnect, or Transport/LocalTransport. Local persistence is opt-in via MatchStore, MemoryMatchStore, IndexedDbMatchStore and MatchRunner.resumeLocal. World modules are the default save handler. StateHelpers, spawnWithId, rebuildBroadphaseFromTransforms and WorldScope are in @phalanx-engine/runtime/advanced. MatchRunner.join is still Task 12.
+description: Describe a Phalanx game as one GameDefinition and run it with MatchRunner from @phalanx-engine/runtime (engine 0.3). Use when defining games with defineGame, defineCommands, defineComponent, onCommand, runLocalMatch, ReplayPlayer, setController, world.save/restore, writing BotPolicy bots, choosing side 'client' vs 'server', snapshots, replays, reconnect, or Transport/LocalTransport. Local persistence is opt-in via MatchStore, MemoryMatchStore, IndexedDbMatchStore and MatchRunner.resumeLocal. World modules are the default save handler. StateHelpers, spawnWithId and WorldScope are in @phalanx-engine/runtime/advanced. MatchRunner.join is still Task 12.
 metadata:
   author: phaeton2040-AI
   version: '0.1'
@@ -11,7 +11,7 @@ metadata:
 > **Status: Tasks 1–7, 7.1, 6.5a and 6.5b implemented. `MatchRunner.join` is still Task 12.**
 > Task 3 is engine hooks (ecs id counter, SoA context, pools, math RNG
 > state, ability runtime export, broadphase centers). Task 4 is
-> `StateHelpers` except GAS. Task 5 is `writeAbilities` / `readAbilities`.
+> `StateHelpers` for engine sections. Ability and physics bytes are save sections those packages register (`abilities`, `physics.broadphase`).
 > Task 6 is `MatchRunner` (not `join`), `CommandLog`, `WorldScope`,
 > `BotHost` and `LocalTransport`. Task 7 is opt-in local persistence
 > (`MatchStore`, `MemoryMatchStore`, `IndexedDbMatchStore`,
@@ -140,7 +140,7 @@ Call these inside a hand-written `GameState`, in this order on restore:
   instance; keep the hook idempotent.
 - RNG: four int32 words from `getState` / `setState`. An `IRandom` without
   `getState` throws. Do not use `getGenerator`.
-- GAS: `section('gas', 1)`. Per-world runtime via `exportRuntimeState` /
+- GAS: save section `abilities` version 1 (no `section('gas')` wrapper). Per-world runtime via `exportRuntimeState` /
   `importRuntimeState` (instance id counter, activation requests,
   `currentTick`, resolved activations). The cue buffer is omitted.
   Registered entities that have a GAS component are written ascending by
@@ -154,27 +154,30 @@ Call these inside a hand-written `GameState`, in this order on restore:
   effects are not in the shell, so `onSpawn` must re-seed those. A respawn
   whose `onSpawn` does not rewrite attributes matches a restored copy.
   Effect queue and `pendingAdd`
-  stay in array order. `readAbilities` clears each destination array and
-  pushes entries one at a time so a large list keeps array identity and
+  stay in array order. The abilities section clears each destination array
+  and pushes entries one at a time so a large list keeps array identity and
   does not hit the JavaScript argument limit.
   Ability sets, tags, ad-hoc tags and grant counts stay in insertion
   order. `setByCaller` keys are sorted; values are a safe integer, bigint,
   string, boolean, or FixedPoint. Anything else throws. Fixed-point
   `base` and `precision` are both `i64`, matching broadphase centers.
-  `readAbilities` parses the section before it mutates. An unknown ability
+  The section is parsed before it mutates. An unknown ability
   id or effect def id throws with the entity id. The instance-id counter
   must be `>=` every queued effect instance id (pending adds have none).
   `dirty` is stored. There is no `stacks` field and no cooldown component.
-  Continuation tests compare `digestBytes` of the helper bytes, not
+  Continuation tests compare `digestBytes` of the section body, not
   `StateHasher`.
-- Broadphase: `getCenters()` for the `PhysicsWorld` on `context.physics`,
-  plus a registered `PhysicsSystem` or `CollisionSystem` when that system
-  has a different grid (`physicsSystem` / `collisionSystem`). Each center
-  stores entity id, and `x` / `z` / `radius` as raw base plus that value's
-  precision. `readBroadphase` calls `restoreBroadphase`, which also writes
-  `lastX` / `lastZ` via `FP.ToFloat`. Do not read those fields in
-  simulation. `rebuildBroadphaseFromTransforms` rebuilds from current
-  transforms and is valid only before the first resolving step.
+- `ENGINE_SNAPSHOT_FORMAT` is 3. Engine sections, then `section('modules', 1)`
+  listing registered sections by ascending key, then game singletons.
+  Format 2 is rejected:
+  `unsupported engine snapshot format 2; expected 3`.
+- Broadphase section key `physics.broadphase` (version 1), registered by
+  physics when a grid owner connects. Body keys stay `physics`,
+  `physicsSystem`, `collisionSystem`. Each center stores entity id, and
+  `x` / `z` / `radius` as raw base plus that value's precision. Restore
+  calls `restoreBroadphase`, which also writes `lastX` / `lastZ` via
+  `FP.ToFloat`. Do not read those fields in simulation. Rebuilding from
+  current transforms is valid only before the first resolving step.
 
 ## Running a match
 

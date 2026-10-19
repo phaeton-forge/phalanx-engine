@@ -6,9 +6,8 @@
  * @packageDocumentation
  */
 
-export { StateHelpers } from '../helpers/StateHelpers.js';
-export { spawnWithId } from '../helpers/entities.js';
-export { rebuildBroadphaseFromTransforms } from '../helpers/physics.js';
+export { StateHelpers } from './StateHelpers.js';
+export { spawnWithId } from '../state/sections/entities.js';
 export { WorldScope } from '../runner/WorldScope.js';
 export {
   DebugPanel,

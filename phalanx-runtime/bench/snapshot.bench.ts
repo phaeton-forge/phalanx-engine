@@ -27,11 +27,9 @@ import {
   encodeSnapshot,
   initDigest,
 } from '../dist/index.js';
-import { writeAbilities } from '../dist/helpers/abilities.js';
-import { writeEntityIds, writePools } from '../dist/helpers/entities.js';
-import { hasBroadphase, writeBroadphase } from '../dist/helpers/physics.js';
-import { writeRandom } from '../dist/helpers/random.js';
-import { writeSoAStore } from '../dist/helpers/soa.js';
+import { writeEntityIds, writePools } from '../dist/state/sections/entities.js';
+import { writeRandom } from '../dist/state/sections/random.js';
+import { writeSoAStore } from '../dist/state/sections/soa.js';
 import { singletonHooks } from '../dist/world/singletons.js';
 import {
   encodeInputCheckpoint,
@@ -249,16 +247,6 @@ interface SizeResult {
   readonly sections: SectionProfile | null;
 }
 
-function hasAbilities(world: GameWorld): boolean {
-  const abilities: unknown = world.context.abilities;
-  if (typeof abilities !== 'object' || abilities === null) return false;
-  const record = abilities as Record<string, unknown>;
-  return (
-    typeof record['exportRuntimeState'] === 'function' &&
-    typeof record['importRuntimeState'] === 'function'
-  );
-}
-
 function writeSoASection(writer: BinaryStateWriter, world: GameWorld): void {
   for (const store of world.entityManager.getAllSoAStores().values()) {
     // getAllSoAStores types every store as SoAComponentStore<any>.
@@ -278,8 +266,6 @@ function profileSections(capture: TickCapture): SectionProfile {
   const world = capture.simulation?.world;
   if (world === undefined) throw new Error('bench: simulation is missing');
   const writer = new BinaryStateWriter(65_536);
-  const gas = hasAbilities(world);
-  const broadphase = hasBroadphase(world);
   const pools: number[] = [];
   const soa: number[] = [];
   const abilities: number[] = [];
@@ -297,14 +283,23 @@ function profileSections(capture: TickCapture): SectionProfile {
       writeSoASection(writer, world);
       const soaMs = performance.now() - started;
       started = performance.now();
-      if (gas) writeAbilities(writer, world);
-      const abilitiesMs = performance.now() - started;
-      started = performance.now();
       writeEntityIds(writer, world);
       writeRandom(writer, world.random);
-      if (broadphase) writeBroadphase(writer, world);
+      let abilitiesMs = 0;
+      writer.section('modules', 1, (container) => {
+        container.list(world.saveSections, (section, item) => {
+          const sectionStart =
+            section.key === 'abilities' ? performance.now() : 0;
+          item.section(section.key, section.version, (body) => {
+            section.write(body, world);
+          });
+          if (section.key === 'abilities') {
+            abilitiesMs = performance.now() - sectionStart;
+          }
+        });
+      });
       singletonHooks(world)?.onSave?.(writer);
-      const restMs = performance.now() - started;
+      const restMs = performance.now() - started - abilitiesMs;
       const splitMs = performance.now() - splitStart;
       writer.reset();
       const saveStart = performance.now();

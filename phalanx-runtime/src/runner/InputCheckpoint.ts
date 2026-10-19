@@ -1,7 +1,11 @@
 import type { JsonValue } from '../game/commands.js';
-import { BinaryStateReader, BinaryStateWriter } from '../state/BinaryState.js';
+import {
+  BinaryStateReader,
+  BinaryStateWriter,
+  type StateReader,
+  type StateWriter,
+} from '@phalanx-engine/ecs';
 import { SnapshotRejectedError } from '../state/errors.js';
-import type { StateReader, StateWriter } from '../state/StateIO.js';
 import type { LogEntry } from './CommandLog.js';
 
 /**

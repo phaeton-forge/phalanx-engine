@@ -1,4 +1,4 @@
-import type { StateReader, StateWriter } from './StateIO.js';
+import type { StateReader, StateWriter } from '@phalanx-engine/ecs';
 
 /**
  * The whole simulation state of a match, sufficient to continue bit-for-bit

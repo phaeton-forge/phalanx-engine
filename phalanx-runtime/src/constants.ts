@@ -1,9 +1,9 @@
 /**
  * Version of the engine-owned snapshot wrapper (header + body + extras).
- * 2 adds the component-schema tail from 6.5a. There is no migration from
- * 1: a format-1 snapshot is rejected.
+ * 3 writes module sections in a `modules` container, ordered by key.
+ * There is no migration from 1 or 2: those snapshots are rejected.
  */
-export const ENGINE_SNAPSHOT_FORMAT = 2;
+export const ENGINE_SNAPSHOT_FORMAT = 3;
 
 /** First four bytes of every snapshot produced by the runtime. */
 export const SNAPSHOT_MAGIC = 'PHXS';

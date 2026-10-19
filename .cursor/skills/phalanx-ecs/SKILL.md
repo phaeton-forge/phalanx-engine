@@ -1,6 +1,6 @@
 ---
 name: phalanx-ecs
-description: Create game logic using the phalanx-ecs library from the phalanx-engine repository. Use when the user wants to build entities, components, systems, game events, or a GameWorld using the Phalanx ECS architecture. Covers IComponent vs SoAComponent, GameSystem, EntityManager, EventBus, SystemContext (abilities, physics, pools), system lifecycle hooks, and deterministic lockstep game loop patterns.
+description: Create game logic using the phalanx-ecs library from the phalanx-engine repository. Use when the user wants to build entities, components, systems, game events, or a GameWorld using the Phalanx ECS architecture. Covers IComponent vs SoAComponent, GameSystem, EntityManager, EventBus, SystemContext (abilities, physics, pools), system lifecycle hooks, deterministic lockstep game loop patterns, and SaveSection registration (StateWriter, StateReader, BinaryStateWriter, BinaryStateReader).
 metadata:
   author: phaeton2040-AI
   version: '1.1'
@@ -438,6 +438,8 @@ entity.destroy()                         // Mark for destruction
 entity.dispose()                         // Full cleanup (called by EntityManager)
 entity.isDestroyed                       // Check if destroyed
 ```
+
+Save sections live on `GameWorld`. `registerSaveSection` rejects an empty key (`registerSaveSection: key is empty`) and a duplicate (`registerSaveSection: duplicate key '<key>'`). `saveSections` is a copy sorted by UTF-16 code units. `StateWriter`, `StateReader`, `BinaryStateWriter` and `BinaryStateReader` are exported from this package.
 
 **Important:** Call `resetEntityIdCounter()` when starting a new game to ensure deterministic IDs across all clients:
 

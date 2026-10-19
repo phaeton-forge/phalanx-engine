@@ -1,5 +1,5 @@
 import { SNAPSHOT_MAGIC } from '../constants.js';
-import { BinaryStateReader, BinaryStateWriter } from './BinaryState.js';
+import { BinaryStateReader, BinaryStateWriter } from '@phalanx-engine/ecs';
 import { digestBytes } from './digest.js';
 import { SnapshotRejectedError } from './errors.js';
 

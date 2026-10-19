@@ -593,6 +593,8 @@ A non-empty `cues` map automatically registers `CueDispatchSystem` and `CuePrese
 createAbilitySystem(world: GameWorld, config: CreateAbilitySystemConfig): AbilitySystem
 ```
 
+`createAbilitySystem` registers save section `abilities` (version 1) on that world. The section is not a package export. Its body is the former `gas` section without a `section('gas')` wrapper.
+
 | Config field  | Purpose                                                                                  |
 | ------------- | ---------------------------------------------------------------------------------------- |
 | `definitions` | `defineAbilitySystem({ attributes, effects?, abilities? })`                              |

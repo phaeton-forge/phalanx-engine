@@ -1,4 +1,8 @@
-import { type EventBus } from '@phalanx-engine/ecs';
+import { type EventBus, type GameWorld } from '@phalanx-engine/ecs';
+import {
+  ensureBroadphaseSection,
+  PHYSICS_SAVE_ATTACH,
+} from './save/broadphase.js';
 import { FP } from '@phalanx-engine/math';
 import { PhysicsSystem } from './systems/PhysicsSystem.js';
 import { GravitySystem } from './systems/GravitySystem.js';
@@ -69,6 +73,13 @@ export class PhysicsWorld {
     if (config?.tickProvider) {
       this.physicsSystem.setTickProvider(config.tickProvider);
     }
+
+    Object.defineProperty(this, PHYSICS_SAVE_ATTACH, {
+      configurable: true,
+      value: (world: GameWorld) => {
+        ensureBroadphaseSection(world);
+      },
+    });
   }
 
   /**

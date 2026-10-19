@@ -65,11 +65,6 @@ const STATE_HELPERS = [
   'readPools',
   'writeRandom',
   'readRandom',
-  'writeBroadphase',
-  'readBroadphase',
-  'rebuildBroadphaseFromTransforms',
-  'writeAbilities',
-  'readAbilities',
 ] as const;
 
 function expectTask(fn: () => unknown, task: number): void {
@@ -114,16 +109,13 @@ describe('public exports', () => {
     expect(typeof advanced.setEntityIdCounter).toBe('function');
     expect(typeof advanced.nextEntityId).toBe('function');
     expect(advanced.TYPED_ARRAY_CONSTRUCTORS.i64).toBe(BigInt64Array);
-    expect(typeof advanced.rebuildBroadphaseFromTransforms).toBe('function');
-    expect(advanced.rebuildBroadphaseFromTransforms).toBe(
-      advanced.StateHelpers.rebuildBroadphaseFromTransforms
-    );
+    expect('rebuildBroadphaseFromTransforms' in advanced).toBe(false);
     const scope = new advanced.WorldScope();
     expect(scope.run(() => 7)).toBe(7);
   });
 
   it('has the approved constants', () => {
-    expect(runtime.ENGINE_SNAPSHOT_FORMAT).toBe(2);
+    expect(runtime.ENGINE_SNAPSHOT_FORMAT).toBe(3);
     expect(runtime.SNAPSHOT_MAGIC).toBe('PHXS');
     expect(runtime.DEFAULT_SERVER_SNAPSHOT_EVERY_TICKS).toBe(1000);
     expect(runtime.DEFAULT_CLIENT_SNAPSHOT_EVERY_TICKS).toBe(300);
@@ -189,9 +181,14 @@ describe('canonical state bytes', () => {
 });
 
 describe('skeletons name their implementing task', () => {
-  it('Task 05: ability helpers are implemented', () => {
-    expect(advanced.StateHelpers.writeAbilities.name).toBe('writeAbilities');
-    expect(advanced.StateHelpers.readAbilities.name).toBe('readAbilities');
+  it('StateHelpers keeps engine sections and omits module saves', () => {
+    expect('writeAbilities' in advanced.StateHelpers).toBe(false);
+    expect('readAbilities' in advanced.StateHelpers).toBe(false);
+    expect('writeBroadphase' in advanced.StateHelpers).toBe(false);
+    expect('readBroadphase' in advanced.StateHelpers).toBe(false);
+    expect('rebuildBroadphaseFromTransforms' in advanced.StateHelpers).toBe(
+      false
+    );
   });
 
   it('Task 06: runner, log, bot host, local transport', () => {

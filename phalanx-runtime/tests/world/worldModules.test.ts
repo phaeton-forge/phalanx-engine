@@ -726,10 +726,15 @@ function manualArena(sim: ArenaSim): Uint8Array {
     TransformSoASchema,
     PhysicsSoASchema,
   ]);
-  StateHelpers.writeAbilities(writer, sim.world);
   StateHelpers.writeEntityIds(writer, sim.world);
   StateHelpers.writeRandom(writer, sim.random);
-  StateHelpers.writeBroadphase(writer, sim.world);
+  writer.section('modules', 1, (section) => {
+    section.list(sim.world.saveSections, (saveSection, item) => {
+      item.section(saveSection.key, saveSection.version, (body) => {
+        saveSection.write(body, sim.world);
+      });
+    });
+  });
   return writer.finish();
 }
 

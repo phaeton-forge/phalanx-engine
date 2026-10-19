@@ -414,6 +414,8 @@ grid.restoreBroadphase(grid.getCenters()); // clear, then insert saved centers
 physicsWorld.getBroadphaseCenters();
 physicsWorld.restoreBroadphase(savedCenters); // snapshot restore
 physicsWorld.rebuildBroadphase(); // transforms only; collision-free world
+// Assigning context.physics, or registering PhysicsSystem / CollisionSystem,
+// registers save section 'physics.broadphase' (version 1) once. Not exported.
 ```
 
 ### Narrow Phase — NarrowPhase
