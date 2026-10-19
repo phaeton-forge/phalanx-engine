@@ -1221,11 +1221,9 @@ export class GameRoom {
     player.connected = true;
     this.returnFromAbsence(playerId);
     this.eventEmitter('player-reconnected', playerId, this.id);
-    this.io
-      .to(this.roomId)
-      .emit('player-reconnected', {
-        playerId,
-      } satisfies PlayerReconnectedEvent);
+    this.io.to(this.roomId).emit('player-reconnected', {
+      playerId,
+    } satisfies PlayerReconnectedEvent);
   }
 
   /**
@@ -1805,11 +1803,9 @@ export class GameRoom {
           );
           this.emitSessionToken(socket, playerId);
         }
-        socket
-          .to(this.roomId)
-          .emit('player-reconnected', {
-            playerId,
-          } satisfies PlayerReconnectedEvent);
+        socket.to(this.roomId).emit('player-reconnected', {
+          playerId,
+        } satisfies PlayerReconnectedEvent);
         // Look up the team info for the right teammates/opponents
         // assignment on socket.data — same fields `start()` would
         // have set for them on the happy path.
@@ -1867,11 +1863,9 @@ export class GameRoom {
       this.emitSessionToken(socket, playerId);
 
       // Notify other players
-      socket
-        .to(this.roomId)
-        .emit('player-reconnected', {
-          playerId,
-        } satisfies PlayerReconnectedEvent);
+      socket.to(this.roomId).emit('player-reconnected', {
+        playerId,
+      } satisfies PlayerReconnectedEvent);
     }
 
     return true;
