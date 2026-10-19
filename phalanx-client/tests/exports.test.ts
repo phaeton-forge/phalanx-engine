@@ -61,10 +61,8 @@ const ROOT_NAMES = [
   'MatchLogEntry',
   'MatchLogError',
   'MatchLogErrorEvent',
-  'MatchLogErrorReason',
   'MatchLogFailureReason',
   'MatchPlayerInfo',
-  'MatchResumeErrorReason',
   'MatchResumeFailureReason',
   'MatchResumeRejected',
   'MatchResumeState',
@@ -291,7 +289,7 @@ describe('@phalanx-engine/client exports', () => {
     }
     expect(
       resolved.map((entry) => actual.get(entry.file)?.names.length)
-    ).toEqual([116, 18]);
+    ).toEqual([114, 18]);
     expect(
       resolved.map((entry) => actual.get(entry.file)?.values.length)
     ).toEqual([30, 5]);

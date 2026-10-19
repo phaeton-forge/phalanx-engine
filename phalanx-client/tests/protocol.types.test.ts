@@ -32,7 +32,6 @@ describe('wire types shared by client and server', () => {
     expectTypeOf<Server.RoomRecoveredEvent>().toEqualTypeOf<Protocol.RoomRecoveredEvent>();
     expectTypeOf<Client.RoomErrorEvent>().toEqualTypeOf<Protocol.RoomErrorEvent>();
     expectTypeOf<Server.RoomErrorEvent>().toEqualTypeOf<Protocol.RoomErrorEvent>();
-    expectTypeOf<Client.MatchLogErrorReason>().toEqualTypeOf<Protocol.MatchLogErrorReason>();
     expectTypeOf<Server.MatchLogErrorReason>().toEqualTypeOf<Protocol.MatchLogErrorReason>();
     expectTypeOf<Client.MatchLogEntry>().toEqualTypeOf<Protocol.MatchLogEntry>();
     expectTypeOf<Server.MatchLogEntry>().toEqualTypeOf<Protocol.MatchLogEntry>();
@@ -40,7 +39,6 @@ describe('wire types shared by client and server', () => {
     expectTypeOf<Server.MatchLogChunkEvent>().toEqualTypeOf<Protocol.MatchLogChunkEvent>();
     expectTypeOf<Client.MatchLogErrorEvent>().toEqualTypeOf<Protocol.MatchLogErrorEvent>();
     expectTypeOf<Server.MatchLogErrorEvent>().toEqualTypeOf<Protocol.MatchLogErrorEvent>();
-    expectTypeOf<Client.MatchResumeErrorReason>().toEqualTypeOf<Protocol.MatchResumeErrorReason>();
     expectTypeOf<Server.MatchResumeErrorReason>().toEqualTypeOf<Protocol.MatchResumeErrorReason>();
     expectTypeOf<Client.MatchResumeState>().toEqualTypeOf<Protocol.MatchResumeState>();
     expectTypeOf<Server.MatchResumeState>().toEqualTypeOf<Protocol.MatchResumeState>();

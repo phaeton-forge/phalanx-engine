@@ -18,6 +18,11 @@ Slot types (`HumanSlotConfig`, `BotSlotConfig`, `SlotConfig`,
 `data`, optional `sequence`). `SubmittedCommand` is what a client puts in
 `submit-commands` (`type`, `data`, optional `sequence`).
 
+An `*Event` name is an event payload. An `*Request` name is a
+client-to-server request. Exceptions: `MatchResumeState` (the result of
+`resumeMatch()`), `PlayerCommand` / `SubmittedCommand`,
+`SubmitCommandsAck`, and `MatchLogEntry`.
+
 | Event                 | Type                                 | Direction       |
 | --------------------- | ------------------------------------ | --------------- |
 | `submit-commands`     | `SubmitCommandsEvent`                | client → server |
@@ -59,7 +64,7 @@ Slot types (`HumanSlotConfig`, `BotSlotConfig`, `SlotConfig`,
 `room-create.matchConfig` uses `ServerRoomMatchConfig`. `MatchState` is
 the match lifecycle union on `MatchResumeState.state`.
 
-## Ещё не в protocol
+## Not yet in protocol
 
 These socket names are still untyped here.
 

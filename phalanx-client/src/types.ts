@@ -331,7 +331,8 @@ export type {
 
 /**
  * Why `fetchMatchLog` stopped.
- * `MatchLogErrorReason` arrives on `match-log-error`.
+ * `MatchLogErrorReason` from `@phalanx-engine/protocol` arrives on
+ * `match-log-error`.
  * `'disconnected'` is local, when the socket closes mid-read.
  * `'aborted'` is local, when the caller breaks or a newer fetch
  * replaces this one. The server does not send either.
@@ -355,7 +356,8 @@ export class MatchLogError extends Error {
 
 /**
  * Why `resumeMatch` rejected.
- * `MatchResumeErrorReason` arrives on `match-resume-error`.
+ * `MatchResumeErrorReason` from `@phalanx-engine/protocol` arrives on
+ * `match-resume-error`.
  * `'timeout'` is local, when `connectionTimeoutMs` elapses with no
  * answer. The server does not send it.
  */

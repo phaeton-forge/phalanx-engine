@@ -329,16 +329,15 @@ Entries collected per package until the synchronized 0.3.0 release
 
 - Wire types now come from `@phalanx-engine/protocol`. Removed the local
   copies. `LogChunk` is `MatchLogChunkEvent`. `TickCommandsHistory` is
-  `MatchLogEntry`. `MatchLogWireErrorReason` is `MatchLogErrorReason`.
-  `MatchResumeWireErrorReason` is `MatchResumeErrorReason`.
+  `MatchLogEntry`. The client has one reason name per operation:
+  `MatchLogFailureReason` (`MatchLogError.reason`) and
+  `MatchResumeFailureReason` (`MatchResumeRejected.reason`).
+  `MatchLogErrorReason`, `MatchResumeErrorReason`,
+  `MatchLogWireErrorReason`, and `MatchResumeWireErrorReason` are
+  removed from the client with no replacement.
   `PlayerCommand.playerId` and `PlayerCommand.tick` are required
   (`sequence` stays optional). `SubmittedCommand` is a new export, and
-  `submitCommands` takes `SubmittedCommand[]`. The exported
-  `MatchLogErrorReason` and `MatchResumeErrorReason` are the wire unions
-  only: they no longer include `'disconnected'`, `'aborted'`, or
-  `'timeout'`. Those local reasons stay on `MatchLogFailureReason`
-  (`MatchLogError.reason`) and `MatchResumeFailureReason`
-  (`MatchResumeRejected.reason`). `GameStartEvent` includes optional
+  `submitCommands` takes `SubmittedCommand[]`. `GameStartEvent` includes optional
   `matchConfig`.
   `MatchResumeState` includes optional `snapshot`. `RoomErrorEvent.reason`
   includes `'sim-unavailable'`. `PlayerDisconnectedEvent` includes

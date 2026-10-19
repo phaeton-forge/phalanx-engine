@@ -1,6 +1,7 @@
 /**
- * Command after the server stamps `playerId` and `tick`.
- * This is the form in `commands-batch`, the command log, and `player-command`.
+ * What the server delivers: the command after it stamps `playerId` and
+ * `tick`. This is the form in `commands-batch`, the command log, and
+ * `player-command`.
  */
 export interface PlayerCommand {
   type: string;
@@ -12,8 +13,8 @@ export interface PlayerCommand {
 }
 
 /**
- * One command inside `submit-commands`. The server copies `type`, `data`,
- * and `sequence`, then stamps `playerId` and `tick`.
+ * What the client sends: one command inside `submit-commands`. The server
+ * copies `type`, `data`, and `sequence`, then stamps `playerId` and `tick`.
  */
 export interface SubmittedCommand {
   type: string;
