@@ -1,0 +1,10 @@
+{
+  "name": "@fixture/cycle-b",
+  "type": "module",
+  "devDependencies": {
+    "@fixture/cycle-a": "0.0.0"
+  },
+  "phalanx": {
+    "layer": "domain"
+  }
+}

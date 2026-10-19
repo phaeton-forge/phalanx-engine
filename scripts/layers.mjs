@@ -77,7 +77,8 @@ export function loadWorkspace(rootDir) {
     return {
       folder,
       dir,
-      rel: relative(process.cwd(), dir).split('\\').join('/'),
+      // Rule paths are relative to rootDir. Run depcruise with that cwd.
+      rel: relative(rootDir, dir).split('\\').join('/'),
       name,
       short: shortName(name),
       raw,

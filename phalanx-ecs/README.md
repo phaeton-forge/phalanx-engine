@@ -361,7 +361,7 @@ type FrameHandler = (alpha: number, dt: number) => void;
 type PauseHandler = () => void;
 ```
 
-`ITickFrameProvider` does not carry the match RNG. `GameWorldConfig.random` is the only source. When it is omitted, `world.random` throws `SystemContext.random is not configured: pass GameWorldConfig.random or a tickFrameProvider that exposes random`.
+`ITickFrameProvider` does not carry the match RNG. `GameWorldConfig.random` is the only source. When it is omitted, `world.random` throws `SystemContext.random is not configured: pass GameWorldConfig.random`.
 
 ## Component Types: IComponent vs SoAComponent
 

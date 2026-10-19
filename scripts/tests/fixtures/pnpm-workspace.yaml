@@ -13,3 +13,5 @@ packages:
   - 'composition-extra'
   - 'app-playground'
   - 'missing-layer'
+  - 'cycle-a'
+  - 'cycle-b'

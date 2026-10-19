@@ -85,7 +85,7 @@ export class SystemContext {
   public get random(): IRandom {
     if (!this._random) {
       throw new Error(
-        'SystemContext.random is not configured: pass GameWorldConfig.random or a tickFrameProvider that exposes random'
+        'SystemContext.random is not configured: pass GameWorldConfig.random'
       );
     }
     return this._random;

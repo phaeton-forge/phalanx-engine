@@ -44,8 +44,8 @@ function cruise(config) {
   writeFileSync(configFile, `module.exports = ${JSON.stringify(config)};\n`);
   const result = spawnSync(
     join(process.cwd(), 'node_modules', '.bin', 'depcruise'),
-    ['--config', configFile, '--output-type', 'json', FIXTURE],
-    { cwd: process.cwd(), encoding: 'utf8' }
+    ['--config', configFile, '--output-type', 'json', '.'],
+    { cwd: FIXTURE, encoding: 'utf8' }
   );
   rmSync(dir, { recursive: true, force: true });
   const stdout = result.stdout ?? '';
@@ -74,6 +74,14 @@ test('check-layer-deps reports each package.json violation and passes clean pack
     lines.some((line) => line.startsWith('@fixture/playground:')),
     false
   );
+  assert.ok(
+    lines.some(
+      (line) =>
+        line.includes('workspace dependency cycle') &&
+        line.includes('@fixture/cycle-a') &&
+        line.includes('@fixture/cycle-b')
+    )
+  );
 });
 
 test('generated rules catch each matrix violation exactly once', () => {
@@ -97,9 +105,10 @@ test('generated rules catch each matrix violation exactly once', () => {
 
   for (const name of EXPECTED_RULES) {
     const found = byRule.get(name) ?? [];
+    const expected = name === 'layer-infrastructure-to-domain' ? 2 : 1;
     assert.equal(
       found.length,
-      1,
+      expected,
       `${name} found ${String(found.length)}: ${found
         .map((item) => `${item.from} -> ${item.to}`)
         .join('; ')}`
@@ -113,8 +122,12 @@ test('generated rules catch each matrix violation exactly once', () => {
     );
   }
 
-  const domain = byRule.get('layer-infrastructure-to-domain')?.[0];
-  assert.match(domain.from, /type-only\.ts$/);
+  const domainHits = byRule.get('layer-infrastructure-to-domain') ?? [];
+  assert.ok(domainHits.some((item) => /type-only\.ts$/.test(item.from)));
+  assert.ok(
+    domainHits.some((item) => /\/src\/server\//.test(item.from)),
+    domainHits.map((item) => item.from).join('; ')
+  );
   const subpath = byRule.get('layer-root-to-subpath')?.[0];
   assert.match(subpath.to, /\/src\/server\//);
   const host = byRule.get('isomorphic-host')?.[0];

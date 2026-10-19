@@ -125,14 +125,14 @@ describe('SystemContext shared services', () => {
     const world = new GameWorld({ tickFrameProvider: provider });
     expect(reads).toBe(0);
     expect(() => world.random).toThrow(
-      /SystemContext.random is not configured/
+      /^SystemContext\.random is not configured: pass GameWorldConfig\.random$/
     );
   });
 
   it('throws when context.random is accessed without configuration', () => {
     const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
     expect(() => world.random).toThrow(
-      /SystemContext.random is not configured/
+      /^SystemContext\.random is not configured: pass GameWorldConfig\.random$/
     );
   });
 

@@ -34,9 +34,11 @@ Entries collected per package until the synchronized 0.3.0 release
   not read.
 - Removed the error
   `GameWorld: match RNG is not ready. Call await client.waitForGameStart() before constructing GameWorld with tickFrameProvider.`
-  A world without `config.random` still throws
-  `SystemContext.random is not configured: pass GameWorldConfig.random or a tickFrameProvider that exposes random`
-  from `world.random` and `context.random`.
+  A world without `config.random` throws
+  `SystemContext.random is not configured: pass GameWorldConfig.random`
+  from `world.random` and `context.random`. The previous text,
+  which told callers to pass a tickFrameProvider that exposes `random`,
+  is no longer thrown.
 - Export counts unchanged (`[72]` names, `[30]` values).
 
 ## abilities-playground

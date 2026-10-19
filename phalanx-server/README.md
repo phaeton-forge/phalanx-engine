@@ -391,7 +391,7 @@ in by passing `matchConfig` on `room-create`:
 
 ```typescript
 import { Phalanx } from '@phalanx-engine/server';
-// createServerSim is the runtime package's server subpath, not this package
+import { createServerSim } from '@phalanx-engine/game/server';
 
 const app = new Phalanx({
   tickRate: 64,

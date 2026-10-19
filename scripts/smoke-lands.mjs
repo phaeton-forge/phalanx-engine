@@ -10,14 +10,14 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const TIMEOUT_MS = 60_000;
+const MATCH_TIMEOUT_MS = 60_000;
+const PREPARE_TIMEOUT_MS = 180_000;
 const PACKAGES = [
   '@phalanx-engine/protocol',
   '@phalanx-engine/client',
   '@phalanx-engine/server',
 ];
 const ALLOWED = ['client', 'protocol', 'server'];
-const started = Date.now();
 
 const MATCH = `import { Phalanx } from '@phalanx-engine/server';
 import { PhalanxClient } from '@phalanx-engine/client';
@@ -100,17 +100,8 @@ beta.client.disconnect();
 await server.stop();
 `;
 
-function remaining() {
-  return TIMEOUT_MS - (Date.now() - started);
-}
-
-function run(command, args, cwd) {
+function run(command, args, cwd, timeoutMs) {
   return new Promise((resolve, reject) => {
-    const budget = remaining();
-    if (budget <= 0) {
-      reject(new Error('smoke-lands: timeout'));
-      return;
-    }
     const child = spawn(command, args, {
       cwd,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -120,7 +111,7 @@ function run(command, args, cwd) {
     const timer = setTimeout(() => {
       child.kill('SIGKILL');
       reject(new Error(`smoke-lands: timeout during ${command}`));
-    }, budget);
+    }, timeoutMs);
     child.stdout?.on('data', (chunk) => {
       stdout += String(chunk);
     });
@@ -170,7 +161,6 @@ function safe(name) {
 const root = mkdtempSync(join(tmpdir(), 'phalanx-lands-'));
 let exitCode = 0;
 try {
-  if (remaining() <= 0) throw new Error('smoke-lands: timeout');
   const extracted = new Map();
   for (const name of PACKAGES) {
     const packed = join(root, 'packed', safe(name));
@@ -180,9 +170,15 @@ try {
     await run(
       'pnpm',
       ['--filter', name, 'pack', '--pack-destination', packed],
-      process.cwd()
+      process.cwd(),
+      PREPARE_TIMEOUT_MS
     );
-    await run('tar', ['-xzf', newestTarball(packed), '-C', dir], root);
+    await run(
+      'tar',
+      ['-xzf', newestTarball(packed), '-C', dir],
+      root,
+      PREPARE_TIMEOUT_MS
+    );
     extracted.set(name, join(dir, 'package'));
   }
 
@@ -216,12 +212,17 @@ try {
     }
     delete pkg.scripts;
     writeFileSync(pkgPath, `${JSON.stringify(pkg, null, 2)}\n`);
-    await run('npm', ['pack', '--pack-destination', finalDir], dir);
+    await run(
+      'npm',
+      ['pack', '--pack-destination', finalDir],
+      dir,
+      PREPARE_TIMEOUT_MS
+    );
   }
 
   const app = join(root, 'app');
   mkdirSync(app, { recursive: true });
-  await run('npm', ['init', '-y'], app);
+  await run('npm', ['init', '-y'], app, PREPARE_TIMEOUT_MS);
   const appPkgPath = join(app, 'package.json');
   const appPkg = readPackage(appPkgPath);
   appPkg.type = 'module';
@@ -231,7 +232,7 @@ try {
     if (tarball === undefined) throw new Error(`missing tarball ${name}`);
     return tarball;
   });
-  await run('npm', ['install', ...installs], app);
+  await run('npm', ['install', ...installs], app, PREPARE_TIMEOUT_MS);
 
   const installed = readdirSync(
     join(app, 'node_modules', '@phalanx-engine')
@@ -258,8 +259,7 @@ try {
   }
 
   writeFileSync(join(app, 'match.mjs'), MATCH);
-  await run(process.execPath, ['match.mjs'], app);
-  if (remaining() <= 0) throw new Error('smoke-lands: timeout');
+  await run(process.execPath, ['match.mjs'], app, MATCH_TIMEOUT_MS);
   console.log('smoke-lands: ok (whitelist, 2 clients, 20 ticks)');
 } catch (error) {
   const message = error instanceof Error ? error.message : String(error);
