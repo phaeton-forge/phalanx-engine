@@ -13,11 +13,6 @@ export {
   createEndpointValidator,
 } from './services/TokenValidator.js';
 
-// Utilities
-export { DeterministicRandom } from './utils/index.js';
-export { FP, FPVector2, FPVector3, FixedPoint } from './utils/index.js';
-export type { FPVector2Interface, FPVector3Interface } from './utils/index.js';
-
 // Types for TypeScript users
 export type {
   PhalanxConfig,

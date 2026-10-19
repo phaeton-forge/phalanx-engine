@@ -1,0 +1,7 @@
+{
+  "name": "@fixture/protocol",
+  "type": "module",
+  "phalanx": {
+    "layer": "contracts"
+  }
+}

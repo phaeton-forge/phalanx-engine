@@ -578,15 +578,13 @@ import {
   EventEmitter,
   RenderLoop,
   SocketManager,
-  DeterministicRandom, // re-exported from @phalanx-engine/math (getState / setState / fromState)
   StateHasher,
   DesyncDetector,
   MatchLogError,
 } from '@phalanx-engine/client';
 
-// Fixed-point math (re-exported from phalanx-math)
-import { FP, FPVector2, FPVector3, FixedPoint } from '@phalanx-engine/client';
-import type { FPVector2Interface, FPVector3Interface } from '@phalanx-engine/client';
+// Fixed-point numbers and the match RNG live in @phalanx-engine/math.
+// PhalanxClient.randomSeed is the seed; the client does not construct an RNG.
 
 // Authentication
 import { AuthManager, GoogleOAuthAdapter, LocalStorageAdapter, MemoryStorageAdapter } from '@phalanx-engine/client';

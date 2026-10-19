@@ -169,7 +169,7 @@ Deterministic fixed-point quaternion for entity rotations. Stored in `(x, y, z, 
 
 ## DeterministicRandom
 
-`DeterministicRandom` is the canonical match RNG (`xoroshiro128plus` via `pure-rand`). `@phalanx-engine/client` re-exports it. `@phalanx-engine/server` subclasses it and adds `generateSeed()` (`node:crypto`) and `fromBigInt()`.
+`DeterministicRandom` is the canonical match RNG (`xoroshiro128plus` via `pure-rand`). Games construct it from the match seed (`PhalanxClient.randomSeed` or the runtime config seed).
 
 ```typescript
 import { DeterministicRandom } from '@phalanx-engine/math';

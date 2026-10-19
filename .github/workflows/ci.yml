@@ -14,7 +14,7 @@ jobs:
   build-and-test:
     name: Build and test
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
 
     steps:
       - name: Checkout
@@ -38,5 +38,14 @@ jobs:
       - name: Determinism lint
         run: pnpm lint:determinism
 
+      - name: Layer rules
+        run: pnpm lint:layers && pnpm test:layers
+
+      - name: Isomorphic runtime
+        run: pnpm check:isomorphic
+
       - name: Test @phalanx-engine packages
         run: pnpm --filter "@phalanx-engine/*" test
+
+      - name: Lands smoke
+        run: pnpm smoke:lands

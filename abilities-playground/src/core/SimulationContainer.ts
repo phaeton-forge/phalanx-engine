@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { PhalanxClient } from '@phalanx-engine/client';
 import { Entity, GameWorld } from '@phalanx-engine/ecs';
-import { FP } from '@phalanx-engine/math';
+import { DeterministicRandom, FP } from '@phalanx-engine/math';
 import { PhysicsWorld } from '@phalanx-engine/physics';
 import {
   type AbilityActivationContext,
@@ -88,9 +88,16 @@ export class SimulationContainer {
 
   constructor(client: PhalanxClient, scene: THREE.Scene) {
     this.scene = scene;
+    const seed = client.randomSeed;
+    if (seed === null) {
+      throw new Error(
+        'SimulationContainer: client.randomSeed is null, await waitForGameStart() first'
+      );
+    }
     this.world = new GameWorld({
       componentTypes: Object.values(ComponentType),
       tickFrameProvider: client,
+      random: new DeterministicRandom(seed),
       pooling: {
         autoPrewarm: true,
         entityTypes: {

@@ -22,11 +22,7 @@ import {
   getGameplayTagsComponent,
   type AbilitySystem,
   type MagnitudeCalculation,
-} from '../../../phalanx-abilities/dist/index.js';
-import {
-  readAbilities,
-  writeAbilities,
-} from '../../../phalanx-abilities/dist/save/abilities.js';
+} from '@phalanx-engine/abilities';
 import { digestBytes } from '../../src/index.js';
 import { StateHelpers } from '../../src/advanced/index.js';
 import { manualTickProvider } from '../support/manualTickProvider.js';
@@ -466,7 +462,7 @@ function pendingIds(entity: Entity): string[] {
 function saveMatch(world: GameWorld): Uint8Array {
   return finish((writer) => {
     StateHelpers.writePools(writer, world);
-    writeAbilities(writer, world);
+    StateHelpers.writeModuleSections(writer, world);
     StateHelpers.writeEntityIds(writer, world);
   });
 }
@@ -474,7 +470,7 @@ function saveMatch(world: GameWorld): Uint8Array {
 function loadMatch(bytes: Uint8Array, world: GameWorld): void {
   const reader = new BinaryStateReader(bytes);
   StateHelpers.readPools(reader, world);
-  readAbilities(reader, world);
+  StateHelpers.readModuleSections(reader, world);
   StateHelpers.readEntityIds(reader, world);
   reader.done();
 }

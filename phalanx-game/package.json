@@ -32,6 +32,9 @@
       "import": "./dist/server.js"
     }
   },
+  "phalanx": {
+    "layer": "composition"
+  },
   "dependencies": {
     "@phalanx-engine/abilities": "workspace:*",
     "@phalanx-engine/ecs": "workspace:*",

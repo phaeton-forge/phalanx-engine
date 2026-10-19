@@ -91,6 +91,7 @@ world.start();
 ```typescript
 import { PhalanxClient } from '@phalanx-engine/client';
 import { GameWorld } from '@phalanx-engine/ecs';
+import { DeterministicRandom } from '@phalanx-engine/math';
 
 // Initialize Phalanx Client
 const client = new PhalanxClient({
@@ -98,9 +99,12 @@ const client = new PhalanxClient({
   // ... other config
 });
 
-// Create GameWorld with external tick/frame provider
+// waitForGameStart() first. randomSeed is the only RNG fact the client has.
+const seed = client.randomSeed;
+if (seed === null) throw new Error('match seed missing');
 const world = new GameWorld({
   tickFrameProvider: client,
+  random: new DeterministicRandom(seed),
 });
 
 world.registerSystems(tickSystems, frameSystems);
@@ -356,6 +360,8 @@ type TickHandler = (tick: number, commands: CommandsBatch) => void;
 type FrameHandler = (alpha: number, dt: number) => void;
 type PauseHandler = () => void;
 ```
+
+`ITickFrameProvider` does not carry the match RNG. `GameWorldConfig.random` is the only source. When it is omitted, `world.random` throws `SystemContext.random is not configured: pass GameWorldConfig.random or a tickFrameProvider that exposes random`.
 
 ## Component Types: IComponent vs SoAComponent
 

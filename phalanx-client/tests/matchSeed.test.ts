@@ -1,5 +1,4 @@
 import { describe, it, expect, vi } from 'vitest';
-import { DeterministicRandom } from '../src/DeterministicRandom.js';
 import { PhalanxClient } from '../src/PhalanxClient.js';
 import {
   deriveMatchRandomSeed,
@@ -50,9 +49,7 @@ describe('PhalanxClient match RNG', () => {
     invokeGameStart(client, event);
 
     expect(client.randomSeed).toBe(9001);
-    expect(client.random.intRange(1, 100)).toBe(
-      new DeterministicRandom(9001).intRange(1, 100)
-    );
+    expect('random' in client).toBe(false);
 
     client.disconnect();
   });
@@ -75,9 +72,8 @@ describe('PhalanxClient match RNG', () => {
     invokeGameStart(clientB, event);
 
     expect(clientA.randomSeed).toBe(clientB.randomSeed);
-    expect(clientA.random.intRange(1, 100)).toBe(
-      clientB.random.intRange(1, 100)
-    );
+    expect(clientA.randomSeed).not.toBeNull();
+    expect('random' in clientA).toBe(false);
 
     clientA.disconnect();
     clientB.disconnect();
@@ -94,28 +90,14 @@ describe('PhalanxClient match RNG', () => {
     client.on('gameStart', handler);
 
     const event: GameStartEvent = { matchId: 'match-once', randomSeed: 1234 };
-    const reference = new DeterministicRandom(1234);
-    const expectedFirst = reference.intRange(1, 100);
-    const expectedSecond = reference.intRange(1, 100);
 
     invokeGameStart(client, event);
-    expect(client.random.intRange(1, 100)).toBe(expectedFirst);
+    expect(client.randomSeed).toBe(1234);
 
     invokeGameStart(client, event);
-    expect(client.random.intRange(1, 100)).toBe(expectedSecond);
+    expect(client.randomSeed).toBe(1234);
     expect(handler).toHaveBeenCalledTimes(1);
 
-    client.disconnect();
-  });
-
-  it('throws when random is accessed before game start', () => {
-    const client = new PhalanxClient({
-      serverUrl: 'http://localhost:9999',
-      playerId: 'rng-test-player-2',
-      username: 'RngTest2',
-    });
-
-    expect(() => client.random).toThrow(/RNG unavailable until game start/);
     client.disconnect();
   });
 });

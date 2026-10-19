@@ -11,6 +11,9 @@
       "import": "./dist/index.js"
     }
   },
+  "phalanx": {
+    "layer": "infrastructure"
+  },
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
@@ -49,7 +52,6 @@
     "README.md"
   ],
   "dependencies": {
-    "@phalanx-engine/math": "workspace:*",
     "@phalanx-engine/protocol": "workspace:*",
     "socket.io": "^4.7.0"
   },

@@ -249,6 +249,8 @@ describe('PhalanxClient Integration Tests', () => {
 
       expect(gameStart.matchId).toBeDefined();
       expect(client1.getClientState()).toBe('playing');
+      expect(client1.randomSeed).not.toBeNull();
+      expect('random' in client1).toBe(false);
 
       client1.disconnect();
       client2.disconnect();

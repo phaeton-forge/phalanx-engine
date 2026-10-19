@@ -75,8 +75,8 @@ export class SystemContext {
 
   /**
    * Match-scoped deterministic RNG.
-   * Set by GameWorld from config or the tick provider; may be set manually
-   * in isolated unit tests.
+   * Set by GameWorld from {@link GameWorldConfig.random}; may be set
+   * manually in isolated unit tests.
    */
   public set random(r: IRandom) {
     this._random = r;

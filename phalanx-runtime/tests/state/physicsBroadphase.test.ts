@@ -15,12 +15,7 @@ import {
   PhysicsWorld,
   TransformComponent,
   TransformSoASchema,
-} from '../../../phalanx-physics/dist/index.js';
-import {
-  readBroadphase,
-  rebuildBroadphaseFromTransforms,
-  writeBroadphase,
-} from '../../../phalanx-physics/dist/save/broadphase.js';
+} from '@phalanx-engine/physics';
 import { StateHelpers } from '../../src/advanced/index.js';
 import { manualTickProvider } from '../support/manualTickProvider.js';
 
@@ -110,7 +105,7 @@ describe('physics broadphase save', () => {
 
     const bytes = finish((writer) => {
       StateHelpers.writeSoAStores(writer, world, SCHEMAS);
-      writeBroadphase(writer, world);
+      StateHelpers.writeModuleSections(writer, world);
     });
 
     const restored = wiredWorld();
@@ -118,7 +113,7 @@ describe('physics broadphase save', () => {
     addDisc(restored.world, 0, 0);
     const reader = new BinaryStateReader(bytes);
     StateHelpers.readSoAStores(reader, restored.world, SCHEMAS);
-    readBroadphase(reader, restored.world);
+    StateHelpers.readModuleSections(reader, restored.world);
     reader.done();
 
     const restoredQuery = [
@@ -142,11 +137,11 @@ describe('physics broadphase save', () => {
 
     const again = finish((writer) => {
       StateHelpers.writeSoAStores(writer, restored.world, SCHEMAS);
-      writeBroadphase(writer, restored.world);
+      StateHelpers.writeModuleSections(writer, restored.world);
     });
     expect(again).toEqual(bytes);
 
-    rebuildBroadphaseFromTransforms(restored.world);
+    restored.physics.rebuildBroadphase();
     const rebuiltQuery = [
       ...restored.physics.spatialGrid.queryRadius(moved.x, moved.z, FP._0),
     ];

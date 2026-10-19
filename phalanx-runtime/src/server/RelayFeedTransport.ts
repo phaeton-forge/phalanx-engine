@@ -4,7 +4,7 @@ import type {
   PauseHandler,
   TickHandler,
   Unsubscribe,
-} from '@phalanx-engine/ecs';
+} from '../transport/Transport.js';
 import type { TransportCommand } from '../game/commands.js';
 import type { Transport, TransportKind } from '../transport/Transport.js';
 import type { SimCommand } from './messages.js';

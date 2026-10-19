@@ -1,0 +1,7 @@
+{
+  "name": "@fixture/contracts-extra",
+  "type": "module",
+  "phalanx": {
+    "layer": "contracts"
+  }
+}

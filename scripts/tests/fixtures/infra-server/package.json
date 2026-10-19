@@ -1,0 +1,7 @@
+{
+  "name": "@fixture/server",
+  "type": "module",
+  "phalanx": {
+    "layer": "infrastructure"
+  }
+}

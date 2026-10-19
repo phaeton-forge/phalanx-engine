@@ -59,13 +59,13 @@ export interface GameWorldConfig {
   /** Object pooling configuration. If omitted, pooling is disabled. */
   pooling?: PoolingConfig;
   /**
-   * Match-scoped deterministic RNG for single-player or test worlds.
-   * When omitted, {@link GameWorld} reads `tickFrameProvider.random` if set.
+   * Match-scoped deterministic RNG. This is the only source. When omitted,
+   * {@link GameWorld.random} throws.
    *
    * Multiplayer: call `await client.waitForGameStart()` **before**
-   * `new GameWorld({ tickFrameProvider: client })`. Create one world per
-   * match — RNG is snapshotted here and is not refreshed if the client
-   * re-seeds on a later game start.
+   * constructing the world, then pass `random` built from
+   * `client.randomSeed`. Create one world per match — RNG is snapshotted
+   * here and is not refreshed if the client re-seeds on a later game start.
    */
   random?: IRandom;
 }
@@ -180,9 +180,8 @@ export class GameWorld {
 
     this.provider = config.tickFrameProvider;
 
-    const resolvedRandom = this.resolveConfiguredRandom(config);
-    if (resolvedRandom) {
-      this.systemRegistry.getContext().random = resolvedRandom;
+    if (config.random) {
+      this.systemRegistry.getContext().random = config.random;
     }
   }
 
@@ -522,28 +521,5 @@ export class GameWorld {
     }
     this.systemRegistry.dispose();
     SoAComponent.resetContext();
-  }
-
-  private resolveConfiguredRandom(
-    config: GameWorldConfig
-  ): IRandom | undefined {
-    if (config.random) {
-      return config.random;
-    }
-
-    try {
-      return config.tickFrameProvider.random;
-    } catch (error) {
-      if (
-        error instanceof Error &&
-        error.message.includes('RNG unavailable until game start')
-      ) {
-        throw new Error(
-          'GameWorld: match RNG is not ready. Call await client.waitForGameStart() before constructing GameWorld with tickFrameProvider.',
-          { cause: error }
-        );
-      }
-      throw error;
-    }
   }
 }
