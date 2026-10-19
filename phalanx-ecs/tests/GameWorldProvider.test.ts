@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { GameWorld, type GameWorldConfig } from '../src/GameWorld.js';
+import {
+  GameWorld,
+  GameWorldEvents,
+  type GameWorldConfig,
+} from '../src/GameWorld.js';
 import { manualTickProvider } from './support/manualTickProvider.js';
 
 describe('GameWorld tick provider', () => {
@@ -19,6 +23,20 @@ describe('GameWorld tick provider', () => {
     world.stop();
     expect(start).not.toHaveBeenCalled();
     expect(stop).not.toHaveBeenCalled();
+    world.dispose();
+  });
+
+  it('pause from the provider sets paused and emits PAUSED', () => {
+    const provider = manualTickProvider();
+    const world = new GameWorld({ tickFrameProvider: provider });
+    const paused: string[] = [];
+    world.eventBus.on(GameWorldEvents.PAUSED, () => {
+      paused.push(GameWorldEvents.PAUSED);
+    });
+    world.start();
+    world.pause();
+    expect(world.paused).toBe(true);
+    expect(paused).toEqual([GameWorldEvents.PAUSED]);
     world.dispose();
   });
 });

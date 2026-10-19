@@ -136,6 +136,11 @@ describe('attachDebug', () => {
     vi.advanceTimersByTime(150);
     expect(snapshots).toHaveLength(1);
     expect(window.document.body.childElementCount).toBe(1);
+    const panel = attachment.panel;
+    if (panel === null) {
+      throw new Error('expected a panel');
+    }
+    const destroy = vi.spyOn(panel, 'destroy');
 
     attachment.detach();
     vi.advanceTimersByTime(500);
@@ -145,6 +150,7 @@ describe('attachDebug', () => {
     expect(attachment.provider.getSnapshot().world.paused).toBe(false);
     expect(window.document.body.childElementCount).toBe(0);
     expect(() => attachment.detach()).not.toThrow();
+    expect(destroy).toHaveBeenCalledTimes(1);
     world.dispose();
   });
 

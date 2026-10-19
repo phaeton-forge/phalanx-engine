@@ -1,4 +1,4 @@
-import { GameWorld, GameWorldEvents } from '@phalanx-engine/ecs';
+import { GameWorldEvents, type GameWorld } from '@phalanx-engine/ecs';
 import { DebugDataProvider } from './DebugDataProvider.js';
 import { DebugPanel } from './DebugPanel.js';
 import type { DebugPanelConfig } from './types.js';

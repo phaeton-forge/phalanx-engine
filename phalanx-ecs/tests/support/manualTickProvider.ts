@@ -5,7 +5,7 @@ import type {
   PauseHandler,
   TickHandler,
   Unsubscribe,
-} from '../../src/ITickFrameProvider.js';
+} from '@phalanx-engine/ecs';
 
 /** Clock-less provider. Tests advance the world with {@link ManualTickProvider.step}. */
 export class ManualTickProvider implements ITickFrameProvider {

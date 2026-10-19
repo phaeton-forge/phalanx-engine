@@ -21,6 +21,7 @@ class PoolableEntity extends Entity implements IPoolableEntity {
 
 const HealthType = Symbol('Health');
 const ArmorType = Symbol('Armor');
+const GaugeType = Symbol('Gauge');
 
 class HealthComponent implements IComponent {
   readonly type = HealthType;
@@ -30,6 +31,19 @@ class HealthComponent implements IComponent {
 class ArmorComponent implements IComponent {
   readonly type = ArmorType;
   constructor(public armor: number = 10) {}
+}
+
+class GaugeComponent implements IComponent {
+  readonly type = GaugeType;
+  private stored: number;
+
+  constructor(stored: number) {
+    this.stored = stored;
+    Object.defineProperty(this, 'reading', {
+      enumerable: true,
+      get: () => this.stored,
+    });
+  }
 }
 
 const PhysicsSoASchema = defineSoASchema(
@@ -127,12 +141,33 @@ describe('DebugDataProvider', () => {
       );
       expect(healthSnap).toBeDefined();
       expect(healthSnap!.data.hp).toBe(75);
+      expect(healthSnap!.data).not.toHaveProperty('type');
 
       const armorSnap = entitySnap.components.find(
         (c) => c.typeName === 'Armor'
       );
       expect(armorSnap).toBeDefined();
       expect(armorSnap!.data.armor).toBe(20);
+    });
+
+    it('copies enumerable getter values', () => {
+      em.registerComponentTypes([GaugeType]);
+      const entity = new Entity();
+      entity.addComponent(new GaugeComponent(7));
+      em.addEntity(entity);
+
+      const snap = createProvider(em).getSnapshot();
+      const entitySnap = snap.entities[0];
+      const gauge = entitySnap?.components.find((c) => c.typeName === 'Gauge');
+      expect(gauge?.data.reading).toBe(7);
+    });
+
+    it('throws when a SoA store has an unexpected shape', () => {
+      const stores = new Map<symbol, never>([[Symbol('bad'), {} as never]]);
+      vi.spyOn(em, 'getAllSoAStores').mockReturnValue(stores);
+      expect(() => createProvider(em).getSnapshot()).toThrow(
+        'DebugDataProvider: unexpected SoA store shape'
+      );
     });
 
     it('collects SoA store data with correct field types', () => {

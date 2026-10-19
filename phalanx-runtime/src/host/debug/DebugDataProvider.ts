@@ -144,7 +144,7 @@ export class DebugDataProvider {
   private collectSnapshot(): DebugSnapshot {
     const soaStores = this.collectSoAStores();
     return {
-      timestamp: wallClock().performance.now(),
+      timestamp: Date.now(),
       world: {
         entityCount: this.entityManager.count,
         soaStoreCount: soaStores.length,
@@ -186,7 +186,9 @@ export class DebugDataProvider {
     const result: DebugSoAStoreSnapshot[] = [];
 
     for (const raw of stores.values()) {
-      if (!isDebugSoAStore(raw)) continue;
+      if (!isDebugSoAStore(raw)) {
+        throw new Error('DebugDataProvider: unexpected SoA store shape');
+      }
       const store = raw;
       const schema = store.schema;
 
@@ -233,16 +235,9 @@ function copyOwnData(component: object): Record<string, unknown> {
   const data: Record<string, unknown> = {};
   for (const key of Object.keys(component)) {
     if (key === 'type') continue;
-    const descriptor = Object.getOwnPropertyDescriptor(component, key);
-    if (descriptor === undefined) continue;
-    data[key] = descriptorValue(descriptor);
+    data[key] = Reflect.get(component, key);
   }
   return data;
-}
-
-function descriptorValue(descriptor: PropertyDescriptor): unknown {
-  const boxed: { readonly value?: unknown } = descriptor;
-  return boxed.value;
 }
 
 function isDebugSoAStore(value: object): value is DebugSoAStore {

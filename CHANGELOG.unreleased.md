@@ -59,8 +59,10 @@ Entries collected per package until the synchronized 0.3.0 release
   `requestAnimationFrame` throws
   `TickFrameManager: this host has no requestAnimationFrame`.
   `attachDebug(world, { panel })` without a DOM throws
-  `attachDebug: panel requires a DOM`. The package `lib` includes `DOM`
-  for the panel only.
+  `attachDebug: panel requires a DOM`. A debug snapshot `timestamp` is
+  `Date.now()` (epoch milliseconds). A SoA store that does not match the
+  expected shape throws `DebugDataProvider: unexpected SoA store shape`.
+  The package `lib` includes `DOM` for the panel only.
 - `ENGINE_SNAPSHOT_FORMAT` is 3. World bytes are roster (when any
   non-pooled entity exists), pools, SoA stores, entity ids, RNG, one
   `modules` container, then game singletons. The container is written

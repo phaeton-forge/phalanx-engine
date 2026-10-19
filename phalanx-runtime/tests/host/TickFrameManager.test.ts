@@ -165,5 +165,6 @@ describe('TickFrameManager', () => {
     expect(() => manager.start()).toThrow(
       'TickFrameManager: this host has no requestAnimationFrame'
     );
+    expect(manager.isActive()).toBe(false);
   });
 });
