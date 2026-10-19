@@ -355,7 +355,6 @@ const ADVANCED_NAMES: readonly string[] = [
   'TransportKind',
   'WorldScope',
   'nextEntityId',
-  'rebuildBroadphaseFromTransforms',
   'setEntityIdCounter',
   'setWorldModuleHost',
   'spawnWithId',
@@ -496,7 +495,7 @@ describe('@phalanx-engine/game subpath exports', () => {
     }
     expect(
       resolved.map((entry) => actual.get(entry.file)?.names.length)
-    ).toEqual([180, 9, 33, 85, 24, 3]);
+    ).toEqual([180, 9, 33, 85, 23, 3]);
   });
 
   it('keeps the name sets pairwise disjoint', () => {

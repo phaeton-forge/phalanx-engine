@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { bindTestWorld } from './bindTestWorld.js';
 import { FP } from '@phalanx-engine/math';
 import {
   EntityManager,
@@ -14,7 +15,9 @@ import { ExternalPhysicsTickProvider } from '../src/tick/ExternalPhysicsTickProv
 import type { PhysicsConfig } from '../src/types';
 import { addTransformRow } from './testTransformHelpers';
 
-function createPhysicsConfig(overrides?: Partial<PhysicsConfig>): PhysicsConfig {
+function createPhysicsConfig(
+  overrides?: Partial<PhysicsConfig>
+): PhysicsConfig {
   return {
     tickDt: FP.FromFloat(0.05),
     subSteps: 1,
@@ -45,10 +48,12 @@ describe('step()', () => {
   function setupSystem(overrides?: Partial<PhysicsConfig>) {
     const config = createPhysicsConfig(overrides);
     const system = new PhysicsSystem(config);
+    bindTestWorld(context);
     system.init(context);
 
     const physicsStore = entityManager.getOrCreateSoAStore(PhysicsSoASchema);
-    const transformStore = entityManager.getOrCreateSoAStore(TransformSoASchema);
+    const transformStore =
+      entityManager.getOrCreateSoAStore(TransformSoASchema);
 
     return { system, physicsStore, transformStore };
   }
@@ -60,7 +65,7 @@ describe('step()', () => {
     posX: number,
     posZ: number,
     velX: number = 0,
-    velZ: number = 0,
+    velZ: number = 0
   ): void {
     physicsStore.add(entityId, {
       velocityX: FP.ToRaw(FP.FromFloat(velX)),
@@ -90,6 +95,7 @@ describe('step()', () => {
 
       const config = createPhysicsConfig();
       const system = new PhysicsSystem(config);
+      bindTestWorld(ctx);
       system.init(ctx);
 
       const physicsStore = em.getOrCreateSoAStore(PhysicsSoASchema);
@@ -124,6 +130,7 @@ describe('step()', () => {
 
       const config = createPhysicsConfig();
       const system = new PhysicsSystem(config);
+      bindTestWorld(ctx);
       system.init(ctx);
 
       const physicsStore = em.getOrCreateSoAStore(PhysicsSoASchema);
@@ -177,13 +184,17 @@ describe('step()', () => {
     system.processTick(1);
 
     const txIdx = transformStore.indexOf(1);
-    const posX = FP.ToFloat(FP.FromRaw(transformStore.arrays.fpPositionX[txIdx]));
+    const posX = FP.ToFloat(
+      FP.FromRaw(transformStore.arrays.fpPositionX[txIdx])
+    );
     expect(posX).toBeCloseTo(0, 5); // unchanged
 
     // But provider.tick() should advance simulation
     provider.tick();
 
-    const posXAfter = FP.ToFloat(FP.FromRaw(transformStore.arrays.fpPositionX[txIdx]));
+    const posXAfter = FP.ToFloat(
+      FP.FromRaw(transformStore.arrays.fpPositionX[txIdx])
+    );
     expect(posXAfter).toBeCloseTo(0.5, 1); // vel=10, dt=0.05
   });
 
@@ -194,7 +205,9 @@ describe('step()', () => {
     system.step();
 
     const txIdx = transformStore.indexOf(1);
-    const posX = FP.ToFloat(FP.FromRaw(transformStore.arrays.fpPositionX[txIdx]));
+    const posX = FP.ToFloat(
+      FP.FromRaw(transformStore.arrays.fpPositionX[txIdx])
+    );
     expect(posX).toBeCloseTo(0.5, 1);
   });
 });

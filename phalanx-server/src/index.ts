@@ -81,6 +81,7 @@ export type {
   ServerRoomMatchConfig,
   ServerSimHook,
 } from './types/index.js';
+export type { ServerSimEvents } from '@phalanx-engine/protocol';
 export type { SlotConfig } from '@phalanx-engine/protocol';
 
 // Constants

@@ -52,7 +52,7 @@ import {
 import type { LoadedMatch, MatchStore } from '../persistence/MatchStore.js';
 import { scheduleOffTick } from '../persistence/scheduleOffTick.js';
 import { initDigest } from '../state/digest.js';
-import { BinaryStateReader, BinaryStateWriter } from '../state/BinaryState.js';
+import { BinaryStateReader, BinaryStateWriter } from '@phalanx-engine/ecs';
 import type { SaveHandler, StateMigration } from '../state/GameState.js';
 import {
   SnapshotRejectedError,
@@ -105,7 +105,7 @@ export type RunnerStatus =
 export interface RunnerOptions {
   /**
    * Human slots whose input `submit` accepts. Default: every human slot for
-   * a `'local'` transport; the slots a network join reports for the others.
+   * a `'local'` transport; `TransportJoin.localSlots` for network ones.
    */
   readonly localSlots?: readonly number[];
   /** Publish a digest every N ticks (default `DEFAULT_HASH_EVERY_TICKS`). */
@@ -184,7 +184,7 @@ export interface FastForwardOptions {
   /**
    * Last tick to execute, inclusive. Empty ticks still run: a command
    * iterable cannot express them. Replay passes `ReplayRecord.lastTick`.
-   * Server catch-up passes the relay's current tick minus 1, because
+   * Server catch-up passes `TransportCatchUp.currentTick - 1`, because
    * `GameRoom.currentTick` between ticks is the next tick to run
    * (`GameRoom.ts` increments it at the end of `processTick`).
    * Throws when `throughTick` is below the runner's current tick or when
@@ -222,7 +222,7 @@ interface TickPlan {
 }
 
 /**
- * Drives one `GameDefinition` from a transport.
+ * Drives one `GameDefinition` from any `Transport`.
  *
  * Per tick T (all inside `WorldScope.run`):
  *  1. take the batch of T from the transport, append it to the log;

@@ -1,5 +1,5 @@
 import type { GameWorld } from '@phalanx-engine/ecs';
-import type { StateReader, StateWriter } from '../state/StateIO.js';
+import type { StateReader, StateWriter } from '@phalanx-engine/ecs';
 
 /**
  * Optional bytes after the engine sections. Used for simulation

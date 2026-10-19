@@ -536,16 +536,16 @@ fields differ from the booted world fails before the body is applied:
 The schema text rides in the snapshot envelope, outside the body digest,
 so section bytes stay the same. `spawnWithId` itself
 still throws when the id is registered. `bindWorldSingletons` appends
-optional game sections after broadphase.
+optional game sections after the `modules` container.
 
 Component lifecycle is `onCreate` (add), `onEnable` (pool spawn, `world.spawn`,
 and after restore), `onDisable` (return to pool or despawn) and `onDestroy`
 (`dispose`, including pool drain). Pool return resets SoA fields to schema
 defaults and GAS attributes, the granted ability set, and `initComponent`
-tags to the factory shell. `addReturnToPoolHook` and `IPoolableComponent`
-are internal.
+tags to the factory shell. `addReturnToPoolHook` and
+`isPoolableComponent` are internal. `IPoolableComponent` is exported.
 
-`src/helpers/StateHelpers.ts`, re-exported from `src/advanced/index.ts`.
+`src/advanced/StateHelpers.ts`, re-exported from `src/advanced/index.ts`.
 A plain `as const` object, not a TS `namespace`. The engine's world
 modules call these; a hand-written `GameState` MAY call them too.
 
@@ -574,13 +574,8 @@ export const StateHelpers: {
   readPools(r: StateReader, world: GameWorld): void;
   writeRandom(w: StateWriter, rng: IRandom): void;
   readRandom(r: StateReader, rng: IRandom): void;
-  /** Pre-separation grid centers, not the saved transforms. */
-  writeBroadphase(w: StateWriter, world: GameWorld): void;
-  readBroadphase(r: StateReader, world: GameWorld): void;
-  /** From current transforms. Wrong after a collision; see finding 6. */
-  rebuildBroadphaseFromTransforms(world: GameWorld): void;
-  writeAbilities(w: StateWriter, world: GameWorld): void; // Task 5
-  readAbilities(r: StateReader, world: GameWorld): void;
+  writeModuleSections(w: StateWriter, world: GameWorld): void;
+  readModuleSections(r: StateReader, world: GameWorld): void;
 };
 ```
 
@@ -588,11 +583,16 @@ export const StateHelpers: {
 
 1. Recreate dynamic entities by id (`spawnWithId`, `readPools`); their
    constructors create the SoA rows.
-2. Overwrite row and component values (`readSoAStores`, `readAbilities`).
+2. Overwrite row values (`readSoAStores`).
 3. `readEntityIds` sets the counter to the saved high-water mark.
-4. `readRandom` and game singletons, then `readBroadphase`.
-   `rebuildBroadphaseFromTransforms` (from the saved transforms) does not reproduce the grid
-   after a collision.
+4. `readRandom`.
+5. `readModuleSections` reads the `modules` container: each registered
+   section (`abilities`, `physics.broadphase`, game sections) in
+   ascending key order, then game singletons. Ability and physics
+   bytes are written by those packages. A custom `GameState` calls
+   `writeModuleSections` / `readModuleSections` instead of copying the
+   container. A grid rebuilt from transforms does not reproduce
+   pre-separation centers.
 
 `save` writes the same sections in the same order.
 
@@ -905,16 +905,17 @@ class LegionState implements GameState {
         ProjectileSchema,
       ])
     );
-    w.section('gas', 1, (w) => StateHelpers.writeAbilities(w, world));
+    // Ability and physics bytes are not written here. The default world
+    // handler writes them inside section('modules', 1), sorted by key.
     // NOT included: bot plans/RNGs (BotPolicy.save, outside the digest),
     // the targeting cache (recomputed on the next tick % 4), interpolation
-    // and cues. The broadphase is readBroadphase (pre-separation centers),
-    // not a rebuild from these transforms. The tick is in the header.
+    // and cues. The tick is in the header.
   }
 
   restore(r: StateReader): void {
     // Same sections, same order. Entities first (spawnWithId / readPools),
-    // then values, then the id counter, then RNG, then readBroadphase.
+    // then values, then the id counter, then RNG. Module sections follow
+    // when the handler is the world modules.
   }
 }
 ```

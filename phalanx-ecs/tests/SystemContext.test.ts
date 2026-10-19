@@ -72,6 +72,7 @@ describe('SystemContext shared services', () => {
     };
 
     world.context.physics = physics;
+    expect(world.saveSections).toEqual([]);
 
     const probe = new ProbeSystem();
     world.registerSystems([], [probe]);

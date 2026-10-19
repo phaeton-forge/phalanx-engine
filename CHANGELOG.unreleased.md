@@ -5,6 +5,7 @@ Entries collected per package until the synchronized 0.3.0 release
 
 ## @phalanx-engine/game
 
+- `./advanced` no longer exports `rebuildBroadphaseFromTransforms`.
 - New subpath `./server`: `createServerSim`, `ServerSimConfig`,
   `GameModuleSpec`, re-exported from `@phalanx-engine/runtime/server`.
   ```ts
@@ -33,6 +34,33 @@ Entries collected per package until the synchronized 0.3.0 release
 
 ## @phalanx-engine/runtime
 
+- `ENGINE_SNAPSHOT_FORMAT` is 3. World bytes are roster (when any
+  non-pooled entity exists), pools, SoA stores, entity ids, RNG, one
+  `modules` container, then game singletons. The container is written
+  even when no section is registered. Inside it, each registered section
+  is `section(key, version, body)`, sorted by UTF-16 code units.
+  Format 2 is rejected with
+  `unsupported engine snapshot format 2; expected 3`. There is no
+  migration. Unknown, missing, unordered and wrong-version module
+  sections throw
+  `restore: unknown save section '<key>' (registered: <keys>)`,
+  `restore: save section '<key>' is missing from the snapshot`,
+  `restore: save sections out of order`, and
+  `restore: save section '<key>' has version N, expected M`.
+  A `modules` container whose version is not 1 throws
+  `restore: save section 'modules' has version N, expected 1`.
+  Saving a world whose `context.physics` is set without save section
+  `physics.broadphase` throws
+  `save: physics is assigned but save section 'physics.broadphase' is not registered; call PhysicsWorld.attach(world)`.
+  Dependencies are `@phalanx-engine/ecs`, `@phalanx-engine/math` and
+  `@phalanx-engine/protocol` (no peer dependencies).
+- `StateWriter`, `StateReader`, `BinaryStateWriter` and
+  `BinaryStateReader` are re-exported from `@phalanx-engine/ecs`.
+- `./advanced` no longer exports `rebuildBroadphaseFromTransforms`.
+  `StateHelpers` no longer has `writeBroadphase`, `readBroadphase`,
+  `rebuildBroadphaseFromTransforms`, `writeAbilities` or `readAbilities`.
+  `StateHelpers` gains `writeModuleSections` and `readModuleSections`
+  for a custom `GameState` that must write the `modules` container.
 - New subpath `./server`: `createServerSim`, `ServerSimConfig`,
   `GameModuleSpec`. The server simulation that used to live in
   `phalanx-server` runs behind a `ServerSimHook`.
@@ -297,6 +325,17 @@ Entries collected per package until the synchronized 0.3.0 release
 
 ## @phalanx-engine/ecs
 
+- Exports `StateWriter`, `StateReader`, `SaveSection`, `BinaryStateWriter`
+  and `BinaryStateReader` (moved from runtime). `GameWorld.registerSaveSection`
+  stores a module section. An empty key throws
+  `registerSaveSection: key is empty`. A repeated key throws
+  `registerSaveSection: duplicate key '<key>'`. `GameWorld.saveSections`
+  returns a copy sorted by UTF-16 code units.
+  `SystemContext.physics` is a plain field: assigning it has no side
+  effects. Physics save registration is `PhysicsWorld.attach(world)` in
+  `@phalanx-engine/physics`. `IPoolableComponent` is exported (names
+  82 → 83). `isPoolableComponent` stays internal.
+
 - Snapshot accessors (Task 3): `getEntityIdCounter` / `setEntityIdCounter`
   (module functions and `GameWorld` delegates), `SoAComponent.currentEntityManager()`,
   and pool `typeKeys` / `ownedIds` / `freeListIds`. Allocation order, the
@@ -326,8 +365,8 @@ Entries collected per package until the synchronized 0.3.0 release
 - Component lifecycle (Task 6.5a): `onCreate`, `onEnable`, `onDisable`,
   `onDestroy`. Spawn enables after `addEntity`. Despawn disables before
   `removeEntity`. `drain` disposes free entities so `onDestroy` runs.
-  `IPoolableComponent`, `isPoolableComponent` and the public story for
-  `addReturnToPoolHook` are internal. `registerComponent`, `componentNames`,
+  `isPoolableComponent` and the public story for `addReturnToPoolHook`
+  are internal. `IPoolableComponent` is exported. `registerComponent`, `componentNames`,
   `save`, `restore`, `spawn`, `despawn` and `each` are on `GameWorld`;
   the byte format is installed by importing `@phalanx-engine/runtime`.
 
@@ -398,6 +437,8 @@ Entries collected per package until the synchronized 0.3.0 release
 
 ## @phalanx-engine/server
 
+- Re-exports the type `ServerSimEvents` from `@phalanx-engine/protocol`.
+
 - Removed `PhalanxConfig.games`, `PhalanxConfig.simHost`, `GameModuleSpec`,
   `SimHostConfig` and the `AnyGameDefinition` re-export. Server simulation
   is `sim: createServerSim(...)` (`ServerSimHook` from the protocol
@@ -454,6 +495,10 @@ Entries collected per package until the synchronized 0.3.0 release
 
 ## @phalanx-engine/abilities
 
+- `createAbilitySystem` registers save section `abilities` (version 1).
+  The section is not exported. Its body is the former `gas` payload
+  without a `section('gas')` wrapper.
+
 - Built output is NodeNext ESM: relative specifiers end in `.js`, and
   directory imports (`./api`, `./components`, `./runtime`, and the other
   barrels) point at `index.js`. Native Node can import
@@ -495,10 +540,24 @@ Entries collected per package until the synchronized 0.3.0 release
 
 ## abilities-playground
 
-- `@phalanx-engine/*` dependencies are pinned to published npm `0.2.3`
-  (`npm:` alias) so this package keeps building against the previous API.
+- `@phalanx-engine/*` dependencies are `workspace:*`. Bootstrap calls
+  `PhysicsWorld.attach(world)`.
 
 ## @phalanx-engine/physics
+
+- `PhysicsWorld.attach(world)` sets `context.physics` and registers
+  save section `physics.broadphase` (version 1). A second `attach` of
+  the same world is a no-op. A different world throws
+  `PhysicsWorld.attach: already attached to another world`.
+  Assigning `context.physics` does not register the section.
+  `PhysicsSystem.init` and `CollisionSystem.init` register it once
+  when `context.world` is set, and throw
+  `PhysicsSystem.init: context.world is not set` or
+  `CollisionSystem.init: context.world is not set` when it is not.
+  The section is not a package export. Names stay 33 types and 19
+  values; `attach` is a method on `PhysicsWorld`. Its body is the
+  former `broadphase` list without a `section('broadphase')` wrapper.
+  Inner keys stay `physics`, `physicsSystem` and `collisionSystem`.
 
 - Built output is NodeNext ESM: relative specifiers end in `.js`, and
   directory imports (`./components`, `./systems`) point at `index.js`.

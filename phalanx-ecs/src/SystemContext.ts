@@ -53,9 +53,9 @@ export class SystemContext {
 
   /**
    * The physics world for this game.
-   * Set by game bootstrap code (or a phalanx-physics helper) before
-   * `registerSystems()` is called. Undefined in games that don't use
-   * phalanx-physics.
+   * Set by `PhysicsWorld.attach(world)` before `registerSystems()` is
+   * called. Assignment has no side effects. Undefined in games that
+   * don't use phalanx-physics.
    */
   public physics: IPhysicsWorld | undefined = undefined;
 

@@ -8,11 +8,8 @@ import {
   type IPoolableEntity,
   type ITickFrameProvider,
 } from '@phalanx-engine/ecs';
-import { StateHelpers } from '../../src/helpers/StateHelpers.js';
-import {
-  BinaryStateReader,
-  BinaryStateWriter,
-} from '../../src/state/BinaryState.js';
+import { StateHelpers } from '../../../src/advanced/StateHelpers.js';
+import { BinaryStateReader, BinaryStateWriter } from '@phalanx-engine/ecs';
 
 class Unit extends Entity implements IPoolableEntity<{ hp: number }> {
   public hp = 0;

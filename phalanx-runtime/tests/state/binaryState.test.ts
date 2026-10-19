@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  BinaryStateReader,
-  BinaryStateWriter,
-} from '../../src/state/BinaryState.js';
+import { BinaryStateReader, BinaryStateWriter } from '@phalanx-engine/ecs';
 
 function written(fill: (w: BinaryStateWriter) => void): Uint8Array {
   const w = new BinaryStateWriter();

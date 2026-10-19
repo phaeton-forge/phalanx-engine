@@ -494,6 +494,8 @@ app.on('player-reconnected', (playerId, matchId) => {
 
 ## API
 
+`ServerSimEvents` is re-exported from `@phalanx-engine/protocol`.
+
 ### Phalanx Class
 
 ```typescript

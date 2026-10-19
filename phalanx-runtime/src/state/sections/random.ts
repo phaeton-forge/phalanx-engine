@@ -1,9 +1,5 @@
-import type { IRandom } from '@phalanx-engine/ecs';
-import type { StateReader, StateWriter } from '../state/StateIO.js';
-import {
-  assertSectionVersion,
-  HELPER_SECTION_VERSION,
-} from './sectionVersion.js';
+import type { IRandom, StateReader, StateWriter } from '@phalanx-engine/ecs';
+import { assertSectionVersion, ENGINE_SECTION_VERSION } from './version.js';
 
 /** `xoroshiro128plus` state is four signed int32 words. */
 const XOROSHIRO_WORDS = 4;
@@ -43,7 +39,7 @@ function writeState(rng: IRandom, state: readonly number[]): void {
  */
 export function writeRandom(w: StateWriter, rng: IRandom): void {
   const state = readState(rng);
-  w.section('random', HELPER_SECTION_VERSION, (section) => {
+  w.section('random', ENGINE_SECTION_VERSION, (section) => {
     section.list(state, (word, item) => {
       item.i32(word);
     });

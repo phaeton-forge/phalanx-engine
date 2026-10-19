@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { bindTestWorld } from './bindTestWorld.js';
 import { FP } from '@phalanx-engine/math';
 import {
   EntityManager,
@@ -45,6 +46,7 @@ describe('impulse collision response', () => {
 
   function setup(overrides?: Partial<PhysicsConfig>) {
     const system = new PhysicsSystem(createConfig(overrides));
+    bindTestWorld(context);
     system.init(context);
     const physicsStore = entityManager.getOrCreateSoAStore(PhysicsSoASchema);
     const transformStore =

@@ -84,10 +84,13 @@ not throw. `i64` is a canonical decimal string on the wire.
   because they are not saved. Names `roster`, `pools`, `entityIds`,
   `random`, `broadphase`, `gas`, and `SoASchema` are reserved.
 - **`world.save()` / `world.restore(bytes)`**: roster (only when a
-  non-pooled entity exists), pools, SoA stores, abilities (when GAS is
-  attached), the entity id counter, RNG, broadphase centers (when a grid
-  is attached), then optional `bindWorldSingletons` hooks. Section bytes
-  match a manual `StateHelpers` save. Before those sections are read,
+  non-pooled entity exists), pools, SoA stores, the entity id counter,
+  RNG, one `modules` container (registered save sections, sorted by key,
+  written even when nothing is registered), then optional
+  `bindWorldSingletons` hooks. `ENGINE_SNAPSHOT_FORMAT` is 3. A snapshot
+  whose engine format is 2 is rejected with
+  `unsupported engine snapshot format 2; expected 3`. Before those
+  sections are read,
   `restore` returns every checked-out pooled entity and removes entities
   whose ids are not in the roster. Missing roster ids are empty shells.
   Each SoA section then attaches only the components it lists. A roster
@@ -106,21 +109,20 @@ not throw. `i64` is a canonical decimal string on the wire.
   `save: { formatVersion, handler(sim) }`. Canonical bytes only (no
   floats; FP values as raw `i64`). `restore(save(x))` must re-save to
   identical bytes.
-- **`@phalanx-engine/runtime/advanced`**: `StateHelpers`, `spawnWithId`,
-  `rebuildBroadphaseFromTransforms` and `WorldScope`. These are not on
-  the package root. SoA rows (explicit schema names; `f32` / `f64`
-  skipped), the entity id counter, pool membership, RNG state, broadphase
-  centers and GAS state are implemented. Restore order: `spawnWithId` for
-  non-pooled entities, `readPools` (constructs pooled entities and
-  discards prewarmed free ones; free entities get `onDespawn` again),
-  `readSoAStores`, `readAbilities`, `readEntityIds`, `readRandom`,
-  `readBroadphase`. A zero-row SoA section registers a missing empty
-  store; a saved id with no row still throws, and a row the section
-  omitted throws `extra entity`. Restore broadphase with `readBroadphase`
-  (pre-separation centers, including radius and each value's precision).
-  That also fills `lastX` / `lastZ` for the first frame. Do not read
-  `lastX` / `lastZ` in simulation.
-  `rebuildBroadphaseFromTransforms` is only for a collision-free world.
+- **`@phalanx-engine/runtime/advanced`**: `StateHelpers`, `spawnWithId`
+  and `WorldScope`. These are not on the package root.
+  `rebuildBroadphaseFromTransforms`, `writeAbilities`, `readAbilities`,
+  `writeBroadphase` and `readBroadphase` are not exported.
+  `StateHelpers.writeModuleSections` / `readModuleSections` write the
+  `modules` container for a custom `GameState`. SoA rows
+  (explicit schema names; `f32` / `f64` skipped), the entity id counter,
+  pool membership and RNG state are the helpers. Restore order for those
+  helpers: `spawnWithId` for non-pooled entities, `readPools` (constructs
+  pooled entities and discards prewarmed free ones; free entities get
+  `onDespawn` again), `readSoAStores`, `readEntityIds`, `readRandom`.
+  `world.restore` then reads the `modules` container. A zero-row SoA
+  section registers a missing empty store; a saved id with no row still
+  throws, and a row the section omitted throws `extra entity`.
   `spawnWithId` throws `spawnWithId: entity N already exists` when that
   id is already registered. `world.restore` does not.
 - **`BotPolicy`**: a bot is a command producer for its slot, not a
@@ -148,9 +150,10 @@ and the offline runner: `MatchRunner`, `ReplayPlayer`, `runLocalMatch`,
 `CommandLog`, `BotHost` and `LocalTransport` (timer or
 `LocalTransport.stepped()` + `step`). Local persistence is opt-in:
 `MemoryMatchStore`, `IndexedDbMatchStore` and `MatchRunner.resumeLocal`.
-`StateHelpers` (including `writeAbilities` / `readAbilities`,
-`section('gas', 1)`), `spawnWithId`, `rebuildBroadphaseFromTransforms`
-and `WorldScope` are exported from `@phalanx-engine/runtime/advanced`.
+`StateHelpers` (`writeModuleSections` / `readModuleSections` for the
+`modules` container; not `writeAbilities` / `readAbilities`),
+`spawnWithId` and `WorldScope` are exported from
+`@phalanx-engine/runtime/advanced`.
 There is no `f32` or `f64` writer.
 
 `MatchRunner` emits each tick on a runner-owned `ITickFrameProvider`.
@@ -303,7 +306,8 @@ migrate. Node tests install `fake-indexeddb` first. `runLocalMatch`
 accepts the same `store`, `snapshotEveryTicks` and `pauseWhenHidden`
 options; omitting them keeps the previous transport.
 
-`writeAbilities` stores the per-world runtime from `exportRuntimeState`
+The abilities package registers save section `abilities` (version 1).
+Its body stores the per-world runtime from `exportRuntimeState`
 (instance-id counter, activation queue, `currentTick`, resolved
 activations). The cue buffer is not included. Each registered entity that
 has a GAS component is written in ascending id order, with flags so lazy

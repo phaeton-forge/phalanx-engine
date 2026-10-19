@@ -1,35 +1,37 @@
-import type { Entity, GameWorld } from '@phalanx-engine/ecs';
+import type {
+  Entity,
+  GameWorld,
+  SaveSection,
+  StateReader,
+  StateWriter,
+} from '@phalanx-engine/ecs';
+import { FixedPoint } from '@phalanx-engine/math';
 import {
   AbilitiesComponentType,
   AbilitySystemComponent,
   ActiveEffectsComponent,
   AttributesComponent,
   GameplayTagsComponent,
-} from '@phalanx-engine/abilities';
+} from '../components/index.js';
+import type { PendingEffectAdd } from '../components/ActiveEffectsComponent.js';
 import type {
   AbilityActivationRequest,
-  AbilityRuntimeState,
-  ActiveEffectInstance,
-  PendingEffectAdd,
-  ProvidedTarget,
   ResolvedAbilityActivationRecord,
-} from '@phalanx-engine/abilities';
-import { FixedPoint } from '@phalanx-engine/math';
-import type { StateReader, StateWriter } from '../state/StateIO.js';
-import {
-  assertSectionVersion,
-  HELPER_SECTION_VERSION,
-} from './sectionVersion.js';
+} from '../runtime/AbilitySystemRuntime.js';
+import type { AbilityRuntimeState } from '../runtime/AbilityRuntimeState.js';
+import type { ActiveEffectInstance } from '../types/ActiveEffectInstance.js';
+import type { ProvidedTarget } from '../types/TargetSpec.js';
 
 /**
  * Per-world ability runtime plus every entity that has a GAS component.
  *
- * `section('gas', 1)`. The design sketch wraps this call in the same
- * section; the helper opens it, the same way `writePools` opens `pools`.
+ * Registered as save section `abilities` version 1. The body is the former
+ * `gas` section without its own wrapper. The world writes it inside the
+ * `modules` container, after the engine sections and before game singletons.
  *
- * Restore order (normative): `spawnWithId` (non-pooled) → `readPools` →
- * `readSoAStores` → `readAbilities` → `readEntityIds` → `readRandom` →
- * `readBroadphase`.
+ * Restore order (normative): roster → pools → SoA stores → entity ids →
+ * random → modules (`abilities`, then `physics.broadphase`, by key) →
+ * game singletons.
  *
  * Encoded:
  * - `exportRuntimeState()`: instance-id counter, `currentTick`, activation
@@ -83,8 +85,6 @@ import {
  * id. The instance-id counter must be >= every queued effect instance id.
  * Pending adds have no instance id, so they do not raise that floor.
  */
-
-const GAS_SECTION = 'gas';
 
 const HAS_ABILITY_SYSTEM = 1;
 const HAS_ATTRIBUTES = 2;
@@ -903,20 +903,18 @@ function readParsedEntity(
   };
 }
 
-/** `section('gas', 1)`: per-world runtime, then GAS entities by id. */
+/** Per-world runtime, then GAS entities by id. The `abilities` section body. */
 export function writeAbilities(w: StateWriter, world: GameWorld): void {
   const abilities = abilityStateIO(world, 'writeAbilities');
-  w.section(GAS_SECTION, HELPER_SECTION_VERSION, (section) => {
-    writeRuntime(section, abilities.exportRuntimeState());
-    const entities = gasEntities(world);
-    entities.sort((left, right) => {
-      if (left.id < right.id) return -1;
-      if (left.id > right.id) return 1;
-      return 0;
-    });
-    section.varint(entities.length);
-    for (const entity of entities) writeEntityGas(section, entity);
+  writeRuntime(w, abilities.exportRuntimeState());
+  const entities = gasEntities(world);
+  entities.sort((left, right) => {
+    if (left.id < right.id) return -1;
+    if (left.id > right.id) return 1;
+    return 0;
   });
+  w.varint(entities.length);
+  for (const entity of entities) writeEntityGas(w, entity);
 }
 
 /**
@@ -1058,14 +1056,10 @@ function applyEntityGas(world: GameWorld, parsed: ParsedEntityGas): void {
 export function readAbilities(r: StateReader, world: GameWorld): void {
   const abilities = abilityStateIO(world, 'readAbilities');
   const seen = new Set<number>();
-  const parsed = r.section(GAS_SECTION, (section, version): ParsedGas => {
-    assertSectionVersion('readAbilities', version);
-    const runtime = readRuntime(section);
-    const entities = section.list((item) =>
-      readParsedEntity(item, world, abilities, seen)
-    );
-    return { runtime, entities };
-  });
+  const parsed: ParsedGas = {
+    runtime: readRuntime(r),
+    entities: r.list((item) => readParsedEntity(item, world, abilities, seen)),
+  };
   assertInstanceIdBound(parsed);
   assertNoExtraGasEntities(world, seen);
   abilities.importRuntimeState(parsed.runtime);
@@ -1073,3 +1067,15 @@ export function readAbilities(r: StateReader, world: GameWorld): void {
     applyEntityGas(world, entity);
   }
 }
+
+/** World save section. Registered by `createAbilitySystem`, not exported. */
+export const abilitiesSaveSection: SaveSection = {
+  key: 'abilities',
+  version: 1,
+  write(writer, world) {
+    writeAbilities(writer, world);
+  },
+  read(reader, world) {
+    readAbilities(reader, world);
+  },
+};

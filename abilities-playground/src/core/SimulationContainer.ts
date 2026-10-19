@@ -132,7 +132,7 @@ export class SimulationContainer {
         maxZ: FP.FromFloat(arenaParams.length / 2),
       },
     });
-    this.world.context.physics = this.physicsWorld;
+    this.physicsWorld.attach(this.world);
 
     this.abilities = createAbilitySystem(this.world, {
       definitions: combatDefs,

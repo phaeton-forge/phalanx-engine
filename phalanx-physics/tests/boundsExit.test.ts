@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { bindTestWorld } from './bindTestWorld.js';
 import { FP } from '@phalanx-engine/math';
 import {
   EntityManager,
@@ -21,7 +22,9 @@ const BOUNDS = {
   maxZ: FP.FromFloat(10),
 };
 
-function createPhysicsConfig(overrides?: Partial<PhysicsConfig>): PhysicsConfig {
+function createPhysicsConfig(
+  overrides?: Partial<PhysicsConfig>
+): PhysicsConfig {
   return {
     tickDt: FP.FromFloat(0.05),
     subSteps: 1,
@@ -53,10 +56,12 @@ describe('boundsExit', () => {
   function setupSystem(overrides?: Partial<PhysicsConfig>) {
     const config = createPhysicsConfig(overrides);
     const system = new PhysicsSystem(config);
+    bindTestWorld(context);
     system.init(context);
 
     const physicsStore = entityManager.getOrCreateSoAStore(PhysicsSoASchema);
-    const transformStore = entityManager.getOrCreateSoAStore(TransformSoASchema);
+    const transformStore =
+      entityManager.getOrCreateSoAStore(TransformSoASchema);
 
     return { system, physicsStore, transformStore };
   }
@@ -68,7 +73,7 @@ describe('boundsExit', () => {
     posX: number,
     posZ: number,
     velX: number = 0,
-    velZ: number = 0,
+    velZ: number = 0
   ): void {
     physicsStore.add(entityId, {
       velocityX: FP.ToRaw(FP.FromFloat(velX)),
@@ -96,7 +101,9 @@ describe('boundsExit', () => {
     addEntity(physicsStore, transformStore, 1, 9.9, 0, 500, 0);
 
     const events: BoundsExitEvent[] = [];
-    eventBus.on<BoundsExitEvent>(PhysicsEvents.BOUNDS_EXIT, (e) => events.push(e));
+    eventBus.on<BoundsExitEvent>(PhysicsEvents.BOUNDS_EXIT, (e) =>
+      events.push(e)
+    );
 
     system.step();
 
@@ -125,7 +132,9 @@ describe('boundsExit', () => {
     addEntity(physicsStore, transformStore, 1, 9.9, 0, 500, 0);
 
     const events: BoundsExitEvent[] = [];
-    eventBus.on<BoundsExitEvent>(PhysicsEvents.BOUNDS_EXIT, (e) => events.push(e));
+    eventBus.on<BoundsExitEvent>(PhysicsEvents.BOUNDS_EXIT, (e) =>
+      events.push(e)
+    );
 
     system.step();
 
@@ -137,7 +146,9 @@ describe('boundsExit', () => {
     expect(physicsStore.arrays.ignorePhysics[physIdx]).toBe(0);
 
     const txIdx = transformStore.indexOf(1);
-    const posX = FP.ToFloat(FP.FromRaw(transformStore.arrays.fpPositionX[txIdx]));
+    const posX = FP.ToFloat(
+      FP.FromRaw(transformStore.arrays.fpPositionX[txIdx])
+    );
     expect(posX).toBeLessThanOrEqual(10);
   });
 
@@ -147,13 +158,17 @@ describe('boundsExit', () => {
     addEntity(physicsStore, transformStore, 1, 9.9, 0, 500, 0);
 
     const events: BoundsExitEvent[] = [];
-    eventBus.on<BoundsExitEvent>(PhysicsEvents.BOUNDS_EXIT, (e) => events.push(e));
+    eventBus.on<BoundsExitEvent>(PhysicsEvents.BOUNDS_EXIT, (e) =>
+      events.push(e)
+    );
 
     system.step();
 
     expect(events.length).toBe(0);
     const txIdx = transformStore.indexOf(1);
-    const posX = FP.ToFloat(FP.FromRaw(transformStore.arrays.fpPositionX[txIdx]));
+    const posX = FP.ToFloat(
+      FP.FromRaw(transformStore.arrays.fpPositionX[txIdx])
+    );
     expect(posX).toBeLessThanOrEqual(10);
   });
 
@@ -166,7 +181,9 @@ describe('boundsExit', () => {
     addEntity(physicsStore, transformStore, 99, 0, 0, 0, 0);
 
     const events: BoundsExitEvent[] = [];
-    eventBus.on<BoundsExitEvent>(PhysicsEvents.BOUNDS_EXIT, (e) => events.push(e));
+    eventBus.on<BoundsExitEvent>(PhysicsEvents.BOUNDS_EXIT, (e) =>
+      events.push(e)
+    );
 
     system.step();
 

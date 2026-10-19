@@ -1,4 +1,5 @@
-import { type EventBus } from '@phalanx-engine/ecs';
+import { type EventBus, type GameWorld } from '@phalanx-engine/ecs';
+import { ensureBroadphaseSection } from './save/broadphase.js';
 import { FP } from '@phalanx-engine/math';
 import { PhysicsSystem } from './systems/PhysicsSystem.js';
 import { GravitySystem } from './systems/GravitySystem.js';
@@ -13,7 +14,11 @@ import type { RayHit, Vec3FP, AABB } from './collision/Raycast.js';
 import { PhysicsEvents } from './events.js';
 import type { PhysicsWorldConfig } from './PhysicsWorldConfig.js';
 import type { FixedPoint } from '@phalanx-engine/math';
-import type { CollisionEvent, PhysicsConfig, BoundsExitEvent } from './types.js';
+import type {
+  CollisionEvent,
+  PhysicsConfig,
+  BoundsExitEvent,
+} from './types.js';
 
 /**
  * PhysicsWorld — high-level facade that owns GravitySystem, PhysicsSystem,
@@ -30,6 +35,7 @@ export class PhysicsWorld {
   private eventBusRef: EventBus | null = null;
   private readonly unsubscribers: (() => void)[] = [];
   private readonly settleThreshold: FixedPoint | undefined;
+  private attachedWorld: GameWorld | undefined;
 
   constructor(config?: PhysicsWorldConfig) {
     const tickRate = config?.tickRate ?? 20;
@@ -68,6 +74,20 @@ export class PhysicsWorld {
   }
 
   /**
+   * Bind this facade to `world`. Sets `world.context.physics` and
+   * registers save section `physics.broadphase` once. Calling again with
+   * the same world is a no-op. A different world throws.
+   */
+  public attach(world: GameWorld): void {
+    if (this.attachedWorld !== undefined && this.attachedWorld !== world) {
+      throw new Error('PhysicsWorld.attach: already attached to another world');
+    }
+    this.attachedWorld = world;
+    world.context.physics = this;
+    ensureBroadphaseSection(world);
+  }
+
+  /**
    * Returns physics and interpolation systems to register with GameWorld.
    */
   public getSystems(): {
@@ -86,7 +106,9 @@ export class PhysicsWorld {
    * Set an optional collision filter. Return false to skip a pair.
    * Useful for game-specific rules like team-based collision filtering.
    */
-  public setCollisionFilter(filter: (entityA: number, entityB: number) => boolean): void {
+  public setCollisionFilter(
+    filter: (entityA: number, entityB: number) => boolean
+  ): void {
     this.physicsSystem.setCollisionFilter(filter);
   }
 
@@ -98,7 +120,9 @@ export class PhysicsWorld {
   public onCollision(callback: (event: CollisionEvent) => void): () => void {
     const eb = this.getEventBus();
     if (!eb) {
-      throw new Error('PhysicsWorld: Cannot subscribe before systems are initialized');
+      throw new Error(
+        'PhysicsWorld: Cannot subscribe before systems are initialized'
+      );
     }
     const unsub = eb.on<CollisionEvent>(PhysicsEvents.COLLISION, callback);
     this.unsubscribers.push(unsub);
@@ -111,7 +135,9 @@ export class PhysicsWorld {
   public onTriggerEnter(callback: (event: CollisionEvent) => void): () => void {
     const eb = this.getEventBus();
     if (!eb) {
-      throw new Error('PhysicsWorld: Cannot subscribe before systems are initialized');
+      throw new Error(
+        'PhysicsWorld: Cannot subscribe before systems are initialized'
+      );
     }
     const unsub = eb.on<CollisionEvent>(PhysicsEvents.TRIGGER_ENTER, callback);
     this.unsubscribers.push(unsub);
@@ -124,7 +150,9 @@ export class PhysicsWorld {
   public onTriggerExit(callback: (event: CollisionEvent) => void): () => void {
     const eb = this.getEventBus();
     if (!eb) {
-      throw new Error('PhysicsWorld: Cannot subscribe before systems are initialized');
+      throw new Error(
+        'PhysicsWorld: Cannot subscribe before systems are initialized'
+      );
     }
     const unsub = eb.on<CollisionEvent>(PhysicsEvents.TRIGGER_EXIT, callback);
     this.unsubscribers.push(unsub);
@@ -141,7 +169,12 @@ export class PhysicsWorld {
    * three axes). Velocity is `impulse / mass`. Use for arcing ordnance that
    * leaves the ground plane.
    */
-  public applyImpulse3D(entityId: number, ix: FixedPoint, iy: FixedPoint, iz: FixedPoint): void {
+  public applyImpulse3D(
+    entityId: number,
+    ix: FixedPoint,
+    iy: FixedPoint,
+    iz: FixedPoint
+  ): void {
     this.physicsSystem.applyImpulse3D(entityId, ix, iy, iz);
   }
 
@@ -156,7 +189,10 @@ export class PhysicsWorld {
   /** Subscribe to BOUNDS_EXIT. Fires when a body exits worldBounds in eject mode. */
   public onBoundsExit(callback: (event: BoundsExitEvent) => void): () => void {
     const eb = this.getEventBus();
-    if (!eb) throw new Error('PhysicsWorld: Cannot subscribe before systems are initialized');
+    if (!eb)
+      throw new Error(
+        'PhysicsWorld: Cannot subscribe before systems are initialized'
+      );
     const unsub = eb.on<BoundsExitEvent>(PhysicsEvents.BOUNDS_EXIT, callback);
     this.unsubscribers.push(unsub);
     return unsub;
@@ -220,7 +256,11 @@ export class PhysicsWorld {
    *
    * Pure query — no side effects.
    */
-  public raycastSegment(prev: Vec3FP, cur: Vec3FP, boxes: ReadonlyArray<AABB>): RayHit | null {
+  public raycastSegment(
+    prev: Vec3FP,
+    cur: Vec3FP,
+    boxes: ReadonlyArray<AABB>
+  ): RayHit | null {
     let nearest: RayHit | null = null;
     for (const box of boxes) {
       const hit = segmentVsAABB(prev, cur, box);
@@ -235,7 +275,9 @@ export class PhysicsWorld {
    * Interpolated position and rotation for rendering.
    * Populated after InterpolationSystem runs its frame hooks.
    */
-  public getInterpolatedTransform(entityId: number): InterpolatedTransformSample | undefined {
+  public getInterpolatedTransform(
+    entityId: number
+  ): InterpolatedTransformSample | undefined {
     return this.interpolationSystem.getInterpolatedTransform(entityId);
   }
 

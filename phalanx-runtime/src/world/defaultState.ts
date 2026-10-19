@@ -4,7 +4,7 @@ import { readWorld, writeWorld } from './modules.js';
 
 /**
  * Default `defineGame` save handler: the world modules, format version 1.
- * Section bytes match a manual `StateHelpers` save of the same world.
+ * Engine sections match `StateHelpers`. Registered module sections follow them.
  */
 export function createDefaultWorldState<
   Sim extends { readonly world: GameWorld },

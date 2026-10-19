@@ -6,12 +6,12 @@ import type {
   SoASchemaDefinition,
   TypedArrayLike,
 } from '@phalanx-engine/ecs';
-import { BinaryStateWriter } from '../state/BinaryState.js';
-import type { StateReader, StateWriter } from '../state/StateIO.js';
 import {
-  assertSectionVersion,
-  HELPER_SECTION_VERSION,
-} from './sectionVersion.js';
+  BinaryStateWriter,
+  type StateReader,
+  type StateWriter,
+} from '@phalanx-engine/ecs';
+import { assertSectionVersion, ENGINE_SECTION_VERSION } from './version.js';
 
 /**
  * Structural view of a `SoASchema`.
@@ -338,7 +338,7 @@ export function writeSoAStore<S extends SoASchemaDefinition>(
   store: SoAComponentStore<S>
 ): void {
   const name = requireSchemaName(store.schema, 'writeSoAStore');
-  w.section(name, HELPER_SECTION_VERSION, (section) => {
+  w.section(name, ENGINE_SECTION_VERSION, (section) => {
     const ids = store.entityIds();
     if (section instanceof BinaryStateWriter) {
       const plan = planFor(store.schema);

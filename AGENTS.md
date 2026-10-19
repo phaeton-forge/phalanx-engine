@@ -191,7 +191,7 @@ during iteration, then run the full suite once before finishing.
 await client.waitForGameStart(); // match RNG ready on client.random
 await assetManager.preloadAll();
 const world = new GameWorld({ tickFrameProvider: client, componentTypes: [...] });
-world.context.physics = physicsWorld;   // wire services BEFORE registerSystems
+physicsWorld.attach(world);             // wire services BEFORE registerSystems
 const abilities = createAbilitySystem(world, { definitions });
 world.registerSystems([...tickSystems], [...frameSystems]);
 world.start({ beforeTick, afterTick, beforeFrame, afterFrame });
@@ -276,7 +276,8 @@ Pooling is **engine-driven**. Game code calls exactly two APIs:
     `onDisable` (the entity was never enabled).
 - `onEnable` also runs after `world.restore`. It must not overwrite saved
   fields. Per-spawn writes belong in entity `onSpawn`.
-- `addReturnToPoolHook` and `IPoolableComponent` are internal. Game code
+- `addReturnToPoolHook` and `isPoolableComponent` are internal.
+  `IPoolableComponent` is exported. Game code
   uses `onEnable` / `onDisable` / `onDestroy`. `SoAComponent.onSpawn` /
   `onDespawn` stay the storage reset.
 - `createAbilitySystem` registers an internal return-to-pool hook. The

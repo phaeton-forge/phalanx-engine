@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { bindTestWorld } from './bindTestWorld.js';
 import { FP } from '@phalanx-engine/math';
 import {
   EntityManager,
@@ -13,7 +14,9 @@ import { TransformSoASchema } from '../src/components/TransformComponent';
 import type { PhysicsConfig } from '../src/types';
 import { addTransformRow } from './testTransformHelpers';
 
-function createPhysicsConfig(overrides?: Partial<PhysicsConfig>): PhysicsConfig {
+function createPhysicsConfig(
+  overrides?: Partial<PhysicsConfig>
+): PhysicsConfig {
   return {
     tickDt: FP.FromFloat(0.05),
     subSteps: 1,
@@ -44,10 +47,12 @@ describe('isSettled', () => {
   function setupSystem(overrides?: Partial<PhysicsConfig>) {
     const config = createPhysicsConfig(overrides);
     const system = new PhysicsSystem(config);
+    bindTestWorld(context);
     system.init(context);
 
     const physicsStore = entityManager.getOrCreateSoAStore(PhysicsSoASchema);
-    const transformStore = entityManager.getOrCreateSoAStore(TransformSoASchema);
+    const transformStore =
+      entityManager.getOrCreateSoAStore(TransformSoASchema);
 
     return { system, physicsStore, transformStore };
   }
@@ -59,7 +64,7 @@ describe('isSettled', () => {
     velX: number = 0,
     velZ: number = 0,
     isStatic: boolean = false,
-    ignorePhysics: boolean = false,
+    ignorePhysics: boolean = false
   ): void {
     physicsStore.add(entityId, {
       velocityX: FP.ToRaw(FP.FromFloat(velX)),
