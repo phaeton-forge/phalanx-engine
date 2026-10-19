@@ -2,7 +2,12 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { LocalTransport, MatchRunner } from '../../src/index.js';
+import {
+  ENGINE_SNAPSHOT_FORMAT,
+  LocalTransport,
+  MatchRunner,
+  decodeSnapshot,
+} from '../../src/index.js';
 import { ArenaGame, type ArenaConfig } from '../fixtures/arenaGame.js';
 import { TinyGame, type TinyConfig } from '../fixtures/tinyGame.js';
 import {
@@ -12,8 +17,9 @@ import {
 
 /**
  * Full `runner.snapshot()` bytes, including the header digest.
- * Recorded before the Task 7.5 writer changes. `UPDATE_GOLDEN=1` rewrites
- * them; a normal run compares byte for byte.
+ * Format 3 adds the `modules` container. There is no byte compatibility
+ * with format 2. `UPDATE_GOLDEN=1` rewrites the files; a normal run
+ * compares byte for byte.
  */
 const DIR = dirname(fileURLToPath(import.meta.url));
 const TICKS = [3, 59, 200, 377] as const;
@@ -27,6 +33,8 @@ function remember(name: string, snaps: ReadonlyMap<number, Uint8Array>): void {
   for (const tick of TICKS) {
     const bytes = snaps.get(tick);
     if (bytes === undefined) throw new Error(`missing ${name} tick ${tick}`);
+    expect(ENGINE_SNAPSHOT_FORMAT).toBe(3);
+    expect(decodeSnapshot(bytes).header.engineFormat).toBe(3);
     const file = pathFor(name, tick);
     if (UPDATE) {
       writeFileSync(file, bytes);
