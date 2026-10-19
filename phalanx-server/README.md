@@ -391,7 +391,7 @@ in by passing `matchConfig` on `room-create`:
 
 ```typescript
 import { Phalanx } from '@phalanx-engine/server';
-import { createServerSim } from '@phalanx-engine/runtime/server';
+import { createServerSim } from '@phalanx-engine/game/server';
 
 const app = new Phalanx({
   tickRate: 64,
@@ -823,9 +823,9 @@ Typical bot/webhook flow:
 
 Do not expose `createPrivateRoomForHost` as an unauthenticated browser endpoint. Browser clients should continue using the Socket.IO `room-create` flow, while trusted server integrations should authenticate the external request before creating rooms.
 
-## DeterministicRandom
+## Fixed-point math and RNG
 
-`DeterministicRandom` subclasses `@phalanx-engine/math`. `int` / `intRange`, `fork`, `fromBigInt`, and `generateSeed` behave as before. `generateSeed` now imports `node:crypto` (the old `require('crypto')` path does not run under ESM). `getState()`, `setState(state)`, and `DeterministicRandom.fromState(state)` save and continue the `xoroshiro128plus` sequence (four integer words). `getGenerator` / `setGenerator` are deprecated in favour of those state methods.
+Fixed-point numbers and the match RNG live in `@phalanx-engine/math` or `@phalanx-engine/game/math`. This package does not re-export them. Match seeds are still `crypto.randomBytes` inside `GameRoom`.
 
 ## Related Packages
 

@@ -1,0 +1,13 @@
+{
+  "name": "@fixture/client",
+  "type": "module",
+  "dependencies": {
+    "@fixture/protocol": "0.0.0"
+  },
+  "peerDependencies": {
+    "@fixture/ecs": "0.0.0"
+  },
+  "phalanx": {
+    "layer": "infrastructure"
+  }
+}

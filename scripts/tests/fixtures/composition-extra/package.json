@@ -1,0 +1,7 @@
+{
+  "name": "@fixture/composition-extra",
+  "type": "module",
+  "phalanx": {
+    "layer": "composition"
+  }
+}

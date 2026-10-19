@@ -2,7 +2,6 @@ import type {
   CommandsBatch,
   ComponentRegistration,
   FrameHandler,
-  IRandom,
   ITickFrameProvider,
   PauseHandler,
   TickHandler,
@@ -337,7 +336,7 @@ export class MatchRunner<G extends AnyGameDefinition> {
       this.slotInfo
     );
     this.random = new DeterministicRandom(this.config.seed >>> 0);
-    this.provider = new RunnerProvider(this.random, transport);
+    this.provider = new RunnerProvider(transport);
     this.botHost = new BotHost(definition, this.config, this.side, this.modes);
     this.botSlotSet = new Set(this.botHost.slots);
     if (transport instanceof LocalTransport) {
@@ -1996,10 +1995,7 @@ class RunnerProvider implements ITickFrameProvider {
   private readonly pauseHandlers: PauseHandler[] = [];
   private readonly resumeHandlers: PauseHandler[] = [];
 
-  public constructor(
-    public readonly random: IRandom,
-    private readonly transport: Transport
-  ) {}
+  public constructor(private readonly transport: Transport) {}
 
   public onTick(handler: TickHandler): Unsubscribe {
     this.tickHandlers.push(handler);

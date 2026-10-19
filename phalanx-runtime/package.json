@@ -20,6 +20,12 @@
       "import": "./dist/server/index.js"
     }
   },
+  "phalanx": {
+    "layer": "application",
+    "subpaths": {
+      "./server": "infrastructure"
+    }
+  },
   "dependencies": {
     "@phalanx-engine/ecs": "workspace:*",
     "@phalanx-engine/math": "workspace:*",

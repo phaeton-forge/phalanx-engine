@@ -555,10 +555,8 @@ import { Phalanx } from '@phalanx-engine/server';
 // Auth utilities
 import { TokenValidatorService, createDevValidator, createEndpointValidator } from '@phalanx-engine/server';
 
-// RNG subclasses @phalanx-engine/math and adds generateSeed / fromBigInt.
-// FP* are re-exported from phalanx-math.
-import { DeterministicRandom, FP, FPVector2, FPVector3, FixedPoint } from '@phalanx-engine/server';
-import type { FPVector2Interface, FPVector3Interface } from '@phalanx-engine/server';
+// Fixed-point numbers and the match RNG live in @phalanx-engine/math.
+// This package does not re-export them.
 
 // Game mode presets and the suggested absence window
 import { GAME_MODES, DEFAULT_ABSENCE } from '@phalanx-engine/server';

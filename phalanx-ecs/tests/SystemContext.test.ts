@@ -110,31 +110,29 @@ describe('SystemContext shared services', () => {
     expect(probe.randomRef).toBe(rng);
   });
 
-  it('wires random from tickFrameProvider.random', () => {
-    const rng: IRandom = {
-      float: () => 0.25,
-      floatRange: () => 0.25,
-      int: () => 0,
-      intRange: () => 2,
-      boolean: () => false,
-      pick: (arr) => arr[0] as never,
-      shuffle: (arr) => arr,
-    };
-
-    const provider: ITickFrameProvider = {
-      random: rng,
+  it('does not read random from the tick provider', () => {
+    let reads = 0;
+    const source = {
+      get random(): IRandom {
+        reads += 1;
+        throw new Error('provider random must not be read');
+      },
       onTick: () => () => {},
       onFrame: () => () => {},
     };
+    const provider: ITickFrameProvider = source;
 
     const world = new GameWorld({ tickFrameProvider: provider });
-    expect(world.random).toBe(rng);
+    expect(reads).toBe(0);
+    expect(() => world.random).toThrow(
+      /^SystemContext\.random is not configured: pass GameWorldConfig\.random$/
+    );
   });
 
   it('throws when context.random is accessed without configuration', () => {
     const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
     expect(() => world.random).toThrow(
-      /SystemContext.random is not configured/
+      /^SystemContext\.random is not configured: pass GameWorldConfig\.random$/
     );
   });
 
@@ -147,22 +145,6 @@ describe('SystemContext shared services', () => {
     const second = new Entity();
     expect(second.id).toBe(1);
     expect(world.entityManager).toBeDefined();
-  });
-
-  it('throws a bootstrap hint when tickFrameProvider RNG is not ready', () => {
-    const provider: ITickFrameProvider = {
-      get random() {
-        throw new Error(
-          '[PhalanxClient] RNG unavailable until game start (await waitForGameStart())'
-        );
-      },
-      onTick: () => () => {},
-      onFrame: () => () => {},
-    };
-
-    expect(() => new GameWorld({ tickFrameProvider: provider })).toThrow(
-      /waitForGameStart\(\) before constructing GameWorld/
-    );
   });
 
   it('does not run ability tick systems twice when they are registered explicitly', () => {

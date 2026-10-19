@@ -73,6 +73,19 @@ No new globals in domain packages. Do not add another ambient `.d.ts`, and do
 not add names to those two files, unless an architecture task says so. Clocks,
 timers, and DOM stay in `@phalanx-engine/runtime`.
 
+### 0.4 Layers
+
+The dependency matrix lives in `scripts/layers.mjs`. Every workspace
+package declares `phalanx.layer` in its `package.json`. A new package
+must set that field before it is imported. Adapter subpaths (runtime
+`./server`) set `phalanx.subpaths`.
+
+```bash
+pnpm lint:layers
+pnpm test:layers
+pnpm check:isomorphic
+```
+
 ---
 
 ## 1. Toolchain, Language & Style
@@ -204,9 +217,15 @@ during iteration, then run the full suite once before finishing.
 ### 4.2 Bootstrap order
 
 ```ts
-await client.waitForGameStart(); // match RNG ready on client.random
+await client.waitForGameStart(); // client.randomSeed is set
 await assetManager.preloadAll();
-const world = new GameWorld({ tickFrameProvider: client, componentTypes: [...] });
+const seed = client.randomSeed;
+if (seed === null) throw new Error('match seed missing');
+const world = new GameWorld({
+  tickFrameProvider: client,
+  random: new DeterministicRandom(seed), // @phalanx-engine/math
+  componentTypes: [...],
+});
 physicsWorld.attach(world);             // wire services BEFORE registerSystems
 const abilities = createAbilitySystem(world, { definitions });
 world.registerSystems([...tickSystems], [...frameSystems]);

@@ -1,0 +1,10 @@
+{
+  "name": "@fixture/ecs",
+  "type": "module",
+  "dependencies": {
+    "@fixture/math": "0.0.0"
+  },
+  "phalanx": {
+    "layer": "domain"
+  }
+}

@@ -3,7 +3,6 @@
  * Client library for connecting to Phalanx Engine servers
  */
 
-import { DeterministicRandom } from './DeterministicRandom.js';
 import { EventEmitter } from './EventEmitter.js';
 import { resolveMatchRandomSeed } from './matchSeed.js';
 import { RenderLoop } from './RenderLoop.js';
@@ -131,8 +130,7 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
   private pauseHandlers: PauseHandler[] = [];
   private resumeHandlers: PauseHandler[] = [];
 
-  // Match-scoped deterministic RNG (initialized on game start)
-  private _random: DeterministicRandom | null = null;
+  // Match seed. The world builder constructs the RNG from this number.
   private _randomSeed: number | null = null;
 
   constructor(config: PhalanxClientConfig) {
@@ -860,19 +858,7 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
     return data;
   }
 
-  /**
-   * Match-scoped deterministic RNG. Available after game start.
-   */
-  get random(): DeterministicRandom {
-    if (!this._random) {
-      throw new Error(
-        '[PhalanxClient] RNG unavailable until game start (await waitForGameStart())'
-      );
-    }
-    return this._random;
-  }
-
-  /** The seed used for {@link random}, or null before game start. */
+  /** Match seed, or null before game start. */
   get randomSeed(): number | null {
     return this._randomSeed;
   }
@@ -883,7 +869,7 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
     if (
       this.clientState === 'playing' &&
       this.currentMatchId === data.matchId &&
-      this._random !== null
+      this._randomSeed !== null
     ) {
       return;
     }
@@ -896,13 +882,10 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
   }
 
   private initializeMatchRandom(event: GameStartEvent): void {
-    const seed = resolveMatchRandomSeed(event);
-    this._randomSeed = seed;
-    this._random = new DeterministicRandom(seed);
+    this._randomSeed = resolveMatchRandomSeed(event);
   }
 
   private resetMatchRandom(): void {
-    this._random = null;
     this._randomSeed = null;
   }
 

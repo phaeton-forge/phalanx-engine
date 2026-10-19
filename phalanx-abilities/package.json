@@ -11,6 +11,9 @@
       "import": "./dist/index.js"
     }
   },
+  "phalanx": {
+    "layer": "domain"
+  },
   "scripts": {
     "build": "tsc",
     "clean": "rm -rf dist",

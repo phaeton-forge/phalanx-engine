@@ -1,0 +1,7 @@
+{
+  "name": "@fixture/physics",
+  "type": "module",
+  "phalanx": {
+    "layer": "domain"
+  }
+}

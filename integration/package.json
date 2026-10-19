@@ -2,6 +2,9 @@
   "name": "@phalanx-engine/integration",
   "private": true,
   "type": "module",
+  "phalanx": {
+    "layer": "app"
+  },
   "description": "Stage A integration suite for Phalanx Engine. Not part of the published packages and not run by CI.",
   "scripts": {
     "it": "tsx src/cli.ts",

@@ -1,5 +1,4 @@
 import { describe, it, expect, vi } from 'vitest';
-import { DeterministicRandom } from '../src/DeterministicRandom.js';
 import { PhalanxClient } from '../src/PhalanxClient.js';
 import {
   SocketManager,
@@ -153,9 +152,7 @@ describe('SocketManager reconnect recovery', () => {
     } satisfies ReconnectStateEvent);
 
     expect(client.randomSeed).toBe(8080);
-    expect(client.random.intRange(1, 100)).toBe(
-      new DeterministicRandom(8080).intRange(1, 100)
-    );
+    expect('random' in client).toBe(false);
 
     client.disconnect();
   });

@@ -1,0 +1,7 @@
+{
+  "name": "@fixture/application-extra",
+  "type": "module",
+  "phalanx": {
+    "layer": "application"
+  }
+}

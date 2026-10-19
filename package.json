@@ -15,6 +15,10 @@
     "dev:client": "pnpm --filter @phalanx-engine/client dev",
     "lint": "eslint . --ext .ts,.tsx",
     "lint:determinism": "eslint -c eslint.determinism.config.js phalanx-math/src phalanx-ecs/src phalanx-physics/src phalanx-abilities/src",
+    "lint:layers": "node scripts/check-layer-deps.mjs && depcruise --config scripts/depcruise.config.cjs phalanx-*/src phalanx-*/tests",
+    "test:layers": "node --test scripts/tests/layers.test.mjs",
+    "check:isomorphic": "node scripts/check-isomorphic.mjs",
+    "smoke:lands": "node scripts/smoke-lands.mjs",
     "lint:fix": "eslint . --ext .ts,.tsx --fix",
     "format": "prettier --write \"**/*.{ts,tsx,json,md}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,json,md}\"",
@@ -38,10 +42,12 @@
     "node": ">=24.0.0 <25.0.0"
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["better-sqlite3"]
+    "onlyBuiltDependencies": ["better-sqlite3", "esbuild"]
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
+    "dependency-cruiser": "18.7.0",
+    "esbuild": "0.28.2",
     "eslint": "^9.17.0",
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-prettier": "^5.2.0",

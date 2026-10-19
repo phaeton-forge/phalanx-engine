@@ -3,11 +3,65 @@
 Entries collected per package until the synchronized 0.3.0 release
 (Task 13 turns this file into `CHANGELOG.md`).
 
+## @phalanx-engine/client
+
+- Removed re-exports `DeterministicRandom`, `FP`, `FPVector2`, `FPVector3`,
+  `FixedPoint`, and types `FPVector2Interface` and `FPVector3Interface`.
+  Fixed-point numbers and the match RNG live in `@phalanx-engine/math`
+  or `@phalanx-engine/game/math`. `@phalanx-engine/math` is no longer a
+  dependency.
+- Removed getter `PhalanxClient.random` and the error
+  `[PhalanxClient] RNG unavailable until game start (await waitForGameStart())`.
+  `randomSeed` stays (`number | null`). After `waitForGameStart()`, build
+  the world RNG with `new DeterministicRandom(client.randomSeed)` from
+  `@phalanx-engine/math`.
+- Export snapshot `.` / `./auth`: names `[114, 18]` → `[107, 18]`,
+  values `[30, 5]` → `[25, 5]`.
+
+## @phalanx-engine/server
+
+- Removed `DeterministicRandom` (including `fromBigInt` and `generateSeed`),
+  `FP`, `FPVector2`, `FPVector3`, `FixedPoint`, and types
+  `FPVector2Interface` and `FPVector3Interface`. `@phalanx-engine/math` is
+  no longer a dependency. Match seeds stay `crypto.randomBytes` inside
+  `GameRoom`. Callers that need an RNG import `@phalanx-engine/math`.
+- Export snapshot: names `[75]` → `[68]`, values `[14]` → `[9]`.
+
+## @phalanx-engine/ecs
+
+- Removed `ITickFrameProvider.random`. `GameWorld` takes the match RNG
+  only from `GameWorldConfig.random`. A provider field named `random` is
+  not read.
+- Removed the error
+  `GameWorld: match RNG is not ready. Call await client.waitForGameStart() before constructing GameWorld with tickFrameProvider.`
+  A world without `config.random` throws
+  `SystemContext.random is not configured: pass GameWorldConfig.random`
+  from `world.random` and `context.random`. The previous text,
+  which told callers to pass a tickFrameProvider that exposes `random`,
+  is no longer thrown.
+- Export counts unchanged (`[72]` names, `[30]` values).
+
+## abilities-playground
+
+- `SimulationContainer` builds the world RNG with
+  `new DeterministicRandom(client.randomSeed)` from `@phalanx-engine/math`.
+  A null seed throws
+  `SimulationContainer: client.randomSeed is null, await waitForGameStart() first`.
+
 ## CI
 
 - `pnpm lint:determinism` checks `phalanx-{math,ecs,physics,abilities}/src`
   for wall-clock globals, DOM globals and `Math.random`, with no allowlist.
   The workflow runs it after build.
+- `pnpm lint:layers` checks workspace `phalanx.layer` against
+  `scripts/layers.mjs` (package edges and dependency-cruiser).
+  `pnpm test:layers` runs that checker’s self-test.
+  `pnpm check:isomorphic` browser-bundles the runtime root and the
+  non-server game subpaths.
+  `pnpm smoke:lands` packs client, protocol, and server, installs them
+  alone, and runs a two-client relay match for 20 ticks.
+  The workflow runs layer rules and the isomorphic check after the
+  determinism lint, and the lands smoke after tests.
 
 ## @phalanx-engine/game
 

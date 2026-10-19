@@ -1,0 +1,7 @@
+{
+  "name": "@fixture/abilities",
+  "type": "module",
+  "phalanx": {
+    "layer": "domain"
+  }
+}

@@ -1,0 +1,1 @@
+import '@fixture/runtime';

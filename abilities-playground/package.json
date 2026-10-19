@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "phalanx": {
+    "layer": "app"
+  },
   "scripts": {
     "dev": "vite --host --mode development",
     "build": "tsc && vite build",
