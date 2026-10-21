@@ -135,14 +135,10 @@ const ROOT_NAMES = [
   'calculateSchemaByteSize',
   'createComponentTypeRegistry',
   'defineSoASchema',
-  'getEntityIdCounter',
   'isAfterFrame',
   'isAfterTick',
   'isBeforeFrame',
   'isBeforeTick',
-  'nextEntityId',
-  'resetEntityIdCounter',
-  'setEntityIdCounter',
 ];
 
 const ROOT_VALUES = [
@@ -166,14 +162,10 @@ const ROOT_VALUES = [
   'calculateSchemaByteSize',
   'createComponentTypeRegistry',
   'defineSoASchema',
-  'getEntityIdCounter',
   'isAfterFrame',
   'isAfterTick',
   'isBeforeFrame',
   'isBeforeTick',
-  'nextEntityId',
-  'resetEntityIdCounter',
-  'setEntityIdCounter',
 ];
 
 const ENTRIES = [

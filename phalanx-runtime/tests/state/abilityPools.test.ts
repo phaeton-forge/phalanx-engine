@@ -5,7 +5,6 @@ import {
   Entity,
   GameWorld,
   SoAComponent,
-  resetEntityIdCounter,
   type IPoolableEntity,
 } from '@phalanx-engine/ecs';
 import { FP } from '@phalanx-engine/math';
@@ -125,7 +124,6 @@ function finish(fill: (w: BinaryStateWriter) => void): Uint8Array {
 describe('pooled ability save sections', () => {
   afterEach(() => {
     SoAComponent.resetContext();
-    resetEntityIdCounter();
   });
 
   it('clears pooled GAS on despawn and continues past respawn', () => {
@@ -324,8 +322,8 @@ describe('pooled ability save sections', () => {
 });
 
 class SilentMinion extends Entity implements IPoolableEntity<void> {
-  public constructor(abilities: AbilitySystem) {
-    super();
+  public constructor(id: number, abilities: AbilitySystem) {
+    super(id);
     this.addComponent(
       abilities.initComponent({
         abilities: ['Ability.Burn'],
@@ -350,8 +348,8 @@ class PooledMinion
   extends Entity
   implements IPoolableEntity<{ health: number }>
 {
-  public constructor(abilities: AbilitySystem) {
-    super();
+  public constructor(id: number, abilities: AbilitySystem) {
+    super(id);
     this.addComponent(
       abilities.initComponent({
         abilities: ['Ability.Burn', 'Ability.Strike'],
@@ -388,12 +386,12 @@ function silentPoolWorld(): { world: GameWorld; abilities: AbilitySystem } {
     pooling: {
       entityTypes: {
         silent: {
-          factory: () => {
+          factory: (id) => {
             const abilities = holder.abilities;
             if (abilities === undefined) {
               throw new Error('ability system is not ready');
             }
-            return new SilentMinion(abilities);
+            return new SilentMinion(id, abilities);
           },
         },
       },
@@ -414,7 +412,7 @@ function barePoolWorld(): { world: GameWorld; abilities: AbilitySystem } {
     pooling: {
       entityTypes: {
         bare: {
-          factory: () => new BareMinion(),
+          factory: (id) => new BareMinion(id),
         },
       },
     },
@@ -434,12 +432,12 @@ function pooledGasWorld(): { world: GameWorld; abilities: AbilitySystem } {
     pooling: {
       entityTypes: {
         minion: {
-          factory: () => {
+          factory: (id) => {
             const abilities = holder.abilities;
             if (abilities === undefined) {
               throw new Error('ability system is not ready');
             }
-            return new PooledMinion(abilities);
+            return new PooledMinion(id, abilities);
           },
         },
       },

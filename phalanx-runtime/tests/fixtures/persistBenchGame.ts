@@ -82,8 +82,8 @@ export function createPersistBenchGame(unitCount: number) {
   }
 
   class BenchUnit extends Entity implements IPoolableEntity<SpawnIndex> {
-    public constructor() {
-      super();
+    public constructor(id: number) {
+      super(id);
       const manager = SoAComponent.currentEntityManager();
       const abilities =
         manager === null ? undefined : abilitiesByManager.get(manager);
@@ -156,7 +156,7 @@ export function createPersistBenchGame(unitCount: number) {
     pooling: {
       entityTypes: {
         unit: {
-          factory: () => new BenchUnit(),
+          factory: (id) => new BenchUnit(id),
           pool: { initialSize: unitCount },
         },
       },

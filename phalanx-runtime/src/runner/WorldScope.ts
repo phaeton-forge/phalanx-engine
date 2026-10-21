@@ -1,25 +1,20 @@
-import {
-  SoAComponent,
-  getEntityIdCounter,
-  setEntityIdCounter,
-  type EntityManager,
-} from '@phalanx-engine/ecs';
+import { SoAComponent, type EntityManager } from '@phalanx-engine/ecs';
 
 /**
- * Isolates the two process-global registers of phalanx-ecs — the entity id
- * counter and the `SoAComponent` EntityManager context — per world, so
- * several matches can run in one Node process.
+ * Isolates the process-global `SoAComponent` EntityManager context per
+ * world, so several matches can run in one Node process.
+ *
+ * The entity id counter lives on each world's EntityManager and is not
+ * swapped here.
  *
  * One scope is active at a time. Entering a different scope stores the
- * active scope's live registers back into that scope, then installs this
- * scope's saved counter and EntityManager. Leaving restores the previous
- * scope. Immediate re-entry into the scope that is already active does
- * not touch the registers, so a snapshot taken from inside a tick does
- * not rewind the counter. Simulation code must never yield inside a tick.
+ * active scope's EntityManager, then installs this scope's. Leaving
+ * restores the previous scope. Immediate re-entry into the scope that
+ * is already active does not touch the context. Simulation code must
+ * never yield inside a tick.
  */
 export class WorldScope {
   private static active: WorldScope | null = null;
-  private counter = 0;
   private manager: EntityManager | null = null;
 
   public run<T>(fn: () => T): T {
@@ -40,27 +35,22 @@ export class WorldScope {
   }
 
   private capture(): void {
-    this.counter = getEntityIdCounter();
     this.manager = SoAComponent.currentEntityManager();
   }
 
   private install(): void {
-    setEntityIdCounter(this.counter);
     SoAComponent.useEntityManager(this.manager);
   }
 }
 
 const ambient = {
-  counter: 0,
   manager: null as EntityManager | null,
 };
 
 function captureAmbient(): void {
-  ambient.counter = getEntityIdCounter();
   ambient.manager = SoAComponent.currentEntityManager();
 }
 
 function restoreAmbient(): void {
-  setEntityIdCounter(ambient.counter);
   SoAComponent.useEntityManager(ambient.manager);
 }

@@ -1,58 +1,6 @@
 import type { IComponent } from './Component.js';
 import { invokeComponentHooks } from './lifecycle.js';
 
-let entityIdCounter = 0;
-
-/**
- * Reset the entity ID counter - used when starting a new game
- * to ensure deterministic IDs across all clients
- */
-export function resetEntityIdCounter(): void {
-  entityIdCounter = 0;
-}
-
-/**
- * Current high-water mark of the module-global entity id counter.
- *
- * `0` means no id has been allocated. The next {@link Entity} or
- * {@link nextEntityId} call returns `current + 1`.
- */
-export function getEntityIdCounter(): number {
-  return entityIdCounter;
-}
-
-/**
- * Restore the module-global entity id counter.
- *
- * The value is the last allocated id (the high-water mark), not the next
- * id. The following allocation returns `value + 1`. Any integer `>= 0`
- * is accepted, including a value below the current mark, so a snapshot
- * can restore an earlier counter.
- *
- * The caller must pass a value greater than or equal to every live entity
- * id. A lower integer is stored, and the next allocation can then collide
- * with an id that is still in use. That bound is the caller's responsibility.
- *
- * @throws If `value` is not a safe integer `>= 0`.
- */
-export function setEntityIdCounter(value: number): void {
-  if (!Number.isSafeInteger(value) || value < 0) {
-    throw new Error(
-      `setEntityIdCounter: value must be an integer >= 0, got ${String(value)}`
-    );
-  }
-  entityIdCounter = value;
-}
-
-/**
- * Allocate and return the next sequential entity ID from the global counter.
- * Primarily used by Entity construction and specialized callers that need a
- * deterministic ID allocation without constructing an Entity directly.
- */
-export function nextEntityId(): number {
-  return ++entityIdCounter;
-}
-
 /**
  * Base Entity class - Container for components
  * Uses composition over inheritance
@@ -60,6 +8,9 @@ export function nextEntityId(): number {
  * This is a renderer-agnostic entity. It only has an ID and a bag of components.
  * Game-specific subclasses (e.g. Unit) can add mesh, position, and other
  * rendering-related properties.
+ *
+ * The id is assigned by the owning world (`createEntity`,
+ * `createEntityWithId`, or a pool factory). Do not mint ids here.
  */
 export class Entity {
   private _id: number;
@@ -78,8 +29,14 @@ export class Entity {
    */
   public _onDispose?: () => void;
 
-  constructor() {
-    this._id = ++entityIdCounter;
+  /**
+   * @param id Id assigned by the world. An integer `>= 1`.
+   */
+  constructor(id: number) {
+    if (!Number.isSafeInteger(id) || id < 1) {
+      throw new Error(`Entity: id must be an integer >= 1, got ${String(id)}`);
+    }
+    this._id = id;
   }
 
   /**

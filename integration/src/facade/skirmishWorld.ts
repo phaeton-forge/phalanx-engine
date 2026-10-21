@@ -285,12 +285,13 @@ class PooledUnit extends Entity implements IPoolableEntity<UnitSpawn> {
   private readonly ranged: RangedComponent | null;
 
   public constructor(
+    id: number,
     private readonly kind: number,
     abilities: AbilitySystem,
     withBody: boolean,
     withRange: boolean
   ) {
-    super();
+    super(id);
     this.unit = new UnitComponent(this.id);
     this.addComponent(this.unit);
     this.placed = new PlacedTransform(this.id);
@@ -945,6 +946,7 @@ export class SkirmishSim implements CommandView, CommandSink {
 }
 
 export function buildUnit(
+  id: number,
   kind: number,
   holder: { abilities?: AbilitySystem },
   withBody: boolean,
@@ -954,7 +956,7 @@ export function buildUnit(
   if (abilities === undefined) {
     throw new Error('skirmish: ability system is not ready');
   }
-  return new PooledUnit(kind, abilities, withBody, withRange);
+  return new PooledUnit(id, kind, abilities, withBody, withRange);
 }
 
 function teamOfSlot(config: SkirmishConfig, slot: number): number {

@@ -15,11 +15,7 @@ import {
   type StateWriter,
   type TypedArrayLike,
 } from '@phalanx-engine/ecs';
-import {
-  readPools,
-  spawnWithId,
-  writePools,
-} from '../state/sections/entities.js';
+import { readPools, writePools } from '../state/sections/entities.js';
 import { readEntityIds, writeEntityIds } from '../state/sections/entities.js';
 import { readRandom, writeRandom } from '../state/sections/random.js';
 import { readSoAStore, writeSoAStores } from '../state/sections/soa.js';
@@ -302,7 +298,7 @@ function reconcileStartup(
   }
   for (const id of rosterIds) {
     if (world.entityManager.getEntity(id) !== undefined) continue;
-    const entity = spawnWithId(world, id, () => new Entity());
+    const entity = world.createEntityWithId(id);
     // Components are attached once the SoA sections name them. Unregister
     // the empty shell so the later addEntity sees those components and
     // updates component indices. The shell has no rows yet.
@@ -490,8 +486,8 @@ function enableLive(world: GameWorld): void {
 }
 
 /**
- * Spawn one entity with the named components. Uses the same id counter
- * as `new Entity()`. The spec keys are component names.
+ * Spawn one entity with the named components. The id comes from this
+ * world. The spec keys are component names.
  */
 export function spawn(
   world: GameWorld,
@@ -501,7 +497,7 @@ export function spawn(
   if (names.length === 0) {
     throw new Error('spawn: spec is empty');
   }
-  const entity = new Entity();
+  const entity = world.createEntity((id) => new Entity(id));
   try {
     for (const name of names) {
       const component = requireComponent(world, name);

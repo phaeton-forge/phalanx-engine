@@ -17,13 +17,7 @@ export { GameWorld, GameWorldEvents } from './GameWorld.js';
 export type { GameWorldConfig, GameWorldHooks } from './GameWorld.js';
 
 // Entity and Component
-export {
-  Entity,
-  resetEntityIdCounter,
-  nextEntityId,
-  getEntityIdCounter,
-  setEntityIdCounter,
-} from './Entity.js';
+export { Entity } from './Entity.js';
 export { IComponent, createComponentTypeRegistry } from './Component.js';
 export type { IComponent as Component } from './Component.js';
 export type { ComponentLifecycle } from './lifecycle.js';

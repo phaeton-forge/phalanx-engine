@@ -11,9 +11,8 @@
  * not exported here; games import the physics type from
  * `@phalanx-engine/game/physics`.
  *
- * Low-level ecs symbols (`setEntityIdCounter`, `nextEntityId`,
- * `PoolManager`, `SoAComponentStore`, `TickFrameManager`,
- * `TYPED_ARRAY_CONSTRUCTORS`, `DebugPanel`) are on
+ * Low-level ecs symbols (`PoolManager`, `SoAComponentStore`,
+ * `TickFrameManager`, `TYPED_ARRAY_CONSTRUCTORS`, `DebugPanel`) are on
  * `@phalanx-engine/game/advanced`, not here.
  */
 export * from '@phalanx-engine/runtime';
@@ -26,7 +25,6 @@ export {
   GameWorld,
   GameWorldEvents,
   Entity,
-  getEntityIdCounter,
   IComponent,
   createComponentTypeRegistry,
   ObjectPool,

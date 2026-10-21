@@ -18,7 +18,8 @@ export class PoolManager {
   private readonly pools: Map<string, EntityPool<Entity>> = new Map();
   private readonly initialSizes: Map<string, number> = new Map();
   /** Raw factories, without the dormant-hook wrapper passed to each pool. */
-  private readonly rawFactories: Map<string, () => Entity> = new Map();
+  private readonly rawFactories: Map<string, (id: number) => Entity> =
+    new Map();
   /**
    * Runs after entity and component despawn hooks, in registration order.
    * `createAbilitySystem` installs the GAS reset here. Hooks must be
@@ -41,10 +42,16 @@ export class PoolManager {
       throw new Error(`Pool '${typeKey}' is already registered`);
     }
 
-    this.rawFactories.set(typeKey, () => config.factory());
+    this.rawFactories.set(typeKey, (id) => config.factory(id));
 
     const factory = (): T => {
-      const entity = config.factory();
+      const id = this.entityManager.allocateEntityId();
+      const entity = config.factory(id);
+      if (entity.id !== id) {
+        throw new Error(
+          `Pool '${typeKey}' factory must return the entity with id ${String(id)}`
+        );
+      }
       entity._poolTypeKey = typeKey;
       entity._inPool = true;
       this.runDespawnHooks(entity);
@@ -196,21 +203,27 @@ export class PoolManager {
   }
 
   /**
-   * Construct one entity with the raw factory.
+   * Construct one entity with the raw factory and the given id.
    *
-   * Does not run `onSpawn` / `onDespawn`, does not set `_poolTypeKey`, and
-   * does not register the entity. The id is whatever the factory's
-   * constructor allocates from the current counter. {@link restore} adopts
-   * the instance afterwards.
+   * Does not run `onSpawn` / `onDespawn`, does not set `_poolTypeKey`,
+   * does not register the entity, and does not move the id counter.
+   * The caller records the id. {@link restore} adopts the instance afterwards.
    *
-   * @throws If `typeKey` is not registered.
+   * @throws If `typeKey` is not registered, or the factory returns a
+   * different id.
    */
-  public createForRestore(typeKey: string): Entity {
+  public createForRestore(typeKey: string, id: number): Entity {
     const factory = this.rawFactories.get(typeKey);
     if (!factory) {
       throw new Error(`Pool '${typeKey}' is not registered`);
     }
-    return factory();
+    const entity = factory(id);
+    if (entity.id !== id) {
+      throw new Error(
+        `Pool '${typeKey}' factory must return the entity with id ${String(id)}`
+      );
+    }
+    return entity;
   }
 
   /**

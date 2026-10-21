@@ -363,8 +363,8 @@ describe('world modules', () => {
       { defaults: { hp: 48n } }
     );
     class Pawn extends Entity implements IPoolableEntity {
-      public constructor() {
-        super();
+      public constructor(id: number) {
+        super(id);
         this.addComponent(unit.create(this.id));
       }
 
@@ -379,7 +379,7 @@ describe('world modules', () => {
         pooling: {
           entityTypes: {
             pawn: {
-              factory: () => new Pawn(),
+              factory: (id) => new Pawn(id),
               pool: { initialSize: 1 },
             },
           },
@@ -533,8 +533,8 @@ describe('world modules', () => {
       { defaults: { hp: 48n } }
     );
     class Pawn extends Entity implements IPoolableEntity {
-      public constructor() {
-        super();
+      public constructor(id: number) {
+        super(id);
         this.addComponent(unit.create(this.id));
       }
 
@@ -546,7 +546,7 @@ describe('world modules', () => {
       tickFrameProvider: silentProvider(),
       pooling: {
         entityTypes: {
-          pawn: { factory: () => new Pawn() },
+          pawn: { factory: (id) => new Pawn(id) },
         },
       },
     });
@@ -570,8 +570,8 @@ describe('world modules', () => {
   it('despawn returns a pooled entity to its pool', () => {
     const unit = defineComponent('Hp', { hp: 'i64' });
     class Pawn extends Entity implements IPoolableEntity {
-      public constructor() {
-        super();
+      public constructor(id: number) {
+        super(id);
         this.addComponent(unit.create(this.id));
       }
 
@@ -583,7 +583,7 @@ describe('world modules', () => {
       tickFrameProvider: silentProvider(),
       pooling: {
         entityTypes: {
-          pawn: { factory: () => new Pawn() },
+          pawn: { factory: (id) => new Pawn(id) },
         },
       },
     });

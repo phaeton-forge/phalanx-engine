@@ -1,16 +1,23 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { Entity, EntityPool, resetEntityIdCounter } from '../src';
+import { Entity, EntityPool } from '../src';
 
 describe('EntityPool', () => {
+  let nextId = 0;
+
   beforeEach(() => {
-    resetEntityIdCounter();
+    nextId = 0;
   });
+
+  function create(): Entity {
+    nextId += 1;
+    return new Entity(nextId);
+  }
 
   it('creates entities via factory', () => {
     let factoryCalls = 0;
     const pool = new EntityPool(() => {
       factoryCalls++;
-      return new Entity();
+      return create();
     });
 
     const entity = pool.acquire();
@@ -19,7 +26,7 @@ describe('EntityPool', () => {
   });
 
   it('keeps the same ID when reusing an entity', () => {
-    const pool = new EntityPool(() => new Entity());
+    const pool = new EntityPool(() => create());
 
     const e1 = pool.acquire();
     const id1 = e1.id;
@@ -34,7 +41,7 @@ describe('EntityPool', () => {
   it('revives entity on acquire', () => {
     const TestType = Symbol('Revive');
     const pool = new EntityPool(() => {
-      const created = new Entity();
+      const created = create();
       created.addComponent({ type: TestType });
       return created;
     });
@@ -59,7 +66,7 @@ describe('EntityPool', () => {
   it('preserves attached components across release/acquire', () => {
     const TestType = Symbol('Test');
     const pool = new EntityPool(() => {
-      const entity = new Entity();
+      const entity = create();
       entity.addComponent({ type: TestType });
       return entity;
     });
@@ -75,7 +82,7 @@ describe('EntityPool', () => {
   });
 
   it('prewarm creates dormant entities', () => {
-    const pool = new EntityPool(() => new Entity());
+    const pool = new EntityPool(() => create());
 
     pool.prewarm(5);
     expect(pool.availableCount).toBe(5);
@@ -83,7 +90,7 @@ describe('EntityPool', () => {
   });
 
   it('tracks stats', () => {
-    const pool = new EntityPool(() => new Entity());
+    const pool = new EntityPool(() => create());
 
     const e1 = pool.acquire();
     expect(pool.stats.acquireCount).toBe(1);
@@ -98,7 +105,7 @@ describe('EntityPool', () => {
   });
 
   it('respects maxSize', () => {
-    const pool = new EntityPool(() => new Entity(), { maxSize: 2 });
+    const pool = new EntityPool(() => create(), { maxSize: 2 });
 
     const a = pool.acquire();
     const b = pool.acquire();
@@ -112,20 +119,17 @@ describe('EntityPool', () => {
   });
 
   it('drain clears all available', () => {
-    const pool = new EntityPool(() => new Entity());
+    const pool = new EntityPool(() => create());
     pool.prewarm(10);
     pool.drain();
     expect(pool.availableCount).toBe(0);
   });
 
-  it('IDs are globally sequential', () => {
-    const pool = new EntityPool(() => new Entity());
+  it('keeps the acquired id across release', () => {
+    const pool = new EntityPool(() => create());
 
     const e1 = pool.acquire();
     const id1 = e1.id;
-
-    const regular = new Entity();
-    expect(regular.id).toBe(id1 + 1);
 
     pool.release(e1);
     const e2 = pool.acquire();
@@ -133,7 +137,7 @@ describe('EntityPool', () => {
   });
 
   it('discards overflow entities via dispose()', () => {
-    const pool = new EntityPool(() => new Entity(), { maxSize: 1 });
+    const pool = new EntityPool(() => create(), { maxSize: 1 });
 
     const a = pool.acquire();
     const b = pool.acquire();

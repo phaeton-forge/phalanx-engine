@@ -9,7 +9,7 @@ import { assertSectionVersion, ENGINE_SECTION_VERSION } from './version.js';
 /** Entity id counter high-water mark. The next allocation returns this + 1. */
 export function writeEntityIds(w: StateWriter, world: GameWorld): void {
   w.section('entityIds', ENGINE_SECTION_VERSION, (section) => {
-    section.varint(world.getEntityIdCounter());
+    section.varint(world.entityManager.entityIdHighWater());
   });
 }
 
@@ -17,65 +17,27 @@ export function writeEntityIds(w: StateWriter, world: GameWorld): void {
 export function readEntityIds(r: StateReader, world: GameWorld): void {
   r.section('entityIds', (section, version) => {
     assertSectionVersion('readEntityIds', version);
-    world.setEntityIdCounter(section.varint());
+    world.entityManager.restoreEntityIdHighWater(section.varint());
   });
 }
 
 /**
- * Construct an entity whose id is exactly `id`.
+ * Construct an entity whose id is exactly `id` and register it.
  *
- * Sets the counter to `id - 1` around `create`. `create` must construct
- * exactly one `Entity` (and attach its components in that constructor) and
- * must not register it. This function then calls `entityManager.addEntity`.
- *
- * The counter is left at `max(previous, id)` so a hole below the high-water
- * mark does not rewind later allocations. `readEntityIds` still runs later
- * and installs the saved high-water mark.
+ * `create` receives that id and must return the entity for it (and attach
+ * its components in that constructor). It must not register the entity.
+ * Delegates to {@link GameWorld.createEntityWithId}. The world's counter
+ * is not moved to `id - 1`.
  *
  * @throws If `id` is not an integer >= 1, the id is already registered, or
- * `create` allocated a different id or more than one entity.
+ * `create` returns a different id.
  */
 export function spawnWithId<E extends Entity>(
   world: GameWorld,
   id: number,
-  create: () => E
+  create: (id: number) => E
 ): E {
-  if (!Number.isSafeInteger(id) || id < 1) {
-    throw new Error(
-      `spawnWithId: id must be an integer >= 1, got ${String(id)}`
-    );
-  }
-  if (world.entityManager.getEntity(id) !== undefined) {
-    throw new Error(`spawnWithId: entity ${String(id)} already exists`);
-  }
-
-  const saved = world.getEntityIdCounter();
-  world.setEntityIdCounter(id - 1);
-  let entity: E;
-  try {
-    entity = create();
-  } catch (error) {
-    world.setEntityIdCounter(saved);
-    throw error;
-  }
-
-  const allocated = world.getEntityIdCounter();
-  if (entity.id !== id || allocated !== id) {
-    world.setEntityIdCounter(saved);
-    throw new Error(
-      `spawnWithId: create() must construct exactly one entity with id ${String(id)}`
-    );
-  }
-  if (world.entityManager.getEntity(id) !== undefined) {
-    world.setEntityIdCounter(saved);
-    throw new Error(
-      `spawnWithId: create() already registered entity ${String(id)}`
-    );
-  }
-
-  world.setEntityIdCounter(Math.max(saved, id));
-  world.entityManager.addEntity(entity);
-  return entity;
+  return world.createEntityWithId(id, create);
 }
 
 interface PoolRecord {
@@ -143,7 +105,7 @@ function readPoolRecords(r: StateReader): PoolRecord[] {
  * back, and drops GAS components that were not part of that shell.
  *
  * `readEntityIds` still runs later and installs the saved high-water mark.
- * Prewarm and these allocations both move the counter; the saved mark wins.
+ * Prewarm and these explicit ids both move the counter; the saved mark wins.
  *
  * @throws If the type-key list differs, a pool has a checked-out entity,
  * or the factory does not allocate the saved id.
@@ -183,8 +145,8 @@ export function readPools(r: StateReader, world: GameWorld): void {
 }
 
 /**
- * Allocate `id` from the raw pool factory. Does not register the entity.
- * The counter is left at `max(previous, id)` until `readEntityIds`.
+ * Build `id` from the raw pool factory. Does not register the entity.
+ * The counter becomes `max(previous, id)` until `readEntityIds`.
  */
 function createPooledEntity(
   world: GameWorld,
@@ -197,22 +159,8 @@ function createPooledEntity(
       `readPools: entity ${String(id)} already exists for pool '${typeKey}'`
     );
   }
-  const saved = world.getEntityIdCounter();
-  world.setEntityIdCounter(id - 1);
-  let entity: Entity;
-  try {
-    entity = pools.createForRestore(typeKey);
-  } catch (error) {
-    world.setEntityIdCounter(saved);
-    throw error;
-  }
-  if (entity.id !== id || world.getEntityIdCounter() !== id) {
-    world.setEntityIdCounter(saved);
-    throw new Error(
-      `readPools: factory for '${typeKey}' must construct exactly one entity with id ${String(id)}`
-    );
-  }
-  world.setEntityIdCounter(Math.max(saved, id));
+  const entity = pools.createForRestore(typeKey, id);
+  world.entityManager.claimEntityId(id);
   return entity;
 }
 

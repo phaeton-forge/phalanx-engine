@@ -13,8 +13,6 @@ export {
   PoolManager,
   SoAComponentStore,
   TYPED_ARRAY_CONSTRUCTORS,
-  nextEntityId,
-  setEntityIdCounter,
 } from '@phalanx-engine/ecs';
 export { DebugPanel } from '../host/debug/DebugPanel.js';
 export { TickFrameManager } from '../host/TickFrameManager.js';

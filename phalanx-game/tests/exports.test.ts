@@ -188,7 +188,6 @@ const ROOT_NAMES: readonly string[] = [
   'digestBytes',
   'each',
   'encodeSnapshot',
-  'getEntityIdCounter',
   'initDigest',
   'isAfterFrame',
   'isAfterTick',
@@ -358,8 +357,6 @@ const ADVANCED_NAMES: readonly string[] = [
   'TransportJoin',
   'TransportKind',
   'WorldScope',
-  'nextEntityId',
-  'setEntityIdCounter',
   'spawnWithId',
 ];
 

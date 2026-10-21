@@ -46,8 +46,8 @@ export class ProjectileEntity
   private readonly interpolation: InterpolationComponent;
   private readonly transform: TransformComponent;
 
-  constructor() {
-    super();
+  constructor(id: number) {
+    super(id);
     // Mesh visibility is handled by MeshComponent's own IPoolableComponent hooks.
     this.mesh = this.addComponent(
       MeshComponent.createProjectile(PROJECTILE_RADIUS)

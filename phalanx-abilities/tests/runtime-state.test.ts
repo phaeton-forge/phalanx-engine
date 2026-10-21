@@ -1,10 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import {
-  Entity,
-  GameWorld,
-  SoAComponent,
-  resetEntityIdCounter,
-} from '@phalanx-engine/ecs';
+import { Entity, GameWorld, SoAComponent } from '@phalanx-engine/ecs';
 import { FP } from '@phalanx-engine/math';
 import {
   InstanceIdCounter,
@@ -50,7 +45,6 @@ describe('ability runtime state', () => {
       world.dispose();
     }
     worlds.length = 0;
-    resetEntityIdCounter();
     SoAComponent.resetContext();
   });
 
@@ -80,7 +74,7 @@ describe('ability runtime state', () => {
         ],
       }),
     });
-    const caster = new Entity();
+    const caster = world.createEntity((id) => new Entity(id));
     world.entityManager.addEntity(caster);
     return { world, abilities, caster };
   }

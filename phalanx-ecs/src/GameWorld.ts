@@ -1,5 +1,6 @@
 import { SystemRegistry } from './SystemRegistry.js';
 import { SoAComponent } from './SoAComponent.js';
+import { Entity } from './Entity.js';
 import { PoolManager } from './pool/PoolManager.js';
 import type { PoolingConfig } from './pool/types.js';
 import type { ITickFrameProvider, Unsubscribe } from './ITickFrameProvider.js';
@@ -11,11 +12,6 @@ import type { IRandom } from './IRandom.js';
 import type { ComponentRegistration } from './ComponentRegistration.js';
 import type { SoASchemaDefinition } from './SoASchema.js';
 import { compareSaveSectionKeys, type SaveSection } from './state/sections.js';
-import {
-  getEntityIdCounter,
-  resetEntityIdCounter,
-  setEntityIdCounter,
-} from './Entity.js';
 import {
   isBeforeTick,
   isAfterTick,
@@ -148,8 +144,6 @@ export class GameWorld {
   private readonly _saveSections: SaveSection[] = [];
 
   constructor(config: GameWorldConfig) {
-    resetEntityIdCounter();
-
     // Create SystemRegistry with eagerly-initialized core deps
     this.systemRegistry = new SystemRegistry(config.componentTypes);
 
@@ -180,17 +174,71 @@ export class GameWorld {
   }
 
   /**
-   * Module-global entity id high-water mark. See {@link getEntityIdCounter}.
-   * Several worlds in one process must save and restore this around each
-   * entry into a world; constructing a world still resets it to `0`.
+   * Allocate the next id from this world and pass it to `create`.
+   *
+   * Does not register the entity. The caller adds it, or a pool does on
+   * spawn. `create` must return the entity for that id.
    */
-  public getEntityIdCounter(): number {
-    return getEntityIdCounter();
+  public createEntity<E extends Entity>(create: (id: number) => E): E {
+    const id = this.entityManager.allocateEntityId();
+    const entity = create(id);
+    if (entity.id !== id) {
+      throw new Error(
+        `createEntity: factory must return the entity with id ${String(id)}`
+      );
+    }
+    return entity;
   }
 
-  /** See {@link setEntityIdCounter}. */
-  public setEntityIdCounter(value: number): void {
-    setEntityIdCounter(value);
+  /**
+   * Build an entity with exactly `id` and register it.
+   *
+   * Used when restoring. Does not rewind the counter around `create`.
+   * The high-water mark becomes `max(current, id)`, so a hole does not
+   * change the next id. `read` of the `entityIds` section still installs
+   * the saved mark afterwards.
+   *
+   * Pass `create` for a subclass. Without it, the result is a plain
+   * {@link Entity}.
+   *
+   * @throws If `id` is not an integer >= 1, the id is already registered,
+   * or `create` returns an entity with a different id.
+   */
+  public createEntityWithId(id: number): Entity;
+  public createEntityWithId<E extends Entity>(
+    id: number,
+    create: (id: number) => E
+  ): E;
+  public createEntityWithId<E extends Entity>(
+    id: number,
+    create?: (id: number) => E
+  ): Entity | E {
+    if (!Number.isSafeInteger(id) || id < 1) {
+      throw new Error(
+        `createEntityWithId: id must be an integer >= 1, got ${String(id)}`
+      );
+    }
+    if (this.entityManager.getEntity(id) !== undefined) {
+      throw new Error(
+        `createEntityWithId: entity ${String(id)} already exists`
+      );
+    }
+
+    const entity = create === undefined ? new Entity(id) : create(id);
+    if (entity.id !== id) {
+      throw new Error(
+        `createEntityWithId: factory must return the entity with id ${String(id)}`
+      );
+    }
+    if (this.entityManager.getEntity(id) !== undefined) {
+      throw new Error(
+        `createEntityWithId: factory already registered entity ${String(id)}`
+      );
+    }
+
+    this.entityManager.claimEntityId(id);
+    this.entityManager.addEntity(entity);
+    return entity;
   }
 
   // ── Pause / Resume ───────────────────────────────────────────────────

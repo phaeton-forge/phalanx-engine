@@ -3,7 +3,6 @@ import {
   Entity,
   GameWorld,
   SoAComponent,
-  resetEntityIdCounter,
   type IPoolableEntity,
 } from '@phalanx-engine/ecs';
 import { FP } from '@phalanx-engine/math';
@@ -54,8 +53,8 @@ const definitions = defineAbilitySystem({
 const HEALTH_RAW = FP.ToRaw(FP.FromInt(100));
 
 class Minion extends Entity implements IPoolableEntity {
-  public constructor(abilities: AbilitySystem) {
-    super();
+  public constructor(id: number, abilities: AbilitySystem) {
+    super(id);
     this.addComponent(
       abilities.initComponent({
         tags: ['Team.Red'],
@@ -73,7 +72,6 @@ class Minion extends Entity implements IPoolableEntity {
 describe('pooled GAS reset', () => {
   afterEach(() => {
     SoAComponent.resetContext();
-    resetEntityIdCounter();
   });
 
   it('clears transient effects and restores the factory shell', () => {
@@ -83,12 +81,12 @@ describe('pooled GAS reset', () => {
       pooling: {
         entityTypes: {
           minion: {
-            factory: () => {
+            factory: (id) => {
               const abilities = holder.abilities;
               if (abilities === undefined) {
                 throw new Error('ability system is not ready');
               }
-              return new Minion(abilities);
+              return new Minion(id, abilities);
             },
           },
         },
@@ -151,7 +149,7 @@ describe('pooled GAS reset', () => {
       pooling: {
         entityTypes: {
           bare: {
-            factory: () => new Bare(),
+            factory: (id) => new Bare(id),
           },
         },
       },
@@ -195,7 +193,7 @@ describe('pooled GAS reset', () => {
       pooling: {
         entityTypes: {
           shell: {
-            factory: () => new GasShell(),
+            factory: (id) => new GasShell(id),
           },
         },
       },
@@ -235,12 +233,12 @@ describe('pooled GAS reset', () => {
       pooling: {
         entityTypes: {
           minion: {
-            factory: () => {
+            factory: (id) => {
               const abilities = holder.abilities;
               if (abilities === undefined) {
                 throw new Error('ability system is not ready');
               }
-              return new Minion(abilities);
+              return new Minion(id, abilities);
             },
           },
         },
@@ -334,8 +332,8 @@ class Bare extends Entity implements IPoolableEntity {
 }
 
 class GasShell extends Entity implements IPoolableEntity {
-  public constructor() {
-    super();
+  public constructor(id: number) {
+    super(id);
     this.addComponent(new ActiveEffectsComponent());
     this.addComponent(new GameplayTagsComponent());
     this.addComponent(new AttributesComponent(1));

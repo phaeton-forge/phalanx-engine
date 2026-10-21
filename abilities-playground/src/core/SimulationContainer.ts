@@ -102,19 +102,19 @@ export class SimulationContainer {
         autoPrewarm: true,
         entityTypes: {
           projectile: {
-            factory: () => new ProjectileEntity(),
+            factory: (id) => new ProjectileEntity(id),
             pool: { initialSize: 50, maxSize: 200 },
           },
           missile: {
-            factory: () => new MissileEntity(),
+            factory: (id) => new MissileEntity(id),
             pool: { initialSize: 30, maxSize: 120 },
           },
           artilleryShell: {
-            factory: () => new ArtilleryShellEntity(),
+            factory: (id) => new ArtilleryShellEntity(id),
             pool: { initialSize: 12, maxSize: 60 },
           },
           shrapnel: {
-            factory: () => new ShrapnelEntity(),
+            factory: (id) => new ShrapnelEntity(id),
             pool: { initialSize: 60, maxSize: 300 },
           },
         },
@@ -369,7 +369,7 @@ export class SimulationContainer {
   }
 
   private spawnSimulationState(): void {
-    const stateEntity = new Entity();
+    const stateEntity = this.world.createEntity((id) => new Entity(id));
     stateEntity.addComponent(new SimulationStateComponent());
     this.world.entityManager.addEntity(stateEntity);
   }

@@ -108,7 +108,7 @@ describe('attachDebug', () => {
       tickFrameProvider: bareProvider(),
       componentTypes: [HealthType],
     });
-    const entity = new Entity();
+    const entity = world.createEntity((id) => new Entity(id));
     entity.addComponent(new HealthComponent(50));
     world.entityManager.addEntity(entity);
     const attachment = attachDebug(world, { updateInterval: 0 });

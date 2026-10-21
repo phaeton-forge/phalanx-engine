@@ -1,9 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import {
-  GameWorld,
-  SoAComponent,
-  resetEntityIdCounter,
-} from '../../src/index.js';
+import { GameWorld, SoAComponent } from '../../src/index.js';
 import type { SaveSection } from '../../src/index.js';
 import { manualTickProvider } from '../support/manualTickProvider.js';
 
@@ -19,7 +15,6 @@ function section(key: string): SaveSection {
 describe('save sections', () => {
   afterEach(() => {
     SoAComponent.resetContext();
-    resetEntityIdCounter();
   });
 
   it('sorts keys by UTF-16 code units regardless of registration order', () => {

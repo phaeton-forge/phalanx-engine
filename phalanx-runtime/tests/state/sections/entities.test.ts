@@ -4,7 +4,6 @@ import {
   GameSystem,
   GameWorld,
   SoAComponent,
-  resetEntityIdCounter,
   type IPoolableEntity,
   type ITickFrameProvider,
 } from '@phalanx-engine/ecs';
@@ -50,8 +49,8 @@ function poolingWorld(): GameWorld {
     tickFrameProvider: manualTickProvider(),
     pooling: {
       entityTypes: {
-        unit: { factory: () => new Unit() },
-        bolt: { factory: () => new Unit() },
+        unit: { factory: (id) => new Unit(id) },
+        bolt: { factory: (id) => new Unit(id) },
       },
     },
   });
@@ -63,7 +62,7 @@ function prewarmedWorld(system: SpawnSystem): GameWorld {
     pooling: {
       entityTypes: {
         unit: {
-          factory: () => new Unit(),
+          factory: (id) => new Unit(id),
           pool: { initialSize: 2 },
         },
       },
@@ -77,16 +76,15 @@ function prewarmedWorld(system: SpawnSystem): GameWorld {
 describe('entity and pool state helpers', () => {
   afterEach(() => {
     SoAComponent.resetContext();
-    resetEntityIdCounter();
   });
 
   it('saves and restores the entity id counter only', () => {
     const source = new GameWorld({ tickFrameProvider: manualTickProvider() });
-    const first = new Entity();
-    const second = new Entity();
+    const first = source.createEntity((id) => new Entity(id));
+    const second = source.createEntity((id) => new Entity(id));
     source.entityManager.addEntity(first);
     source.entityManager.addEntity(second);
-    expect(source.getEntityIdCounter()).toBe(2);
+    expect(source.entityManager.entityIdHighWater()).toBe(2);
 
     const bytes = finish((writer) => {
       StateHelpers.writeEntityIds(writer, source);
@@ -97,46 +95,41 @@ describe('entity and pool state helpers', () => {
     StateHelpers.readEntityIds(reader, restored);
     reader.done();
 
-    expect(restored.getEntityIdCounter()).toBe(2);
-    const next = new Entity();
+    expect(restored.entityManager.entityIdHighWater()).toBe(2);
+    const next = restored.createEntity((id) => new Entity(id));
     expect(next.id).toBe(3);
   });
 
-  it('spawnWithId constructs one entity with that id', () => {
+  it('createEntityWithId constructs one entity with that id', () => {
     const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
-    const high = StateHelpers.spawnWithId(world, 5, () => new Entity());
+    const high = world.createEntityWithId(5, (id) => new Entity(id));
     expect(high.id).toBe(5);
     expect(world.entityManager.getEntity(5)).toBe(high);
 
-    const hole = StateHelpers.spawnWithId(world, 2, () => new Entity());
+    const hole = world.createEntityWithId(2, (id) => new Entity(id));
     expect(hole.id).toBe(2);
-    expect(world.getEntityIdCounter()).toBe(5);
+    expect(world.entityManager.entityIdHighWater()).toBe(5);
 
-    const next = new Entity();
+    const next = world.createEntity((id) => new Entity(id));
     expect(next.id).toBe(6);
 
-    expect(() =>
-      StateHelpers.spawnWithId(world, 2, () => new Entity())
-    ).toThrow('spawnWithId: entity 2 already exists');
-    expect(() =>
-      StateHelpers.spawnWithId(world, 0, () => new Entity())
-    ).toThrow(/integer >= 1/);
+    expect(() => world.createEntityWithId(2, (id) => new Entity(id))).toThrow(
+      'createEntityWithId: entity 2 already exists'
+    );
+    expect(() => world.createEntityWithId(0)).toThrow(/integer >= 1/);
 
-    const before = world.getEntityIdCounter();
+    const before = world.entityManager.entityIdHighWater();
     expect(() =>
-      StateHelpers.spawnWithId(world, 8, () => {
+      world.createEntityWithId(8, () => {
         throw new Error('nope');
       })
     ).toThrow('nope');
-    expect(world.getEntityIdCounter()).toBe(before);
+    expect(world.entityManager.entityIdHighWater()).toBe(before);
 
-    expect(() =>
-      StateHelpers.spawnWithId(world, 9, () => {
-        new Entity();
-        return new Entity();
-      })
-    ).toThrow(/exactly one entity/);
-    expect(world.getEntityIdCounter()).toBe(before);
+    expect(() => world.createEntityWithId(9, () => new Entity(1))).toThrow(
+      /factory must return the entity with id 9/
+    );
+    expect(world.entityManager.entityIdHighWater()).toBe(before);
   });
 
   it('round-trips pool ownership and the LIFO free list', () => {
@@ -195,8 +188,8 @@ describe('entity and pool state helpers', () => {
       throw new Error('expected pools');
     }
     const live = pools.spawn<Unit>('unit', { hp: 4 });
-    new Entity();
-    expect(source.getEntityIdCounter()).toBe(3);
+    source.entityManager.allocateEntityId();
+    expect(source.entityManager.entityIdHighWater()).toBe(3);
 
     const bytes = finish((writer) => {
       StateHelpers.writePools(writer, source);
@@ -224,7 +217,7 @@ describe('entity and pool state helpers', () => {
     StateHelpers.readEntityIds(reader, restored);
     reader.done();
 
-    expect(restored.getEntityIdCounter()).toBe(3);
+    expect(restored.entityManager.entityIdHighWater()).toBe(3);
     expect(restored.entityManager.getEntity(live.id)?.id).toBe(live.id);
     expect(restoredPools.freeListIds('unit')).toEqual([1]);
 

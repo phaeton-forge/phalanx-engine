@@ -4,7 +4,6 @@ import {
   BinaryStateWriter,
   GameWorld,
   SoAComponent,
-  resetEntityIdCounter,
   type SaveSection,
 } from '@phalanx-engine/ecs';
 import { DeterministicRandom } from '@phalanx-engine/math';
@@ -131,7 +130,6 @@ function tinyConfig(matchId: string): TinyConfig {
 describe('module save sections', () => {
   afterEach(() => {
     SoAComponent.resetContext();
-    resetEntityIdCounter();
   });
 
   it('writes registered sections in ascending key order and restores them', () => {

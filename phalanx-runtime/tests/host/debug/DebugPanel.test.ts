@@ -6,7 +6,6 @@ import {
   PoolManager,
   SoAComponent,
   defineSoASchema,
-  resetEntityIdCounter,
   type IComponent,
   type IPoolableEntity,
 } from '@phalanx-engine/ecs';
@@ -71,7 +70,6 @@ describe('DebugPanel', () => {
   let panel: DebugPanel;
 
   beforeEach(() => {
-    resetEntityIdCounter();
     em = new EntityManager();
     em.registerComponentTypes([HealthType, ArmorType]);
     SoAComponent.useEntityManager(em);
@@ -112,7 +110,7 @@ describe('DebugPanel', () => {
       });
       timedProvider.start();
 
-      const entity = new Entity();
+      const entity = new Entity(em.allocateEntityId());
       entity.addComponent(new HealthComponent(100));
       em.addEntity(entity);
 
@@ -126,7 +124,7 @@ describe('DebugPanel', () => {
       panel.destroy();
 
       // Add another entity
-      const e2 = new Entity();
+      const e2 = new Entity(em.allocateEntityId());
       e2.addComponent(new HealthComponent(200));
       em.addEntity(e2);
 
@@ -149,9 +147,9 @@ describe('DebugPanel', () => {
 
   describe('rendering', () => {
     it('renders world overview section with entity count', () => {
-      const e1 = new Entity();
+      const e1 = new Entity(em.allocateEntityId());
       em.addEntity(e1);
-      const e2 = new Entity();
+      const e2 = new Entity(em.allocateEntityId());
       em.addEntity(e2);
 
       panel = new DebugPanel(provider);
@@ -163,7 +161,7 @@ describe('DebugPanel', () => {
     });
 
     it('renders entity list with component names', () => {
-      const entity = new Entity();
+      const entity = new Entity(em.allocateEntityId());
       entity.addComponent(new HealthComponent(75));
       entity.addComponent(new ArmorComponent(20));
       em.addEntity(entity);
@@ -177,7 +175,7 @@ describe('DebugPanel', () => {
     });
 
     it('renders SoA store section with field types', () => {
-      const entity = new Entity();
+      const entity = new Entity(em.allocateEntityId());
       em.addEntity(entity);
       new PhysicsBodyComponent(entity.id, 2.5);
 
@@ -193,7 +191,7 @@ describe('DebugPanel', () => {
     it('renders pool stats table', () => {
       const pools = new PoolManager(em);
       pools.registerEntityType('projectile', {
-        factory: () => new PoolableEntity(),
+        factory: (id) => new PoolableEntity(id),
         pool: { initialSize: 5 },
       });
       pools.prewarmAll();
@@ -216,7 +214,7 @@ describe('DebugPanel', () => {
     });
 
     it('formats bigint values with n suffix', () => {
-      const entity = new Entity();
+      const entity = new Entity(em.allocateEntityId());
       em.addEntity(entity);
       new PhysicsBodyComponent(entity.id, 3.14);
 
@@ -294,7 +292,7 @@ describe('DebugPanel', () => {
     });
 
     it('section collapse toggles section visibility', () => {
-      const entity = new Entity();
+      const entity = new Entity(em.allocateEntityId());
       entity.addComponent(new HealthComponent());
       em.addEntity(entity);
 

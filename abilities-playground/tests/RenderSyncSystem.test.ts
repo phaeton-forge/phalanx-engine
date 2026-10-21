@@ -1,6 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as THREE from 'three';
-import { Entity, EntityManager, EventBus, SystemContext } from '@phalanx-engine/ecs';
+import {
+  Entity,
+  EntityManager,
+  EventBus,
+  SystemContext,
+} from '@phalanx-engine/ecs';
 import type { IPhysicsWorld } from '@phalanx-engine/ecs';
 import { INTERPOLATION_COMPONENT_TYPE } from '@phalanx-engine/physics';
 import {
@@ -36,7 +41,7 @@ describe('RenderSyncSystem', () => {
   });
 
   it('applies interpolated transform from PhysicsWorld to mesh root', () => {
-    const entity = new Entity();
+    const entity = new Entity(entityManager.allocateEntityId());
     const meshRoot = new THREE.Object3D();
     entity.addComponent(new MeshComponent(meshRoot));
     entity.addComponent(new InterpolationComponent());
@@ -70,7 +75,7 @@ describe('RenderSyncSystem', () => {
       ComponentType.HealAura,
     ]);
 
-    const entity = new Entity();
+    const entity = new Entity(entityManager.allocateEntityId());
     const meshRoot = new THREE.Object3D();
     // The ring is an independent world-space decal (NOT a child of the body),
     // mirroring how UnitFactory adds it straight to the scene.
@@ -79,10 +84,14 @@ describe('RenderSyncSystem', () => {
 
     entity.addComponent(new MeshComponent(meshRoot));
     entity.addComponent(new InterpolationComponent());
-    entity.addComponent(new HealthBarComponent(new THREE.Object3D(), new THREE.Object3D(), 6));
+    entity.addComponent(
+      new HealthBarComponent(new THREE.Object3D(), new THREE.Object3D(), 6)
+    );
     entity.addComponent(new TeamComponent(1));
     entity.addComponent(new StatsComponent({ stopRange: 22 }));
-    entity.addComponent(new HealAuraComponent({ radius: 18, pulseTicks: 30 }, auraRing));
+    entity.addComponent(
+      new HealAuraComponent({ radius: 18, pulseTicks: 30 }, auraRing)
+    );
     entityManager.addEntity(entity);
     for (const type of [
       ComponentType.Mesh,
@@ -104,7 +113,7 @@ describe('RenderSyncSystem', () => {
 
     const flat = new THREE.Quaternion().setFromAxisAngle(
       new THREE.Vector3(1, 0, 0),
-      -Math.PI / 2,
+      -Math.PI / 2
     );
     const worldRotation = new THREE.Quaternion();
 
@@ -133,7 +142,7 @@ describe('RenderSyncSystem', () => {
   });
 
   it('leaves mesh unchanged when physics returns no sample', () => {
-    const entity = new Entity();
+    const entity = new Entity(entityManager.allocateEntityId());
     const meshRoot = new THREE.Object3D();
     meshRoot.position.set(5, 6, 7);
     meshRoot.quaternion.set(0.1, 0.2, 0.3, 0.9);

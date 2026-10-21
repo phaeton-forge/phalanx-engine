@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { Entity, resetEntityIdCounter } from '../src/Entity';
+import { Entity } from '../src/Entity';
 import { EntityManager } from '../src/EntityManager';
 import { SoAComponent } from '../src/SoAComponent';
 import { defineSoASchema } from '../src/SoASchema';
@@ -37,17 +37,13 @@ class TestSoAComponent extends SoAComponent<typeof TestSoASchema.definition> {
 // ── Entity accessor tests ──────────────────────────────────────────
 
 describe('Entity debug accessors', () => {
-  beforeEach(() => {
-    resetEntityIdCounter();
-  });
-
   it('getComponentTypes returns empty array for entity with no components', () => {
-    const entity = new Entity();
+    const entity = new Entity(1);
     expect(entity.getComponentTypes()).toEqual([]);
   });
 
   it('getComponentTypes returns all attached component type symbols', () => {
-    const entity = new Entity();
+    const entity = new Entity(1);
     entity.addComponent(new HealthComponent());
     entity.addComponent(new ArmorComponent());
 
@@ -58,7 +54,7 @@ describe('Entity debug accessors', () => {
   });
 
   it('getComponents returns a read-only map of all components', () => {
-    const entity = new Entity();
+    const entity = new Entity(1);
     const health = new HealthComponent(75);
     entity.addComponent(health);
 
@@ -68,7 +64,7 @@ describe('Entity debug accessors', () => {
   });
 
   it('getComponents reflects additions and removals', () => {
-    const entity = new Entity();
+    const entity = new Entity(1);
     entity.addComponent(new HealthComponent());
     expect(entity.getComponents().size).toBe(1);
 
@@ -87,7 +83,6 @@ describe('EntityManager debug accessors', () => {
   let em: EntityManager;
 
   beforeEach(() => {
-    resetEntityIdCounter();
     em = new EntityManager();
     em.registerComponentTypes([HealthType, ArmorType]);
     SoAComponent.useEntityManager(em);
@@ -99,7 +94,7 @@ describe('EntityManager debug accessors', () => {
   });
 
   it('getAllSoAStores returns registered SoA stores', () => {
-    const entity = new Entity();
+    const entity = new Entity(1);
     em.addEntity(entity);
 
     // Creating a SoAComponent triggers store creation
@@ -114,12 +109,12 @@ describe('EntityManager debug accessors', () => {
   });
 
   it('getComponentTypeStats returns correct counts', () => {
-    const e1 = new Entity();
+    const e1 = new Entity(1);
     e1.addComponent(new HealthComponent());
     e1.addComponent(new ArmorComponent());
     em.addEntity(e1);
 
-    const e2 = new Entity();
+    const e2 = new Entity(2);
     e2.addComponent(new HealthComponent());
     em.addEntity(e2);
 

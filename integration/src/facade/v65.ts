@@ -148,15 +148,15 @@ export function createSkirmishGame(
     pooling: {
       entityTypes: {
         soldier: {
-          factory: () => buildUnit(KIND_SOLDIER, holder, true, false),
+          factory: (id) => buildUnit(id, KIND_SOLDIER, holder, true, false),
           pool: { initialSize: soldierPool },
         },
         archer: {
-          factory: () => buildUnit(KIND_ARCHER, holder, true, true),
+          factory: (id) => buildUnit(id, KIND_ARCHER, holder, true, true),
           pool: { initialSize: archerPool },
         },
         totem: {
-          factory: () => buildUnit(KIND_TOTEM, holder, false, false),
+          factory: (id) => buildUnit(id, KIND_TOTEM, holder, false, false),
           pool: { initialSize: totemPool },
         },
       },

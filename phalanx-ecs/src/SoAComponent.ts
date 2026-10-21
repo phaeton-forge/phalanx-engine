@@ -79,9 +79,10 @@ export abstract class SoAComponent<S extends SoASchemaDefinition>
    * {@link resetContext} has cleared it (or nothing has called
    * {@link useEntityManager} yet).
    *
-   * Process-global, like the entity id counter. A host that runs more than
-   * one world saves this, installs the world's manager for the duration of
-   * the call, then restores the previous value.
+   * Process-global. A host that runs more than one world saves this,
+   * installs the world's manager for the duration of the call, then
+   * restores the previous value. Entity ids are not stored here; each
+   * world's EntityManager has its own counter.
    */
   public static currentEntityManager(): EntityManager | null {
     return SoAComponent._entityManager;
