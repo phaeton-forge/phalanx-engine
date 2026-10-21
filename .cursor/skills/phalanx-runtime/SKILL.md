@@ -1,6 +1,6 @@
 ---
 name: phalanx-runtime
-description: Describe a Phalanx game as one GameDefinition and run it with MatchRunner from @phalanx-engine/runtime (engine 0.3). Use when defining games with defineGame, defineCommands, defineComponent, onCommand, runLocalMatch, ReplayPlayer, setController, world.save/restore, writing BotPolicy bots, choosing side 'client' vs 'server', snapshots, replays, reconnect, or Transport/LocalTransport. Local persistence is opt-in via MatchStore, MemoryMatchStore, IndexedDbMatchStore and MatchRunner.resumeLocal. World modules are the default save handler. StateHelpers, spawnWithId and WorldScope are in @phalanx-engine/runtime/advanced. MatchRunner.join is still Task 12.
+description: Describe a Phalanx game as one GameDefinition and run it with MatchRunner from @phalanx-engine/runtime (engine 0.3). Use when defining games with defineGame, defineCommands, defineComponent, onCommand, runLocalMatch, ReplayPlayer, setController, saveWorld/restoreWorld, spawn/despawn/each, writing BotPolicy bots, choosing side 'client' vs 'server', snapshots, replays, reconnect, or Transport/LocalTransport. Local persistence is opt-in via MatchStore, MemoryMatchStore, IndexedDbMatchStore and MatchRunner.resumeLocal. World modules are the default save handler. StateHelpers, spawnWithId and WorldScope are in @phalanx-engine/runtime/advanced. MatchRunner.join is still Task 12.
 metadata:
   author: phaeton2040-AI
   version: '0.1'
@@ -22,7 +22,7 @@ metadata:
 > command chunks, and snapshots (schema v2 drops pre-0.3.0 v1 rows) and
 > makes `resumeLocal` fall back to the previous snapshot.
 > Task 6.5a is `defineComponent`,
-> `world.save` / `world.restore`, and the `advanced` subpath.
+> `saveWorld` / `restoreWorld`, and the `advanced` subpath.
 > `BinaryStateWriter` /
 > `BinaryStateReader`, `encodeSnapshot` / `decodeSnapshot`, `digestBytes`,
 > `initDigest`, `onDigestFallback`,
@@ -66,7 +66,7 @@ new Phalanx({
    without doing so. Never call `processAllTicks`.
 2. `ctx.purpose === 'restore'`: spawn only what a custom save handler
    will overwrite. `spawnWithId` throws `spawnWithId: entity N already exists`
-   for an id that is already registered. `world.restore` skips that id
+   for an id that is already registered. `restoreWorld` skips that id
    and overwrites its rows.
 3. `defineCommands` builds `decode`, `encode` and `types`. `decode` never
    throws. `onCommand` is a function or an exhaustive per-type map. The
@@ -102,13 +102,14 @@ import { defineComponent, defineGame } from '@phalanx-engine/runtime';
 const Unit = defineComponent('Unit', { hp: 'i64' }, { defaults: { hp: 48n } });
 ```
 
-Register with `world.registerComponent(Unit)` before spawn. `world.spawn({
-Unit: { hp: 48n } })`, `world.despawn(entity)` and `world.each(Unit, fn)`
+Register with `world.registerComponent(Unit)` before spawn. `spawn(world, {
+Unit: { hp: 48n } })`, `despawn(world, entity)` and `each(world, Unit, fn)`
 use the existing entity id counter. The `each` callback receives one
 reused view; do not store it or read it after the callback returns.
-Importing `@phalanx-engine/runtime` calls `setWorldModuleHost` once.
-`world.save()` / `world.restore(bytes)` are the default `defineGame` state
-when `state` is omitted. Restore returns checked-out pool entities, drops
+`saveWorld(world)` and `restoreWorld(world, bytes)` are plain functions.
+Importing `@phalanx-engine/runtime` does no work (`"sideEffects"` lists only
+`./dist/server/simWorker.js`). When `state` is omitted, `defineGame` saves
+the world modules. `restoreWorld` returns checked-out pool entities, drops
 entities that are not in the roster, and attaches components from the SoA
 sections. Optional
 singleton bytes go through `bindWorldSingletons(world, { onSave, onRestore })`.
@@ -248,7 +249,7 @@ section. Policy bytes and the checkpoint are applied only for slots this
 runner hosts or submits, so a client keeps a server snapshot's
 human-to-bot handover and ignores that snapshot's policy state. A custom `GameState` that calls `spawnWithId`
 for an id `createWorld` already made still throws
-`spawnWithId: entity N already exists`. `world.restore` skips that id.
+`spawnWithId: entity N already exists`. `restoreWorld` skips that id.
 A throw inside a tick does not escape `LocalTransport.manual().step()`;
 `onError` already ran. `fastForward`, replay, and catch-up still
 propagate that error, including a final-digest mismatch. A timed

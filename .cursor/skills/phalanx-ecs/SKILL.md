@@ -963,7 +963,7 @@ import type { GameWorldConfig, GameWorldHooks } from '@phalanx-engine/ecs';
 // Core ECS
 import { Entity, resetEntityIdCounter, nextEntityId } from '@phalanx-engine/ecs';
 import { EntityManager } from '@phalanx-engine/ecs';
-import { EventBus, globalEventBus } from '@phalanx-engine/ecs';
+import { EventBus } from '@phalanx-engine/ecs';
 import { GameSystem } from '@phalanx-engine/ecs';
 import { SystemRegistry } from '@phalanx-engine/ecs';
 import { SystemContext } from '@phalanx-engine/ecs';
