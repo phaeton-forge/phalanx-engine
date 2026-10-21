@@ -42,7 +42,9 @@ Entries collected per package until the synchronized 0.3.0 release
   `createEntityWithId: id must be an integer >= 1`,
   `createEntityWithId: factory must return the entity with id N`,
   `createEntityWithId: factory already registered entity N`.
-  A throwing factory does not move the counter.
+  `createEntity` allocates the id before `create` runs, so a throw still
+  consumes that id. `createEntityWithId` claims the id only after
+  `create` returns, so a throwing factory does not move the counter.
   `EntityManager.entityIdHighWater`, `restoreEntityIdHighWater`,
   `allocateEntityId` and `claimEntityId` are the counter API.
   `restoreEntityIdHighWater` rejects a non-integer or a value `< 0`
@@ -50,6 +52,7 @@ Entries collected per package until the synchronized 0.3.0 release
   lower the mark. `clear()` does not reset it. Pool factories are
   `(id: number) => T`. `PoolManager.createForRestore(typeKey, id)` takes
   that id and does not allocate.
+- Removed `GameWorld.getEntityIdCounter` / `setEntityIdCounter`.
 - Export snapshot: names `[69]` → `[65]`, values `[28]` → `[24]`.
 - Removed `GameWorld.save`, `restore`, `spawn`, `despawn` and `each`, the
   type `WorldModuleHost`, the function `setWorldModuleHost` and the error

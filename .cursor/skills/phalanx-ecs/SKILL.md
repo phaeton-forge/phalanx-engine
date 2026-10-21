@@ -1071,8 +1071,8 @@ export class ProjectileEntity extends Entity implements IPoolableEntity<Projecti
   private readonly transform: TransformComponent;
   private readonly projectile: ProjectileComponent;
 
-  constructor() {
-    super();
+  constructor(id: number) {
+    super(id);
     this.addComponent(MeshComponent.createProjectile(radius));
     this.projectile = this.addComponent(new ProjectileComponent());
     this.transform = this.addComponent(new TransformComponent(this.id));
@@ -1100,7 +1100,7 @@ const world = new GameWorld({
     autoPrewarm: true,
     entityTypes: {
       projectile: {
-        factory: () => new ProjectileEntity(),
+        factory: (id) => new ProjectileEntity(id),
         pool: { initialSize: 50, maxSize: 200 },
       },
     },
