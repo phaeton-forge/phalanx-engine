@@ -140,6 +140,3 @@ export class EventBus {
     return this.listeners.get(eventType)?.length ?? 0;
   }
 }
-
-// Export a singleton instance for global access
-export const globalEventBus = new EventBus();

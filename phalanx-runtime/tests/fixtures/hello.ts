@@ -4,7 +4,7 @@ const commands = game.defineCommands({ move: { dx: 'i64' } });
 const pace = [{ type: 'move' as const, dx: 1n }];
 class Drift extends game.GameSystem {
   public processTick(): void {
-    this.world.each(Unit, (unit) => (unit.x += 0n));
+    game.each(this.world, Unit, (unit) => (unit.x += 0n));
   }
 }
 const hello = game.defineGame({
@@ -15,11 +15,11 @@ const hello = game.defineGame({
   systems: [() => new Drift()],
   commands,
   onStart(ctx) {
-    if (ctx.purpose === 'fresh') ctx.world.spawn({ Unit: { x: 0n } });
+    if (ctx.purpose === 'fresh') game.spawn(ctx.world, { Unit: { x: 0n } });
   },
   onCommand: {
     move(ctx, stamped) {
-      ctx.world.each(Unit, (unit) => (unit.x += stamped.command.dx));
+      game.each(ctx.world, Unit, (unit) => (unit.x += stamped.command.dx));
     },
   },
   bots: { walker: () => ({ decide: () => pace }) },
@@ -33,7 +33,7 @@ export function playHello(): readonly [bigint, bigint] {
   });
   const read = (): bigint => {
     let value = 0n;
-    match.runner.sim.world.each(Unit, (unit) => (value = unit.x));
+    game.each(match.runner.sim.world, Unit, (unit) => (value = unit.x));
     return value;
   };
   match.runner.submit({ type: 'move', dx: 2n });

@@ -1,5 +1,5 @@
 /**
- * Low-level snapshot helpers. Games use `world.save` / `world.restore`.
+ * Low-level snapshot helpers. Games use `saveWorld` / `restoreWorld`.
  * These functions keep the historical section bytes for a hand-written
  * `GameState`.
  *
@@ -15,7 +15,6 @@ export {
   TYPED_ARRAY_CONSTRUCTORS,
   nextEntityId,
   setEntityIdCounter,
-  setWorldModuleHost,
 } from '@phalanx-engine/ecs';
 export { DebugPanel } from '../host/debug/DebugPanel.js';
 export { TickFrameManager } from '../host/TickFrameManager.js';

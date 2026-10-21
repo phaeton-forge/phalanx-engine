@@ -10,6 +10,8 @@ import {
   GameWorld,
   SoAComponent,
   defineComponent,
+  despawn,
+  each,
   type IPoolableEntity,
   type IRandom,
   type MatchConfigBase,
@@ -754,7 +756,7 @@ export class SkirmishSim implements CommandView, CommandSink {
     const team = this.teamOf(id);
     const x = this.home(id, 'x');
     const z = this.home(id, 'z');
-    this.world.despawn(entity);
+    despawn(this.world, entity);
     if (!respawn) return;
     scheduleRespawn(
       this.jobs,
@@ -770,7 +772,7 @@ export class SkirmishSim implements CommandView, CommandSink {
   private eachLive(fn: (id: number) => void): void {
     const scratch = this.idScratch;
     scratch.length = 0;
-    this.world.each(UnitDef, (view) => {
+    each(this.world, UnitDef, (view) => {
       scratch.push(view.eid);
     });
     for (let index = 0; index < scratch.length; index += 1) {

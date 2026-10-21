@@ -94,12 +94,22 @@ export function readWorld(world: GameWorld, reader: StateReader): void {
   }
 }
 
+/**
+ * Canonical simulation bytes: roster (when any non-pooled entity exists),
+ * pools, SoA stores, the entity id counter, RNG, one `modules` container
+ * of registered save sections, then optional singleton hooks.
+ */
 export function saveWorld(world: GameWorld): Uint8Array {
   const writer = new BinaryStateWriter();
   writeWorld(world, writer);
   return writer.finish();
 }
 
+/**
+ * Restore bytes from {@link saveWorld}. Ids already spawned by world
+ * creation are kept and overwritten. `onEnable` runs after the bytes are
+ * applied.
+ */
 export function restoreWorld(world: GameWorld, bytes: Uint8Array): void {
   const reader = new BinaryStateReader(bytes);
   readWorld(world, reader);
@@ -479,13 +489,17 @@ function enableLive(world: GameWorld): void {
   }
 }
 
-export function spawnOn(
+/**
+ * Spawn one entity with the named components. Uses the same id counter
+ * as `new Entity()`. The spec keys are component names.
+ */
+export function spawn(
   world: GameWorld,
   spec: Readonly<Record<string, Readonly<Record<string, number | bigint>>>>
 ): Entity {
   const names = Object.keys(spec);
   if (names.length === 0) {
-    throw new Error('world.spawn: spec is empty');
+    throw new Error('spawn: spec is empty');
   }
   const entity = new Entity();
   try {
@@ -493,7 +507,7 @@ export function spawnOn(
       const component = requireComponent(world, name);
       const values = spec[name];
       if (values === undefined) {
-        throw new Error(`world.spawn: missing values for '${name}'`);
+        throw new Error(`spawn: missing values for '${name}'`);
       }
       entity.addComponent(component.create(entity.id, values));
     }
@@ -512,7 +526,8 @@ export function spawnOn(
   return entity;
 }
 
-export function despawnOn(world: GameWorld, entity: Entity): void {
+/** Return a pooled entity to its pool, or remove and dispose any other. */
+export function despawn(world: GameWorld, entity: Entity): void {
   if (entity._poolTypeKey !== undefined && world.pools !== null) {
     world.pools.despawn(entity);
     return;
@@ -522,7 +537,11 @@ export function despawnOn(world: GameWorld, entity: Entity): void {
   entity.dispose();
 }
 
-export function eachOn<S extends SoASchemaDefinition>(
+/**
+ * Call `fn` for each live row of `component`, in ascending entity id.
+ * The view is reused. Do not retain it.
+ */
+export function each<S extends SoASchemaDefinition>(
   world: GameWorld,
   component: { readonly schema: SoASchema<S> },
   fn: (view: SoAFieldsOf<S>) => void
@@ -557,7 +576,7 @@ function liveIndex(
 ): number {
   const index = store.indexOf(entityId);
   if (index < 0) {
-    throw new Error(`world.each: entity ${String(entityId)} was removed`);
+    throw new Error(`each: entity ${String(entityId)} was removed`);
   }
   return index;
 }
@@ -569,7 +588,7 @@ function requireComponent(
   for (const component of world.registeredComponents()) {
     if (component.name === name) return component;
   }
-  throw new Error(`world.spawn: component '${name}' is not registered`);
+  throw new Error(`spawn: component '${name}' is not registered`);
 }
 
 function invokeAll(
@@ -602,7 +621,7 @@ function readColumn(
   const column = columnOf(arrays, field);
   const value = column[index];
   if (value === undefined) {
-    throw new Error(`world.each: missing '${field}'`);
+    throw new Error(`each: missing '${field}'`);
   }
   return value;
 }
@@ -616,13 +635,13 @@ function writeColumn(
   const column = columnOf(arrays, field);
   if (column instanceof BigInt64Array) {
     if (typeof value !== 'bigint') {
-      throw new Error(`world.each: '${field}' expects a bigint`);
+      throw new Error(`each: '${field}' expects a bigint`);
     }
     column[index] = value;
     return;
   }
   if (typeof value !== 'number') {
-    throw new Error(`world.each: '${field}' expects a number`);
+    throw new Error(`each: '${field}' expects a number`);
   }
   column[index] = value;
 }
@@ -631,7 +650,7 @@ function columnOf(arrays: object, field: string): TypedArrayLike {
   const columns = arrays as Record<string, TypedArrayLike>;
   const column = columns[field];
   if (column === undefined) {
-    throw new Error(`world.each: unknown field '${field}'`);
+    throw new Error(`each: unknown field '${field}'`);
   }
   return column;
 }

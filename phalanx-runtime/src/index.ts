@@ -4,6 +4,9 @@
  *
  * Status: Tasks 1–7, 7.1, 6.5a and 6.5b are implemented. Games use
  * `defineComponent`, `defineCommands`, `defineGame` and `runLocalMatch`.
+ * World snapshots and spawning are plain functions: `saveWorld`,
+ * `restoreWorld`, `spawn`, `despawn`, `each`. Importing this module does
+ * no work.
  * Local persistence is opt-in via `MatchStore` (`MemoryMatchStore`,
  * `IndexedDbMatchStore`) and `MatchRunner.resumeLocal`.
  * `StateHelpers`, `spawnWithId`, `CommandSchema`, `SaveHandler` and
@@ -13,9 +16,6 @@
  *
  * @packageDocumentation
  */
-
-import { setWorldModuleHost } from '@phalanx-engine/ecs';
-import { worldModules } from './world/host.js';
 
 export {
   ENGINE_SNAPSHOT_FORMAT,
@@ -92,6 +92,13 @@ export type {
   DefinedComponent,
   DefineComponentOptions,
 } from './world/defineComponent.js';
+export {
+  saveWorld,
+  restoreWorld,
+  spawn,
+  despawn,
+  each,
+} from './world/modules.js';
 export { bindWorldSingletons } from './world/singletons.js';
 export type { WorldSingletonHooks } from './world/singletons.js';
 export { DebugDataProvider } from './host/debug/DebugDataProvider.js';
@@ -108,5 +115,3 @@ export type {
   AttachDebugOptions,
   DebugAttachment,
 } from './host/debug/attachDebug.js';
-
-setWorldModuleHost(worldModules);

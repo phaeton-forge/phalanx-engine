@@ -3,6 +3,7 @@
   "version": "0.2.3",
   "description": "Lightweight, renderer-agnostic Entity-Component-System library with optional multiplayer support via Phalanx Engine",
   "type": "module",
+  "sideEffects": false,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {

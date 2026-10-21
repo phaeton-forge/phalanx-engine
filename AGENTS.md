@@ -315,7 +315,7 @@ Pooling is **engine-driven**. Game code calls exactly two APIs:
   - `onDestroy` runs from `dispose`, including pool `drain`.
   - The factory's first dormant pass runs despawn hooks and does not call
     `onDisable` (the entity was never enabled).
-- `onEnable` also runs after `world.restore`. It must not overwrite saved
+- `onEnable` also runs after `restoreWorld`. It must not overwrite saved
   fields. Per-spawn writes belong in entity `onSpawn`.
 - `addReturnToPoolHook` and `isPoolableComponent` are internal.
   `IPoolableComponent` is exported. Game code
@@ -332,7 +332,7 @@ Pooling is **engine-driven**. Game code calls exactly two APIs:
   replaces the list on a restored live entity, and is not part of the
   shell image. `AbilitySystemComponent.onEnable` copies that capture back
   after a pool spawn.
-  `world.restore` calls `onEnable('restore')`, which does not reseed, so
+  `restoreWorld` calls `onEnable('restore')`, which does not reseed, so
   the snapshot's pending list is kept. Attributes, the granted ability set, and `initComponent`
   tags come back from the shell. A free-list entity is not in the GAS
   snapshot; the shell restore is what keeps a respawn whose `onSpawn` does
