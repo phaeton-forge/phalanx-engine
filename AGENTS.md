@@ -239,9 +239,10 @@ client.sendReady();
   `@phalanx-engine/runtime/advanced`. The caller calls `provider.start()`.
 - Debug snapshots are host code. Call `attachDebug(world, options)` from
   `@phalanx-engine/runtime`. The world does not store a debug provider.
-- `GameWorld` resets entity ids on construction — do not call
-  `resetEntityIdCounter()` in game bootstrap (only in isolated tests that build
-  entities without a world). Never create entities before `new GameWorld(...)`.
+- Each world owns its entity id counter (`EntityManager`, starting at 0).
+  `GameWorld` does not reset a process-global counter. Create entities with
+  `world.createEntity` or `world.createEntityWithId`. Never create entities
+  before `new GameWorld(...)`.
 - `PhalanxClient` owns match RNG: after `waitForGameStart()`, use
   `world.context.random` / `this.random` in tick systems.
 - **Registration order IS execution order.** It is part of the determinism
@@ -289,8 +290,11 @@ public processTick(): void {
 
 ### 4.4 Entity lifecycle
 
-- Create: `new Entity()` (or a subclass) → `addComponent(...)` in the
-  **constructor only** → `entityManager.addEntity(entity)`.
+- Create: `world.createEntity((id) => new Entity(id))` (or a subclass whose
+  constructor takes that id) → `addComponent(...)` in the **constructor
+  only** → `entityManager.addEntity(entity)`. `createEntity` does not
+  register. `createEntityWithId` does. Pool factories are
+  `(id: number) => T`.
 - Destroy: `entity.destroy()`, then `entityManager.cleanupDestroyed()` in the
   `afterTick` hook, then `dispose()` the returned entities. **Never call
   `entity.dispose()` from game code directly.**
@@ -440,7 +444,6 @@ Pooling is **engine-driven**. Game code calls exactly two APIs:
 - Mandatory isolation:
   ```ts
   beforeEach(() => {
-    resetEntityIdCounter();
     SoAComponent.useEntityManager(em);
   });
   afterEach(() => {

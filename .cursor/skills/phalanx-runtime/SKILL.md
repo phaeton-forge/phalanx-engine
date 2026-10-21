@@ -65,7 +65,7 @@ new Phalanx({
    before spawning pooled entities. The engine calls it if you return
    without doing so. Never call `processAllTicks`.
 2. `ctx.purpose === 'restore'`: spawn only what a custom save handler
-   will overwrite. `spawnWithId` throws `spawnWithId: entity N already exists`
+   will overwrite. `spawnWithId` throws `createEntityWithId: entity N already exists`
    for an id that is already registered. `restoreWorld` skips that id
    and overwrites its rows.
 3. `defineCommands` builds `decode`, `encode` and `types`. `decode` never
@@ -104,7 +104,7 @@ const Unit = defineComponent('Unit', { hp: 'i64' }, { defaults: { hp: 48n } });
 
 Register with `world.registerComponent(Unit)` before spawn. `spawn(world, {
 Unit: { hp: 48n } })`, `despawn(world, entity)` and `each(world, Unit, fn)`
-use the existing entity id counter. The `each` callback receives one
+use that world's entity id counter (`world.createEntity`). The `each` callback receives one
 reused view; do not store it or read it after the callback returns.
 `saveWorld(world)` and `restoreWorld(world, bytes)` are plain functions.
 Importing `@phalanx-engine/runtime` does no work (`"sideEffects"` lists only
@@ -133,8 +133,9 @@ Call these inside a hand-written `GameState`, in this order on restore:
   not list throws `readSoAStore: extra entity <id> in <schema>`. A
   zero-row section whose store is missing (the source removed the last
   entity) is registered empty with `getOrCreateSoAStore`.
-- Entity ids: the counter only. `spawnWithId` builds one non-pooled entity
-  with that exact id and then `addEntity`s it. `readEntityIds` runs after
+- Entity ids: the counter only. `spawnWithId(world, id, (id) => new Entity(id))`
+  builds one non-pooled entity with that exact id and registers it. It does
+  not rewind the counter. `readEntityIds` runs after
   the rows so prewarm and pool allocation cannot leave the counter high.
 - Pools: registration order, owned ids in creation order, free list from
   oldest release to newest. `readPools` discards prewarmed free entities
@@ -238,8 +239,9 @@ An already-started `restore` flushes the checkpoint after the transport
 seek. `restore` resets the match RNG to `config.seed` before
 `createWorld`; `GameState.restore` then installs the saved generator. A
 paused transport pauses the rebuilt world. `WorldScope` (advanced) tracks
-the active scope: entering a different scope saves that scope's live
-registers, and only an immediate re-entry skips install. `LocalTransport`
+the active scope's SoA entity manager. Entity ids stay on each world's
+`EntityManager` and are not swapped. Entering a different scope saves
+that manager, and only an immediate re-entry skips install. `LocalTransport`
 rejects a submit more than `maxAheadTicks` past `nextTick` (default 8).
 Its timer waits
 `tickDuration - accumulator`. A snapshot taken
@@ -249,7 +251,7 @@ section. Policy bytes and the checkpoint are applied only for slots this
 runner hosts or submits, so a client keeps a server snapshot's
 human-to-bot handover and ignores that snapshot's policy state. A custom `GameState` that calls `spawnWithId`
 for an id `createWorld` already made still throws
-`spawnWithId: entity N already exists`. `restoreWorld` skips that id.
+`createEntityWithId: entity N already exists`. `restoreWorld` skips that id.
 A throw inside a tick does not escape `LocalTransport.manual().step()`;
 `onError` already ran. `fastForward`, replay, and catch-up still
 propagate that error, including a final-digest mismatch. A timed

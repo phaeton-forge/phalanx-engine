@@ -37,8 +37,8 @@ game engine. Packages: `math`, `physics`, `ecs`, `abilities`, `client`,
    `interface` for public API. ESM relative imports carry the `.js` extension.
 9. **Style.** Prettier (single quotes, semicolons, 80 cols, 2 spaces). Only
    `console.warn`/`console.error`, and not as informational logging.
-10. **Tests.** Vitest, `tests/**/*.test.ts`. `resetEntityIdCounter()` in
-    `beforeEach`, `SoAComponent.resetContext()` in `afterEach`. Compare FP with
+10. **Tests.** Vitest, `tests/**/*.test.ts`. `SoAComponent.useEntityManager(em)`
+    in `beforeEach`, `SoAComponent.resetContext()` in `afterEach`. Compare FP with
     `FP.Eq/Lt/Gt`, not `toBeCloseTo`.
 
 ## Before finishing

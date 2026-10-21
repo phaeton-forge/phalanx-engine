@@ -22,7 +22,7 @@ Use this skill when the user asks to:
 ## Prerequisites
 
 - TypeScript project with strict mode
-- `phalanx-ecs` — `GameWorld`, `Entity`, `GameSystem`, `EventBus`, `resetEntityIdCounter`
+- `phalanx-ecs` — `GameWorld`, `Entity`, `GameSystem`, `EventBus`
 - `phalanx-math` - `FP`, `FixedPoint` (all magnitudes)
 - Read [`phalanx-abilities/README.md`](../../phalanx-abilities/README.md) for full API detail
 
@@ -88,10 +88,9 @@ export const combatDefs = defineAbilitySystem({
 ### 2. Create ability system on GameWorld
 
 ```typescript
-import { GameWorld, resetEntityIdCounter } from '@phalanx-engine/ecs';
+import { GameWorld } from '@phalanx-engine/ecs';
 import { createAbilitySystem } from '@phalanx-engine/abilities';
 
-resetEntityIdCounter();
 const world = new GameWorld({ tickRate: 20 });
 
 const abilities = createAbilitySystem(world, {
@@ -112,7 +111,7 @@ Prefer the bundled component:
 ```typescript
 import { Entity } from '@phalanx-engine/ecs';
 
-const unit = new Entity();
+const unit = world.createEntity((id) => new Entity(id));
 unit.addComponent(
   abilities.initComponent({
     attributes: { Health: FP.FromInt(100) },
@@ -329,7 +328,7 @@ use `Modifier.calculation` instead (see above).
 ## phalanx-ecs integration
 
 - Register `abilities.tickSystems` with other tick systems in **fixed order** (typically: input/commands → abilities activation → movement → physics → game reactions)
-- Use `resetEntityIdCounter()` at match start before spawning entities
+- Each world owns its entity ids. Spawn with `world.createEntity` so peers that replay the same commands allocate the same ids
 - Subscribe to `ABILITY_ACTIVATED_EVENT` for UI feedback; do not rely on synchronous `activateAbility` return value for success
 - Attach `AbilitySystemComponent` via `abilities.initComponent()` rather than low-level attribute/tag components unless testing internals
 - `GameplayCueBuffer` is world-scoped runtime — not an `IComponent`
@@ -436,10 +435,9 @@ import {
 ## Testing patterns
 
 ```typescript
-import { resetEntityIdCounter, GameWorld } from '@phalanx-engine/ecs';
+import { GameWorld } from '@phalanx-engine/ecs';
 import { createAbilitySystem, defineAbilitySystem } from '@phalanx-engine/abilities';
 
-resetEntityIdCounter();
 const world = new GameWorld({});
 const abilities = createAbilitySystem(world, {
   definitions: myDefs,
