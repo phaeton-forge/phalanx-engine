@@ -190,7 +190,11 @@ export class TinySim {
 
   public apply(stamped: StampedCommand<TinyCommand>): void {
     if (stamped.command.type === 'spawn') {
-      const unit = new TinyUnit(stamped.slot, stamped.command.x, INITIAL_HP);
+      const { x } = stamped.command;
+      const slot = stamped.slot;
+      const unit = this.world.createEntity(
+        (id) => new TinyUnit(id, slot, x, INITIAL_HP)
+      );
       this.world.entityManager.addEntity(unit);
       return;
     }

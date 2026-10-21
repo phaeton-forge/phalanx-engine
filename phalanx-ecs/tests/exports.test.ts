@@ -211,10 +211,10 @@ describe('@phalanx-engine/ecs exports', () => {
     }
     expect(
       resolved.map((entry) => actual.get(entry.file)?.names.length)
-    ).toEqual([69]);
+    ).toEqual([65]);
     expect(
       resolved.map((entry) => actual.get(entry.file)?.values.length)
-    ).toEqual([28]);
+    ).toEqual([24]);
   });
 
   it('loads each entry by package name', async () => {
