@@ -37,6 +37,60 @@ test('top-level calls, assignments and loops are import work', () => {
   ]);
 });
 
+test('imported calls and assignments hidden in initializers are import work', () => {
+  const source = [
+    "import { setHost, Host } from './host.js';",
+    "import * as host from './host.js';",
+    'const alias = setHost;',
+    'const installed = setHost(1);',
+    'const viaNs = host.set(1);',
+    'const viaAlias = alias(1);',
+    'const written = (globalThis.x = 1);',
+    'const made = new Host();',
+    'const iife = (() => setHost(2))();',
+    'export class Box { static { setHost(3); } }',
+    'namespace Boot { const n = setHost(4); }',
+  ].join('\n');
+  assert.deepEqual(findImportWork(source, 'hidden.ts'), [
+    'hidden.ts:4: setHost(1)',
+    'hidden.ts:5: host.set(1)',
+    'hidden.ts:6: alias(1)',
+    'hidden.ts:7: globalThis.x = 1',
+    'hidden.ts:8: new Host()',
+    'hidden.ts:9: setHost(2)',
+    'hidden.ts:10: setHost(3);',
+    'hidden.ts:11: setHost(4)',
+  ]);
+});
+
+test('an alias stays inside the block that declared it', () => {
+  const source = [
+    "import { setHost } from './host.js';",
+    'namespace Boot { const alias = setHost; const n = alias(1); }',
+    'const later = alias(2);',
+    'export class Box { static { const alias = setHost; const n = alias(3); } }',
+  ].join('\n');
+  assert.deepEqual(findImportWork(source, 'scope.ts'), [
+    'scope.ts:2: alias(1)',
+    'scope.ts:4: alias(3)',
+  ]);
+});
+
+test('local calls and new expressions are not import work', () => {
+  const source = [
+    "import { LABEL } from './label.js';",
+    'function decode(value) { return value.length; }',
+    'const bytes = decode(LABEL);',
+    'const table = Uint8Array.from(LABEL, (char) => char.charCodeAt(0));',
+    'const made = new Uint8Array(4);',
+    'export class Box { ready() { decode(LABEL); } }',
+    'export function next() { return decode(LABEL); }',
+    'namespace Local { export const n = decode(LABEL); }',
+    'const built = (() => new Uint8Array(1))();',
+  ].join('\n');
+  assert.deepEqual(findImportWork(source, 'local.ts'), []);
+});
+
 test('checks packages that set sideEffects and skips listed entry files', () => {
   const root = mkdtempSync(join(tmpdir(), 'side-effects-'));
   try {

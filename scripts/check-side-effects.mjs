@@ -9,7 +9,7 @@ if (checked.length === 0) {
 
 if (found.length > 0) {
   console.error(
-    'Modules in packages with "sideEffects": false must not do work on import:'
+    'Modules in packages that set "sideEffects" must not do work on import:'
   );
   for (const line of found) console.error(`  ${line}`);
   process.exit(1);

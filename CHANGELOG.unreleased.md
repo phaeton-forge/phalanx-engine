@@ -62,9 +62,13 @@ Entries collected per package until the synchronized 0.3.0 release
 - `pnpm check:side-effects` checks every package whose `package.json`
   sets `"sideEffects"` (`ecs`, `protocol`, `runtime`): a top-level statement
   in `src` must be a declaration, an import, an export or a variable
-  statement. Files listed in `"sideEffects"` are skipped. The command also
-  runs the checker's self-test. The workflow runs it after the isomorphic
-  check.
+  statement. An initializer, static block, `extends` clause, decorator,
+  enum initializer, or namespace body may build a local value (`new`, a
+  call of a function declared in that file). A call or `new` of an imported
+  binding, an assignment, or an immediately-invoked function that does
+  either is work on import. Files listed in `"sideEffects"` are skipped.
+  The command also runs the checker's self-test. The workflow runs it
+  after the isomorphic check.
 - `pnpm lint:determinism` checks `phalanx-{math,ecs,physics,abilities}/src`
   for wall-clock globals, DOM globals and `Math.random`, with no allowlist.
   The workflow runs it after build.
