@@ -44,6 +44,9 @@ jobs:
       - name: Isomorphic runtime
         run: pnpm check:isomorphic
 
+      - name: No work on import
+        run: pnpm check:side-effects
+
       - name: Test @phalanx-engine packages
         run: pnpm --filter "@phalanx-engine/*" test
 
