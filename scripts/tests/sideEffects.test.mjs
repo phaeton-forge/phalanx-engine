@@ -76,6 +76,51 @@ test('an alias stays inside the block that declared it', () => {
   ]);
 });
 
+test('a local function that calls an import is import work', () => {
+  const source = [
+    "import { setHost } from './host.js';",
+    'function install(){ setHost(x) }',
+    'install();',
+  ].join('\n');
+  assert.deepEqual(findImportWork(source, 'install.ts'), [
+    'install.ts:2: setHost(x)',
+  ]);
+});
+
+test('a local arrow called from an initializer is import work', () => {
+  const source = [
+    "import { g } from './g.js';",
+    'const f=()=>g();',
+    'export const v=f();',
+  ].join('\n');
+  assert.deepEqual(findImportWork(source, 'arrow.ts'), ['arrow.ts:2: g()']);
+});
+
+test('destructuring an imported value taints the binding', () => {
+  const source = [
+    "import * as m from './host.js';",
+    'const { setHost } = m;',
+    'setHost(1);',
+    'const called = setHost(2);',
+  ].join('\n');
+  assert.deepEqual(findImportWork(source, 'destructure.ts'), [
+    'destructure.ts:3: setHost(1);',
+    'destructure.ts:4: setHost(2)',
+  ]);
+});
+
+test('a local function may fill a local value', () => {
+  const source = [
+    'function fill() {',
+    '  const table = new Uint8Array(4);',
+    '  for (let index = 0; index < 4; index += 1) table[index] = index;',
+    '  return table;',
+    '}',
+    'const bytes = fill();',
+  ].join('\n');
+  assert.deepEqual(findImportWork(source, 'fill.ts'), []);
+});
+
 test('local calls and new expressions are not import work', () => {
   const source = [
     "import { LABEL } from './label.js';",

@@ -8,7 +8,10 @@ import ts from 'typescript';
  * runs on import.
  *
  * A variable initializer may build a module-local value: `new`, and a call
- * of a function declared in this file. It may not call an imported binding,
+ * of a function declared in this file. That function's body is scanned, so
+ * a call through to an import is still import work. A name taken from an
+ * imported value by destructuring (`const { setHost } = host`) is an
+ * imported binding. An initializer may not call an imported binding,
  * construct an imported class, write through an assignment, or run an
  * immediately-invoked function that does any of those. Class static fields,
  * static blocks, `extends` clauses, decorators, enum initializers, and
@@ -73,9 +76,11 @@ export function findImportWork(source, fileName) {
     file,
     fileName,
     tainted: collectTainted(file),
+    locals: new Map(),
+    visiting: new Set(),
     found: [],
   };
-  for (const statement of file.statements) inspectStatement(statement, ctx);
+  inspectStatements(file.statements, ctx);
   return ctx.found;
 }
 
@@ -177,17 +182,26 @@ function inspectStatement(statement, ctx) {
   if (ts.isVariableStatement(statement)) {
     for (const declaration of statement.declarationList.declarations) {
       if (declaration.initializer != null) walk(declaration.initializer, ctx);
-      if (
-        ts.isIdentifier(declaration.name) &&
+      const taintedInit =
         declaration.initializer != null &&
-        isTaintedReference(declaration.initializer, ctx.tainted)
-      ) {
-        ctx.tainted.add(declaration.name.text);
+        isTaintedReference(declaration.initializer, ctx.tainted);
+      for (const name of bindingNames(declaration.name)) {
+        if (taintedInit) ctx.tainted.add(name);
+        else ctx.tainted.delete(name);
       }
     }
     return;
   }
   if (DECLARATION_KINDS.has(statement.kind)) return;
+  if (
+    ts.isExpressionStatement(statement) &&
+    callsKnownLocal(statement.expression, ctx)
+  ) {
+    const before = ctx.found.length;
+    walk(statement.expression, ctx);
+    if (ctx.found.length === before) report(statement, ctx);
+    return;
+  }
   if (
     ts.isExportAssignment(statement) &&
     ts.isIdentifier(statement.expression)
@@ -207,9 +221,7 @@ function inspectClass(node, ctx) {
     if (ts.canHaveDecorators(member)) walkDecorators(member, ctx);
     if (ts.isClassStaticBlockDeclaration(member)) {
       const inner = childContext(ctx);
-      for (const statement of member.body.statements) {
-        inspectStatement(statement, inner);
-      }
+      inspectStatements(member.body.statements, inner);
       continue;
     }
     if (
@@ -228,7 +240,7 @@ function inspectModule(node, ctx) {
   if (body == null) return;
   if (ts.isModuleBlock(body)) {
     const inner = childContext(ctx);
-    for (const statement of body.statements) inspectStatement(statement, inner);
+    inspectStatements(body.statements, inner);
     return;
   }
   if (ts.isModuleDeclaration(body)) inspectModule(body, ctx);
@@ -246,6 +258,8 @@ function walk(node, ctx) {
       report(node, ctx);
     } else if (ts.isArrowFunction(callee) || ts.isFunctionExpression(callee)) {
       walkInvoked(callee, ctx);
+    } else if (ts.isIdentifier(callee) && ctx.locals.has(callee.text)) {
+      walkCalledFunction(ctx.locals.get(callee.text), ctx);
     } else if (isTaintedCallee(node.expression, ctx.tainted)) {
       report(node, ctx);
     } else {
@@ -270,15 +284,16 @@ function walk(node, ctx) {
     ts.isBinaryExpression(node) &&
     ASSIGNMENT.has(node.operatorToken.kind)
   ) {
-    report(node, ctx);
+    if (!isLocalWrite(node.left, ctx)) report(node, ctx);
     walk(node.left, ctx);
     walk(node.right, ctx);
     return;
   }
   if (ts.isPrefixUnaryExpression(node) || ts.isPostfixUnaryExpression(node)) {
     if (
-      node.operator === ts.SyntaxKind.PlusPlusToken ||
-      node.operator === ts.SyntaxKind.MinusMinusToken
+      (node.operator === ts.SyntaxKind.PlusPlusToken ||
+        node.operator === ts.SyntaxKind.MinusMinusToken) &&
+      !isLocalWrite(node.operand, ctx)
     ) {
       report(node, ctx);
     }
@@ -286,7 +301,7 @@ function walk(node, ctx) {
     return;
   }
   if (ts.isDeleteExpression(node)) {
-    report(node, ctx);
+    if (!isLocalWrite(node.expression, ctx)) report(node, ctx);
     walk(node.expression, ctx);
     return;
   }
@@ -300,21 +315,179 @@ function walk(node, ctx) {
   ts.forEachChild(node, (child) => walk(child, ctx));
 }
 
+function inspectStatements(statements, ctx) {
+  scanCallables(statements, ctx);
+  for (const statement of statements) inspectStatement(statement, ctx);
+}
+
+/** Same-file functions a call in this block can reach. */
+function scanCallables(statements, ctx) {
+  for (const statement of statements) {
+    if (ts.isFunctionDeclaration(statement) && statement.name != null) {
+      ctx.locals.set(statement.name.text, statement);
+      continue;
+    }
+    if (!ts.isVariableStatement(statement)) continue;
+    for (const declaration of statement.declarationList.declarations) {
+      if (
+        !ts.isIdentifier(declaration.name) ||
+        declaration.initializer == null
+      ) {
+        continue;
+      }
+      const init = unwrap(declaration.initializer);
+      if (ts.isArrowFunction(init) || ts.isFunctionExpression(init)) {
+        ctx.locals.set(declaration.name.text, init);
+      }
+    }
+  }
+}
+
+function callsKnownLocal(expression, ctx) {
+  const node = unwrap(expression);
+  if (!ts.isCallExpression(node)) return false;
+  const callee = unwrapCallee(node.expression);
+  return ts.isIdentifier(callee) && ctx.locals.has(callee.text);
+}
+
 function walkInvoked(fn, ctx) {
   const inner = childContext(ctx);
+  hideParameters(fn, inner);
   if (ts.isArrowFunction(fn) && !ts.isBlock(fn.body)) {
     walk(fn.body, inner);
     return;
   }
   if (fn.body != null && ts.isBlock(fn.body)) {
-    for (const statement of fn.body.statements) {
-      inspectStatement(statement, inner);
+    inspectStatements(fn.body.statements, inner);
+  }
+}
+
+/**
+ * A same-file function called while the module evaluates. Its body runs,
+ * but a `return` inside it is not itself import work — only the work the
+ * body actually does.
+ */
+function walkCalledFunction(fn, ctx) {
+  if (fn == null || ctx.visiting.has(fn)) return;
+  ctx.visiting.add(fn);
+  try {
+    const inner = childContext(ctx);
+    hideParameters(fn, inner);
+    inner.innerNames = new Set(ctx.innerNames);
+    collectInnerNames(fn, inner.innerNames);
+    if (
+      (ts.isFunctionExpression(fn) || ts.isFunctionDeclaration(fn)) &&
+      fn.name != null
+    ) {
+      inner.locals.set(fn.name.text, fn);
+    }
+    if (ts.isArrowFunction(fn) && !ts.isBlock(fn.body)) {
+      walk(fn.body, inner);
+      return;
+    }
+    if (fn.body != null && ts.isBlock(fn.body)) {
+      scanCallables(fn.body.statements, inner);
+      for (const statement of fn.body.statements) {
+        walkExecuted(statement, inner);
+      }
+    }
+  } finally {
+    ctx.visiting.delete(fn);
+  }
+}
+
+function walkExecuted(statement, ctx) {
+  if (DECLARATION_KINDS.has(statement.kind)) {
+    inspectStatement(statement, ctx);
+    return;
+  }
+  walk(statement, ctx);
+}
+
+function isLocalWrite(expression, ctx) {
+  if (ctx.innerNames == null) return false;
+  const root = rootIdentifier(expression);
+  return root !== undefined && ctx.innerNames.has(root);
+}
+
+/** Names a called function may write without touching import state. */
+function collectInnerNames(fn, names) {
+  if (
+    (ts.isFunctionDeclaration(fn) || ts.isFunctionExpression(fn)) &&
+    fn.name != null
+  ) {
+    names.add(fn.name.text);
+  }
+  for (const param of fn.parameters) {
+    for (const name of bindingNames(param.name)) names.add(name);
+  }
+  if (fn.body != null && ts.isBlock(fn.body)) {
+    for (const statement of fn.body.statements) collectNames(statement, names);
+  }
+}
+
+function collectNames(node, names) {
+  if (
+    ts.isFunctionDeclaration(node) ||
+    ts.isFunctionExpression(node) ||
+    ts.isArrowFunction(node) ||
+    ts.isMethodDeclaration(node) ||
+    ts.isConstructorDeclaration(node) ||
+    ts.isGetAccessorDeclaration(node) ||
+    ts.isSetAccessorDeclaration(node)
+  ) {
+    if (ts.isFunctionDeclaration(node) && node.name != null) {
+      names.add(node.name.text);
+    }
+    return;
+  }
+  if (ts.isClassDeclaration(node) || ts.isClassExpression(node)) {
+    if (node.name != null) names.add(node.name.text);
+    return;
+  }
+  if (ts.isVariableDeclaration(node)) {
+    for (const name of bindingNames(node.name)) names.add(name);
+    if (node.initializer != null) collectNames(node.initializer, names);
+    return;
+  }
+  if (ts.isCatchClause(node) && node.variableDeclaration != null) {
+    for (const name of bindingNames(node.variableDeclaration.name)) {
+      names.add(name);
+    }
+  }
+  ts.forEachChild(node, (child) => collectNames(child, names));
+}
+
+function hideParameters(fn, ctx) {
+  for (const param of fn.parameters) {
+    for (const name of bindingNames(param.name)) ctx.tainted.delete(name);
+  }
+}
+
+function bindingNames(name) {
+  const names = [];
+  collectBindings(name, names);
+  return names;
+}
+
+function collectBindings(name, names) {
+  if (ts.isIdentifier(name)) {
+    names.push(name.text);
+    return;
+  }
+  if (ts.isObjectBindingPattern(name) || ts.isArrayBindingPattern(name)) {
+    for (const element of name.elements) {
+      if (ts.isBindingElement(element)) collectBindings(element.name, names);
     }
   }
 }
 
 function childContext(ctx) {
-  return { ...ctx, tainted: new Set(ctx.tainted) };
+  return {
+    ...ctx,
+    tainted: new Set(ctx.tainted),
+    locals: new Map(ctx.locals),
+  };
 }
 
 function walkDecorators(node, ctx) {

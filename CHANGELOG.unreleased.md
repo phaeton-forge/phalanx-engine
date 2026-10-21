@@ -64,9 +64,12 @@ Entries collected per package until the synchronized 0.3.0 release
   in `src` must be a declaration, an import, an export or a variable
   statement. An initializer, static block, `extends` clause, decorator,
   enum initializer, or namespace body may build a local value (`new`, a
-  call of a function declared in that file). A call or `new` of an imported
-  binding, an assignment, or an immediately-invoked function that does
-  either is work on import. Files listed in `"sideEffects"` are skipped.
+  call of a function declared in that file). The body of that function is
+  scanned, so a local wrapper around an import is still work on import.
+  A name pulled out of an imported value by destructuring is an imported
+  binding. A call or `new` of an imported binding, an assignment, or an
+  immediately-invoked function that does either is work on import. Files
+  listed in `"sideEffects"` are skipped.
   The command also runs the checker's self-test. The workflow runs it
   after the isomorphic check.
 - `pnpm lint:determinism` checks `phalanx-{math,ecs,physics,abilities}/src`
