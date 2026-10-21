@@ -132,12 +132,10 @@ const ROOT_NAMES = [
   'TickHandler',
   'TypedArrayLike',
   'Unsubscribe',
-  'WorldModuleHost',
   'calculateSchemaByteSize',
   'createComponentTypeRegistry',
   'defineSoASchema',
   'getEntityIdCounter',
-  'globalEventBus',
   'isAfterFrame',
   'isAfterTick',
   'isBeforeFrame',
@@ -145,7 +143,6 @@ const ROOT_NAMES = [
   'nextEntityId',
   'resetEntityIdCounter',
   'setEntityIdCounter',
-  'setWorldModuleHost',
 ];
 
 const ROOT_VALUES = [
@@ -170,7 +167,6 @@ const ROOT_VALUES = [
   'createComponentTypeRegistry',
   'defineSoASchema',
   'getEntityIdCounter',
-  'globalEventBus',
   'isAfterFrame',
   'isAfterTick',
   'isBeforeFrame',
@@ -178,7 +174,6 @@ const ROOT_VALUES = [
   'nextEntityId',
   'resetEntityIdCounter',
   'setEntityIdCounter',
-  'setWorldModuleHost',
 ];
 
 const ENTRIES = [
@@ -224,10 +219,10 @@ describe('@phalanx-engine/ecs exports', () => {
     }
     expect(
       resolved.map((entry) => actual.get(entry.file)?.names.length)
-    ).toEqual([72]);
+    ).toEqual([69]);
     expect(
       resolved.map((entry) => actual.get(entry.file)?.values.length)
-    ).toEqual([30]);
+    ).toEqual([28]);
   });
 
   it('loads each entry by package name', async () => {

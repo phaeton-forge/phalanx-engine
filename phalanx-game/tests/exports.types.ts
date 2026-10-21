@@ -141,7 +141,6 @@ export type {
   TypedArrayLike,
   Unsubscribe,
   VersionDecision,
-  WorldModuleHost,
   WorldSingletonHooks,
   attachDebug,
 } from '@phalanx-engine/game';
