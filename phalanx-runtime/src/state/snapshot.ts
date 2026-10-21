@@ -5,10 +5,9 @@ import { SnapshotRejectedError } from './errors.js';
 
 export { digestBytes };
 
-const MAGIC_BYTES = new Uint8Array(SNAPSHOT_MAGIC.length);
-for (let i = 0; i < SNAPSHOT_MAGIC.length; i += 1) {
-  MAGIC_BYTES[i] = SNAPSHOT_MAGIC.charCodeAt(i);
-}
+const MAGIC_BYTES = Uint8Array.from(SNAPSHOT_MAGIC, (char) =>
+  char.charCodeAt(0)
+);
 
 /** A complete engine snapshot: header, game body, optional bot and input state. */
 export type SnapshotBytes = Uint8Array;

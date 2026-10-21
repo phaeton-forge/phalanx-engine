@@ -58,7 +58,9 @@ import {
   defineCommands,
   defineComponent,
   defineGame,
+  each,
   runLocalMatch,
+  spawn,
 } from '@phalanx-engine/game';
 
 const Unit = defineComponent('Unit', { x: 'i64' });
@@ -71,11 +73,11 @@ export const MyGame = defineGame({
   components: [Unit], // registered in this order before onStart
   commands, // codec + schema; folded into configHash
   onStart(ctx) {
-    if (ctx.purpose === 'fresh') ctx.world.spawn({ Unit: { x: 0n } });
+    if (ctx.purpose === 'fresh') spawn(ctx.world, { Unit: { x: 0n } });
   },
   onCommand: {
     move(ctx, stamped) {
-      ctx.world.each(Unit, (unit) => {
+      each(ctx.world, Unit, (unit) => {
         unit.x += stamped.command.dx;
       });
     },
@@ -107,7 +109,7 @@ not throw. `i64` is a canonical decimal string on the wire.
   time and names the allowed types. `f32` / `f64` are then rejected
   because they are not saved. Names `roster`, `pools`, `entityIds`,
   `random`, `broadphase`, `gas`, and `SoASchema` are reserved.
-- **`world.save()` / `world.restore(bytes)`**: roster (only when a
+- **`saveWorld(world)` / `restoreWorld(world, bytes)`**: roster (only when a
   non-pooled entity exists), pools, SoA stores, the entity id counter,
   RNG, one `modules` container (registered save sections, sorted by key,
   written even when nothing is registered), then optional
@@ -115,14 +117,14 @@ not throw. `i64` is a canonical decimal string on the wire.
   whose engine format is 2 is rejected with
   `unsupported engine snapshot format 2; expected 3`. Before those
   sections are read,
-  `restore` returns every checked-out pooled entity and removes entities
+  `restoreWorld` returns every checked-out pooled entity and removes entities
   whose ids are not in the roster. Missing roster ids are empty shells.
   Each SoA section then attaches only the components it lists. A roster
   id world creation already spawned is kept and its rows are overwritten.
   `onEnable` runs after the bytes land and must not overwrite saved
   fields.
-- **`world.spawn({ Unit: { hp: 48n } })` / `world.despawn(entity)` /
-  `world.each(Unit, (row) => { ... })`**: the same entity id counter as
+- **`spawn(world, { Unit: { hp: 48n } })` / `despawn(world, entity)` /
+  `each(world, Unit, (row) => { ... })`**: the same entity id counter as
   `new Entity()`. `each` walks rows in ascending id. The callback receives
   one view object reused for every row. Do not store it, and do not read
   it after the callback returns. Each access looks up the entity's current
@@ -144,11 +146,11 @@ not throw. `i64` is a canonical decimal string on the wire.
   helpers: `spawnWithId` for non-pooled entities, `readPools` (constructs
   pooled entities and discards prewarmed free ones; free entities get
   `onDespawn` again), `readSoAStores`, `readEntityIds`, `readRandom`.
-  `world.restore` then reads the `modules` container. A zero-row SoA
+  `restoreWorld` then reads the `modules` container. A zero-row SoA
   section registers a missing empty store; a saved id with no row still
   throws, and a row the section omitted throws `extra entity`.
   `spawnWithId` throws `spawnWithId: entity N already exists` when that
-  id is already registered. `world.restore` does not.
+  id is already registered. `restoreWorld` does not.
 - **`BotPolicy`**: a bot is a command producer for its slot, not a
   simulation system. Its commands enter the same log as humans'.
 - **Transport** (advanced): extends ecs `ITickFrameProvider` with `submit`
@@ -183,10 +185,9 @@ There is no `f32` or `f64` writer.
 `MatchRunner` emits each tick on a runner-owned `ITickFrameProvider`.
 `ctx.open()` calls `world.start()`. Commands are sorted by `(slot, seq)`
 and validated inside the tick; rejected entries stay in the log.
-Importing `@phalanx-engine/runtime` calls `setWorldModuleHost` once and
-installs that host for the process. Without that import, `GameWorld.save`, `restore`, `spawn`, `despawn` and
-`each` throw `GameWorld: world modules are not installed. Import @phalanx-engine/runtime before using save, restore, spawn, despawn, or each.`
-`setWorldModuleHost` lives on `@phalanx-engine/ecs`; games do not call it.
+`saveWorld`, `restoreWorld`, `spawn`, `despawn` and `each` are plain
+functions that take the world. Importing `@phalanx-engine/runtime` does no
+work (`"sideEffects"` lists only the server sim worker entry).
 `each` passes one reused view. Do not store it. A write after that entity
 was despawned throws.
 
@@ -343,7 +344,7 @@ returns clear the effect queue and `pendingAdd`, copy that shell back,
 and remove GAS components attached after it (a bare pooled entity that
 gained `ActiveEffects` or `GameplayTags` during its life is dormant
 without them). Initial `pendingAdd` effects are captured before that
-clear. The next `onEnable` copies them back. `world.restore` calls
+clear. The next `onEnable` copies them back. `restoreWorld` calls
 `onEnable('restore')`, which does not reseed, because the snapshot
 already wrote `pendingAdd`. A respawn whose `onSpawn` does not rewrite
 attributes matches a restored copy.

@@ -16,6 +16,11 @@ import {
   defineComponent,
   defineCommands,
   defineGame,
+  despawn,
+  each,
+  restoreWorld,
+  saveWorld,
+  spawn,
   type DefinedComponent,
   type MatchConfigBase,
 } from '../../src/index.js';
@@ -152,10 +157,10 @@ describe('world modules', () => {
       registered.registerComponent(boom);
     });
     live.push(world);
-    expect(() => world.spawn({ Unit: { x: 1 }, Missing: {} })).toThrow(
+    expect(() => spawn(world, { Unit: { x: 1 }, Missing: {} })).toThrow(
       /not registered/
     );
-    expect(() => world.spawn({ Unit: { x: 1 }, Boom: { n: 1 } })).toThrow(
+    expect(() => spawn(world, { Unit: { x: 1 }, Boom: { n: 1 } })).toThrow(
       /boom/
     );
     expect(destroyed).toBe(2);
@@ -166,7 +171,7 @@ describe('world modules', () => {
     expect(world.entityManager.getSoAStore(boom.schema)?.entityIds()).toEqual(
       []
     );
-    const spawned = world.spawn({ Unit: { x: 4 } });
+    const spawned = spawn(world, { Unit: { x: 4 } });
     expect(world.entityManager.getSoAStore(unit.schema)?.entityIds()).toEqual([
       spawned.id,
     ]);
@@ -182,17 +187,17 @@ describe('world modules', () => {
       registered.registerComponent(unit);
     });
     live.push(world);
-    const first = world.spawn({ Unit: { x: 1, hp: 1 } });
-    const second = world.spawn({ Unit: { x: 2, hp: 1 } });
-    world.each(unit, (row) => {
+    const first = spawn(world, { Unit: { x: 1, hp: 1 } });
+    const second = spawn(world, { Unit: { x: 2, hp: 1 } });
+    each(world, unit, (row) => {
       if (row.x === 2) {
-        world.despawn(first);
+        despawn(world, first);
         row.hp = 9;
       }
     });
     expect(world.entityManager.getEntity(first.id)).toBeUndefined();
     let hp = 0;
-    world.each(unit, (row) => {
+    each(world, unit, (row) => {
       hp = row.hp;
     });
     expect(hp).toBe(9);
@@ -202,15 +207,15 @@ describe('world modules', () => {
       registered.registerComponent(unit);
     });
     live.push(again);
-    const current = again.spawn({ Unit: { x: 1, hp: 1 } });
-    again.spawn({ Unit: { x: 2, hp: 1 } });
+    const current = spawn(again, { Unit: { x: 1, hp: 1 } });
+    spawn(again, { Unit: { x: 2, hp: 1 } });
     expect(() => {
-      again.each(unit, (row) => {
+      each(again, unit, (row) => {
         if (row.x !== 1) return;
-        again.despawn(current);
+        despawn(again, current);
         row.hp = 3;
       });
-    }).toThrow(`world.each: entity ${String(current.id)} was removed`);
+    }).toThrow(`each: entity ${String(current.id)} was removed`);
   });
 
   it('finds spawned entities with queryEntities', () => {
@@ -221,8 +226,8 @@ describe('world modules', () => {
       registered.registerComponent(tag);
     });
     live.push(world);
-    const both = world.spawn({ Unit: { x: 1 }, Tag: { k: 2 } });
-    const only = world.spawn({ Unit: { x: 3 } });
+    const both = spawn(world, { Unit: { x: 1 }, Tag: { k: 2 } });
+    const only = spawn(world, { Unit: { x: 3 } });
     expect(idsOf(world.entityManager.queryEntities(unit.type))).toEqual([
       both.id,
       only.id,
@@ -255,16 +260,16 @@ describe('world modules', () => {
       registered.registerComponent(tag);
     });
     live.push(withTag);
-    withTag.spawn({ Unit: { x: 1 }, Tag: { k: 3 } });
-    const tagged = withTag.save();
+    spawn(withTag, { Unit: { x: 1 }, Tag: { k: 3 } });
+    const tagged = saveWorld(withTag);
 
     const bare = openRegistered((registered) => {
       registered.registerComponent(unit);
       registered.registerComponent(tag);
     });
     live.push(bare);
-    const kept = bare.spawn({ Unit: { x: 9 } });
-    bare.restore(tagged);
+    const kept = spawn(bare, { Unit: { x: 9 } });
+    restoreWorld(bare, tagged);
     expect(idsOf(bare.entityManager.queryEntities(tag.type))).toEqual([
       kept.id,
     ]);
@@ -274,16 +279,16 @@ describe('world modules', () => {
       registered.registerComponent(tag);
     });
     live.push(onlyUnit);
-    onlyUnit.spawn({ Unit: { x: 1 } });
-    const untagged = onlyUnit.save();
+    spawn(onlyUnit, { Unit: { x: 1 } });
+    const untagged = saveWorld(onlyUnit);
     const extra = openRegistered((registered) => {
       registered.registerComponent(unit);
       registered.registerComponent(tag);
     });
     live.push(extra);
-    extra.spawn({ Unit: { x: 1 }, Tag: { k: 4 } });
+    spawn(extra, { Unit: { x: 1 }, Tag: { k: 4 } });
     destroyed = 0;
-    extra.restore(untagged);
+    restoreWorld(extra, untagged);
     expect(destroyed).toBe(1);
     expect(extra.entityManager.queryEntities(tag.type)).toEqual([]);
     expect(extra.entityManager.getSoAStore(tag.schema)?.entityIds()).toEqual(
@@ -303,26 +308,26 @@ describe('world modules', () => {
       world.registerComponent(tag);
     });
     live.push(source);
-    source.spawn({ Unit: { x: 1 } });
-    source.spawn({ Unit: { x: 2 }, Tag: { k: 5 } });
-    source.each(unit, (row) => {
+    spawn(source, { Unit: { x: 1 } });
+    spawn(source, { Unit: { x: 2 }, Tag: { k: 5 } });
+    each(source, unit, (row) => {
       row.hp = 7;
     });
-    const bytes = source.save();
+    const bytes = saveWorld(source);
 
     const empty = openRegistered((world) => {
       world.registerComponent(unit);
       world.registerComponent(tag);
     });
     live.push(empty);
-    empty.restore(bytes);
-    expect(empty.save()).toEqual(bytes);
+    restoreWorld(empty, bytes);
+    expect(saveWorld(empty)).toEqual(bytes);
     const units: string[] = [];
-    empty.each(unit, (row) => {
+    each(empty, unit, (row) => {
       units.push(`${String(row.x)}/${String(row.hp)}`);
     });
     const tags: string[] = [];
-    empty.each(tag, (row) => {
+    each(empty, tag, (row) => {
       tags.push(String(row.k));
     });
     expect(units).toEqual(['1/7', '2/7']);
@@ -335,19 +340,19 @@ describe('world modules', () => {
       world.registerComponent(unit);
     });
     live.push(source);
-    source.spawn({ Unit: { x: 1 } });
-    const gone = source.spawn({ Unit: { x: 2 } });
-    source.despawn(gone);
-    const bytes = source.save();
+    spawn(source, { Unit: { x: 1 } });
+    const gone = spawn(source, { Unit: { x: 2 } });
+    despawn(source, gone);
+    const bytes = saveWorld(source);
 
     const populated = openRegistered((world) => {
       world.registerComponent(unit);
     });
     live.push(populated);
-    populated.spawn({ Unit: { x: 1 } });
-    populated.spawn({ Unit: { x: 2 } });
-    populated.restore(bytes);
-    expect(populated.save()).toEqual(bytes);
+    spawn(populated, { Unit: { x: 1 } });
+    spawn(populated, { Unit: { x: 2 } });
+    restoreWorld(populated, bytes);
+    expect(saveWorld(populated)).toEqual(bytes);
     expect(populated.entityManager.getAllEntities()).toHaveLength(1);
   });
 
@@ -391,12 +396,12 @@ describe('world modules', () => {
     const source = open();
     live.push(source);
     setHp(source, unit, 1, 9n);
-    const bytes = source.save();
+    const bytes = saveWorld(source);
     const target = open();
     live.push(target);
-    target.restore(bytes);
+    restoreWorld(target, bytes);
     expect(hpOf(target, unit, 1)).toBe(9n);
-    expect(target.save()).toEqual(bytes);
+    expect(saveWorld(target)).toEqual(bytes);
   });
 
   it('rejects a snapshot whose component fields changed', () => {
@@ -500,22 +505,22 @@ describe('world modules', () => {
     );
     const source = openWorld(unit);
     live.push(source);
-    const spawned = source.spawn({ Unit: { hp: 4n } });
-    source.each(unit, (row) => {
+    const spawned = spawn(source, { Unit: { hp: 4n } });
+    each(source, unit, (row) => {
       row.hp = 3n;
     });
-    const bytes = source.save();
+    const bytes = saveWorld(source);
     expect(spawned.id).toBe(1);
 
     enables = 0;
     const restored = openWorld(unit);
     live.push(restored);
-    restored.spawn({ Unit: { hp: 10n } });
+    spawn(restored, { Unit: { hp: 10n } });
     expect(enables).toBe(1);
-    expect(() => restored.restore(bytes)).not.toThrow();
+    expect(() => restoreWorld(restored, bytes)).not.toThrow();
     expect(enables).toBe(2);
     let hp = 0n;
-    restored.each(unit, (row) => {
+    each(restored, unit, (row) => {
       hp = row.hp;
     });
     expect(hp).toBe(3n);
@@ -562,6 +567,36 @@ describe('world modules', () => {
     }
   });
 
+  it('despawn returns a pooled entity to its pool', () => {
+    const unit = defineComponent('Hp', { hp: 'i64' });
+    class Pawn extends Entity implements IPoolableEntity {
+      public constructor() {
+        super();
+        this.addComponent(unit.create(this.id));
+      }
+
+      public onSpawn(_args: void): void {}
+
+      public onDespawn(): void {}
+    }
+    const world = new GameWorld({
+      tickFrameProvider: silentProvider(),
+      pooling: {
+        entityTypes: {
+          pawn: { factory: () => new Pawn() },
+        },
+      },
+    });
+    live.push(world);
+    world.registerComponent(unit);
+    const pools = world.pools;
+    if (pools === null) throw new Error('expected pools');
+    const pawn = pools.spawn<Pawn>('pawn');
+    despawn(world, pawn);
+    expect(pawn._inPool).toBe(true);
+    expect(pools.spawn<Pawn>('pawn')).toBe(pawn);
+  });
+
   it('continues a default-state world after restore', async () => {
     const unit = defineComponent('Pos', { x: 'i64' }, { defaults: { x: 0n } });
     const commands = defineCommands({ step: {} });
@@ -572,11 +607,11 @@ describe('world modules', () => {
       components: [unit],
       commands,
       onStart(ctx) {
-        if (ctx.purpose === 'fresh') ctx.world.spawn({ Pos: { x: 1n } });
+        if (ctx.purpose === 'fresh') spawn(ctx.world, { Pos: { x: 1n } });
       },
       onCommand: {
         step(ctx) {
-          ctx.world.each(unit, (row) => {
+          each(ctx.world, unit, (row) => {
             row.x += 1n;
           });
         },
@@ -643,7 +678,7 @@ function setHp(
   hp: bigint
 ): void {
   let seen = -1;
-  world.each(unit, (row) => {
+  each(world, unit, (row) => {
     seen += 1;
     const ids = world.entityManager.getSoAStore(unit.schema)?.entityIds();
     if (ids?.[seen] === entityId) row.hp = hp;
@@ -657,7 +692,7 @@ function hpOf(
 ): bigint {
   let value: bigint | undefined;
   let seen = -1;
-  world.each(unit, (row) => {
+  each(world, unit, (row) => {
     seen += 1;
     const ids = world.entityManager.getSoAStore(unit.schema)?.entityIds();
     if (ids?.[seen] === entityId) value = row.hp;
@@ -691,7 +726,7 @@ function captureTiny(): Map<number, { auto: Uint8Array; manual: Uint8Array }> {
     const sim = runner.sim;
     const writer = new BinaryStateWriter();
     new TinyState(sim).save(writer);
-    saved.set(tick, { auto: sim.world.save(), manual: writer.finish() });
+    saved.set(tick, { auto: saveWorld(sim.world), manual: writer.finish() });
   });
   runner.start();
   transport.step(LAST_TICK + 1);
@@ -707,7 +742,7 @@ function captureArena(): Map<number, { auto: Uint8Array; manual: Uint8Array }> {
     if (!isSample(tick)) return;
     const sim = runner.sim;
     saved.set(tick, {
-      auto: sim.world.save(),
+      auto: saveWorld(sim.world),
       manual: manualArena(sim),
     });
   });
@@ -811,7 +846,7 @@ function schemaGame<S extends SoASchemaDefinition>(unit: DefinedComponent<S>) {
     commands,
     onStart(ctx) {
       if (ctx.purpose === 'fresh') {
-        ctx.world.spawn({ Unit: { x: 3, hp: 4 } });
+        spawn(ctx.world, { Unit: { x: 3, hp: 4 } });
       }
     },
     onCommand: { noop() {} },

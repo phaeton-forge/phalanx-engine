@@ -18,6 +18,8 @@ import {
   checkSnapshotCompatibility,
   decodeSnapshot,
   encodeSnapshot,
+  restoreWorld,
+  saveWorld,
 } from '../../src/index.js';
 import { TinyGame, type TinyConfig } from '../fixtures/tinyGame.js';
 import { manualTickProvider } from '../support/manualTickProvider.js';
@@ -137,13 +139,13 @@ describe('module save sections', () => {
     const source = world();
     source.registerSaveSection(probe('b', seen));
     source.registerSaveSection(probe('a', seen));
-    const bytes = source.save();
+    const bytes = saveWorld(source);
     expect(moduleEntries(bytes).map((entry) => entry.key)).toEqual(['a', 'b']);
 
     const target = world();
     target.registerSaveSection(probe('b', seen));
     target.registerSaveSection(probe('a', seen));
-    target.restore(bytes);
+    restoreWorld(target, bytes);
     expect(seen).toEqual(['a', 'b']);
   });
 
@@ -151,7 +153,7 @@ describe('module save sections', () => {
     const source = world();
     source.registerSaveSection(probe('b', []));
     source.registerSaveSection(probe('a', []));
-    const bytes = replaceModules(source.save(), [
+    const bytes = replaceModules(saveWorld(source), [
       { key: 'a', version: 1 },
       { key: 'b', version: 1 },
       { key: 'x', version: 1 },
@@ -159,7 +161,7 @@ describe('module save sections', () => {
     const target = world();
     target.registerSaveSection(probe('b', []));
     target.registerSaveSection(probe('a', []));
-    expect(() => target.restore(bytes)).toThrow(
+    expect(() => restoreWorld(target, bytes)).toThrow(
       "restore: unknown save section 'x' (registered: a, b)"
     );
   });
@@ -168,11 +170,11 @@ describe('module save sections', () => {
     const source = world();
     source.registerSaveSection(probe('b', []));
     source.registerSaveSection(probe('a', []));
-    const bytes = replaceModules(source.save(), [{ key: 'a', version: 1 }]);
+    const bytes = replaceModules(saveWorld(source), [{ key: 'a', version: 1 }]);
     const target = world();
     target.registerSaveSection(probe('b', []));
     target.registerSaveSection(probe('a', []));
-    expect(() => target.restore(bytes)).toThrow(
+    expect(() => restoreWorld(target, bytes)).toThrow(
       "restore: save section 'b' is missing from the snapshot"
     );
   });
@@ -181,14 +183,14 @@ describe('module save sections', () => {
     const source = world();
     source.registerSaveSection(probe('b', []));
     source.registerSaveSection(probe('a', []));
-    const bytes = replaceModules(source.save(), [
+    const bytes = replaceModules(saveWorld(source), [
       { key: 'b', version: 1 },
       { key: 'a', version: 1 },
     ]);
     const target = world();
     target.registerSaveSection(probe('b', []));
     target.registerSaveSection(probe('a', []));
-    expect(() => target.restore(bytes)).toThrow(
+    expect(() => restoreWorld(target, bytes)).toThrow(
       'restore: save sections out of order'
     );
   });
@@ -197,14 +199,14 @@ describe('module save sections', () => {
     const source = world();
     source.registerSaveSection(probe('b', []));
     source.registerSaveSection(probe('a', []));
-    const bytes = replaceModules(source.save(), [
+    const bytes = replaceModules(saveWorld(source), [
       { key: 'a', version: 9 },
       { key: 'b', version: 1 },
     ]);
     const target = world();
     target.registerSaveSection(probe('b', []));
     target.registerSaveSection(probe('a', []));
-    expect(() => target.restore(bytes)).toThrow(
+    expect(() => restoreWorld(target, bytes)).toThrow(
       "restore: save section 'a' has version 9, expected 1"
     );
   });
@@ -283,7 +285,7 @@ describe('module save sections', () => {
         expect(reader.str()).toBe('a');
       },
     });
-    const bytes = source.save();
+    const bytes = saveWorld(source);
     const target = world();
     target.registerSaveSection({
       key: 'a',
@@ -293,14 +295,14 @@ describe('module save sections', () => {
         expect(reader.str()).toBe('a');
       },
     });
-    expect(() => target.restore(bytes)).toThrow(
+    expect(() => restoreWorld(target, bytes)).toThrow(
       'StateReader.done: 1 unread byte(s) remain'
     );
   });
 
   it('rejects a modules container whose version is not 1', () => {
     const source = world();
-    const saved = source.save();
+    const saved = saveWorld(source);
     const reader = new BinaryStateReader(saved);
     let start = -1;
     let body: Uint8Array | undefined;
@@ -325,7 +327,7 @@ describe('module save sections', () => {
     const rewritten = new Uint8Array(start + encoded.byteLength);
     rewritten.set(saved.subarray(0, start));
     rewritten.set(encoded, start);
-    expect(() => world().restore(rewritten)).toThrow(
+    expect(() => restoreWorld(world(), rewritten)).toThrow(
       "restore: save section 'modules' has version 2, expected 1"
     );
   });
@@ -337,20 +339,20 @@ describe('module save sections', () => {
       getEntityPosition: () => undefined,
       applyImpulse: () => {},
     };
-    expect(() => source.save()).toThrow(
+    expect(() => saveWorld(source)).toThrow(
       "save: physics is assigned but save section 'physics.broadphase' is not registered; call PhysicsWorld.attach(world)"
     );
   });
 
   it('round-trips a world that registered no sections', () => {
     const source = world();
-    const bytes = source.save();
+    const bytes = saveWorld(source);
     expect(
       topLevelSections(bytes).some((section) => section.key === 'modules')
     ).toBe(true);
     expect(moduleEntries(bytes)).toEqual([]);
     const target = world();
-    target.restore(bytes);
-    expect(target.save()).toEqual(bytes);
+    restoreWorld(target, bytes);
+    expect(saveWorld(target)).toEqual(bytes);
   });
 });

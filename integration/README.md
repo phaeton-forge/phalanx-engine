@@ -25,14 +25,14 @@ builds several peers, steps them by hand, and pushes envelopes through
 
 Pooled archetypes (`soldier`, `archer`, `totem`) stay. A physics body,
 a transform, and the ability shell are attached in the factory, and
-`world.spawn` cannot pick an archetype. Acquire uses `pools.spawn`.
-The tick path reads units with `world.each` and removes them with
-`world.despawn`. A restored live entity is a new object that skipped
+`spawn` cannot pick an archetype. Acquire uses `pools.spawn`.
+The tick path reads units with `each` and removes them with
+`despawn`. A restored live entity is a new object that skipped
 the prewarm pass, so the return-to-pool hook would record its death
 state on the first despawn. `onDespawn` writes the factory image
 (health, power, abilities, tags) before that hook copies the shell, and
 a later respawn matches a peer that never restored. `SkirmishUnit`
-carries a trailing `eid` field so `world.each` can yield an id.
+carries a trailing `eid` field so `each` can yield an id.
 
 ## Run
 

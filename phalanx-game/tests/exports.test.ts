@@ -169,7 +169,6 @@ const ROOT_NAMES: readonly string[] = [
   'TypedArrayLike',
   'Unsubscribe',
   'VersionDecision',
-  'WorldModuleHost',
   'WorldSingletonHooks',
   'attachDebug',
   'bindWorldSingletons',
@@ -185,10 +184,11 @@ const ROOT_NAMES: readonly string[] = [
   'defineComponent',
   'defineGame',
   'defineSoASchema',
+  'despawn',
   'digestBytes',
+  'each',
   'encodeSnapshot',
   'getEntityIdCounter',
-  'globalEventBus',
   'initDigest',
   'isAfterFrame',
   'isAfterTick',
@@ -198,7 +198,10 @@ const ROOT_NAMES: readonly string[] = [
   'isCommandRejection',
   'onDigestFallback',
   'rejectCommand',
+  'restoreWorld',
   'runLocalMatch',
+  'saveWorld',
+  'spawn',
 ];
 
 const MATH_NAMES: readonly string[] = [
@@ -357,7 +360,6 @@ const ADVANCED_NAMES: readonly string[] = [
   'WorldScope',
   'nextEntityId',
   'setEntityIdCounter',
-  'setWorldModuleHost',
   'spawnWithId',
 ];
 
@@ -496,7 +498,7 @@ describe('@phalanx-engine/game subpath exports', () => {
     }
     expect(
       resolved.map((entry) => actual.get(entry.file)?.names.length)
-    ).toEqual([183, 9, 31, 85, 23, 3]);
+    ).toEqual([186, 9, 31, 85, 22, 3]);
   });
 
   it('keeps the name sets pairwise disjoint', () => {

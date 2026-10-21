@@ -4,6 +4,9 @@
   "private": true,
   "description": "Isomorphic match runtime for Phalanx Engine: GameDefinition, GameState snapshot contract, MatchRunner, bots as command producers and transports (client and server simulation modes)",
   "type": "module",
+  "sideEffects": [
+    "./dist/server/simWorker.js"
+  ],
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {

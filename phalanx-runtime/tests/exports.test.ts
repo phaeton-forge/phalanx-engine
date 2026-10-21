@@ -37,6 +37,11 @@ const VALUE_EXPORTS = [
   'SnapshotRoundTripError',
   // world
   'defineComponent',
+  'saveWorld',
+  'restoreWorld',
+  'spawn',
+  'despawn',
+  'each',
   'bindWorldSingletons',
   // runner
   'MatchRunner',
@@ -116,7 +121,7 @@ describe('public exports', () => {
     expect(typeof advanced.SoAComponentStore).toBe('function');
     expect(typeof advanced.TickFrameManager).toBe('function');
     expect(typeof advanced.DebugPanel).toBe('function');
-    expect(typeof advanced.setWorldModuleHost).toBe('function');
+    expect('setWorldModuleHost' in advanced).toBe(false);
     expect(typeof advanced.setEntityIdCounter).toBe('function');
     expect(typeof advanced.nextEntityId).toBe('function');
     expect(advanced.TYPED_ARRAY_CONSTRUCTORS.i64).toBe(BigInt64Array);

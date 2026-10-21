@@ -18,6 +18,7 @@
     "lint:layers": "node scripts/check-layer-deps.mjs && depcruise --config scripts/depcruise.config.cjs phalanx-*/src phalanx-*/tests",
     "test:layers": "node --test scripts/tests/layers.test.mjs",
     "check:isomorphic": "node scripts/check-isomorphic.mjs",
+    "check:side-effects": "node scripts/check-side-effects.mjs && node --test scripts/tests/sideEffects.test.mjs",
     "smoke:lands": "node scripts/smoke-lands.mjs",
     "lint:fix": "eslint . --ext .ts,.tsx --fix",
     "format": "prettier --write \"**/*.{ts,tsx,json,md}\"",
@@ -52,6 +53,7 @@
     "eslint-config-prettier": "^9.1.0",
     "eslint-plugin-prettier": "^5.2.0",
     "prettier": "^3.4.0",
+    "typescript": "~5.9.3",
     "typescript-eslint": "^8.20.0"
   }
 }

@@ -600,7 +600,7 @@ const stats = world.pools!.getStats(); // Map<string, PoolStats>
 
 ### Component lifecycle
 
-`onCreate` runs when the component is added. `onEnable` runs on pool spawn, on `world.spawn`, and again after `world.restore`. `onDisable` runs when a live entity returns to the pool or is despawned. `onDestroy` runs from `dispose`, including pool `drain`.
+`onCreate` runs when the component is added. `onEnable` runs on pool spawn, on `spawn`, and again after `restoreWorld`. `onDisable` runs when a live entity returns to the pool or is despawned. `onDestroy` runs from `dispose`, including pool `drain`.
 
 `onEnable` after restore must not overwrite saved fields. Per-spawn simulation writes belong in the entity `onSpawn`.
 
@@ -620,7 +620,7 @@ class MeshComponent implements IComponent {
 }
 ```
 
-`world.save`, `world.restore`, `world.spawn`, `world.despawn` and `world.each` need `@phalanx-engine/runtime` imported first. That import calls `setWorldModuleHost` once for the process; without it those methods throw. `registerComponent` records a `defineComponent` result in registration order. The object passed to `each` is one view reused for every row. Do not store it, and do not read it after the callback returns.
+Saving, restoring and spawning by component name are `@phalanx-engine/runtime` functions (`saveWorld`, `restoreWorld`, `spawn`, `despawn`, `each`); `GameWorld` has no such methods. `registerComponent` records a `defineComponent` result in registration order. The object passed to `each` is one view reused for every row. Do not store it, and do not read it after the callback returns.
 
 `EntityPool` remains available as a low-level storage primitive; prefer `PoolManager.spawn()` / `despawn()` for gameplay entities.
 

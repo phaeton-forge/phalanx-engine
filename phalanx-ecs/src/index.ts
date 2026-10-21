@@ -7,7 +7,7 @@
 
 // Core ECS
 export { EntityManager } from './EntityManager.js';
-export { EventBus, globalEventBus } from './EventBus.js';
+export { EventBus } from './EventBus.js';
 export { SystemRegistry } from './SystemRegistry.js';
 export { SystemContext } from './SystemContext.js';
 export { GameSystem } from './GameSystem.js';
@@ -28,8 +28,6 @@ export { IComponent, createComponentTypeRegistry } from './Component.js';
 export type { IComponent as Component } from './Component.js';
 export type { ComponentLifecycle } from './lifecycle.js';
 export type { ComponentRegistration } from './ComponentRegistration.js';
-export type { WorldModuleHost } from './worldHost.js';
-export { setWorldModuleHost } from './worldHost.js';
 
 // Object Pooling
 export { ObjectPool, EntityPool, PoolManager } from './pool/index.js';

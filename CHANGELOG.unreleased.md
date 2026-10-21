@@ -29,6 +29,15 @@ Entries collected per package until the synchronized 0.3.0 release
 
 ## @phalanx-engine/ecs
 
+- Removed `GameWorld.save`, `restore`, `spawn`, `despawn` and `each`, the
+  type `WorldModuleHost`, the function `setWorldModuleHost` and the error
+  `GameWorld: world modules are not installed. Import @phalanx-engine/runtime before using save, restore, spawn, despawn, or each.`
+  Use the runtime functions `saveWorld(world)`, `restoreWorld(world, bytes)`,
+  `spawn(world, spec)`, `despawn(world, entity)` and
+  `each(world, component, fn)`.
+- Removed `globalEventBus`. Each world has its own `world.eventBus`.
+- `package.json` sets `"sideEffects": false`.
+- Export snapshot: names `[72]` → `[69]`, values `[30]` → `[28]`.
 - Removed `ITickFrameProvider.random`. `GameWorld` takes the match RNG
   only from `GameWorldConfig.random`. A provider field named `random` is
   not read.
@@ -50,6 +59,19 @@ Entries collected per package until the synchronized 0.3.0 release
 
 ## CI
 
+- `pnpm check:side-effects` checks every package whose `package.json`
+  sets `"sideEffects"` (`ecs`, `protocol`, `runtime`): a top-level statement
+  in `src` must be a declaration, an import, an export or a variable
+  statement. An initializer, static block, `extends` clause, decorator,
+  enum initializer, or namespace body may build a local value (`new`, a
+  call of a function declared in that file). The body of that function is
+  scanned, so a local wrapper around an import is still work on import.
+  A name pulled out of an imported value by destructuring is an imported
+  binding. A call or `new` of an imported binding, an assignment, or an
+  immediately-invoked function that does either is work on import. Files
+  listed in `"sideEffects"` are skipped.
+  The command also runs the checker's self-test. The workflow runs it
+  after the isomorphic check.
 - `pnpm lint:determinism` checks `phalanx-{math,ecs,physics,abilities}/src`
   for wall-clock globals, DOM globals and `Math.random`, with no allowlist.
   The workflow runs it after build.
@@ -65,6 +87,10 @@ Entries collected per package until the synchronized 0.3.0 release
 
 ## @phalanx-engine/game
 
+- Root drops `globalEventBus` and the type `WorldModuleHost`, and gains
+  `saveWorld`, `restoreWorld`, `spawn`, `despawn` and `each` from runtime.
+  `./advanced` drops `setWorldModuleHost`. Name count
+  `[183, 9, 31, 85, 23, 3]` → `[186, 9, 31, 85, 22, 3]`.
 - Root gains `attachDebug`, `AttachDebugOptions` and `DebugAttachment`
   from runtime. `DebugDataProvider` and the six debug snapshot types
   (`DebugSnapshot`, `DebugEntitySnapshot`, `DebugComponentSnapshot`,
@@ -103,6 +129,18 @@ Entries collected per package until the synchronized 0.3.0 release
 
 ## @phalanx-engine/runtime
 
+- New root functions `saveWorld`, `restoreWorld`, `spawn`, `despawn` and
+  `each`. They replace the `GameWorld` methods of the same job:
+  `world.save()` → `saveWorld(world)`, `world.restore(bytes)` →
+  `restoreWorld(world, bytes)`, `world.spawn(spec)` → `spawn(world, spec)`,
+  `world.despawn(e)` → `despawn(world, e)`, `world.each(C, fn)` →
+  `each(world, C, fn)`. Bytes are unchanged. Error prefixes `world.spawn:`
+  and `world.each:` are now `spawn:` and `each:`.
+- Importing the package does no work: the `setWorldModuleHost` call on
+  import is gone, and `./advanced` no longer exports `setWorldModuleHost`.
+  `package.json` sets `"sideEffects": ["./dist/server/simWorker.js"]`
+  (the worker entry is started by path, never imported).
+- Root values `[42]` → `[47]`.
 - Host code moved here from ecs. `TickFrameManager` and `DebugPanel` are
   implemented in `src/host` and still exported from `./advanced` (same
   names, not an ecs re-export). The root exports `DebugDataProvider`,

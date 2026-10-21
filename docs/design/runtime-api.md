@@ -62,7 +62,7 @@ are separate subpaths. Fixed-point math is only on `/math`. Advanced
 helpers are `@phalanx-engine/game/advanced`.
 
 Initial GAS `pendingAdd` effects are captured on the first pool return and
-copied back by `AbilitySystemComponent.onEnable`. `world.restore` calls
+copied back by `AbilitySystemComponent.onEnable`. `restoreWorld` calls
 `onEnable('restore')` and does not reseed.
 
 `spawnWithId` throws `spawnWithId: entity N already exists` when that id is
@@ -161,7 +161,7 @@ function, a provided `state` lacks a positive-integer `formatVersion` or a
 `bind` function, or a `bots` entry is not a function. When `state` is
 present it returns that same object. When `state` is omitted it returns a
 copy whose state is the world modules (`formatVersion` 1): `save` / `restore`
-call `world.save` / `world.restore`.
+call `saveWorld` / `restoreWorld`.
 
 **World construction rule.** `createWorld` MUST build its `GameWorld` with
 `{ tickFrameProvider: ctx.tickFrameProvider, random: ctx.random }` and call
@@ -508,7 +508,7 @@ A reject throws `SnapshotRejectedError(reason)`. `migrations[v]` is the step fro
 
 Task 6.5a moved this object to `@phalanx-engine/runtime/advanced`. It is
 not exported from the package root. Games use `defineComponent` and
-`world.save` / `world.restore` instead. The section byte layout is
+`saveWorld` / `restoreWorld` instead. The section byte layout is
 unchanged.
 
 `defineComponent(name, fields, { defaults? })` registers a named SoA
@@ -519,17 +519,17 @@ are skipped in snapshots). Any other type outside `i32`, `u32`, `u8`,
 `i64`, `f32`, `f64` throws at `defineComponent` and lists the allowed
 types. The name `SoASchema` is reserved, along with the world-module
 section names. `registerComponent` also registers the component type, so
-`queryEntities` finds entities spawned with it. A failed `world.spawn`
+`queryEntities` finds entities spawned with it. A failed `spawn`
 disposes the partial entity and removes the SoA rows already inserted.
-`world.each` resolves the dense index on every access and throws if that
+`each` resolves the dense index on every access and throws if that
 entity was removed. Restore calls `onComponentAdded` when a kept entity
 gains a component, and `onDestroy` plus `onComponentRemoved` when one is
-dropped. `world.spawn({ Name: values })`, `world.despawn(entity)` and
-`world.each(component, fn)` use the existing entity id counter. The object
-passed to `each` is one reused view; do not store it. Importing
-`@phalanx-engine/runtime` calls `setWorldModuleHost` once. Without that
-import, `save` / `restore` / `spawn` / `despawn` / `each` throw.
-`world.restore` returns checked-out pooled entities and removes entities
+dropped. `spawn(world, { Name: values })`, `despawn(world, entity)` and
+`each(world, component, fn)` use the existing entity id counter. The object
+passed to `each` is one reused view; do not store it. These and
+`saveWorld` / `restoreWorld` are plain runtime functions; importing
+`@phalanx-engine/runtime` does no work.
+`restoreWorld` returns checked-out pooled entities and removes entities
 absent from the roster before reading sections. Missing roster ids are
 empty shells. Component membership comes from the SoA sections, not from
 the full registry. A roster id that already exists is kept, its rows are
@@ -541,7 +541,7 @@ so section bytes stay the same. `spawnWithId` itself
 still throws when the id is registered. `bindWorldSingletons` appends
 optional game sections after the `modules` container.
 
-Component lifecycle is `onCreate` (add), `onEnable` (pool spawn, `world.spawn`,
+Component lifecycle is `onCreate` (add), `onEnable` (pool spawn, `spawn`,
 and after restore), `onDisable` (return to pool or despawn) and `onDestroy`
 (`dispose`, including pool drain). Pool return resets SoA fields to schema
 defaults and GAS attributes, the granted ability set, and `initComponent`
@@ -1105,8 +1105,8 @@ the correction lands.
   - Rejected alternative: a per-world counter, which requires `new Entity()`
     to find its world. That changes the `Entity` constructor contract and
     breaks existing games.
-- `globalEventBus` (`EventBus.ts:145`) is also global, but the engine does
-  not use it. Games MUST NOT use it in server-mode sims.
+- `globalEventBus` was also global and unused by the engine. It was
+  removed in A6a.1; each world has its own `world.eventBus`.
 
 ### 5. GAS state
 
