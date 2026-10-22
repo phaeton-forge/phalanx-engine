@@ -1,6 +1,6 @@
 import { FP } from '@phalanx-engine/math';
 import type { SoAComponentStore } from '@phalanx-engine/ecs';
-import { TransformSoASchema } from '../src/components/TransformComponent';
+import { TransformSoASchema } from '../src/components/transform';
 
 /** Add a transform row with zero rotation for physics test fixtures. */
 export function addTransformRow(
@@ -8,7 +8,7 @@ export function addTransformRow(
   entityId: number,
   posX: number,
   posZ: number,
-  posY = 0,
+  posY = 0
 ): void {
   transformStore.add(entityId, {
     fpPositionX: FP.ToRaw(FP.FromFloat(posX)),

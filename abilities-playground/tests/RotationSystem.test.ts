@@ -8,9 +8,9 @@ import {
 } from '@phalanx-engine/ecs';
 import { FP, FPVector3, FPQuaternion } from '@phalanx-engine/math';
 import {
-  TransformComponent,
   TransformSoASchema,
   TRANSFORM_COMPONENT_TYPE,
+  attachTransform,
 } from '@phalanx-engine/physics';
 import {
   ComponentType,
@@ -61,8 +61,8 @@ describe('RotationSystem', () => {
     hasTurret?: boolean;
   }): Entity {
     const entity = new Entity(entityManager.allocateEntityId());
-    const transform = new TransformComponent(
-      entity.id,
+    attachTransform(
+      entity,
       FPVector3.FromFloat(options.position.x, 0, options.position.z),
       FPQuaternion.FromAxisAngle(FPVector3.Up, FP.FromFloat(options.rotationY))
     );
@@ -71,7 +71,6 @@ describe('RotationSystem', () => {
     const stats = new StatsComponent({ stopRange: options.stopRange ?? 1 });
     if (options.alive === false) stats.alive = false;
 
-    entity.addComponent(transform);
     entity.addComponent(new TeamComponent(options.teamId));
     entity.addComponent(targetState);
     entity.addComponent(stats);

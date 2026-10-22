@@ -1,15 +1,4 @@
 /**
- * Interpolated position and rotation sample for rendering.
- *
- * Populated by phalanx-physics after InterpolationSystem runs its frame hooks.
- */
-export interface InterpolatedTransformSample {
-  position: { x: number; y: number; z: number };
-  /** Interpolated rotation as a float quaternion (x, y, z, w). */
-  rotation: { x: number; y: number; z: number; w: number };
-}
-
-/**
  * Minimal physics-world contract known to phalanx-ecs.
  *
  * Methods that involve fixed-point types use `unknown` here so that
@@ -27,9 +16,13 @@ export interface IPhysicsWorld {
   /**
    * Interpolated position and rotation for rendering.
    */
-  getInterpolatedTransform(
-    entityId: number
-  ): InterpolatedTransformSample | undefined;
+  getInterpolatedTransform(entityId: number):
+    | {
+        position: { x: number; y: number; z: number };
+        /** Interpolated rotation as a float quaternion (x, y, z, w). */
+        rotation: { x: number; y: number; z: number; w: number };
+      }
+    | undefined;
 
   /**
    * Fixed-point position for gameplay queries (e.g. ability targeting).

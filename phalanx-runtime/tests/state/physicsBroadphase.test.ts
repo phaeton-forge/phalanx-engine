@@ -9,11 +9,11 @@ import {
 import { FP } from '@phalanx-engine/math';
 import type { FixedPoint } from '@phalanx-engine/math';
 import {
-  PhysicsBodyComponent,
   PhysicsSoASchema,
   PhysicsWorld,
-  TransformComponent,
   TransformSoASchema,
+  attachPhysicsBody,
+  attachTransform,
 } from '@phalanx-engine/physics';
 import { StateHelpers } from '../../src/advanced/index.js';
 import { manualTickProvider } from '../support/manualTickProvider.js';
@@ -23,21 +23,17 @@ const SCHEMAS = [TransformSoASchema, PhysicsSoASchema] as const;
 class Disc extends Entity {
   public constructor(id: number, x: number, z: number) {
     super(id);
-    this.addComponent(
-      new TransformComponent(this.id, {
-        x: FP.FromInt(x),
-        y: FP._0,
-        z: FP.FromInt(z),
-      })
-    );
-    this.addComponent(
-      new PhysicsBodyComponent(this.id, {
-        radius: FP._1,
-        mass: FP._1,
-        restitution: FP.FromFloat(0.5),
-        friction: FP.FromFloat(0.3),
-      })
-    );
+    attachTransform(this, {
+      x: FP.FromInt(x),
+      y: FP._0,
+      z: FP.FromInt(z),
+    });
+    attachPhysicsBody(this, {
+      radius: FP._1,
+      mass: FP._1,
+      restitution: FP.FromFloat(0.5),
+      friction: FP.FromFloat(0.3),
+    });
   }
 }
 

@@ -5,12 +5,12 @@ import {
   type GameplayCueDispatchedEvent,
 } from '@phalanx-engine/abilities';
 import { PhysicsWorld } from '@phalanx-engine/physics';
-import type { TransformComponent } from '@phalanx-engine/physics';
 import { FP, type FixedPoint } from '@phalanx-engine/math';
 import {
   ComponentType,
   StatsComponent,
   TeamComponent,
+  copyFpPosition,
 } from '../components';
 import { ShrapnelPayloadComponent } from '../components/ShrapnelPayloadComponent';
 import type { ShrapnelEntity } from '../entities/Shrapnel';
@@ -98,12 +98,10 @@ export class ShrapnelLandingSystem extends GameSystem {
       const payload = entity.getComponent<ShrapnelPayloadComponent>(
         ComponentType.ShrapnelPayload
       );
-      const transform = entity.getComponent<TransformComponent>(
-        ComponentType.Transform
-      );
-      if (!payload || !transform || payload.landed) continue;
+      if (!payload || payload.landed) continue;
+      if (!entity.hasComponent(ComponentType.Transform)) continue;
 
-      const cur = transform.fpPosition;
+      const cur = copyFpPosition(entity.id);
       const landing = computeGroundLanding(
         payload.prevPosX,
         payload.prevPosY,
@@ -153,7 +151,8 @@ export class ShrapnelLandingSystem extends GameSystem {
       if (!stats?.alive) continue;
 
       const team = entity.getComponent<TeamComponent>(ComponentType.Team);
-      if (!SAU_FRIENDLY_FIRE && team && team.teamId === payload.teamId) continue;
+      if (!SAU_FRIENDLY_FIRE && team && team.teamId === payload.teamId)
+        continue;
 
       const pos = physics.getEntityPosition(id);
       if (pos) {
@@ -163,7 +162,11 @@ export class ShrapnelLandingSystem extends GameSystem {
         if (FP.Gt(d2, radiusSq)) continue;
       }
 
-      abilities.applyEffect(id, payload.secondaryEffectId, payload.sourceEntityId);
+      abilities.applyEffect(
+        id,
+        payload.secondaryEffectId,
+        payload.sourceEntityId
+      );
     }
   }
 

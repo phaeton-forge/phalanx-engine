@@ -8,7 +8,10 @@ import {
   defineComponent,
   writeSorted,
 } from '../src/index.js';
-import { manualTickProvider } from './support/manualTickProvider.js';
+import {
+  manualTickProvider,
+  ManualTickProvider,
+} from './support/manualTickProvider.js';
 
 function world(): GameWorld {
   return new GameWorld({ tickFrameProvider: manualTickProvider() });
@@ -229,5 +232,96 @@ describe('defineComponent', () => {
     game.updateAll(0.016);
     expect(read.seen).toBe(3);
     expect(game.get(entity, visual)?.x).toBe(3);
+  });
+
+  it('rejects a component name already used by a save section', () => {
+    const game = world();
+    game.registerSaveSection({
+      key: 'Hp',
+      version: 1,
+      write() {},
+      read() {},
+    });
+    const hp = defineComponent('Hp', { hp: 'i32' });
+    expect(() => game.registerComponent(hp)).toThrow(
+      "registerComponent: 'Hp' is already registered"
+    );
+    expect(game.componentNames()).toEqual([]);
+  });
+
+  it('guards getComponent, hasComponent, and queryEntities during a tick', () => {
+    const game = world();
+    const visual = defineComponent('Visual', {
+      kind: 'transient',
+      create: () => ({ x: 1 }),
+    });
+    game.registerComponent(visual);
+    const entity = game.createEntityWithId(1);
+    game.add(entity, visual);
+
+    class ReadComponent extends GameSystem {
+      public override processTick(): void {
+        entity.getComponent(visual.type);
+      }
+    }
+    game.registerSystems([new ReadComponent()], []);
+    expect(() => game.processAllTicks(1)).toThrow(
+      "tick system must not branch on transient component 'Visual'"
+    );
+
+    class ReadPresence extends GameSystem {
+      public override processTick(): void {
+        entity.hasComponent(visual.type);
+      }
+    }
+    game.registerSystems([new ReadPresence()], []);
+    expect(() => game.processAllTicks(1)).toThrow(
+      "tick system must not branch on transient component 'Visual'"
+    );
+
+    class ReadQuery extends GameSystem {
+      public override processTick(): void {
+        this.entityManager.queryEntities(visual.type);
+      }
+    }
+    game.registerSystems([new ReadQuery()], []);
+    expect(() => game.processAllTicks(1)).toThrow(
+      "tick system must not branch on transient component 'Visual'"
+    );
+    expect(game.get(entity, visual)?.x).toBe(1);
+  });
+
+  it('lets afterTick read a transient component', () => {
+    const provider = new ManualTickProvider();
+    const game = new GameWorld({ tickFrameProvider: provider });
+    const visual = defineComponent('Visual', {
+      kind: 'transient',
+      create: () => ({ x: 0 }),
+    });
+    game.registerComponent(visual);
+    const entity = game.createEntityWithId(1);
+    game.add(entity, visual, { x: 2 });
+
+    class After extends GameSystem {
+      public seen: number | undefined;
+
+      public afterTick(): void {
+        this.seen = this.world.get(entity, visual)?.x;
+        entity.getComponent(visual.type);
+        this.entityManager.queryEntities(visual.type);
+      }
+    }
+    const after = new After();
+    let hookSeen: number | undefined;
+    game.registerSystems([after], []);
+    game.start({
+      afterTick() {
+        hookSeen = game.get(entity, visual)?.x;
+      },
+    });
+    provider.step(1);
+    expect(after.seen).toBe(2);
+    expect(hookSeen).toBe(2);
+    game.stop();
   });
 });

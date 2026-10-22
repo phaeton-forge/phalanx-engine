@@ -35,6 +35,12 @@ export class EntityManager {
   // These are sorted arrays of entity IDs that have each component
   private componentIndices: Map<symbol, number[]> = new Map();
 
+  /** Transient component type → name. Reads throw while a tick is running. */
+  private readonly transientNames = new Map<symbol, string>();
+
+  /** Nested while `GameWorld` is inside the tick guard. */
+  private componentReadDepth = 0;
+
   /**
    * Binary search to find insertion index for maintaining sorted order
    * Returns the index where the value should be inserted
@@ -88,16 +94,47 @@ export class EntityManager {
     }
   }
 
+  /** Remember a transient component so tick reads of it throw. */
+  public registerTransientComponent(type: symbol, name: string): void {
+    this.transientNames.set(type, name);
+  }
+
+  /** @internal Paired with {@link leaveComponentReads}. */
+  public enterComponentReads(): void {
+    this.componentReadDepth += 1;
+  }
+
+  /** @internal */
+  public leaveComponentReads(): void {
+    this.componentReadDepth -= 1;
+  }
+
+  /**
+   * Tick systems may write a transient component and must not read it.
+   * Frame code and `afterTick` run outside this guard.
+   */
+  public assertComponentReadable(type: symbol): void {
+    if (this.componentReadDepth <= 0) return;
+    const name = this.transientNames.get(type);
+    if (name === undefined) return;
+    throw new Error(
+      `tick system must not branch on transient component '${name}'`
+    );
+  }
+
   /**
    * Register an entity with the manager
    */
   public addEntity(entity: Entity): void {
+    entity._manager = this;
     this.entities.set(entity.id, entity);
     this.sortedInsert(this.sortedEntityIds, entity.id);
 
-    // Update component indices for any registered component types
+    // Update component indices for any registered component types.
+    // Unguarded: registering an entity during a tick must still see
+    // transient components.
     for (const [type, index] of this.componentIndices) {
-      if (entity.hasComponent(type)) {
+      if (entity._componentAttached(type)) {
         this.sortedInsert(index, entity.id);
       }
     }
@@ -117,6 +154,7 @@ export class EntityManager {
 
     this.sortedRemove(this.sortedEntityIds, entity.id);
     this.entities.delete(entity.id);
+    entity._manager = null;
   }
 
   /**
@@ -159,6 +197,7 @@ export class EntityManager {
     if (componentTypes.length === 0) {
       return this.getAllEntities();
     }
+    this.assertComponentsReadable(componentTypes);
 
     // Start with the smallest set for efficiency
     const sortedTypes = [...componentTypes].sort((a, b) => {
@@ -201,6 +240,7 @@ export class EntityManager {
     if (componentTypes.length === 0) {
       return [];
     }
+    this.assertComponentsReadable(componentTypes);
 
     // Merge sorted arrays to get union of entity IDs
     const mergedIds = this.mergeSortedArrays(
@@ -223,6 +263,12 @@ export class EntityManager {
   /**
    * Merge multiple sorted arrays into a single sorted array with unique values
    */
+  private assertComponentsReadable(componentTypes: readonly symbol[]): void {
+    for (const type of componentTypes) {
+      this.assertComponentReadable(type);
+    }
+  }
+
   private mergeSortedArrays(arrays: number[][]): number[] {
     if (arrays.length === 0) return [];
     if (arrays.length === 1) return arrays[0];

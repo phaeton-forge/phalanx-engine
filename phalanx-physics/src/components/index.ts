@@ -1,6 +1,49 @@
-export { PhysicsBodyComponent, PhysicsSoASchema, PHYSICS_BODY_COMPONENT_TYPE } from './PhysicsBodyComponent.js';
-export { TransformComponent, TransformSoASchema, TRANSFORM_COMPONENT_TYPE } from './TransformComponent.js';
 export {
-  InterpolationComponent,
+  PhysicsBody,
+  PhysicsSoASchema,
+  PHYSICS_BODY_COMPONENT_TYPE,
+  attachPhysicsBody,
+  bodyValues,
+  readVelocity,
+  writeVelocity,
+  setVelocity,
+  addVelocity,
+  stopVelocity,
+  readRadius,
+  readMass,
+  readRestitution,
+  readFriction,
+  readIsStatic,
+  readIgnorePhysics,
+  writeIgnorePhysics,
+  readUseGravity,
+  writeUseGravity,
+  readGravityMultiplier,
+  writeGravityMultiplier,
+} from './physicsBody.js';
+export {
+  Transform,
+  TransformSoASchema,
+  TRANSFORM_COMPONENT_TYPE,
+  attachTransform,
+  transformValues,
+  readFpPosition,
+  writeFpPosition,
+  readFpRotation,
+  writeFpRotation,
+  readFpRotationEuler,
+  writeFpRotationEuler,
+  readYaw,
+  writeYaw,
+} from './transform.js';
+export {
+  Interpolation,
   INTERPOLATION_COMPONENT_TYPE,
-} from './InterpolationComponent.js';
+  attachInterpolation,
+  interpolationOf,
+  snapshotInterpolation,
+  captureInterpolation,
+  createInterpolationSample,
+  restoreOwnedInterpolation,
+} from './interpolation.js';
+export type { InterpolationSample } from './interpolation.js';

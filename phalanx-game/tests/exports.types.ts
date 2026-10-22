@@ -168,10 +168,11 @@ export type {
   GravitySystem,
   IPhysicsTickProvider,
   InterpolatedTransformSample,
-  InterpolationComponent,
+  Interpolation,
+  InterpolationSample,
   InterpolationSystem,
   NarrowPhase,
-  PhysicsBodyComponent,
+  PhysicsBody,
   PhysicsBodyConfig,
   PhysicsConfig,
   PhysicsSystem,
@@ -179,7 +180,7 @@ export type {
   PhysicsWorldConfig,
   RayHit,
   SpatialHashGrid,
-  TransformComponent,
+  Transform,
   Vec3FP,
 } from '@phalanx-engine/game/physics';
 

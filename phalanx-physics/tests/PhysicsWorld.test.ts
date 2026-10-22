@@ -14,13 +14,14 @@ import { PhysicsSystem } from '../src/systems/PhysicsSystem';
 import { GravitySystem } from '../src/systems/GravitySystem';
 import { InterpolationSystem } from '../src/systems/InterpolationSystem';
 import {
-  TransformComponent,
   TRANSFORM_COMPONENT_TYPE,
-} from '../src/components/TransformComponent';
+  attachTransform,
+  writeFpPosition,
+} from '../src/components/transform';
 import {
-  InterpolationComponent,
   INTERPOLATION_COMPONENT_TYPE,
-} from '../src/components/InterpolationComponent';
+  attachInterpolation,
+} from '../src/components/interpolation';
 
 describe('PhysicsWorld', () => {
   let entityManager: EntityManager;
@@ -83,8 +84,6 @@ describe('PhysicsWorld', () => {
       ignorePhysics: 0,
       useGravity: 0,
       gravityMultiplier: FP.ToRaw(FP._1),
-      lastX: 0,
-      lastZ: 0,
     });
 
     physicsWorld.applyImpulse3D(
@@ -112,26 +111,25 @@ describe('PhysicsWorld', () => {
     interpolationSystem.init(context);
 
     const entity = new Entity(entityManager.allocateEntityId());
-    const transform = new TransformComponent(
-      entity.id,
+    attachTransform(
+      entity,
       FPVector3.FromFloat(0, 0, 0),
       FPQuaternion.Identity()
     );
-    const interpolation = new InterpolationComponent(
-      transform.fpPosition,
-      transform.fpRotation
+    attachInterpolation(
+      entity,
+      FPVector3.FromFloat(0, 0, 0),
+      FPQuaternion.Identity()
     );
-    entity.addComponent(transform);
-    entity.addComponent(interpolation);
     entityManager.addEntity(entity);
     entityManager.onComponentAdded(entity, TRANSFORM_COMPONENT_TYPE);
     entityManager.onComponentAdded(entity, INTERPOLATION_COMPONENT_TYPE);
 
-    transform.fpPosition = FPVector3.FromFloat(10, 0, 0);
+    writeFpPosition(entity.id, FPVector3.FromFloat(10, 0, 0));
 
     interpolationSystem.snapshot();
     interpolationSystem.capture();
-    transform.fpPosition = FPVector3.FromFloat(20, 0, 0);
+    writeFpPosition(entity.id, FPVector3.FromFloat(20, 0, 0));
     interpolationSystem.capture();
     interpolationSystem.interpolate(0.5);
 

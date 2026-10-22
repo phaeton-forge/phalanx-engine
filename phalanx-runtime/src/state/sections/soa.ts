@@ -327,8 +327,10 @@ function readRow<S extends SoASchemaDefinition>(
  * `section(<schema name>, 1)`, `varint(rows)`, then per entity id ascending:
  * `u32 id` and every non-float field in schema declaration order.
  *
- * `f32` / `f64` fields are skipped. They are presentation caches
- * (`PhysicsBody.lastX` / `lastZ`), not simulation state.
+ * `f32` / `f64` fields are skipped. They are presentation caches, not
+ * simulation state. Physics no longer stores display floats on
+ * `PhysicsBody`; render position comes from `Transform` and
+ * `Interpolation`.
  *
  * Throws if the schema has no explicit, unique name. Uniqueness across a
  * list is checked by {@link writeSoAStores}.

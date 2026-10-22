@@ -6,7 +6,7 @@ import {
 } from '@phalanx-engine/abilities';
 import type { Entity } from '@phalanx-engine/ecs';
 import { FPVector3 } from '@phalanx-engine/math';
-import type { TransformComponent } from '@phalanx-engine/physics';
+import { copyFpPosition } from '../components';
 import { ComponentType, MeshComponent } from '../components';
 import { clamp01, getSoftCircleTexture } from './vfxHelpers';
 
@@ -146,19 +146,19 @@ export class MissileExhaustCue extends Cue {
     this.geometry = new THREE.BufferGeometry();
     this.geometry.setAttribute(
       'position',
-      new THREE.BufferAttribute(this.positions, 3),
+      new THREE.BufferAttribute(this.positions, 3)
     );
     this.geometry.setAttribute(
       'aSize',
-      new THREE.BufferAttribute(this.sizes, 1),
+      new THREE.BufferAttribute(this.sizes, 1)
     );
     this.geometry.setAttribute(
       'aAlpha',
-      new THREE.BufferAttribute(this.alphas, 1),
+      new THREE.BufferAttribute(this.alphas, 1)
     );
     this.geometry.setAttribute(
       'aColor',
-      new THREE.BufferAttribute(this.colors, 3),
+      new THREE.BufferAttribute(this.colors, 3)
     );
     this.geometry.setDrawRange(0, 0);
 
@@ -255,11 +255,8 @@ export class MissileExhaustCue extends Cue {
       return true;
     }
 
-    const transform = entity.getComponent<TransformComponent>(
-      ComponentType.Transform,
-    );
-    if (!transform) return false;
-    const p = FPVector3.ToFloat(transform.fpPosition);
+    if (!entity.hasComponent(ComponentType.Transform)) return false;
+    const p = FPVector3.ToFloat(copyFpPosition(entity.id));
     this.nozzleWorld.set(p.x, p.y, p.z);
     return true;
   }
@@ -297,10 +294,8 @@ export class MissileExhaustCue extends Cue {
     const o = i * 3;
     const jitter = 0.18;
     this.positions[o] = this.nozzleWorld.x + (Math.random() - 0.5) * jitter;
-    this.positions[o + 1] =
-      this.nozzleWorld.y + (Math.random() - 0.5) * jitter;
-    this.positions[o + 2] =
-      this.nozzleWorld.z + (Math.random() - 0.5) * jitter;
+    this.positions[o + 1] = this.nozzleWorld.y + (Math.random() - 0.5) * jitter;
+    this.positions[o + 2] = this.nozzleWorld.z + (Math.random() - 0.5) * jitter;
 
     const backSpeed = 1.4 + Math.random() * 1.8;
     const spread = 0.55;
@@ -368,8 +363,7 @@ export class MissileExhaustCue extends Cue {
       // Smooth curl: gentle wander that grows as the puff slows, bending paths.
       const seed = this.seeds[read]!;
       const swirl = TURB_STRENGTH * age;
-      this.velocities[ro] +=
-        Math.sin(age * TURB_FREQ + seed) * swirl * dt;
+      this.velocities[ro] += Math.sin(age * TURB_FREQ + seed) * swirl * dt;
       this.velocities[ro + 1] +=
         Math.sin(age * TURB_FREQ * 0.8 + seed * 1.7) * swirl * 0.6 * dt;
       this.velocities[ro + 2] +=
@@ -404,11 +398,9 @@ export class MissileExhaustCue extends Cue {
   private flickerNozzle(): void {
     const pulse = 0.85 + 0.15 * Math.sin(this.elapsed * 18 + Math.random());
     const coreMat = this.flameCore?.material as
-      | THREE.MeshStandardMaterial
-      | undefined;
+      THREE.MeshStandardMaterial | undefined;
     const outerMat = this.flameOuter?.material as
-      | THREE.MeshStandardMaterial
-      | undefined;
+      THREE.MeshStandardMaterial | undefined;
     if (coreMat) {
       coreMat.opacity = BASE_CORE_OPACITY * pulse;
       coreMat.emissiveIntensity = BASE_CORE_EMISSIVE * pulse;
@@ -421,11 +413,9 @@ export class MissileExhaustCue extends Cue {
 
   private restoreNozzleDefaults(): void {
     const coreMat = this.flameCore?.material as
-      | THREE.MeshStandardMaterial
-      | undefined;
+      THREE.MeshStandardMaterial | undefined;
     const outerMat = this.flameOuter?.material as
-      | THREE.MeshStandardMaterial
-      | undefined;
+      THREE.MeshStandardMaterial | undefined;
     if (coreMat) {
       coreMat.opacity = BASE_CORE_OPACITY;
       coreMat.emissiveIntensity = BASE_CORE_EMISSIVE;

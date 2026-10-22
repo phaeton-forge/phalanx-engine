@@ -178,10 +178,12 @@ during iteration, then run the full suite once before finishing.
   reaction systems (combat, health, scoring). Do not reorder.
 - `gravityAxis` is `'y'` only; `'x'`/`'z'` throw by design (X/Z are owned by the
   position integrator). Do not "fix" this by removing the guard.
-- `TransformComponent` holds the **authoritative** FP position/rotation.
-  `PhysicsBodyComponent.lastX/lastZ` are `f64` display caches — never read them
-  as simulation state.
-- Component getters (`body.velocity`, `transform.fpPosition`) return **shared
+- `Transform` holds the **authoritative** FP position/rotation.
+  Read it with `readFpPosition` / `readFpRotation` (shared scratch — copy
+  immediately) or the SoA arrays. `PhysicsBody` has no display-float
+  caches. Render smoothing reads `Interpolation` from `afterTick` and
+  frame systems only.
+- Component reads (`readFpPosition`, `readVelocity`) return **shared
   mutable scratch objects**. Destructure or copy immediately; **never retain the
   reference across a tick**. The same applies to `SpatialHashGrid`'s
   `queryPairs()` / `queryRadius()` results — they are reused internal buffers,

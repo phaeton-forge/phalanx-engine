@@ -10,7 +10,8 @@ import {
   ComponentType,
   MeshComponent,
   StatsComponent,
-  TransformComponent,
+  copyFpPosition,
+  copyFpRotation,
 } from '../components';
 import { clamp01 } from './vfxHelpers';
 
@@ -275,13 +276,14 @@ export class MachineGunFireCue extends Cue {
 
   /** Populate `muzzle` and `targetPoint`; returns false if a transform is missing. */
   private computeMuzzle(source: Entity, target: Entity): boolean {
-    const sourceTransform = source.getComponent<TransformComponent>(
-      ComponentType.Transform
-    );
-    const targetTransform = target.getComponent<TransformComponent>(
-      ComponentType.Transform
-    );
-    if (!sourceTransform || !targetTransform) return false;
+    if (
+      !source.hasComponent(ComponentType.Transform) ||
+      !target.hasComponent(ComponentType.Transform)
+    ) {
+      return false;
+    }
+    const sourcePosition = copyFpPosition(source.id);
+    const sourceRotation = copyFpRotation(source.id);
 
     const mesh = source.getComponent<MeshComponent>(ComponentType.Mesh);
     const muzzlePoint = mesh?.root.userData.muzzleFlashPoint as
@@ -296,20 +298,20 @@ export class MachineGunFireCue extends Cue {
         MUZZLE_LOCAL_Z
       );
       const tipWorld = FPVector3.Add(
-        sourceTransform.fpPosition,
-        FPQuaternion.RotateVector(sourceTransform.fpRotation, tipLocal)
+        sourcePosition,
+        FPQuaternion.RotateVector(sourceRotation, tipLocal)
       );
       const tip = FPVector3.ToFloat(tipWorld);
       this.muzzle.set(tip.x, tip.y, tip.z);
     }
 
-    const t = FPVector3.ToFloat(targetTransform.fpPosition);
+    const t = FPVector3.ToFloat(copyFpPosition(target.id));
     this.targetPoint.set(t.x, t.y + TARGET_HEIGHT, t.z);
 
     // Flash/flare and spark spray face along the barrel: the hull's forward
     // axis (+Z) swung by however far the turret is currently traversed.
     const barrelDir = FPQuaternion.RotateVector(
-      sourceTransform.fpRotation,
+      sourceRotation,
       FPVector3.FromFloat(0, 0, 1)
     );
     const dir = FPVector3.ToFloat(barrelDir);

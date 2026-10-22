@@ -86,11 +86,12 @@ const ROOT_NAMES = [
   'INTERPOLATION_COMPONENT_TYPE',
   'IPhysicsTickProvider',
   'InterpolatedTransformSample',
-  'InterpolationComponent',
+  'Interpolation',
+  'InterpolationSample',
   'InterpolationSystem',
   'NarrowPhase',
   'PHYSICS_BODY_COMPONENT_TYPE',
-  'PhysicsBodyComponent',
+  'PhysicsBody',
   'PhysicsBodyConfig',
   'PhysicsConfig',
   'PhysicsEvents',
@@ -101,10 +102,41 @@ const ROOT_NAMES = [
   'RayHit',
   'SpatialHashGrid',
   'TRANSFORM_COMPONENT_TYPE',
-  'TransformComponent',
+  'Transform',
   'TransformSoASchema',
   'Vec3FP',
+  'addVelocity',
+  'attachInterpolation',
+  'attachPhysicsBody',
+  'attachTransform',
+  'captureInterpolation',
+  'createInterpolationSample',
+  'interpolationOf',
+  'readFpPosition',
+  'readFpRotation',
+  'readFpRotationEuler',
+  'readFriction',
+  'readGravityMultiplier',
+  'readIgnorePhysics',
+  'readIsStatic',
+  'readMass',
+  'readRadius',
+  'readRestitution',
+  'readUseGravity',
+  'readVelocity',
+  'readYaw',
   'segmentVsAABB',
+  'setVelocity',
+  'snapshotInterpolation',
+  'stopVelocity',
+  'writeFpPosition',
+  'writeFpRotation',
+  'writeFpRotationEuler',
+  'writeGravityMultiplier',
+  'writeIgnorePhysics',
+  'writeUseGravity',
+  'writeVelocity',
+  'writeYaw',
 ];
 
 const ROOT_VALUES = [
@@ -112,20 +144,51 @@ const ROOT_VALUES = [
   'ExternalPhysicsTickProvider',
   'GravitySystem',
   'INTERPOLATION_COMPONENT_TYPE',
-  'InterpolationComponent',
+  'Interpolation',
   'InterpolationSystem',
   'NarrowPhase',
   'PHYSICS_BODY_COMPONENT_TYPE',
-  'PhysicsBodyComponent',
+  'PhysicsBody',
   'PhysicsEvents',
   'PhysicsSoASchema',
   'PhysicsSystem',
   'PhysicsWorld',
   'SpatialHashGrid',
   'TRANSFORM_COMPONENT_TYPE',
-  'TransformComponent',
+  'Transform',
   'TransformSoASchema',
+  'addVelocity',
+  'attachInterpolation',
+  'attachPhysicsBody',
+  'attachTransform',
+  'captureInterpolation',
+  'createInterpolationSample',
+  'interpolationOf',
+  'readFpPosition',
+  'readFpRotation',
+  'readFpRotationEuler',
+  'readFriction',
+  'readGravityMultiplier',
+  'readIgnorePhysics',
+  'readIsStatic',
+  'readMass',
+  'readRadius',
+  'readRestitution',
+  'readUseGravity',
+  'readVelocity',
+  'readYaw',
   'segmentVsAABB',
+  'setVelocity',
+  'snapshotInterpolation',
+  'stopVelocity',
+  'writeFpPosition',
+  'writeFpRotation',
+  'writeFpRotationEuler',
+  'writeGravityMultiplier',
+  'writeIgnorePhysics',
+  'writeUseGravity',
+  'writeVelocity',
+  'writeYaw',
 ];
 
 const ENTRIES = [
@@ -162,10 +225,10 @@ describe('@phalanx-engine/physics exports', () => {
     expect(declaration).not.toContain('PHYSICS_SAVE_ATTACH');
     expect(
       resolved.map((entry) => actual.get(entry.file)?.names.length)
-    ).toEqual([31]);
+    ).toEqual([63]);
     expect(
       resolved.map((entry) => actual.get(entry.file)?.values.length)
-    ).toEqual([18]);
+    ).toEqual([49]);
   });
 
   it('matches the checked-in name snapshot, types included', () => {
@@ -175,10 +238,10 @@ describe('@phalanx-engine/physics exports', () => {
     }
     expect(
       resolved.map((entry) => actual.get(entry.file)?.names.length)
-    ).toEqual([31]);
+    ).toEqual([63]);
     expect(
       resolved.map((entry) => actual.get(entry.file)?.values.length)
-    ).toEqual([18]);
+    ).toEqual([49]);
   });
 
   it('loads each entry by package name', async () => {

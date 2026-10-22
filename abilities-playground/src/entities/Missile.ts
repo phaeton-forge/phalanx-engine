@@ -5,9 +5,11 @@ import type {
   FPQuaternion as FPQuaternionType,
 } from '@phalanx-engine/math';
 import {
-  InterpolationComponent,
-  PhysicsBodyComponent,
-  TransformComponent,
+  attachInterpolation,
+  attachPhysicsBody,
+  attachTransform,
+  writeFpPosition,
+  writeFpRotation,
 } from '@phalanx-engine/physics';
 import { MeshComponent, TeamComponent } from '../components';
 import type { TeamId } from '../components';
@@ -95,8 +97,6 @@ export class MissileEntity
   private readonly projectile: ProjectileComponent;
   private readonly missile: MissileComponent;
   private readonly team: TeamComponent;
-  private readonly interpolation: InterpolationComponent;
-  private readonly transform: TransformComponent;
 
   constructor(id: number) {
     super(id);
@@ -104,21 +104,19 @@ export class MissileEntity
     this.projectile = this.addComponent(new ProjectileComponent());
     this.missile = this.addComponent(new MissileComponent());
     this.team = this.addComponent(new TeamComponent(0));
-    this.interpolation = this.addComponent(new InterpolationComponent());
-    this.transform = this.addComponent(new TransformComponent(this.id));
-    this.addComponent(
-      new PhysicsBodyComponent(this.id, {
-        radius: FP.FromFloat(MISSILE_RADIUS),
-        mass: FP.FromFloat(1),
-        friction: FP.FromFloat(0.15),
-        restitution: FP.FromFloat(0.05),
-      })
-    );
+    attachInterpolation(this);
+    attachTransform(this);
+    attachPhysicsBody(this, {
+      radius: FP.FromFloat(MISSILE_RADIUS),
+      mass: FP.FromFloat(1),
+      friction: FP.FromFloat(0.15),
+      restitution: FP.FromFloat(0.05),
+    });
   }
 
   onSpawn(args: MissileSpawnArgs): void {
     this._active = true;
-    this.transform.fpPosition = args.fpPosition;
+    writeFpPosition(this.id, args.fpPosition);
 
     this.projectile.damageEffectId = 'Effect.Damage.Missile';
     this.missile.targetEntityId = args.targetEntityId;
@@ -152,11 +150,9 @@ export class MissileEntity
       ? FPQuaternion.FromAxisAngle(FPVector3.Right, FP.Neg(FP.PiOver2))
       : FPQuaternion.LookRotation(launchDir);
 
-    this.transform.fpRotation = launchQuat;
     this.team.teamId = args.teamId;
-
-    this.interpolation.capture(args.fpPosition, launchQuat);
-    this.interpolation.snapshot();
+    writeFpRotation(this.id, launchQuat);
+    attachInterpolation(this, args.fpPosition, launchQuat);
   }
 
   onDespawn(): void {

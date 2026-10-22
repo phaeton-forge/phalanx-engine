@@ -1,6 +1,7 @@
 import { SoAComponent } from './SoAComponent.js';
 import { defineSoASchema } from './SoASchema.js';
 import type { IComponent } from './Component.js';
+import type { IPoolableComponent } from './pool/IPoolableComponent.js';
 import type { ComponentRegistration } from './ComponentRegistration.js';
 import type {
   SoAFieldType,
@@ -286,7 +287,47 @@ function createSoaRow<S extends SoASchemaDefinition>(
   if (store.indexOf(entityId) === -1) {
     store.add(entityId, initial);
   }
-  return { type: schema.type };
+  return new SoaRow(schema, entityId, initial);
+}
+
+/**
+ * SoA row that follows the pool contract: `onSpawn` restores the values
+ * passed to `create`, `onDespawn` drops the row. Dormant pooled entities
+ * stay out of the store, matching the old `SoAComponent` lifecycle.
+ */
+class SoaRow<S extends SoASchemaDefinition>
+  implements IComponent, IPoolableComponent
+{
+  public readonly type: symbol;
+
+  public constructor(
+    private readonly schema: SoASchema<S>,
+    private readonly entityId: number,
+    private readonly defaults: SoAFieldsOf<S>
+  ) {
+    this.type = schema.type;
+  }
+
+  public onSpawn(): void {
+    const manager = SoAComponent.currentEntityManager();
+    if (manager === null) {
+      throw new Error(
+        'defineComponent: no EntityManager context; use world.add'
+      );
+    }
+    const store = manager.getOrCreateSoAStore(this.schema);
+    if (store.indexOf(this.entityId) === -1) {
+      store.add(this.entityId, this.defaults);
+      return;
+    }
+    store.set(this.entityId, this.defaults);
+  }
+
+  public onDespawn(): void {
+    SoAComponent.currentEntityManager()
+      ?.getSoAStore(this.schema)
+      ?.remove(this.entityId);
+  }
 }
 
 function isObjectSpec(value: object): value is ObjectSpec<object> {

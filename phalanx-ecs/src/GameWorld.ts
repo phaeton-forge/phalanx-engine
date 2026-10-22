@@ -14,7 +14,6 @@ import type { ComponentRegistration } from './ComponentRegistration.js';
 import {
   assertSoaPatch,
   componentKind,
-  mergeSoaValues,
   type ObjectComponentDef,
   type SoaComponentDef,
   type TransientComponentDef,
@@ -76,6 +75,10 @@ export interface GameWorldConfig {
  * The tick pipeline is:   beforeTick → processAllTicks → afterTick
  * The frame pipeline is:  beforeFrame → updateAll → afterFrame
  *
+ * `beforeTick` and tick systems run inside the transient-read guard.
+ * `afterTick` runs after that guard: presentation (interpolation) reads
+ * transient components there.
+ *
  * All hooks are optional. If omitted the corresponding step is simply skipped.
  * Rendering (e.g. scene.render()) should be called by the consumer in afterFrame.
  */
@@ -85,7 +88,10 @@ export interface GameWorldHooks {
     tick: number,
     commands: import('./ITickFrameProvider.js').CommandsBatch
   ) => void;
-  /** Called after tick systems have been processed (e.g. capture positions, cleanup) */
+  /**
+   * Called after tick systems have been processed (e.g. capture positions).
+   * Runs outside the transient-read guard, so it may read interpolation.
+   */
   afterTick?: (tick: number) => void;
   /** Called before frame systems are updated (e.g. camera input) */
   beforeFrame?: (alpha: number, dt: number) => void;
@@ -159,8 +165,16 @@ export class GameWorld {
   /**
    * Nested while a tick pipeline is running. Reading a transient component
    * here throws: tick code may write one and must not branch on it.
+   * `afterTick` runs after this returns to zero.
    */
   private _tickDepth = 0;
+
+  /**
+   * Entity ids that had each transient component at the last
+   * {@link discardTransientComponents}. The owner module reads this from
+   * its save section and adds the component back at `create()` defaults.
+   */
+  private readonly _discardedTransient = new Map<symbol, number[]>();
 
   /** Module save sections, kept sorted by key. */
   private readonly _saveSections: SaveSection[] = [];
@@ -187,6 +201,11 @@ export class GameWorld {
     }
     this.systemRegistry.getContext().pools = this._pools;
     this.systemRegistry.getContext().world = this;
+    // Free pooled entities are not in the save. Drop object and transient
+    // components when they return so a respawn matches a restored client.
+    this._pools?.addReturnToPoolHook((entity) => {
+      this.removeEphemeralComponents(entity);
+    });
 
     this.provider = config.tickFrameProvider;
 
@@ -488,6 +507,8 @@ export class GameWorld {
    * The tick pipeline:  hooks.beforeTick → processAllTicks → hooks.afterTick
    * The frame pipeline: hooks.beforeFrame → updateAll → hooks.afterFrame
    *
+   * `afterTick` runs outside the transient-read guard.
+   *
    * Rendering is NOT called automatically. The consumer should call their
    * renderer (e.g. scene.render()) in the afterFrame hook.
    *
@@ -521,11 +542,11 @@ export class GameWorld {
         for (const s of this.beforeTickSystems) s.beforeTick(tick, commands);
         hooks?.beforeTick?.(tick, commands);
         this.processAllTicks(tick);
-        for (const s of this.afterTickSystems) s.afterTick(tick);
-        hooks?.afterTick?.(tick);
       } finally {
         this.leaveTick();
       }
+      for (const s of this.afterTickSystems) s.afterTick(tick);
+      hooks?.afterTick?.(tick);
     });
 
     // Subscribe to frame events
@@ -663,12 +684,25 @@ export class GameWorld {
    * save sections run, so the owner section can add them back at defaults.
    */
   public discardTransientComponents(): void {
+    this._discardedTransient.clear();
     for (const component of this._transientComponents) {
       const entities = this.entityManager.queryEntities(component.type);
+      const ids: number[] = [];
       for (const entity of entities) {
+        ids.push(entity.id);
         this.detach(entity, component.type);
       }
+      this._discardedTransient.set(component.type, ids);
     }
+  }
+
+  /**
+   * Entity ids that held `type` when {@link discardTransientComponents}
+   * last ran. Empty when that type was not registered or nobody had it.
+   * The owner save section adds the component back at defaults.
+   */
+  public discardedTransientIds(type: symbol): readonly number[] {
+    return this._discardedTransient.get(type) ?? [];
   }
 
   private registerSoa(component: ComponentRegistration): void {
@@ -728,6 +762,10 @@ export class GameWorld {
     this.assertNameFree(component.name);
     this._transientComponents.push(component);
     this.entityManager.registerComponentTypes([component.type]);
+    this.entityManager.registerTransientComponent(
+      component.type,
+      component.name
+    );
   }
 
   private assertNameFree(name: string): void {
@@ -792,7 +830,7 @@ export class GameWorld {
   ): void {
     const store = this.entityManager.getOrCreateSoAStore(component.schema);
     const hasRow = store.indexOf(entity.id) !== -1;
-    const hasComponent = entity.hasComponent(component.type);
+    const hasComponent = entity._componentAttached(component.type);
     if (hasRow !== hasComponent) {
       throw new Error(
         `world.add: entity ${String(entity.id)} component '${component.name}' is out of sync with its store`
@@ -810,8 +848,7 @@ export class GameWorld {
       store.set(entity.id, omitUndefinedSoaFields(patch));
       return;
     }
-    store.add(entity.id, mergeSoaValues(component, patch));
-    entity.addComponent({ type: component.type });
+    entity.addComponent(component.create(entity.id, patch));
     this.entityManager.onComponentAdded(entity, component.type);
   }
 
@@ -848,7 +885,7 @@ export class GameWorld {
   ): object | undefined {
     const store = this.entityManager.getSoAStore(component.schema);
     const hasRow = store !== undefined && store.indexOf(entity.id) !== -1;
-    const hasComponent = entity.hasComponent(component.type);
+    const hasComponent = entity._componentAttached(component.type);
     if (hasRow !== hasComponent) {
       throw new Error(
         `world.get: entity ${String(entity.id)} component '${component.name}' is out of sync with its store`
@@ -858,7 +895,25 @@ export class GameWorld {
   }
 
   private readValue(entity: Entity, type: symbol): object | undefined {
-    return entity.getComponent<ValueComponent>(type)?.value;
+    return entity._peekComponent<ValueComponent>(type)?.value;
+  }
+
+  /** Object and transient components do not survive a return to the pool. */
+  private removeEphemeralComponents(entity: Entity): void {
+    for (const component of this._objectComponents) {
+      this.removeEphemeral(entity, component.type);
+    }
+    for (const component of this._transientComponents) {
+      this.removeEphemeral(entity, component.type);
+    }
+  }
+
+  private removeEphemeral(entity: Entity, type: symbol): void {
+    if (!entity._componentAttached(type)) return;
+    entity.removeComponent(type);
+    if (this.entityManager.getEntity(entity.id) === entity) {
+      this.entityManager.onComponentRemoved(entity, type);
+    }
   }
 
   private detach(entity: Entity, type: symbol): boolean {
@@ -869,10 +924,12 @@ export class GameWorld {
 
   private enterTick(): void {
     this._tickDepth += 1;
+    this.entityManager.enterComponentReads();
   }
 
   private leaveTick(): void {
     this._tickDepth -= 1;
+    this.entityManager.leaveComponentReads();
   }
 }
 
@@ -940,7 +997,7 @@ function writeObjectComponent(
   const entities = world.entityManager.queryEntities(component.type);
   writer.list(entities, (entity, item) => {
     item.u32(entity.id);
-    const held = entity.getComponent<ValueComponent>(component.type);
+    const held = entity._peekComponent<ValueComponent>(component.type);
     if (held === undefined) {
       throw new Error(
         `save: entity ${String(entity.id)} is missing '${component.name}'`
@@ -965,7 +1022,7 @@ function readObjectComponent(
         `restore: object component '${component.name}' entity ${String(id)} is missing`
       );
     }
-    const existing = entity.getComponent<ValueComponent>(component.type);
+    const existing = entity._peekComponent<ValueComponent>(component.type);
     if (existing !== undefined) {
       existing.value = value;
     } else {

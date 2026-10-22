@@ -5,7 +5,7 @@ import type {
   CueContext,
   GameplayCueDispatchedEvent,
 } from '@phalanx-engine/abilities';
-import { ComponentType, TransformComponent } from '../components';
+import { ComponentType, copyFpPosition, copyFpRotation } from '../components';
 
 const LIFETIME_SECONDS = 0.18;
 const SPARK_COUNT = 16;
@@ -47,13 +47,12 @@ export class SauMuzzleFlashCue extends Cue {
 
   public onSpawn(event: GameplayCueDispatchedEvent, context: CueContext): void {
     const caster = context.entityManager.getEntity(event.sourceEntityId);
-    const transform = caster?.getComponent<TransformComponent>(
-      ComponentType.Transform
-    );
-    if (!transform) {
+    if (!caster?.hasComponent(ComponentType.Transform)) {
       this.done = true;
       return;
     }
+    const position = copyFpPosition(caster.id);
+    const rotation = copyFpRotation(caster.id);
 
     const local = FPVector3.FromFloat(
       MUZZLE_LOCAL.x,
@@ -61,16 +60,10 @@ export class SauMuzzleFlashCue extends Cue {
       MUZZLE_LOCAL.z
     );
     const world = FPVector3.ToFloat(
-      FPVector3.Add(
-        transform.fpPosition,
-        FPQuaternion.RotateVector(transform.fpRotation, local)
-      )
+      FPVector3.Add(position, FPQuaternion.RotateVector(rotation, local))
     );
     const forward = FPVector3.ToFloat(
-      FPQuaternion.RotateVector(
-        transform.fpRotation,
-        FPVector3.FromFloat(0, 0, 1)
-      )
+      FPQuaternion.RotateVector(rotation, FPVector3.FromFloat(0, 0, 1))
     );
     const dir = new THREE.Vector3(forward.x, 0, forward.z);
     if (dir.lengthSq() < 1e-6) dir.set(0, 0, 1);

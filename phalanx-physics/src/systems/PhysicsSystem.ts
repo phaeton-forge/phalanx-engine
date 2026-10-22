@@ -6,8 +6,8 @@ import {
 } from '@phalanx-engine/ecs';
 import { ensureBroadphaseSection } from '../save/broadphase.js';
 import { FP, type FixedPoint } from '@phalanx-engine/math';
-import { PhysicsSoASchema } from '../components/PhysicsBodyComponent.js';
-import { TransformSoASchema } from '../components/TransformComponent.js';
+import { PhysicsSoASchema } from '../components/physicsBody.js';
+import { TransformSoASchema } from '../components/transform.js';
 import {
   SpatialHashGrid,
   type BroadphaseCenter,
@@ -296,8 +296,6 @@ export class PhysicsSystem extends GameSystem {
   private rebuildSpatialGrid(): void {
     this.spatialGrid.clear();
 
-    const physLastX = this.physicsStore.arrays.lastX;
-    const physLastZ = this.physicsStore.arrays.lastZ;
     const physRadius = this.physicsStore.arrays.radius;
 
     const fpPosXArr = this.transformStore.arrays.fpPositionX;
@@ -311,10 +309,6 @@ export class PhysicsSystem extends GameSystem {
       const posX = FP.FromRaw(fpPosXArr[transformIndex]);
       const posZ = FP.FromRaw(fpPosZArr[transformIndex]);
       const radius = FP.FromRaw(physRadius[physIndex]);
-
-      // Cache float positions for any game-side usage
-      physLastX[physIndex] = FP.ToFloat(posX);
-      physLastZ[physIndex] = FP.ToFloat(posZ);
 
       this.spatialGrid.insert(entityId, posX, posZ, radius);
     }
@@ -755,7 +749,7 @@ export class PhysicsSystem extends GameSystem {
   /**
    * Clear the grid and re-insert every body from its current transform,
    * in ascending entity id. Uses the same insert path as a physics
-   * sub-step, including the `lastX` / `lastZ` display caches.
+   * sub-step.
    *
    * Does not integrate velocity and does not resolve collisions. Valid
    * only for a collision-free world: the live step rebuilds before
@@ -779,26 +773,11 @@ export class PhysicsSystem extends GameSystem {
    * Replace the broadphase with saved centers.
    *
    * Clears the grid, then inserts in ascending entity id using each
-   * center's position and radius. Does not read transforms. Writes
-   * `lastX` / `lastZ` from those centers (`FP.ToFloat`) so the first
-   * rendered frame does not jump from a stale display cache. Those
-   * fields are presentation only; simulation must not read them.
+   * center's position and radius. Does not read transforms. Rendering
+   * reads `Transform` and `Interpolation`, not a display cache on the body.
    */
   public restoreBroadphase(centers: readonly BroadphaseCenter[]): void {
     this.spatialGrid.restoreBroadphase(centers);
-    this.writeDisplayCenters(centers);
-  }
-
-  /** Presentation caches. Not simulation state. */
-  private writeDisplayCenters(centers: readonly BroadphaseCenter[]): void {
-    const lastX = this.physicsStore.arrays.lastX;
-    const lastZ = this.physicsStore.arrays.lastZ;
-    for (const center of centers) {
-      const index = this.physicsStore.indexOf(center.entityId);
-      if (index === -1) continue;
-      lastX[index] = FP.ToFloat(center.x);
-      lastZ[index] = FP.ToFloat(center.z);
-    }
   }
 
   /** Expose the EventBus for external subscription (e.g. PhysicsWorld facade) */

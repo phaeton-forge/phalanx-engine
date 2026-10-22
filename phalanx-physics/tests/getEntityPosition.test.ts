@@ -8,8 +8,8 @@ import {
   SoAComponent,
 } from '@phalanx-engine/ecs';
 import { PhysicsSystem } from '../src/systems/PhysicsSystem';
-import { PhysicsSoASchema } from '../src/components/PhysicsBodyComponent';
-import { TransformSoASchema } from '../src/components/TransformComponent';
+import { PhysicsSoASchema } from '../src/components/physicsBody';
+import { TransformSoASchema } from '../src/components/transform';
 import { PhysicsWorld } from '../src/PhysicsWorld';
 import type { PhysicsConfig } from '../src/types';
 import { addTransformRow } from './testTransformHelpers';
@@ -59,8 +59,6 @@ describe('getEntityPosition', () => {
       ignorePhysics: 0,
       useGravity: 0,
       gravityMultiplier: FP.ToRaw(FP._1),
-      lastX: 0,
-      lastZ: 0,
     });
     addTransformRow(transformStore, 1, 7, 9);
 
@@ -93,8 +91,6 @@ describe('getEntityPosition', () => {
       ignorePhysics: 0,
       useGravity: 0,
       gravityMultiplier: FP.ToRaw(FP._1),
-      lastX: 0,
-      lastZ: 0,
     });
     addTransformRow(transformStore, 2, 3, 4);
 

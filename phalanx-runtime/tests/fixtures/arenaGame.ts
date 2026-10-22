@@ -15,13 +15,13 @@ import {
   getAbilitySystemComponent,
 } from '@phalanx-engine/abilities';
 import {
-  PHYSICS_BODY_COMPONENT_TYPE,
-  PhysicsBodyComponent,
   PhysicsSoASchema,
   PhysicsWorld,
-  TRANSFORM_COMPONENT_TYPE,
-  TransformComponent,
   TransformSoASchema,
+  attachPhysicsBody,
+  attachTransform,
+  setVelocity,
+  writeFpPosition,
 } from '@phalanx-engine/physics';
 import {
   defineCommands,
@@ -94,16 +94,14 @@ class ArenaPawn extends Entity implements IPoolableEntity<void> {
     if (abilities === undefined) {
       throw new Error('arena: ability system is not ready');
     }
-    this.addComponent(new TransformComponent(this.id, SPAWN_POSITION));
-    this.addComponent(
-      new PhysicsBodyComponent(this.id, {
-        radius: FP._1,
-        mass: FP._1,
-        restitution: FP._0,
-        friction: FP._0,
-        useGravity: false,
-      })
-    );
+    attachTransform(this, SPAWN_POSITION);
+    attachPhysicsBody(this, {
+      radius: FP._1,
+      mass: FP._1,
+      restitution: FP._0,
+      friction: FP._0,
+      useGravity: false,
+    });
     this.addComponent(
       abilities.initComponent({
         attributes: { Health: HEALTH },
@@ -114,14 +112,8 @@ class ArenaPawn extends Entity implements IPoolableEntity<void> {
   }
 
   public onSpawn(_args: void): void {
-    const transform = this.getComponent<TransformComponent>(
-      TRANSFORM_COMPONENT_TYPE
-    );
-    if (transform !== undefined) transform.fpPosition = SPAWN_POSITION;
-    const body = this.getComponent<PhysicsBodyComponent>(
-      PHYSICS_BODY_COMPONENT_TYPE
-    );
-    body?.setVelocity(MOVE_X, FP._0, FP._0);
+    writeFpPosition(this.id, SPAWN_POSITION);
+    setVelocity(this.id, MOVE_X, FP._0, FP._0);
   }
 
   public onDespawn(): void {}

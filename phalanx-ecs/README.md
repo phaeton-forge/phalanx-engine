@@ -265,16 +265,14 @@ Implemented by `PhysicsWorld` from phalanx-physics. Keeps phalanx-ecs dependency
 
 ```typescript
 interface IPhysicsWorld {
-  getInterpolatedTransform(
-    entityId: number
-  ): InterpolatedTransformSample | undefined;
+  getInterpolatedTransform(entityId: number):
+    | {
+        position: { x: number; y: number; z: number };
+        rotation: { x: number; y: number; z: number; w: number };
+      }
+    | undefined;
   getEntityPosition(entityId: number): { x: unknown; z: unknown } | undefined;
   applyImpulse(entityId: number, vx: unknown, vz: unknown): void;
-}
-
-interface InterpolatedTransformSample {
-  position: { x: number; y: number; z: number };
-  rotation: { x: number; y: number; z: number; w: number };
 }
 ```
 

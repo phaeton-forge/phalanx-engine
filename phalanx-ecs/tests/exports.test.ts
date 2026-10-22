@@ -107,7 +107,6 @@ const ROOT_NAMES = [
   'IRandom',
   'ITickFrameProvider',
   'IntegerSchema',
-  'InterpolatedTransformSample',
   'ObjectComponentDef',
   'ObjectPool',
   'PauseHandler',
@@ -221,7 +220,7 @@ describe('@phalanx-engine/ecs exports', () => {
     }
     expect(
       resolved.map((entry) => actual.get(entry.file)?.names.length)
-    ).toEqual([73]);
+    ).toEqual([72]);
     expect(
       resolved.map((entry) => actual.get(entry.file)?.values.length)
     ).toEqual([26]);

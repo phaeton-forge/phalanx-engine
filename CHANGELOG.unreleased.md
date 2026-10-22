@@ -35,13 +35,15 @@ Entries collected per package until the synchronized 0.3.0 release
     `u8`, `i64`. The store is saved automatically. Registration order and
     each field's name and type stay in `configHash`. A float throws
     `defineComponent: field 'x' is f32 and is not saved; use a transient component`.
+    `create()` returns a poolable row: `onSpawn` restores the values passed
+    to `create`, `onDespawn` drops the row.
   - Object: `{ kind: 'object', create, save?, load? }`. `registerComponent`
     throws `registerComponent: object component 'Name' requires save and load`
     when either function is missing. Values are a module save section keyed
     by the component name. `writeSorted(writer, setOrMap, write)` writes a
     `Set` or `Map` in key order: UTF-16 code units for strings, numeric
-    order for safe integers. Mixed keys throw
-    `writeSorted: mixed string and number keys`.
+    order for safe integers (including a `Map` whose keys are numbers).
+    Mixed keys throw `writeSorted: mixed string and number keys`.
   - Transient: `{ kind: 'transient', create }`. Any fields, including
     floats and objects. Omitted from the save and from `configHash`.
   - Access is `world.add(entity, component, values?)`,
@@ -49,10 +51,25 @@ Entries collected per package until the synchronized 0.3.0 release
     A second `add` without `values` throws
     `world.add: entity N already has 'Name'`. Passing `values` writes
     those fields. A tick read of a transient component throws
-    `tick system must not branch on transient component 'Name'` (the check
-    runs in every build). `world.discardTransientComponents()` drops them.
+    `tick system must not branch on transient component 'Name'` from
+    `world.get`, `entity.getComponent`, `entity.hasComponent`, and
+    `entityManager.queryEntities` / `queryEntitiesAny` (every build).
+    `beforeTick` and tick systems run inside that guard. `afterTick`
+    (systems and `hooks.afterTick`) runs after it, so presentation can
+    read interpolation there. `world.discardTransientComponents()` drops
+    them and records the entity ids (`discardedTransientIds`).
     `restoreWorld` calls that before module sections, and the owner
     section adds them back at `create()` defaults.
+  - `componentNames()` returns only SoA components, in registration order.
+    Object and transient components are omitted. `registerComponent`
+    throws `registerComponent: 'Name' is already registered` when a save
+    section already uses that key.
+  - Returning a pooled entity to the pool removes its object and transient
+    components. SoA rows stay on the poolable row holder. A respawn then
+    matches a client restored from the save.
+- `InterpolatedTransformSample` is no longer exported. The render sample
+  type lives on `@phalanx-engine/physics`.
+- Export snapshot: names `[73]` → `[72]`, values `[26]` stay `[26]`.
 - Export snapshot: names `[65]` → `[73]`, values `[24]` → `[26]`.
 - The entity id counter is a field of `EntityManager`. Removed
   `resetEntityIdCounter`, `getEntityIdCounter`, `setEntityIdCounter` and
@@ -137,6 +154,9 @@ Entries collected per package until the synchronized 0.3.0 release
 
 ## @phalanx-engine/game
 
+- `./physics` follows the physics package: wrapper classes are gone and
+  the helper functions are exported. Name count
+  `[185, 9, 31, 85, 20, 3]` → `[185, 9, 63, 85, 20, 3]`.
 - Root drops `getEntityIdCounter`. `./advanced` drops `nextEntityId` and
   `setEntityIdCounter`. Name count
   `[186, 9, 31, 85, 22, 3]` → `[185, 9, 31, 85, 20, 3]`.
@@ -329,8 +349,7 @@ Entries collected per package until the synchronized 0.3.0 release
   `readPools` discards prewarmed free entities, constructs owned ids with
   `PoolManager.createForRestore`, and calls `onDespawn` again for free
   entities. `readEntityIds` then restores the counter. Broadphase restore
-  writes `lastX` / `lastZ` from the saved centers; games must not read
-  those fields in simulation. `CollisionSystem` is discovered under the
+  re-inserts the saved centers into the grid. `CollisionSystem` is discovered under the
   key `collisionSystem`. Physics is an optional peer; math stays a peer.
   The package and its ecs/physics dependency graph emit NodeNext ESM so
   `import('@phalanx-engine/runtime')` loads under native Node. The runtime
@@ -749,6 +768,24 @@ Entries collected per package until the synchronized 0.3.0 release
 
 ## @phalanx-engine/physics
 
+- `Transform` and `PhysicsBody` are `defineComponent` SoA components.
+  `Interpolation` is transient. Wrapper classes
+  `TransformComponent`, `PhysicsBodyComponent`, and
+  `InterpolationComponent` are removed. Position, rotation, velocity,
+  and the interpolation sample are helper functions
+  (`attachTransform`, `readFpPosition`, `writeFpPosition`,
+  `attachPhysicsBody`, `setVelocity`, `attachInterpolation`,
+  `captureInterpolation`, `snapshotInterpolation`). The old
+  `*_COMPONENT_TYPE` symbols are the new `.type` values.
+  `PhysicsBody` no longer has `lastX` / `lastZ`. Render position comes
+  from `Transform` and `Interpolation`. `readBroadphase` puts
+  `Interpolation` back, at `create()` defaults, only on entities that
+  had it when transients were discarded. `InterpolationSystem` is no
+  longer `IBeforeTick`; `afterTick` snapshots the previous sample and
+  then captures the transform. `PhysicsWorld.attach` registers
+  `Interpolation` (not the SoA components, so `configHash` and SoA
+  section bytes stay put). Snapshot goldens are unchanged.
+  Name count `[31]/[18]` → `[63]/[49]`.
 - Removed `AutonomousPhysicsTickProvider` and `AutonomousProviderOptions`.
   No replacement. `IPhysicsTickProvider` and `ExternalPhysicsTickProvider`
   stay. Name count `[33]/[19]` → `[31]/[18]`.
@@ -769,9 +806,7 @@ Entries collected per package until the synchronized 0.3.0 release
 - Built output is NodeNext ESM: relative specifiers end in `.js`, and
   directory imports (`./components`, `./systems`) point at `index.js`.
 - `CollisionSystem` is exported from the package entry.
-  `restoreBroadphase` writes `lastX` / `lastZ` with `FP.ToFloat` of the
-  saved centers. Those fields are presentation caches; simulation must
-  not read them.
+  `restoreBroadphase` re-inserts the saved centers into the grid.
 - `SpatialHashGrid.getCenters`, `PhysicsSystem` / `CollisionSystem` /
   `PhysicsWorld.getBroadphaseCenters`, and `rebuildBroadphase` (clear and
   re-insert from current transforms in ascending entity id; no collision

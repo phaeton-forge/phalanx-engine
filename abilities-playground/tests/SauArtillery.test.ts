@@ -9,8 +9,9 @@ import {
 import type { GameWorld } from '@phalanx-engine/ecs';
 import { DeterministicRandom, FP, FPVector3 } from '@phalanx-engine/math';
 import {
-  TransformComponent,
   TRANSFORM_COMPONENT_TYPE,
+  attachTransform,
+  writeFpPosition,
 } from '@phalanx-engine/physics';
 import {
   ComponentType,
@@ -50,9 +51,7 @@ function addTransformUnit(
   teamId: 0 | 1
 ): Entity {
   const entity = new Entity(entityManager.allocateEntityId());
-  entity.addComponent(
-    new TransformComponent(entity.id, FPVector3.FromFloat(pos.x, pos.y, pos.z))
-  );
+  attachTransform(entity, FPVector3.FromFloat(pos.x, pos.y, pos.z));
   entity.addComponent(new TeamComponent(teamId));
   entityManager.addEntity(entity);
   entityManager.onComponentAdded(entity, TRANSFORM_COMPONENT_TYPE);
@@ -164,10 +163,7 @@ describe('sauArtillery hook', () => {
     expect(snapshotZ).toBeCloseTo(50, 3);
 
     // Move the target far away; the already-snapshotted impact must not change.
-    const targetTransform = target.getComponent<TransformComponent>(
-      ComponentType.Transform
-    )!;
-    targetTransform.fpPosition = FPVector3.FromFloat(0, 0, 999);
+    writeFpPosition(target.id, FPVector3.FromFloat(0, 0, 999));
     expect(FP.ToFloat(args.impactPoint.z)).toBeCloseTo(snapshotZ, 3);
   });
 
@@ -276,9 +272,7 @@ describe('ShrapnelLandingSystem secondary blast', () => {
   function addShrapnel(sourceEntityId: number): Entity {
     const entity = new Entity(entityManager.allocateEntityId());
     // Current position is below ground (crossed this tick).
-    entity.addComponent(
-      new TransformComponent(entity.id, FPVector3.FromFloat(2, -1, 3))
-    );
+    attachTransform(entity, FPVector3.FromFloat(2, -1, 3));
     const payload = new ShrapnelPayloadComponent();
     payload.sourceEntityId = sourceEntityId;
     payload.teamId = 0;

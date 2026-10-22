@@ -3,7 +3,7 @@ import type {
   FixedPoint,
   FPVector3 as FPVector3Type,
 } from '@phalanx-engine/math';
-import { TransformComponent } from '@phalanx-engine/physics';
+import { attachTransform, writeFpPosition } from '@phalanx-engine/physics';
 import {
   ArtilleryShellComponent,
   type ShrapnelConfig,
@@ -44,19 +44,16 @@ export class ArtilleryShellEntity
   }
 
   private readonly shell: ArtilleryShellComponent;
-  // Transform (no PhysicsBody, no mesh) so falling-shadow/impact cues can read
-  // the impact point; the shell never moves and never renders a body.
-  private readonly transform: TransformComponent;
 
   constructor(id: number) {
     super(id);
     this.shell = this.addComponent(new ArtilleryShellComponent());
-    this.transform = this.addComponent(new TransformComponent(this.id));
+    attachTransform(this);
   }
 
   onSpawn(args: ArtilleryShellSpawnArgs): void {
     this._active = true;
-    this.transform.fpPosition = args.impactPoint;
+    writeFpPosition(this.id, args.impactPoint);
     this.shell.impactPoint.x = args.impactPoint.x;
     this.shell.impactPoint.y = args.impactPoint.y;
     this.shell.impactPoint.z = args.impactPoint.z;

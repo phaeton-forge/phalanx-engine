@@ -5,9 +5,13 @@ import type {
   FPVector3 as FPVector3Type,
 } from '@phalanx-engine/math';
 import {
-  InterpolationComponent,
-  PhysicsBodyComponent,
-  TransformComponent,
+  attachInterpolation,
+  attachPhysicsBody,
+  attachTransform,
+  stopVelocity,
+  writeFpPosition,
+  writeFpRotation,
+  writeUseGravity,
 } from '@phalanx-engine/physics';
 import { MeshComponent, TeamComponent } from '../components';
 import type { TeamId } from '../components';
@@ -55,36 +59,28 @@ export class ShrapnelEntity
   }
 
   private readonly team: TeamComponent;
-  private readonly interpolation: InterpolationComponent;
-  private readonly transform: TransformComponent;
-  private readonly body: PhysicsBodyComponent;
   private readonly payload: ShrapnelPayloadComponent;
   constructor(id: number) {
     super(id);
     this.team = this.addComponent(new TeamComponent(0));
-    // Visibility is driven by MeshComponent's own IPoolableComponent hooks
-    // (hidden in the pool, shown on spawn). RenderSyncSystem positions the
-    // root each frame; ShrapnelSpinSystem tumbles the shard inside it.
     this.addComponent(MeshComponent.createShrapnel(SHRAPNEL_VISUAL_RADIUS));
-    this.interpolation = this.addComponent(new InterpolationComponent());
-    this.transform = this.addComponent(new TransformComponent(this.id));
-    this.body = this.addComponent(
-      new PhysicsBodyComponent(this.id, {
-        radius: FP.FromFloat(SHRAPNEL_RADIUS),
-        mass: FP.FromFloat(SHRAPNEL_MASS),
-        friction: FP._1,
-        restitution: FP._0,
-        useGravity: true,
-        gravityMultiplier: FP.FromFloat(SHRAPNEL_GRAVITY_MULTIPLIER),
-      })
-    );
+    attachInterpolation(this);
+    attachTransform(this);
+    attachPhysicsBody(this, {
+      radius: FP.FromFloat(SHRAPNEL_RADIUS),
+      mass: FP.FromFloat(SHRAPNEL_MASS),
+      friction: FP._1,
+      restitution: FP._0,
+      useGravity: true,
+      gravityMultiplier: FP.FromFloat(SHRAPNEL_GRAVITY_MULTIPLIER),
+    });
     this.payload = this.addComponent(new ShrapnelPayloadComponent());
   }
 
   onSpawn(args: ShrapnelSpawnArgs): void {
     this._active = true;
-    this.transform.fpPosition = args.fpPosition;
-    this.transform.fpRotation = FPQuaternion.Identity();
+    writeFpPosition(this.id, args.fpPosition);
+    writeFpRotation(this.id, FPQuaternion.Identity());
 
     this.team.teamId = args.teamId;
     this.payload.sourceEntityId = args.sourceEntityId;
@@ -98,11 +94,9 @@ export class ShrapnelEntity
 
     // Fragments spawn with gravity on and velocity zeroed; the caller applies
     // the cone impulse via PhysicsWorld.applyImpulse3D right after spawn.
-    this.body.useGravity = true;
-    this.body.stopVelocity();
-
-    this.interpolation.capture(args.fpPosition, FPQuaternion.Identity());
-    this.interpolation.snapshot();
+    writeUseGravity(this.id, true);
+    stopVelocity(this.id);
+    attachInterpolation(this, args.fpPosition, FPQuaternion.Identity());
   }
 
   onDespawn(): void {

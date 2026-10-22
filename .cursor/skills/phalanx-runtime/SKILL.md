@@ -186,9 +186,9 @@ Call these inside a hand-written `GameState`, in this order on restore:
   physics when a grid owner connects. Body keys stay `physics`,
   `physicsSystem`, `collisionSystem`. Each center stores entity id, and
   `x` / `z` / `radius` as raw base plus that value's precision. Restore
-  calls `restoreBroadphase`, which also writes `lastX` / `lastZ` via
-  `FP.ToFloat`. Do not read those fields in simulation. Rebuilding from
-  current transforms is valid only before the first resolving step.
+  calls `restoreBroadphase`, which re-inserts the saved centers into the
+  grid. Rebuilding from current transforms is valid only before the first
+  resolving step.
 
 ## Running a match
 

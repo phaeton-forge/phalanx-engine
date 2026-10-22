@@ -311,22 +311,22 @@ Components backed by contiguous typed arrays (`Float64Array`, `BigInt64Array`, `
 
 #### How to Create a SoAComponent
 
-For physics games, use `TransformComponent` from phalanx-physics instead of defining your own:
+For physics games, use `Transform` from phalanx-physics instead of defining your own:
 
 ```typescript
-import { TransformComponent, TransformSoASchema } from '@phalanx-engine/physics';
+import { attachTransform } from '@phalanx-engine/physics';
 import { FPVector3 } from '@phalanx-engine/math';
 
-entity.addComponent(new TransformComponent(entity.id, FPVector3.FromFloat(10, 0, 20)));
+attachTransform(entity, FPVector3.FromFloat(10, 0, 20));
 ```
 
 For custom SoA components, define a schema and extend `SoAComponent`. For physics bodies, import from phalanx-physics:
 
 ```typescript
-import { PhysicsBodyComponent, PhysicsSoASchema } from '@phalanx-engine/physics';
+import { attachPhysicsBody } from '@phalanx-engine/physics';
 import { FP } from '@phalanx-engine/math';
 
-entity.addComponent(new PhysicsBodyComponent(entity.id, { radius: FP.FromFloat(1.0) }));
+attachPhysicsBody(entity, { radius: FP.FromFloat(1.0) });
 ```
 
 Custom example:
@@ -408,7 +408,7 @@ class SnapshotSystem extends GameSystem implements IBeforeTick, IAfterTick {
 
 Type guards: `isBeforeTick`, `isAfterTick`, `isBeforeFrame`, `isAfterFrame`.
 
-> phalanx-physics `InterpolationSystem` implements `IBeforeTick`, `IAfterTick`, and `IBeforeFrame` — register it via `physicsWorld.getSystems().interpolationSystem` as a frame system and GameWorld handles the rest.
+> phalanx-physics `InterpolationSystem` implements `IAfterTick` and `IBeforeFrame`. Register it via `physicsWorld.getSystems().interpolationSystem`. `afterTick` reads `Interpolation`; tick systems must not.
 
 ### 5. Create Entities
 
@@ -419,16 +419,26 @@ Entities are containers for components. The base `Entity` class from phalanx-ecs
 
 ```typescript
 import { Entity } from '@phalanx-engine/ecs';
-import { TransformComponent, InterpolationComponent } from '@phalanx-engine/physics';
 import { FPVector3 } from '@phalanx-engine/math';
+import { attachTransform, attachInterpolation } from '@phalanx-engine/physics';
 
+const fpPos = FPVector3.FromFloat(0, 0, 0);
+const entity = world.createEntity((id) => {
+  const created = new Entity(id);
+  attachTransform(created, fpPos);
+  attachInterpolation(created, fpPos);
+  return created;
+});
+```
+
+```typescript
 // Option A: Use Entity directly. The world assigns the id.
 const entity = world.createEntity((id) => new Entity(id));
 const fpPos = FPVector3.FromFloat(10, 0, 20);
 entity.addComponent(new HealthComponent(100));
 entity.addComponent(new TeamComponent('red'));
-entity.addComponent(new TransformComponent(entity.id, fpPos));
-entity.addComponent(new InterpolationComponent(fpPos));
+attachTransform(entity, fpPos);
+attachInterpolation(entity, fpPos);
 entityManager.addEntity(entity);
 
 // Option B: Extend Entity for game-specific entities
@@ -439,17 +449,8 @@ class Unit extends Entity {
     super(id);
     this.addComponent(new HealthComponent(health));
     this.addComponent(new TeamComponent(team));
-    this.addComponent(new TransformComponent(this.id, position));
+    attachTransform(this, position);
     this.mesh = this.createMesh(scene);
-  }
-
-  private createMesh(scene: Scene): Mesh {
-    // Create visual mesh (renderer-specific)
-  }
-
-  public dispose(): void {
-    this.mesh?.dispose();
-    super.dispose();
   }
 }
 ```
@@ -653,7 +654,7 @@ class PhysicsSystem extends GameSystem {
 2. **Use `entityIds()`** for deterministic iteration (sorted by entity ID — required for lockstep)
 3. **Cross-store lookup** via `indexOf(entityId)` when correlating two stores (one `Map.get()` per entity vs the facade's `Map.get()` per field access)
 4. **Single-store loops** are the ideal case — zero cross-store overhead
-5. **Sync visual positions** via `InterpolationSystem` + `this.physics.getInterpolatedTransform()` for rendering — do not maintain separate visual position caches on TransformComponent
+5. **Sync visual positions** via `InterpolationSystem` + `this.physics.getInterpolatedTransform()` for rendering. Do not keep a display-float cache on `Transform`.
 
 ### 7. EventBus — Decoupled Communication
 
@@ -1025,7 +1026,7 @@ import { isBeforeTick, isAfterTick, isBeforeFrame, isAfterFrame } from '@phalanx
 
 // Ability / physics contracts (implemented by sibling packages)
 import type { IAbilitySystem } from '@phalanx-engine/ecs';
-import type { IPhysicsWorld, InterpolatedTransformSample } from '@phalanx-engine/ecs';
+import type { IPhysicsWorld } from '@phalanx-engine/ecs';
 
 // Tick/Frame management
 import { TickFrameManager } from '@phalanx-engine/ecs';
@@ -1096,19 +1097,20 @@ export interface ProjectileSpawnArgs {
 }
 
 export class ProjectileEntity extends Entity implements IPoolableEntity<ProjectileSpawnArgs> {
-  private readonly transform: TransformComponent;
   private readonly projectile: ProjectileComponent;
 
   constructor(id: number) {
     super(id);
     this.addComponent(MeshComponent.createProjectile(radius));
     this.projectile = this.addComponent(new ProjectileComponent());
-    this.transform = this.addComponent(new TransformComponent(this.id));
-    this.addComponent(new PhysicsBodyComponent(this.id, { radius }));
+    attachTransform(this);
+    attachPhysicsBody(this, { radius });
+    attachInterpolation(this);
   }
 
   onSpawn(args: ProjectileSpawnArgs): void {
-    this.transform.fpPosition = args.fpPosition;
+    writeFpPosition(this.id, args.fpPosition);
+    attachInterpolation(this, args.fpPosition);
     this.projectile.fpDirection2 = args.fpDirection2;
     this.teamId = args.teamId;
   }

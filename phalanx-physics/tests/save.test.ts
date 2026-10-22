@@ -13,10 +13,14 @@ import { FP } from '@phalanx-engine/math';
 import type { FixedPoint } from '@phalanx-engine/math';
 import {
   CollisionSystem,
-  PhysicsBodyComponent,
+  Interpolation,
+  INTERPOLATION_COMPONENT_TYPE,
   PhysicsSystem,
   PhysicsWorld,
-  TransformComponent,
+  attachInterpolation,
+  attachPhysicsBody,
+  attachTransform,
+  createInterpolationSample,
 } from '../src/index.js';
 import type { PhysicsConfig } from '../src/types.js';
 import { manualTickProvider } from './support/manualTickProvider.js';
@@ -29,21 +33,17 @@ import {
 class Disc extends Entity {
   public constructor(id: number, x: number, z: number) {
     super(id);
-    this.addComponent(
-      new TransformComponent(this.id, {
-        x: FP.FromInt(x),
-        y: FP._0,
-        z: FP.FromInt(z),
-      })
-    );
-    this.addComponent(
-      new PhysicsBodyComponent(this.id, {
-        radius: FP._1,
-        mass: FP._1,
-        restitution: FP.FromFloat(0.5),
-        friction: FP.FromFloat(0.3),
-      })
-    );
+    attachTransform(this, {
+      x: FP.FromInt(x),
+      y: FP._0,
+      z: FP.FromInt(z),
+    });
+    attachPhysicsBody(this, {
+      radius: FP._1,
+      mass: FP._1,
+      restitution: FP.FromFloat(0.5),
+      friction: FP.FromFloat(0.3),
+    });
   }
 }
 
@@ -253,6 +253,43 @@ describe('physics state helpers', () => {
     expect(world.saveSections.map((section) => section.key)).toEqual([
       'physics.broadphase',
     ]);
+  });
+
+  it('restores interpolation only for bodies that had it', () => {
+    const { world } = wiredWorld();
+    const kept = world.createEntity((id) => {
+      const entity = new Entity(id);
+      attachTransform(entity, { x: FP._0, y: FP._0, z: FP._0 });
+      attachPhysicsBody(entity, { radius: FP._1 });
+      attachInterpolation(entity);
+      return entity;
+    });
+    world.entityManager.addEntity(kept);
+    const bare = world.createEntity((id) => {
+      const entity = new Entity(id);
+      attachTransform(entity, { x: FP._0, y: FP._0, z: FP._0 });
+      attachPhysicsBody(entity, { radius: FP._1 });
+      return entity;
+    });
+    world.entityManager.addEntity(bare);
+
+    world.discardTransientComponents();
+    expect(kept.hasComponent(INTERPOLATION_COMPONENT_TYPE)).toBe(false);
+
+    const bytes = finish((writer) => {
+      writeBroadphase(writer, world);
+    });
+    const reader = new BinaryStateReader(bytes);
+    readBroadphase(reader, world);
+    reader.done();
+
+    expect(kept.hasComponent(INTERPOLATION_COMPONENT_TYPE)).toBe(true);
+    expect(bare.hasComponent(INTERPOLATION_COMPONENT_TYPE)).toBe(false);
+    expect(world.get(kept, Interpolation)).toEqual(createInterpolationSample());
+    const again = finish((writer) => {
+      writeBroadphase(writer, world);
+    });
+    expect(again).toEqual(bytes);
   });
 
   it('throws when PhysicsSystem.init has no world', () => {

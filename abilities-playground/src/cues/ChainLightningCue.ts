@@ -13,7 +13,7 @@ import {
   ComponentType,
   MeshComponent,
   StatsComponent,
-  TransformComponent,
+  copyFpPosition,
 } from '../components';
 import {
   CHAIN_LIGHTNING_LIFETIME_SECONDS,
@@ -152,11 +152,8 @@ export class ChainLightningCue extends Cue {
   }
 
   private getAnchor(entity: Entity): THREE.Vector3 | null {
-    const transform = entity.getComponent<TransformComponent>(
-      ComponentType.Transform
-    );
-    if (transform) {
-      const p = FPVector3.ToFloat(transform.fpPosition);
+    if (entity.hasComponent(ComponentType.Transform)) {
+      const p = FPVector3.ToFloat(copyFpPosition(entity.id));
       return new THREE.Vector3(p.x, p.y + BEAM_HEIGHT_OFFSET, p.z);
     }
 

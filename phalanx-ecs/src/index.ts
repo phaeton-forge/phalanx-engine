@@ -85,10 +85,7 @@ export {
 export type { IAbilitySystem } from './IAbilitySystem.js';
 
 // Physics world contract (implemented by phalanx-physics)
-export type {
-  IPhysicsWorld,
-  InterpolatedTransformSample,
-} from './IPhysicsWorld.js';
+export type { IPhysicsWorld } from './IPhysicsWorld.js';
 
 // Match-scoped deterministic RNG contract
 export type { IRandom } from './IRandom.js';

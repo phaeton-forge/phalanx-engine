@@ -425,7 +425,10 @@ function ensureRows(
     if (store.indexOf(id) !== -1) continue;
     const entity = world.entityManager.getEntity(id) ?? pending.get(id);
     if (entity === undefined) continue;
-    if (registration !== undefined) {
+    if (
+      registration !== undefined &&
+      !entity._componentAttached(registration.type)
+    ) {
       entity.addComponent(registration.create(entity.id));
       // Shells are indexed when they are registered later. A startup
       // entity is already in the manager, so the new component has to
@@ -433,7 +436,9 @@ function ensureRows(
       if (pending.get(id) === undefined) {
         world.entityManager.onComponentAdded(entity, registration.type);
       }
-    } else {
+    } else if (store.indexOf(id) === -1) {
+      // Keep a factory row holder. Its spawn defaults are the values
+      // `create` stored; replacing the component would drop them.
       store.add(id, zeroValues(store));
     }
   }

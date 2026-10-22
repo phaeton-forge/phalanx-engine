@@ -7,7 +7,7 @@ import type {
   CueContext,
   GameplayCueDispatchedEvent,
 } from '@phalanx-engine/abilities';
-import { ComponentType, TransformComponent } from '../components';
+import { ComponentType, copyFpPosition } from '../components';
 import { easeOutCubic } from './vfxHelpers';
 
 const DURATION_SECONDS = 0.3;
@@ -174,21 +174,15 @@ export class MachineGunImpactCue extends Cue {
     const source = entityManager.getEntity(event.sourceEntityId);
     if (!source) return null;
 
-    const sourceTransform = source.getComponent<TransformComponent>(
-      ComponentType.Transform
-    );
-    if (!sourceTransform) return null;
+    if (!source.hasComponent(ComponentType.Transform)) return null;
 
-    const src = FPVector3.ToFloat(sourceTransform.fpPosition);
+    const src = FPVector3.ToFloat(copyFpPosition(source.id));
     const target = entityManager.getEntity(event.targetEntityId);
-    const targetTransform = target?.getComponent<TransformComponent>(
-      ComponentType.Transform
-    );
-    if (!target || !targetTransform) {
+    if (!target?.hasComponent(ComponentType.Transform)) {
       return new THREE.Vector3(src.x, src.y, src.z);
     }
 
-    const tgt = FPVector3.ToFloat(targetTransform.fpPosition);
+    const tgt = FPVector3.ToFloat(copyFpPosition(target.id));
 
     const physStore = entityManager.getOrCreateSoAStore(PhysicsSoASchema);
     const physIdx = physStore.indexOf(target.id);

@@ -1,4 +1,3 @@
-import type { TransformComponent } from '@phalanx-engine/physics';
 import { PhysicsWorld } from '@phalanx-engine/physics';
 import { FP, type FixedPoint } from '@phalanx-engine/math';
 import type { AbilityActivationContext } from '@phalanx-engine/abilities';
@@ -8,6 +7,8 @@ import {
   StatsComponent,
   TeamComponent,
   UnitTypeComponent,
+  copyFpPosition,
+  copyFpRotation,
 } from '../components';
 import { MissileEntity } from '../entities/Missile';
 import { ROCKET_MAX_TARGETS } from '../config/abilityDefinitions';
@@ -46,19 +47,17 @@ export const missileVolley = (
     return;
   }
 
+  if (!caster.hasComponent(ComponentType.Transform)) return;
   const team = caster.getComponent<TeamComponent>(ComponentType.Team);
-  const transform = caster.getComponent<TransformComponent>(
-    ComponentType.Transform
-  );
   const unitType = caster.getComponent<UnitTypeComponent>(
     ComponentType.UnitType
   );
-  if (!team || !transform || !unitType) return;
+  if (!team || !unitType) return;
 
   const physics = world.context.physics as PhysicsWorld | undefined;
   if (!physics || !world.pools) return;
 
-  const origin = transform.fpPosition;
+  const origin = copyFpPosition(caster.id);
   const nearby = physics.spatialGrid.queryRadius(
     origin.x,
     origin.z,
@@ -81,7 +80,7 @@ export const missileVolley = (
       teamId: team.teamId,
       volleyIndex: i,
       volleyCount: targets.length,
-      launcherRotation: transform.fpRotation,
+      launcherRotation: copyFpRotation(caster.id),
     });
     dispatchMissileExhaustCue(world, missile.id, ctx.tick);
   }
@@ -113,13 +112,11 @@ function pickNearestEnemies(
     if (!stats?.alive || !team || team.teamId === selfTeam) continue;
     if (!entity.hasComponent(ComponentType.UnitType)) continue;
 
-    const targetTransform = entity.getComponent<TransformComponent>(
-      ComponentType.Transform
-    );
-    if (!targetTransform) continue;
+    if (!entity.hasComponent(ComponentType.Transform)) continue;
+    const targetPosition = copyFpPosition(entity.id);
 
-    const dx = FP.Sub(targetTransform.fpPosition.x, cx);
-    const dz = FP.Sub(targetTransform.fpPosition.z, cz);
+    const dx = FP.Sub(targetPosition.x, cx);
+    const dz = FP.Sub(targetPosition.z, cz);
     const d2 = FP.Add(FP.Mul(dx, dx), FP.Mul(dz, dz));
     // Artillery has a dead zone: skip enemies inside the minimum engage range.
     if (FP.Lt(d2, MIN_ENGAGE_RANGE_SQ)) continue;
