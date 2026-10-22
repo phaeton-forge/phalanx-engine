@@ -29,6 +29,31 @@ Entries collected per package until the synchronized 0.3.0 release
 
 ## @phalanx-engine/ecs
 
+- `defineComponent` is exported from ecs (domain packages import it here).
+  The runtime SoA helper of the same name is unchanged.
+  - SoA: `defineComponent(name, fields, { defaults? })` with `i32`, `u32`,
+    `u8`, `i64`. The store is saved automatically. Registration order and
+    each field's name and type stay in `configHash`. A float throws
+    `defineComponent: field 'x' is f32 and is not saved; use a transient component`.
+  - Object: `{ kind: 'object', create, save?, load? }`. `registerComponent`
+    throws `registerComponent: object component 'Name' requires save and load`
+    when either function is missing. Values are a module save section keyed
+    by the component name. `writeSorted(writer, setOrMap, write)` writes a
+    `Set` or `Map` in key order: UTF-16 code units for strings, numeric
+    order for safe integers. Mixed keys throw
+    `writeSorted: mixed string and number keys`.
+  - Transient: `{ kind: 'transient', create }`. Any fields, including
+    floats and objects. Omitted from the save and from `configHash`.
+  - Access is `world.add(entity, component, values?)`,
+    `world.get(entity, component)` and `world.remove(entity, component)`.
+    A second `add` without `values` throws
+    `world.add: entity N already has 'Name'`. Passing `values` writes
+    those fields. A tick read of a transient component throws
+    `tick system must not branch on transient component 'Name'` (the check
+    runs in every build). `world.discardTransientComponents()` drops them.
+    `restoreWorld` calls that before module sections, and the owner
+    section adds them back at `create()` defaults.
+- Export snapshot: names `[65]` → `[73]`, values `[24]` → `[26]`.
 - The entity id counter is a field of `EntityManager`. Removed
   `resetEntityIdCounter`, `getEntityIdCounter`, `setEntityIdCounter` and
   `nextEntityId`. `new Entity()` is gone: `constructor(id: number)`
@@ -157,6 +182,10 @@ Entries collected per package until the synchronized 0.3.0 release
 
 ## @phalanx-engine/runtime
 
+- `restoreWorld` calls `world.discardTransientComponents()` before module
+  save sections are read. Worlds that do not register a transient
+  component keep the same bytes. The runtime `defineComponent` SoA helper
+  is unchanged; the three-kind `defineComponent` is `@phalanx-engine/ecs`.
 - `./advanced` drops `nextEntityId` and `setEntityIdCounter`. The entity
   id counter is read and written through the world
   (`entityManager.entityIdHighWater` /

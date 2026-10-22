@@ -82,6 +82,9 @@ export function readWorld(world: GameWorld, reader: StateReader): void {
     }
     readEntityIds(reader, world);
     readRandom(reader, world.random);
+    // Transient values are display state. The owner section adds them
+    // back; until then they are absent and the next add uses defaults.
+    world.discardTransientComponents();
     readModuleSections(reader, world);
     singletonHooks(world)?.onRestore?.(reader);
     enableLive(world);

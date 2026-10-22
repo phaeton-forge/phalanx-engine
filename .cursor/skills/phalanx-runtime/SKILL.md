@@ -102,6 +102,12 @@ import { defineComponent, defineGame } from '@phalanx-engine/runtime';
 const Unit = defineComponent('Unit', { hp: 'i64' }, { defaults: { hp: 48n } });
 ```
 
+Object components (`kind: 'object'`, with `save` / `load`) and transient
+display components are `defineComponent` from `@phalanx-engine/ecs`.
+`writeSorted` saves a `Set` or `Map` in key order. A transient component
+is not part of `configHash` or the snapshot; `restoreWorld` drops it
+before module sections run.
+
 Register with `world.registerComponent(Unit)` before spawn. `spawn(world, {
 Unit: { hp: 48n } })`, `despawn(world, entity)` and `each(world, Unit, fn)`
 use that world's entity id counter (`world.createEntity`). The `each` callback receives one

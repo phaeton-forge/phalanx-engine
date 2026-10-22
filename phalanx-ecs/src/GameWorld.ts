@@ -9,8 +9,18 @@ import type { EntityManager } from './EntityManager.js';
 import type { SystemContext } from './SystemContext.js';
 import type { GameSystem } from './GameSystem.js';
 import type { IRandom } from './IRandom.js';
+import type { IComponent } from './Component.js';
 import type { ComponentRegistration } from './ComponentRegistration.js';
-import type { SoASchemaDefinition } from './SoASchema.js';
+import {
+  assertSoaPatch,
+  componentKind,
+  mergeSoaValues,
+  type ObjectComponentDef,
+  type SoaComponentDef,
+  type TransientComponentDef,
+} from './defineComponent.js';
+import type { SoAFieldsOf, SoASchemaDefinition } from './SoASchema.js';
+import type { StateReader, StateWriter } from './state/StateIO.js';
 import { compareSaveSectionKeys, type SaveSection } from './state/sections.js';
 import {
   isBeforeTick,
@@ -139,6 +149,18 @@ export class GameWorld {
 
   /** `registerComponent` order. Snapshot schema order and `configHash`. */
   private readonly _components: ComponentRegistration[] = [];
+
+  /** Object components. Saved as module sections, not SoA stores. */
+  private readonly _objectComponents: StoredObjectComponent[] = [];
+
+  /** Transient components. Omitted from saves and from `configHash`. */
+  private readonly _transientComponents: TransientComponentDef<object>[] = [];
+
+  /**
+   * Nested while a tick pipeline is running. Reading a transient component
+   * here throws: tick code may write one and must not branch on it.
+   */
+  private _tickDepth = 0;
 
   /** Module save sections, kept sorted by key. */
   private readonly _saveSections: SaveSection[] = [];
@@ -321,24 +343,42 @@ export class GameWorld {
   }
 
   /**
-   * Register a `defineComponent` result. Order is registration order:
-   * the SoA store is created now, the component type is registered for
-   * `queryEntities`, and that order plus each field's name and type is
-   * folded into `configHash` by the runtime.
+   * Register a component.
+   *
+   * SoA (including a runtime `defineComponent` result): registration order
+   * is the snapshot schema order. The store is created now, and that order
+   * plus each field's name and type is folded into `configHash`.
+   *
+   * Object: `save` and `load` are required here. The component is written
+   * as a module save section under its name. It is not a SoA schema.
+   *
+   * Transient: not saved and not included in `configHash`.
    */
   public registerComponent<S extends SoASchemaDefinition>(
     component: ComponentRegistration<S>
+  ): void;
+  public registerComponent<T extends object>(
+    component: ObjectComponentDef<T>
+  ): void;
+  public registerComponent<T extends object>(
+    component: TransientComponentDef<T>
+  ): void;
+  public registerComponent(
+    component:
+      | ComponentRegistration
+      | ObjectComponentDef<object>
+      | TransientComponentDef<object>
   ): void {
-    if (this._components.some((existing) => existing.name === component.name)) {
-      throw new Error(
-        `registerComponent: '${component.name}' is already registered`
-      );
+    const kind = componentKind(component);
+    if (kind === 'object') {
+      this.registerObject(component as ObjectComponentDef<object>);
+      return;
     }
-    // SoASchema is invariant in its field map. The registry only needs the
-    // name, the store key, and create().
-    this._components.push(component as unknown as ComponentRegistration);
-    this.entityManager.registerComponentTypes([component.type]);
-    this.entityManager.getOrCreateSoAStore(component.schema);
+    if (kind === 'transient') {
+      this.registerTransient(component as TransientComponentDef<object>);
+      return;
+    }
+    this.registerSoa(component as ComponentRegistration);
   }
 
   /**
@@ -364,7 +404,7 @@ export class GameWorld {
     return this._saveSections.slice();
   }
 
-  /** Registered component names in registration order. */
+  /** SoA component names in registration order. Object and transient are omitted. */
   public componentNames(): readonly string[] {
     return this._components.map((component) => component.name);
   }
@@ -422,9 +462,15 @@ export class GameWorld {
 
   /**
    * Run all tick-based systems for the given tick.
+   * Reading a transient component from a tick system throws.
    */
   public processAllTicks(tick: number): void {
-    this.systemRegistry.processAllTicks(tick);
+    this.enterTick();
+    try {
+      this.systemRegistry.processAllTicks(tick);
+    } finally {
+      this.leaveTick();
+    }
   }
 
   /**
@@ -470,11 +516,16 @@ export class GameWorld {
     // Subscribe to tick events
     this.unsubscribeTick = this.provider.onTick((tick, commands) => {
       if (this._paused) return;
-      for (const s of this.beforeTickSystems) s.beforeTick(tick, commands);
-      hooks?.beforeTick?.(tick, commands);
-      this.processAllTicks(tick);
-      for (const s of this.afterTickSystems) s.afterTick(tick);
-      hooks?.afterTick?.(tick);
+      this.enterTick();
+      try {
+        for (const s of this.beforeTickSystems) s.beforeTick(tick, commands);
+        hooks?.beforeTick?.(tick, commands);
+        this.processAllTicks(tick);
+        for (const s of this.afterTickSystems) s.afterTick(tick);
+        hooks?.afterTick?.(tick);
+      } finally {
+        this.leaveTick();
+      }
     });
 
     // Subscribe to frame events
@@ -520,5 +571,398 @@ export class GameWorld {
     }
     this.systemRegistry.dispose();
     SoAComponent.resetContext();
+  }
+
+  /**
+   * Attach `component` to `entity`. A later call with `values` writes those
+   * fields and leaves the rest. The same call without `values` throws when
+   * the component is already present.
+   */
+  public add<S extends SoASchemaDefinition>(
+    entity: Entity,
+    component: SoaComponentDef<S>,
+    values?: Partial<SoAFieldsOf<S>>
+  ): void;
+  public add<T extends object>(
+    entity: Entity,
+    component: ObjectComponentDef<T> | TransientComponentDef<T>,
+    values?: Partial<T>
+  ): void;
+  public add(
+    entity: Entity,
+    component:
+      | SoaComponentDef
+      | ObjectComponentDef<object>
+      | TransientComponentDef<object>,
+    values?: object
+  ): void {
+    this.assertEntity(entity, 'world.add');
+    this.assertRegistered(component, 'world.add');
+    if (componentKind(component) === 'soa') {
+      this.addSoa(entity, component as SoaComponentDef, values);
+      return;
+    }
+    this.addValue(
+      entity,
+      component as ObjectComponentDef<object> | TransientComponentDef<object>,
+      values
+    );
+  }
+
+  /**
+   * Current value of `component` on `entity`, or `undefined` when absent.
+   * A SoA result is a copy. An object or transient result is the stored
+   * instance. Reading a transient component during a tick throws.
+   */
+  public get<S extends SoASchemaDefinition>(
+    entity: Entity,
+    component: SoaComponentDef<S>
+  ): SoAFieldsOf<S> | undefined;
+  public get<T extends object>(
+    entity: Entity,
+    component: ObjectComponentDef<T> | TransientComponentDef<T>
+  ): T | undefined;
+  public get(
+    entity: Entity,
+    component:
+      | SoaComponentDef
+      | ObjectComponentDef<object>
+      | TransientComponentDef<object>
+  ): object | undefined {
+    this.assertEntity(entity, 'world.get');
+    if (componentKind(component) === 'transient' && this._tickDepth > 0) {
+      throw new Error(
+        `tick system must not branch on transient component '${component.name}'`
+      );
+    }
+    this.assertRegistered(component, 'world.get');
+    if (componentKind(component) === 'soa') {
+      return this.readSoa(entity, component as SoaComponentDef);
+    }
+    return this.readValue(entity, component.type);
+  }
+
+  /** Detach `component` from `entity`. Returns whether it was present. */
+  public remove(
+    entity: Entity,
+    component: { readonly name: string; readonly type: symbol }
+  ): boolean {
+    this.assertEntity(entity, 'world.remove');
+    this.assertRegistered(component, 'world.remove');
+    const soa = this.soaRegistration(component.type);
+    if (soa !== undefined) {
+      const store = this.entityManager.getSoAStore(soa.schema);
+      const hadRow = store?.remove(entity.id) ?? false;
+      return this.detach(entity, component.type) || hadRow;
+    }
+    return this.detach(entity, component.type);
+  }
+
+  /**
+   * Drop every transient component. `restoreWorld` calls this before module
+   * save sections run, so the owner section can add them back at defaults.
+   */
+  public discardTransientComponents(): void {
+    for (const component of this._transientComponents) {
+      const entities = this.entityManager.queryEntities(component.type);
+      for (const entity of entities) {
+        this.detach(entity, component.type);
+      }
+    }
+  }
+
+  private registerSoa(component: ComponentRegistration): void {
+    this.assertNameFree(component.name);
+    // SoASchema is invariant in its field map. The registry only needs the
+    // name, the store key, and create().
+    this._components.push(component);
+    this.entityManager.registerComponentTypes([component.type]);
+    this.entityManager.getOrCreateSoAStore(component.schema);
+  }
+
+  private registerObject(component: ObjectComponentDef<object>): void {
+    if (
+      typeof component.save !== 'function' ||
+      typeof component.load !== 'function'
+    ) {
+      throw new Error(
+        `registerComponent: object component '${component.name}' requires save and load`
+      );
+    }
+    this.assertNameFree(component.name);
+    const stored: StoredObjectComponent = {
+      name: component.name,
+      type: component.type,
+      create: () =>
+        requireComponentObject(component.name, 'create', component.create()),
+      save: (value, writer) => {
+        component.save?.(value, writer);
+      },
+      load: (reader) =>
+        requireComponentObject(
+          component.name,
+          'load',
+          component.load?.(reader)
+        ),
+    };
+    this._objectComponents.push(stored);
+    this.entityManager.registerComponentTypes([component.type]);
+    this.registerSaveSection({
+      key: component.name,
+      version: 1,
+      write: (writer, world) => {
+        writeObjectComponent(world, stored, writer);
+      },
+      read: (reader, world) => {
+        readObjectComponent(world, stored, reader);
+      },
+    });
+  }
+
+  private registerTransient(component: TransientComponentDef<object>): void {
+    if (typeof component.create !== 'function') {
+      throw new Error(
+        `defineComponent: transient component '${component.name}' requires create`
+      );
+    }
+    this.assertNameFree(component.name);
+    this._transientComponents.push(component);
+    this.entityManager.registerComponentTypes([component.type]);
+  }
+
+  private assertNameFree(name: string): void {
+    if (this.componentNameTaken(name)) {
+      throw new Error(`registerComponent: '${name}' is already registered`);
+    }
+  }
+
+  private componentNameTaken(name: string): boolean {
+    if (this._components.some((existing) => existing.name === name)) {
+      return true;
+    }
+    if (this._objectComponents.some((existing) => existing.name === name)) {
+      return true;
+    }
+    if (this._transientComponents.some((existing) => existing.name === name)) {
+      return true;
+    }
+    return this._saveSections.some((existing) => existing.key === name);
+  }
+
+  private assertEntity(entity: Entity, label: string): void {
+    if (this.entityManager.getEntity(entity.id) !== entity) {
+      throw new Error(
+        `${label}: entity ${String(entity.id)} is not in this world`
+      );
+    }
+  }
+
+  private assertRegistered(
+    component: { readonly name: string; readonly type: symbol },
+    label: string
+  ): void {
+    if (!this.ownsComponent(component.type)) {
+      throw new Error(
+        `${label}: component '${component.name}' is not registered`
+      );
+    }
+  }
+
+  private soaRegistration(type: symbol): ComponentRegistration | undefined {
+    for (const existing of this._components) {
+      if (existing.type === type) return existing;
+    }
+    return undefined;
+  }
+
+  private ownsComponent(type: symbol): boolean {
+    if (this._components.some((existing) => existing.type === type)) {
+      return true;
+    }
+    if (this._objectComponents.some((existing) => existing.type === type)) {
+      return true;
+    }
+    return this._transientComponents.some((existing) => existing.type === type);
+  }
+
+  private addSoa(
+    entity: Entity,
+    component: SoaComponentDef,
+    values: object | undefined
+  ): void {
+    const store = this.entityManager.getOrCreateSoAStore(component.schema);
+    const hasRow = store.indexOf(entity.id) !== -1;
+    const hasComponent = entity.hasComponent(component.type);
+    if (hasRow !== hasComponent) {
+      throw new Error(
+        `world.add: entity ${String(entity.id)} component '${component.name}' is out of sync with its store`
+      );
+    }
+    const patch = values as
+      Partial<SoAFieldsOf<SoASchemaDefinition>> | undefined;
+    if (hasRow) {
+      if (patch === undefined) {
+        throw new Error(
+          `world.add: entity ${String(entity.id)} already has '${component.name}'`
+        );
+      }
+      assertSoaPatch(component, patch);
+      store.set(entity.id, patch);
+      return;
+    }
+    store.add(entity.id, mergeSoaValues(component, patch));
+    entity.addComponent({ type: component.type });
+    this.entityManager.onComponentAdded(entity, component.type);
+  }
+
+  private addValue(
+    entity: Entity,
+    component: ObjectComponentDef<object> | TransientComponentDef<object>,
+    values: object | undefined
+  ): void {
+    const existing = this.readValue(entity, component.type);
+    if (existing !== undefined) {
+      if (values === undefined) {
+        throw new Error(
+          `world.add: entity ${String(entity.id)} already has '${component.name}'`
+        );
+      }
+      assignComponentValues(component.name, existing, values);
+      return;
+    }
+    const created = requireComponentObject(
+      component.name,
+      'create',
+      component.create()
+    );
+    if (values !== undefined) {
+      assignComponentValues(component.name, created, values);
+    }
+    entity.addComponent(new ValueComponent(component.type, created));
+    this.entityManager.onComponentAdded(entity, component.type);
+  }
+
+  private readSoa(
+    entity: Entity,
+    component: SoaComponentDef
+  ): object | undefined {
+    const store = this.entityManager.getSoAStore(component.schema);
+    const hasRow = store !== undefined && store.indexOf(entity.id) !== -1;
+    const hasComponent = entity.hasComponent(component.type);
+    if (hasRow !== hasComponent) {
+      throw new Error(
+        `world.get: entity ${String(entity.id)} component '${component.name}' is out of sync with its store`
+      );
+    }
+    return store?.get(entity.id);
+  }
+
+  private readValue(entity: Entity, type: symbol): object | undefined {
+    return entity.getComponent<ValueComponent>(type)?.value;
+  }
+
+  private detach(entity: Entity, type: symbol): boolean {
+    const had = entity.removeComponent(type);
+    if (had) this.entityManager.onComponentRemoved(entity, type);
+    return had;
+  }
+
+  private enterTick(): void {
+    this._tickDepth += 1;
+  }
+
+  private leaveTick(): void {
+    this._tickDepth -= 1;
+  }
+}
+
+class ValueComponent implements IComponent {
+  public constructor(
+    public readonly type: symbol,
+    public value: object
+  ) {}
+}
+
+interface StoredObjectComponent {
+  readonly name: string;
+  readonly type: symbol;
+  create(): object;
+  save(value: object, writer: StateWriter): void;
+  load(reader: StateReader): object;
+}
+
+function requireComponentObject(
+  name: string,
+  verb: 'create' | 'load',
+  value: unknown
+): object {
+  if (value === null || typeof value !== 'object') {
+    throw new Error(
+      `defineComponent '${name}': ${verb}() must return an object`
+    );
+  }
+  return value;
+}
+
+function assignComponentValues(
+  name: string,
+  target: object,
+  values: object
+): void {
+  if (values === null || typeof values !== 'object') {
+    throw new Error(`world.add: '${name}' values must be an object`);
+  }
+  Object.assign(target, values);
+}
+
+function writeObjectComponent(
+  world: GameWorld,
+  component: StoredObjectComponent,
+  writer: StateWriter
+): void {
+  const entities = world.entityManager.queryEntities(component.type);
+  writer.list(entities, (entity, item) => {
+    item.u32(entity.id);
+    const held = entity.getComponent<ValueComponent>(component.type);
+    if (held === undefined) {
+      throw new Error(
+        `save: entity ${String(entity.id)} is missing '${component.name}'`
+      );
+    }
+    component.save(held.value, item);
+  });
+}
+
+function readObjectComponent(
+  world: GameWorld,
+  component: StoredObjectComponent,
+  reader: StateReader
+): void {
+  const saved = new Set<number>();
+  reader.list((item) => {
+    const id = item.u32();
+    const value = component.load(item);
+    const entity = world.entityManager.getEntity(id);
+    if (entity === undefined) {
+      throw new Error(
+        `restore: object component '${component.name}' entity ${String(id)} is missing`
+      );
+    }
+    const existing = entity.getComponent<ValueComponent>(component.type);
+    if (existing !== undefined) {
+      existing.value = value;
+    } else {
+      entity.addComponent(new ValueComponent(component.type, value));
+      world.entityManager.onComponentAdded(entity, component.type);
+    }
+    saved.add(id);
+    return id;
+  });
+  const live = world.entityManager.queryEntities(component.type);
+  for (const entity of live) {
+    if (!saved.has(entity.id)) {
+      const had = entity.removeComponent(component.type);
+      if (had) world.entityManager.onComponentRemoved(entity, component.type);
+    }
   }
 }

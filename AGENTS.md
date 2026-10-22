@@ -288,6 +288,22 @@ public processTick(): void {
   `initialValues`. A shared/mutable defaults object causes pooled respawns to
   drift.
 
+### 4.3.1 `defineComponent` (ecs)
+
+Domain code imports `defineComponent` from `@phalanx-engine/ecs`. The
+runtime helper of the same name remains the SoA registration used by
+`defineGame` until it is removed.
+
+- SoA fields are `i32`, `u32`, `u8`, `i64`. They are saved and included in
+  `configHash`. `f32` / `f64` are rejected.
+- Object components require `save` and `load` at `registerComponent`.
+  `save` writes `Set` and `Map` values with `writeSorted` (string keys in
+  UTF-16 order, safe-integer keys in numeric order).
+- Transient components are display state. They are not saved and are not
+  part of `configHash`. Tick code may `world.add` them and MUST NOT read
+  them; a tick read throws. After `restoreWorld`, the owning module's
+  save section adds them back at `create()` defaults.
+
 ### 4.4 Entity lifecycle
 
 - Create: `world.createEntity((id) => new Entity(id))` (or a subclass whose

@@ -158,6 +158,34 @@ export const ComponentType = createComponentTypeRegistry({
 
 Phalanx ECS offers two component types. **Choosing the right one is critical for performance and correctness.**
 
+Domain packages define new components with `defineComponent` from this package. The runtime package still exports an SoA-only helper used by `defineGame`.
+
+```typescript
+import { defineComponent, writeSorted } from '@phalanx-engine/ecs';
+
+const Hp = defineComponent('Hp', { hp: 'i64' });
+const Bag = defineComponent('Bag', {
+  kind: 'object',
+  create: () => ({ tags: new Set<string>() }),
+  save(value, writer) {
+    writeSorted(writer, value.tags, (tag, item) => item.str(tag));
+  },
+  load(reader) {
+    return { tags: new Set(reader.list((item) => item.str())) };
+  },
+});
+const Visual = defineComponent('Visual', {
+  kind: 'transient',
+  create: () => ({ x: 0 }),
+});
+
+world.registerComponent(Hp);
+world.add(entity, Hp, { hp: 4n });
+world.get(entity, Hp);
+```
+
+SoA fields are `i32`, `u32`, `u8`, `i64` (saved, included in `configHash`). An object component must pass `save` and `load` to `registerComponent`. `writeSorted` orders `Set` and `Map` keys. A transient component is display-only: not saved, not in `configHash`, and a tick system that reads it throws. `restoreWorld` drops transient components; the owner save section adds them back at defaults.
+
 ### IComponent (Standard Components)
 
 Simple class-based components that store data in regular object properties. Attached to entities via `entity.addComponent()`.
