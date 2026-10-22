@@ -20,6 +20,7 @@ import {
   attachInterpolation,
   attachPhysicsBody,
   attachTransform,
+  interpolationOf,
 } from '../src/index.js';
 import type { PhysicsConfig } from '../src/types.js';
 import { manualTickProvider } from './support/manualTickProvider.js';
@@ -309,6 +310,19 @@ describe('physics state helpers', () => {
       writeBroadphase(writer, world);
     });
     expect(again).toEqual(bytes);
+  });
+
+  it('stores interpolation in one ValueComponent for attach and world.get', () => {
+    const { world } = wiredWorld();
+    const entity = world.createEntityWithId(1);
+    const sample = attachInterpolation(entity, {
+      x: FP.FromInt(2),
+      y: FP._0,
+      z: FP._0,
+    });
+    expect(world.get(entity, Interpolation)).toBe(sample);
+    expect(interpolationOf(entity)).toBe(sample);
+    expect(sample.currentFpPosition.x).toEqual(FP.FromInt(2));
   });
 
   it('throws when PhysicsSystem.init has no world', () => {

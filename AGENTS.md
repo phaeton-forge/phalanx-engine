@@ -303,8 +303,10 @@ runtime helper of the same name remains the SoA registration used by
   UTF-16 order, safe-integer keys in numeric order).
 - Transient components are display state. They are not saved and are not
   part of `configHash`. Tick code may `world.add` them and MUST NOT read
-  them; a tick read throws. After `restoreWorld`, the owning module's
-  save section adds them back at `create()` defaults.
+  them; a tick read throws, including `entity.hasComponents`. After
+  `restoreWorld`, physics ignores `discardedTransientIds` and seeds
+  `Interpolation` from `Transform` for every entity that has `Transform`
+  and `PhysicsBody`. Object and transient values are a `ValueComponent`.
 
 ### 4.4 Entity lifecycle
 

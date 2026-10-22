@@ -171,8 +171,8 @@ export class GameWorld {
 
   /**
    * Entity ids that had each transient component at the last
-   * {@link discardTransientComponents}. The owner module reads this from
-   * its save section and adds the component back at `create()` defaults.
+   * {@link discardTransientComponents}. Physics does not read this list:
+   * `readBroadphase` seeds `Interpolation` from `Transform`.
    */
   private readonly _discardedTransient = new Map<symbol, number[]>();
 
@@ -681,7 +681,8 @@ export class GameWorld {
 
   /**
    * Drop every transient component. `restoreWorld` calls this before module
-   * save sections run, so the owner section can add them back at defaults.
+   * save sections run. Physics ignores the recorded ids and seeds
+   * `Interpolation` from `Transform` for every body.
    */
   public discardTransientComponents(): void {
     this._discardedTransient.clear();
@@ -699,7 +700,9 @@ export class GameWorld {
   /**
    * Entity ids that held `type` when {@link discardTransientComponents}
    * last ran. Empty when that type was not registered or nobody had it.
-   * The owner save section adds the component back at defaults.
+   * Physics does not read this. `readBroadphase` attaches `Interpolation`
+   * to every `Transform` + `PhysicsBody` and copies the transform into
+   * both samples.
    */
   public discardedTransientIds(type: symbol): readonly number[] {
     return this._discardedTransient.get(type) ?? [];
@@ -933,10 +936,15 @@ export class GameWorld {
   }
 }
 
-class ValueComponent implements IComponent {
+/**
+ * Holder for an object or transient `defineComponent` value.
+ * `world.add` and direct attaches (such as interpolation) use this one
+ * class, so a later `world.get` reads the same object.
+ */
+export class ValueComponent<T extends object = object> implements IComponent {
   public constructor(
     public readonly type: symbol,
-    public value: object
+    public value: T
   ) {}
 }
 

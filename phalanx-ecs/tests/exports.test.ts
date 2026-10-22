@@ -137,6 +137,7 @@ const ROOT_NAMES = [
   'TransientComponentDef',
   'TypedArrayLike',
   'Unsubscribe',
+  'ValueComponent',
   'calculateSchemaByteSize',
   'createComponentTypeRegistry',
   'defineComponent',
@@ -166,6 +167,7 @@ const ROOT_VALUES = [
   'SystemContext',
   'SystemRegistry',
   'TYPED_ARRAY_CONSTRUCTORS',
+  'ValueComponent',
   'calculateSchemaByteSize',
   'createComponentTypeRegistry',
   'defineComponent',
@@ -220,10 +222,10 @@ describe('@phalanx-engine/ecs exports', () => {
     }
     expect(
       resolved.map((entry) => actual.get(entry.file)?.names.length)
-    ).toEqual([72]);
+    ).toEqual([73]);
     expect(
       resolved.map((entry) => actual.get(entry.file)?.values.length)
-    ).toEqual([26]);
+    ).toEqual([27]);
   });
 
   it('loads each entry by package name', async () => {

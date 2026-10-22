@@ -649,7 +649,7 @@ world.add(entity, Hp, { hp: 4n });
 world.get(entity, Hp); // { hp: 4n }
 ```
 
-SoA fields are `i32`, `u32`, `u8`, `i64`. They are saved and included in `configHash`. An object component without `save` and `load` throws at `registerComponent`. `writeSorted` orders `Set` and `Map` keys (UTF-16 for strings, numeric for safe integers). A transient component is display-only: it is omitted from the save and from `configHash`, and a tick system that reads it throws. `restoreWorld` drops transient components first; the owning module's save section adds them back at `create()` defaults.
+SoA fields are `i32`, `u32`, `u8`, `i64`. They are saved and included in `configHash`. An object component without `save` and `load` throws at `registerComponent`. `writeSorted` orders `Set` and `Map` keys (UTF-16 for strings, numeric for safe integers). A transient component is display-only: it is omitted from the save and from `configHash`, and a tick system that reads it (`world.get`, `getComponent`, `hasComponent`, `hasComponents`, or a query) throws. `restoreWorld` drops transient components first. Physics does not use the discarded-id list: `readBroadphase` attaches `Interpolation` to every entity with `Transform` and `PhysicsBody` and seeds both samples from the transform. Object and transient values are stored in `ValueComponent`.
 
 `EntityPool` remains available as a low-level storage primitive; prefer `PoolManager.spawn()` / `despawn()` for gameplay entities.
 

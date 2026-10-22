@@ -206,6 +206,32 @@ describe('defineComponent', () => {
     expect(game.get(entity, visual)?.x).toBe(4);
   });
 
+  it('stops a tick system from branching on hasComponents', () => {
+    const game = world();
+    const visual = defineComponent('Visual', {
+      kind: 'transient',
+      create: () => ({ x: 0 }),
+    });
+    game.registerComponent(visual);
+    const entity = game.createEntityWithId(1);
+    game.add(entity, visual, { x: 4 });
+
+    class Branch extends GameSystem {
+      public saw = false;
+
+      public override processTick(): void {
+        this.saw = entity.hasComponents(visual.type);
+      }
+    }
+    const branch = new Branch();
+    game.registerSystems([branch], []);
+    expect(() => game.processAllTicks(1)).toThrow(
+      "tick system must not branch on transient component 'Visual'"
+    );
+    expect(branch.saw).toBe(false);
+    expect(entity.hasComponents(visual.type)).toBe(true);
+  });
+
   it('lets a tick system write a transient component and a frame system read it', () => {
     const game = world();
     const visual = defineComponent('Visual', {

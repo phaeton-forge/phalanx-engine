@@ -56,10 +56,13 @@ Entries collected per package until the synchronized 0.3.0 release
     `entityManager.queryEntities` / `queryEntitiesAny` (every build).
     `beforeTick` and tick systems run inside that guard. `afterTick`
     (systems and `hooks.afterTick`) runs after it, so presentation can
-    read interpolation there. `world.discardTransientComponents()` drops
+    read interpolation there. The same throw comes from
+    `entity.hasComponents`. `world.discardTransientComponents()` drops
     them and records the entity ids (`discardedTransientIds`).
-    `restoreWorld` calls that before module sections, and the owner
-    section adds them back at `create()` defaults.
+    `restoreWorld` calls that before module sections. Physics ignores
+    that list: `readBroadphase` attaches `Interpolation` to every entity
+    with `Transform` and `PhysicsBody` and seeds both samples from the
+    transform. Object and transient values are held by `ValueComponent`.
   - `componentNames()` returns only SoA components, in registration order.
     Object and transient components are omitted. `registerComponent`
     throws `registerComponent: 'Name' is already registered` when a save
@@ -72,6 +75,9 @@ Entries collected per package until the synchronized 0.3.0 release
     `SoAComponent` context is not consulted.
 - `InterpolatedTransformSample` is no longer exported. The render sample
   type lives on `@phalanx-engine/physics`.
+- `ValueComponent` is exported. It is the only holder for object and
+  transient values, including `Interpolation`. Export snapshot: names
+  `[72]` → `[73]`, values `[26]` → `[27]`.
 - Export snapshot: names `[73]` → `[72]`, values `[26]` stay `[26]`.
 - Export snapshot: names `[65]` → `[73]`, values `[24]` → `[26]`.
 - The entity id counter is a field of `EntityManager`. Removed

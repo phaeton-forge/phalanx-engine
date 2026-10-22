@@ -1,10 +1,5 @@
-import type {
-  Entity,
-  GameWorld,
-  IComponent,
-  SoAComponentStore,
-} from '@phalanx-engine/ecs';
-import { defineComponent } from '@phalanx-engine/ecs';
+import type { Entity, GameWorld, SoAComponentStore } from '@phalanx-engine/ecs';
+import { defineComponent, ValueComponent } from '@phalanx-engine/ecs';
 import {
   FP,
   type FPQuaternion as FPQuaternionType,
@@ -34,11 +29,7 @@ export const Interpolation = defineComponent<InterpolationSample>(
 
 export const INTERPOLATION_COMPONENT_TYPE: symbol = Interpolation.type;
 
-class InterpolationHolder implements IComponent {
-  public readonly type = INTERPOLATION_COMPONENT_TYPE;
-
-  public constructor(public value: InterpolationSample) {}
-}
+type InterpolationValue = ValueComponent<InterpolationSample>;
 
 export function createInterpolationSample(
   position?: FPVector3Type,
@@ -63,7 +54,7 @@ export function attachInterpolation(
   position?: FPVector3Type,
   rotation?: FPQuaternionType
 ): InterpolationSample {
-  const existing = entity._peekComponent<InterpolationHolder>(
+  const existing = entity._peekComponent<InterpolationValue>(
     INTERPOLATION_COMPONENT_TYPE
   );
   if (existing !== undefined) {
@@ -72,7 +63,7 @@ export function attachInterpolation(
     return existing.value;
   }
   const value = createInterpolationSample(position, rotation);
-  entity.addComponent(new InterpolationHolder(value));
+  entity.addComponent(new ValueComponent(INTERPOLATION_COMPONENT_TYPE, value));
   entity._manager?.onComponentAdded(entity, INTERPOLATION_COMPONENT_TYPE);
   return value;
 }
@@ -80,7 +71,7 @@ export function attachInterpolation(
 export function interpolationOf(
   entity: Entity
 ): InterpolationSample | undefined {
-  return entity.getComponent<InterpolationHolder>(INTERPOLATION_COMPONENT_TYPE)
+  return entity.getComponent<InterpolationValue>(INTERPOLATION_COMPONENT_TYPE)
     ?.value;
 }
 
@@ -115,7 +106,7 @@ export function restoreOwnedInterpolation(world: GameWorld): void {
     if (!entity._componentAttached(INTERPOLATION_COMPONENT_TYPE)) {
       world.add(entity, Interpolation);
     }
-    const sample = entity._peekComponent<InterpolationHolder>(
+    const sample = entity._peekComponent<InterpolationValue>(
       INTERPOLATION_COMPONENT_TYPE
     )?.value;
     if (sample === undefined) continue;

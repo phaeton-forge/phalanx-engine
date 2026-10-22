@@ -109,10 +109,11 @@ export class Entity {
   }
 
   /**
-   * Check if entity has all specified components
+   * Check if entity has all specified components.
+   * Reading a transient component during a tick throws.
    */
   public hasComponents(...types: symbol[]): boolean {
-    return types.every((type) => this.components.has(type));
+    return types.every((type) => this.hasComponent(type));
   }
 
   /**
