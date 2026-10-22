@@ -409,43 +409,41 @@ Components backed by contiguous typed arrays (`Float64Array`, `BigInt64Array`, e
 import { SoAComponent, defineSoASchema } from '@phalanx-engine/ecs';
 
 // 1. Define a schema — maps field names to typed-array element types
-const PhysicsSoASchema = defineSoASchema(
+const VelocitySoASchema = defineSoASchema(
   {
     velocityX: 'i64', // BigInt64Array — deterministic fixed-point
     velocityY: 'i64',
     velocityZ: 'i64',
-    radius: 'i64',
-    isStatic: 'u8', // Uint8Array — boolean flag
+    speed: 'i64',
   },
-  'PhysicsBody'
+  'Velocity'
 );
 
 // 2. Extend SoAComponent
-class PhysicsBodyComponent extends SoAComponent<
-  typeof PhysicsSoASchema.definition
+class VelocityComponent extends SoAComponent<
+  typeof VelocitySoASchema.definition
 > {
-  public readonly type = ComponentType.PhysicsBody;
-  static readonly soaSchema = PhysicsSoASchema;
+  public readonly type = ComponentType.Velocity;
+  static readonly soaSchema = VelocitySoASchema;
 
-  constructor(entityId: number, radius: bigint) {
-    super(PhysicsSoASchema, entityId, {
+  constructor(entityId: number, speed: bigint) {
+    super(VelocitySoASchema, entityId, {
       velocityX: 0n,
       velocityY: 0n,
       velocityZ: 0n,
-      radius: radius,
-      isStatic: 0,
+      speed,
     });
   }
 
   // Getters/setters provide a clean API over raw array access
-  get radiusRaw(): bigint {
-    return this.store.arrays.radius[this.getIndex()];
+  get speedRaw(): bigint {
+    return this.store.arrays.speed[this.getIndex()];
   }
 }
 
 // 3. Hot-path systems should bypass the component facade and access arrays directly
 //    Cache store references in init(), iterate entityIds() in tick methods
-const store = entityManager.getSoAStore(PhysicsSoASchema)!;
+const store = entityManager.getSoAStore(VelocitySoASchema)!;
 
 // Single-store loop — ideal case, zero cross-store overhead
 for (const entityId of store.entityIds()) {
@@ -486,8 +484,8 @@ Stores are **lazily created** when the first `SoAComponent` of a given schema is
 
 ```
 GameWorld created → SoAComponent.useEntityManager(em)
-First PhysicsBodyComponent constructed → store created in EntityManager
-Subsequent PhysicsBodyComponents → share the same store
+First SoA row for a schema → store created in that world's EntityManager
+Later rows of that schema → share the same store
 GameWorld disposed → SoAComponent.resetContext()
 ```
 
@@ -529,6 +527,11 @@ Attach all components once in the entity constructor. Use `IPoolableEntity` for 
 
 ```typescript
 import { GameWorld, Entity, type IPoolableEntity } from '@phalanx-engine/ecs';
+import {
+  attachPhysicsBody,
+  attachTransform,
+  writeFpPosition,
+} from '@phalanx-engine/physics';
 
 export interface ProjectileSpawnArgs {
   fpPosition: FPVector3;
@@ -540,20 +543,18 @@ export class ProjectileEntity
   extends Entity
   implements IPoolableEntity<ProjectileSpawnArgs>
 {
-  private readonly transform: TransformComponent;
   private readonly projectile: ProjectileComponent;
 
-  constructor() {
-    super();
+  constructor(id: number) {
+    super(id);
     this.addComponent(MeshComponent.createProjectile(radius));
     this.projectile = this.addComponent(new ProjectileComponent());
-    // SoA rows are auto-managed — attach wrappers once, never call reattach/detach
-    this.transform = this.addComponent(new TransformComponent(this.id));
-    this.addComponent(new PhysicsBodyComponent(this.id, { radius }));
+    attachTransform(this);
+    attachPhysicsBody(this, { radius });
   }
 
   onSpawn(args: ProjectileSpawnArgs): void {
-    this.transform.fpPosition = args.fpPosition;
+    writeFpPosition(this.id, args.fpPosition);
     this.projectile.fpDirection2 = args.fpDirection2;
     this.teamId = args.teamId;
   }
@@ -569,7 +570,7 @@ const world = new GameWorld({
     autoPrewarm: true,
     entityTypes: {
       projectile: {
-        factory: () => new ProjectileEntity(),
+        factory: (id) => new ProjectileEntity(id),
         pool: { initialSize: 50, maxSize: 200 },
       },
     },

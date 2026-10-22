@@ -32,7 +32,7 @@ A deterministic, fixed-point physics engine for the [Phalanx Engine](../README.m
 ### Transform & Interpolation
 
 - **Transform**: SoA fixed-point position and quaternion (`Transform`, `TransformSoASchema`, `TRANSFORM_COMPONENT_TYPE`). Attach with `attachTransform`. Read and write with `readFpPosition` / `writeFpPosition`, `readFpRotation` / `writeFpRotation`, `readYaw` / `writeYaw`. Reads return shared scratch.
-- **Interpolation**: transient tick samples (`Interpolation`, `INTERPOLATION_COMPONENT_TYPE`). `attachInterpolation` before the entity is registered. `readBroadphase` adds it back at `create()` defaults for entities that had it.
+- **Interpolation**: transient tick samples (`Interpolation`, `INTERPOLATION_COMPONENT_TYPE`). `attachInterpolation` before the entity is registered. `readBroadphase` attaches it to every entity that has `Transform` and `PhysicsBody`, seeded from that transform.
 - **InterpolationSystem**: `afterTick` snapshots then captures; `beforeFrame` interpolates (`IAfterTick`, `IBeforeFrame`). Tick systems must not branch on `Interpolation`.
 - **PhysicsBody**: SoA velocity, radius, mass, restitution, friction, isStatic, ignorePhysics, useGravity, and gravityMultiplier (`PhysicsBody`, `PhysicsSoASchema`, `PHYSICS_BODY_COMPONENT_TYPE`). No display-float caches. Attach with `attachPhysicsBody`. Velocity helpers: `readVelocity`, `setVelocity`, `addVelocity`, `stopVelocity`.
 - **PhysicsSoASchema**: Schema definition for the SoA storage layout
@@ -532,7 +532,7 @@ writeFpRotation(entity.id, fpRotation);
 setVelocity(entity.id, vx, vy, vz);
 ```
 
-`readFpPosition`, `readFpRotation`, and `readVelocity` return shared scratch. Copy before the next read. `readBroadphase` restores `Interpolation` at `create()` defaults for entities that had it. `InterpolationSystem.afterTick` snapshots then captures. Tick code must not branch on `Interpolation`.
+`readFpPosition`, `readFpRotation`, and `readVelocity` return shared scratch. Copy before the next read. `readBroadphase` attaches `Interpolation` to every `Transform` + `PhysicsBody`, seeded from the transform. `InterpolationSystem.afterTick` snapshots then captures. Tick code must not branch on `Interpolation`.
 
 `PhysicsBody` fields: `velocityX/Y/Z`, `radius`, `mass`, `restitution`, `friction`, `isStatic`, `ignorePhysics`, `useGravity`, `gravityMultiplier`. There is no `lastX` / `lastZ`.
 

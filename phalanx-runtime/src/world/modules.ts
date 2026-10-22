@@ -429,7 +429,9 @@ function ensureRows(
       registration !== undefined &&
       !entity._componentAttached(registration.type)
     ) {
-      entity.addComponent(registration.create(entity.id));
+      entity.addComponent(
+        registration.create(entity.id, undefined, world.entityManager)
+      );
       // Shells are indexed when they are registered later. A startup
       // entity is already in the manager, so the new component has to
       // be published or queryEntities will not see it.
@@ -513,7 +515,9 @@ export function spawn(
       if (values === undefined) {
         throw new Error(`spawn: missing values for '${name}'`);
       }
-      entity.addComponent(component.create(entity.id, values));
+      entity.addComponent(
+        component.create(entity.id, values, world.entityManager)
+      );
     }
   } catch (error) {
     try {

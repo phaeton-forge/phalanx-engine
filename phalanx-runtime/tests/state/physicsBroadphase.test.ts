@@ -6,9 +6,11 @@ import {
   GameWorld,
   SoAComponent,
 } from '@phalanx-engine/ecs';
-import { FP } from '@phalanx-engine/math';
+import { DeterministicRandom, FP } from '@phalanx-engine/math';
 import type { FixedPoint } from '@phalanx-engine/math';
 import {
+  INTERPOLATION_COMPONENT_TYPE,
+  Interpolation,
   PhysicsSoASchema,
   PhysicsWorld,
   TransformSoASchema,
@@ -16,6 +18,7 @@ import {
   attachTransform,
 } from '@phalanx-engine/physics';
 import { StateHelpers } from '../../src/advanced/index.js';
+import { restoreWorld, saveWorld } from '../../src/index.js';
 import { manualTickProvider } from '../support/manualTickProvider.js';
 
 const SCHEMAS = [TransformSoASchema, PhysicsSoASchema] as const;
@@ -140,5 +143,46 @@ describe('physics broadphase save', () => {
       ...restored.physics.spatialGrid.queryRadius(moved.x, moved.z, FP._0),
     ];
     expect(rebuiltQuery).not.toEqual(liveQuery);
+  });
+
+  it('restores interpolation into a new world', () => {
+    const source = new GameWorld({
+      tickFrameProvider: manualTickProvider(),
+      random: new DeterministicRandom(1),
+    });
+    const sourcePhysics = new PhysicsWorld({
+      gridCellSize: FP.FromInt(4),
+      subSteps: 1,
+    });
+    sourcePhysics.attach(source);
+    source.registerSystems([sourcePhysics.getSystems().physicsSystem], []);
+    const disc = source.createEntity((id) => new Disc(id, 3, 4));
+    source.entityManager.addEntity(disc);
+    expect(disc.hasComponent(INTERPOLATION_COMPONENT_TYPE)).toBe(false);
+    const bytes = saveWorld(source);
+
+    const restored = new GameWorld({
+      tickFrameProvider: manualTickProvider(),
+      random: new DeterministicRandom(1),
+    });
+    const restoredPhysics = new PhysicsWorld({
+      gridCellSize: FP.FromInt(4),
+      subSteps: 1,
+    });
+    restoredPhysics.attach(restored);
+    restored.registerSystems([restoredPhysics.getSystems().physicsSystem], []);
+    restoreWorld(restored, bytes);
+
+    const entity = restored.entityManager.getEntity(disc.id);
+    if (entity === undefined) throw new Error('entity missing');
+    expect(entity.hasComponent(INTERPOLATION_COMPONENT_TYPE)).toBe(true);
+    const sample = restored.get(entity, Interpolation);
+    expect(sample?.currentFpPosition).toEqual({
+      x: FP.FromInt(3),
+      y: FP._0,
+      z: FP.FromInt(4),
+    });
+    expect(sample?.previousFpPosition).toEqual(sample?.currentFpPosition);
+    expect(sample?.currentFpRotation.w).toEqual(FP._1);
   });
 });

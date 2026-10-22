@@ -324,4 +324,41 @@ describe('defineComponent', () => {
     expect(hookSeen).toBe(2);
     game.stop();
   });
+
+  it('writes a SoA row into the world that was asked, not the global context', () => {
+    const hp = defineComponent('Hp', { hp: 'i64' });
+    const a = world();
+    a.registerComponent(hp);
+    const b = world();
+    const entity = a.createEntityWithId(1);
+    SoAComponent.useEntityManager(b.entityManager);
+    a.add(entity, hp, { hp: 7n });
+
+    const storeA = a.entityManager.getSoAStore(hp.schema);
+    if (storeA === undefined) throw new Error('missing store on A');
+    expect(storeA.indexOf(entity.id)).toBeGreaterThanOrEqual(0);
+    expect(a.get(entity, hp)).toEqual({ hp: 7n });
+    expect(
+      b.entityManager.getSoAStore(hp.schema)?.indexOf(entity.id) ?? -1
+    ).toBe(-1);
+
+    const row = entity.getComponent(hp.type);
+    if (
+      row === undefined ||
+      !('onSpawn' in row) ||
+      !('onDespawn' in row) ||
+      typeof row.onSpawn !== 'function' ||
+      typeof row.onDespawn !== 'function'
+    ) {
+      throw new Error('missing poolable row');
+    }
+    row.onDespawn();
+    expect(storeA.indexOf(entity.id)).toBe(-1);
+    row.onSpawn();
+    expect(storeA.indexOf(entity.id)).toBeGreaterThanOrEqual(0);
+    expect(a.get(entity, hp)).toEqual({ hp: 7n });
+    expect(
+      b.entityManager.getSoAStore(hp.schema)?.indexOf(entity.id) ?? -1
+    ).toBe(-1);
+  });
 });

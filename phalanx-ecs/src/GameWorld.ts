@@ -848,7 +848,7 @@ export class GameWorld {
       store.set(entity.id, omitUndefinedSoaFields(patch));
       return;
     }
-    entity.addComponent(component.create(entity.id, patch));
+    entity.addComponent(component.create(entity.id, patch, this.entityManager));
     this.entityManager.onComponentAdded(entity, component.type);
   }
 

@@ -329,7 +329,7 @@ store.arrays.fpPositionX[idx] = FP.ToRaw(newX);
 // beforeFrame → interpolate(alpha) → getInterpolatedTransform() available
 ```
 
-`attachInterpolation` on any entity that needs render smoothing alongside `Transform`. Tick systems must not branch on `Interpolation`. `readBroadphase` restores it at `create()` defaults for bodies that had it.
+`attachInterpolation` on any entity that needs render smoothing alongside `Transform`. Tick systems must not branch on `Interpolation`. `readBroadphase` attaches it to every `Transform` + `PhysicsBody` and seeds both samples from the transform, including a fresh world.
 
 ## PhysicsSoASchema Fields
 

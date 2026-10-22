@@ -20,7 +20,6 @@ import {
   attachInterpolation,
   attachPhysicsBody,
   attachTransform,
-  createInterpolationSample,
 } from '../src/index.js';
 import type { PhysicsConfig } from '../src/types.js';
 import { manualTickProvider } from './support/manualTickProvider.js';
@@ -255,11 +254,15 @@ describe('physics state helpers', () => {
     ]);
   });
 
-  it('restores interpolation only for bodies that had it', () => {
+  it('restores interpolation for every body, seeded from Transform', () => {
     const { world } = wiredWorld();
     const kept = world.createEntity((id) => {
       const entity = new Entity(id);
-      attachTransform(entity, { x: FP._0, y: FP._0, z: FP._0 });
+      attachTransform(entity, {
+        x: FP.FromInt(3),
+        y: FP.FromInt(1),
+        z: FP.FromInt(4),
+      });
       attachPhysicsBody(entity, { radius: FP._1 });
       attachInterpolation(entity);
       return entity;
@@ -267,7 +270,11 @@ describe('physics state helpers', () => {
     world.entityManager.addEntity(kept);
     const bare = world.createEntity((id) => {
       const entity = new Entity(id);
-      attachTransform(entity, { x: FP._0, y: FP._0, z: FP._0 });
+      attachTransform(entity, {
+        x: FP.FromInt(8),
+        y: FP._0,
+        z: FP.FromInt(2),
+      });
       attachPhysicsBody(entity, { radius: FP._1 });
       return entity;
     });
@@ -284,8 +291,20 @@ describe('physics state helpers', () => {
     reader.done();
 
     expect(kept.hasComponent(INTERPOLATION_COMPONENT_TYPE)).toBe(true);
-    expect(bare.hasComponent(INTERPOLATION_COMPONENT_TYPE)).toBe(false);
-    expect(world.get(kept, Interpolation)).toEqual(createInterpolationSample());
+    expect(bare.hasComponent(INTERPOLATION_COMPONENT_TYPE)).toBe(true);
+    expect(world.get(kept, Interpolation)?.currentFpPosition).toEqual({
+      x: FP.FromInt(3),
+      y: FP.FromInt(1),
+      z: FP.FromInt(4),
+    });
+    expect(world.get(kept, Interpolation)?.previousFpPosition).toEqual(
+      world.get(kept, Interpolation)?.currentFpPosition
+    );
+    expect(world.get(bare, Interpolation)?.currentFpPosition).toEqual({
+      x: FP.FromInt(8),
+      y: FP._0,
+      z: FP.FromInt(2),
+    });
     const again = finish((writer) => {
       writeBroadphase(writer, world);
     });

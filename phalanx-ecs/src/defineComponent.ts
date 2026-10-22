@@ -1,6 +1,7 @@
 import { SoAComponent } from './SoAComponent.js';
 import { defineSoASchema } from './SoASchema.js';
 import type { IComponent } from './Component.js';
+import type { EntityManager } from './EntityManager.js';
 import type { IPoolableComponent } from './pool/IPoolableComponent.js';
 import type { ComponentRegistration } from './ComponentRegistration.js';
 import type {
@@ -195,8 +196,8 @@ function defineSoa<S extends IntegerSchema>(
     schema,
     defaults,
     type: schema.type,
-    create(entityId, values) {
-      return createSoaRow(name, schema, defaults, entityId, values);
+    create(entityId, values, manager) {
+      return createSoaRow(name, schema, defaults, entityId, values, manager);
     },
   };
 }
@@ -262,10 +263,11 @@ function createSoaRow<S extends SoASchemaDefinition>(
   schema: SoASchema<S>,
   defaults: SoAFieldsOf<S>,
   entityId: number,
-  values: Readonly<Partial<Record<string, number | bigint>>> | undefined
+  values: Readonly<Partial<Record<string, number | bigint>>> | undefined,
+  manager: EntityManager | undefined
 ): IComponent {
-  const manager = SoAComponent.currentEntityManager();
-  if (manager === null) {
+  const resolved = manager ?? SoAComponent.currentEntityManager();
+  if (resolved === null) {
     throw new Error(
       `defineComponent '${name}': no EntityManager context; use world.add`
     );
@@ -283,11 +285,11 @@ function createSoaRow<S extends SoASchemaDefinition>(
     },
   };
   const initial = mergeSoaValues(component, values as Partial<SoAFieldsOf<S>>);
-  const store = manager.getOrCreateSoAStore(schema);
+  const store = resolved.getOrCreateSoAStore(schema);
   if (store.indexOf(entityId) === -1) {
     store.add(entityId, initial);
   }
-  return new SoaRow(schema, entityId, initial);
+  return new SoaRow(schema, entityId, initial, resolved);
 }
 
 /**
@@ -303,19 +305,14 @@ class SoaRow<S extends SoASchemaDefinition>
   public constructor(
     private readonly schema: SoASchema<S>,
     private readonly entityId: number,
-    private readonly defaults: SoAFieldsOf<S>
+    private readonly defaults: SoAFieldsOf<S>,
+    private readonly manager: EntityManager
   ) {
     this.type = schema.type;
   }
 
   public onSpawn(): void {
-    const manager = SoAComponent.currentEntityManager();
-    if (manager === null) {
-      throw new Error(
-        'defineComponent: no EntityManager context; use world.add'
-      );
-    }
-    const store = manager.getOrCreateSoAStore(this.schema);
+    const store = this.manager.getOrCreateSoAStore(this.schema);
     if (store.indexOf(this.entityId) === -1) {
       store.add(this.entityId, this.defaults);
       return;
@@ -324,9 +321,7 @@ class SoaRow<S extends SoASchemaDefinition>
   }
 
   public onDespawn(): void {
-    SoAComponent.currentEntityManager()
-      ?.getSoAStore(this.schema)
-      ?.remove(this.entityId);
+    this.manager.getSoAStore(this.schema)?.remove(this.entityId);
   }
 }
 

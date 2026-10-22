@@ -66,7 +66,10 @@ Entries collected per package until the synchronized 0.3.0 release
     section already uses that key.
   - Returning a pooled entity to the pool removes its object and transient
     components. SoA rows stay on the poolable row holder. A respawn then
-    matches a client restored from the save.
+    matches a client restored from the save. `world.add` for a SoA
+    component writes the row on that world's `EntityManager`, and the
+    row keeps that manager for `onSpawn` / `onDespawn`. The process-wide
+    `SoAComponent` context is not consulted.
 - `InterpolatedTransformSample` is no longer exported. The render sample
   type lives on `@phalanx-engine/physics`.
 - Export snapshot: names `[73]` → `[72]`, values `[26]` stay `[26]`.
@@ -772,15 +775,24 @@ Entries collected per package until the synchronized 0.3.0 release
   `Interpolation` is transient. Wrapper classes
   `TransformComponent`, `PhysicsBodyComponent`, and
   `InterpolationComponent` are removed. Position, rotation, velocity,
-  and the interpolation sample are helper functions
-  (`attachTransform`, `readFpPosition`, `writeFpPosition`,
-  `attachPhysicsBody`, `setVelocity`, `attachInterpolation`,
-  `captureInterpolation`, `snapshotInterpolation`). The old
+  and the interpolation sample are helper functions:
+  `addVelocity`, `attachInterpolation`, `attachPhysicsBody`,
+  `attachTransform`, `captureInterpolation`, `createInterpolationSample`,
+  `interpolationOf`, `readFpPosition`, `readFpRotation`,
+  `readFpRotationEuler`, `readFriction`, `readGravityMultiplier`,
+  `readIgnorePhysics`, `readIsStatic`, `readMass`, `readRadius`,
+  `readRestitution`, `readUseGravity`, `readVelocity`, `readYaw`,
+  `setVelocity`, `snapshotInterpolation`, `stopVelocity`,
+  `writeFpPosition`, `writeFpRotation`, `writeFpRotationEuler`,
+  `writeGravityMultiplier`, `writeIgnorePhysics`, `writeUseGravity`,
+  `writeVelocity`, `writeYaw`. The old
   `*_COMPONENT_TYPE` symbols are the new `.type` values.
   `PhysicsBody` no longer has `lastX` / `lastZ`. Render position comes
-  from `Transform` and `Interpolation`. `readBroadphase` puts
-  `Interpolation` back, at `create()` defaults, only on entities that
-  had it when transients were discarded. `InterpolationSystem` is no
+  from `Transform` and `Interpolation`. `readBroadphase` attaches
+  `Interpolation` to every entity that has both `Transform` and
+  `PhysicsBody`, and seeds the previous and current samples from that
+  transform (including a fresh world that never discarded the
+  component). `InterpolationSystem` is no
   longer `IBeforeTick`; `afterTick` snapshots the previous sample and
   then captures the transform. `PhysicsWorld.attach` registers
   `Interpolation` (not the SoA components, so `configHash` and SoA

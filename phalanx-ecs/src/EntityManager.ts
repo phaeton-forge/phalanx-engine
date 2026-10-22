@@ -94,7 +94,9 @@ export class EntityManager {
     }
   }
 
-  /** Remember a transient component so tick reads of it throw. */
+  /**
+   * @internal Remember a transient component so tick reads of it throw.
+   */
   public registerTransientComponent(type: symbol, name: string): void {
     this.transientNames.set(type, name);
   }
@@ -110,8 +112,8 @@ export class EntityManager {
   }
 
   /**
-   * Tick systems may write a transient component and must not read it.
-   * Frame code and `afterTick` run outside this guard.
+   * @internal Tick systems may write a transient component and must not
+   * read it. Frame code and `afterTick` run outside this guard.
    */
   public assertComponentReadable(type: symbol): void {
     if (this.componentReadDepth <= 0) return;

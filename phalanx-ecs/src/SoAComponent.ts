@@ -23,12 +23,12 @@ const DEFAULT_STORE_CAPACITY = 1024;
  *
  * @example
  * ```typescript
- * class PhysicsBodyComponent extends SoAComponent<typeof schema.definition> {
- *   public readonly type = ComponentType.PhysicsBody;
- *   static readonly soaSchema = defineSoASchema({ velocityX: 'i64', ... }, 'PhysicsBody');
+ * class VelocityComponent extends SoAComponent<typeof schema.definition> {
+ *   public readonly type = ComponentType.Velocity;
+ *   static readonly soaSchema = defineSoASchema({ velocityX: 'i64', ... }, 'Velocity');
  *
- *   constructor(entityId: number, opts: { radius?: number }) {
- *     super(PhysicsBodyComponent.soaSchema, entityId, { velocityX: 0n, ... });
+ *   constructor(entityId: number, opts: { speed?: bigint }) {
+ *     super(VelocityComponent.soaSchema, entityId, { velocityX: 0n, ... });
  *   }
  *
  *   get velocity() { return FP.FromRaw(this.getField('velocityX')); }

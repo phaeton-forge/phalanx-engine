@@ -1,4 +1,9 @@
-import type { Entity, GameWorld, IComponent } from '@phalanx-engine/ecs';
+import type {
+  Entity,
+  GameWorld,
+  IComponent,
+  SoAComponentStore,
+} from '@phalanx-engine/ecs';
 import { defineComponent } from '@phalanx-engine/ecs';
 import {
   FP,
@@ -6,6 +11,7 @@ import {
   type FPVector3 as FPVector3Type,
 } from '@phalanx-engine/math';
 import { PhysicsBody } from './physicsBody.js';
+import { Transform, TransformSoASchema } from './transform.js';
 
 /**
  * Tick samples for render smoothing. Transient: not saved, not in
@@ -93,20 +99,60 @@ export function captureInterpolation(
 }
 
 /**
- * Put `Interpolation` back on every entity that had it when transients
- * were discarded. Values are `create()` defaults. Bodies that never had
- * the component stay without it.
+ * Attach `Interpolation` to every entity that has both `Transform` and
+ * `PhysicsBody`. Previous and current samples are that transform, so the
+ * first rendered frame is not the origin. A fresh world has no discarded
+ * ids; this does not consult them.
  */
 export function restoreOwnedInterpolation(world: GameWorld): void {
-  const store = world.entityManager.getSoAStore(PhysicsBody.schema);
-  if (store === undefined) return;
-  for (const id of world.discardedTransientIds(INTERPOLATION_COMPONENT_TYPE)) {
-    if (store.indexOf(id) === -1) continue;
+  const bodies = world.entityManager.getSoAStore(PhysicsBody.schema);
+  const transforms = world.entityManager.getSoAStore(Transform.schema);
+  if (bodies === undefined || transforms === undefined) return;
+  for (const id of bodies.entityIds()) {
+    if (transforms.indexOf(id) === -1) continue;
     const entity = world.entityManager.getEntity(id);
     if (entity === undefined) continue;
-    if (entity._componentAttached(INTERPOLATION_COMPONENT_TYPE)) continue;
-    world.add(entity, Interpolation);
+    if (!entity._componentAttached(INTERPOLATION_COMPONENT_TYPE)) {
+      world.add(entity, Interpolation);
+    }
+    const sample = entity._peekComponent<InterpolationHolder>(
+      INTERPOLATION_COMPONENT_TYPE
+    )?.value;
+    if (sample === undefined) continue;
+    captureInterpolation(
+      sample,
+      positionAt(transforms, id),
+      rotationAt(transforms, id)
+    );
+    snapshotInterpolation(sample);
   }
+}
+
+function positionAt(
+  store: SoAComponentStore<typeof TransformSoASchema.definition>,
+  id: number
+): FPVector3Type {
+  const index = store.indexOf(id);
+  const arrays = store.arrays;
+  return {
+    x: FP.FromRaw(arrays.fpPositionX[index] ?? 0n),
+    y: FP.FromRaw(arrays.fpPositionY[index] ?? 0n),
+    z: FP.FromRaw(arrays.fpPositionZ[index] ?? 0n),
+  };
+}
+
+function rotationAt(
+  store: SoAComponentStore<typeof TransformSoASchema.definition>,
+  id: number
+): FPQuaternionType {
+  const index = store.indexOf(id);
+  const arrays = store.arrays;
+  return {
+    x: FP.FromRaw(arrays.fpRotationX[index] ?? 0n),
+    y: FP.FromRaw(arrays.fpRotationY[index] ?? 0n),
+    z: FP.FromRaw(arrays.fpRotationZ[index] ?? 0n),
+    w: FP.FromRaw(arrays.fpRotationW[index] ?? 0n),
+  };
 }
 
 function copySample(

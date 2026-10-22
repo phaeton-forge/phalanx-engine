@@ -362,8 +362,8 @@ Stores are **lazily created** when the first SoAComponent of a given schema is c
 
 ```
 GameWorld created → SoAComponent.useEntityManager(em)
-First PhysicsBodyComponent constructed → store created in EntityManager
-Subsequent PhysicsBodyComponents → share the same store
+First SoA row for a schema → store created in that world's EntityManager
+Later rows of that schema → share the same store
 GameWorld disposed → SoAComponent.resetContext()
 ```
 

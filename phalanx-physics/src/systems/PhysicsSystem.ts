@@ -33,7 +33,7 @@ const SEPARATION_HALF = FP.FromFloat(0.5);
  *   3. detectAndResolve()      — narrow-phase collision + resolution
  *   4. applyFriction()         — per-entity friction damping
  *
- * Reads velocities from PhysicsBodyComponent SoA store and reads/writes
+ * Reads velocities from the PhysicsBody SoA store and reads/writes
  * positions from the shared TransformSoASchema store created in init().
  */
 export class PhysicsSystem extends GameSystem {
@@ -661,7 +661,7 @@ export class PhysicsSystem extends GameSystem {
 
   /**
    * Apply per-entity friction damping to velocities.
-   * Reads the per-entity `friction` field from PhysicsBodyComponent SoA schema.
+   * Reads the per-entity `friction` field from the PhysicsBody SoA schema.
    */
   private applyFriction(): void {
     const physVelocityX = this.physicsStore.arrays.velocityX;

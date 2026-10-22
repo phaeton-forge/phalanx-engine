@@ -1,4 +1,5 @@
 import type { IComponent } from './Component.js';
+import type { EntityManager } from './EntityManager.js';
 import type {
   SoAFieldsOf,
   SoASchema,
@@ -18,8 +19,13 @@ export interface ComponentRegistration<
   readonly schema: SoASchema<S>;
   readonly defaults: SoAFieldsOf<S>;
   readonly type: symbol;
+  /**
+   * Attach a row. `manager` is the world that owns the row. When it is
+   * omitted, the process-wide `SoAComponent` context is used.
+   */
   create(
     entityId: number,
-    values?: Readonly<Partial<Record<string, number | bigint>>>
+    values?: Readonly<Partial<Record<string, number | bigint>>>,
+    manager?: EntityManager
   ): IComponent;
 }
