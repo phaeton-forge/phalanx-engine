@@ -22,6 +22,16 @@ export { IComponent, createComponentTypeRegistry } from './Component.js';
 export type { IComponent as Component } from './Component.js';
 export type { ComponentLifecycle } from './lifecycle.js';
 export type { ComponentRegistration } from './ComponentRegistration.js';
+export { defineComponent } from './defineComponent.js';
+export type {
+  DefinedComponent,
+  DefineSoaOptions,
+  IntegerSchema,
+  ObjectComponentDef,
+  SoaComponentDef,
+  TransientComponentDef,
+} from './defineComponent.js';
+export { writeSorted } from './writeSorted.js';
 
 // Object Pooling
 export { ObjectPool, EntityPool, PoolManager } from './pool/index.js';

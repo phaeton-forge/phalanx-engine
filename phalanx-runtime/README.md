@@ -102,7 +102,9 @@ exhaustive handler map. `defineCommands` rejects a bad payload and does
 not throw. `i64` is a canonical decimal string on the wire.
 
 - **`defineComponent(name, fields, { defaults? })`**: a named SoA schema.
-  Register it with `world.registerComponent` before the first spawn.
+  Object and transient components are `defineComponent` from
+  `@phalanx-engine/ecs`. Register it with `world.registerComponent` before
+  the first spawn.
   Registration order and each field's name and type are part of
   `configHash` (an empty list keeps the previous hash). A field type
   outside `i32`, `u32`, `u8`, `i64`, `f32`, `f64` throws at definition

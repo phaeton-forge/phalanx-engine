@@ -80,6 +80,8 @@ const ROOT_NAMES = [
   'Component',
   'ComponentLifecycle',
   'ComponentRegistration',
+  'DefineSoaOptions',
+  'DefinedComponent',
   'Entity',
   'EntityManager',
   'EntityPool',
@@ -104,7 +106,9 @@ const ROOT_NAMES = [
   'IPoolableEntity',
   'IRandom',
   'ITickFrameProvider',
+  'IntegerSchema',
   'InterpolatedTransformSample',
+  'ObjectComponentDef',
   'ObjectPool',
   'PauseHandler',
   'PlayerCommand',
@@ -123,6 +127,7 @@ const ROOT_NAMES = [
   'SoASchema',
   'SoASchemaDefinition',
   'SoAValueType',
+  'SoaComponentDef',
   'SpawnArgsOf',
   'StateReader',
   'StateWriter',
@@ -130,15 +135,18 @@ const ROOT_NAMES = [
   'SystemRegistry',
   'TYPED_ARRAY_CONSTRUCTORS',
   'TickHandler',
+  'TransientComponentDef',
   'TypedArrayLike',
   'Unsubscribe',
   'calculateSchemaByteSize',
   'createComponentTypeRegistry',
+  'defineComponent',
   'defineSoASchema',
   'isAfterFrame',
   'isAfterTick',
   'isBeforeFrame',
   'isBeforeTick',
+  'writeSorted',
 ];
 
 const ROOT_VALUES = [
@@ -161,11 +169,13 @@ const ROOT_VALUES = [
   'TYPED_ARRAY_CONSTRUCTORS',
   'calculateSchemaByteSize',
   'createComponentTypeRegistry',
+  'defineComponent',
   'defineSoASchema',
   'isAfterFrame',
   'isAfterTick',
   'isBeforeFrame',
   'isBeforeTick',
+  'writeSorted',
 ];
 
 const ENTRIES = [
@@ -211,10 +221,10 @@ describe('@phalanx-engine/ecs exports', () => {
     }
     expect(
       resolved.map((entry) => actual.get(entry.file)?.names.length)
-    ).toEqual([65]);
+    ).toEqual([73]);
     expect(
       resolved.map((entry) => actual.get(entry.file)?.values.length)
-    ).toEqual([24]);
+    ).toEqual([26]);
   });
 
   it('loads each entry by package name', async () => {

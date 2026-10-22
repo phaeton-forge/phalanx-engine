@@ -511,13 +511,17 @@ not exported from the package root. Games use `defineComponent` and
 `saveWorld` / `restoreWorld` instead. The section byte layout is
 unchanged.
 
-`defineComponent(name, fields, { defaults? })` registers a named SoA
-schema. `world.registerComponent` order is deterministic and, when
-non-empty, is folded into `configHash` together with each field's name
-and type in declaration order. `f32` / `f64` fields throw (those columns
-are skipped in snapshots). Any other type outside `i32`, `u32`, `u8`,
-`i64`, `f32`, `f64` throws at `defineComponent` and lists the allowed
-types. The name `SoASchema` is reserved, along with the world-module
+`defineComponent(name, fields, { defaults? })` from
+`@phalanx-engine/runtime` registers a named SoA schema. The three-kind
+`defineComponent` (SoA, object with `save`/`load`, and transient) lives
+in `@phalanx-engine/ecs`; domain packages import that one. This runtime
+helper is unchanged. `world.registerComponent` order is deterministic
+and, when non-empty, is folded into `configHash` together with each
+field's name and type in declaration order. `f32` / `f64` fields throw
+(those columns are skipped in snapshots). Any other type outside `i32`,
+`u32`, `u8`, `i64`, `f32`, `f64` throws at `defineComponent` and lists
+the allowed types. A transient component registered through the ecs
+function is not part of this hash and is not written into the body. The name `SoASchema` is reserved, along with the world-module
 section names. `registerComponent` also registers the component type, so
 `queryEntities` finds entities spawned with it. A failed `spawn`
 disposes the partial entity and removes the SoA rows already inserted.

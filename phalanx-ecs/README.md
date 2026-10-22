@@ -622,6 +622,36 @@ class MeshComponent implements IComponent {
 
 Saving, restoring and spawning by component name are `@phalanx-engine/runtime` functions (`saveWorld`, `restoreWorld`, `spawn`, `despawn`, `each`); `GameWorld` has no such methods. `registerComponent` records a `defineComponent` result in registration order. The object passed to `each` is one view reused for every row. Do not store it, and do not read it after the callback returns.
 
+`defineComponent` in this package is the component definition domain code imports. The runtime package still exports its SoA-only helper for `defineGame`.
+
+```typescript
+import { defineComponent, writeSorted, GameWorld } from '@phalanx-engine/ecs';
+
+const Hp = defineComponent('Hp', { hp: 'i64' }, { defaults: { hp: 10n } });
+const Bag = defineComponent('Bag', {
+  kind: 'object',
+  create: () => ({ tags: new Set<string>() }),
+  save(value, writer) {
+    writeSorted(writer, value.tags, (tag, item) => item.str(tag));
+  },
+  load(reader) {
+    return { tags: new Set(reader.list((item) => item.str())) };
+  },
+});
+const Visual = defineComponent('Visual', {
+  kind: 'transient',
+  create: () => ({ x: 0 }),
+});
+
+world.registerComponent(Hp);
+world.registerComponent(Bag);
+world.registerComponent(Visual);
+world.add(entity, Hp, { hp: 4n });
+world.get(entity, Hp); // { hp: 4n }
+```
+
+SoA fields are `i32`, `u32`, `u8`, `i64`. They are saved and included in `configHash`. An object component without `save` and `load` throws at `registerComponent`. `writeSorted` orders `Set` and `Map` keys (UTF-16 for strings, numeric for safe integers). A transient component is display-only: it is omitted from the save and from `configHash`, and a tick system that reads it throws. `restoreWorld` drops transient components first; the owning module's save section adds them back at `create()` defaults.
+
 `EntityPool` remains available as a low-level storage primitive; prefer `PoolManager.spawn()` / `despawn()` for gameplay entities.
 
 ## Creating Custom Systems
