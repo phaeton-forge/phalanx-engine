@@ -98,8 +98,8 @@ export class MissileEntity
   private readonly interpolation: InterpolationComponent;
   private readonly transform: TransformComponent;
 
-  constructor() {
-    super();
+  constructor(id: number) {
+    super(id);
     this.addComponent(MeshComponent.createMissile());
     this.projectile = this.addComponent(new ProjectileComponent());
     this.missile = this.addComponent(new MissileComponent());

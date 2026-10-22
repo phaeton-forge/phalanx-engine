@@ -30,7 +30,7 @@ The root re-exports `@phalanx-engine/runtime` (including `MatchStore`,
 
 `StateHelpers`, `spawnWithId`,
 `SaveHandler`, `CommandSchema`, `SaveSpec`, `StateMigration`, `WorldScope`,
-`setEntityIdCounter`, `nextEntityId`, `PoolManager`,
+`PoolManager`,
 `SoAComponentStore`, `TickFrameManager`, `TickFrameManagerConfig`,
 `TYPED_ARRAY_CONSTRUCTORS`, `DebugPanel` and `DebugPanelConfig` are
 `@phalanx-engine/game/advanced`, along with the transport port types

@@ -210,7 +210,8 @@ export class FormationSystem extends GameSystem {
         const entity = this.unitFactory.spawnBattleUnit(
           unit.unitType,
           team,
-          pos
+          pos,
+          this.entityManager.allocateEntityId()
         );
         this.entityManager.addEntity(entity);
 

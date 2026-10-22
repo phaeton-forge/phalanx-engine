@@ -4,7 +4,6 @@ import {
   Entity,
   EntityManager,
   PoolManager,
-  resetEntityIdCounter,
   SoAComponent,
   type IPoolableEntity,
 } from '../src';
@@ -532,8 +531,8 @@ class PooledSoAEntity
 {
   public readonly soa: PooledSoAComponent;
 
-  constructor() {
-    super();
+  constructor(id: number) {
+    super(id);
     this.soa = this.addComponent(new PooledSoAComponent(this.id));
   }
 
@@ -549,11 +548,12 @@ describe('SoAComponent PoolManager integration', () => {
   let pools: PoolManager;
 
   beforeEach(() => {
-    resetEntityIdCounter();
     em = new EntityManager();
     SoAComponent.useEntityManager(em);
     pools = new PoolManager(em);
-    pools.registerEntityType('soa', { factory: () => new PooledSoAEntity() });
+    pools.registerEntityType('soa', {
+      factory: (id) => new PooledSoAEntity(id),
+    });
   });
 
   afterEach(() => {

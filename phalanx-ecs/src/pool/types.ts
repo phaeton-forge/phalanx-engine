@@ -23,7 +23,8 @@ export interface PoolStats {
 export interface EntityTypeConfig<
   T extends Entity & IPoolableEntity<never> = Entity & IPoolableEntity<never>,
 > {
-  factory: () => T;
+  /** Receives the id this world assigned. Pass it to the entity constructor. */
+  factory: (id: number) => T;
   pool?: PoolConfig;
 }
 

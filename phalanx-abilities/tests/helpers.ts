@@ -1,4 +1,4 @@
-import { Entity, GameWorld, resetEntityIdCounter } from '@phalanx-engine/ecs';
+import { Entity, GameWorld } from '@phalanx-engine/ecs';
 import { FP } from '@phalanx-engine/math';
 import type { FixedPoint } from '@phalanx-engine/math';
 import {
@@ -123,12 +123,11 @@ export function createActivationWorld(opts: TestWorldOpts = {}): TestWorld {
 }
 
 export function createTestWorld(opts: TestWorldOpts = {}): TestWorld {
-  resetEntityIdCounter();
   return createActivationWorld(opts);
 }
 
 export function addEntity(world: GameWorld): Entity {
-  const entity = new Entity();
+  const entity = world.createEntity((id) => new Entity(id));
   world.entityManager.addEntity(entity);
   return entity;
 }
@@ -151,7 +150,7 @@ export function spawnEntity(
   abilities: AbilitySystem,
   init?: AbilitySystemComponentInit
 ): Entity {
-  const entity = new Entity();
+  const entity = world.createEntity((id) => new Entity(id));
   equipEntity(world, entity, abilities, init);
   world.entityManager.addEntity(entity);
   return entity;

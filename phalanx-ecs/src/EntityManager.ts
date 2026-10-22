@@ -16,6 +16,12 @@ import type { SoASchema, SoASchemaDefinition } from './SoASchema.js';
  * provide cache-friendly iteration for hot-path systems.
  */
 export class EntityManager {
+  /**
+   * Last id handed out by this manager. `0` means none. The next
+   * {@link allocateEntityId} returns this + 1.
+   */
+  private _entityIdCounter = 0;
+
   private entities: Map<number, Entity> = new Map();
 
   // Sorted array of all entity IDs for fast deterministic iteration
@@ -413,6 +419,62 @@ export class EntityManager {
       stats.set(type, index.length);
     }
     return stats;
+  }
+
+  /**
+   * High-water mark of ids allocated by this manager.
+   *
+   * `0` means no id has been allocated. The next {@link allocateEntityId}
+   * returns this + 1. Saved in the `entityIds` section.
+   */
+  public entityIdHighWater(): number {
+    return this._entityIdCounter;
+  }
+
+  /**
+   * Install the high-water mark from a snapshot.
+   *
+   * The value is the last allocated id, not the next id. The following
+   * {@link allocateEntityId} returns `value + 1`. Any safe integer `>= 0`
+   * is accepted, including a value below the current mark, so a snapshot
+   * can restore an earlier counter.
+   *
+   * The caller must pass a value greater than or equal to every live entity
+   * id. A lower integer is stored, and the next allocation can then collide
+   * with an id that is still in use.
+   *
+   * @throws If `value` is not a safe integer `>= 0`.
+   */
+  public restoreEntityIdHighWater(value: number): void {
+    if (!Number.isSafeInteger(value) || value < 0) {
+      throw new Error(
+        `restoreEntityIdHighWater: value must be an integer >= 0, got ${String(value)}`
+      );
+    }
+    this._entityIdCounter = value;
+  }
+
+  /** Next sequential id. Advances the high-water mark by one. */
+  public allocateEntityId(): number {
+    this._entityIdCounter += 1;
+    return this._entityIdCounter;
+  }
+
+  /**
+   * Record an id assigned explicitly (restore). The high-water mark becomes
+   * `max(current, id)`. A hole below the mark does not rewind later ids.
+   *
+   * @throws If `id` is not a safe integer `>= 1`.
+   */
+  public claimEntityId(id: number): void {
+    if (!Number.isSafeInteger(id) || id < 1) {
+      throw new Error(
+        `claimEntityId: id must be an integer >= 1, got ${String(id)}`
+      );
+    }
+    if (id > this._entityIdCounter) {
+      this._entityIdCounter = id;
+    }
   }
 
   /**

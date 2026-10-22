@@ -124,8 +124,8 @@ not throw. `i64` is a canonical decimal string on the wire.
   `onEnable` runs after the bytes land and must not overwrite saved
   fields.
 - **`spawn(world, { Unit: { hp: 48n } })` / `despawn(world, entity)` /
-  `each(world, Unit, (row) => { ... })`**: the same entity id counter as
-  `new Entity()`. `each` walks rows in ascending id. The callback receives
+  `each(world, Unit, (row) => { ... })`**: the world's entity id counter
+  (`world.createEntity`). `each` walks rows in ascending id. The callback receives
   one view object reused for every row. Do not store it, and do not read
   it after the callback returns. Each access looks up the entity's current
   row, so despawning a different entity inside the callback does not
@@ -149,8 +149,9 @@ not throw. `i64` is a canonical decimal string on the wire.
   `restoreWorld` then reads the `modules` container. A zero-row SoA
   section registers a missing empty store; a saved id with no row still
   throws, and a row the section omitted throws `extra entity`.
-  `spawnWithId` throws `spawnWithId: entity N already exists` when that
-  id is already registered. `restoreWorld` does not.
+  `spawnWithId` throws `createEntityWithId: entity N already exists` when
+  that id is already registered. `restoreWorld` does not. The callback is
+  `(id: number) => E`.
 - **`BotPolicy`**: a bot is a command producer for its slot, not a
   simulation system. Its commands enter the same log as humans'.
 - **Transport** (advanced): extends ecs `ITickFrameProvider` with `submit`
@@ -213,8 +214,9 @@ records a system command (player id `system`), applied at the start of
 applied only when the runner has a server peer (`side: 'server'` or a
 `server-peer` transport). A relay or local client rejects it. The default `fromTick` is
 `tick + inputDelayTicks`. `inputDelayTicks` defaults to 2. `gameId` and
-`simVersion` are filled from the definition. `WorldScope.run` isolates the entity id counter and the
-SoA entity manager so two matches can share a process.
+`simVersion` are filled from the definition. `WorldScope.run` isolates the
+SoA entity manager so two matches can share a process. Entity ids belong
+to each world and are not swapped.
 
 A malformed envelope is logged and rejected with `'malformed envelope'`
 instead of throwing. Exceptions from `decode` and `validate` become
@@ -268,7 +270,8 @@ An already-started runner flushes its checkpoint after `restore`.
 `restore` resets the match RNG to `config.seed` before `onStart`,
 then the save handler installs the saved generator, and a paused
 transport pauses the rebuilt world. `WorldScope` saves the active
-scope's registers before entering another scope.
+scope's SoA entity manager before entering another scope. The entity id
+counter stays on that world's `EntityManager`.
 
 `LocalTransport` rejects `submit` when
 `targetTick > nextTick + maxAheadTicks` (default 8) so the pending map

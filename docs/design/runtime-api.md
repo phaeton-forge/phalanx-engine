@@ -1105,6 +1105,10 @@ the correction lands.
   - Rejected alternative: a per-world counter, which requires `new Entity()`
     to find its world. That changes the `Entity` constructor contract and
     breaks existing games.
+- **A6a.2.** That rejection is superseded. The counter is per world: a
+  field of `EntityManager`. `new Entity(id)` takes the id the world
+  assigns. `WorldScope` no longer swaps the counter. The SoA
+  EntityManager context stays process-global until A6b.2c.
 - `globalEventBus` was also global and unused by the engine. It was
   removed in A6a.1; each world has its own `world.eventBus`.
 
@@ -1286,9 +1290,10 @@ Literal instructions for each task; they override the original task text.
   - xxhash64 in pure TypeScript, seed 0, lowercase hex, 16 characters.
   - `section` is length-prefixed; `read` must consume the body exactly.
 - **Task 3 (engine fixes, additive only).**
-  - ecs: `getEntityIdCounter()` / `setEntityIdCounter(n)`,
-    `SoAComponent.currentEntityManager()`, pool state accessors (owned ids,
-    free-list order).
+  - ecs: Task 3 added `getEntityIdCounter()` / `setEntityIdCounter(n)`.
+    A6a.2 removed them; the counter is per world on `EntityManager`.
+    `SoAComponent.currentEntityManager()` and the pool state accessors
+    (owned ids, free-list order) remain.
   - math: move `DeterministicRandom` with `getState` / `setState` /
     `fromState`; client and server re-export it; delete the broken
     `generateSeed` `require` path or reimplement it with an ESM import.

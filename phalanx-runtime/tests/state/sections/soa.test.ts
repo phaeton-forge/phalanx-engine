@@ -4,7 +4,6 @@ import {
   GameWorld,
   SoAComponent,
   defineSoASchema,
-  resetEntityIdCounter,
   type SoAComponentStore,
   type SoASchema,
   type SoASchemaDefinition,
@@ -36,8 +35,8 @@ const MarkerSchema = defineSoASchema(
 const SCHEMAS = [TransformSoASchema, PhysicsSoASchema, MarkerSchema] as const;
 
 class Body extends Entity {
-  public constructor() {
-    super();
+  public constructor(id: number) {
+    super(id);
     this.addComponent(
       new TransformComponent(this.id, {
         x: FP._0,
@@ -165,7 +164,7 @@ function requireStore<S extends SoASchemaDefinition>(
 function buildWorld(): GameWorld {
   const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
   for (let id = ENTITY_COUNT; id >= 1; id -= 1) {
-    StateHelpers.spawnWithId(world, id, () => new Body());
+    StateHelpers.spawnWithId(world, id, (entityId) => new Body(entityId));
   }
   const markers = world.entityManager.getOrCreateSoAStore(MarkerSchema);
   for (const id of world.entityManager
@@ -191,7 +190,6 @@ function buildWorld(): GameWorld {
 describe('SoA state helpers', () => {
   afterEach(() => {
     SoAComponent.resetContext();
-    resetEntityIdCounter();
   });
 
   it('restores i64, i32 and u8 fields and ignores f32/f64', () => {
@@ -224,7 +222,7 @@ describe('SoA state helpers', () => {
 
     const restored = new GameWorld({ tickFrameProvider: manualTickProvider() });
     for (let id = 1; id <= ENTITY_COUNT; id += 1) {
-      StateHelpers.spawnWithId(restored, id, () => new Body());
+      StateHelpers.spawnWithId(restored, id, (entityId) => new Body(entityId));
     }
     const restoredMarkers =
       restored.entityManager.getOrCreateSoAStore(MarkerSchema);
@@ -304,14 +302,14 @@ describe('SoA state helpers', () => {
     }
 
     class FlagEntity extends Entity {
-      public constructor() {
-        super();
+      public constructor(id: number) {
+        super(id);
         this.addComponent(new FlagComponent(this.id));
       }
     }
 
     const source = new GameWorld({ tickFrameProvider: manualTickProvider() });
-    const entity = new FlagEntity();
+    const entity = source.createEntity((id) => new FlagEntity(id));
     source.entityManager.addEntity(entity);
     source.entityManager.removeEntity(entity);
     const emptied = source.entityManager.getSoAStore(FlagSchema);
@@ -377,7 +375,7 @@ describe('SoA state helpers', () => {
     });
     const restored = new GameWorld({ tickFrameProvider: manualTickProvider() });
     for (let id = 1; id < ENTITY_COUNT; id += 1) {
-      StateHelpers.spawnWithId(restored, id, () => new Body());
+      StateHelpers.spawnWithId(restored, id, (entityId) => new Body(entityId));
     }
     const markers = restored.entityManager.getOrCreateSoAStore(MarkerSchema);
     for (let id = 1; id < ENTITY_COUNT; id += 1) {

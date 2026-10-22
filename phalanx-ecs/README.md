@@ -709,19 +709,17 @@ Restore rejects a modules container with:
 - `restore: save sections out of order`
 - `restore: save section '<key>' has version N, expected M`
 
-## Snapshot accessors
+## Entity ids
 
-Additive reads and writes for process-global sim registers. Existing allocation order is unchanged. `new GameWorld()` still resets the entity id counter to `0`.
+Each `EntityManager` owns its id counter, starting at `0`. `GameWorld` does not reset a process-global counter. `world.createEntity((id) => new Entity(id))` allocates the next id and does not register the entity. `world.createEntityWithId(id, create?)` builds that exact id, raises the high-water mark to `max(current, id)` and registers it. A hole does not rewind the next id. Pass the id into a subclass constructor (`super(id)`). Pool factories are `(id: number) => T`.
 
 ```typescript
-import {
-  getEntityIdCounter,
-  setEntityIdCounter,
-  SoAComponent,
-} from '@phalanx-engine/ecs';
+import { SoAComponent } from '@phalanx-engine/ecs';
 
-const highWater = world.getEntityIdCounter(); // same as getEntityIdCounter()
-world.setEntityIdCounter(highWater); // next entity id is highWater + 1
+const entity = world.createEntity((id) => new Entity(id));
+const restored = world.createEntityWithId(5, (id) => new Unit(id));
+const highWater = world.entityManager.entityIdHighWater(); // last allocated id
+world.entityManager.restoreEntityIdHighWater(highWater); // next id is highWater + 1
 const manager = SoAComponent.currentEntityManager(); // null after resetContext()
 
 const typeKeys = world.pools?.typeKeys() ?? []; // registration order
@@ -729,7 +727,7 @@ const owned = world.pools?.ownedIds(typeKeys[0]); // creation order
 const freeList = world.pools?.freeListIds(typeKeys[0]); // oldest release first; acquire pops the last
 ```
 
-`setEntityIdCounter` throws if the value is not an integer `>= 0`. The caller must pass a value greater than or equal to every live entity id; a lower value is accepted and the next id can collide. `SoAComponent.useEntityManager(null)` clears the context (`resetContext()` does the same). Pool `ownedIds` include checked-out entities and the free list, and omit an entity disposed outside despawn. `destroy()` does not remove the entity; the next acquire revives the same instance. `PoolManager.restore(typeKey, entities, freeListIds)` puts that free list back so the next spawn returns the same id. `drain()` still drops free-list objects.
+`restoreEntityIdHighWater` throws if the value is not an integer `>= 0` (`restoreEntityIdHighWater: value must be an integer >= 0`). A lower value is accepted and the next id can collide. `createEntityWithId` throws `createEntityWithId: entity N already exists` when that id is registered, and `createEntityWithId: id must be an integer >= 1` for a bad id. `SoAComponent.useEntityManager(null)` clears the context (`resetContext()` does the same). The SoA manager is still process-global. Pool `ownedIds` include checked-out entities and the free list, and omit an entity disposed outside despawn. `destroy()` does not remove the entity; the next acquire revives the same instance. `PoolManager.restore(typeKey, entities, freeListIds)` puts that free list back so the next spawn returns the same id. `drain()` still drops free-list objects.
 
 ## License
 

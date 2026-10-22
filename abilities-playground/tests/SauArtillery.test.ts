@@ -49,7 +49,7 @@ function addTransformUnit(
   pos: { x: number; y: number; z: number },
   teamId: 0 | 1
 ): Entity {
-  const entity = new Entity();
+  const entity = new Entity(entityManager.allocateEntityId());
   entity.addComponent(
     new TransformComponent(entity.id, FPVector3.FromFloat(pos.x, pos.y, pos.z))
   );
@@ -218,7 +218,7 @@ describe('ArtilleryShellSystem shrapnel determinism', () => {
       despawn: vi.fn(),
     } as never;
 
-    const shellEntity = new Entity();
+    const shellEntity = new Entity(entityManager.allocateEntityId());
     const shell = new ArtilleryShellComponent();
     shell.sourceEntityId = 1;
     shell.teamId = 0;
@@ -274,7 +274,7 @@ describe('ShrapnelLandingSystem secondary blast', () => {
   });
 
   function addShrapnel(sourceEntityId: number): Entity {
-    const entity = new Entity();
+    const entity = new Entity(entityManager.allocateEntityId());
     // Current position is below ground (crossed this tick).
     entity.addComponent(
       new TransformComponent(entity.id, FPVector3.FromFloat(2, -1, 3))
@@ -295,7 +295,7 @@ describe('ShrapnelLandingSystem secondary blast', () => {
   }
 
   function addVictim(): Entity {
-    const entity = new Entity();
+    const entity = new Entity(entityManager.allocateEntityId());
     const stats = new StatsComponent({ stopRange: 1 });
     stats.alive = true;
     entity.addComponent(stats);

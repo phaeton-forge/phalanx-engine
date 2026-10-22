@@ -1,5 +1,8 @@
 import { Entity, type IPoolableEntity } from '@phalanx-engine/ecs';
-import type { FixedPoint, FPVector3 as FPVector3Type } from '@phalanx-engine/math';
+import type {
+  FixedPoint,
+  FPVector3 as FPVector3Type,
+} from '@phalanx-engine/math';
 import { TransformComponent } from '@phalanx-engine/physics';
 import {
   ArtilleryShellComponent,
@@ -45,8 +48,8 @@ export class ArtilleryShellEntity
   // the impact point; the shell never moves and never renders a body.
   private readonly transform: TransformComponent;
 
-  constructor() {
-    super();
+  constructor(id: number) {
+    super(id);
     this.shell = this.addComponent(new ArtilleryShellComponent());
     this.transform = this.addComponent(new TransformComponent(this.id));
   }

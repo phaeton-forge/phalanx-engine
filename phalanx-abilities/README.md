@@ -40,7 +40,7 @@ pnpm --filter @phalanx-engine/abilities build
 This example wires **@phalanx-engine/ecs** (`GameWorld`) and **@phalanx-engine/math** (`FP`) into one abilities pipeline.
 
 ```typescript
-import { Entity, GameWorld, resetEntityIdCounter } from '@phalanx-engine/ecs';
+import { Entity, GameWorld } from '@phalanx-engine/ecs';
 import { FP } from '@phalanx-engine/math';
 import {
   createAbilitySystem,
@@ -119,8 +119,6 @@ const combatDefinitions = defineAbilitySystem({
   ],
 });
 
-resetEntityIdCounter();
-
 // The host supplies the tick provider (a client, or TickFrameManager from runtime).
 const world = new GameWorld({ tickFrameProvider });
 
@@ -135,7 +133,7 @@ const abilities = createAbilitySystem(world, {
 world.registerSystems([...abilities.tickSystems], [], 'default');
 
 // 3. Spawn a combatant with the bundled AbilitySystemComponent.
-const hero = new Entity();
+const hero = world.createEntity((id) => new Entity(id));
 const abilityComponent = abilities.initComponent({
   attributes: { Health: FP.FromInt(100), Mana: FP.FromInt(50) },
   abilities: ['Ability.Fireball'],
@@ -583,7 +581,7 @@ A non-empty `cues` map automatically registers `CueDispatchSystem` and `CuePrese
 - Use `FP.*` from `phalanx-math` for all modifier magnitudes
 - Store durations as integer **ticks**, not floats or `Date.now`
 - Target resolution is snapshotted at activation; movement after activation does not change which entity or point was targeted
-- Call `resetEntityIdCounter()` from `phalanx-ecs` at match start so projectile spawns get identical ids on every peer
+- Each world owns its entity ids. Spawn through `world.createEntity` so projectile ids match on every peer that replays the same commands
 - Hooks must be pure deterministic simulation — no `Math.random()` or wall-clock time
 
 ## API reference
@@ -658,7 +656,7 @@ See `src/index.ts` for the full public surface.
 
 ## Integration checklist
 
-1. **phalanx-ecs**: `GameWorld`, `Entity`, `resetEntityIdCounter`, register `abilities.tickSystems` in deterministic order alongside movement/physics/combat systems.
+1. **phalanx-ecs**: `GameWorld`, `Entity`, register `abilities.tickSystems` in deterministic order alongside movement/physics/combat systems.
 2. **phalanx-math**: `FP.FromInt`, `FP.FromFloat`, `FP.Add`, `FP.Mul`, etc. for all magnitudes.
 3. **Client-only cues**: pass a non-empty `cues` map with `Cue` subclasses; presentation runs in `afterFrame`. Never mutate simulation from cue code.
 4. **User-owned systems**: projectiles, rockets, AoE searches, and Aura ticking stay in game code. Call `applyEffect` or `activateAbility` from these systems on deterministic events (collision, timer tick).

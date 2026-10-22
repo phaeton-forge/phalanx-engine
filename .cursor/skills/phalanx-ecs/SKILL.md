@@ -394,8 +394,8 @@ import { Entity } from '@phalanx-engine/ecs';
 import { TransformComponent, InterpolationComponent } from '@phalanx-engine/physics';
 import { FPVector3 } from '@phalanx-engine/math';
 
-// Option A: Use Entity directly
-const entity = new Entity();
+// Option A: Use Entity directly. The world assigns the id.
+const entity = world.createEntity((id) => new Entity(id));
 const fpPos = FPVector3.FromFloat(10, 0, 20);
 entity.addComponent(new HealthComponent(100));
 entity.addComponent(new TeamComponent('red'));
@@ -407,8 +407,8 @@ entityManager.addEntity(entity);
 class Unit extends Entity {
   public mesh: Mesh | null = null;
 
-  constructor(scene: Scene, health: number, team: string, position: FPVector3Type) {
-    super();
+  constructor(id: number, scene: Scene, health: number, team: string, position: FPVector3Type) {
+    super(id);
     this.addComponent(new HealthComponent(health));
     this.addComponent(new TeamComponent(team));
     this.addComponent(new TransformComponent(this.id, position));
@@ -441,24 +441,19 @@ entity.isDestroyed                       // Check if destroyed
 
 Save sections live on `GameWorld`. `registerSaveSection` rejects an empty key (`registerSaveSection: key is empty`) and a duplicate (`registerSaveSection: duplicate key '<key>'`). `saveSections` is a copy sorted by UTF-16 code units. `StateWriter`, `StateReader`, `BinaryStateWriter` and `BinaryStateReader` are exported from this package.
 
-**Important:** Call `resetEntityIdCounter()` when starting a new game to ensure deterministic IDs across all clients:
+**Important:** Each world has its own id counter. Do not share ids across worlds.
 
 ```typescript
-import {
-  getEntityIdCounter,
-  resetEntityIdCounter,
-  setEntityIdCounter,
-  SoAComponent,
-} from '@phalanx-engine/ecs';
-resetEntityIdCounter();
+import { SoAComponent } from '@phalanx-engine/ecs';
 
-// Snapshot restore. The value is the last allocated id.
-setEntityIdCounter(savedHighWater);
+const entity = world.createEntity((id) => new Unit(id, scene, 100, 'red', pos));
+const restored = world.createEntityWithId(savedId, (id) => new Unit(id, scene, 100, 'red', pos));
+world.entityManager.restoreEntityIdHighWater(savedHighWater); // next id is savedHighWater + 1
 const manager = SoAComponent.currentEntityManager();
 world.pools?.ownedIds('unit'); // creation order; omits disposed entities
 world.pools?.freeListIds('unit'); // oldest first; spawn pops the last
 world.pools?.restore('unit', entitiesInCreationOrder, freeListIds);
-getEntityIdCounter();
+world.entityManager.entityIdHighWater();
 SoAComponent.useEntityManager(null); // same clear as resetContext()
 ```
 
@@ -961,7 +956,7 @@ import { GameWorld, GameWorldEvents } from '@phalanx-engine/ecs';
 import type { GameWorldConfig, GameWorldHooks } from '@phalanx-engine/ecs';
 
 // Core ECS
-import { Entity, resetEntityIdCounter, nextEntityId } from '@phalanx-engine/ecs';
+import { Entity } from '@phalanx-engine/ecs';
 import { EntityManager } from '@phalanx-engine/ecs';
 import { EventBus } from '@phalanx-engine/ecs';
 import { GameSystem } from '@phalanx-engine/ecs';
@@ -1076,8 +1071,8 @@ export class ProjectileEntity extends Entity implements IPoolableEntity<Projecti
   private readonly transform: TransformComponent;
   private readonly projectile: ProjectileComponent;
 
-  constructor() {
-    super();
+  constructor(id: number) {
+    super(id);
     this.addComponent(MeshComponent.createProjectile(radius));
     this.projectile = this.addComponent(new ProjectileComponent());
     this.transform = this.addComponent(new TransformComponent(this.id));
@@ -1105,7 +1100,7 @@ const world = new GameWorld({
     autoPrewarm: true,
     entityTypes: {
       projectile: {
-        factory: () => new ProjectileEntity(),
+        factory: (id) => new ProjectileEntity(id),
         pool: { initialSize: 50, maxSize: 200 },
       },
     },

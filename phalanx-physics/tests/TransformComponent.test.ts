@@ -32,7 +32,7 @@ describe('TransformComponent', () => {
   });
 
   it('uses TRANSFORM_COMPONENT_TYPE as its component type', () => {
-    const entity = new Entity();
+    const entity = new Entity(entityManager.allocateEntityId());
     entityManager.addEntity(entity);
     const transform = new TransformComponent(entity.id);
     entity.addComponent(transform);
@@ -41,7 +41,7 @@ describe('TransformComponent', () => {
   });
 
   it('defaults to the identity rotation when no initial rotation is given', () => {
-    const entity = new Entity();
+    const entity = new Entity(entityManager.allocateEntityId());
     entityManager.addEntity(entity);
     const transform = new TransformComponent(entity.id);
     entity.addComponent(transform);
@@ -54,11 +54,18 @@ describe('TransformComponent', () => {
   });
 
   it('reads and writes fpPosition and quaternion fpRotation', () => {
-    const entity = new Entity();
+    const entity = new Entity(entityManager.allocateEntityId());
     entityManager.addEntity(entity);
     const initialPosition = FPVector3.FromFloat(1, 2, 3);
-    const initialRotation = FPQuaternion.FromAxisAngle(FPVector3.Up, FP.FromFloat(1.5));
-    const transform = new TransformComponent(entity.id, initialPosition, initialRotation);
+    const initialRotation = FPQuaternion.FromAxisAngle(
+      FPVector3.Up,
+      FP.FromFloat(1.5)
+    );
+    const transform = new TransformComponent(
+      entity.id,
+      initialPosition,
+      initialRotation
+    );
     entity.addComponent(transform);
 
     expect(FP.ToFloat(transform.fpPosition.x)).toBeCloseTo(1);
@@ -76,13 +83,17 @@ describe('TransformComponent', () => {
 
     const store = entityManager.getOrCreateSoAStore(TransformSoASchema);
     const idx = store.indexOf(entity.id);
-    expect(FP.ToFloat(FP.FromRaw(store.arrays.fpPositionX[idx]))).toBeCloseTo(4);
+    expect(FP.ToFloat(FP.FromRaw(store.arrays.fpPositionX[idx]))).toBeCloseTo(
+      4
+    );
     // Stored rotation w component must remain a valid (non-zero) quaternion.
-    expect(FP.ToFloat(FP.FromRaw(store.arrays.fpRotationW[idx]))).not.toBeCloseTo(0);
+    expect(
+      FP.ToFloat(FP.FromRaw(store.arrays.fpRotationW[idx]))
+    ).not.toBeCloseTo(0);
   });
 
   it('round-trips fpRotation through the SoA store without loss', () => {
-    const entity = new Entity();
+    const entity = new Entity(entityManager.allocateEntityId());
     entityManager.addEntity(entity);
     const transform = new TransformComponent(entity.id);
     entity.addComponent(transform);
@@ -98,7 +109,7 @@ describe('TransformComponent', () => {
   });
 
   it('exposes a computed Euler view over the authoritative quaternion', () => {
-    const entity = new Entity();
+    const entity = new Entity(entityManager.allocateEntityId());
     entityManager.addEntity(entity);
     const transform = new TransformComponent(entity.id);
     entity.addComponent(transform);
@@ -110,7 +121,7 @@ describe('TransformComponent', () => {
   });
 
   it('fpRotationY matches forward derived from a PI quaternion', () => {
-    const entity = new Entity();
+    const entity = new Entity(entityManager.allocateEntityId());
     entityManager.addEntity(entity);
     const rotation = FPQuaternion.FromYaw(FP.Pi);
     const transform = new TransformComponent(entity.id, undefined, rotation);
@@ -120,7 +131,9 @@ describe('TransformComponent', () => {
     expect(FP.Eq(forward.z, FP.Neg(FP._1))).toBe(true);
 
     const yaw = FP.ToFloat(transform.fpRotationY);
-    expect(Math.atan2(FP.ToFloat(forward.x), FP.ToFloat(forward.z))).toBeCloseTo(yaw, 2);
+    expect(
+      Math.atan2(FP.ToFloat(forward.x), FP.ToFloat(forward.z))
+    ).toBeCloseTo(yaw, 2);
   });
 
   it('does not expose visual position or rotation APIs', () => {

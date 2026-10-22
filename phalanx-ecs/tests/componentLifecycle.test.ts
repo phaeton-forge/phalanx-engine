@@ -3,7 +3,6 @@ import { manualTickProvider } from './support/manualTickProvider.js';
 import {
   Entity,
   GameWorld,
-  resetEntityIdCounter,
   type IComponent,
   type IPoolableEntity,
 } from '../src/index.js';
@@ -32,8 +31,8 @@ class Flag implements IComponent {
 }
 
 class FlagEntity extends Entity implements IPoolableEntity {
-  public constructor() {
-    super();
+  public constructor(id: number) {
+    super(id);
     this.addComponent(new Flag());
   }
 
@@ -45,11 +44,10 @@ class FlagEntity extends Entity implements IPoolableEntity {
 describe('component lifecycle', () => {
   afterEach(() => {
     Flag.events.length = 0;
-    resetEntityIdCounter();
   });
 
   it('runs onCreate when a component is added and onDestroy on dispose', () => {
-    const entity = new Entity();
+    const entity = new Entity(1);
     entity.addComponent(new Flag());
     expect(Flag.events).toEqual(['create']);
     entity.dispose();
@@ -61,7 +59,7 @@ describe('component lifecycle', () => {
       tickFrameProvider: manualTickProvider(),
       pooling: {
         entityTypes: {
-          flag: { factory: () => new FlagEntity() },
+          flag: { factory: (id) => new FlagEntity(id) },
         },
       },
     });

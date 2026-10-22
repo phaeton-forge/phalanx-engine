@@ -8,7 +8,6 @@ import {
   GameWorld,
   SoAComponent,
   SystemContext,
-  resetEntityIdCounter,
 } from '@phalanx-engine/ecs';
 import { FP } from '@phalanx-engine/math';
 import type { FixedPoint } from '@phalanx-engine/math';
@@ -28,8 +27,8 @@ import {
 } from '../src/save/broadphase.js';
 
 class Disc extends Entity {
-  public constructor(x: number, z: number) {
-    super();
+  public constructor(id: number, x: number, z: number) {
+    super(id);
     this.addComponent(
       new TransformComponent(this.id, {
         x: FP.FromInt(x),
@@ -85,7 +84,7 @@ function wiredWorld(cellSize: FixedPoint = FP.FromInt(4)): {
 }
 
 function addDisc(world: GameWorld, x: number, z: number): Disc {
-  const disc = new Disc(x, z);
+  const disc = world.createEntity((id) => new Disc(id, x, z));
   world.entityManager.addEntity(disc);
   return disc;
 }
@@ -93,7 +92,6 @@ function addDisc(world: GameWorld, x: number, z: number): Disc {
 describe('physics state helpers', () => {
   afterEach(() => {
     SoAComponent.resetContext();
-    resetEntityIdCounter();
   });
 
   it('keeps a non-default precision through writeBroadphase', () => {

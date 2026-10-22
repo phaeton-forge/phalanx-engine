@@ -188,7 +188,6 @@ const ROOT_NAMES: readonly string[] = [
   'digestBytes',
   'each',
   'encodeSnapshot',
-  'getEntityIdCounter',
   'initDigest',
   'isAfterFrame',
   'isAfterTick',
@@ -358,8 +357,6 @@ const ADVANCED_NAMES: readonly string[] = [
   'TransportJoin',
   'TransportKind',
   'WorldScope',
-  'nextEntityId',
-  'setEntityIdCounter',
   'spawnWithId',
 ];
 
@@ -498,7 +495,7 @@ describe('@phalanx-engine/game subpath exports', () => {
     }
     expect(
       resolved.map((entry) => actual.get(entry.file)?.names.length)
-    ).toEqual([186, 9, 31, 85, 22, 3]);
+    ).toEqual([185, 9, 31, 85, 20, 3]);
   });
 
   it('keeps the name sets pairwise disjoint', () => {

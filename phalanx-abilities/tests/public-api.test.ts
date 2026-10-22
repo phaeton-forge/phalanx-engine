@@ -35,7 +35,7 @@ describe('public ability system API', () => {
     });
     world.registerSystems([...abilities.tickSystems], []);
 
-    const unit = new Entity();
+    const unit = world.createEntity((id) => new Entity(id));
     unit.addComponent(
       abilities.initComponent({
         attributes: {
@@ -94,7 +94,7 @@ describe('public ability system API', () => {
     });
     world.registerSystems([...abilities.tickSystems], []);
 
-    const untrained = new Entity();
+    const untrained = world.createEntity((id) => new Entity(id));
     untrained.addComponent(abilities.initComponent());
     world.entityManager.addEntity(untrained);
 
@@ -106,7 +106,7 @@ describe('public ability system API', () => {
       FP.ToFloat(abilities.getAttribute(untrained.id, 'Health').current)
     ).toBe(100);
 
-    const trained = new Entity();
+    const trained = world.createEntity((id) => new Entity(id));
     trained.addComponent(
       abilities.initComponent({
         abilities: ['Ability.SelfDamage'],

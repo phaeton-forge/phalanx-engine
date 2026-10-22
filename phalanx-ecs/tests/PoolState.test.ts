@@ -1,10 +1,9 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   Entity,
   EntityManager,
   EntityPool,
   PoolManager,
-  resetEntityIdCounter,
   type IPoolableEntity,
 } from '../src';
 
@@ -20,13 +19,17 @@ class UnitEntity extends Entity implements IPoolableEntity<{ hp: number }> {
   }
 }
 
-describe('pool state accessors', () => {
-  beforeEach(() => {
-    resetEntityIdCounter();
-  });
+function plainEntities(): () => Entity {
+  let next = 0;
+  return () => {
+    next += 1;
+    return new Entity(next);
+  };
+}
 
+describe('pool state accessors', () => {
   it('owned ids stay in creation order and the free list is oldest-first', () => {
-    const pool = new EntityPool(() => new Entity());
+    const pool = new EntityPool(plainEntities());
     pool.prewarm(3);
 
     const owned = pool.ownedIds();
@@ -44,7 +47,7 @@ describe('pool state accessors', () => {
   });
 
   it('drops an entity that release disposes because maxSize is full', () => {
-    const pool = new EntityPool(() => new Entity(), { maxSize: 1 });
+    const pool = new EntityPool(plainEntities(), { maxSize: 1 });
     const first = pool.acquire();
     const second = pool.acquire();
 
@@ -57,7 +60,7 @@ describe('pool state accessors', () => {
   });
 
   it('drain forgets free-list entities and keeps checked-out ones', () => {
-    const pool = new EntityPool(() => new Entity());
+    const pool = new EntityPool(plainEntities());
     pool.prewarm(2);
     const checkedOut = pool.acquire();
     const freed = pool.freeListIds()[0];
@@ -72,10 +75,10 @@ describe('pool state accessors', () => {
   it('PoolManager reports registration order, owned ids, and LIFO free list', () => {
     const manager = new PoolManager(new EntityManager());
     manager.registerEntityType('unit', {
-      factory: () => new UnitEntity(),
+      factory: (id) => new UnitEntity(id),
     });
     manager.registerEntityType('bolt', {
-      factory: () => new UnitEntity(),
+      factory: (id) => new UnitEntity(id),
     });
     manager.prewarm('unit', 3);
 
@@ -98,7 +101,7 @@ describe('pool state accessors', () => {
   it('restore puts a non-empty free list back so the next spawn id matches', () => {
     const manager = new PoolManager(new EntityManager());
     manager.registerEntityType('unit', {
-      factory: () => new UnitEntity(),
+      factory: (id) => new UnitEntity(id),
     });
     const first = manager.spawn<UnitEntity>('unit', { hp: 1 });
     const second = manager.spawn<UnitEntity>('unit', { hp: 2 });
@@ -112,7 +115,7 @@ describe('pool state accessors', () => {
 
     const restored = new PoolManager(new EntityManager());
     restored.registerEntityType('unit', {
-      factory: () => new UnitEntity(),
+      factory: (id) => new UnitEntity(id),
     });
     restored.restore('unit', [first, second, third], free);
 
@@ -129,7 +132,7 @@ describe('pool state accessors', () => {
   it('drops an entity disposed outside despawn', () => {
     const manager = new PoolManager(new EntityManager());
     manager.registerEntityType('unit', {
-      factory: () => new UnitEntity(),
+      factory: (id) => new UnitEntity(id),
     });
     const live = manager.spawn<UnitEntity>('unit', { hp: 1 });
     const dead = manager.spawn<UnitEntity>('unit', { hp: 2 });

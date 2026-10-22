@@ -86,8 +86,8 @@ const abilitiesByManager = new WeakMap<
 >();
 
 class ArenaPawn extends Entity implements IPoolableEntity<void> {
-  public constructor() {
-    super();
+  public constructor(id: number) {
+    super(id);
     const manager = SoAComponent.currentEntityManager();
     const abilities =
       manager === null ? undefined : abilitiesByManager.get(manager);
@@ -162,7 +162,7 @@ export const ArenaGame = defineGame<ArenaConfig, ArenaCommand, ArenaSim>({
   pooling: {
     entityTypes: {
       pawn: {
-        factory: () => new ArenaPawn(),
+        factory: (id) => new ArenaPawn(id),
         pool: { initialSize: 1 },
       },
     },

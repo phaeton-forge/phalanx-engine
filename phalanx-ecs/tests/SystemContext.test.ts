@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { Entity, resetEntityIdCounter } from '../src/Entity';
+import { Entity } from '../src/Entity';
 import { GameSystem } from '../src/GameSystem';
 import { GameWorld } from '../src/GameWorld';
 import type { IAbilitySystem } from '../src/IAbilitySystem';
@@ -38,17 +38,13 @@ class RandomProbeSystem extends GameSystem {
 }
 
 describe('SystemContext shared services', () => {
-  beforeEach(() => {
-    resetEntityIdCounter();
-  });
-
   it('exposes pools on context when GameWorld pooling is configured', () => {
     const world = new GameWorld({
       tickFrameProvider: manualTickProvider(),
       pooling: {
         entityTypes: {
           unit: {
-            factory: () => new Entity(),
+            factory: (id) => new Entity(id),
             pool: { initialSize: 1 },
           },
         },
@@ -136,15 +132,16 @@ describe('SystemContext shared services', () => {
     );
   });
 
-  it('resets entity id counter on construction', () => {
-    resetEntityIdCounter();
-    const first = new Entity();
-    expect(first.id).toBe(1);
-
-    const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
-    const second = new Entity();
-    expect(second.id).toBe(1);
-    expect(world.entityManager).toBeDefined();
+  it('gives each world its own entity id counter', () => {
+    const first = new GameWorld({ tickFrameProvider: manualTickProvider() });
+    const second = new GameWorld({ tickFrameProvider: manualTickProvider() });
+    const a = first.createEntity((id) => new Entity(id));
+    const b = second.createEntity((id) => new Entity(id));
+    expect(a.id).toBe(1);
+    expect(b.id).toBe(1);
+    expect(first.createEntity((id) => new Entity(id)).id).toBe(2);
+    first.dispose();
+    second.dispose();
   });
 
   it('does not run ability tick systems twice when they are registered explicitly', () => {

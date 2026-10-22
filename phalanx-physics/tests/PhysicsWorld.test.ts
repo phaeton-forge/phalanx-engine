@@ -111,7 +111,7 @@ describe('PhysicsWorld', () => {
     const { interpolationSystem } = physicsWorld.getSystems();
     interpolationSystem.init(context);
 
-    const entity = new Entity();
+    const entity = new Entity(entityManager.allocateEntityId());
     const transform = new TransformComponent(
       entity.id,
       FPVector3.FromFloat(0, 0, 0),

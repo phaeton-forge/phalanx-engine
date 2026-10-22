@@ -3,7 +3,6 @@ import {
   Entity,
   EntityManager,
   PoolManager,
-  resetEntityIdCounter,
   type IPoolableEntity,
 } from '../src';
 import type { IPoolableComponent } from '../src/pool/IPoolableComponent.js';
@@ -40,8 +39,8 @@ class TestPoolableEntity
   static entityDespawnCalls = 0;
   public hp = 0;
 
-  constructor() {
-    super();
+  constructor(id: number) {
+    super(id);
     this.addComponent(new HookRecordingComponent());
   }
 
@@ -76,8 +75,8 @@ class OrderComponent implements IPoolableComponent {
 }
 
 class OrderEntity extends Entity implements IPoolableEntity {
-  constructor() {
-    super();
+  constructor(id: number) {
+    super(id);
     this.addComponent(new OrderComponent());
   }
 
@@ -95,7 +94,6 @@ describe('PoolManager', () => {
   let manager: PoolManager;
 
   beforeEach(() => {
-    resetEntityIdCounter();
     resetHookState();
     hookOrder.length = 0;
     entityManager = new EntityManager();
@@ -104,7 +102,7 @@ describe('PoolManager', () => {
 
   it('spawn() returns entity registered in EntityManager with args applied', () => {
     manager.registerEntityType('test', {
-      factory: () => new TestPoolableEntity(),
+      factory: (id) => new TestPoolableEntity(id),
     });
 
     const entity = manager.spawn<TestPoolableEntity>('test', { hp: 42 });
@@ -119,7 +117,9 @@ describe('PoolManager', () => {
   });
 
   it('runs component onSpawn() before entity onSpawn(args)', () => {
-    manager.registerEntityType('order', { factory: () => new OrderEntity() });
+    manager.registerEntityType('order', {
+      factory: (id) => new OrderEntity(id),
+    });
     manager.prewarm('order', 1);
     hookOrder.length = 0;
 
@@ -129,7 +129,9 @@ describe('PoolManager', () => {
   });
 
   it('despawn() removes from EntityManager and runs hooks in inverse order', () => {
-    manager.registerEntityType('order', { factory: () => new OrderEntity() });
+    manager.registerEntityType('order', {
+      factory: (id) => new OrderEntity(id),
+    });
     const entity = manager.spawn('order');
     hookOrder.length = 0;
 
@@ -143,7 +145,7 @@ describe('PoolManager', () => {
 
   it('spawn → despawn → spawn reuses the same instance with the same ID', () => {
     manager.registerEntityType('test', {
-      factory: () => new TestPoolableEntity(),
+      factory: (id) => new TestPoolableEntity(id),
     });
 
     const first = manager.spawn<TestPoolableEntity>('test', { hp: 10 });
@@ -159,7 +161,7 @@ describe('PoolManager', () => {
 
   it('factory creation runs despawn hooks once for prewarmed entities', () => {
     manager.registerEntityType('test', {
-      factory: () => new TestPoolableEntity(),
+      factory: (id) => new TestPoolableEntity(id),
       pool: { initialSize: 3 },
     });
 
@@ -172,7 +174,7 @@ describe('PoolManager', () => {
 
   it('double despawn() is a no-op', () => {
     manager.registerEntityType('test', {
-      factory: () => new TestPoolableEntity(),
+      factory: (id) => new TestPoolableEntity(id),
     });
     const entity = manager.spawn<TestPoolableEntity>('test', { hp: 5 });
 
@@ -191,7 +193,7 @@ describe('PoolManager', () => {
   });
 
   it('despawn() on a non-pooled entity throws', () => {
-    expect(() => manager.despawn(new Entity())).toThrow(
+    expect(() => manager.despawn(new Entity(1))).toThrow(
       'despawn() called on an entity that was not created by PoolManager'
     );
   });
@@ -204,25 +206,25 @@ describe('PoolManager', () => {
 
   it('throws on duplicate registration', () => {
     manager.registerEntityType('test', {
-      factory: () => new VoidPoolableEntity(),
+      factory: (id) => new VoidPoolableEntity(id),
     });
     expect(() => {
       manager.registerEntityType('test', {
-        factory: () => new VoidPoolableEntity(),
+        factory: (id) => new VoidPoolableEntity(id),
       });
     }).toThrow("Pool 'test' is already registered");
   });
 
   it('createForRestore skips hooks and restore discards prewarm', () => {
     manager.registerEntityType('test', {
-      factory: () => new TestPoolableEntity(),
+      factory: (id) => new TestPoolableEntity(id),
       pool: { initialSize: 2 },
     });
     manager.prewarmAll();
     expect(TestPoolableEntity.entityDespawnCalls).toBe(2);
     resetHookState();
 
-    const created = manager.createForRestore('test');
+    const created = manager.createForRestore('test', 99);
     expect(created).toBeInstanceOf(TestPoolableEntity);
     expect(created._poolTypeKey).toBeUndefined();
     expect(TestPoolableEntity.entityDespawnCalls).toBe(0);
@@ -237,7 +239,7 @@ describe('PoolManager', () => {
 
   it('prewarmAll uses initialSize', () => {
     manager.registerEntityType('test', {
-      factory: () => new VoidPoolableEntity(),
+      factory: (id) => new VoidPoolableEntity(id),
       pool: { initialSize: 10 },
     });
 
@@ -247,7 +249,7 @@ describe('PoolManager', () => {
 
   it('prewarm specific pool', () => {
     manager.registerEntityType('test', {
-      factory: () => new VoidPoolableEntity(),
+      factory: (id) => new VoidPoolableEntity(id),
     });
     manager.prewarm('test', 5);
     expect(manager.getPoolStats('test')!.available).toBe(5);
@@ -261,11 +263,11 @@ describe('PoolManager', () => {
 
   it('drainAll clears all pools', () => {
     manager.registerEntityType('a', {
-      factory: () => new VoidPoolableEntity(),
+      factory: (id) => new VoidPoolableEntity(id),
       pool: { initialSize: 5 },
     });
     manager.registerEntityType('b', {
-      factory: () => new VoidPoolableEntity(),
+      factory: (id) => new VoidPoolableEntity(id),
       pool: { initialSize: 3 },
     });
     manager.prewarmAll();
@@ -277,10 +279,10 @@ describe('PoolManager', () => {
 
   it('getStats returns all pool stats', () => {
     manager.registerEntityType('a', {
-      factory: () => new VoidPoolableEntity(),
+      factory: (id) => new VoidPoolableEntity(id),
     });
     manager.registerEntityType('b', {
-      factory: () => new VoidPoolableEntity(),
+      factory: (id) => new VoidPoolableEntity(id),
     });
     manager.spawn('a');
     manager.spawn('b');
@@ -297,11 +299,11 @@ describe('PoolManager', () => {
 
   it('multiple pools operate independently', () => {
     manager.registerEntityType('alpha', {
-      factory: () => new VoidPoolableEntity(),
+      factory: (id) => new VoidPoolableEntity(id),
       pool: { initialSize: 3 },
     });
     manager.registerEntityType('beta', {
-      factory: () => new VoidPoolableEntity(),
+      factory: (id) => new VoidPoolableEntity(id),
       pool: { initialSize: 5 },
     });
 
@@ -319,7 +321,7 @@ describe('PoolManager', () => {
   it('runs return-to-pool hooks on despawn and on runDormantHooks', () => {
     const seen: number[] = [];
     manager.registerEntityType('test', {
-      factory: () => new TestPoolableEntity(),
+      factory: (id) => new TestPoolableEntity(id),
     });
     manager.addReturnToPoolHook((entity) => {
       seen.push(entity.id);

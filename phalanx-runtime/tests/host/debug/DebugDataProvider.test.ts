@@ -5,7 +5,6 @@ import {
   PoolManager,
   SoAComponent,
   defineSoASchema,
-  resetEntityIdCounter,
   type IComponent,
   type IPoolableEntity,
 } from '@phalanx-engine/ecs';
@@ -83,7 +82,6 @@ describe('DebugDataProvider', () => {
   let em: EntityManager;
 
   beforeEach(() => {
-    resetEntityIdCounter();
     em = new EntityManager();
     em.registerComponentTypes([HealthType, ArmorType]);
     SoAComponent.useEntityManager(em);
@@ -97,9 +95,9 @@ describe('DebugDataProvider', () => {
 
   describe('getSnapshot()', () => {
     it('returns correct world summary', () => {
-      const e1 = new Entity();
+      const e1 = new Entity(em.allocateEntityId());
       em.addEntity(e1);
-      const e2 = new Entity();
+      const e2 = new Entity(em.allocateEntityId());
       em.addEntity(e2);
 
       const provider = createProvider(em);
@@ -120,7 +118,7 @@ describe('DebugDataProvider', () => {
     });
 
     it('collects standard entity components', () => {
-      const entity = new Entity();
+      const entity = new Entity(em.allocateEntityId());
       entity.addComponent(new HealthComponent(75));
       entity.addComponent(new ArmorComponent(20));
       em.addEntity(entity);
@@ -152,7 +150,7 @@ describe('DebugDataProvider', () => {
 
     it('copies enumerable getter values', () => {
       em.registerComponentTypes([GaugeType]);
-      const entity = new Entity();
+      const entity = new Entity(em.allocateEntityId());
       entity.addComponent(new GaugeComponent(7));
       em.addEntity(entity);
 
@@ -171,7 +169,7 @@ describe('DebugDataProvider', () => {
     });
 
     it('collects SoA store data with correct field types', () => {
-      const entity = new Entity();
+      const entity = new Entity(em.allocateEntityId());
       em.addEntity(entity);
       new PhysicsBodyComponent(entity.id, 2.5);
 
@@ -198,7 +196,7 @@ describe('DebugDataProvider', () => {
     });
 
     it('includes per-entity SoA field values with bigint preserved', () => {
-      const entity = new Entity();
+      const entity = new Entity(em.allocateEntityId());
       em.addEntity(entity);
       new PhysicsBodyComponent(entity.id, 3.14);
 
@@ -217,7 +215,7 @@ describe('DebugDataProvider', () => {
     });
 
     it('reports soaStoreCount in world summary', () => {
-      const entity = new Entity();
+      const entity = new Entity(em.allocateEntityId());
       em.addEntity(entity);
       new PhysicsBodyComponent(entity.id);
 
@@ -228,7 +226,7 @@ describe('DebugDataProvider', () => {
     it('collects pool stats when PoolManager is provided', () => {
       const pools = new PoolManager(em);
       pools.registerEntityType('projectile', {
-        factory: () => new PoolableEntity(),
+        factory: (id) => new PoolableEntity(id),
         pool: { initialSize: 10 },
       });
       pools.prewarmAll();
@@ -270,7 +268,7 @@ describe('DebugDataProvider', () => {
     });
 
     it('delivers snapshots to subscribers on interval', () => {
-      const entity = new Entity();
+      const entity = new Entity(em.allocateEntityId());
       em.addEntity(entity);
 
       const provider = new DebugDataProvider(em, null, { updateInterval: 100 });

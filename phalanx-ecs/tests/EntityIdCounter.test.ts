@@ -1,63 +1,79 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { manualTickProvider } from './support/manualTickProvider.js';
-import {
-  Entity,
-  GameWorld,
-  SoAComponent,
-  getEntityIdCounter,
-  nextEntityId,
-  resetEntityIdCounter,
-  setEntityIdCounter,
-} from '../src';
+import { Entity, EntityManager, GameWorld, SoAComponent } from '../src';
 
 describe('entity id counter', () => {
   afterEach(() => {
-    resetEntityIdCounter();
     SoAComponent.resetContext();
   });
 
-  it('getEntityIdCounter reports the high-water mark', () => {
-    expect(getEntityIdCounter()).toBe(0);
-    expect(nextEntityId()).toBe(1);
-    expect(getEntityIdCounter()).toBe(1);
-    const entity = new Entity();
-    expect(entity.id).toBe(2);
-    expect(getEntityIdCounter()).toBe(2);
+  it('allocateEntityId advances the high-water mark', () => {
+    const manager = new EntityManager();
+    expect(manager.entityIdHighWater()).toBe(0);
+    expect(manager.allocateEntityId()).toBe(1);
+    expect(manager.entityIdHighWater()).toBe(1);
+    expect(manager.allocateEntityId()).toBe(2);
+    expect(manager.entityIdHighWater()).toBe(2);
   });
 
-  it('setEntityIdCounter restores any integer >= 0 and the next id follows it', () => {
-    new Entity();
-    new Entity();
-    setEntityIdCounter(40);
-    expect(getEntityIdCounter()).toBe(40);
-    expect(new Entity().id).toBe(41);
+  it('restoreEntityIdHighWater sets the next id and rejects bad values', () => {
+    const manager = new EntityManager();
+    manager.allocateEntityId();
+    manager.allocateEntityId();
+    manager.restoreEntityIdHighWater(40);
+    expect(manager.entityIdHighWater()).toBe(40);
+    expect(manager.allocateEntityId()).toBe(41);
 
-    setEntityIdCounter(0);
-    expect(getEntityIdCounter()).toBe(0);
-    expect(nextEntityId()).toBe(1);
-  });
+    manager.restoreEntityIdHighWater(0);
+    expect(manager.entityIdHighWater()).toBe(0);
+    expect(manager.allocateEntityId()).toBe(1);
 
-  it('setEntityIdCounter rejects values that are not integers >= 0', () => {
-    expect(() => setEntityIdCounter(-1)).toThrow(/integer >= 0/);
-    expect(() => setEntityIdCounter(1.5)).toThrow(/integer >= 0/);
-    expect(() => setEntityIdCounter(Number.NaN)).toThrow(/integer >= 0/);
-    expect(() => setEntityIdCounter(Number.POSITIVE_INFINITY)).toThrow(
+    expect(() => manager.restoreEntityIdHighWater(-1)).toThrow(/integer >= 0/);
+    expect(() => manager.restoreEntityIdHighWater(1.5)).toThrow(/integer >= 0/);
+    expect(() => manager.restoreEntityIdHighWater(Number.NaN)).toThrow(
       /integer >= 0/
     );
-    expect(getEntityIdCounter()).toBe(0);
+    expect(() =>
+      manager.restoreEntityIdHighWater(Number.POSITIVE_INFINITY)
+    ).toThrow(/integer >= 0/);
+    expect(manager.entityIdHighWater()).toBe(1);
   });
 
-  it('GameWorld delegates get and set, and construction still resets the counter', () => {
-    setEntityIdCounter(9);
+  it('claimEntityId does not rewind a hole', () => {
+    const manager = new EntityManager();
+    manager.claimEntityId(5);
+    manager.claimEntityId(2);
+    expect(manager.entityIdHighWater()).toBe(5);
+    expect(manager.allocateEntityId()).toBe(6);
+    expect(() => manager.claimEntityId(0)).toThrow(/integer >= 1/);
+    expect(manager.entityIdHighWater()).toBe(6);
+  });
+
+  it('each world keeps its own counter and construction does not reset another', () => {
+    const worldA = new GameWorld({ tickFrameProvider: manualTickProvider() });
+    const first = worldA.createEntity((id) => new Entity(id));
+    expect(first.id).toBe(1);
+
+    const worldB = new GameWorld({ tickFrameProvider: manualTickProvider() });
+    expect(worldB.entityManager.entityIdHighWater()).toBe(0);
+    expect(worldB.createEntity((id) => new Entity(id)).id).toBe(1);
+    expect(worldA.entityManager.entityIdHighWater()).toBe(1);
+    expect(worldA.createEntity((id) => new Entity(id)).id).toBe(2);
+
+    worldB.dispose();
+    expect(worldA.createEntity((id) => new Entity(id)).id).toBe(3);
+    worldA.dispose();
+  });
+
+  it('createEntityWithId keeps the same ids and the same next id', () => {
     const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
-    expect(world.getEntityIdCounter()).toBe(0);
-    expect(SoAComponent.currentEntityManager()).toBe(world.entityManager);
-
-    world.setEntityIdCounter(7);
-    expect(getEntityIdCounter()).toBe(7);
-    expect(world.getEntityIdCounter()).toBe(7);
-    expect(new Entity().id).toBe(8);
-
+    const high = world.createEntityWithId(5);
+    const hole = world.createEntityWithId(2, (id) => new Entity(id));
+    expect(high.id).toBe(5);
+    expect(hole.id).toBe(2);
+    expect(world.entityManager.getEntity(5)).toBe(high);
+    expect(world.entityManager.entityIdHighWater()).toBe(5);
+    expect(world.createEntity((id) => new Entity(id)).id).toBe(6);
     world.dispose();
   });
 

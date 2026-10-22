@@ -138,8 +138,8 @@ class TinyUnitComponent extends SoAComponent<TinyUnitFields> {
 }
 
 class TinyUnit extends Entity {
-  public constructor(slot: number, x: bigint, hp: bigint) {
-    super();
+  public constructor(id: number, slot: number, x: bigint, hp: bigint) {
+    super(id);
     this.addComponent(new TinyUnitComponent(this.id, { slot, x, hp }));
   }
 }
@@ -190,7 +190,11 @@ export class TinySim {
 
   public apply(stamped: StampedCommand<TinyCommand>): void {
     if (stamped.command.type === 'spawn') {
-      const unit = new TinyUnit(stamped.slot, stamped.command.x, INITIAL_HP);
+      const { x } = stamped.command;
+      const slot = stamped.slot;
+      const unit = this.world.createEntity(
+        (id) => new TinyUnit(id, slot, x, INITIAL_HP)
+      );
       this.world.entityManager.addEntity(unit);
       return;
     }
@@ -272,7 +276,7 @@ export class TinyState {
       StateHelpers.spawnWithId(
         this.sim.world,
         id,
-        () => new TinyUnit(0, 0n, 0n)
+        (entityId) => new TinyUnit(entityId, 0, 0n, 0n)
       );
     }
     StateHelpers.readPools(r, this.sim.world);
@@ -294,8 +298,7 @@ export class TinyState {
         return;
       }
     }
-    const world = this.sim.world;
-    world.setEntityIdCounter(world.getEntityIdCounter() + 1);
+    this.sim.world.entityManager.allocateEntityId();
   }
 }
 

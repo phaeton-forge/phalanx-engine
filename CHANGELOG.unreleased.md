@@ -29,6 +29,31 @@ Entries collected per package until the synchronized 0.3.0 release
 
 ## @phalanx-engine/ecs
 
+- The entity id counter is a field of `EntityManager`. Removed
+  `resetEntityIdCounter`, `getEntityIdCounter`, `setEntityIdCounter` and
+  `nextEntityId`. `new Entity()` is gone: `constructor(id: number)`
+  requires an integer `>= 1` and throws
+  `Entity: id must be an integer >= 1`. `GameWorld` no longer resets a
+  counter. `world.createEntity(create)` allocates the next id and does
+  not register. `world.createEntityWithId(id, create?)` builds that id,
+  sets the high-water mark to `max(current, id)` and registers. A hole
+  does not rewind the next id. Errors:
+  `createEntityWithId: entity N already exists`,
+  `createEntityWithId: id must be an integer >= 1`,
+  `createEntityWithId: factory must return the entity with id N`,
+  `createEntityWithId: factory already registered entity N`.
+  `createEntity` allocates the id before `create` runs, so a throw still
+  consumes that id. `createEntityWithId` claims the id only after
+  `create` returns, so a throwing factory does not move the counter.
+  `EntityManager.entityIdHighWater`, `restoreEntityIdHighWater`,
+  `allocateEntityId` and `claimEntityId` are the counter API.
+  `restoreEntityIdHighWater` rejects a non-integer or a value `< 0`
+  (`restoreEntityIdHighWater: value must be an integer >= 0`) and may
+  lower the mark. `clear()` does not reset it. Pool factories are
+  `(id: number) => T`. `PoolManager.createForRestore(typeKey, id)` takes
+  that id and does not allocate.
+- Removed `GameWorld.getEntityIdCounter` / `setEntityIdCounter`.
+- Export snapshot: names `[69]` → `[65]`, values `[28]` → `[24]`.
 - Removed `GameWorld.save`, `restore`, `spawn`, `despawn` and `each`, the
   type `WorldModuleHost`, the function `setWorldModuleHost` and the error
   `GameWorld: world modules are not installed. Import @phalanx-engine/runtime before using save, restore, spawn, despawn, or each.`
@@ -87,6 +112,9 @@ Entries collected per package until the synchronized 0.3.0 release
 
 ## @phalanx-engine/game
 
+- Root drops `getEntityIdCounter`. `./advanced` drops `nextEntityId` and
+  `setEntityIdCounter`. Name count
+  `[186, 9, 31, 85, 22, 3]` → `[185, 9, 31, 85, 20, 3]`.
 - Root drops `globalEventBus` and the type `WorldModuleHost`, and gains
   `saveWorld`, `restoreWorld`, `spawn`, `despawn` and `each` from runtime.
   `./advanced` drops `setWorldModuleHost`. Name count
@@ -129,6 +157,16 @@ Entries collected per package until the synchronized 0.3.0 release
 
 ## @phalanx-engine/runtime
 
+- `./advanced` drops `nextEntityId` and `setEntityIdCounter`. The entity
+  id counter is read and written through the world
+  (`entityManager.entityIdHighWater` /
+  `restoreEntityIdHighWater`). The `entityIds` section format is
+  unchanged. `spawnWithId(world, id, create)` delegates to
+  `world.createEntityWithId` and no longer moves the counter to `id - 1`.
+  `create` is `(id: number) => E`. A duplicate id throws
+  `createEntityWithId: entity N already exists`. `WorldScope` no longer
+  swaps the counter. It still swaps the process-global SoA entity
+  manager.
 - New root functions `saveWorld`, `restoreWorld`, `spawn`, `despawn` and
   `each`. They replace the `GameWorld` methods of the same job:
   `world.save()` → `saveWorld(world)`, `world.restore(bytes)` →
@@ -466,16 +504,17 @@ Entries collected per package until the synchronized 0.3.0 release
   `@phalanx-engine/physics`. `IPoolableComponent` is exported (names
   82 → 83). `isPoolableComponent` stays internal.
 
-- Snapshot accessors (Task 3): `getEntityIdCounter` / `setEntityIdCounter`
-  (module functions and `GameWorld` delegates), `SoAComponent.currentEntityManager()`,
-  and pool `typeKeys` / `ownedIds` / `freeListIds`. Allocation order, the
-  constructor reset, and pool acquire/release behavior are unchanged.
-- `setEntityIdCounter` still accepts any integer `>= 0`. The caller must
+- Snapshot accessors (Task 3) added `getEntityIdCounter` /
+  `setEntityIdCounter`. A6a.2 removed them. The counter is
+  `EntityManager.entityIdHighWater` / `restoreEntityIdHighWater`.
+  `SoAComponent.currentEntityManager()` and pool `typeKeys` / `ownedIds` /
+  `freeListIds` stay.
+- `restoreEntityIdHighWater` accepts any integer `>= 0`. The caller must
   pass a value `>=` every live entity id; a lower value is stored and the
   next allocation can collide.
 - `SoAComponent.useEntityManager(null)` clears the context, the same as
   `resetContext()`.
-- `PoolManager.createForRestore(typeKey)` runs the raw factory with no
+- `PoolManager.createForRestore(typeKey, id)` runs the raw factory with no
   spawn or despawn hooks. `discardPrewarmed` disposes a free, unregistered
   prewarm list. `restore` discards that list before adopting the snapshot.
 - `PoolManager.restore(typeKey, entitiesInCreationOrder, freeListIds)`
