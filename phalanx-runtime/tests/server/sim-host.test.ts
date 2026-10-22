@@ -650,7 +650,9 @@ describe('SimHost', () => {
     void pending.then(() => {
       settled = true;
     });
-    await waitFor(() => archived === 1, 2000);
+    // The hook is queued after shutdownGraceMs and stop(), so the
+    // wait has to outlast the grace period.
+    await waitFor(() => archived === 1, 8000);
     await new Promise((resolve) => setTimeout(resolve, 40));
     expect(settled).toBe(false);
     release();
