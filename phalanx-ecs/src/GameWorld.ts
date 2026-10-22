@@ -807,7 +807,7 @@ export class GameWorld {
         );
       }
       assertSoaPatch(component, patch);
-      store.set(entity.id, patch);
+      store.set(entity.id, omitUndefinedSoaFields(patch));
       return;
     }
     store.add(entity.id, mergeSoaValues(component, patch));
@@ -902,6 +902,23 @@ function requireComponentObject(
     );
   }
   return value;
+}
+
+function omitUndefinedSoaFields<S extends SoASchemaDefinition>(
+  values: Partial<SoAFieldsOf<S>>
+): Partial<SoAFieldsOf<S>> {
+  for (const key of Object.keys(values)) {
+    if (values[key as keyof S & string] !== undefined) continue;
+    const defined = {} as Partial<SoAFieldsOf<S>>;
+    for (const name of Object.keys(values)) {
+      const field = values[name as keyof S & string];
+      if (field !== undefined) {
+        defined[name as keyof S & string] = field;
+      }
+    }
+    return defined;
+  }
+  return values;
 }
 
 function assignComponentValues(

@@ -59,10 +59,34 @@ describe('defineComponent', () => {
     game.add(entity, hp, { hp: 9n });
     expect(game.get(entity, hp)).toEqual({ hp: 9n, armor: 2 });
 
+    game.add(entity, hp, { hp: undefined, armor: undefined });
+    expect(game.get(entity, hp)).toEqual({ hp: 9n, armor: 2 });
+
     expect(game.remove(entity, visual)).toBe(true);
     expect(game.get(entity, visual)).toBeUndefined();
     expect(game.remove(entity, hp)).toBe(true);
     expect(game.get(entity, hp)).toBeUndefined();
+  });
+
+  it('treats an explicit undefined SoA field as omitted', () => {
+    const game = world();
+    const hp = defineComponent(
+      'Hp',
+      { hp: 'i64', armor: 'i32' },
+      { defaults: { hp: 5n, armor: 1 } }
+    );
+    game.registerComponent(hp);
+    const entity = game.createEntityWithId(1);
+
+    game.add(entity, hp, { hp: undefined, armor: 3 });
+    expect(game.get(entity, hp)).toEqual({ hp: 5n, armor: 3 });
+
+    game.add(entity, hp, { hp: 9n });
+    game.add(entity, hp, { hp: undefined });
+    expect(game.get(entity, hp)).toEqual({ hp: 9n, armor: 3 });
+
+    game.add(entity, hp, { armor: undefined, hp: 1n });
+    expect(game.get(entity, hp)).toEqual({ hp: 1n, armor: 3 });
   });
 
   it('rejects an object component without save and load at registration', () => {
