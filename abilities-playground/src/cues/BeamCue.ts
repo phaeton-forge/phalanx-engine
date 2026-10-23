@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { Entity } from '@phalanx-engine/ecs';
 import { FPVector3 } from '@phalanx-engine/math';
-import { Cue, getGameplayTagsComponent } from '@phalanx-engine/abilities';
+import { Cue, gameplayTagsOf } from '@phalanx-engine/abilities';
 import type {
   CueContext,
   GameplayCueDispatchedEvent,
@@ -107,7 +107,7 @@ export class BeamCue extends Cue {
       return;
     }
 
-    const targetTags = getGameplayTagsComponent(target);
+    const targetTags = gameplayTagsOf(target);
     if (!targetTags?.tags.has(this.requiredTag)) {
       this.done = true;
       return;

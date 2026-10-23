@@ -15,7 +15,7 @@ import type { AttributeValue } from './AttributeValue.js';
  * compiler without re-entrancy risk.
  */
 export interface AbilityStateReader {
-  /** Non-throwing attribute read; `undefined` when the entity, its AttributesComponent, or the attribute id is missing. */
+  /** Non-throwing attribute read; `undefined` when the entity, its Attributes, or the attribute id is missing. */
   tryGetAttribute(entityId: number, attrId: string): AttributeValue | undefined;
   hasTag(entityId: number, tag: string): boolean;
 }

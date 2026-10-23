@@ -7,21 +7,23 @@ import {
 } from '@phalanx-engine/ecs';
 import { FP } from '@phalanx-engine/math';
 import {
-  AbilitiesComponentType,
-  ActiveEffectsComponent,
-  AttributesComponent,
-  GameplayTagsComponent,
+  AbilityOwner,
+  abilityOwnerOf,
+  type AbilitySystem,
+  ActiveEffects,
+  activeEffectsOf,
+  Attributes,
   createAbilitySystem,
   defineAbility,
   defineAbilitySystem,
   defineAttribute,
   defineEffect,
-  getAbilitySystemComponent,
-  getActiveEffectsComponent,
-  getGameplayTagsComponent,
-  type AbilitySystem,
+  GameplayTags,
+  gameplayTagsOf,
+  attributesOf,
 } from '../src';
 import { releasePooledAbilityState } from '../src/api/releasePooledAbilityState.js';
+import { attributesValue, standalone } from './helpers.js';
 import { manualTickProvider } from './support/manualTickProvider.js';
 
 const definitions = defineAbilitySystem({
@@ -99,7 +101,7 @@ describe('pooled GAS reset', () => {
     if (pools === null) throw new Error('expected pools');
 
     const minion = pools.spawn<Minion>('minion');
-    const component = getAbilitySystemComponent(minion);
+    const component = abilityOwnerOf(minion);
     if (component === undefined) throw new Error('missing ability component');
     expect(component.activeEffects.pendingAdd).toHaveLength(1);
     expect(component.tags.tags.has('Team.Red')).toBe(true);
@@ -109,38 +111,34 @@ describe('pooled GAS reset', () => {
     abilities.addTag(minion.id, 'Team.Blue');
     abilities.applyEffect(minion.id, 'Effect.Burn', minion.id);
     world.processAllTicks(0);
-    expect(getActiveEffectsComponent(minion)?.queue).toHaveLength(2);
+    expect(activeEffectsOf(minion)?.queue).toHaveLength(2);
     expect(
-      getGameplayTagsComponent(minion)?.effectGrantCounts.get(
-        'State.Debuff.Burn'
-      )
+      gameplayTagsOf(minion)?.effectGrantCounts.get('State.Debuff.Burn')
     ).toBe(2);
     abilities.applyEffect(minion.id, 'Effect.Burn', minion.id);
-    expect(getActiveEffectsComponent(minion)?.pendingAdd).toHaveLength(1);
+    expect(activeEffectsOf(minion)?.pendingAdd).toHaveLength(1);
     component.abilities.delete('Ability.Hold');
     component.attributes.base[0] = 1n;
     component.attributes.current[0] = 1n;
 
     pools.despawn(minion);
-    expect(getActiveEffectsComponent(minion)?.queue).toHaveLength(0);
-    expect(getActiveEffectsComponent(minion)?.pendingAdd).toHaveLength(0);
-    expect(getGameplayTagsComponent(minion)?.tags.has('Team.Red')).toBe(true);
-    expect(getGameplayTagsComponent(minion)?.tags.has('Team.Blue')).toBe(false);
-    expect(getGameplayTagsComponent(minion)?.adHocTags.has('Team.Red')).toBe(
-      true
-    );
-    expect(getGameplayTagsComponent(minion)?.effectGrantCounts.size).toBe(0);
+    expect(activeEffectsOf(minion)?.queue).toHaveLength(0);
+    expect(activeEffectsOf(minion)?.pendingAdd).toHaveLength(0);
+    expect(gameplayTagsOf(minion)?.tags.has('Team.Red')).toBe(true);
+    expect(gameplayTagsOf(minion)?.tags.has('Team.Blue')).toBe(false);
+    expect(gameplayTagsOf(minion)?.adHocTags.has('Team.Red')).toBe(true);
+    expect(gameplayTagsOf(minion)?.effectGrantCounts.size).toBe(0);
     expect(component.abilities.has('Ability.Hold')).toBe(true);
     expect(component.attributes.base[0]).toBe(HEALTH_RAW);
     expect(component.attributes.current[0]).toBe(HEALTH_RAW);
 
     releasePooledAbilityState(minion);
-    expect(getActiveEffectsComponent(minion)?.queue).toHaveLength(0);
+    expect(activeEffectsOf(minion)?.queue).toHaveLength(0);
 
     const again = pools.spawn<Minion>('minion');
     expect(again.id).toBe(minion.id);
-    expect(getActiveEffectsComponent(again)?.queue).toHaveLength(0);
-    expect(getActiveEffectsComponent(again)?.pendingAdd).toHaveLength(1);
+    expect(activeEffectsOf(again)?.queue).toHaveLength(0);
+    expect(activeEffectsOf(again)?.pendingAdd).toHaveLength(1);
   });
 
   it('removes GAS components a bare pooled entity gained after construction', () => {
@@ -160,31 +158,27 @@ describe('pooled GAS reset', () => {
     if (pools === null) throw new Error('expected pools');
 
     const bare = pools.spawn<Bare>('bare');
-    expect(bare.hasComponent(AbilitiesComponentType.ActiveEffects)).toBe(false);
-    expect(bare.hasComponent(AbilitiesComponentType.GameplayTags)).toBe(false);
+    expect(bare.hasComponent(ActiveEffects.type)).toBe(false);
+    expect(bare.hasComponent(GameplayTags.type)).toBe(false);
 
     abilities.addTag(bare.id, 'Team.Red');
     abilities.applyEffect(bare.id, 'Effect.Burn', bare.id);
-    bare.addComponent(new AttributesComponent(1));
-    expect(bare.hasComponent(AbilitiesComponentType.ActiveEffects)).toBe(true);
-    expect(bare.hasComponent(AbilitiesComponentType.GameplayTags)).toBe(true);
-    expect(bare.hasComponent(AbilitiesComponentType.Attributes)).toBe(true);
-    expect(getGameplayTagsComponent(bare)?.adHocTags.has('Team.Red')).toBe(
-      true
-    );
+    bare.addComponent(standalone(Attributes, attributesValue(1)));
+    expect(bare.hasComponent(ActiveEffects.type)).toBe(true);
+    expect(bare.hasComponent(GameplayTags.type)).toBe(true);
+    expect(bare.hasComponent(Attributes.type)).toBe(true);
+    expect(gameplayTagsOf(bare)?.adHocTags.has('Team.Red')).toBe(true);
 
     pools.despawn(bare);
-    expect(bare.hasComponent(AbilitiesComponentType.AbilitySystem)).toBe(false);
-    expect(bare.hasComponent(AbilitiesComponentType.ActiveEffects)).toBe(false);
-    expect(bare.hasComponent(AbilitiesComponentType.GameplayTags)).toBe(false);
-    expect(bare.hasComponent(AbilitiesComponentType.Attributes)).toBe(false);
+    expect(bare.hasComponent(AbilityOwner.type)).toBe(false);
+    expect(bare.hasComponent(ActiveEffects.type)).toBe(false);
+    expect(bare.hasComponent(GameplayTags.type)).toBe(false);
+    expect(bare.hasComponent(Attributes.type)).toBe(false);
 
     const again = pools.spawn<Bare>('bare');
     expect(again).toBe(bare);
-    expect(again.hasComponent(AbilitiesComponentType.ActiveEffects)).toBe(
-      false
-    );
-    expect(again.hasComponent(AbilitiesComponentType.GameplayTags)).toBe(false);
+    expect(again.hasComponent(ActiveEffects.type)).toBe(false);
+    expect(again.hasComponent(GameplayTags.type)).toBe(false);
   });
 
   it('keeps constructor GAS components and clears only transient state', () => {
@@ -204,24 +198,22 @@ describe('pooled GAS reset', () => {
     if (pools === null) throw new Error('expected pools');
 
     const shell = pools.spawn<GasShell>('shell');
-    const attributes = shell.getComponent<AttributesComponent>(
-      AbilitiesComponentType.Attributes
-    );
+    const attributes = attributesOf(shell);
     if (attributes === undefined) throw new Error('missing attributes');
     attributes.base[0] = 5n;
     abilities.addTag(shell.id, 'Team.Red');
     abilities.applyEffect(shell.id, 'Effect.Burn', shell.id);
-    expect(getActiveEffectsComponent(shell)?.pendingAdd).toHaveLength(1);
+    expect(activeEffectsOf(shell)?.pendingAdd).toHaveLength(1);
 
     pools.despawn(shell);
-    expect(shell.hasComponent(AbilitiesComponentType.ActiveEffects)).toBe(true);
-    expect(shell.hasComponent(AbilitiesComponentType.GameplayTags)).toBe(true);
-    expect(shell.hasComponent(AbilitiesComponentType.Attributes)).toBe(true);
-    expect(getActiveEffectsComponent(shell)?.queue).toHaveLength(0);
-    expect(getActiveEffectsComponent(shell)?.pendingAdd).toHaveLength(0);
-    expect(getGameplayTagsComponent(shell)?.tags.size).toBe(0);
-    expect(getGameplayTagsComponent(shell)?.adHocTags.size).toBe(0);
-    expect(getGameplayTagsComponent(shell)?.effectGrantCounts.size).toBe(0);
+    expect(shell.hasComponent(ActiveEffects.type)).toBe(true);
+    expect(shell.hasComponent(GameplayTags.type)).toBe(true);
+    expect(shell.hasComponent(Attributes.type)).toBe(true);
+    expect(activeEffectsOf(shell)?.queue).toHaveLength(0);
+    expect(activeEffectsOf(shell)?.pendingAdd).toHaveLength(0);
+    expect(gameplayTagsOf(shell)?.tags.size).toBe(0);
+    expect(gameplayTagsOf(shell)?.adHocTags.size).toBe(0);
+    expect(gameplayTagsOf(shell)?.effectGrantCounts.size).toBe(0);
     expect(attributes.base[0]).toBe(0n);
     expect(attributes.current[0]).toBe(0n);
   });
@@ -258,7 +250,7 @@ describe('pooled GAS reset', () => {
     const wounded = FP.ToRaw(FP.FromInt(32));
 
     for (let life = 0; life < 3; life += 1) {
-      const component = getAbilitySystemComponent(recycled);
+      const component = abilityOwnerOf(recycled);
       if (component === undefined) throw new Error('missing ability component');
       component.attributes.base[0] = wounded;
       component.attributes.current[0] = wounded;
@@ -311,7 +303,7 @@ function gasShell(entity: Entity): {
   pending: number;
   queued: number;
 } {
-  const component = getAbilitySystemComponent(entity);
+  const component = abilityOwnerOf(entity);
   if (component === undefined) throw new Error('missing ability component');
   return {
     base: [...component.attributes.base],
@@ -334,9 +326,9 @@ class Bare extends Entity implements IPoolableEntity {
 class GasShell extends Entity implements IPoolableEntity {
   public constructor(id: number) {
     super(id);
-    this.addComponent(new ActiveEffectsComponent());
-    this.addComponent(new GameplayTagsComponent());
-    this.addComponent(new AttributesComponent(1));
+    this.addComponent(standalone(ActiveEffects));
+    this.addComponent(standalone(GameplayTags));
+    this.addComponent(standalone(Attributes, attributesValue(1)));
   }
 
   public onSpawn(): void {}

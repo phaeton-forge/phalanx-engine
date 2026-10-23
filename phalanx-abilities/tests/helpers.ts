@@ -1,4 +1,4 @@
-import { Entity, GameWorld } from '@phalanx-engine/ecs';
+import { Entity, GameWorld, ValueComponent } from '@phalanx-engine/ecs';
 import { FP } from '@phalanx-engine/math';
 import type { FixedPoint } from '@phalanx-engine/math';
 import {
@@ -10,9 +10,10 @@ import {
   type AbilityDef,
   type AbilityHook,
   type AbilitySystem,
-  type AbilitySystemComponentInit,
+  type AbilityOwnerInit,
   type AbilitySystemPipeline,
   type AttributeDef,
+  type AttributesState,
   type CueConfig,
   type CueContext,
   type CueEvent,
@@ -21,6 +22,22 @@ import {
 } from '../src';
 import { GAMEPLAY_CUE_EVENT } from '../src/events';
 import { manualTickProvider } from './support/manualTickProvider.js';
+
+/** A standalone GAS component, attached without an `AbilityOwner`. */
+export function standalone<T extends object>(
+  component: { readonly type: symbol; create(): T },
+  value: T = component.create()
+): ValueComponent<T> {
+  return new ValueComponent(component.type, value);
+}
+
+export function attributesValue(count: number): AttributesState {
+  return {
+    base: new BigInt64Array(count),
+    current: new BigInt64Array(count),
+    dirty: new Uint8Array(count),
+  };
+}
 
 /** Trivial instant cue for tests that only need dispatch enabled. */
 export class NoopCue extends Cue {
@@ -136,7 +153,7 @@ export function equipEntity(
   world: GameWorld,
   entity: Entity,
   abilities: AbilitySystem,
-  init?: AbilitySystemComponentInit
+  init?: AbilityOwnerInit
 ): void {
   const component = abilities.initComponent(init);
   entity.addComponent(component);
@@ -148,7 +165,7 @@ export function equipEntity(
 export function spawnEntity(
   world: GameWorld,
   abilities: AbilitySystem,
-  init?: AbilitySystemComponentInit
+  init?: AbilityOwnerInit
 ): Entity {
   const entity = world.createEntity((id) => new Entity(id));
   equipEntity(world, entity, abilities, init);
@@ -161,7 +178,7 @@ export function spawnCombatEntity(
   world: GameWorld,
   abilities: AbilitySystem,
   abilityIds: readonly string[],
-  init?: AbilitySystemComponentInit
+  init?: AbilityOwnerInit
 ): Entity {
   return spawnEntity(world, abilities, {
     ...init,

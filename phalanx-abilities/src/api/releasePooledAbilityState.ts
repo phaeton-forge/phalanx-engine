@@ -1,16 +1,24 @@
 import type { Entity } from '@phalanx-engine/ecs';
-import { AbilitiesComponentType } from '../components/AbilitiesComponentType.js';
-import type { AbilitySystemComponent } from '../components/AbilitySystemComponent.js';
-import type { ActiveEffectsComponent } from '../components/ActiveEffectsComponent.js';
 import {
-  getAbilitySystemComponent,
-  getAttributesComponent,
-  getGameplayTagsComponent,
-} from '../components/AbilitySystemComponent.js';
-import type { AttributesComponent } from '../components/AttributesComponent.js';
-import type { GameplayTagsComponent } from '../components/GameplayTagsComponent.js';
+  AbilityOwner,
+  abilityOwnerOf,
+  abilityOwnerSlotOf,
+  attributesOf,
+  gameplayTagsOf,
+  valueOf,
+  type AbilityOwnerState,
+} from '../components/abilityOwner.js';
+import {
+  ActiveEffects,
+  type ActiveEffectsState,
+} from '../components/activeEffects.js';
+import { Attributes, type AttributesState } from '../components/attributes.js';
+import {
+  GameplayTags,
+  type GameplayTagsState,
+} from '../components/gameplayTags.js';
 
-const SHELL_ABILITY_SYSTEM = 1;
+const SHELL_ABILITY_OWNER = 1;
 const SHELL_ATTRIBUTES = 2;
 const SHELL_ACTIVE_EFFECTS = 4;
 const SHELL_GAMEPLAY_TAGS = 8;
@@ -71,45 +79,41 @@ const shellByEntity = new WeakMap<Entity, ShellImage>();
 export function releasePooledAbilityState(entity: Entity): void {
   const shell = rememberShell(entity);
 
-  if ((shell.flags & SHELL_ABILITY_SYSTEM) !== 0) {
-    const ability = getAbilitySystemComponent(entity);
-    if (ability !== undefined) {
-      ability.captureInitialPending();
-      clearEffects(ability.activeEffects);
-      ability.requestReseed();
-      restoreAbility(ability, shell);
+  if ((shell.flags & SHELL_ABILITY_OWNER) !== 0) {
+    const slot = abilityOwnerSlotOf(entity);
+    if (slot !== undefined) {
+      slot.captureInitialPending();
+      clearEffects(slot.value.activeEffects);
+      slot.requestReseed();
+      restoreAbility(slot.value, shell);
     }
-  } else if (entity.hasComponent(AbilitiesComponentType.AbilitySystem)) {
-    entity.removeComponent(AbilitiesComponentType.AbilitySystem);
+  } else if (entity.hasComponent(AbilityOwner.type)) {
+    entity.removeComponent(AbilityOwner.type);
   }
 
   if ((shell.flags & SHELL_ACTIVE_EFFECTS) !== 0) {
-    const effects = entity.getComponent<ActiveEffectsComponent>(
-      AbilitiesComponentType.ActiveEffects
-    );
+    const effects = valueOf(entity, ActiveEffects);
     if (effects !== undefined) clearEffects(effects);
-  } else if (entity.hasComponent(AbilitiesComponentType.ActiveEffects)) {
-    entity.removeComponent(AbilitiesComponentType.ActiveEffects);
+  } else if (entity.hasComponent(ActiveEffects.type)) {
+    entity.removeComponent(ActiveEffects.type);
   }
 
-  if ((shell.flags & SHELL_ABILITY_SYSTEM) === 0) {
+  if ((shell.flags & SHELL_ABILITY_OWNER) === 0) {
     if ((shell.flags & SHELL_GAMEPLAY_TAGS) !== 0) {
-      const tags = entity.getComponent<GameplayTagsComponent>(
-        AbilitiesComponentType.GameplayTags
-      );
+      const tags = valueOf(entity, GameplayTags);
       if (tags !== undefined && shell.tags !== null)
         restoreTags(tags, shell.tags);
-    } else if (entity.hasComponent(AbilitiesComponentType.GameplayTags)) {
-      entity.removeComponent(AbilitiesComponentType.GameplayTags);
+    } else if (entity.hasComponent(GameplayTags.type)) {
+      entity.removeComponent(GameplayTags.type);
     }
 
     if ((shell.flags & SHELL_ATTRIBUTES) !== 0) {
-      const attributes = getAttributesComponent(entity);
+      const attributes = attributesOf(entity);
       if (attributes !== undefined && shell.attributes !== null) {
         restoreAttributes(attributes, shell.attributes);
       }
-    } else if (entity.hasComponent(AbilitiesComponentType.Attributes)) {
-      entity.removeComponent(AbilitiesComponentType.Attributes);
+    } else if (entity.hasComponent(Attributes.type)) {
+      entity.removeComponent(Attributes.type);
     }
   }
 }
@@ -118,32 +122,26 @@ function rememberShell(entity: Entity): ShellImage {
   const remembered = shellByEntity.get(entity);
   if (remembered !== undefined) return remembered;
   let flags = 0;
-  if (entity.hasComponent(AbilitiesComponentType.AbilitySystem)) {
-    flags |= SHELL_ABILITY_SYSTEM;
+  if (entity.hasComponent(AbilityOwner.type)) {
+    flags |= SHELL_ABILITY_OWNER;
   }
-  if (entity.hasComponent(AbilitiesComponentType.Attributes)) {
+  if (entity.hasComponent(Attributes.type)) {
     flags |= SHELL_ATTRIBUTES;
   }
-  if (entity.hasComponent(AbilitiesComponentType.ActiveEffects)) {
+  if (entity.hasComponent(ActiveEffects.type)) {
     flags |= SHELL_ACTIVE_EFFECTS;
   }
-  if (entity.hasComponent(AbilitiesComponentType.GameplayTags)) {
+  if (entity.hasComponent(GameplayTags.type)) {
     flags |= SHELL_GAMEPLAY_TAGS;
   }
   const ability =
-    (flags & SHELL_ABILITY_SYSTEM) !== 0
-      ? getAbilitySystemComponent(entity)
-      : undefined;
+    (flags & SHELL_ABILITY_OWNER) !== 0 ? abilityOwnerOf(entity) : undefined;
   const attributes =
     ability?.attributes ??
-    ((flags & SHELL_ATTRIBUTES) !== 0
-      ? getAttributesComponent(entity)
-      : undefined);
+    ((flags & SHELL_ATTRIBUTES) !== 0 ? attributesOf(entity) : undefined);
   const tags =
     ability?.tags ??
-    ((flags & SHELL_GAMEPLAY_TAGS) !== 0
-      ? getGameplayTagsComponent(entity)
-      : undefined);
+    ((flags & SHELL_GAMEPLAY_TAGS) !== 0 ? gameplayTagsOf(entity) : undefined);
   const image: ShellImage = {
     flags,
     attributes: attributes === undefined ? null : captureAttributes(attributes),
@@ -154,10 +152,7 @@ function rememberShell(entity: Entity): ShellImage {
   return image;
 }
 
-function restoreAbility(
-  ability: AbilitySystemComponent,
-  shell: ShellImage
-): void {
+function restoreAbility(ability: AbilityOwnerState, shell: ShellImage): void {
   if (shell.attributes !== null) {
     restoreAttributes(ability.attributes, shell.attributes);
   }
@@ -168,7 +163,7 @@ function restoreAbility(
   if (shell.tags !== null) restoreTags(ability.tags, shell.tags);
 }
 
-function captureAttributes(attributes: AttributesComponent): AttributeImage {
+function captureAttributes(attributes: AttributesState): AttributeImage {
   return {
     base: attributes.base.slice(),
     current: attributes.current.slice(),
@@ -177,7 +172,7 @@ function captureAttributes(attributes: AttributesComponent): AttributeImage {
 }
 
 function restoreAttributes(
-  attributes: AttributesComponent,
+  attributes: AttributesState,
   image: AttributeImage
 ): void {
   attributes.base.set(image.base);
@@ -185,14 +180,14 @@ function restoreAttributes(
   attributes.dirty.set(image.dirty);
 }
 
-function captureTags(tags: GameplayTagsComponent): TagImage {
+function captureTags(tags: GameplayTagsState): TagImage {
   return {
     adHoc: [...tags.adHocTags],
     grants: [...tags.effectGrantCounts],
   };
 }
 
-function restoreTags(tags: GameplayTagsComponent, image: TagImage): void {
+function restoreTags(tags: GameplayTagsState, image: TagImage): void {
   tags.tags.clear();
   tags.adHocTags.clear();
   tags.effectGrantCounts.clear();
@@ -206,7 +201,7 @@ function restoreTags(tags: GameplayTagsComponent, image: TagImage): void {
   }
 }
 
-function clearEffects(effects: ActiveEffectsComponent): void {
+function clearEffects(effects: ActiveEffectsState): void {
   effects.queue.length = 0;
   effects.pendingAdd.length = 0;
 }

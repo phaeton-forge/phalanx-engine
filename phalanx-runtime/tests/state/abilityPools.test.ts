@@ -9,17 +9,18 @@ import {
 } from '@phalanx-engine/ecs';
 import { FP } from '@phalanx-engine/math';
 import {
-  AbilitiesComponentType,
+  abilityOwnerOf,
+  type AbilitySystem,
+  ActiveEffects,
+  activeEffectsOf,
+  attributesOf,
   createAbilitySystem,
   defineAbility,
   defineAbilitySystem,
   defineAttribute,
   defineEffect,
-  getAbilitySystemComponent,
-  getActiveEffectsComponent,
-  getAttributesComponent,
-  getGameplayTagsComponent,
-  type AbilitySystem,
+  GameplayTags,
+  gameplayTagsOf,
   type MagnitudeCalculation,
 } from '@phalanx-engine/abilities';
 import { digestBytes } from '../../src/index.js';
@@ -132,47 +133,39 @@ describe('pooled ability save sections', () => {
     if (pools === null) throw new Error('expected pools');
     const live = pools.spawn<PooledMinion>('minion', { health: 90 });
     const freed = pools.spawn<PooledMinion>('minion', { health: 70 });
-    expect(
-      getAbilitySystemComponent(freed)?.abilities.has('Ability.Burn')
-    ).toBe(true);
-    expect(getActiveEffectsComponent(freed)?.pendingAdd).toHaveLength(1);
+    expect(abilityOwnerOf(freed)?.abilities.has('Ability.Burn')).toBe(true);
+    expect(activeEffectsOf(freed)?.pendingAdd).toHaveLength(1);
 
     for (let count = 0; count < 6; count += 1) {
       source.abilities.applyEffect(freed.id, 'Effect.Burn', live.id);
     }
     source.abilities.applyEffect(live.id, 'Effect.ArmorShred', live.id);
     source.world.processAllTicks(0);
-    expect(getActiveEffectsComponent(freed)?.queue).toHaveLength(7);
+    expect(activeEffectsOf(freed)?.queue).toHaveLength(7);
     expect(
-      getGameplayTagsComponent(freed)?.effectGrantCounts.get(
-        'State.Debuff.Burn'
-      )
+      gameplayTagsOf(freed)?.effectGrantCounts.get('State.Debuff.Burn')
     ).toBe(6);
     source.abilities.applyEffect(freed.id, 'Effect.ArmorShred', live.id);
-    expect(getActiveEffectsComponent(freed)?.pendingAdd).toHaveLength(1);
+    expect(activeEffectsOf(freed)?.pendingAdd).toHaveLength(1);
 
     pools.despawn(freed);
-    expect(getActiveEffectsComponent(freed)?.queue).toHaveLength(0);
-    expect(getActiveEffectsComponent(freed)?.pendingAdd).toHaveLength(0);
-    expect(getGameplayTagsComponent(freed)?.tags.has('Team.Red')).toBe(true);
-    expect(getGameplayTagsComponent(freed)?.adHocTags.has('Team.Red')).toBe(
-      true
-    );
-    expect(getGameplayTagsComponent(freed)?.effectGrantCounts.size).toBe(0);
-    expect(
-      getAbilitySystemComponent(freed)?.abilities.has('Ability.Burn')
-    ).toBe(true);
+    expect(activeEffectsOf(freed)?.queue).toHaveLength(0);
+    expect(activeEffectsOf(freed)?.pendingAdd).toHaveLength(0);
+    expect(gameplayTagsOf(freed)?.tags.has('Team.Red')).toBe(true);
+    expect(gameplayTagsOf(freed)?.adHocTags.has('Team.Red')).toBe(true);
+    expect(gameplayTagsOf(freed)?.effectGrantCounts.size).toBe(0);
+    expect(abilityOwnerOf(freed)?.abilities.has('Ability.Burn')).toBe(true);
 
     const bytes = saveMatch(source.world);
     const restored = pooledGasWorld();
     loadMatch(bytes, restored.world);
     expect(saveMatch(restored.world)).toEqual(bytes);
     expect(restored.world.entityManager.getEntity(freed.id)).toBeUndefined();
-    expect(getActiveEffectsComponent(live)?.queue).toHaveLength(2);
+    expect(activeEffectsOf(live)?.queue).toHaveLength(2);
 
     const restoredLive = restored.world.entityManager.getEntity(live.id);
     if (restoredLive === undefined) throw new Error('missing live entity');
-    expect(getActiveEffectsComponent(restoredLive)?.queue).toHaveLength(2);
+    expect(activeEffectsOf(restoredLive)?.queue).toHaveLength(2);
 
     for (let tick = 1; tick <= 15; tick += 1) {
       if (tick === 1) {
@@ -184,8 +177,8 @@ describe('pooled ability save sections', () => {
         });
         expect(again.id).toBe(freed.id);
         expect(restoredAgain.id).toBe(freed.id);
-        expect(getActiveEffectsComponent(again)?.queue).toHaveLength(0);
-        expect(getActiveEffectsComponent(restoredAgain)?.queue).toHaveLength(0);
+        expect(activeEffectsOf(again)?.queue).toHaveLength(0);
+        expect(activeEffectsOf(restoredAgain)?.queue).toHaveLength(0);
         source.abilities.applyEffect(again.id, 'Effect.Burn', live.id);
         restored.abilities.applyEffect(
           restoredAgain.id,
@@ -202,7 +195,7 @@ describe('pooled ability save sections', () => {
 
     const respawned = source.world.entityManager.getEntity(freed.id);
     if (respawned === undefined) throw new Error('missing respawned entity');
-    expect(getActiveEffectsComponent(respawned)?.queue).toHaveLength(2);
+    expect(activeEffectsOf(respawned)?.queue).toHaveLength(2);
   });
 
   it('reseeds factory pending after a restored live minion returns to the pool', () => {
@@ -234,22 +227,20 @@ describe('pooled ability save sections', () => {
     const pools = source.world.pools;
     if (pools === null) throw new Error('expected pools');
     const bare = pools.spawn<BareMinion>('bare');
-    expect(bare.hasComponent(AbilitiesComponentType.ActiveEffects)).toBe(false);
-    expect(bare.hasComponent(AbilitiesComponentType.GameplayTags)).toBe(false);
+    expect(bare.hasComponent(ActiveEffects.type)).toBe(false);
+    expect(bare.hasComponent(GameplayTags.type)).toBe(false);
 
     source.abilities.addTag(bare.id, 'Team.Red');
     source.abilities.applyEffect(bare.id, 'Effect.Burn', bare.id);
     source.world.processAllTicks(0);
-    expect(bare.hasComponent(AbilitiesComponentType.ActiveEffects)).toBe(true);
-    expect(bare.hasComponent(AbilitiesComponentType.GameplayTags)).toBe(true);
-    expect(getActiveEffectsComponent(bare)?.queue).toHaveLength(1);
-    expect(getGameplayTagsComponent(bare)?.adHocTags.has('Team.Red')).toBe(
-      true
-    );
+    expect(bare.hasComponent(ActiveEffects.type)).toBe(true);
+    expect(bare.hasComponent(GameplayTags.type)).toBe(true);
+    expect(activeEffectsOf(bare)?.queue).toHaveLength(1);
+    expect(gameplayTagsOf(bare)?.adHocTags.has('Team.Red')).toBe(true);
 
     pools.despawn(bare);
-    expect(bare.hasComponent(AbilitiesComponentType.ActiveEffects)).toBe(false);
-    expect(bare.hasComponent(AbilitiesComponentType.GameplayTags)).toBe(false);
+    expect(bare.hasComponent(ActiveEffects.type)).toBe(false);
+    expect(bare.hasComponent(GameplayTags.type)).toBe(false);
 
     const bytes = saveMatch(source.world);
     const restored = barePoolWorld();
@@ -262,16 +253,10 @@ describe('pooled ability save sections', () => {
     const restoredAgain = restoredPools.spawn<BareMinion>('bare');
     expect(again.id).toBe(bare.id);
     expect(restoredAgain.id).toBe(bare.id);
-    expect(again.hasComponent(AbilitiesComponentType.ActiveEffects)).toBe(
-      false
-    );
-    expect(again.hasComponent(AbilitiesComponentType.GameplayTags)).toBe(false);
-    expect(
-      restoredAgain.hasComponent(AbilitiesComponentType.ActiveEffects)
-    ).toBe(false);
-    expect(
-      restoredAgain.hasComponent(AbilitiesComponentType.GameplayTags)
-    ).toBe(false);
+    expect(again.hasComponent(ActiveEffects.type)).toBe(false);
+    expect(again.hasComponent(GameplayTags.type)).toBe(false);
+    expect(restoredAgain.hasComponent(ActiveEffects.type)).toBe(false);
+    expect(restoredAgain.hasComponent(GameplayTags.type)).toBe(false);
 
     expect(digestBytes(saveMatch(restored.world))).toBe(
       digestBytes(saveMatch(source.world))
@@ -288,7 +273,7 @@ describe('pooled ability save sections', () => {
     const pools = source.world.pools;
     if (pools === null) throw new Error('expected pools');
     const live = pools.spawn<SilentMinion>('silent');
-    const attributes = getAttributesComponent(live);
+    const attributes = attributesOf(live);
     if (attributes === undefined) throw new Error('missing attributes');
     const full = FP.ToRaw(FP.FromInt(100));
     const damaged = FP.ToRaw(FP.FromInt(40));
@@ -297,12 +282,10 @@ describe('pooled ability save sections', () => {
     attributes.current[0] = damaged;
 
     pools.despawn(live);
-    expect(getAttributesComponent(live)?.current[0]).toBe(full);
-    expect(getAttributesComponent(live)?.base[0]).toBe(full);
-    expect(getAbilitySystemComponent(live)?.abilities.has('Ability.Burn')).toBe(
-      true
-    );
-    expect(getGameplayTagsComponent(live)?.tags.has('Team.Silent')).toBe(true);
+    expect(attributesOf(live)?.current[0]).toBe(full);
+    expect(attributesOf(live)?.base[0]).toBe(full);
+    expect(abilityOwnerOf(live)?.abilities.has('Ability.Burn')).toBe(true);
+    expect(gameplayTagsOf(live)?.tags.has('Team.Silent')).toBe(true);
 
     const bytes = saveMatch(source.world);
     const restored = silentPoolWorld();
@@ -311,10 +294,10 @@ describe('pooled ability save sections', () => {
     const restoredPools = restored.world.pools;
     if (restoredPools === null) throw new Error('expected pools');
     const restoredAgain = restoredPools.spawn<SilentMinion>('silent');
-    expect(getAttributesComponent(again)?.current[0]).toBe(full);
-    expect(getAttributesComponent(restoredAgain)?.current[0]).toBe(full);
-    expect(getAttributesComponent(again)?.base[0]).toBe(full);
-    expect(getAttributesComponent(restoredAgain)?.base[0]).toBe(full);
+    expect(attributesOf(again)?.current[0]).toBe(full);
+    expect(attributesOf(restoredAgain)?.current[0]).toBe(full);
+    expect(attributesOf(again)?.base[0]).toBe(full);
+    expect(attributesOf(restoredAgain)?.base[0]).toBe(full);
     expect(digestBytes(saveMatch(restored.world))).toBe(
       digestBytes(saveMatch(source.world))
     );
@@ -364,7 +347,7 @@ class PooledMinion
   }
 
   public onSpawn(args: { health: number }): void {
-    const component = getAbilitySystemComponent(this);
+    const component = abilityOwnerOf(this);
     if (component === undefined) {
       throw new Error('missing ability component');
     }
@@ -453,7 +436,7 @@ function pooledGasWorld(): { world: GameWorld; abilities: AbilitySystem } {
 }
 
 function pendingIds(entity: Entity): string[] {
-  const pending = getActiveEffectsComponent(entity)?.pendingAdd ?? [];
+  const pending = activeEffectsOf(entity)?.pendingAdd ?? [];
   return pending.map((entry) => entry.defId);
 }
 

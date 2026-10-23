@@ -41,7 +41,7 @@ export interface ResolvedAbilityActivationRecord {
  * `-1` if the facade is called before the first tick. The system only acts on
  * requests whose `enqueueTick !== currentTick` — i.e. the next tick. This
  * matches the existing `pendingAdd` discipline in
- * {@link ActiveEffectsComponent}: writes from "this tick's user code" land on
+ * {@link ActiveEffects}: writes from "this tick's user code" land on
  * "the next tick's drain pass", which is the contract `applyEffect` already
  * promises.
  */

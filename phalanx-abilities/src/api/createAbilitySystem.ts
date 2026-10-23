@@ -2,13 +2,19 @@ import type {
   GameSystem,
   GameWorld,
   IAbilitySystem,
+  IComponent,
 } from '@phalanx-engine/ecs';
 import { FP } from '@phalanx-engine/math';
 import type { FixedPoint } from '@phalanx-engine/math';
 import {
-  AbilitiesComponentType,
-  AbilitySystemComponent,
-} from '../components/index.js';
+  AbilityOwner,
+  AbilityOwnerSlot,
+  createAbilityOwnerState,
+  type AbilityOwnerState,
+} from '../components/abilityOwner.js';
+import { ActiveEffects } from '../components/activeEffects.js';
+import { Attributes } from '../components/attributes.js';
+import { GameplayTags } from '../components/gameplayTags.js';
 import type { CueConfig } from '../cues/index.js';
 import {
   AbilityActivationSystem,
@@ -62,7 +68,7 @@ export interface InitialEffect {
   sourceEntityId?: number;
 }
 
-export interface AbilitySystemComponentInit {
+export interface AbilityOwnerInit {
   attributes?: Record<string, AttributeInitializer>;
   abilities?: readonly string[];
   tags?: readonly string[];
@@ -114,7 +120,11 @@ export interface AbilitySystem extends IAbilitySystem {
   isAbilityRegistered(abilityId: string): boolean;
   /** True when `effectId` is in this world's effect registry. */
   isEffectRegistered(effectId: string): boolean;
-  initComponent(init?: AbilitySystemComponentInit): AbilitySystemComponent;
+  /**
+   * Build the {@link AbilityOwner} component for `entity.addComponent`.
+   * Read it back with `abilityOwnerOf(entity)`.
+   */
+  initComponent(init?: AbilityOwnerInit): IComponent;
   activateAbility(
     casterEntityId: number,
     abilityId: string,
@@ -183,10 +193,10 @@ export function createAbilitySystem(
 }
 
 export const abilityComponentTypes: readonly symbol[] = [
-  AbilitiesComponentType.AbilitySystem,
-  AbilitiesComponentType.Attributes,
-  AbilitiesComponentType.ActiveEffects,
-  AbilitiesComponentType.GameplayTags,
+  AbilityOwner.type,
+  Attributes.type,
+  ActiveEffects.type,
+  GameplayTags.type,
 ];
 
 class AbilitySystemImpl implements AbilitySystem {
@@ -239,21 +249,18 @@ class AbilitySystemImpl implements AbilitySystem {
     );
   }
 
-  public initComponent(
-    init: AbilitySystemComponentInit = {}
-  ): AbilitySystemComponent {
-    const component = new AbilitySystemComponent(
-      this.registries.attributes.size
-    );
+  public initComponent(init: AbilityOwnerInit = {}): IComponent {
+    const component = createAbilityOwnerState(this.registries.attributes.size);
     this.seedAttributes(component, init.attributes);
     this.seedAbilities(component, init.abilities);
     this.seedTags(component, init.tags);
     this.seedEffects(component, init.effects);
+    const slot = new AbilityOwnerSlot(component);
     // Capture before any snapshot can replace pendingAdd. A restored live
     // pooled entity is built by this factory and then overwritten; the
     // later pool return must reseed these factory effects, not the snapshot.
-    component.captureInitialPending();
-    return component;
+    slot.captureInitialPending();
+    return slot;
   }
 
   public activateAbility(
@@ -314,7 +321,7 @@ class AbilitySystemImpl implements AbilitySystem {
   }
 
   private seedAttributes(
-    component: AbilitySystemComponent,
+    component: AbilityOwnerState,
     overrides: Record<string, AttributeInitializer> | undefined
   ): void {
     const defs = this.registries.attributes.values();
@@ -340,7 +347,7 @@ class AbilitySystemImpl implements AbilitySystem {
   }
 
   private seedAbilities(
-    component: AbilitySystemComponent,
+    component: AbilityOwnerState,
     abilities: readonly string[] | undefined
   ): void {
     if (!abilities) {
@@ -355,7 +362,7 @@ class AbilitySystemImpl implements AbilitySystem {
   }
 
   private seedTags(
-    component: AbilitySystemComponent,
+    component: AbilityOwnerState,
     tags: readonly string[] | undefined
   ): void {
     if (!tags) {
@@ -368,7 +375,7 @@ class AbilitySystemImpl implements AbilitySystem {
   }
 
   private seedEffects(
-    component: AbilitySystemComponent,
+    component: AbilityOwnerState,
     effects: readonly (string | InitialEffect)[] | undefined
   ): void {
     if (!effects) {

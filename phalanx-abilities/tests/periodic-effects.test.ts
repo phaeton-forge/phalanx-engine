@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { FP } from '@phalanx-engine/math';
-import { AbilitiesComponentType, defineEffect } from '../src';
-import type { AbilitySystemComponent } from '../src';
+import { abilityOwnerOf, defineEffect } from '../src';
 import {
   ArmorAttribute,
   HealthAttribute,
@@ -461,9 +460,7 @@ describe('Periodic effects', () => {
 function activeEffectsOf(world: GameWorld, entityId: number) {
   const entity = world.entityManager.getEntity(entityId);
   if (!entity) throw new Error(`entity ${entityId} missing`);
-  const component = entity.getComponent<AbilitySystemComponent>(
-    AbilitiesComponentType.AbilitySystem
-  )?.activeEffects;
+  const component = abilityOwnerOf(entity)?.activeEffects;
   if (!component) throw new Error(`ability effects missing on ${entityId}`);
   return component;
 }

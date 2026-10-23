@@ -2,13 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { GameWorld } from '@phalanx-engine/ecs';
 import { FP } from '@phalanx-engine/math';
 import {
-  AbilitiesComponentType,
+  abilityOwnerOf,
   createAbilitySystem,
   defineAbilitySystem,
   defineAttribute,
   defineEffect,
 } from '../src';
-import type { AbilitySystemComponent } from '../src';
 import { manualTickProvider } from './support/manualTickProvider.js';
 import {
   HealthAttribute,
@@ -26,9 +25,7 @@ describe('attributes and aggregation', () => {
     });
     const entity = spawnEntity(world, abilities);
 
-    const attributes = entity.getComponent<AbilitySystemComponent>(
-      AbilitiesComponentType.AbilitySystem
-    )!.attributes;
+    const attributes = abilityOwnerOf(entity)!.attributes;
 
     expect(attributes.base.length).toBe(2);
     expect(attributes.current.length).toBe(2);
@@ -149,9 +146,7 @@ describe('attributes and aggregation', () => {
     world.registerSystems([...abilities.tickSystems], []);
 
     const entity = spawnEntity(world, abilities);
-    const component = entity.getComponent<AbilitySystemComponent>(
-      AbilitiesComponentType.AbilitySystem
-    )!;
+    const component = abilityOwnerOf(entity)!;
     const attributes = component.attributes;
     const activeEffects = component.activeEffects;
     activeEffects.queue.push(
@@ -228,9 +223,7 @@ describe('attributes and aggregation', () => {
       attributes: [HealthAttribute, ManaAttribute],
     });
     const entity = spawnEntity(world, abilities);
-    const attributes = entity.getComponent<AbilitySystemComponent>(
-      AbilitiesComponentType.AbilitySystem
-    )!.attributes;
+    const attributes = abilityOwnerOf(entity)!.attributes;
 
     const sample = FP.FromFloat(12.5);
     const raw = FP.ToRaw(sample);
@@ -280,9 +273,7 @@ describe('attributes and aggregation', () => {
       ],
     });
     const entity = spawnEntity(world, abilities);
-    const component = entity.getComponent<AbilitySystemComponent>(
-      AbilitiesComponentType.AbilitySystem
-    )!;
+    const component = abilityOwnerOf(entity)!;
     const attributes = component.attributes;
     const activeEffects = component.activeEffects;
 
@@ -337,9 +328,7 @@ describe('attributes and aggregation', () => {
       ],
     });
     const entity = spawnEntity(world, abilities);
-    const component = entity.getComponent<AbilitySystemComponent>(
-      AbilitiesComponentType.AbilitySystem
-    )!;
+    const component = abilityOwnerOf(entity)!;
     const attributes = component.attributes;
     const activeEffects = component.activeEffects;
 
@@ -380,9 +369,7 @@ describe('attributes and aggregation', () => {
       ],
     });
     const entity = spawnEntity(world, abilities);
-    const attributes = entity.getComponent<AbilitySystemComponent>(
-      AbilitiesComponentType.AbilitySystem
-    )!.attributes;
+    const attributes = abilityOwnerOf(entity)!.attributes;
 
     world.processAllTicks(1);
     expect(
@@ -390,9 +377,7 @@ describe('attributes and aggregation', () => {
     ).toBe(100);
     expect(attributes.dirty[0]).toBe(0);
 
-    const activeEffects = entity.getComponent<AbilitySystemComponent>(
-      AbilitiesComponentType.AbilitySystem
-    )!.activeEffects;
+    const activeEffects = abilityOwnerOf(entity)!.activeEffects;
     activeEffects.queue.push({
       instanceId: 1,
       defId: 'Effect.HealthDamage',
@@ -440,9 +425,7 @@ describe('attributes and aggregation', () => {
       ],
     });
     const entity = spawnEntity(world, abilities);
-    const component = entity.getComponent<AbilitySystemComponent>(
-      AbilitiesComponentType.AbilitySystem
-    )!;
+    const component = abilityOwnerOf(entity)!;
     const attributes = component.attributes;
     const activeEffects = component.activeEffects;
 

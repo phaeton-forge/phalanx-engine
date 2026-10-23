@@ -1,13 +1,5 @@
 import { Entity, type EntityManager } from '@phalanx-engine/ecs';
 import { FP } from '@phalanx-engine/math';
-import {
-  ActiveEffectsComponent,
-  AttributesComponent,
-  GameplayTagsComponent,
-  getActiveEffectsComponent,
-  getAttributesComponent,
-  getGameplayTagsComponent,
-} from '../components/index.js';
 import type { AbilitySystemRegistries } from '../registry/index.js';
 import type {
   AbilitySystemRuntime,
@@ -18,6 +10,25 @@ import type {
   AttributeValue,
   ProvidedTarget,
 } from '../types/index.js';
+import {
+  attributesOf,
+  activeEffectsOf,
+  gameplayTagsOf,
+  attachValue,
+} from '../components/abilityOwner.js';
+import {
+  Attributes,
+  type AttributesState,
+  createAttributesState,
+} from '../components/attributes.js';
+import {
+  ActiveEffects,
+  type ActiveEffectsState,
+} from '../components/activeEffects.js';
+import {
+  GameplayTags,
+  type GameplayTagsState,
+} from '../components/gameplayTags.js';
 
 // Re-exported for backward compatibility: `AttributeValue` used to be declared
 // in this module. The canonical declaration now lives in `types/AttributeValue.ts`
@@ -52,16 +63,16 @@ export class AbilitySystemFacade {
   // Attributes
   // -----------------------------------------------------------------------
 
-  public initAttributesForEntity(entityId: number): AttributesComponent {
+  public initAttributesForEntity(entityId: number): AttributesState {
     const entity = this.requireEntity(entityId);
 
-    const existing = getAttributesComponent(entity);
+    const existing = attributesOf(entity);
 
     if (existing) {
       return existing;
     }
 
-    const attributes = new AttributesComponent(this.registries.attributes.size);
+    const attributes = createAttributesState(this.registries.attributes.size);
     const defs = this.registries.attributes.values();
 
     for (let index = 0; index < defs.length; index++) {
@@ -74,10 +85,7 @@ export class AbilitySystemFacade {
       attributes.dirty[index] = 1;
     }
 
-    entity.addComponent(attributes);
-    this.entityManager.onComponentAdded(entity, attributes.type);
-
-    return attributes;
+    return attachValue(entity, Attributes, attributes);
   }
 
   public getAttribute(entityId: number, attrId: string): AttributeValue {
@@ -88,8 +96,8 @@ export class AbilitySystemFacade {
       if (!entity) {
         throw new Error(`Entity ${entityId} does not exist`);
       }
-      if (!getAttributesComponent(entity)) {
-        throw new Error(`Entity ${entityId} does not have AttributesComponent`);
+      if (!attributesOf(entity)) {
+        throw new Error(`Entity ${entityId} does not have Attributes`);
       }
       throw new Error(`AttributeRegistry does not contain '${attrId}'`);
     }
@@ -98,7 +106,7 @@ export class AbilitySystemFacade {
 
   /**
    * Non-throwing read. Returns `undefined` when the entity is missing, has no
-   * {@link AttributesComponent}, or the attribute id is not registered. Useful
+   * {@link Attributes}, or the attribute id is not registered. Useful
    * for user-side damage pipelines that need to fall back to a neutral value
    * (e.g. `IncomingDamageMultiplier === 1`) when the target has no abilities
    * setup.
@@ -112,7 +120,7 @@ export class AbilitySystemFacade {
       return undefined;
     }
 
-    const attributes = getAttributesComponent(entity);
+    const attributes = attributesOf(entity);
     if (!attributes) {
       return undefined;
     }
@@ -188,7 +196,7 @@ export class AbilitySystemFacade {
     if (!entity) {
       return 0;
     }
-    const activeEffects = getActiveEffectsComponent(entity);
+    const activeEffects = activeEffectsOf(entity);
     if (!activeEffects) {
       return 0;
     }
@@ -220,7 +228,7 @@ export class AbilitySystemFacade {
     if (!entity) {
       return 0;
     }
-    const activeEffects = getActiveEffectsComponent(entity);
+    const activeEffects = activeEffectsOf(entity);
     if (!activeEffects) {
       return 0;
     }
@@ -331,7 +339,7 @@ export class AbilitySystemFacade {
     if (!entity) {
       return false;
     }
-    const tags = getGameplayTagsComponent(entity);
+    const tags = gameplayTagsOf(entity);
     if (!tags) {
       return false;
     }
@@ -358,7 +366,7 @@ export class AbilitySystemFacade {
 
   /**
    * Remove ad-hoc ownership of `tag`. If the tag is still granted by one or
-   * more active effects, it remains in {@link GameplayTagsComponent.tags}
+   * more active effects, it remains in {@link GameplayTags.tags}
    * (and {@link hasTag} keeps returning `true`) until the last grant expires.
    * For predictable removal of effect-granted tags use
    * {@link removeEffectsByTag}.
@@ -371,7 +379,7 @@ export class AbilitySystemFacade {
     if (!entity) {
       return false;
     }
-    const tags = getGameplayTagsComponent(entity);
+    const tags = gameplayTagsOf(entity);
     if (!tags) {
       return false;
     }
@@ -420,25 +428,19 @@ export class AbilitySystemFacade {
     return entity;
   }
 
-  private getOrCreateActiveEffects(entity: Entity): ActiveEffectsComponent {
-    const existing = getActiveEffectsComponent(entity);
+  private getOrCreateActiveEffects(entity: Entity): ActiveEffectsState {
+    const existing = activeEffectsOf(entity);
     if (existing) {
       return existing;
     }
-    const component = new ActiveEffectsComponent();
-    entity.addComponent(component);
-    this.entityManager.onComponentAdded(entity, component.type);
-    return component;
+    return attachValue(entity, ActiveEffects);
   }
 
-  private getOrCreateTags(entity: Entity): GameplayTagsComponent {
-    const existing = getGameplayTagsComponent(entity);
+  private getOrCreateTags(entity: Entity): GameplayTagsState {
+    const existing = gameplayTagsOf(entity);
     if (existing) {
       return existing;
     }
-    const tags = new GameplayTagsComponent();
-    entity.addComponent(tags);
-    this.entityManager.onComponentAdded(entity, tags.type);
-    return tags;
+    return attachValue(entity, GameplayTags);
   }
 }
