@@ -370,7 +370,6 @@ import {
   defineAttribute,
   defineEffect,
   defineAbility,
-  abilityComponentTypes,
   type AbilitySystem,
   type CreateAbilitySystemConfig,
   type AbilitySystemPipeline,

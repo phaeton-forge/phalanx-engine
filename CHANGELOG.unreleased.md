@@ -877,3 +877,21 @@ Entries collected per package until the synchronized 0.3.0 release
   for a collision-free world. After resolution the live grid still holds
   the pre-separation centers. Exported centers copy each value's own
   precision (`FP.FromRaw` would default to 5).
+
+## A6b.2c — old SoA path removed (ecs, physics, abilities, runtime, game)
+
+- Removed `SoAComponent` (including `useEntityManager`, `resetContext`,
+  `currentEntityManager`), `createComponentTypeRegistry`, the
+  `*_COMPONENT_TYPE` symbols, `abilityComponentTypes`,
+  `SystemRegistry` component-type registration, `GameWorldConfig.componentTypes`
+  and the runtime `defineComponent` implementation (the runtime now re-exports
+  the ecs `defineComponent`, `DefinedComponent`, `DefineSoaOptions`).
+- Removed `WorldScope` from `@phalanx-engine/runtime` and `/advanced`.
+- SoA rows bind to the owning world when the entity is adopted
+  (`createEntity`, pools, `addEntity`). Adding an entity to a second world
+  throws. Disposing one world does not affect another.
+- `EntityManager` indexes component types lazily.
+- Physics helpers (`readFpPosition`, `setVelocity`, ...) take the entity
+  instead of its id. Use `Transform.type` etc. in queries.
+- Pool factories receive `(id, manager)`.
+- Goldens unchanged.

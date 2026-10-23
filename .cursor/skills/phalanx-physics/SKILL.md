@@ -27,7 +27,7 @@ Use this skill when the user asks to:
 ## Prerequisites
 
 - TypeScript project with strict mode
-- `phalanx-ecs` package (peer dependency — GameSystem, SoAComponent, EntityManager, EventBus, lifecycle hooks)
+- `phalanx-ecs` package (peer dependency — GameSystem, EntityManager, EventBus, lifecycle hooks)
 - `phalanx-math` package (peer dependency — FP.*, FixedPoint, FPVector3, FPQuaternion)
 
 ## Architecture Overview
@@ -163,27 +163,7 @@ world.registerSystems(tickSystems, frameSystems);
 
 ### 4. Register Component Type Symbols
 
-Import canonical symbols from phalanx-physics and override your registry:
-
-```typescript
-import { createComponentTypeRegistry } from '@phalanx-engine/ecs';
-import {
-  PHYSICS_BODY_COMPONENT_TYPE,
-  TRANSFORM_COMPONENT_TYPE,
-  INTERPOLATION_COMPONENT_TYPE,
-} from '@phalanx-engine/physics';
-
-export const ComponentType = createComponentTypeRegistry({
-  Transform: 'Transform',
-  Interpolation: 'Interpolation',
-  PhysicsBody: 'PhysicsBody',
-  // ... other game types
-});
-
-(ComponentType as Record<string, symbol>).Transform = TRANSFORM_COMPONENT_TYPE;
-(ComponentType as Record<string, symbol>).Interpolation = INTERPOLATION_COMPONENT_TYPE;
-(ComponentType as Record<string, symbol>).PhysicsBody = PHYSICS_BODY_COMPONENT_TYPE;
-```
+Use the `.type` symbol of each physics component (`Transform.type`, `Interpolation.type`, `PhysicsBody.type`) in queries. No registry is needed; the `EntityManager` indexes component types lazily.
 
 ### 5. Create Entity Components
 
@@ -306,9 +286,9 @@ import { attachTransform, writeFpPosition, writeFpRotation, writeYaw, TransformS
 import { FPQuaternion } from '@phalanx-engine/math';
 
 attachTransform(entity, fpPosition, FPQuaternion.Identity());
-writeFpPosition(entity.id, newPosition);
-writeFpRotation(entity.id, FPQuaternion.Identity());
-writeYaw(entity.id, FP.FromFloat(Math.PI)); // yaw around FPVector3.Up
+writeFpPosition(entity, newPosition);
+writeFpRotation(entity, FPQuaternion.Identity());
+writeYaw(entity, FP.FromFloat(Math.PI)); // yaw around FPVector3.Up
 ```
 
 Hot-path access:
@@ -420,14 +400,11 @@ Returns `CollisionManifold | null`: `{ entityA, entityB, normalX, normalZ, penet
 import {
   PhysicsBody,
   PhysicsSoASchema,
-  PHYSICS_BODY_COMPONENT_TYPE,
   attachPhysicsBody,
   Transform,
   TransformSoASchema,
-  TRANSFORM_COMPONENT_TYPE,
   attachTransform,
   Interpolation,
-  INTERPOLATION_COMPONENT_TYPE,
   attachInterpolation,
 } from '@phalanx-engine/physics';
 import type { PhysicsBodyConfig, InterpolationSample } from '@phalanx-engine/physics';

@@ -29,7 +29,7 @@ The root re-exports `@phalanx-engine/runtime` (including `MatchStore`,
 `GameSystem`, `Entity`, …).
 
 `StateHelpers`, `spawnWithId`,
-`SaveHandler`, `CommandSchema`, `SaveSpec`, `StateMigration`, `WorldScope`,
+`SaveHandler`, `CommandSchema`, `SaveSpec`, `StateMigration`,
 `PoolManager`,
 `SoAComponentStore`, `TickFrameManager`, `TickFrameManagerConfig`,
 `TYPED_ARRAY_CONSTRUCTORS`, `DebugPanel` and `DebugPanelConfig` are

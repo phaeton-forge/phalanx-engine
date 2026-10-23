@@ -226,9 +226,8 @@ if (seed === null) throw new Error('match seed missing');
 const world = new GameWorld({
   tickFrameProvider: client,
   random: new DeterministicRandom(seed), // @phalanx-engine/math
-  componentTypes: [...],
 });
-physicsWorld.attach(world);             // wire services BEFORE registerSystems
+physicsWorld.attach(world); // wire services BEFORE registerSystems
 const abilities = createAbilitySystem(world, { definitions });
 world.registerSystems([...tickSystems], [...frameSystems]);
 world.start({ beforeTick, afterTick, beforeFrame, afterFrame });
@@ -254,9 +253,9 @@ client.sendReady();
 - Lifecycle hooks (`IBeforeTick`, `IAfterTick`, `IBeforeFrame`, `IAfterFrame`)
   are auto-detected; do not wire them manually.
 
-### 4.3 Storage: `IComponent` vs `SoAComponent`
+### 4.3 Storage: `IComponent` vs SoA `defineComponent`
 
-Use `SoAComponent` when the data is hot-path, flat/numeric, high-cardinality, or
+Use a SoA `defineComponent` when the data is hot-path, flat/numeric, high-cardinality, or
 fixed-point. Use `IComponent` for complex/nested data, strings, object
 references (meshes, callbacks) and render-only state.
 
@@ -286,15 +285,17 @@ public processTick(): void {
 - **MUST NOT** allocate objects/arrays inside `processTick()` loops.
 - **MUST NOT** mutate the array returned by `entityIds()` while iterating it;
   snapshot first if the loop mutates membership.
-- `SoAComponent` constructors MUST receive a **fresh object literal** as
-  `initialValues`. A shared/mutable defaults object causes pooled respawns to
-  drift.
+- SoA rows live in the store of the entity's owning world. `createEntity`,
+  a pool factory or the first `addEntity` sets that owner; rows attached in
+  the constructor reach the store then. There is no process-global SoA
+  context.
+- Physics helpers (`readFpPosition`, `setVelocity`, ...) take the entity,
+  not its id.
 
 ### 4.3.1 `defineComponent` (ecs)
 
-Domain code imports `defineComponent` from `@phalanx-engine/ecs`. The
-runtime helper of the same name remains the SoA registration used by
-`defineGame` until it is removed.
+Domain code imports `defineComponent` from `@phalanx-engine/ecs`.
+`@phalanx-engine/runtime` re-exports the same function.
 
 - SoA fields are `i32`, `u32`, `u8`, `i64`. They are saved and included in
   `configHash`. `f32` / `f64` are rejected.
@@ -314,7 +315,8 @@ runtime helper of the same name remains the SoA registration used by
   constructor takes that id) → `addComponent(...)` in the **constructor
   only** → `entityManager.addEntity(entity)`. `createEntity` does not
   register. `createEntityWithId` does. Pool factories are
-  `(id: number) => T`.
+  `(id: number, manager: EntityManager) => T`; `manager` is the owning
+  world's manager.
 - Destroy: `entity.destroy()`, then `entityManager.cleanupDestroyed()` in the
   `afterTick` hook, then `dispose()` the returned entities. **Never call
   `entity.dispose()` from game code directly.**
@@ -343,7 +345,7 @@ Pooling is **engine-driven**. Game code calls exactly two APIs:
   fields. Per-spawn writes belong in entity `onSpawn`.
 - `addReturnToPoolHook` and `isPoolableComponent` are internal.
   `IPoolableComponent` is exported. Game code
-  uses `onEnable` / `onDisable` / `onDestroy`. `SoAComponent.onSpawn` /
+  uses `onEnable` / `onDisable` / `onDestroy`. The SoA row's `onSpawn` /
   `onDespawn` stay the storage reset.
 - `createAbilitySystem` registers an internal return-to-pool hook. The
   first call records the factory shell (attribute `base` / `current` /
@@ -461,16 +463,9 @@ Pooling is **engine-driven**. Game code calls exactly two APIs:
 - Framework: **Vitest**. `pnpm test` / `pnpm test:watch`.
 - Layout: `tests/**/*.test.ts` at package root (math also allows co-located
   `src/**/*.test.ts`). One file per system/feature, named `<Subject>.test.ts`.
-- Mandatory isolation:
-  ```ts
-  beforeEach(() => {
-    SoAComponent.useEntityManager(em);
-  });
-  afterEach(() => {
-    SoAComponent.resetContext();
-  });
-  ```
-  Omitting `SoAComponent.resetContext()` leaks global state between tests.
+- Worlds share no global state. Each test builds its own `GameWorld` or
+  `EntityManager`; an entity's SoA rows are readable once a world owns it
+  (`createEntity`, pool factory or `addEntity`).
 - Unit tests drive the pipeline explicitly with `world.processAllTicks(n)` /
   `world.updateAll(dt)` — do **not** call `world.start()` in unit tests.
 - Compare FP values with `FP.Eq/Lt/Gt`, not `==` or `toBeCloseTo`. `toBeCloseTo`
