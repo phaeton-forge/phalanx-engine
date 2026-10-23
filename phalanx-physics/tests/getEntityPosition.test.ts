@@ -1,12 +1,7 @@
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import { bindTestWorld } from './bindTestWorld.js';
 import { FP } from '@phalanx-engine/math';
-import {
-  EntityManager,
-  EventBus,
-  SystemContext,
-  SoAComponent,
-} from '@phalanx-engine/ecs';
+import { EntityManager, EventBus, SystemContext } from '@phalanx-engine/ecs';
 import { PhysicsSystem } from '../src/systems/PhysicsSystem';
 import { PhysicsSoASchema } from '../src/components/physicsBody';
 import { TransformSoASchema } from '../src/components/transform';
@@ -32,11 +27,6 @@ describe('getEntityPosition', () => {
   beforeEach(() => {
     entityManager = new EntityManager();
     context = new SystemContext(new EventBus(), entityManager);
-    SoAComponent.useEntityManager(entityManager);
-  });
-
-  afterEach(() => {
-    SoAComponent.resetContext();
   });
 
   it('PhysicsSystem returns fixed-point transform positions', () => {

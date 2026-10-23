@@ -5,7 +5,6 @@ import {
   EntityManager,
   EventBus,
   SystemContext,
-  SoAComponent,
   type SoAComponentStore,
 } from '@phalanx-engine/ecs';
 import { PhysicsSystem } from '../src/systems/PhysicsSystem';
@@ -38,11 +37,6 @@ describe('step()', () => {
     entityManager = new EntityManager();
     eventBus = new EventBus();
     context = new SystemContext(eventBus, entityManager);
-    SoAComponent.useEntityManager(entityManager);
-  });
-
-  afterEach(() => {
-    SoAComponent.resetContext();
   });
 
   function setupSystem(overrides?: Partial<PhysicsConfig>) {
@@ -89,7 +83,6 @@ describe('step()', () => {
       const em = new EntityManager();
       const eb = new EventBus();
       const ctx = new SystemContext(eb, em);
-      SoAComponent.useEntityManager(em);
 
       const config = createPhysicsConfig();
       const system = new PhysicsSystem(config);
@@ -114,7 +107,6 @@ describe('step()', () => {
       });
       addTransformRow(transformStore, 1, 0, 0);
 
-      SoAComponent.resetContext();
       return { system, transformStore };
     })();
 
@@ -122,7 +114,6 @@ describe('step()', () => {
       const em = new EntityManager();
       const eb = new EventBus();
       const ctx = new SystemContext(eb, em);
-      SoAComponent.useEntityManager(em);
 
       const config = createPhysicsConfig();
       const system = new PhysicsSystem(config);
@@ -147,7 +138,6 @@ describe('step()', () => {
       });
       addTransformRow(transformStore, 1, 0, 0);
 
-      SoAComponent.resetContext();
       return { system, transformStore };
     })();
 

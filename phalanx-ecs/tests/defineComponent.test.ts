@@ -4,7 +4,6 @@ import {
   BinaryStateWriter,
   GameSystem,
   GameWorld,
-  SoAComponent,
   defineComponent,
   writeSorted,
 } from '../src/index.js';
@@ -18,10 +17,6 @@ function world(): GameWorld {
 }
 
 describe('defineComponent', () => {
-  afterEach(() => {
-    SoAComponent.resetContext();
-  });
-
   it('stores SoA, object, and transient values through the world', () => {
     const game = world();
     const hp = defineComponent('Hp', { hp: 'i64', armor: 'i32' });
@@ -357,7 +352,6 @@ describe('defineComponent', () => {
     a.registerComponent(hp);
     const b = world();
     const entity = a.createEntityWithId(1);
-    SoAComponent.useEntityManager(b.entityManager);
     a.add(entity, hp, { hp: 7n });
 
     const storeA = a.entityManager.getSoAStore(hp.schema);

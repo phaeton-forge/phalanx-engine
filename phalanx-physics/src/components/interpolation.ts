@@ -27,8 +27,6 @@ export const Interpolation = defineComponent<InterpolationSample>(
   }
 );
 
-export const INTERPOLATION_COMPONENT_TYPE: symbol = Interpolation.type;
-
 type InterpolationValue = ValueComponent<InterpolationSample>;
 
 export function createInterpolationSample(
@@ -55,7 +53,7 @@ export function attachInterpolation(
   rotation?: FPQuaternionType
 ): InterpolationSample {
   const existing = entity._peekComponent<InterpolationValue>(
-    INTERPOLATION_COMPONENT_TYPE
+    Interpolation.type
   );
   if (existing !== undefined) {
     const next = createInterpolationSample(position, rotation);
@@ -63,16 +61,15 @@ export function attachInterpolation(
     return existing.value;
   }
   const value = createInterpolationSample(position, rotation);
-  entity.addComponent(new ValueComponent(INTERPOLATION_COMPONENT_TYPE, value));
-  entity._manager?.onComponentAdded(entity, INTERPOLATION_COMPONENT_TYPE);
+  entity.addComponent(new ValueComponent(Interpolation.type, value));
+  entity._manager?.onComponentAdded(entity, Interpolation.type);
   return value;
 }
 
 export function interpolationOf(
   entity: Entity
 ): InterpolationSample | undefined {
-  return entity.getComponent<InterpolationValue>(INTERPOLATION_COMPONENT_TYPE)
-    ?.value;
+  return entity.getComponent<InterpolationValue>(Interpolation.type)?.value;
 }
 
 export function snapshotInterpolation(sample: InterpolationSample): void {
@@ -103,11 +100,11 @@ export function restoreOwnedInterpolation(world: GameWorld): void {
     if (transforms.indexOf(id) === -1) continue;
     const entity = world.entityManager.getEntity(id);
     if (entity === undefined) continue;
-    if (!entity._componentAttached(INTERPOLATION_COMPONENT_TYPE)) {
+    if (!entity._componentAttached(Interpolation.type)) {
       world.add(entity, Interpolation);
     }
     const sample = entity._peekComponent<InterpolationValue>(
-      INTERPOLATION_COMPONENT_TYPE
+      Interpolation.type
     )?.value;
     if (sample === undefined) continue;
     captureInterpolation(

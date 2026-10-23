@@ -1,3 +1,4 @@
+import { isStoreBound } from './Component.js';
 import type { Entity } from './Entity.js';
 import { SoAComponentStore } from './SoAComponentStore.js';
 import type { SoAComponentStoreOptions } from './SoAComponentStore.js';
@@ -82,19 +83,6 @@ export class EntityManager {
   }
 
   /**
-   * Register component types for efficient queries
-   * Call this during initialization with your game's component types
-   * @param componentTypes - Array of component type symbols
-   */
-  public registerComponentTypes(componentTypes: readonly symbol[]): void {
-    for (const type of componentTypes) {
-      if (!this.componentIndices.has(type)) {
-        this.componentIndices.set(type, []);
-      }
-    }
-  }
-
-  /**
    * @internal Remember a transient component so tick reads of it throw.
    */
   public registerTransientComponent(type: symbol, name: string): void {
@@ -128,17 +116,32 @@ export class EntityManager {
    * Register an entity with the manager
    */
   public addEntity(entity: Entity): void {
+    this.adopt(entity);
     entity._manager = this;
     this.entities.set(entity.id, entity);
     this.sortedInsert(this.sortedEntityIds, entity.id);
 
-    // Update component indices for any registered component types.
     // Unguarded: registering an entity during a tick must still see
     // transient components.
-    for (const [type, index] of this.componentIndices) {
-      if (entity._componentAttached(type)) {
-        this.sortedInsert(index, entity.id);
-      }
+    for (const type of entity.getComponentTypes()) {
+      this.sortedInsert(this.indexFor(type), entity.id);
+    }
+  }
+
+  /**
+   * @internal Make this manager the entity's owner and bind its SoA rows
+   * to this manager's stores. Repeated calls are no-ops.
+   *
+   * @throws If another manager already owns the entity.
+   */
+  public adopt(entity: Entity): void {
+    if (entity._owner === this) return;
+    if (entity._owner !== null) {
+      throw new Error(`entity ${String(entity.id)} belongs to another world`);
+    }
+    entity._owner = this;
+    for (const component of entity.getComponents().values()) {
+      if (isStoreBound(component)) component._bind(this);
     }
   }
 
@@ -318,10 +321,16 @@ export class EntityManager {
    * Update component index when a component is added to an entity
    */
   public onComponentAdded(entity: Entity, componentType: symbol): void {
-    const index = this.componentIndices.get(componentType);
-    if (index) {
-      this.sortedInsert(index, entity.id);
+    this.sortedInsert(this.indexFor(componentType), entity.id);
+  }
+
+  private indexFor(componentType: symbol): number[] {
+    let index = this.componentIndices.get(componentType);
+    if (index === undefined) {
+      index = [];
+      this.componentIndices.set(componentType, index);
     }
+    return index;
   }
 
   /**

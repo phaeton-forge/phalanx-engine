@@ -122,8 +122,8 @@ export class DamageSphereCue extends Cue {
       return null;
     }
 
-    const src = FPVector3.ToFloat(copyFpPosition(source.id));
-    const tgt = FPVector3.ToFloat(copyFpPosition(target.id));
+    const src = FPVector3.ToFloat(copyFpPosition(source));
+    const tgt = FPVector3.ToFloat(copyFpPosition(target));
 
     const physStore = entityManager.getOrCreateSoAStore(PhysicsSoASchema);
     const physIdx = physStore.indexOf(target.id);

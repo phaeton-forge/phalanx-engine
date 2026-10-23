@@ -9,8 +9,8 @@
  * no work.
  * Local persistence is opt-in via `MatchStore` (`MemoryMatchStore`,
  * `IndexedDbMatchStore`) and `MatchRunner.resumeLocal`.
- * `StateHelpers`, `spawnWithId`, `CommandSchema`, `SaveHandler` and
- * `WorldScope` live in `@phalanx-engine/runtime/advanced`.
+ * `StateHelpers`, `spawnWithId`, `CommandSchema` and `SaveHandler` live
+ * in `@phalanx-engine/runtime/advanced`.
  * `MatchRunner.join` still throws `NotImplementedError` for Task 12. Design:
  * docs/design/runtime-api.md.
  *
@@ -87,11 +87,8 @@ export type {
   PersistenceFlushReason,
 } from './transport/LocalTransport.js';
 export * from './persistence/index.js';
-export { defineComponent } from './world/defineComponent.js';
-export type {
-  DefinedComponent,
-  DefineComponentOptions,
-} from './world/defineComponent.js';
+export { defineComponent } from '@phalanx-engine/ecs';
+export type { DefinedComponent, DefineSoaOptions } from '@phalanx-engine/ecs';
 export {
   saveWorld,
   restoreWorld,

@@ -5,7 +5,6 @@ import {
   EntityManager,
   EventBus,
   SystemContext,
-  SoAComponent,
   type SoAComponentStore,
 } from '@phalanx-engine/ecs';
 import { GravitySystem } from '../src/systems/GravitySystem';
@@ -69,11 +68,6 @@ describe('GravitySystem', () => {
     entityManager = new EntityManager();
     eventBus = new EventBus();
     context = new SystemContext(eventBus, entityManager);
-    SoAComponent.useEntityManager(entityManager);
-  });
-
-  afterEach(() => {
-    SoAComponent.resetContext();
   });
 
   function setup(gravity = GRAVITY, gravityAxis: 'x' | 'y' | 'z' = 'y') {
@@ -235,13 +229,11 @@ describe('GravitySystem', () => {
       const em = new EntityManager();
       const eb = new EventBus();
       const ctx = new SystemContext(eb, em);
-      SoAComponent.useEntityManager(em);
       const sys = new GravitySystem(GRAVITY, 'y', TICK_DT);
       sys.init(ctx);
       const ps = em.getOrCreateSoAStore(PhysicsSoASchema);
       const ts = em.getOrCreateSoAStore(TransformSoASchema);
       addBody(ps, ts, 1, { velY: 5, useGravity: true });
-      SoAComponent.resetContext();
       return { sys, ps };
     })();
 
@@ -249,13 +241,11 @@ describe('GravitySystem', () => {
       const em = new EntityManager();
       const eb = new EventBus();
       const ctx = new SystemContext(eb, em);
-      SoAComponent.useEntityManager(em);
       const sys = new GravitySystem(GRAVITY, 'y', TICK_DT);
       sys.init(ctx);
       const ps = em.getOrCreateSoAStore(PhysicsSoASchema);
       const ts = em.getOrCreateSoAStore(TransformSoASchema);
       addBody(ps, ts, 1, { velY: 5, useGravity: true });
-      SoAComponent.resetContext();
       return { sys, ps };
     })();
 

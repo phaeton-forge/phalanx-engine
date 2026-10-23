@@ -1,3 +1,5 @@
+import type { EntityManager } from './EntityManager.js';
+
 /**
  * Base Component interface
  * Components are data containers that can be attached to entities
@@ -7,25 +9,18 @@ export interface IComponent {
 }
 
 /**
- * Helper function to create a component type registry
- * Game developers can use this to create their own component type registries
- *
- * Example:
- * ```typescript
- * export const ComponentType = createComponentTypeRegistry({
- *   Health: 'Health',
- *   Movement: 'Movement',
- *   Attack: 'Attack',
- * });
- * ```
+ * @internal A component whose data lives in a world's store. The entity
+ * binds it once the owning world is known; binding is idempotent.
  */
-export function createComponentTypeRegistry<T extends Record<string, string>>(
-  types: T
-): { [K in keyof T]: symbol } {
-  const registry: { [K in keyof T]?: symbol } = {};
-  for (const key of Object.keys(types) as (keyof T)[]) {
-    const name = types[key];
-    registry[key] = Symbol(name);
-  }
-  return registry as { [K in keyof T]: symbol };
+export interface IStoreBoundComponent extends IComponent {
+  _bind(manager: EntityManager): void;
+}
+
+/** @internal */
+export function isStoreBound(
+  component: IComponent
+): component is IStoreBoundComponent {
+  return (
+    typeof (component as Partial<IStoreBoundComponent>)._bind === 'function'
+  );
 }

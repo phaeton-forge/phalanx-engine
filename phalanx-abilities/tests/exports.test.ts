@@ -145,7 +145,6 @@ const ROOT_NAMES = [
   'TargetResolutionResult',
   'TargetResolver',
   'TargetSpec',
-  'abilityComponentTypes',
   'abilityOwnerOf',
   'activeEffectsOf',
   'appendGameplayCueEvents',
@@ -187,7 +186,6 @@ const ROOT_VALUES = [
   'InstanceIdCounter',
   'NO_SOURCE_ENTITY_ID',
   'TargetResolver',
-  'abilityComponentTypes',
   'abilityOwnerOf',
   'activeEffectsOf',
   'appendGameplayCueEvents',
@@ -237,10 +235,10 @@ describe('@phalanx-engine/abilities exports', () => {
     }
     expect(
       resolved.map((entry) => actual.get(entry.file)?.names.length)
-    ).toEqual([88]);
+    ).toEqual([87]);
     expect(
       resolved.map((entry) => actual.get(entry.file)?.values.length)
-    ).toEqual([39]);
+    ).toEqual([38]);
   });
 
   it('loads each entry by package name', async () => {

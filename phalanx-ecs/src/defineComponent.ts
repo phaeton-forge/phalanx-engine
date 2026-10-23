@@ -1,7 +1,7 @@
-import { SoAComponent } from './SoAComponent.js';
 import { defineSoASchema } from './SoASchema.js';
-import type { IComponent } from './Component.js';
+import type { IComponent, IStoreBoundComponent } from './Component.js';
 import type { EntityManager } from './EntityManager.js';
+import type { ComponentLifecycle } from './lifecycle.js';
 import type { IPoolableComponent } from './pool/IPoolableComponent.js';
 import type { ComponentRegistration } from './ComponentRegistration.js';
 import type {
@@ -77,7 +77,10 @@ interface TransientSpec<T extends object> {
   create(): T;
 }
 
-export interface DefineSoaOptions<S extends SoASchemaDefinition> {
+/** Row defaults plus optional lifecycle hooks, called with no `this`. */
+export interface DefineSoaOptions<
+  S extends SoASchemaDefinition,
+> extends ComponentLifecycle {
   readonly defaults?: Partial<SoAFieldsOf<S>>;
 }
 
@@ -190,6 +193,7 @@ function defineSoa<S extends IntegerSchema>(
   }
   const schema = defineSoASchema(fields, name);
   const defaults = buildDefaults(name, schema, options?.defaults);
+  const hooks: ComponentLifecycle = options ?? {};
   return {
     kind: 'soa',
     name,
@@ -197,7 +201,15 @@ function defineSoa<S extends IntegerSchema>(
     defaults,
     type: schema.type,
     create(entityId, values, manager) {
-      return createSoaRow(name, schema, defaults, entityId, values, manager);
+      return createSoaRow(
+        name,
+        schema,
+        defaults,
+        hooks,
+        entityId,
+        values,
+        manager
+      );
     },
   };
 }
@@ -262,16 +274,11 @@ function createSoaRow<S extends SoASchemaDefinition>(
   name: string,
   schema: SoASchema<S>,
   defaults: SoAFieldsOf<S>,
+  hooks: ComponentLifecycle,
   entityId: number,
   values: Readonly<Partial<Record<string, number | bigint>>> | undefined,
   manager: EntityManager | undefined
-): IComponent {
-  const resolved = manager ?? SoAComponent.currentEntityManager();
-  if (resolved === null) {
-    throw new Error(
-      `defineComponent '${name}': no EntityManager context; use world.add`
-    );
-  }
+): SoaRow<S> {
   const component: SoaComponentDef<S> = {
     kind: 'soa',
     name,
@@ -279,40 +286,68 @@ function createSoaRow<S extends SoASchemaDefinition>(
     defaults,
     type: schema.type,
     create() {
-      throw new Error(
-        `defineComponent '${name}': no EntityManager context; use world.add`
-      );
+      throw new Error(`defineComponent '${name}': use world.add`);
     },
   };
   const initial = mergeSoaValues(component, values as Partial<SoAFieldsOf<S>>);
-  const store = resolved.getOrCreateSoAStore(schema);
-  if (store.indexOf(entityId) === -1) {
-    store.add(entityId, initial);
-  }
-  return new SoaRow(schema, entityId, initial, resolved);
+  const row = new SoaRow(schema, entityId, initial, hooks);
+  if (manager !== undefined) row._bind(manager);
+  return row;
 }
 
 /**
  * SoA row that follows the pool contract: `onSpawn` restores the values
- * passed to `create`, `onDespawn` drops the row. Dormant pooled entities
- * stay out of the store, matching the old `SoAComponent` lifecycle.
+ * passed to `create`, `onDespawn` drops the row. The row reaches a store
+ * when the entity's world binds it; a dormant pooled entity stays out of
+ * the store.
  */
 class SoaRow<S extends SoASchemaDefinition>
-  implements IComponent, IPoolableComponent
+  implements IStoreBoundComponent, IPoolableComponent
 {
   public readonly type: symbol;
+  private manager: EntityManager | null = null;
 
   public constructor(
     private readonly schema: SoASchema<S>,
     private readonly entityId: number,
     private readonly defaults: SoAFieldsOf<S>,
-    private readonly manager: EntityManager
+    private readonly hooks: ComponentLifecycle
   ) {
     this.type = schema.type;
   }
 
+  public onCreate(): void {
+    this.hooks.onCreate?.();
+  }
+
+  public onEnable(reason?: 'restore'): void {
+    this.hooks.onEnable?.(reason);
+  }
+
+  public onDisable(): void {
+    this.hooks.onDisable?.();
+  }
+
+  public onDestroy(): void {
+    this.hooks.onDestroy?.();
+  }
+
+  public _bind(manager: EntityManager): void {
+    if (this.manager === manager) return;
+    if (this.manager !== null) {
+      throw new Error(
+        `SoA row '${String(this.type.description)}' of entity ${String(this.entityId)} belongs to another world`
+      );
+    }
+    this.manager = manager;
+    const store = manager.getOrCreateSoAStore(this.schema);
+    if (store.indexOf(this.entityId) === -1) {
+      store.add(this.entityId, this.defaults);
+    }
+  }
+
   public onSpawn(): void {
-    const store = this.manager.getOrCreateSoAStore(this.schema);
+    const store = this.requireManager().getOrCreateSoAStore(this.schema);
     if (store.indexOf(this.entityId) === -1) {
       store.add(this.entityId, this.defaults);
       return;
@@ -321,7 +356,16 @@ class SoaRow<S extends SoASchemaDefinition>
   }
 
   public onDespawn(): void {
-    this.manager.getSoAStore(this.schema)?.remove(this.entityId);
+    this.manager?.getSoAStore(this.schema)?.remove(this.entityId);
+  }
+
+  private requireManager(): EntityManager {
+    if (this.manager === null) {
+      throw new Error(
+        `SoA row '${String(this.type.description)}' of entity ${String(this.entityId)} is not in a world`
+      );
+    }
+    return this.manager;
   }
 }
 

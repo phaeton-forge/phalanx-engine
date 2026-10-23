@@ -1,8 +1,7 @@
 import {
   Entity,
   GameSystem,
-  SoAComponent,
-  defineSoASchema,
+  defineComponent,
   type CommandsBatch,
   type IRandom,
   type SoAComponentStore,
@@ -24,18 +23,15 @@ import {
 } from '../../src/index.js';
 import { StateHelpers } from '../../src/advanced/index.js';
 
-const TINY_UNIT_SCHEMA = defineSoASchema(
-  {
-    slot: 'u32',
-    x: 'i64',
-    hp: 'i64',
-  },
-  'TinyUnit'
-);
+const TinyUnitDef = defineComponent('TinyUnit', {
+  slot: 'u32',
+  x: 'i64',
+  hp: 'i64',
+});
+const TINY_UNIT_SCHEMA = TinyUnitDef.schema;
 
 type TinyUnitFields = (typeof TINY_UNIT_SCHEMA)['definition'];
 
-const TINY_UNIT_TYPE = Symbol('TinyUnit');
 const INITIAL_HP = 100n;
 
 export type TinySlot = SlotConfig & { readonly color: number };
@@ -126,21 +122,10 @@ export function resetTinyBotCalls(): void {
   tinyBotCalls.length = 0;
 }
 
-class TinyUnitComponent extends SoAComponent<TinyUnitFields> {
-  public readonly type = TINY_UNIT_TYPE;
-
-  public constructor(
-    entityId: number,
-    values: { slot: number; x: bigint; hp: bigint }
-  ) {
-    super(TINY_UNIT_SCHEMA, entityId, values);
-  }
-}
-
 class TinyUnit extends Entity {
   public constructor(id: number, slot: number, x: bigint, hp: bigint) {
     super(id);
-    this.addComponent(new TinyUnitComponent(this.id, { slot, x, hp }));
+    this.addComponent(TinyUnitDef.create(this.id, { slot, x, hp }));
   }
 }
 

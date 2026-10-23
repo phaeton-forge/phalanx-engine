@@ -4,21 +4,20 @@ import {
   Entity,
   EntityManager,
   EventBus,
-  SoAComponent,
   SystemContext,
 } from '@phalanx-engine/ecs';
 import { FP, FPVector3, FPQuaternion } from '@phalanx-engine/math';
 import type { FPQuaternion as FPQuaternionType } from '@phalanx-engine/math';
 import {
   PhysicsSoASchema,
-  PHYSICS_BODY_COMPONENT_TYPE,
   TransformSoASchema,
-  TRANSFORM_COMPONENT_TYPE,
-  INTERPOLATION_COMPONENT_TYPE,
   attachTransform,
   interpolationOf,
   writeFpPosition,
   writeFpRotation,
+  PhysicsBody,
+  Transform,
+  Interpolation,
 } from '@phalanx-engine/physics';
 import {
   ComponentType,
@@ -53,7 +52,7 @@ function addEntityWithTransform(
   entity: Entity
 ): void {
   entityManager.addEntity(entity);
-  entityManager.onComponentAdded(entity, TRANSFORM_COMPONENT_TYPE);
+  entityManager.onComponentAdded(entity, Transform.type);
 }
 
 function addTarget(entityManager: EntityManager, position: FPVector3): Entity {
@@ -71,19 +70,8 @@ describe('Missile FP quaternion migration', () => {
   beforeEach(() => {
     MeshComponent.initScene(new THREE.Scene());
     entityManager = new EntityManager();
-    entityManager.registerComponentTypes([
-      TRANSFORM_COMPONENT_TYPE,
-      PHYSICS_BODY_COMPONENT_TYPE,
-      INTERPOLATION_COMPONENT_TYPE,
-      ComponentType.Missile,
-    ]);
-    SoAComponent.useEntityManager(entityManager);
     transformStore = entityManager.getOrCreateSoAStore(TransformSoASchema);
     entityManager.getOrCreateSoAStore(PhysicsSoASchema);
-  });
-
-  afterEach(() => {
-    SoAComponent.resetContext();
   });
 
   describe('MissileTargetingSystem', () => {
@@ -138,9 +126,9 @@ describe('Missile FP quaternion migration', () => {
     it('seeds a unit quaternion into transform SoA and interpolation', () => {
       const missile = new MissileEntity(entityManager.allocateEntityId());
       entityManager.addEntity(missile);
-      entityManager.onComponentAdded(missile, TRANSFORM_COMPONENT_TYPE);
-      entityManager.onComponentAdded(missile, PHYSICS_BODY_COMPONENT_TYPE);
-      entityManager.onComponentAdded(missile, INTERPOLATION_COMPONENT_TYPE);
+      entityManager.onComponentAdded(missile, Transform.type);
+      entityManager.onComponentAdded(missile, PhysicsBody.type);
+      entityManager.onComponentAdded(missile, Interpolation.type);
       entityManager.onComponentAdded(missile, ComponentType.Missile);
 
       missile.onSpawn({
@@ -166,9 +154,9 @@ describe('Missile FP quaternion migration', () => {
     it('launches within the forward hemisphere relative to the launcher', () => {
       const missile = new MissileEntity(entityManager.allocateEntityId());
       entityManager.addEntity(missile);
-      entityManager.onComponentAdded(missile, TRANSFORM_COMPONENT_TYPE);
-      entityManager.onComponentAdded(missile, PHYSICS_BODY_COMPONENT_TYPE);
-      entityManager.onComponentAdded(missile, INTERPOLATION_COMPONENT_TYPE);
+      entityManager.onComponentAdded(missile, Transform.type);
+      entityManager.onComponentAdded(missile, PhysicsBody.type);
+      entityManager.onComponentAdded(missile, Interpolation.type);
       entityManager.onComponentAdded(missile, ComponentType.Missile);
 
       const launcherRotation = FPQuaternion.FromYaw(FP.FromFloat(Math.PI / 2));
@@ -209,13 +197,13 @@ describe('Missile FP quaternion migration', () => {
 
       const missile = new MissileEntity(entityManager.allocateEntityId());
       entityManager.addEntity(missile);
-      entityManager.onComponentAdded(missile, TRANSFORM_COMPONENT_TYPE);
-      entityManager.onComponentAdded(missile, PHYSICS_BODY_COMPONENT_TYPE);
+      entityManager.onComponentAdded(missile, Transform.type);
+      entityManager.onComponentAdded(missile, PhysicsBody.type);
       entityManager.onComponentAdded(missile, ComponentType.Missile);
 
-      writeFpPosition(missile.id, FPVector3.FromFloat(0, 0, 0));
+      writeFpPosition(missile, FPVector3.FromFloat(0, 0, 0));
       writeFpRotation(
-        missile.id,
+        missile,
         FPQuaternion.FromAxisAngle(FPVector3.Right, FP.FromFloat(-Math.PI / 4))
       );
 
@@ -254,12 +242,12 @@ describe('Missile FP quaternion migration', () => {
 
       const missile = new MissileEntity(entityManager.allocateEntityId());
       entityManager.addEntity(missile);
-      entityManager.onComponentAdded(missile, TRANSFORM_COMPONENT_TYPE);
-      entityManager.onComponentAdded(missile, PHYSICS_BODY_COMPONENT_TYPE);
+      entityManager.onComponentAdded(missile, Transform.type);
+      entityManager.onComponentAdded(missile, PhysicsBody.type);
       entityManager.onComponentAdded(missile, ComponentType.Missile);
 
-      writeFpPosition(missile.id, FPVector3.FromFloat(0, 0, 0));
-      writeFpRotation(missile.id, FPQuaternion.Identity());
+      writeFpPosition(missile, FPVector3.FromFloat(0, 0, 0));
+      writeFpRotation(missile, FPQuaternion.Identity());
 
       const mc = missile.getComponent<MissileComponent>(ComponentType.Missile)!;
       mc.phase = 'launch';
@@ -281,12 +269,12 @@ describe('Missile FP quaternion migration', () => {
 
       const missile = new MissileEntity(entityManager.allocateEntityId());
       entityManager.addEntity(missile);
-      entityManager.onComponentAdded(missile, TRANSFORM_COMPONENT_TYPE);
-      entityManager.onComponentAdded(missile, PHYSICS_BODY_COMPONENT_TYPE);
+      entityManager.onComponentAdded(missile, Transform.type);
+      entityManager.onComponentAdded(missile, PhysicsBody.type);
       entityManager.onComponentAdded(missile, ComponentType.Missile);
 
-      writeFpPosition(missile.id, FPVector3.FromFloat(0, 0, 0));
-      writeFpRotation(missile.id, FPQuaternion.Identity());
+      writeFpPosition(missile, FPVector3.FromFloat(0, 0, 0));
+      writeFpRotation(missile, FPQuaternion.Identity());
 
       const mc = missile.getComponent<MissileComponent>(ComponentType.Missile)!;
       mc.phase = 'launch';

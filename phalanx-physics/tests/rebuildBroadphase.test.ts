@@ -3,7 +3,6 @@ import { bindTestWorld } from './bindTestWorld.js';
 import {
   EntityManager,
   EventBus,
-  SoAComponent,
   SystemContext,
   type SoAComponentStore,
 } from '@phalanx-engine/ecs';
@@ -50,11 +49,6 @@ describe('broadphase snapshot hooks', () => {
   beforeEach(() => {
     entityManager = new EntityManager();
     context = new SystemContext(new EventBus(), entityManager);
-    SoAComponent.useEntityManager(entityManager);
-  });
-
-  afterEach(() => {
-    SoAComponent.resetContext();
   });
 
   it('re-inserting 200 seeded bodies in id order matches incremental queryPairs', () => {

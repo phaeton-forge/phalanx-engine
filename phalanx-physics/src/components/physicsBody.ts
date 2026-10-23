@@ -1,4 +1,4 @@
-import { defineComponent, SoAComponent } from '@phalanx-engine/ecs';
+import { defineComponent } from '@phalanx-engine/ecs';
 import type { Entity, SoAComponentStore } from '@phalanx-engine/ecs';
 import {
   FP,
@@ -43,16 +43,17 @@ export const PhysicsBody = defineComponent(
 );
 
 export const PhysicsSoASchema = PhysicsBody.schema;
-export const PHYSICS_BODY_COMPONENT_TYPE: symbol = PhysicsBody.type;
 
 type BodyStore = SoAComponentStore<typeof PhysicsSoASchema.definition>;
 
 const VELOCITY: FPVector3Type = { x: FP._0, y: FP._0, z: FP._0 };
 
-function store(): BodyStore {
-  const manager = SoAComponent.currentEntityManager();
+function store(entity: Entity): BodyStore {
+  const manager = entity._owner;
   if (manager === null) {
-    throw new Error('PhysicsBody: no EntityManager context');
+    throw new Error(
+      `PhysicsBody: entity ${String(entity.id)} is not in a world`
+    );
   }
   const found = manager.getSoAStore(PhysicsSoASchema);
   if (found === undefined) {
@@ -102,37 +103,37 @@ export function bodyValues(
 }
 
 /** Shared scratch. Do not retain it across another velocity read. */
-export function readVelocity(entityId: number): FPVector3Type {
-  const index = store().indexOf(entityId);
+export function readVelocity(entity: Entity): FPVector3Type {
+  const index = store(entity).indexOf(entity.id);
   if (index === -1) return VELOCITY;
-  const arrays = store().arrays;
+  const arrays = store(entity).arrays;
   VELOCITY.x = FP.FromRaw(rawAt(arrays.velocityX, index));
   VELOCITY.y = FP.FromRaw(rawAt(arrays.velocityY, index));
   VELOCITY.z = FP.FromRaw(rawAt(arrays.velocityZ, index));
   return VELOCITY;
 }
 
-export function writeVelocity(entityId: number, value: FPVector3Type): void {
-  setVelocity(entityId, value.x, value.y, value.z);
+export function writeVelocity(entity: Entity, value: FPVector3Type): void {
+  setVelocity(entity, value.x, value.y, value.z);
 }
 
 export function setVelocity(
-  entityId: number,
+  entity: Entity,
   x: FixedPoint,
   y: FixedPoint,
   z: FixedPoint
 ): void {
-  const arrays = store().arrays;
-  const index = store().indexOf(entityId);
+  const arrays = store(entity).arrays;
+  const index = store(entity).indexOf(entity.id);
   if (index === -1) return;
   arrays.velocityX[index] = FP.ToRaw(x);
   arrays.velocityY[index] = FP.ToRaw(y);
   arrays.velocityZ[index] = FP.ToRaw(z);
 }
 
-export function addVelocity(entityId: number, velocity: FPVector3Type): void {
-  const arrays = store().arrays;
-  const index = store().indexOf(entityId);
+export function addVelocity(entity: Entity, velocity: FPVector3Type): void {
+  const arrays = store(entity).arrays;
+  const index = store(entity).indexOf(entity.id);
   if (index === -1) return;
   const currentX = FP.FromRaw(rawAt(arrays.velocityX, index));
   const currentY = FP.FromRaw(rawAt(arrays.velocityY, index));
@@ -142,86 +143,86 @@ export function addVelocity(entityId: number, velocity: FPVector3Type): void {
   arrays.velocityZ[index] = FP.ToRaw(FP.Add(currentZ, velocity.z));
 }
 
-export function stopVelocity(entityId: number): void {
-  const arrays = store().arrays;
-  const index = store().indexOf(entityId);
+export function stopVelocity(entity: Entity): void {
+  const arrays = store(entity).arrays;
+  const index = store(entity).indexOf(entity.id);
   if (index === -1) return;
   arrays.velocityX[index] = RAW_0;
   arrays.velocityY[index] = RAW_0;
   arrays.velocityZ[index] = RAW_0;
 }
 
-export function readRadius(entityId: number): FixedPoint {
-  const index = store().indexOf(entityId);
+export function readRadius(entity: Entity): FixedPoint {
+  const index = store(entity).indexOf(entity.id);
   if (index === -1) return FP._1;
-  return FP.FromRaw(rawAt(store().arrays.radius, index));
+  return FP.FromRaw(rawAt(store(entity).arrays.radius, index));
 }
 
-export function readMass(entityId: number): FixedPoint {
-  const index = store().indexOf(entityId);
+export function readMass(entity: Entity): FixedPoint {
+  const index = store(entity).indexOf(entity.id);
   if (index === -1) return FP._1;
-  return FP.FromRaw(rawAt(store().arrays.mass, index));
+  return FP.FromRaw(rawAt(store(entity).arrays.mass, index));
 }
 
-export function readRestitution(entityId: number): FixedPoint {
-  const index = store().indexOf(entityId);
+export function readRestitution(entity: Entity): FixedPoint {
+  const index = store(entity).indexOf(entity.id);
   if (index === -1) return DEFAULT_RESTITUTION;
-  return FP.FromRaw(rawAt(store().arrays.restitution, index));
+  return FP.FromRaw(rawAt(store(entity).arrays.restitution, index));
 }
 
-export function readFriction(entityId: number): FixedPoint {
-  const index = store().indexOf(entityId);
+export function readFriction(entity: Entity): FixedPoint {
+  const index = store(entity).indexOf(entity.id);
   if (index === -1) return DEFAULT_FRICTION_FALLBACK;
-  return FP.FromRaw(rawAt(store().arrays.friction, index));
+  return FP.FromRaw(rawAt(store(entity).arrays.friction, index));
 }
 
-export function readIsStatic(entityId: number): boolean {
-  const index = store().indexOf(entityId);
+export function readIsStatic(entity: Entity): boolean {
+  const index = store(entity).indexOf(entity.id);
   if (index === -1) return false;
-  return flagAt(store().arrays.isStatic, index) === 1;
+  return flagAt(store(entity).arrays.isStatic, index) === 1;
 }
 
-export function readIgnorePhysics(entityId: number): boolean {
-  const index = store().indexOf(entityId);
+export function readIgnorePhysics(entity: Entity): boolean {
+  const index = store(entity).indexOf(entity.id);
   if (index === -1) return false;
-  return flagAt(store().arrays.ignorePhysics, index) === 1;
+  return flagAt(store(entity).arrays.ignorePhysics, index) === 1;
 }
 
-export function writeIgnorePhysics(entityId: number, value: boolean): void {
-  writeFlag(entityId, 'ignorePhysics', value);
+export function writeIgnorePhysics(entity: Entity, value: boolean): void {
+  writeFlag(entity, 'ignorePhysics', value);
 }
 
-export function readUseGravity(entityId: number): boolean {
-  const index = store().indexOf(entityId);
+export function readUseGravity(entity: Entity): boolean {
+  const index = store(entity).indexOf(entity.id);
   if (index === -1) return false;
-  return flagAt(store().arrays.useGravity, index) === 1;
+  return flagAt(store(entity).arrays.useGravity, index) === 1;
 }
 
-export function writeUseGravity(entityId: number, value: boolean): void {
-  writeFlag(entityId, 'useGravity', value);
+export function writeUseGravity(entity: Entity, value: boolean): void {
+  writeFlag(entity, 'useGravity', value);
 }
 
-export function readGravityMultiplier(entityId: number): FixedPoint {
-  const index = store().indexOf(entityId);
+export function readGravityMultiplier(entity: Entity): FixedPoint {
+  const index = store(entity).indexOf(entity.id);
   if (index === -1) return FP._1;
-  return FP.FromRaw(rawAt(store().arrays.gravityMultiplier, index));
+  return FP.FromRaw(rawAt(store(entity).arrays.gravityMultiplier, index));
 }
 
 export function writeGravityMultiplier(
-  entityId: number,
+  entity: Entity,
   value: FixedPoint
 ): void {
-  const index = store().indexOf(entityId);
+  const index = store(entity).indexOf(entity.id);
   if (index === -1) return;
-  store().arrays.gravityMultiplier[index] = FP.ToRaw(value);
+  store(entity).arrays.gravityMultiplier[index] = FP.ToRaw(value);
 }
 
 function writeFlag(
-  entityId: number,
+  entity: Entity,
   field: 'ignorePhysics' | 'useGravity',
   value: boolean
 ): void {
-  const index = store().indexOf(entityId);
+  const index = store(entity).indexOf(entity.id);
   if (index === -1) return;
-  store().arrays[field][index] = value ? 1 : 0;
+  store(entity).arrays[field][index] = value ? 1 : 0;
 }

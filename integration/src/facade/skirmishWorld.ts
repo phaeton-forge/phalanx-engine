@@ -8,7 +8,6 @@ import {
   Entity,
   GameSystem,
   GameWorld,
-  SoAComponent,
   defineComponent,
   despawn,
   each,
@@ -28,7 +27,7 @@ import {
 } from '@phalanx-engine/game/abilities';
 import { FP, type FixedPoint } from '@phalanx-engine/game/math';
 import {
-  PHYSICS_BODY_COMPONENT_TYPE,
+  PhysicsBody,
   PhysicsSoASchema,
   TransformSoASchema,
   attachPhysicsBody,
@@ -216,75 +215,44 @@ export interface SkirmishSession {
   }[];
 }
 
-class UnitComponent extends SoAComponent<{
-  kind: 'u8';
-  slot: 'u32';
-  team: 'u32';
-  homeX: 'i64';
-  homeZ: 'i64';
-  eid: 'u32';
-}> {
-  public readonly type = UnitDef.type;
-
-  public constructor(entityId: number) {
-    super(UnitDef.schema, entityId, {
-      kind: 0,
-      slot: 0,
-      team: 0,
-      homeX: 0n,
-      homeZ: 0n,
-      eid: 0,
-    });
-  }
-
-  public write(
-    kind: number,
-    slot: number,
-    team: number,
-    x: bigint,
-    z: bigint,
-    eid: number
-  ): void {
-    const index = this.getIndex();
-    if (index < 0) return;
-    this.store.arrays.kind[index] = kind;
-    this.store.arrays.slot[index] = slot;
-    this.store.arrays.team[index] = team;
-    this.store.arrays.homeX[index] = x;
-    this.store.arrays.homeZ[index] = z;
-    this.store.arrays.eid[index] = eid;
-  }
+function writeUnit(
+  entity: Entity,
+  kind: number,
+  slot: number,
+  team: number,
+  x: bigint,
+  z: bigint
+): void {
+  const store = entity._owner?.getSoAStore(UnitDef.schema);
+  const index = store?.indexOf(entity.id) ?? -1;
+  if (store === undefined || index < 0) return;
+  store.arrays.kind[index] = kind;
+  store.arrays.slot[index] = slot;
+  store.arrays.team[index] = team;
+  store.arrays.homeX[index] = x;
+  store.arrays.homeZ[index] = z;
+  store.arrays.eid[index] = entity.id;
 }
 
-class RangedComponent extends SoAComponent<{ range: 'i64' }> {
-  public readonly type = RangedDef.type;
-
-  public constructor(entityId: number) {
-    super(RangedDef.schema, entityId, { range: 0n });
-  }
-
-  public write(range: bigint): void {
-    const index = this.getIndex();
-    if (index < 0) return;
-    this.store.arrays.range[index] = range;
-  }
+function writeRange(entity: Entity, range: bigint): void {
+  const store = entity._owner?.getSoAStore(RangedDef.schema);
+  const index = store?.indexOf(entity.id) ?? -1;
+  if (store === undefined || index < 0) return;
+  store.arrays.range[index] = range;
 }
 
-function placeTransform(entityId: number, x: bigint, z: bigint): void {
-  const manager = SoAComponent.currentEntityManager();
-  const store = manager?.getSoAStore(TransformSoASchema);
-  if (store === undefined) return;
-  const index = store.indexOf(entityId);
-  if (index < 0) return;
+function placeTransform(entity: Entity, x: bigint, z: bigint): void {
+  const store = entity._owner?.getSoAStore(TransformSoASchema);
+  const index = store?.indexOf(entity.id) ?? -1;
+  if (store === undefined || index < 0) return;
   store.arrays.fpPositionX[index] = x;
   store.arrays.fpPositionY[index] = 0n;
   store.arrays.fpPositionZ[index] = z;
 }
 
 class PooledUnit extends Entity implements IPoolableEntity<UnitSpawn> {
-  public readonly unit: UnitComponent;
   private readonly withBody: boolean;
-  private readonly ranged: RangedComponent | null;
+  private readonly withRange: boolean;
 
   public constructor(
     id: number,
@@ -295,8 +263,8 @@ class PooledUnit extends Entity implements IPoolableEntity<UnitSpawn> {
   ) {
     super(id);
     this.withBody = withBody;
-    this.unit = new UnitComponent(this.id);
-    this.addComponent(this.unit);
+    this.withRange = withRange;
+    this.addComponent(UnitDef.create(this.id));
     attachTransform(this);
     if (withBody) {
       attachPhysicsBody(this, {
@@ -307,12 +275,7 @@ class PooledUnit extends Entity implements IPoolableEntity<UnitSpawn> {
         useGravity: false,
       });
     }
-    if (withRange) {
-      this.ranged = new RangedComponent(this.id);
-      this.addComponent(this.ranged);
-    } else {
-      this.ranged = null;
-    }
+    if (withRange) this.addComponent(RangedDef.create(this.id));
     this.addComponent(
       abilities.initComponent({
         attributes: { Health: HEALTH, Power: POWER },
@@ -323,10 +286,12 @@ class PooledUnit extends Entity implements IPoolableEntity<UnitSpawn> {
   }
 
   public onSpawn(args: UnitSpawn): void {
-    this.unit.write(this.kind, args.slot, args.team, args.x, args.z, this.id);
-    placeTransform(this.id, args.x, args.z);
-    if (this.withBody) stopVelocity(this.id);
-    if (this.kind === KIND_ARCHER) this.ranged?.write(ARCHER_RANGE);
+    writeUnit(this, this.kind, args.slot, args.team, args.x, args.z);
+    placeTransform(this, args.x, args.z);
+    if (this.withBody) stopVelocity(this);
+    if (this.kind === KIND_ARCHER && this.withRange) {
+      writeRange(this, ARCHER_RANGE);
+    }
   }
 
   public onDespawn(): void {
@@ -362,7 +327,7 @@ class PooledUnit extends Entity implements IPoolableEntity<UnitSpawn> {
   public move(dir: number): void {
     const velocity = VEL[dir];
     if (velocity === undefined || !this.withBody) return;
-    setVelocity(this.id, velocity[0], FP._0, velocity[1]);
+    setVelocity(this, velocity[0], FP._0, velocity[1]);
   }
 }
 
@@ -829,7 +794,7 @@ export class SkirmishSim implements CommandView, CommandSink {
 
   private hasBody(id: number): boolean {
     const entity = this.world.entityManager.getEntity(id);
-    return entity?.hasComponent(PHYSICS_BODY_COMPONENT_TYPE) ?? false;
+    return entity?.hasComponent(PhysicsBody.type) ?? false;
   }
 
   private drift(id: number, roll: number, focus: boolean): void {

@@ -65,7 +65,7 @@ export class ProjectileEntity
   onSpawn(args: ProjectileSpawnArgs): void {
     this._active = true;
 
-    writeFpPosition(this.id, args.fpPosition);
+    writeFpPosition(this, args.fpPosition);
     this.projectile.fpDirection2.x = args.fpDirection2.x;
     this.projectile.fpDirection2.y = args.fpDirection2.y;
     this.projectile.lifeTime = PROJECTILE_DEFAULT_LIFETIME;
@@ -78,7 +78,7 @@ export class ProjectileEntity
       y: FP._0,
       z: args.fpDirection2.y,
     });
-    writeFpRotation(this.id, rotation);
+    writeFpRotation(this, rotation);
     attachInterpolation(this, args.fpPosition, rotation);
   }
 

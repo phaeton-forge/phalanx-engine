@@ -3,20 +3,19 @@ import {
   Entity,
   EntityManager,
   EventBus,
-  SoAComponent,
   SystemContext,
 } from '@phalanx-engine/ecs';
 import { FP, FPVector3, FPQuaternion } from '@phalanx-engine/math';
 import {
-  TRANSFORM_COMPONENT_TYPE,
   attachTransform,
   writeFpPosition,
   writeYaw,
+  Transform,
 } from '../src/components/transform';
 import {
-  INTERPOLATION_COMPONENT_TYPE,
   attachInterpolation,
   interpolationOf,
+  Interpolation,
 } from '../src/components/interpolation';
 import { InterpolationSystem } from '../src/systems/InterpolationSystem';
 
@@ -26,19 +25,10 @@ describe('InterpolationSystem', () => {
 
   beforeEach(() => {
     entityManager = new EntityManager();
-    entityManager.registerComponentTypes([
-      TRANSFORM_COMPONENT_TYPE,
-      INTERPOLATION_COMPONENT_TYPE,
-    ]);
-    SoAComponent.useEntityManager(entityManager);
 
     const context = new SystemContext(new EventBus(), entityManager);
     system = new InterpolationSystem();
     system.init(context);
-  });
-
-  afterEach(() => {
-    SoAComponent.resetContext();
   });
 
   function addInterpolatedEntity(
@@ -54,8 +44,8 @@ describe('InterpolationSystem', () => {
     attachTransform(entity, fpPosition, fpRotation);
     attachInterpolation(entity, fpPosition, fpRotation);
     entityManager.addEntity(entity);
-    entityManager.onComponentAdded(entity, TRANSFORM_COMPONENT_TYPE);
-    entityManager.onComponentAdded(entity, INTERPOLATION_COMPONENT_TYPE);
+    entityManager.onComponentAdded(entity, Transform.type);
+    entityManager.onComponentAdded(entity, Interpolation.type);
     return entity;
   }
 
@@ -63,7 +53,7 @@ describe('InterpolationSystem', () => {
     const entity = addInterpolatedEntity({ x: 0, y: 0, z: 0 });
 
     system.capture();
-    writeFpPosition(entity.id, FPVector3.FromFloat(10, 0, 0));
+    writeFpPosition(entity, FPVector3.FromFloat(10, 0, 0));
 
     system.snapshot();
     system.capture();
@@ -79,7 +69,7 @@ describe('InterpolationSystem', () => {
     const entity = addInterpolatedEntity({ x: 0, y: 0, z: 0 }, 0);
 
     system.capture();
-    writeYaw(entity.id, FP.FromFloat(Math.PI / 2));
+    writeYaw(entity, FP.FromFloat(Math.PI / 2));
 
     system.snapshot();
     system.capture();
@@ -99,7 +89,7 @@ describe('InterpolationSystem', () => {
 
   it('snaps newly seen entities on first capture instead of lerping from defaults', () => {
     const entity = addInterpolatedEntity({ x: 0, y: 0, z: 0 });
-    writeFpPosition(entity.id, FPVector3.FromFloat(20, 0, 0));
+    writeFpPosition(entity, FPVector3.FromFloat(20, 0, 0));
 
     system.capture();
     system.interpolate(0);
@@ -112,20 +102,20 @@ describe('InterpolationSystem', () => {
 
   it('re-snaps entities that leave and re-enter the interpolation query', () => {
     const entity = addInterpolatedEntity({ x: 0, y: 0, z: 0 });
-    const interpolation = entity.getComponent(INTERPOLATION_COMPONENT_TYPE)!;
+    const interpolation = entity.getComponent(Interpolation.type)!;
 
     system.capture();
-    writeFpPosition(entity.id, FPVector3.FromFloat(5, 0, 0));
+    writeFpPosition(entity, FPVector3.FromFloat(5, 0, 0));
     system.snapshot();
     system.capture();
 
-    entity.removeComponent(INTERPOLATION_COMPONENT_TYPE);
-    entityManager.onComponentRemoved(entity, INTERPOLATION_COMPONENT_TYPE);
+    entity.removeComponent(Interpolation.type);
+    entityManager.onComponentRemoved(entity, Interpolation.type);
     system.capture();
 
-    writeFpPosition(entity.id, FPVector3.FromFloat(30, 0, 0));
+    writeFpPosition(entity, FPVector3.FromFloat(30, 0, 0));
     entity.addComponent(interpolation);
-    entityManager.onComponentAdded(entity, INTERPOLATION_COMPONENT_TYPE);
+    entityManager.onComponentAdded(entity, Interpolation.type);
     system.capture();
     system.interpolate(0);
 
@@ -137,10 +127,10 @@ describe('InterpolationSystem', () => {
   it('afterTick snapshots then captures so the previous sample is the last pose', () => {
     const entity = addInterpolatedEntity({ x: 0, y: 0, z: 0 });
 
-    writeFpPosition(entity.id, FPVector3.FromFloat(10, 0, 0));
+    writeFpPosition(entity, FPVector3.FromFloat(10, 0, 0));
     system.afterTick(1);
 
-    writeFpPosition(entity.id, FPVector3.FromFloat(20, 0, 0));
+    writeFpPosition(entity, FPVector3.FromFloat(20, 0, 0));
     system.afterTick(2);
 
     system.beforeFrame(0.5, 0.016);

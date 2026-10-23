@@ -1,10 +1,9 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   BinaryStateReader,
   BinaryStateWriter,
   Entity,
   GameWorld,
-  SoAComponent,
   type IPoolableEntity,
 } from '@phalanx-engine/ecs';
 import { FP } from '@phalanx-engine/math';
@@ -123,10 +122,6 @@ function finish(fill: (w: BinaryStateWriter) => void): Uint8Array {
 }
 
 describe('pooled ability save sections', () => {
-  afterEach(() => {
-    SoAComponent.resetContext();
-  });
-
   it('clears pooled GAS on despawn and continues past respawn', () => {
     const source = pooledGasWorld();
     const pools = source.world.pools;

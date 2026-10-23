@@ -7,10 +7,7 @@ import {
   SystemContext,
 } from '@phalanx-engine/ecs';
 import type { IPhysicsWorld } from '@phalanx-engine/ecs';
-import {
-  INTERPOLATION_COMPONENT_TYPE,
-  attachInterpolation,
-} from '@phalanx-engine/physics';
+import { attachInterpolation, Interpolation } from '@phalanx-engine/physics';
 import {
   ComponentType,
   HealAuraComponent,
@@ -29,10 +26,6 @@ describe('RenderSyncSystem', () => {
   beforeEach(() => {
     MeshComponent.initScene(new THREE.Scene());
     entityManager = new EntityManager();
-    entityManager.registerComponentTypes([
-      ComponentType.Mesh,
-      INTERPOLATION_COMPONENT_TYPE,
-    ]);
     context = new SystemContext(new EventBus(), entityManager);
     system = new RenderSyncSystem();
     system.init(context);
@@ -49,7 +42,7 @@ describe('RenderSyncSystem', () => {
     attachInterpolation(entity);
     entityManager.addEntity(entity);
     entityManager.onComponentAdded(entity, ComponentType.Mesh);
-    entityManager.onComponentAdded(entity, INTERPOLATION_COMPONENT_TYPE);
+    entityManager.onComponentAdded(entity, Interpolation.type);
 
     const getInterpolatedTransform = vi.fn(() => ({
       position: { x: 1, y: 2, z: 3 },
@@ -70,13 +63,6 @@ describe('RenderSyncSystem', () => {
   });
 
   it('tracks the unit position with a flat ground ring, decoupled from body yaw', () => {
-    entityManager.registerComponentTypes([
-      ComponentType.HealthBar,
-      ComponentType.Team,
-      ComponentType.UnitStats,
-      ComponentType.HealAura,
-    ]);
-
     const entity = new Entity(entityManager.allocateEntityId());
     const meshRoot = new THREE.Object3D();
     // The ring is an independent world-space decal (NOT a child of the body),
@@ -97,7 +83,7 @@ describe('RenderSyncSystem', () => {
     entityManager.addEntity(entity);
     for (const type of [
       ComponentType.Mesh,
-      INTERPOLATION_COMPONENT_TYPE,
+      Interpolation.type,
       ComponentType.HealthBar,
       ComponentType.Team,
       ComponentType.UnitStats,
@@ -152,7 +138,7 @@ describe('RenderSyncSystem', () => {
     attachInterpolation(entity);
     entityManager.addEntity(entity);
     entityManager.onComponentAdded(entity, ComponentType.Mesh);
-    entityManager.onComponentAdded(entity, INTERPOLATION_COMPONENT_TYPE);
+    entityManager.onComponentAdded(entity, Interpolation.type);
 
     context.physics = {
       getInterpolatedTransform: () => undefined,

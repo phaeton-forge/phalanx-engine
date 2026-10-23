@@ -1,5 +1,4 @@
 import { SystemRegistry } from './SystemRegistry.js';
-import { SoAComponent } from './SoAComponent.js';
 import { Entity } from './Entity.js';
 import { PoolManager } from './pool/PoolManager.js';
 import type { PoolingConfig } from './pool/types.js';
@@ -47,8 +46,6 @@ export const GameWorldEvents = {
  * Configuration for GameWorld
  */
 export interface GameWorldConfig {
-  /** Optional component type symbols for EntityManager indexing */
-  componentTypes?: symbol[];
   /**
    * Tick/frame provider. Required. `GameWorld` subscribes to it and does not
    * start or stop it. Single-player hosts pass the provider from
@@ -109,7 +106,7 @@ export interface GameWorldHooks {
  *
  * Single-player usage (provider from `@phalanx-engine/runtime/advanced`):
  * ```ts
- * const world = new GameWorld({ componentTypes, tickFrameProvider: provider });
+ * const world = new GameWorld({ tickFrameProvider: provider });
  * world.registerSystems(tickSystems, frameSystems);
  * provider.start();
  * world.start({
@@ -119,7 +116,7 @@ export interface GameWorldHooks {
  *
  * Multiplayer usage (with PhalanxClient as tickFrameProvider):
  * ```ts
- * const world = new GameWorld({ componentTypes, tickFrameProvider: client });
+ * const world = new GameWorld({ tickFrameProvider: client });
  * world.registerSystems(tickSystems, frameSystems);
  * world.start({
  *   beforeTick(tick, commands) { lockstepManager.processTick(tick, commands); },
@@ -181,10 +178,7 @@ export class GameWorld {
 
   constructor(config: GameWorldConfig) {
     // Create SystemRegistry with eagerly-initialized core deps
-    this.systemRegistry = new SystemRegistry(config.componentTypes);
-
-    // Set SoAComponent context so SoA-backed components can resolve stores
-    SoAComponent.useEntityManager(this.systemRegistry.entityManager);
+    this.systemRegistry = new SystemRegistry();
 
     // Setup pooling if configured
     if (config.pooling) {
@@ -218,7 +212,9 @@ export class GameWorld {
    * Allocate the next id from this world and pass it to `create`.
    *
    * Does not register the entity. The caller adds it, or a pool does on
-   * spawn. `create` must return the entity for that id.
+   * spawn. `create` must return the entity for that id. SoA rows attached
+   * in the constructor are written to this world's stores when `create`
+   * returns; until then they cannot be read.
    */
   public createEntity<E extends Entity>(create: (id: number) => E): E {
     const id = this.entityManager.allocateEntityId();
@@ -228,6 +224,7 @@ export class GameWorld {
         `createEntity: factory must return the entity with id ${String(id)}`
       );
     }
+    this.entityManager.adopt(entity);
     return entity;
   }
 
@@ -591,7 +588,6 @@ export class GameWorld {
       this._pools.drainAll();
     }
     this.systemRegistry.dispose();
-    SoAComponent.resetContext();
   }
 
   /**
@@ -713,7 +709,6 @@ export class GameWorld {
     // SoASchema is invariant in its field map. The registry only needs the
     // name, the store key, and create().
     this._components.push(component);
-    this.entityManager.registerComponentTypes([component.type]);
     this.entityManager.getOrCreateSoAStore(component.schema);
   }
 
@@ -743,7 +738,6 @@ export class GameWorld {
         ),
     };
     this._objectComponents.push(stored);
-    this.entityManager.registerComponentTypes([component.type]);
     this.registerSaveSection({
       key: component.name,
       version: 1,
@@ -764,7 +758,6 @@ export class GameWorld {
     }
     this.assertNameFree(component.name);
     this._transientComponents.push(component);
-    this.entityManager.registerComponentTypes([component.type]);
     this.entityManager.registerTransientComponent(
       component.type,
       component.name

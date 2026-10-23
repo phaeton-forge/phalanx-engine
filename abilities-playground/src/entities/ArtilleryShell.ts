@@ -53,7 +53,7 @@ export class ArtilleryShellEntity
 
   onSpawn(args: ArtilleryShellSpawnArgs): void {
     this._active = true;
-    writeFpPosition(this.id, args.impactPoint);
+    writeFpPosition(this, args.impactPoint);
     this.shell.impactPoint.x = args.impactPoint.x;
     this.shell.impactPoint.y = args.impactPoint.y;
     this.shell.impactPoint.z = args.impactPoint.z;

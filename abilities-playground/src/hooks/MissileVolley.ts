@@ -57,7 +57,7 @@ export const missileVolley = (
   const physics = world.context.physics as PhysicsWorld | undefined;
   if (!physics || !world.pools) return;
 
-  const origin = copyFpPosition(caster.id);
+  const origin = copyFpPosition(caster);
   const nearby = physics.spatialGrid.queryRadius(
     origin.x,
     origin.z,
@@ -80,7 +80,7 @@ export const missileVolley = (
       teamId: team.teamId,
       volleyIndex: i,
       volleyCount: targets.length,
-      launcherRotation: copyFpRotation(caster.id),
+      launcherRotation: copyFpRotation(caster),
     });
     dispatchMissileExhaustCue(world, missile.id, ctx.tick);
   }
@@ -113,7 +113,7 @@ function pickNearestEnemies(
     if (!entity.hasComponent(ComponentType.UnitType)) continue;
 
     if (!entity.hasComponent(ComponentType.Transform)) continue;
-    const targetPosition = copyFpPosition(entity.id);
+    const targetPosition = copyFpPosition(entity);
 
     const dx = FP.Sub(targetPosition.x, cx);
     const dz = FP.Sub(targetPosition.z, cz);

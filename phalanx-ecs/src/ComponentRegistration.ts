@@ -20,8 +20,8 @@ export interface ComponentRegistration<
   readonly defaults: SoAFieldsOf<S>;
   readonly type: symbol;
   /**
-   * Attach a row. `manager` is the world that owns the row. When it is
-   * omitted, the process-wide `SoAComponent` context is used.
+   * Build a row for `entityId`. With `manager` the row is written to that
+   * world's store now; without it, when the entity's world binds it.
    */
   create(
     entityId: number,

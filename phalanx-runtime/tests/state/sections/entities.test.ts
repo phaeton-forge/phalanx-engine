@@ -1,9 +1,8 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   Entity,
   GameSystem,
   GameWorld,
-  SoAComponent,
   type IPoolableEntity,
   type ITickFrameProvider,
 } from '@phalanx-engine/ecs';
@@ -74,10 +73,6 @@ function prewarmedWorld(system: SpawnSystem): GameWorld {
 }
 
 describe('entity and pool state helpers', () => {
-  afterEach(() => {
-    SoAComponent.resetContext();
-  });
-
   it('saves and restores the entity id counter only', () => {
     const source = new GameWorld({ tickFrameProvider: manualTickProvider() });
     const first = source.createEntity((id) => new Entity(id));

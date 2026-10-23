@@ -1,10 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { Entity, EntityManager, SoAComponent } from '@phalanx-engine/ecs';
+import { Entity, EntityManager } from '@phalanx-engine/ecs';
 import { FP, FPVector3, FPQuaternion } from '@phalanx-engine/math';
 import {
   Transform,
   TransformSoASchema,
-  TRANSFORM_COMPONENT_TYPE,
   attachTransform,
   readFpPosition,
   readFpRotation,
@@ -21,11 +20,6 @@ describe('Transform', () => {
 
   beforeEach(() => {
     entityManager = new EntityManager();
-    SoAComponent.useEntityManager(entityManager);
-  });
-
-  afterEach(() => {
-    SoAComponent.resetContext();
   });
 
   function add(
@@ -48,12 +42,11 @@ describe('Transform', () => {
       'fpRotationZ',
       'fpRotationW',
     ]);
-    expect(Transform.type).toBe(TRANSFORM_COMPONENT_TYPE);
   });
 
   it('defaults to the identity rotation when no initial rotation is given', () => {
     const entity = add();
-    const rotation = readFpRotation(entity.id);
+    const rotation = readFpRotation(entity);
     expect(FP.ToFloat(rotation.x)).toBeCloseTo(0);
     expect(FP.ToFloat(rotation.y)).toBeCloseTo(0);
     expect(FP.ToFloat(rotation.z)).toBeCloseTo(0);
@@ -68,17 +61,17 @@ describe('Transform', () => {
     );
     const entity = add(initialPosition, initialRotation);
 
-    const position = readFpPosition(entity.id);
+    const position = readFpPosition(entity);
     expect(FP.ToFloat(position.x)).toBeCloseTo(1);
     expect(FP.ToFloat(position.y)).toBeCloseTo(2);
     expect(FP.ToFloat(position.z)).toBeCloseTo(3);
-    expect(FP.ToFloat(readYaw(entity.id))).toBeCloseTo(1.5, 1);
+    expect(FP.ToFloat(readYaw(entity))).toBeCloseTo(1.5, 1);
 
-    writeFpPosition(entity.id, FPVector3.FromFloat(4, 5, 6));
-    writeYaw(entity.id, FP.FromFloat(0.25));
+    writeFpPosition(entity, FPVector3.FromFloat(4, 5, 6));
+    writeYaw(entity, FP.FromFloat(0.25));
 
-    expect(FP.ToFloat(readFpPosition(entity.id).x)).toBeCloseTo(4);
-    expect(FP.ToFloat(readYaw(entity.id))).toBeCloseTo(0.25, 2);
+    expect(FP.ToFloat(readFpPosition(entity).x)).toBeCloseTo(4);
+    expect(FP.ToFloat(readYaw(entity))).toBeCloseTo(0.25, 2);
 
     const store = entityManager.getOrCreateSoAStore(TransformSoASchema);
     const idx = store.indexOf(entity.id);
@@ -93,9 +86,9 @@ describe('Transform', () => {
   it('round-trips fpRotation through the SoA store without loss', () => {
     const entity = add();
     const q = FPQuaternion.FromEulerXYZ(FPVector3.FromFloat(0.3, 0.4, 0.5));
-    writeFpRotation(entity.id, q);
+    writeFpRotation(entity, q);
 
-    const readBack = readFpRotation(entity.id);
+    const readBack = readFpRotation(entity);
     expect(readBack.x).toEqual(q.x);
     expect(readBack.y).toEqual(q.y);
     expect(readBack.z).toEqual(q.z);
@@ -104,8 +97,8 @@ describe('Transform', () => {
 
   it('exposes a computed Euler view over the authoritative quaternion', () => {
     const entity = add();
-    writeFpRotationEuler(entity.id, FPVector3.FromFloat(0, 1.0, 0));
-    expect(FP.ToFloat(readFpRotationEuler(entity.id).y)).toBeCloseTo(1.0, 2);
+    writeFpRotationEuler(entity, FPVector3.FromFloat(0, 1.0, 0));
+    expect(FP.ToFloat(readFpRotationEuler(entity).y)).toBeCloseTo(1.0, 2);
   });
 
   it('fpRotationY matches forward derived from a PI quaternion', () => {
@@ -113,7 +106,7 @@ describe('Transform', () => {
     const entity = add(undefined, rotation);
     const forward = FPQuaternion.RotateVector(rotation, FPVector3.Forward);
     expect(FP.Eq(forward.z, FP.Neg(FP._1))).toBe(true);
-    const yaw = FP.ToFloat(readYaw(entity.id));
+    const yaw = FP.ToFloat(readYaw(entity));
     expect(
       Math.atan2(FP.ToFloat(forward.x), FP.ToFloat(forward.z))
     ).toBeCloseTo(yaw, 2);

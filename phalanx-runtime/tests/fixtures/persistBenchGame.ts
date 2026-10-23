@@ -1,7 +1,7 @@
 import {
   Entity,
   GameSystem,
-  SoAComponent,
+  type EntityManager,
   type IPoolableEntity,
 } from '@phalanx-engine/ecs';
 import type { GameWorld, IRandom } from '@phalanx-engine/ecs';
@@ -82,11 +82,9 @@ export function createPersistBenchGame(unitCount: number) {
   }
 
   class BenchUnit extends Entity implements IPoolableEntity<SpawnIndex> {
-    public constructor(id: number) {
+    public constructor(id: number, manager: EntityManager) {
       super(id);
-      const manager = SoAComponent.currentEntityManager();
-      const abilities =
-        manager === null ? undefined : abilitiesByManager.get(manager);
+      const abilities = abilitiesByManager.get(manager);
       if (abilities === undefined) {
         throw new Error('persist bench: ability system is not ready');
       }
@@ -109,8 +107,8 @@ export function createPersistBenchGame(unitCount: number) {
 
     public onSpawn(args: SpawnIndex): void {
       const position = positions[args.index];
-      if (position !== undefined) writeFpPosition(this.id, position);
-      setVelocity(this.id, FP._0, FP._0, FP._0);
+      if (position !== undefined) writeFpPosition(this, position);
+      setVelocity(this, FP._0, FP._0, FP._0);
     }
 
     public onDespawn(): void {}
@@ -142,7 +140,7 @@ export function createPersistBenchGame(unitCount: number) {
     pooling: {
       entityTypes: {
         unit: {
-          factory: (id) => new BenchUnit(id),
+          factory: (id, manager) => new BenchUnit(id, manager),
           pool: { initialSize: unitCount },
         },
       },

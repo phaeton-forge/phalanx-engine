@@ -18,7 +18,7 @@ export type { GameWorldConfig, GameWorldHooks } from './GameWorld.js';
 
 // Entity and Component
 export { Entity } from './Entity.js';
-export { IComponent, createComponentTypeRegistry } from './Component.js';
+export { IComponent } from './Component.js';
 export type { IComponent as Component } from './Component.js';
 export type { ComponentLifecycle } from './lifecycle.js';
 export type { ComponentRegistration } from './ComponentRegistration.js';
@@ -49,7 +49,6 @@ export type {
 // SoA (Structure-of-Arrays) cache-friendly storage
 export { SoAComponentStore } from './SoAComponentStore.js';
 export type { SoAComponentStoreOptions } from './SoAComponentStore.js';
-export { SoAComponent } from './SoAComponent.js';
 export {
   defineSoASchema,
   calculateSchemaByteSize,

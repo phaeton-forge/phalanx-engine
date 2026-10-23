@@ -42,16 +42,19 @@ export class PoolManager {
       throw new Error(`Pool '${typeKey}' is already registered`);
     }
 
-    this.rawFactories.set(typeKey, (id) => config.factory(id));
+    this.rawFactories.set(typeKey, (id) =>
+      config.factory(id, this.entityManager)
+    );
 
     const factory = (): T => {
       const id = this.entityManager.allocateEntityId();
-      const entity = config.factory(id);
+      const entity = config.factory(id, this.entityManager);
       if (entity.id !== id) {
         throw new Error(
           `Pool '${typeKey}' factory must return the entity with id ${String(id)}`
         );
       }
+      this.entityManager.adopt(entity);
       entity._poolTypeKey = typeKey;
       entity._inPool = true;
       this.runDespawnHooks(entity);
@@ -223,6 +226,7 @@ export class PoolManager {
         `Pool '${typeKey}' factory must return the entity with id ${String(id)}`
       );
     }
+    this.entityManager.adopt(entity);
     return entity;
   }
 

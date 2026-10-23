@@ -83,14 +83,12 @@ const ROOT_NAMES = [
   'CollisionSystem',
   'ExternalPhysicsTickProvider',
   'GravitySystem',
-  'INTERPOLATION_COMPONENT_TYPE',
   'IPhysicsTickProvider',
   'InterpolatedTransformSample',
   'Interpolation',
   'InterpolationSample',
   'InterpolationSystem',
   'NarrowPhase',
-  'PHYSICS_BODY_COMPONENT_TYPE',
   'PhysicsBody',
   'PhysicsBodyConfig',
   'PhysicsConfig',
@@ -101,7 +99,6 @@ const ROOT_NAMES = [
   'PhysicsWorldConfig',
   'RayHit',
   'SpatialHashGrid',
-  'TRANSFORM_COMPONENT_TYPE',
   'Transform',
   'TransformSoASchema',
   'Vec3FP',
@@ -143,18 +140,15 @@ const ROOT_VALUES = [
   'CollisionSystem',
   'ExternalPhysicsTickProvider',
   'GravitySystem',
-  'INTERPOLATION_COMPONENT_TYPE',
   'Interpolation',
   'InterpolationSystem',
   'NarrowPhase',
-  'PHYSICS_BODY_COMPONENT_TYPE',
   'PhysicsBody',
   'PhysicsEvents',
   'PhysicsSoASchema',
   'PhysicsSystem',
   'PhysicsWorld',
   'SpatialHashGrid',
-  'TRANSFORM_COMPONENT_TYPE',
   'Transform',
   'TransformSoASchema',
   'addVelocity',
@@ -225,10 +219,10 @@ describe('@phalanx-engine/physics exports', () => {
     expect(declaration).not.toContain('PHYSICS_SAVE_ATTACH');
     expect(
       resolved.map((entry) => actual.get(entry.file)?.names.length)
-    ).toEqual([63]);
+    ).toEqual([60]);
     expect(
       resolved.map((entry) => actual.get(entry.file)?.values.length)
-    ).toEqual([49]);
+    ).toEqual([46]);
   });
 
   it('matches the checked-in name snapshot, types included', () => {
@@ -238,10 +232,10 @@ describe('@phalanx-engine/physics exports', () => {
     }
     expect(
       resolved.map((entry) => actual.get(entry.file)?.names.length)
-    ).toEqual([63]);
+    ).toEqual([60]);
     expect(
       resolved.map((entry) => actual.get(entry.file)?.values.length)
-    ).toEqual([49]);
+    ).toEqual([46]);
   });
 
   it('loads each entry by package name', async () => {

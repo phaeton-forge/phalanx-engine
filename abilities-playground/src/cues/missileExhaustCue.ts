@@ -256,7 +256,7 @@ export class MissileExhaustCue extends Cue {
     }
 
     if (!entity.hasComponent(ComponentType.Transform)) return false;
-    const p = FPVector3.ToFloat(copyFpPosition(entity.id));
+    const p = FPVector3.ToFloat(copyFpPosition(entity));
     this.nozzleWorld.set(p.x, p.y, p.z);
     return true;
   }

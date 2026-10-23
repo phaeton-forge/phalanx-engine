@@ -1,4 +1,4 @@
-import { defineComponent, SoAComponent } from '@phalanx-engine/ecs';
+import { defineComponent } from '@phalanx-engine/ecs';
 import type { Entity, SoAComponentStore } from '@phalanx-engine/ecs';
 import {
   FP,
@@ -30,7 +30,6 @@ export const Transform = defineComponent(
 );
 
 export const TransformSoASchema = Transform.schema;
-export const TRANSFORM_COMPONENT_TYPE: symbol = Transform.type;
 
 type TransformStore = SoAComponentStore<typeof TransformSoASchema.definition>;
 
@@ -42,10 +41,10 @@ const ROTATION: FPQuaternionType = {
   w: FP._1,
 };
 
-function store(): TransformStore {
-  const manager = SoAComponent.currentEntityManager();
+function store(entity: Entity): TransformStore {
+  const manager = entity._owner;
   if (manager === null) {
-    throw new Error('Transform: no EntityManager context');
+    throw new Error(`Transform: entity ${String(entity.id)} is not in a world`);
   }
   const found = manager.getSoAStore(TransformSoASchema);
   if (found === undefined) {
@@ -90,19 +89,19 @@ export function transformValues(
 }
 
 /** Shared scratch. Do not retain it across another transform read. */
-export function readFpPosition(entityId: number): FPVector3Type {
-  const index = store().indexOf(entityId);
+export function readFpPosition(entity: Entity): FPVector3Type {
+  const index = store(entity).indexOf(entity.id);
   if (index === -1) return POSITION;
-  const arrays = store().arrays;
+  const arrays = store(entity).arrays;
   POSITION.x = FP.FromRaw(rawAt(arrays.fpPositionX, index));
   POSITION.y = FP.FromRaw(rawAt(arrays.fpPositionY, index));
   POSITION.z = FP.FromRaw(rawAt(arrays.fpPositionZ, index));
   return POSITION;
 }
 
-export function writeFpPosition(entityId: number, value: FPVector3Type): void {
-  const arrays = store().arrays;
-  const index = store().indexOf(entityId);
+export function writeFpPosition(entity: Entity, value: FPVector3Type): void {
+  const arrays = store(entity).arrays;
+  const index = store(entity).indexOf(entity.id);
   if (index === -1) return;
   arrays.fpPositionX[index] = FP.ToRaw(value.x);
   arrays.fpPositionY[index] = FP.ToRaw(value.y);
@@ -110,10 +109,10 @@ export function writeFpPosition(entityId: number, value: FPVector3Type): void {
 }
 
 /** Shared scratch. Do not retain it across another transform read. */
-export function readFpRotation(entityId: number): FPQuaternionType {
-  const index = store().indexOf(entityId);
+export function readFpRotation(entity: Entity): FPQuaternionType {
+  const index = store(entity).indexOf(entity.id);
   if (index === -1) return ROTATION;
-  const arrays = store().arrays;
+  const arrays = store(entity).arrays;
   ROTATION.x = FP.FromRaw(rawAt(arrays.fpRotationX, index));
   ROTATION.y = FP.FromRaw(rawAt(arrays.fpRotationY, index));
   ROTATION.z = FP.FromRaw(rawAt(arrays.fpRotationZ, index));
@@ -121,12 +120,9 @@ export function readFpRotation(entityId: number): FPQuaternionType {
   return ROTATION;
 }
 
-export function writeFpRotation(
-  entityId: number,
-  value: FPQuaternionType
-): void {
-  const arrays = store().arrays;
-  const index = store().indexOf(entityId);
+export function writeFpRotation(entity: Entity, value: FPQuaternionType): void {
+  const arrays = store(entity).arrays;
+  const index = store(entity).indexOf(entity.id);
   if (index === -1) return;
   arrays.fpRotationX[index] = FP.ToRaw(value.x);
   arrays.fpRotationY[index] = FP.ToRaw(value.y);
@@ -135,20 +131,20 @@ export function writeFpRotation(
 }
 
 /** Euler XYZ view of the quaternion. A fresh vector. */
-export function readFpRotationEuler(entityId: number): FPVector3Type {
-  return FPQuaternion.ToEulerXYZ(readFpRotation(entityId));
+export function readFpRotationEuler(entity: Entity): FPVector3Type {
+  return FPQuaternion.ToEulerXYZ(readFpRotation(entity));
 }
 
 export function writeFpRotationEuler(
-  entityId: number,
+  entity: Entity,
   value: FPVector3Type
 ): void {
-  writeFpRotation(entityId, FPQuaternion.FromEulerXYZ(value));
+  writeFpRotation(entity, FPQuaternion.FromEulerXYZ(value));
 }
 
 /** Yaw around Y, in radians. */
-export function readYaw(entityId: number): FixedPoint {
-  const q = readFpRotation(entityId);
+export function readYaw(entity: Entity): FixedPoint {
+  const q = readFpRotation(entity);
   const two = FP.FromInt(2);
   const sinY = FP.Mul(two, FP.Add(FP.Mul(q.w, q.y), FP.Mul(q.x, q.z)));
   const cosY = FP.Sub(
@@ -158,6 +154,6 @@ export function readYaw(entityId: number): FixedPoint {
   return FP.Atan2(sinY, cosY);
 }
 
-export function writeYaw(entityId: number, value: FixedPoint): void {
-  writeFpRotation(entityId, FPQuaternion.FromYaw(value));
+export function writeYaw(entity: Entity, value: FixedPoint): void {
+  writeFpRotation(entity, FPQuaternion.FromYaw(value));
 }

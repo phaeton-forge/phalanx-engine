@@ -117,11 +117,14 @@ describe('pool state accessors', () => {
     restored.registerEntityType('unit', {
       factory: (id) => new UnitEntity(id),
     });
-    restored.restore('unit', [first, second, third], free);
+    const copies = [first, second, third].map((entity) =>
+      restored.createForRestore('unit', entity.id)
+    );
+    restored.restore('unit', copies, free);
 
     const spawned = restored.spawn<UnitEntity>('unit', { hp: 9 });
     expect(spawned.id).toBe(expectedId);
-    expect(spawned).toBe(third);
+    expect(spawned).toBe(copies[2]);
     expect(spawned.hp).toBe(9);
 
     const next = restored.spawn<UnitEntity>('unit', { hp: 4 });

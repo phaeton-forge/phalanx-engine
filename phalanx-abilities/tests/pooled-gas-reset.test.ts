@@ -1,10 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import {
-  Entity,
-  GameWorld,
-  SoAComponent,
-  type IPoolableEntity,
-} from '@phalanx-engine/ecs';
+import { Entity, GameWorld, type IPoolableEntity } from '@phalanx-engine/ecs';
 import { FP } from '@phalanx-engine/math';
 import {
   AbilityOwner,
@@ -72,10 +67,6 @@ class Minion extends Entity implements IPoolableEntity {
 }
 
 describe('pooled GAS reset', () => {
-  afterEach(() => {
-    SoAComponent.resetContext();
-  });
-
   it('clears transient effects and restores the factory shell', () => {
     const holder: { abilities?: AbilitySystem } = {};
     const world = new GameWorld({

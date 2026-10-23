@@ -1,3 +1,4 @@
+import type { EntityManager } from '../EntityManager.js';
 import type { Entity } from '../Entity.js';
 import type { IPoolableEntity } from './IPoolableEntity.js';
 
@@ -23,8 +24,11 @@ export interface PoolStats {
 export interface EntityTypeConfig<
   T extends Entity & IPoolableEntity<never> = Entity & IPoolableEntity<never>,
 > {
-  /** Receives the id this world assigned. Pass it to the entity constructor. */
-  factory: (id: number) => T;
+  /**
+   * Receives the id this world assigned and the world's manager. Pass the
+   * id to the entity constructor.
+   */
+  factory: (id: number, manager: EntityManager) => T;
   pool?: PoolConfig;
 }
 

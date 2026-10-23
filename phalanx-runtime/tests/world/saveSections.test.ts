@@ -1,9 +1,8 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   BinaryStateReader,
   BinaryStateWriter,
   GameWorld,
-  SoAComponent,
   type SaveSection,
 } from '@phalanx-engine/ecs';
 import { DeterministicRandom } from '@phalanx-engine/math';
@@ -128,10 +127,6 @@ function tinyConfig(matchId: string): TinyConfig {
 }
 
 describe('module save sections', () => {
-  afterEach(() => {
-    SoAComponent.resetContext();
-  });
-
   it('writes registered sections in ascending key order and restores them', () => {
     const seen: string[] = [];
     const source = world();

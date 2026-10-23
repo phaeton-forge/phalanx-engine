@@ -5,7 +5,6 @@ import {
   EntityManager,
   EventBus,
   SystemContext,
-  SoAComponent,
   type SoAComponentStore,
 } from '@phalanx-engine/ecs';
 import { PhysicsSystem } from '../src/systems/PhysicsSystem';
@@ -46,11 +45,6 @@ describe('boundsExit', () => {
     entityManager = new EntityManager();
     eventBus = new EventBus();
     context = new SystemContext(eventBus, entityManager);
-    SoAComponent.useEntityManager(entityManager);
-  });
-
-  afterEach(() => {
-    SoAComponent.resetContext();
   });
 
   function setupSystem(overrides?: Partial<PhysicsConfig>) {

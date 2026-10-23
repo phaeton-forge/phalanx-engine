@@ -202,6 +202,6 @@ export function tryGetSourcePoint(
 ): THREE.Vector3 | null {
   const source = entityManager.getEntity(event.sourceEntityId);
   if (!source?.hasComponent(ComponentType.Transform)) return null;
-  const p = FPVector3.ToFloat(copyFpPosition(source.id));
+  const p = FPVector3.ToFloat(copyFpPosition(source));
   return new THREE.Vector3(p.x, p.y, p.z);
 }

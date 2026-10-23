@@ -1,8 +1,7 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   Entity,
   GameWorld,
-  SoAComponent,
   defineComponent,
   writeSorted,
   type IPoolableEntity,
@@ -38,10 +37,6 @@ function tagsComponent() {
 }
 
 describe('ecs defineComponent save', () => {
-  afterEach(() => {
-    SoAComponent.resetContext();
-  });
-
   it('saves SoA rows and restores them', () => {
     const source = world();
     const hp = defineComponent('Hp', { hp: 'i64', armor: 'i32' });

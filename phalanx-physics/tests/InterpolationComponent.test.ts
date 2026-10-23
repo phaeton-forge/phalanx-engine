@@ -2,15 +2,14 @@ import { describe, it, expect } from 'vitest';
 import { FP, FPVector3, FPQuaternion } from '@phalanx-engine/math';
 import {
   Interpolation,
-  INTERPOLATION_COMPONENT_TYPE,
   captureInterpolation,
   createInterpolationSample,
   snapshotInterpolation,
 } from '../src/components/interpolation';
 
 describe('Interpolation', () => {
-  it('uses INTERPOLATION_COMPONENT_TYPE as its component type', () => {
-    expect(Interpolation.type).toBe(INTERPOLATION_COMPONENT_TYPE);
+  it('has a component type symbol', () => {
+    expect(typeof Interpolation.type).toBe('symbol');
   });
 
   it('defaults rotation samples to the identity quaternion', () => {

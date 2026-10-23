@@ -3,15 +3,14 @@ import {
   Entity,
   EntityManager,
   EventBus,
-  SoAComponent,
   SystemContext,
 } from '@phalanx-engine/ecs';
 import type { GameWorld } from '@phalanx-engine/ecs';
 import { DeterministicRandom, FP, FPVector3 } from '@phalanx-engine/math';
 import {
-  TRANSFORM_COMPONENT_TYPE,
   attachTransform,
   writeFpPosition,
+  Transform,
 } from '@phalanx-engine/physics';
 import {
   ComponentType,
@@ -34,14 +33,6 @@ import { SAU_SHRAPNEL_CONE, SAU_SHRAPNEL_SPEED } from '../src/config/constants';
 
 function makeManager(): EntityManager {
   const entityManager = new EntityManager();
-  entityManager.registerComponentTypes([
-    TRANSFORM_COMPONENT_TYPE,
-    ComponentType.Team,
-    ComponentType.UnitStats,
-    ComponentType.ArtilleryShell,
-    ComponentType.ShrapnelPayload,
-  ]);
-  SoAComponent.useEntityManager(entityManager);
   return entityManager;
 }
 
@@ -54,7 +45,7 @@ function addTransformUnit(
   attachTransform(entity, FPVector3.FromFloat(pos.x, pos.y, pos.z));
   entity.addComponent(new TeamComponent(teamId));
   entityManager.addEntity(entity);
-  entityManager.onComponentAdded(entity, TRANSFORM_COMPONENT_TYPE);
+  entityManager.onComponentAdded(entity, Transform.type);
   entityManager.onComponentAdded(entity, ComponentType.Team);
   return entity;
 }
@@ -134,10 +125,6 @@ describe('sauArtillery hook', () => {
     } as unknown as GameWorld;
   });
 
-  afterEach(() => {
-    SoAComponent.resetContext();
-  });
-
   function fireAt(target: Entity, caster: Entity): void {
     sauArtillery(
       {
@@ -163,7 +150,7 @@ describe('sauArtillery hook', () => {
     expect(snapshotZ).toBeCloseTo(50, 3);
 
     // Move the target far away; the already-snapshotted impact must not change.
-    writeFpPosition(target.id, FPVector3.FromFloat(0, 0, 999));
+    writeFpPosition(target, FPVector3.FromFloat(0, 0, 999));
     expect(FP.ToFloat(args.impactPoint.z)).toBeCloseTo(snapshotZ, 3);
   });
 
@@ -191,10 +178,6 @@ describe('sauArtillery hook', () => {
 });
 
 describe('ArtilleryShellSystem shrapnel determinism', () => {
-  afterEach(() => {
-    SoAComponent.resetContext();
-  });
-
   function runDetonation(seed: number): Array<[number, number, number]> {
     const entityManager = makeManager();
     const context = new SystemContext(new EventBus(), entityManager);
@@ -265,10 +248,6 @@ describe('ShrapnelLandingSystem secondary blast', () => {
     context.pools = { despawn, spawn: vi.fn() } as never;
   });
 
-  afterEach(() => {
-    SoAComponent.resetContext();
-  });
-
   function addShrapnel(sourceEntityId: number): Entity {
     const entity = new Entity(entityManager.allocateEntityId());
     // Current position is below ground (crossed this tick).
@@ -283,7 +262,7 @@ describe('ShrapnelLandingSystem secondary blast', () => {
     payload.prevPosZ = FP.FromFloat(3);
     entity.addComponent(payload);
     entityManager.addEntity(entity);
-    entityManager.onComponentAdded(entity, TRANSFORM_COMPONENT_TYPE);
+    entityManager.onComponentAdded(entity, Transform.type);
     entityManager.onComponentAdded(entity, ComponentType.ShrapnelPayload);
     return entity;
   }

@@ -1,8 +1,8 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   Entity,
   GameWorld,
-  SoAComponent,
+  defineComponent,
   defineSoASchema,
   type SoAComponentStore,
   type SoASchema,
@@ -182,10 +182,6 @@ function buildWorld(): GameWorld {
 }
 
 describe('SoA state helpers', () => {
-  afterEach(() => {
-    SoAComponent.resetContext();
-  });
-
   it('restores i64, i32 and u8 fields and ignores f32/f64', () => {
     const source = buildWorld();
     const expected = SCHEMAS.map((schema) => {
@@ -277,20 +273,13 @@ describe('SoA state helpers', () => {
   });
 
   it('restores a zero-row store after the last entity is removed', () => {
-    const FlagSchema = defineSoASchema({ n: 'i32' }, 'Flag');
-
-    class FlagComponent extends SoAComponent<typeof FlagSchema.definition> {
-      public readonly type = Symbol('Flag');
-
-      public constructor(entityId: number) {
-        super(FlagSchema, entityId, { n: 1 });
-      }
-    }
+    const Flag = defineComponent('Flag', { n: 'i32' }, { defaults: { n: 1 } });
+    const FlagSchema = Flag.schema;
 
     class FlagEntity extends Entity {
       public constructor(id: number) {
         super(id);
-        this.addComponent(new FlagComponent(this.id));
+        this.addComponent(Flag.create(this.id));
       }
     }
 

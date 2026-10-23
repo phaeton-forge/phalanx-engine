@@ -7,14 +7,10 @@ import type {
 import { FP } from '@phalanx-engine/math';
 import type { FixedPoint } from '@phalanx-engine/math';
 import {
-  AbilityOwner,
   AbilityOwnerSlot,
   createAbilityOwnerState,
   type AbilityOwnerState,
 } from '../components/abilityOwner.js';
-import { ActiveEffects } from '../components/activeEffects.js';
-import { Attributes } from '../components/attributes.js';
-import { GameplayTags } from '../components/gameplayTags.js';
 import type { CueConfig } from '../cues/index.js';
 import {
   AbilityActivationSystem,
@@ -121,7 +117,7 @@ export interface AbilitySystem extends IAbilitySystem {
   /** True when `effectId` is in this world's effect registry. */
   isEffectRegistered(effectId: string): boolean;
   /**
-   * Build the {@link AbilityOwner} component for `entity.addComponent`.
+   * Build the `AbilityOwner` component for `entity.addComponent`.
    * Read it back with `abilityOwnerOf(entity)`.
    */
   initComponent(init?: AbilityOwnerInit): IComponent;
@@ -165,8 +161,6 @@ export function createAbilitySystem(
     }
   }
 
-  world.entityManager.registerComponentTypes(abilityComponentTypes);
-
   const cues: CueConfig = config.cues ?? {};
 
   const abilitySystem = new AbilitySystemImpl(
@@ -191,13 +185,6 @@ export function createAbilitySystem(
 
   return abilitySystem;
 }
-
-export const abilityComponentTypes: readonly symbol[] = [
-  AbilityOwner.type,
-  Attributes.type,
-  ActiveEffects.type,
-  GameplayTags.type,
-];
 
 class AbilitySystemImpl implements AbilitySystem {
   public readonly tickSystems: readonly GameSystem[];

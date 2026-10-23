@@ -13,14 +13,12 @@ import {
   type FPQuaternion as FPQuaternionType,
 } from '@phalanx-engine/math';
 import {
-  INTERPOLATION_COMPONENT_TYPE,
+  Interpolation,
+  Transform,
+  TransformSoASchema,
   interpolationOf,
   snapshotInterpolation,
   captureInterpolation,
-} from '../components/index.js';
-import {
-  TRANSFORM_COMPONENT_TYPE,
-  TransformSoASchema,
 } from '../components/index.js';
 
 export interface InterpolatedTransformSample {
@@ -71,9 +69,7 @@ export class InterpolationSystem
   }
 
   public snapshot(): void {
-    const entities = this.entityManager.queryEntities(
-      INTERPOLATION_COMPONENT_TYPE
-    );
+    const entities = this.entityManager.queryEntities(Interpolation.type);
     for (const entity of entities) {
       const sample = interpolationOf(entity);
       if (sample === undefined) continue;
@@ -83,8 +79,8 @@ export class InterpolationSystem
 
   public capture(): void {
     const entities = this.entityManager.queryEntities(
-      INTERPOLATION_COMPONENT_TYPE,
-      TRANSFORM_COMPONENT_TYPE
+      Interpolation.type,
+      Transform.type
     );
     const activeEntityIds = new Set<number>();
 
@@ -122,8 +118,8 @@ export class InterpolationSystem
     this.interpolatedSamples.clear();
 
     const entities = this.entityManager.queryEntities(
-      INTERPOLATION_COMPONENT_TYPE,
-      TRANSFORM_COMPONENT_TYPE
+      Interpolation.type,
+      Transform.type
     );
 
     for (const entity of entities) {

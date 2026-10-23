@@ -1,7 +1,6 @@
 export {
   PhysicsBody,
   PhysicsSoASchema,
-  PHYSICS_BODY_COMPONENT_TYPE,
   attachPhysicsBody,
   bodyValues,
   readVelocity,
@@ -24,7 +23,6 @@ export {
 export {
   Transform,
   TransformSoASchema,
-  TRANSFORM_COMPONENT_TYPE,
   attachTransform,
   transformValues,
   readFpPosition,
@@ -38,7 +36,6 @@ export {
 } from './transform.js';
 export {
   Interpolation,
-  INTERPOLATION_COMPONENT_TYPE,
   attachInterpolation,
   interpolationOf,
   snapshotInterpolation,

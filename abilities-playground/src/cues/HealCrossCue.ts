@@ -44,7 +44,7 @@ export class HealCrossCue extends Cue {
       return;
     }
 
-    const p = FPVector3.ToFloat(copyFpPosition(targetEntity.id));
+    const p = FPVector3.ToFloat(copyFpPosition(targetEntity));
     const position = new THREE.Vector3(p.x, p.y, p.z);
 
     this.spawnCross(position);
