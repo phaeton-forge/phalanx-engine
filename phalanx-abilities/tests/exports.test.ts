@@ -74,7 +74,6 @@ function namesOf(files: readonly string[]): Map<string, ModuleExports> {
 
 const ROOT_NAMES = [
   'ABILITY_ACTIVATED_EVENT',
-  'AbilitiesComponentType',
   'AbilityActivatedEvent',
   'AbilityActivationContext',
   'AbilityActivationRequest',
@@ -83,26 +82,29 @@ const ROOT_NAMES = [
   'AbilityHook',
   'AbilityHookExecutorSystem',
   'AbilityHooksRegistry',
+  'AbilityOwner',
+  'AbilityOwnerInit',
+  'AbilityOwnerState',
   'AbilityRegistry',
   'AbilityRuntimeState',
   'AbilityStateReader',
   'AbilitySystem',
-  'AbilitySystemComponent',
-  'AbilitySystemComponentInit',
   'AbilitySystemDefinitions',
   'AbilitySystemFacade',
   'AbilitySystemPipeline',
   'AbilitySystemRegistries',
   'AbilitySystemRuntime',
   'ActiveEffectInstance',
-  'ActiveEffectsComponent',
+  'ActiveEffects',
+  'ActiveEffectsState',
   'AttributeAggregationSystem',
   'AttributeClampMode',
   'AttributeDef',
   'AttributeInitializer',
   'AttributeRegistry',
   'AttributeValue',
-  'AttributesComponent',
+  'Attributes',
+  'AttributesState',
   'CreateAbilitySystemConfig',
   'Cue',
   'CueBufferCleanupSystem',
@@ -125,7 +127,8 @@ const ROOT_NAMES = [
   'GameplayCueBuffer',
   'GameplayCueBufferView',
   'GameplayCueDispatchedEvent',
-  'GameplayTagsComponent',
+  'GameplayTags',
+  'GameplayTagsState',
   'InitialEffect',
   'InstanceIdCounter',
   'MagnitudeCalcContext',
@@ -143,7 +146,10 @@ const ROOT_NAMES = [
   'TargetResolver',
   'TargetSpec',
   'abilityComponentTypes',
+  'abilityOwnerOf',
+  'activeEffectsOf',
   'appendGameplayCueEvents',
+  'attributesOf',
   'createAbilitySystem',
   'createAbilitySystemRegistries',
   'createAbilitySystemRuntime',
@@ -153,26 +159,22 @@ const ROOT_NAMES = [
   'defineAttribute',
   'defineEffect',
   'gameplayCueKey',
-  'getAbilitySystemComponent',
-  'getActiveEffectsComponent',
-  'getAttributesComponent',
+  'gameplayTagsOf',
   'getCueIdsForPhase',
-  'getGameplayTagsComponent',
 ];
 
 const ROOT_VALUES = [
   'ABILITY_ACTIVATED_EVENT',
-  'AbilitiesComponentType',
   'AbilityActivationSystem',
   'AbilityHookExecutorSystem',
   'AbilityHooksRegistry',
+  'AbilityOwner',
   'AbilityRegistry',
-  'AbilitySystemComponent',
   'AbilitySystemFacade',
-  'ActiveEffectsComponent',
+  'ActiveEffects',
   'AttributeAggregationSystem',
   'AttributeRegistry',
-  'AttributesComponent',
+  'Attributes',
   'Cue',
   'CueBufferCleanupSystem',
   'CueDispatchSystem',
@@ -181,12 +183,15 @@ const ROOT_VALUES = [
   'EffectRegistry',
   'EffectTickSystem',
   'GAMEPLAY_CUE_EVENT',
-  'GameplayTagsComponent',
+  'GameplayTags',
   'InstanceIdCounter',
   'NO_SOURCE_ENTITY_ID',
   'TargetResolver',
   'abilityComponentTypes',
+  'abilityOwnerOf',
+  'activeEffectsOf',
   'appendGameplayCueEvents',
+  'attributesOf',
   'createAbilitySystem',
   'createAbilitySystemRegistries',
   'createAbilitySystemRuntime',
@@ -196,11 +201,8 @@ const ROOT_VALUES = [
   'defineAttribute',
   'defineEffect',
   'gameplayCueKey',
-  'getAbilitySystemComponent',
-  'getActiveEffectsComponent',
-  'getAttributesComponent',
+  'gameplayTagsOf',
   'getCueIdsForPhase',
-  'getGameplayTagsComponent',
 ];
 
 const ENTRIES = [
@@ -235,10 +237,10 @@ describe('@phalanx-engine/abilities exports', () => {
     }
     expect(
       resolved.map((entry) => actual.get(entry.file)?.names.length)
-    ).toEqual([85]);
+    ).toEqual([88]);
     expect(
       resolved.map((entry) => actual.get(entry.file)?.values.length)
-    ).toEqual([40]);
+    ).toEqual([39]);
   });
 
   it('loads each entry by package name', async () => {

@@ -1,12 +1,6 @@
 import { GameSystem } from '@phalanx-engine/ecs';
 import { FP } from '@phalanx-engine/math';
 import type { FixedPoint } from '@phalanx-engine/math';
-import {
-  AbilitiesComponentType,
-  getActiveEffectsComponent,
-  getAttributesComponent,
-} from '../components/index.js';
-import type { ActiveEffectsComponent } from '../components/index.js';
 import type { AbilitySystemRegistries } from '../registry/index.js';
 import type {
   ActiveEffectInstance,
@@ -14,6 +8,13 @@ import type {
   EffectDef,
   ModifierOp,
 } from '../types/index.js';
+import {
+  AbilityOwner,
+  attributesOf,
+  activeEffectsOf,
+} from '../components/abilityOwner.js';
+import { Attributes } from '../components/attributes.js';
+import { type ActiveEffectsState } from '../components/activeEffects.js';
 
 /**
  * Reusable per-tick buffer reused across entities to avoid per-entity allocations
@@ -33,7 +34,7 @@ type OrderedEffectsBuffer = ActiveEffectInstance[];
  *  - Skips entities with no dirty attributes (no sort, no allocations).
  *  - Resolves each effect's {@link EffectDef} at most once per entity per tick.
  *  - Reuses an internal buffer for the ordered queue (no per-entity array allocation).
- *  - `EffectApplicationSystem` is expected to insert into `ActiveEffectsComponent.queue`
+ *  - `EffectApplicationSystem` is expected to insert into `ActiveEffects.queue`
  *    in `instanceId` ASC order so the sort is a no-op cheap pass; the system still
  *    sorts defensively to remain correct if test code or future systems push out of order.
  */
@@ -46,13 +47,13 @@ export class AttributeAggregationSystem extends GameSystem {
 
   public override processTick(_tick: number): void {
     const entities = this.entityManager.queryEntitiesAny(
-      AbilitiesComponentType.AbilitySystem,
-      AbilitiesComponentType.Attributes
+      AbilityOwner.type,
+      Attributes.type
     );
     const attributeDefs = this.registries.attributes.values();
 
     for (const entity of entities) {
-      const attributes = getAttributesComponent(entity);
+      const attributes = attributesOf(entity);
       if (!attributes) {
         continue;
       }
@@ -62,7 +63,7 @@ export class AttributeAggregationSystem extends GameSystem {
         continue;
       }
 
-      const activeEffects = getActiveEffectsComponent(entity);
+      const activeEffects = activeEffectsOf(entity);
       const orderedEffects = this.takeOrderedEffects(activeEffects);
       // Resolve each EffectDef once per entity per tick instead of per dirty attribute.
       const resolvedEffectDefs = this.resolveEffectDefs(orderedEffects);
@@ -125,7 +126,7 @@ export class AttributeAggregationSystem extends GameSystem {
    * monotonic insertion by `EffectApplicationSystem`).
    */
   private takeOrderedEffects(
-    activeEffects: ActiveEffectsComponent | undefined
+    activeEffects: ActiveEffectsState | undefined
   ): readonly ActiveEffectInstance[] {
     const buffer = this.orderedEffectsBuffer;
     buffer.length = 0;

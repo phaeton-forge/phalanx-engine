@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { FP } from '@phalanx-engine/math';
-import {
-  getActiveEffectsComponent,
-  NO_SOURCE_ENTITY_ID,
-  defineEffect,
-} from '../src';
+import { activeEffectsOf, defineEffect, NO_SOURCE_ENTITY_ID } from '../src';
 import {
   ArmorAttribute,
   HealthAttribute,
@@ -607,7 +603,7 @@ describe('effect application', () => {
     abilities.applyEffect(entity.id, 'Effect.Sourceless');
     world.processAllTicks(1);
 
-    const activeEffects = getActiveEffectsComponent(
+    const activeEffects = activeEffectsOf(
       world.entityManager.getEntity(entity.id)!
     )!;
     expect(activeEffects.queue.length).toBe(1);

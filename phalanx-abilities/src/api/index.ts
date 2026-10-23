@@ -13,7 +13,7 @@ export {
 export type { AttributeValue } from './AbilitySystemFacade.js';
 export type {
   AbilitySystem,
-  AbilitySystemComponentInit,
+  AbilityOwnerInit,
   AbilitySystemPipeline,
   AttributeInitializer,
   CreateAbilitySystemConfig,

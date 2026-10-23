@@ -2,14 +2,6 @@ import { GameSystem } from '@phalanx-engine/ecs';
 import type { Entity } from '@phalanx-engine/ecs';
 import { FP } from '@phalanx-engine/math';
 import type { FixedPoint } from '@phalanx-engine/math';
-import {
-  AbilitiesComponentType,
-  GameplayTagsComponent,
-  getActiveEffectsComponent,
-  getAttributesComponent,
-  getGameplayTagsComponent,
-} from '../components/index.js';
-import type { PendingEffectAdd } from '../components/index.js';
 import type { AbilitySystemFacade } from '../api/AbilitySystemFacade.js';
 import type { AbilitySystemRegistries } from '../registry/index.js';
 import { appendGameplayCueEvents } from '../runtime/index.js';
@@ -21,15 +13,30 @@ import type {
   Modifier,
   ModifierOp,
 } from '../types/index.js';
+import {
+  AbilityOwner,
+  attributesOf,
+  activeEffectsOf,
+  gameplayTagsOf,
+  attachValue,
+} from '../components/abilityOwner.js';
+import {
+  ActiveEffects,
+  type PendingEffectAdd,
+} from '../components/activeEffects.js';
+import {
+  GameplayTags,
+  type GameplayTagsState,
+} from '../components/gameplayTags.js';
 
 /**
- * Drains `ActiveEffectsComponent.pendingAdd` per entity and applies each
+ * Drains `ActiveEffects.pendingAdd` per entity and applies each
  * effect deterministically.
  *
  * Per pending entry (in the order they were enqueued by `applyEffect`):
  *  1. Resolve the {@link EffectDef} from the registry.
  *  2. Gate by tag predicates against the target's
- *     {@link GameplayTagsComponent}:
+ *     {@link GameplayTags}:
  *      - if `tagsRequired` is set, every tag must be present;
  *      - if `tagsBlocked` is set, none of the tags may be present.
  *     A gated effect is dropped (the cooldown / source-side mechanics are
@@ -74,14 +81,14 @@ export class EffectApplicationSystem extends GameSystem {
 
   public override processTick(tick: number): void {
     const entities = this.entityManager.queryEntitiesAny(
-      AbilitiesComponentType.AbilitySystem,
-      AbilitiesComponentType.ActiveEffects
+      AbilityOwner.type,
+      ActiveEffects.type
     );
     const attributeIndexCache = this.attributeIndexCache;
     attributeIndexCache.clear();
 
     for (const entity of entities) {
-      const activeEffects = getActiveEffectsComponent(entity);
+      const activeEffects = activeEffectsOf(entity);
       if (!activeEffects || activeEffects.pendingAdd.length === 0) {
         continue;
       }
@@ -282,7 +289,7 @@ export class EffectApplicationSystem extends GameSystem {
 
   private checkTagPredicates(
     effectDef: EffectDef,
-    tags: GameplayTagsComponent
+    tags: GameplayTagsState
   ): boolean {
     if (effectDef.tagsRequired) {
       for (const tag of effectDef.tagsRequired) {
@@ -301,7 +308,7 @@ export class EffectApplicationSystem extends GameSystem {
     return true;
   }
 
-  private grantTags(effectDef: EffectDef, tags: GameplayTagsComponent): void {
+  private grantTags(effectDef: EffectDef, tags: GameplayTagsState): void {
     if (!effectDef.tagsGranted) {
       return;
     }
@@ -322,9 +329,9 @@ export class EffectApplicationSystem extends GameSystem {
     attributeIndexCache: Map<string, number>,
     effective: readonly FixedPoint[] | null
   ): void {
-    const attributes = getAttributesComponent(entity);
+    const attributes = attributesOf(entity);
     if (!attributes) {
-      // Instant effects with attribute modifiers need an AttributesComponent.
+      // Instant effects with attribute modifiers need an Attributes.
       // If the target has none, we silently no-op the modifier application —
       // tag grants above still took effect. Users that need Instant effects
       // on tag-only entities should leave `modifiers` empty.
@@ -353,12 +360,10 @@ export class EffectApplicationSystem extends GameSystem {
     tick: number,
     effective: readonly FixedPoint[] | null
   ): void {
-    const activeEffects = getActiveEffectsComponent(entity);
-    // pendingAdd lives on ActiveEffectsComponent, so it must exist here.
+    const activeEffects = activeEffectsOf(entity);
+    // pendingAdd lives on ActiveEffects, so it must exist here.
     if (!activeEffects) {
-      throw new Error(
-        'ActiveEffectsComponent missing while draining pendingAdd'
-      );
+      throw new Error('ActiveEffects missing while draining pendingAdd');
     }
 
     // durationTicks was validated upstream in validateEffectOrThrow, so the
@@ -403,7 +408,7 @@ export class EffectApplicationSystem extends GameSystem {
     if (modifiers.length === 0) {
       return;
     }
-    const attributes = getAttributesComponent(entity);
+    const attributes = attributesOf(entity);
     if (!attributes) {
       return;
     }
@@ -429,15 +434,12 @@ export class EffectApplicationSystem extends GameSystem {
     return index;
   }
 
-  private getOrCreateTags(entity: Entity): GameplayTagsComponent {
-    const existing = getGameplayTagsComponent(entity);
+  private getOrCreateTags(entity: Entity): GameplayTagsState {
+    const existing = gameplayTagsOf(entity);
     if (existing) {
       return existing;
     }
-    const tags = new GameplayTagsComponent();
-    entity.addComponent(tags);
-    this.entityManager.onComponentAdded(entity, tags.type);
-    return tags;
+    return attachValue(entity, GameplayTags);
   }
 }
 

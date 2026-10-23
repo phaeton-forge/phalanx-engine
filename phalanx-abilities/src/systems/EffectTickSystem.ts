@@ -2,15 +2,6 @@ import { GameSystem } from '@phalanx-engine/ecs';
 import type { Entity } from '@phalanx-engine/ecs';
 import { FP } from '@phalanx-engine/math';
 import type { FixedPoint } from '@phalanx-engine/math';
-import {
-  AbilitiesComponentType,
-  ActiveEffectsComponent,
-  AttributesComponent,
-  GameplayTagsComponent,
-  getActiveEffectsComponent,
-  getAttributesComponent,
-  getGameplayTagsComponent,
-} from '../components/index.js';
 import type { AbilitySystemRegistries } from '../registry/index.js';
 import { appendGameplayCueEvents } from '../runtime/index.js';
 import type { AbilitySystemRuntime } from '../runtime/index.js';
@@ -19,6 +10,18 @@ import type {
   EffectDef,
   ModifierOp,
 } from '../types/index.js';
+import {
+  AbilityOwner,
+  attributesOf,
+  activeEffectsOf,
+  gameplayTagsOf,
+} from '../components/abilityOwner.js';
+import { type AttributesState } from '../components/attributes.js';
+import {
+  ActiveEffects,
+  type ActiveEffectsState,
+} from '../components/activeEffects.js';
+import { type GameplayTagsState } from '../components/gameplayTags.js';
 
 /**
  * Per-tick lifecycle for `Duration` and `Periodic` effects.
@@ -27,7 +30,7 @@ import type {
  *  1. Fire `Periodic` payloads. For every queued `Periodic` instance whose
  *     `nextPeriodTick <= currentTick` and that was not inserted on this
  *     same tick, apply its modifiers Instant-style (fold into
- *     `AttributesComponent.base`, mark attributes dirty for the downstream
+ *     `Attributes.base`, mark attributes dirty for the downstream
  *     `AttributeAggregationSystem`) and advance `nextPeriodTick` by
  *     `EffectDef.periodTicks`. Fire-before-countdown ordering means the
  *     final periodic landing on the same tick as expiry still fires.
@@ -62,12 +65,12 @@ export class EffectTickSystem extends GameSystem {
 
   public override processTick(tick: number): void {
     const entities = this.entityManager.queryEntitiesAny(
-      AbilitiesComponentType.AbilitySystem,
-      AbilitiesComponentType.ActiveEffects
+      AbilityOwner.type,
+      ActiveEffects.type
     );
 
     for (const entity of entities) {
-      const activeEffects = getActiveEffectsComponent(entity);
+      const activeEffects = activeEffectsOf(entity);
       if (!activeEffects || activeEffects.queue.length === 0) {
         continue;
       }
@@ -78,7 +81,7 @@ export class EffectTickSystem extends GameSystem {
 
   private tickEntity(
     entity: Entity,
-    activeEffects: ActiveEffectsComponent,
+    activeEffects: ActiveEffectsState,
     tick: number
   ): void {
     const queue = activeEffects.queue;
@@ -138,12 +141,12 @@ export class EffectTickSystem extends GameSystem {
 
   private processExpirations(
     entity: Entity,
-    activeEffects: ActiveEffectsComponent,
+    activeEffects: ActiveEffectsState,
     expired: readonly ActiveEffectInstance[],
     tick: number
   ): void {
-    const tags = getGameplayTagsComponent(entity);
-    const attributes = getAttributesComponent(entity);
+    const tags = gameplayTagsOf(entity);
+    const attributes = attributesOf(entity);
 
     for (const instance of expired) {
       const effectDef = this.registries.effects.tryGet(instance.defId);
@@ -184,7 +187,7 @@ export class EffectTickSystem extends GameSystem {
       return;
     }
 
-    let attributes: AttributesComponent | undefined;
+    let attributes: AttributesState | undefined;
 
     for (let i = 0; i < queue.length; i++) {
       const instance = queue[i];
@@ -218,7 +221,7 @@ export class EffectTickSystem extends GameSystem {
       // Resolve attributes lazily — a queue with only Duration entries should
       // not pay for the component lookup.
       if (attributes === undefined) {
-        attributes = getAttributesComponent(entity);
+        attributes = attributesOf(entity);
       }
 
       while (tick >= instance.nextPeriodTick) {
@@ -251,7 +254,7 @@ export class EffectTickSystem extends GameSystem {
   private applyPeriodicPayload(
     effectDef: EffectDef,
     instance: ActiveEffectInstance,
-    attributes: AttributesComponent | undefined
+    attributes: AttributesState | undefined
   ): void {
     if (!attributes || effectDef.modifiers.length === 0) {
       return;
@@ -270,7 +273,7 @@ export class EffectTickSystem extends GameSystem {
 
   private revokeTags(
     effectDef: EffectDef,
-    tags: GameplayTagsComponent | undefined,
+    tags: GameplayTagsState | undefined,
     _remainingQueue: readonly ActiveEffectInstance[]
   ): void {
     if (!tags || !effectDef.tagsGranted || effectDef.tagsGranted.length === 0) {
@@ -298,7 +301,7 @@ export class EffectTickSystem extends GameSystem {
 
   private markModifiersDirty(
     effectDef: EffectDef,
-    attributes: AttributesComponent | undefined
+    attributes: AttributesState | undefined
   ): void {
     if (!attributes || effectDef.modifiers.length === 0) {
       return;

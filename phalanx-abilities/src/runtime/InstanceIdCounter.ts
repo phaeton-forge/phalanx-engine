@@ -7,7 +7,7 @@
  *    sequence of `applyEffect`/`pendingAdd` drains within a tick.
  *  - Values are strictly increasing and never reused, so FIFO aggregation
  *    in `AttributeAggregationSystem` matches insertion order regardless of
- *    how `ActiveEffectsComponent.queue` is rearranged later.
+ *    how `ActiveEffects.queue` is rearranged later.
  */
 export class InstanceIdCounter {
   private value = 0;

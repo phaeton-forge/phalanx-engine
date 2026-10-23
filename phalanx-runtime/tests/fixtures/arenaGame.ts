@@ -7,12 +7,12 @@ import {
 import type { GameWorld, IRandom } from '@phalanx-engine/ecs';
 import { FP } from '@phalanx-engine/math';
 import {
-  AbilitiesComponentType,
+  AbilityOwner,
+  abilityOwnerOf,
   createAbilitySystem,
   defineAbility,
   defineAbilitySystem,
   defineAttribute,
-  getAbilitySystemComponent,
 } from '@phalanx-engine/abilities';
 import {
   PhysicsSoASchema,
@@ -74,7 +74,7 @@ export class ArenaSim {
   public healthRaw(): bigint {
     const pawn = this.world.entityManager.getAllEntities()[0];
     if (pawn === undefined) throw new Error('arena: missing pawn');
-    const raw = getAbilitySystemComponent(pawn)?.attributes.current[0];
+    const raw = abilityOwnerOf(pawn)?.attributes.current[0];
     if (raw === undefined) throw new Error('arena: missing health');
     return raw;
   }
@@ -122,11 +122,9 @@ class ArenaPawn extends Entity implements IPoolableEntity<void> {
 class HpDecaySystem extends GameSystem {
   public override processTick(_tick: number): void {
     this.random.int(1);
-    const pawns = this.entityManager.queryEntities(
-      AbilitiesComponentType.AbilitySystem
-    );
+    const pawns = this.entityManager.queryEntities(AbilityOwner.type);
     for (const pawn of pawns) {
-      const attributes = getAbilitySystemComponent(pawn)?.attributes;
+      const attributes = abilityOwnerOf(pawn)?.attributes;
       const base = attributes?.base[0];
       if (attributes === undefined || base === undefined || base <= 0n) {
         continue;

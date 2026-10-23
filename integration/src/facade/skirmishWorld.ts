@@ -23,7 +23,7 @@ import {
   defineAbilitySystem,
   defineAttribute,
   defineEffect,
-  getAbilitySystemComponent,
+  abilityOwnerOf,
   type AbilitySystem,
 } from '@phalanx-engine/game/abilities';
 import { FP, type FixedPoint } from '@phalanx-engine/game/math';
@@ -335,7 +335,7 @@ class PooledUnit extends Entity implements IPoolableEntity<UnitSpawn> {
     // shell on the first despawn. Install the factory image first; the
     // hook then copies that, and a respawn matches a peer that never
     // restored.
-    const gas = getAbilitySystemComponent(this);
+    const gas = abilityOwnerOf(this);
     if (gas === undefined) return;
     const base = gas.attributes.base;
     const current = gas.attributes.current;
@@ -968,7 +968,7 @@ function teamOfSlot(config: SkirmishConfig, slot: number): number {
 function gasOf(world: GameWorld, id: number) {
   const entity = world.entityManager.getEntity(id);
   if (entity === undefined) return undefined;
-  return getAbilitySystemComponent(entity);
+  return abilityOwnerOf(entity);
 }
 
 function sortedFields(fields: Record<string, string>): Record<string, string> {

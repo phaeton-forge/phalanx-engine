@@ -39,7 +39,7 @@ export abstract class DefinitionRegistry<TDef extends { id: string }> {
    * The same array reference is returned across calls (no per-call
    * allocation); callers MUST NOT mutate it. Insertion order is the
    * canonical attribute/effect index used by SoA-style components such as
-   * {@link AttributesComponent}.
+   * {@link Attributes}.
    */
   public values(): readonly TDef[] {
     return this.defsArray;

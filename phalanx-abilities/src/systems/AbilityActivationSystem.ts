@@ -1,13 +1,6 @@
 import { GameSystem } from '@phalanx-engine/ecs';
 import type { Entity } from '@phalanx-engine/ecs';
 import { FP } from '@phalanx-engine/math';
-import {
-  ActiveEffectsComponent,
-  getAbilitySystemComponent,
-  getActiveEffectsComponent,
-  getAttributesComponent,
-  getGameplayTagsComponent,
-} from '../components/index.js';
 import { ABILITY_ACTIVATED_EVENT } from '../events/index.js';
 import type { AbilityActivatedEvent } from '../events/index.js';
 import type { AbilitySystemRegistries } from '../registry/index.js';
@@ -19,16 +12,27 @@ import type {
 import { TargetResolver } from '../targeting/index.js';
 import type { TargetResolutionResult } from '../targeting/index.js';
 import type { AbilityDef, ProvidedTarget } from '../types/index.js';
+import {
+  abilityOwnerOf,
+  attributesOf,
+  activeEffectsOf,
+  gameplayTagsOf,
+  attachValue,
+} from '../components/abilityOwner.js';
+import {
+  ActiveEffects,
+  type ActiveEffectsState,
+} from '../components/activeEffects.js';
 
 /**
  * Drains pending {@link AbilityActivationRequest}s from the runtime, runs
  * `CanActivate` against the caster, and — for every approved request —
  * queues the caster-side and target-side effects on the relevant entities'
- * `ActiveEffectsComponent.pendingAdd`.
+ * `ActiveEffects.pendingAdd`.
  *
  * `CanActivate` evaluates in fixed order:
  *  1. `activationBlockedTags` — none of the listed tags may be present on
- *     the caster (`GameplayTagsComponent.tags`).
+ *     the caster (`GameplayTags.tags`).
  *  2. `tagsRequired` — every listed tag must be present on the caster.
  *  3. Cost — if `costEffectId` is set, the referenced effect must be
  *     affordable. Stage 5 supports cost effects of type `Instant` whose
@@ -127,7 +131,7 @@ export class AbilityActivationSystem extends GameSystem {
     // Drain only requests that were enqueued BEFORE this tick. Requests made
     // from inside the tick (e.g. by a hook scheduling another activation)
     // wait for the next tick — mirrors the pendingAdd discipline used by
-    // ActiveEffectsComponent.
+    // ActiveEffects.
     const pending = this.runtime.activationRequests;
     if (pending.length === 0) {
       return;
@@ -259,11 +263,11 @@ export class AbilityActivationSystem extends GameSystem {
 
   private canActivate(caster: Entity, def: AbilityDef): boolean {
     const casterId = caster.id;
-    const abilitySystem = getAbilitySystemComponent(caster);
+    const abilitySystem = abilityOwnerOf(caster);
     if (abilitySystem && !abilitySystem.abilities.has(def.id)) {
       return false;
     }
-    const tags = getGameplayTagsComponent(caster);
+    const tags = gameplayTagsOf(caster);
     const inFlightTags = this.inFlightTagsByCaster.get(casterId);
 
     if (def.activationBlockedTags) {
@@ -331,7 +335,7 @@ export class AbilityActivationSystem extends GameSystem {
       return true;
     }
 
-    const attributes = getAttributesComponent(caster);
+    const attributes = attributesOf(caster);
     if (!attributes) {
       // No attribute store at all — cost cannot be charged. Reject so the
       // caller isn't silently let through.
@@ -395,7 +399,7 @@ export class AbilityActivationSystem extends GameSystem {
       );
     }
 
-    const tags = getGameplayTagsComponent(caster);
+    const tags = gameplayTagsOf(caster);
     const inFlightTags = this.inFlightTagsByCaster.get(caster.id);
 
     for (const tag of effectDef.tagsGranted) {
@@ -446,15 +450,12 @@ export class AbilityActivationSystem extends GameSystem {
     activeEffects.pendingAdd.push({ defId: effectId, sourceEntityId });
   }
 
-  private getOrCreateActiveEffects(target: Entity): ActiveEffectsComponent {
-    const existing = getActiveEffectsComponent(target);
+  private getOrCreateActiveEffects(target: Entity): ActiveEffectsState {
+    const existing = activeEffectsOf(target);
     if (existing) {
       return existing;
     }
-    const component = new ActiveEffectsComponent();
-    target.addComponent(component);
-    this.entityManager.onComponentAdded(target, component.type);
-    return component;
+    return attachValue(target, ActiveEffects);
   }
 
   private recordCooldownInFlight(casterId: number, def: AbilityDef): void {

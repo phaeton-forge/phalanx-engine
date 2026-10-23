@@ -163,6 +163,10 @@ Entries collected per package until the synchronized 0.3.0 release
 
 ## @phalanx-engine/game
 
+- `./abilities` follows the abilities package: wrapper classes,
+  `AbilitiesComponentType` and the `get*Component` helpers are gone; the
+  component definitions, `*Of` helpers and `*State` types are exported.
+  Name count `[185, 9, 63, 85, 20, 3]` → `[185, 9, 63, 88, 20, 3]`.
 - `./physics` follows the physics package: wrapper classes are gone and
   the helper functions are exported. Name count
   `[185, 9, 31, 85, 20, 3]` → `[185, 9, 63, 85, 20, 3]`.
@@ -720,6 +724,43 @@ Entries collected per package until the synchronized 0.3.0 release
   builds or install a `SIGTERM` handler.
 
 ## @phalanx-engine/abilities
+
+- `AbilityOwner` (the component formerly named `AbilitySystem`),
+  `Attributes`, `ActiveEffects` and `GameplayTags` are object
+  `defineComponent` definitions with `save` / `load`. They are not
+  registered with `world.registerComponent`: the `abilities` save section
+  still owns them and writes each through its component codec, and they
+  keep the pool shell semantics of `releasePooledAbilityState`.
+  The name `AbilitySystem` stays with the service interface.
+- Removed `AbilitySystemComponent`, `AttributesComponent`,
+  `ActiveEffectsComponent`, `GameplayTagsComponent`,
+  `AbilitiesComponentType`, `getAbilitySystemComponent`,
+  `getAttributesComponent`, `getActiveEffectsComponent` and
+  `getGameplayTagsComponent`. Use `abilityOwnerOf`, `attributesOf`,
+  `activeEffectsOf` and `gameplayTagsOf`; values are plain
+  `AbilityOwnerState`, `AttributesState`, `ActiveEffectsState` and
+  `GameplayTagsState` objects. `entity.hasComponent(Attributes.type)`
+  replaces `AbilitiesComponentType.Attributes`.
+- **API change:** `AbilitySystemFacade.initAttributesForEntity` returns
+  `AttributesState` instead of `AttributesComponent`.
+- Attach `AbilityOwner` only through `initComponent` and standalone
+  `Attributes` only through `initAttributesForEntity`. `world.add` on
+  either creates a broken owner (no pool holder, zero attributes).
+- `AbilitySystemComponentInit` is renamed `AbilityOwnerInit`.
+  `initComponent(init)` returns an `IComponent` for
+  `entity.addComponent`; read it back with `abilityOwnerOf(entity)`.
+- Error text: `readAbilities: extra AbilitySystem on entity N` is now
+  `extra AbilityOwner`; `Entity N does not have AttributesComponent` is
+  now `does not have Attributes`.
+- **Save bytes:** `GameplayTags.save` writes tags, ad-hoc tags and
+  effect-grant counts sorted by UTF-16 code unit, and `AbilityOwner.save`
+  writes ability ids sorted the same way (the A6b.1 rule for `Set` / `Map`
+  in object components). Before, all four were in insertion order, which
+  depends on the order effects landed. Section layout and version (1) are
+  unchanged and the reader accepts either order. The skirmish goldens are
+  regenerated for this alone; tiny and arena are byte-identical, and with
+  the sorts disabled every golden matches the previous files.
+- Export snapshot: names `[85]` → `[88]`, values `[40]` → `[39]`.
 
 - The `effects-retain-cues` warning no longer checks `process.env.NODE_ENV`.
   Domain sources cannot see `process`. The same `console.warn` text now

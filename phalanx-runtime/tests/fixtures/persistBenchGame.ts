@@ -7,12 +7,12 @@ import {
 import type { GameWorld, IRandom } from '@phalanx-engine/ecs';
 import { FP, type FixedPoint } from '@phalanx-engine/math';
 import {
-  AbilitiesComponentType,
+  AbilityOwner,
+  abilityOwnerOf,
   createAbilitySystem,
   defineAbility,
   defineAbilitySystem,
   defineAttribute,
-  getAbilitySystemComponent,
 } from '@phalanx-engine/abilities';
 import {
   PhysicsSoASchema,
@@ -119,11 +119,9 @@ export function createPersistBenchGame(unitCount: number) {
   class HpDecaySystem extends GameSystem {
     public override processTick(_tick: number): void {
       this.random.int(1);
-      const pawns = this.entityManager.queryEntities(
-        AbilitiesComponentType.AbilitySystem
-      );
+      const pawns = this.entityManager.queryEntities(AbilityOwner.type);
       for (const pawn of pawns) {
-        const attributes = getAbilitySystemComponent(pawn)?.attributes;
+        const attributes = abilityOwnerOf(pawn)?.attributes;
         const base = attributes?.base[0];
         if (attributes === undefined || base === undefined || base <= 0n) {
           continue;
