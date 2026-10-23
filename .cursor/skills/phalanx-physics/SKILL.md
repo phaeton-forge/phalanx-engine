@@ -1,6 +1,6 @@
 ---
 name: phalanx-physics
-description: Add deterministic fixed-point physics to a game using the phalanx-physics library from the phalanx-engine repository. Use when the user wants to set up collision detection, velocity integration, spatial hashing, or physics bodies. Covers PhysicsWorld facade, TransformComponent, InterpolationSystem, PhysicsBodyComponent, GravitySystem, SpatialHashGrid, NarrowPhase, PhysicsSystem, applyImpulse3D, gravityMultiplier, raycastSegment, and collision filtering patterns.
+description: Add deterministic fixed-point physics to a game using the phalanx-physics library from the phalanx-engine repository. Use when the user wants to set up collision detection, velocity integration, spatial hashing, or physics bodies. Covers PhysicsWorld facade, Transform, InterpolationSystem, PhysicsBody, GravitySystem, SpatialHashGrid, NarrowPhase, PhysicsSystem, applyImpulse3D, gravityMultiplier, raycastSegment, and collision filtering patterns.
 metadata:
   author: phaeton2040-AI
   version: '1.5'
@@ -39,8 +39,8 @@ PhysicsWorld (Facade)
 │   ├── SpatialHashGrid   ← O(n) broad-phase via spatial hashing
 │   └── NarrowPhase       ← Circle vs Circle / Circle vs AABB / AABB vs AABB tests
 └── InterpolationSystem   ← Tick/frame lifecycle hooks for render smoothing
-    ├── TransformComponent (built-in SoA)
-    └── InterpolationComponent (tick samples)
+    ├── Transform (defineComponent SoA)
+    └── Interpolation (defineComponent transient)
 ```
 
 Pipeline per tick (all deterministic, fixed-point):
@@ -59,9 +59,7 @@ PhysicsSystem.processTick()
       → emit PhysicsEvents.COLLISION via EventBus
     after iteration: emit PhysicsEvents.BOUNDS_EXIT for any bodies ejected this tick
     ↓
-IBeforeTick: InterpolationSystem.snapshot()
-    ↓ (tick systems run)
-IAfterTick: InterpolationSystem.capture()
+afterTick: InterpolationSystem snapshots, then captures Transform
 ```
 
 Pipeline per frame:
@@ -79,8 +77,8 @@ RenderSystem reads this.physics.getInterpolatedTransform(entityId)
 ### Key Design Decisions
 
 - **Deterministic**: All math uses `FP.*` fixed-point operations — no `Math.*`, no native float arithmetic on physics values
-- **Built-in transform**: `TransformComponent` and `TransformSoASchema` are owned by phalanx-physics — no consumer-defined transform schema or `setTransformStore()`
-- **Built-in interpolation**: `InterpolationSystem` implements `IBeforeTick`, `IAfterTick`, `IBeforeFrame` — GameWorld invokes hooks automatically
+- **Built-in transform**: `Transform` and `TransformSoASchema` are owned by phalanx-physics — no consumer-defined transform schema or `setTransformStore()`
+- **Built-in interpolation**: `InterpolationSystem` implements `IAfterTick` and `IBeforeFrame`. `afterTick` is outside the transient-read guard. Tick systems must not branch on `Interpolation`.
 - **SoA storage**: `BigInt64Array` for FixedPoint values, `Uint8Array` for flags
 - **Entity iteration**: Always sorted by ID for lockstep determinism
 - **SystemContext integration**: Call `physicsWorld.attach(world)` before `registerSystems()` — systems access via `this.physics` getter. Assignment of `context.physics` does not register the save section.
@@ -146,7 +144,7 @@ const { gravitySystem, physicsSystem, interpolationSystem } = physicsWorld.getSy
 // 3. PhysicsSystem integrates velocities, detects, and resolves collisions
 // 4. Game-specific systems react to the updated positions
 const tickSystems = [
-  movementSystem,    // Game-specific: sets velocities on PhysicsBodyComponent
+  movementSystem,    // Game-specific: sets velocities on PhysicsBody
   gravitySystem,     // phalanx-physics: acceleration (before integration)
   physicsSystem,     // phalanx-physics: integrate + collide + resolve
   combatSystem,      // Game-specific: reacts to updated positions
@@ -189,28 +187,18 @@ export const ComponentType = createComponentTypeRegistry({
 
 ### 5. Create Entity Components
 
-Every physics entity needs `TransformComponent`, `InterpolationComponent` (for render smoothing), and optionally `PhysicsBodyComponent`:
+Every moving entity needs `Transform`, `Interpolation` when it renders, and `PhysicsBody` when it simulates:
 
 ```typescript
 import {
-  TransformComponent,
-  InterpolationComponent,
-  PhysicsBodyComponent,
+  attachTransform,
+  attachInterpolation,
+  attachPhysicsBody,
 } from '@phalanx-engine/physics';
-import { FP, FPVector3, FPQuaternion } from '@phalanx-engine/math';
 
-const fpPosition = FPVector3.FromFloat(10, 0, 20);
-const fpRotation = FPQuaternion.Identity();
-
-entity.addComponent(new TransformComponent(entity.id, fpPosition, fpRotation));
-entity.addComponent(new InterpolationComponent(fpPosition, fpRotation));
-entity.addComponent(new PhysicsBodyComponent(entity.id, {
-  radius: FP.FromFloat(1.0),
-  mass: FP.FromFloat(1.0),
-  isStatic: false,
-  restitution: FP.FromFloat(0.5),
-  friction: FP.FromFloat(0.3),
-}));
+attachTransform(entity, fpPosition, fpRotation);
+attachInterpolation(entity, fpPosition, fpRotation);
+attachPhysicsBody(entity, { radius: FP.FromFloat(1) });
 ```
 
 ### 6. Set Velocities in a Game-Specific System
@@ -302,7 +290,7 @@ if (sample) {
 }
 ```
 
-## TransformComponent & TransformSoASchema
+## Transform & TransformSoASchema
 
 Built-in SoA component for authoritative fixed-point spatial state:
 
@@ -311,16 +299,16 @@ Built-in SoA component for authoritative fixed-point spatial state:
 | `fpPositionX/Y/Z`  | `i64` | Fixed-point position (raw FP)                       |
 | `fpRotationX/Y/Z/W`| `i64` | Fixed-point rotation **quaternion** (raw FP); identity default has `w = 1` |
 
-Rotation is stored as a quaternion, not Euler radians. The authoritative value is `fpRotation` (`FPQuaternion`); `fpRotationEuler` (XYZ Euler radians) and `fpRotationY` (yaw) are computed views over it.
+Rotation is stored as a quaternion, not Euler radians. Helpers `readFpRotation` / `writeFpRotation` are the quaternion. `readFpRotationEuler` / `writeFpRotationEuler` and `readYaw` / `writeYaw` are views over it. `readFpPosition` and `readFpRotation` return shared scratch — copy before the next read.
 
 ```typescript
-import { TransformComponent, TransformSoASchema, TRANSFORM_COMPONENT_TYPE } from '@phalanx-engine/physics';
+import { attachTransform, writeFpPosition, writeFpRotation, writeYaw, TransformSoASchema } from '@phalanx-engine/physics';
 import { FPQuaternion } from '@phalanx-engine/math';
 
-const transform = new TransformComponent(entity.id, fpPosition, FPQuaternion.Identity());
-transform.fpPosition = newPosition;            // get/set FPVector3
-transform.fpRotation = FPQuaternion.Identity(); // get/set FPQuaternion (authoritative)
-transform.fpRotationY = FP.FromFloat(Math.PI);  // convenience yaw around FPVector3.Up
+attachTransform(entity, fpPosition, FPQuaternion.Identity());
+writeFpPosition(entity.id, newPosition);
+writeFpRotation(entity.id, FPQuaternion.Identity());
+writeYaw(entity.id, FP.FromFloat(Math.PI)); // yaw around FPVector3.Up
 ```
 
 Hot-path access:
@@ -331,18 +319,17 @@ const idx = store.indexOf(entityId);
 store.arrays.fpPositionX[idx] = FP.ToRaw(newX);
 ```
 
-## InterpolationComponent & InterpolationSystem
+## Interpolation & InterpolationSystem
 
-`InterpolationComponent` stores tick-to-tick transform samples. `InterpolationSystem` manages the lifecycle automatically via `IBeforeTick` / `IAfterTick` / `IBeforeFrame`:
+`Interpolation` is a transient component: tick samples for render smoothing, not saved, not in `configHash`. `InterpolationSystem` implements `IAfterTick` and `IBeforeFrame` (`afterTick` is outside the transient-read guard):
 
 ```typescript
-// InterpolationSystem flow (automatic when registered as frame system):
-// beforeTick → snapshot() on all InterpolationComponents
-// afterTick  → capture() authoritative TransformComponent state
+// InterpolationSystem flow (automatic when registered as a frame system):
+// afterTick   → snapshot() then capture() of authoritative Transform
 // beforeFrame → interpolate(alpha) → getInterpolatedTransform() available
 ```
 
-Attach `InterpolationComponent` on any entity that needs render smoothing alongside `TransformComponent`.
+`attachInterpolation` on any entity that needs render smoothing alongside `Transform`. Tick systems must not branch on `Interpolation`. `readBroadphase` attaches it to every `Transform` + `PhysicsBody` and seeds both samples from the transform, including a fresh world.
 
 ## PhysicsSoASchema Fields
 
@@ -359,8 +346,6 @@ Attach `InterpolationComponent` on any entity that needs render smoothing alongs
 | `ignorePhysics`      | `u8`  | `Uint8Array`     | 1 = skip all physics, 0 = active     |
 | `useGravity`         | `u8`  | `Uint8Array`     | 1 = GravitySystem applies gravity, 0 = ignore (default) |
 | `gravityMultiplier`  | `i64` | `BigInt64Array`  | Per-body scale on world gravity (default `FP._1`) |
-| `lastX`              | `f64` | `Float64Array`   | Cached float X. Presentation only; do not read in simulation |
-| `lastZ`              | `f64` | `Float64Array`   | Cached float Z. Presentation only; do not read in simulation |
 
 ## PhysicsWorldConfig
 
@@ -433,16 +418,19 @@ Returns `CollisionManifold | null`: `{ entityA, entityB, normalX, normalZ, penet
 ```typescript
 // Components
 import {
-  PhysicsBodyComponent,
+  PhysicsBody,
   PhysicsSoASchema,
   PHYSICS_BODY_COMPONENT_TYPE,
-  TransformComponent,
+  attachPhysicsBody,
+  Transform,
   TransformSoASchema,
   TRANSFORM_COMPONENT_TYPE,
-  InterpolationComponent,
+  attachTransform,
+  Interpolation,
   INTERPOLATION_COMPONENT_TYPE,
+  attachInterpolation,
 } from '@phalanx-engine/physics';
-import type { PhysicsBodyConfig } from '@phalanx-engine/physics';
+import type { PhysicsBodyConfig, InterpolationSample } from '@phalanx-engine/physics';
 
 // Collision primitives
 import { SpatialHashGrid, NarrowPhase, segmentVsAABB } from '@phalanx-engine/physics';
@@ -473,7 +461,7 @@ import type {
 } from '@phalanx-engine/physics';
 ```
 
-> Note: `TransformFieldMapping` and `setTransformStore()` have been removed. Use the built-in `TransformComponent` instead.
+> Note: `TransformFieldMapping` and `setTransformStore()` have been removed. Use the built-in `Transform` component.
 
 ## Gravity & Ballistic Ordnance
 
@@ -493,12 +481,12 @@ const physicsWorld = new PhysicsWorld({
 });
 
 // Per-body opt-in (default false — existing bodies are unaffected):
-entity.addComponent(new PhysicsBodyComponent(entity.id, {
+attachPhysicsBody(entity, {
   radius: FP.FromFloat(0.5),
   mass: FP._1,                   // with mass 1, applyImpulse3D args ≈ desired velocity
   useGravity: true,
   gravityMultiplier: FP.FromFloat(2), // optional per-body scale (default FP._1)
-}));
+});
 ```
 
 Register `gravitySystem` as a tick system **before** `physicsSystem`:
@@ -589,7 +577,7 @@ body-body collision resolution.
 ### Performance
 
 - Cache SoA array references outside loops: `const velX = store.arrays.velocityX`
-- Bypass the PhysicsBodyComponent facade in hot-path systems — access SoA arrays directly
+- Bypass component helpers in hot-path systems — access SoA arrays directly
 - Use cross-store lookups (`store.indexOf(entityId)`) sparingly — one per entity per loop
 - Set `ignorePhysics = 1` for dying/phasing entities instead of removing the component
 
@@ -597,7 +585,7 @@ body-body collision resolution.
 
 - Call `physicsWorld.attach(world)` before `registerSystems()`
 - Register `gravitySystem` then `physicsSystem` as tick systems, `interpolationSystem` as frame system
-- Attach `TransformComponent` + `InterpolationComponent` on every entity that moves and renders
+- Attach `Transform` and `Interpolation` on every entity that moves and renders
 - Use `this.physics.getInterpolatedTransform()` in render systems — do not maintain separate visual position caches
 - Use `physicsWorld.getEntityPosition()` for fixed-point gameplay queries (ability targeting, range checks)
 - Use `applyImpulse3D` for ballistic launch (`v = i / mass`); use `applyImpulse` only for grounded XZ flick velocity

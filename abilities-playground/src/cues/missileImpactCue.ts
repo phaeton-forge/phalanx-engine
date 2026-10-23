@@ -3,8 +3,11 @@ import { FPVector3, FP } from '@phalanx-engine/math';
 import { PhysicsSoASchema } from '@phalanx-engine/physics';
 import type { EntityManager } from '@phalanx-engine/ecs';
 import { Cue } from '@phalanx-engine/abilities';
-import type { CueContext, GameplayCueDispatchedEvent } from '@phalanx-engine/abilities';
-import { ComponentType, TransformComponent } from '../components';
+import type {
+  CueContext,
+  GameplayCueDispatchedEvent,
+} from '@phalanx-engine/abilities';
+import { ComponentType, copyFpPosition } from '../components';
 import { easeOutCubic } from './vfxHelpers';
 
 const DURATION_SECONDS = 0.4;
@@ -80,7 +83,10 @@ export class MissileImpactCue extends Cue {
     }
 
     this.geometry = new THREE.BufferGeometry();
-    this.geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    this.geometry.setAttribute(
+      'position',
+      new THREE.BufferAttribute(positions, 3)
+    );
 
     this.material = new THREE.PointsMaterial({
       color: new THREE.Color('#ff8800'),
@@ -103,35 +109,40 @@ export class MissileImpactCue extends Cue {
 
   private tryGetImpactPoint(
     entityManager: EntityManager,
-    event: GameplayCueDispatchedEvent,
+    event: GameplayCueDispatchedEvent
   ): THREE.Vector3 | null {
     const source = entityManager.getEntity(event.sourceEntityId);
     if (!source) return null;
 
-    const sourceTransform = source.getComponent<TransformComponent>(ComponentType.Transform);
-    if (!sourceTransform) return null;
+    if (!source.hasComponent(ComponentType.Transform)) return null;
 
-    const src = FPVector3.ToFloat(sourceTransform.fpPosition);
+    const src = FPVector3.ToFloat(copyFpPosition(source.id));
     const target = entityManager.getEntity(event.targetEntityId);
-    const targetTransform = target?.getComponent<TransformComponent>(
-      ComponentType.Transform,
-    );
-    if (!target || !targetTransform) {
+    if (!target?.hasComponent(ComponentType.Transform)) {
       return new THREE.Vector3(src.x, src.y, src.z);
     }
 
-    const tgt = FPVector3.ToFloat(targetTransform.fpPosition);
+    const tgt = FPVector3.ToFloat(copyFpPosition(target.id));
 
     const physStore = entityManager.getOrCreateSoAStore(PhysicsSoASchema);
     const physIdx = physStore.indexOf(target.id);
     const targetRadius =
-      physIdx === -1 ? 1 : FP.ToFloat(FP.FromRaw(physStore.arrays.radius[physIdx]));
+      physIdx === -1
+        ? 1
+        : FP.ToFloat(FP.FromRaw(physStore.arrays.radius[physIdx]));
 
-    const normal = new THREE.Vector3(src.x - tgt.x, src.y - tgt.y, src.z - tgt.z);
+    const normal = new THREE.Vector3(
+      src.x - tgt.x,
+      src.y - tgt.y,
+      src.z - tgt.z
+    );
     const lenSq = normal.lengthSq();
     if (lenSq < 1e-8) return new THREE.Vector3(tgt.x, tgt.y, tgt.z);
     normal.multiplyScalar(1 / Math.sqrt(lenSq));
 
-    return new THREE.Vector3(tgt.x, tgt.y, tgt.z).addScaledVector(normal, targetRadius * 1.05 + 0.05);
+    return new THREE.Vector3(tgt.x, tgt.y, tgt.z).addScaledVector(
+      normal,
+      targetRadius * 1.05 + 0.05
+    );
   }
 }

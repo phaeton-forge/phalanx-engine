@@ -93,7 +93,7 @@ export interface PhysicsConfig {
 }
 
 /**
- * Configuration for the PhysicsBodyComponent constructor.
+ * Configuration passed to `attachPhysicsBody`.
  */
 export interface PhysicsBodyConfig {
   radius: FixedPoint;

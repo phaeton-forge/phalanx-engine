@@ -605,8 +605,8 @@ export const StateHelpers: {
 
 `writeSoAStore` writes `section(<schema name>, 1)`, `varint(rows)`, then per
 entity id ascending `u32 id` and every non-float field in schema declaration
-order. `f32` / `f64` fields are skipped (presentation caches such as
-`PhysicsBody.lastX`). It throws if the schema has no explicit, unique name.
+order. `f32` / `f64` fields are skipped. They are presentation caches,
+not simulation state. It throws if the schema has no explicit, unique name.
 
 ## 7. Bots
 
@@ -1163,9 +1163,9 @@ the correction lands.
   `insert` (`SpatialHashGrid.ts:42–44`, `:151–152`), so after a collision
   the grid is the pre-separation positions while the transforms are the
   post-separation ones. `CollisionSystem.processTick` (`:52–54`) has the
-  same order. `lastX`/`lastZ` are the f64 copies written at insert time
-  (`PhysicsSystem.ts:277–279`); they are lossy and are not a restore source.
-  There is no contact carried across ticks. The next physics step rebuilds
+  same order. The grid centers are the fixed-point values passed to
+  `insert`. Float render position comes from `Transform` and
+  `Interpolation`. There is no contact carried across ticks. The next physics step rebuilds
   again, so the physics step itself does not need the old grid. Anything
   that queries before that next rebuild does.
 - **Decision.** Do not change the live refresh boundary: rebuilding again

@@ -11,10 +11,10 @@ import {
 } from '@phalanx-engine/ecs';
 import { FP } from '@phalanx-engine/math';
 import {
-  PhysicsBodyComponent,
   PhysicsSoASchema,
-  TransformComponent,
   TransformSoASchema,
+  attachPhysicsBody,
+  attachTransform,
 } from '@phalanx-engine/physics';
 import { StateHelpers } from '../../../src/advanced/StateHelpers.js';
 import { BinaryStateReader, BinaryStateWriter } from '@phalanx-engine/ecs';
@@ -37,14 +37,8 @@ const SCHEMAS = [TransformSoASchema, PhysicsSoASchema, MarkerSchema] as const;
 class Body extends Entity {
   public constructor(id: number) {
     super(id);
-    this.addComponent(
-      new TransformComponent(this.id, {
-        x: FP._0,
-        y: FP._0,
-        z: FP._0,
-      })
-    );
-    this.addComponent(new PhysicsBodyComponent(this.id, { radius: FP._1 }));
+    attachTransform(this, { x: FP._0, y: FP._0, z: FP._0 });
+    attachPhysicsBody(this, { radius: FP._1 });
   }
 }
 
@@ -205,13 +199,9 @@ describe('SoA state helpers', () => {
       StateHelpers.writeSoAStores(writer, source, SCHEMAS);
     });
 
-    const physics = requireStore(source, PhysicsSoASchema);
     const shown = requireStore(source, MarkerSchema);
-    for (const id of physics.entityIds()) {
-      const physicsIndex = physics.indexOf(id);
+    for (const id of shown.entityIds()) {
       const markerIndex = shown.indexOf(id);
-      physics.arrays.lastX[physicsIndex] = id + 12.25;
-      physics.arrays.lastZ[physicsIndex] = -id;
       shown.arrays.shown[markerIndex] = id + 0.25;
     }
     const withoutFloats = finish((writer) => {
@@ -253,12 +243,8 @@ describe('SoA state helpers', () => {
       }
       expect(snapshotStore(store)).toEqual(expected[schemaIndex]);
     });
-    const restoredPhysics = requireStore(restored, PhysicsSoASchema);
-    for (const id of restoredPhysics.entityIds()) {
-      const physicsIndex = restoredPhysics.indexOf(id);
+    for (const id of restoredMarkers.entityIds()) {
       const markerIndex = restoredMarkers.indexOf(id);
-      expect(restoredPhysics.arrays.lastX[physicsIndex]).toBe(999);
-      expect(restoredPhysics.arrays.lastZ[physicsIndex]).toBe(999);
       expect(restoredMarkers.arrays.shown[markerIndex]).toBe(999);
     }
 

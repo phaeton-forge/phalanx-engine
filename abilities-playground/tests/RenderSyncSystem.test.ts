@@ -7,12 +7,14 @@ import {
   SystemContext,
 } from '@phalanx-engine/ecs';
 import type { IPhysicsWorld } from '@phalanx-engine/ecs';
-import { INTERPOLATION_COMPONENT_TYPE } from '@phalanx-engine/physics';
+import {
+  INTERPOLATION_COMPONENT_TYPE,
+  attachInterpolation,
+} from '@phalanx-engine/physics';
 import {
   ComponentType,
   HealAuraComponent,
   HealthBarComponent,
-  InterpolationComponent,
   MeshComponent,
   StatsComponent,
   TeamComponent,
@@ -44,7 +46,7 @@ describe('RenderSyncSystem', () => {
     const entity = new Entity(entityManager.allocateEntityId());
     const meshRoot = new THREE.Object3D();
     entity.addComponent(new MeshComponent(meshRoot));
-    entity.addComponent(new InterpolationComponent());
+    attachInterpolation(entity);
     entityManager.addEntity(entity);
     entityManager.onComponentAdded(entity, ComponentType.Mesh);
     entityManager.onComponentAdded(entity, INTERPOLATION_COMPONENT_TYPE);
@@ -83,7 +85,7 @@ describe('RenderSyncSystem', () => {
     auraRing.rotation.x = -Math.PI / 2;
 
     entity.addComponent(new MeshComponent(meshRoot));
-    entity.addComponent(new InterpolationComponent());
+    attachInterpolation(entity);
     entity.addComponent(
       new HealthBarComponent(new THREE.Object3D(), new THREE.Object3D(), 6)
     );
@@ -147,7 +149,7 @@ describe('RenderSyncSystem', () => {
     meshRoot.position.set(5, 6, 7);
     meshRoot.quaternion.set(0.1, 0.2, 0.3, 0.9);
     entity.addComponent(new MeshComponent(meshRoot));
-    entity.addComponent(new InterpolationComponent());
+    attachInterpolation(entity);
     entityManager.addEntity(entity);
     entityManager.onComponentAdded(entity, ComponentType.Mesh);
     entityManager.onComponentAdded(entity, INTERPOLATION_COMPONENT_TYPE);

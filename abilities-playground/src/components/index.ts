@@ -1,10 +1,25 @@
-export { ComponentType } from './Component';
+import type {
+  FPQuaternion as FPQuaternionType,
+  FPVector3 as FPVector3Type,
+} from '@phalanx-engine/math';
+import { readFpPosition, readFpRotation } from '@phalanx-engine/physics';
+import { ComponentType } from './Component';
+
+export { ComponentType };
 export type { ComponentTypeKey, IComponent } from './Component';
-export {
-  InterpolationComponent,
-  TransformComponent,
-  TransformSoASchema,
-} from '@phalanx-engine/physics';
+export { TransformSoASchema } from '@phalanx-engine/physics';
+
+/** Copy of the shared transform scratch. Safe to keep. */
+export function copyFpPosition(entityId: number): FPVector3Type {
+  const value = readFpPosition(entityId);
+  return { x: value.x, y: value.y, z: value.z };
+}
+
+/** Copy of the shared rotation scratch. Safe to keep. */
+export function copyFpRotation(entityId: number): FPQuaternionType {
+  const value = readFpRotation(entityId);
+  return { x: value.x, y: value.y, z: value.z, w: value.w };
+}
 export {
   TeamComponent,
   UnitTypeComponent,

@@ -20,7 +20,7 @@ A deterministic, fixed-point physics engine for the [Phalanx Engine](../README.m
 - **Raycast / Swept-Segment Query**: `raycastSegment()` / `segmentVsAABB()` return the nearest hit (point + surface normal) against caller-supplied AABBs — a **workaround for 3D collisions** (e.g. ordnance vs a building) until full 3D body-body collision exists (see [Raycast / swept-segment queries](#raycast--swept-segment-queries))
 - **Bounds Exit Mode**: Optional `ejectOnBoundsExit` mode marks out-of-bounds bodies as ignored and emits `BOUNDS_EXIT` events instead of clamping
 - **Event-Driven**: Collision, trigger enter, trigger exit, and bounds exit events emitted via phalanx-ecs `EventBus`
-- **Built-in Transform & Interpolation**: `TransformComponent` (SoA fixed-point spatial state), `InterpolationComponent`, and `InterpolationSystem` for tick-to-frame render smoothing
+- **Built-in Transform & Interpolation**: `Transform` and `PhysicsBody` are ecs `defineComponent` SoA components. `Interpolation` is transient (render samples; not saved, not in `configHash`). Helpers (`attachTransform`, `readFpPosition`, `attachPhysicsBody`, `setVelocity`, `attachInterpolation`) replace the deleted wrapper classes. `InterpolationSystem` snapshots in `afterTick` (outside the transient-read guard) and interpolates in `beforeFrame`.
 - **PhysicsWorld Facade**: One-liner setup — wraps GravitySystem + PhysicsSystem + InterpolationSystem, exposes event subscriptions, spatial queries, and interpolated transforms
 
 ## Core Components
@@ -31,13 +31,10 @@ A deterministic, fixed-point physics engine for the [Phalanx Engine](../README.m
 
 ### Transform & Interpolation
 
-- **TransformComponent**: SoA-backed fixed-point position and rotation (`TransformSoASchema`, `TRANSFORM_COMPONENT_TYPE`)
-- **InterpolationComponent**: Tick-to-tick transform samples for render smoothing
-- **InterpolationSystem**: Snapshots/captures transform state each tick and interpolates each frame (implements `IBeforeTick`, `IAfterTick`, `IBeforeFrame`)
-
-### Physics Body
-
-- **PhysicsBodyComponent**: SoA-backed component with velocity, radius, mass, restitution, friction, isStatic, ignorePhysics, useGravity, and gravityMultiplier fields
+- **Transform**: SoA fixed-point position and quaternion (`Transform`, `TransformSoASchema`, `TRANSFORM_COMPONENT_TYPE`). Attach with `attachTransform`. Read and write with `readFpPosition` / `writeFpPosition`, `readFpRotation` / `writeFpRotation`, `readYaw` / `writeYaw`. Reads return shared scratch.
+- **Interpolation**: transient tick samples (`Interpolation`, `INTERPOLATION_COMPONENT_TYPE`). `attachInterpolation` before the entity is registered. `readBroadphase` attaches it to every entity that has `Transform` and `PhysicsBody`, seeded from that transform.
+- **InterpolationSystem**: `afterTick` snapshots then captures; `beforeFrame` interpolates (`IAfterTick`, `IBeforeFrame`). Tick systems must not branch on `Interpolation`.
+- **PhysicsBody**: SoA velocity, radius, mass, restitution, friction, isStatic, ignorePhysics, useGravity, and gravityMultiplier (`PhysicsBody`, `PhysicsSoASchema`, `PHYSICS_BODY_COMPONENT_TYPE`). No display-float caches. Attach with `attachPhysicsBody`. Velocity helpers: `readVelocity`, `setVelocity`, `addVelocity`, `stopVelocity`.
 - **PhysicsSoASchema**: Schema definition for the SoA storage layout
 
 ### Collision Detection
@@ -89,15 +86,19 @@ import {
   type PhysicsWorldConfig,
 
   // Components
-  PhysicsBodyComponent,
+  PhysicsBody,
   PhysicsSoASchema,
   PHYSICS_BODY_COMPONENT_TYPE,
-  TransformComponent,
+  attachPhysicsBody,
+  Transform,
   TransformSoASchema,
   TRANSFORM_COMPONENT_TYPE,
-  InterpolationComponent,
+  attachTransform,
+  Interpolation,
   INTERPOLATION_COMPONENT_TYPE,
+  attachInterpolation,
   type PhysicsBodyConfig,
+  type InterpolationSample,
 
   // Collision primitives
   SpatialHashGrid,
@@ -142,9 +143,9 @@ import {
 } from '@phalanx-engine/ecs';
 import {
   PhysicsWorld,
-  PhysicsBodyComponent,
-  TransformComponent,
-  InterpolationComponent,
+  attachPhysicsBody,
+  attachTransform,
+  attachInterpolation,
   PHYSICS_BODY_COMPONENT_TYPE,
   TRANSFORM_COMPONENT_TYPE,
   INTERPOLATION_COMPONENT_TYPE,
@@ -216,15 +217,13 @@ world.registerSystems(
 world.start();
 
 // 4. Add transform, interpolation, and physics body to entities
-declare const entity: { id: number; addComponent(c: unknown): void };
+declare const entity: import('@phalanx-engine/ecs').Entity;
 const fpPosition = FPVector3.FromFloat(0, 0, 0);
 const fpRotation = FPQuaternion.Identity();
-entity.addComponent(new TransformComponent(entity.id, fpPosition, fpRotation));
-entity.addComponent(new InterpolationComponent(fpPosition, fpRotation));
-entity.addComponent(
-  new PhysicsBodyComponent(entity.id, { radius: FP.FromFloat(1.0) })
-);
-world.entityManager.addEntity(entity as any);
+attachTransform(entity, fpPosition, fpRotation);
+attachInterpolation(entity, fpPosition, fpRotation);
+attachPhysicsBody(entity, { radius: FP.FromFloat(1.0) });
+world.entityManager.addEntity(entity);
 
 // 5. Subscribe to collision events (must be called after world.start())
 physicsWorld.onCollision((event) => {
@@ -392,7 +391,7 @@ body — do not move on Y, so behavior is unchanged.
 Per-body opt-in, set via `PhysicsBodyConfig` (defaults: `useGravity=false`, `gravityMultiplier=FP._1`):
 
 ```typescript
-new PhysicsBodyComponent(entity.id, {
+attachPhysicsBody(entity, {
   radius: FP.FromFloat(0.2),
   mass: FP._1, // with mass 1, applyImpulse3D args equal desired velocity
   friction: FP._1, // no XZ damping for a projectile
@@ -519,80 +518,25 @@ raycasts (broad-phase against the spatial hash), and true 3D body-body collision
 resolution — at which point this swept-segment query becomes an optimization
 detail rather than the only 3D path.
 
-### `TransformComponent`
+### Transform, Interpolation, PhysicsBody
+
+Wrapper classes are gone. `Transform` and `PhysicsBody` are `defineComponent` SoA components. `Interpolation` is transient.
 
 ```typescript
-class TransformComponent extends SoAComponent<
-  typeof TransformSoASchema.definition
-> {
-  static readonly soaSchema: typeof TransformSoASchema;
-  readonly type: symbol; // TRANSFORM_COMPONENT_TYPE
+attachTransform(entity, fpPosition, fpRotation);
+attachPhysicsBody(entity, { radius: FP.FromFloat(1) });
+attachInterpolation(entity, fpPosition, fpRotation);
 
-  constructor(
-    entityId: number,
-    initialPosition?: FPVector3,
-    initialRotation?: FPQuaternion
-  );
-
-  fpPosition: FPVector3; // get/set — authoritative fixed-point position
-  fpRotation: FPQuaternion; // get/set — authoritative rotation quaternion
-  fpRotationEuler: FPVector3; // get/set — computed Euler view (radians, XYZ order)
-  fpRotationY: FixedPoint; // get/set — convenience Y-yaw (radians)
-}
+writeFpPosition(entity.id, fpPosition);
+writeFpRotation(entity.id, fpRotation);
+setVelocity(entity.id, vx, vy, vz);
 ```
 
-Rotation is authoritatively a quaternion (`fpRotation`). `fpRotationEuler` (XYZ Euler radians) and `fpRotationY` (yaw) are computed views over it — recomputed on each access, mirroring Unity's `Transform.rotation` / `Transform.eulerAngles`. Setting `fpRotationEuler` calls `FPQuaternion.FromEulerXYZ`; setting `fpRotationY` builds a yaw rotation around `FPVector3.Up`.
+`readFpPosition`, `readFpRotation`, and `readVelocity` return shared scratch. Copy before the next read. `readBroadphase` attaches `Interpolation` to every `Transform` + `PhysicsBody`, seeded from the transform. `InterpolationSystem.afterTick` snapshots then captures. Tick code must not branch on `Interpolation`.
 
-`TransformSoASchema` fields: `fpPositionX/Y/Z`, `fpRotationX/Y/Z/W` (all `i64`). Rotation defaults to the identity quaternion (`w = 1`).
-
-### `InterpolationComponent`
+`PhysicsBody` fields: `velocityX/Y/Z`, `radius`, `mass`, `restitution`, `friction`, `isStatic`, `ignorePhysics`, `useGravity`, `gravityMultiplier`. There is no `lastX` / `lastZ`.
 
 ```typescript
-class InterpolationComponent implements IComponent {
-  readonly type: symbol; // INTERPOLATION_COMPONENT_TYPE
-
-  constructor(initialPosition?: FPVector3, initialRotation?: FPQuaternion);
-
-  snapshot(): void; // copy current → previous (called by InterpolationSystem before tick)
-  capture(fpPosition: FPVector3, fpRotation: FPQuaternion): void; // capture authoritative state after tick
-}
-```
-
-Attach alongside `TransformComponent` on any entity that needs render interpolation.
-
-### `PhysicsBodyComponent`
-
-```typescript
-class PhysicsBodyComponent extends SoAComponent<
-  typeof PhysicsSoASchema.definition
-> {
-  static readonly soaSchema: typeof PhysicsSoASchema;
-  readonly type: symbol; // PHYSICS_BODY_COMPONENT_TYPE
-
-  constructor(entityId: number, config: PhysicsBodyConfig);
-
-  // Velocity
-  velocity: FPVector3; // get/set (returns cached object)
-  setVelocity(x: FixedPoint, y: FixedPoint, z: FixedPoint): void;
-  addVelocity(velocity: FPVector3): void;
-  stopVelocity(): void;
-
-  // Read-only attributes
-  readonly radius: FixedPoint;
-  readonly radiusFloat: number;
-  readonly mass: FixedPoint;
-  readonly restitution: FixedPoint;
-  readonly friction: FixedPoint;
-  readonly isStatic: boolean;
-  ignorePhysics: boolean; // get/set
-  useGravity: boolean; // get/set — opt in to GravitySystem acceleration
-  gravityMultiplier: FixedPoint; // get/set — per-body scale on world gravity (default FP._1)
-
-  // Spatial-grid bookkeeping (presentation only; do not read in simulation)
-  lastX: number;
-  lastZ: number;
-}
-
 interface PhysicsBodyConfig {
   radius: FixedPoint;
   mass?: FixedPoint; // default FP._1 — scales applyImpulse3D (v = i / mass)

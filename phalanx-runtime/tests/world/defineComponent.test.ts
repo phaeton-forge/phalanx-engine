@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  Entity,
   GameWorld,
   SoAComponent,
   defineComponent,
   writeSorted,
+  type IPoolableEntity,
   type SaveSection,
 } from '@phalanx-engine/ecs';
 import { DeterministicRandom } from '@phalanx-engine/math';
@@ -152,5 +154,111 @@ describe('ecs defineComponent save', () => {
     if (next === undefined) throw new Error('entity 1 missing');
     expect(restored.get(next, visual)).toEqual({ x: 0 });
     expect(restored.get(next, hp)?.hp).toBe(1n);
+  });
+
+  it('saves a Map with numeric keys in numeric order', () => {
+    const counts = defineComponent('Counts', {
+      kind: 'object',
+      create: () => ({ values: new Map<number, number>() }),
+      save(value, writer) {
+        writeSorted(writer, value.values, (key, item) => {
+          item.i32(key);
+          const count = value.values.get(key);
+          if (count === undefined) {
+            throw new Error(`missing ${String(key)}`);
+          }
+          item.i32(count);
+        });
+      },
+      load(reader) {
+        const values = new Map<number, number>();
+        for (const pair of reader.list(
+          (item) => [item.i32(), item.i32()] as const
+        )) {
+          values.set(pair[0], pair[1]);
+        }
+        return { values };
+      },
+    });
+    const save = (order: readonly number[]): Uint8Array => {
+      const game = world();
+      game.registerComponent(counts);
+      const entity = game.createEntityWithId(1);
+      game.add(entity, counts);
+      const value = game.get(entity, counts);
+      if (value === undefined) throw new Error('counts missing');
+      for (const key of order) value.values.set(key, key + 1);
+      return saveWorld(game);
+    };
+    const bytes = save([10, 2]);
+    expect(save([2, 10])).toEqual(bytes);
+
+    const restored = world();
+    restored.registerComponent(counts);
+    restoreWorld(restored, bytes);
+    const entity = restored.entityManager.getEntity(1);
+    if (entity === undefined) throw new Error('entity 1 missing');
+    expect([...(restored.get(entity, counts)?.values ?? [])]).toEqual([
+      [2, 3],
+      [10, 11],
+    ]);
+  });
+
+  it('drops object components on pool despawn so a respawn matches a restore', () => {
+    const note = defineComponent('Note', {
+      kind: 'object',
+      create: () => ({ text: '' }),
+      save(value, writer) {
+        writer.str(value.text);
+      },
+      load(reader) {
+        return { text: reader.str() };
+      },
+    });
+
+    class NoteEntity extends Entity implements IPoolableEntity<void> {
+      public onSpawn(): void {}
+
+      public onDespawn(): void {}
+    }
+
+    const make = (): GameWorld =>
+      new GameWorld({
+        tickFrameProvider: manualTickProvider(),
+        random: new DeterministicRandom(1),
+        pooling: {
+          entityTypes: {
+            note: {
+              factory: (id) => new NoteEntity(id),
+              pool: { initialSize: 1 },
+            },
+          },
+        },
+      });
+
+    const live = make();
+    live.registerComponent(note);
+    live.start();
+    const pools = live.pools;
+    if (pools === null) throw new Error('pools missing');
+    const first = pools.spawn<NoteEntity>('note', undefined);
+    live.add(first, note, { text: 'stale' });
+    pools.despawn(first);
+    const bytes = saveWorld(live);
+
+    const restored = make();
+    restored.registerComponent(note);
+    restored.start();
+    restoreWorld(restored, bytes);
+
+    const againLive = pools.spawn<NoteEntity>('note', undefined);
+    const restoredPools = restored.pools;
+    if (restoredPools === null) throw new Error('restored pools missing');
+    const againRestored = restoredPools.spawn<NoteEntity>('note', undefined);
+    expect(live.get(againLive, note)).toBeUndefined();
+    expect(restored.get(againRestored, note)).toBeUndefined();
+    expect(saveWorld(live)).toEqual(saveWorld(restored));
+    live.stop();
+    restored.stop();
   });
 });

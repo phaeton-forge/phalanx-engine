@@ -1,4 +1,5 @@
 import { type EventBus, type GameWorld } from '@phalanx-engine/ecs';
+import { Interpolation } from './components/interpolation.js';
 import { ensureBroadphaseSection } from './save/broadphase.js';
 import { FP } from '@phalanx-engine/math';
 import { PhysicsSystem } from './systems/PhysicsSystem.js';
@@ -74,15 +75,23 @@ export class PhysicsWorld {
   }
 
   /**
-   * Bind this facade to `world`. Sets `world.context.physics` and
-   * registers save section `physics.broadphase` once. Calling again with
-   * the same world is a no-op. A different world throws.
+   * Bind this facade to `world`. Sets `world.context.physics`,
+   * registers transient `Interpolation`, and registers save section
+   * `physics.broadphase` once. Calling again with the same world is a
+   * no-op. A different world throws.
+   *
+   * `Transform` and `PhysicsBody` stay unregistered. Their stores are
+   * created by {@link attachTransform} / {@link attachPhysicsBody}, so
+   * `configHash` and the SoA section order stay as they are. A7 registers
+   * them from `attach`.
    */
   public attach(world: GameWorld): void {
     if (this.attachedWorld !== undefined && this.attachedWorld !== world) {
       throw new Error('PhysicsWorld.attach: already attached to another world');
     }
+    const first = this.attachedWorld === undefined;
     this.attachedWorld = world;
+    if (first) world.registerComponent(Interpolation);
     world.context.physics = this;
     ensureBroadphaseSection(world);
   }

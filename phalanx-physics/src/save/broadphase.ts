@@ -6,6 +6,7 @@ import type {
 } from '@phalanx-engine/ecs';
 import { FixedPoint } from '@phalanx-engine/math';
 import type { BroadphaseCenter } from '../collision/SpatialHashGrid.js';
+import { restoreOwnedInterpolation } from '../components/interpolation.js';
 import { CollisionSystem } from '../systems/CollisionSystem.js';
 import { PhysicsSystem } from '../systems/PhysicsSystem.js';
 
@@ -154,9 +155,10 @@ function readCenter(r: StateReader): BroadphaseCenter {
  * Cached broadphase centers for every physics grid on the world.
  *
  * These are the fixed-point positions and radii last passed to
- * `SpatialHashGrid.insert` (`getCenters`), not the saved transforms and
- * not the lossy `lastX` / `lastZ` floats. Each of `x`, `z`, and `radius`
- * stores its raw base and its own precision.
+ * `SpatialHashGrid.insert` (`getCenters`), not the saved transforms.
+ * Each of `x`, `z`, and `radius` stores its raw base and its own
+ * precision. Float render position comes from `Transform` and
+ * `Interpolation`.
  *
  * After a resolving step the grid still holds the pre-separation centers.
  * Restore them with {@link readBroadphase}.
@@ -199,6 +201,7 @@ export function readBroadphase(r: StateReader, world: GameWorld): void {
     }
     live.owner.restoreBroadphase(item.centers);
   }
+  restoreOwnedInterpolation(world);
 }
 
 const BROADPHASE_SECTION: SaveSection = {

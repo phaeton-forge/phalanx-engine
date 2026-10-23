@@ -9,8 +9,8 @@ import {
   type SoAComponentStore,
 } from '@phalanx-engine/ecs';
 import { PhysicsSystem } from '../src/systems/PhysicsSystem';
-import { PhysicsSoASchema } from '../src/components/PhysicsBodyComponent';
-import { TransformSoASchema } from '../src/components/TransformComponent';
+import { PhysicsSoASchema } from '../src/components/physicsBody';
+import { TransformSoASchema } from '../src/components/transform';
 import type { PhysicsConfig } from '../src/types';
 import { addTransformRow } from './testTransformHelpers';
 
@@ -75,8 +75,6 @@ describe('PhysicsSystem Y integration', () => {
       ignorePhysics: 0,
       useGravity: 0,
       gravityMultiplier: FP.ToRaw(FP._1),
-      lastX: 0,
-      lastZ: 0,
     });
     addTransformRow(transformStore, entityId, 0, 0, posY);
   }

@@ -29,10 +29,12 @@ import {
 import { FP, type FixedPoint } from '@phalanx-engine/game/math';
 import {
   PHYSICS_BODY_COMPONENT_TYPE,
-  PhysicsBodyComponent,
   PhysicsSoASchema,
-  TransformComponent,
   TransformSoASchema,
+  attachPhysicsBody,
+  attachTransform,
+  setVelocity,
+  stopVelocity,
 } from '@phalanx-engine/game/physics';
 import type { BotNote, BotView, GameFacade, UnitView } from './GameFacade.js';
 import { contactsInclude, rememberContact } from '../game/skirmish/contacts.js';
@@ -268,20 +270,20 @@ class RangedComponent extends SoAComponent<{ range: 'i64' }> {
   }
 }
 
-class PlacedTransform extends TransformComponent {
-  public place(x: bigint, z: bigint): void {
-    const index = this.getIndex();
-    if (index < 0) return;
-    this.store.arrays.fpPositionX[index] = x;
-    this.store.arrays.fpPositionY[index] = 0n;
-    this.store.arrays.fpPositionZ[index] = z;
-  }
+function placeTransform(entityId: number, x: bigint, z: bigint): void {
+  const manager = SoAComponent.currentEntityManager();
+  const store = manager?.getSoAStore(TransformSoASchema);
+  if (store === undefined) return;
+  const index = store.indexOf(entityId);
+  if (index < 0) return;
+  store.arrays.fpPositionX[index] = x;
+  store.arrays.fpPositionY[index] = 0n;
+  store.arrays.fpPositionZ[index] = z;
 }
 
 class PooledUnit extends Entity implements IPoolableEntity<UnitSpawn> {
   public readonly unit: UnitComponent;
-  public readonly placed: PlacedTransform;
-  private readonly body: PhysicsBodyComponent | null;
+  private readonly withBody: boolean;
   private readonly ranged: RangedComponent | null;
 
   public constructor(
@@ -292,21 +294,18 @@ class PooledUnit extends Entity implements IPoolableEntity<UnitSpawn> {
     withRange: boolean
   ) {
     super(id);
+    this.withBody = withBody;
     this.unit = new UnitComponent(this.id);
     this.addComponent(this.unit);
-    this.placed = new PlacedTransform(this.id);
-    this.addComponent(this.placed);
+    attachTransform(this);
     if (withBody) {
-      this.body = new PhysicsBodyComponent(this.id, {
+      attachPhysicsBody(this, {
         radius: RADIUS,
         mass: FP._1,
         restitution: FP._0,
         friction: FP._0,
         useGravity: false,
       });
-      this.addComponent(this.body);
-    } else {
-      this.body = null;
     }
     if (withRange) {
       this.ranged = new RangedComponent(this.id);
@@ -325,8 +324,8 @@ class PooledUnit extends Entity implements IPoolableEntity<UnitSpawn> {
 
   public onSpawn(args: UnitSpawn): void {
     this.unit.write(this.kind, args.slot, args.team, args.x, args.z, this.id);
-    this.placed.place(args.x, args.z);
-    this.body?.stopVelocity();
+    placeTransform(this.id, args.x, args.z);
+    if (this.withBody) stopVelocity(this.id);
     if (this.kind === KIND_ARCHER) this.ranged?.write(ARCHER_RANGE);
   }
 
@@ -362,8 +361,8 @@ class PooledUnit extends Entity implements IPoolableEntity<UnitSpawn> {
 
   public move(dir: number): void {
     const velocity = VEL[dir];
-    if (velocity === undefined || this.body === null) return;
-    this.body.setVelocity(velocity[0], FP._0, velocity[1]);
+    if (velocity === undefined || !this.withBody) return;
+    setVelocity(this.id, velocity[0], FP._0, velocity[1]);
   }
 }
 

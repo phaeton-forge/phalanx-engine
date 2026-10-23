@@ -7,9 +7,8 @@
  * `@phalanx-engine/game/physics`, `@phalanx-engine/game/abilities` and
  * `@phalanx-engine/game/advanced`.
  *
- * `InterpolatedTransformSample` is exported by both ecs and physics. It is
- * not exported here; games import the physics type from
- * `@phalanx-engine/game/physics`.
+ * `InterpolatedTransformSample` is exported by physics only
+ * (`@phalanx-engine/game/physics`). It is not exported here.
  *
  * Low-level ecs symbols (`PoolManager`, `SoAComponentStore`,
  * `TickFrameManager`, `TYPED_ARRAY_CONSTRUCTORS`, `DebugPanel`) are on

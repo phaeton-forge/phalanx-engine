@@ -1,6 +1,8 @@
 import { SoAComponent } from './SoAComponent.js';
 import { defineSoASchema } from './SoASchema.js';
 import type { IComponent } from './Component.js';
+import type { EntityManager } from './EntityManager.js';
+import type { IPoolableComponent } from './pool/IPoolableComponent.js';
 import type { ComponentRegistration } from './ComponentRegistration.js';
 import type {
   SoAFieldType,
@@ -194,8 +196,8 @@ function defineSoa<S extends IntegerSchema>(
     schema,
     defaults,
     type: schema.type,
-    create(entityId, values) {
-      return createSoaRow(name, schema, defaults, entityId, values);
+    create(entityId, values, manager) {
+      return createSoaRow(name, schema, defaults, entityId, values, manager);
     },
   };
 }
@@ -261,10 +263,11 @@ function createSoaRow<S extends SoASchemaDefinition>(
   schema: SoASchema<S>,
   defaults: SoAFieldsOf<S>,
   entityId: number,
-  values: Readonly<Partial<Record<string, number | bigint>>> | undefined
+  values: Readonly<Partial<Record<string, number | bigint>>> | undefined,
+  manager: EntityManager | undefined
 ): IComponent {
-  const manager = SoAComponent.currentEntityManager();
-  if (manager === null) {
+  const resolved = manager ?? SoAComponent.currentEntityManager();
+  if (resolved === null) {
     throw new Error(
       `defineComponent '${name}': no EntityManager context; use world.add`
     );
@@ -282,11 +285,44 @@ function createSoaRow<S extends SoASchemaDefinition>(
     },
   };
   const initial = mergeSoaValues(component, values as Partial<SoAFieldsOf<S>>);
-  const store = manager.getOrCreateSoAStore(schema);
+  const store = resolved.getOrCreateSoAStore(schema);
   if (store.indexOf(entityId) === -1) {
     store.add(entityId, initial);
   }
-  return { type: schema.type };
+  return new SoaRow(schema, entityId, initial, resolved);
+}
+
+/**
+ * SoA row that follows the pool contract: `onSpawn` restores the values
+ * passed to `create`, `onDespawn` drops the row. Dormant pooled entities
+ * stay out of the store, matching the old `SoAComponent` lifecycle.
+ */
+class SoaRow<S extends SoASchemaDefinition>
+  implements IComponent, IPoolableComponent
+{
+  public readonly type: symbol;
+
+  public constructor(
+    private readonly schema: SoASchema<S>,
+    private readonly entityId: number,
+    private readonly defaults: SoAFieldsOf<S>,
+    private readonly manager: EntityManager
+  ) {
+    this.type = schema.type;
+  }
+
+  public onSpawn(): void {
+    const store = this.manager.getOrCreateSoAStore(this.schema);
+    if (store.indexOf(this.entityId) === -1) {
+      store.add(this.entityId, this.defaults);
+      return;
+    }
+    store.set(this.entityId, this.defaults);
+  }
+
+  public onDespawn(): void {
+    this.manager.getSoAStore(this.schema)?.remove(this.entityId);
+  }
 }
 
 function isObjectSpec(value: object): value is ObjectSpec<object> {

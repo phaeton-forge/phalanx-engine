@@ -228,11 +228,12 @@ const PHYSICS_NAMES: readonly string[] = [
   'INTERPOLATION_COMPONENT_TYPE',
   'IPhysicsTickProvider',
   'InterpolatedTransformSample',
-  'InterpolationComponent',
+  'Interpolation',
+  'InterpolationSample',
   'InterpolationSystem',
   'NarrowPhase',
   'PHYSICS_BODY_COMPONENT_TYPE',
-  'PhysicsBodyComponent',
+  'PhysicsBody',
   'PhysicsBodyConfig',
   'PhysicsConfig',
   'PhysicsEvents',
@@ -243,10 +244,41 @@ const PHYSICS_NAMES: readonly string[] = [
   'RayHit',
   'SpatialHashGrid',
   'TRANSFORM_COMPONENT_TYPE',
-  'TransformComponent',
+  'Transform',
   'TransformSoASchema',
   'Vec3FP',
+  'addVelocity',
+  'attachInterpolation',
+  'attachPhysicsBody',
+  'attachTransform',
+  'captureInterpolation',
+  'createInterpolationSample',
+  'interpolationOf',
+  'readFpPosition',
+  'readFpRotation',
+  'readFpRotationEuler',
+  'readFriction',
+  'readGravityMultiplier',
+  'readIgnorePhysics',
+  'readIsStatic',
+  'readMass',
+  'readRadius',
+  'readRestitution',
+  'readUseGravity',
+  'readVelocity',
+  'readYaw',
   'segmentVsAABB',
+  'setVelocity',
+  'snapshotInterpolation',
+  'stopVelocity',
+  'writeFpPosition',
+  'writeFpRotation',
+  'writeFpRotationEuler',
+  'writeGravityMultiplier',
+  'writeIgnorePhysics',
+  'writeUseGravity',
+  'writeVelocity',
+  'writeYaw',
 ];
 
 const ABILITIES_NAMES: readonly string[] = [
@@ -495,7 +527,7 @@ describe('@phalanx-engine/game subpath exports', () => {
     }
     expect(
       resolved.map((entry) => actual.get(entry.file)?.names.length)
-    ).toEqual([185, 9, 31, 85, 20, 3]);
+    ).toEqual([185, 9, 63, 85, 20, 3]);
   });
 
   it('keeps the name sets pairwise disjoint', () => {

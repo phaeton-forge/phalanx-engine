@@ -1,4 +1,3 @@
-import type { TransformComponent } from '@phalanx-engine/physics';
 import { FP } from '@phalanx-engine/math';
 import {
   gameplayCueKey,
@@ -6,7 +5,7 @@ import {
   type GameplayCueDispatchedEvent,
 } from '@phalanx-engine/abilities';
 import { GameWorld } from '@phalanx-engine/ecs';
-import { ComponentType, TeamComponent } from '../components';
+import { ComponentType, TeamComponent, copyFpPosition } from '../components';
 import { ArtilleryShellEntity } from '../entities/ArtilleryShell';
 import {
   SAU_PRIMARY_RADIUS,
@@ -46,17 +45,17 @@ export const sauArtillery = (
   if (!target || !caster) return;
   if (!world.pools) return;
 
-  const targetTransform = target.getComponent<TransformComponent>(
-    ComponentType.Transform
-  );
-  const casterTransform = caster.getComponent<TransformComponent>(
-    ComponentType.Transform
-  );
+  if (
+    !target.hasComponent(ComponentType.Transform) ||
+    !caster.hasComponent(ComponentType.Transform)
+  ) {
+    return;
+  }
   const casterTeam = caster.getComponent<TeamComponent>(ComponentType.Team);
-  if (!targetTransform || !casterTransform || !casterTeam) return;
+  if (!casterTeam) return;
 
-  const casterPos = casterTransform.fpPosition;
-  const targetPos = targetTransform.fpPosition;
+  const casterPos = copyFpPosition(caster.id);
+  const targetPos = copyFpPosition(target.id);
 
   // Dead zone: refuse to fire on enemies inside the minimum engage range.
   const dx = FP.Sub(targetPos.x, casterPos.x);

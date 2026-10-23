@@ -1,9 +1,7 @@
 import {
   GameSystem,
-  type CommandsBatch,
   type IAfterTick,
   type IBeforeFrame,
-  type IBeforeTick,
   type SoAComponentStore,
   type SystemContext,
 } from '@phalanx-engine/ecs';
@@ -16,9 +14,14 @@ import {
 } from '@phalanx-engine/math';
 import {
   INTERPOLATION_COMPONENT_TYPE,
-  InterpolationComponent,
+  interpolationOf,
+  snapshotInterpolation,
+  captureInterpolation,
 } from '../components/index.js';
-import { TRANSFORM_COMPONENT_TYPE, TransformSoASchema } from '../components/index.js';
+import {
+  TRANSFORM_COMPONENT_TYPE,
+  TransformSoASchema,
+} from '../components/index.js';
 
 export interface InterpolatedTransformSample {
   position: { x: number; y: number; z: number };
@@ -32,28 +35,34 @@ function lerpScalar(from: number, to: number, t: number): number {
 }
 
 /**
- * InterpolationSystem — snapshots transform state each tick and interpolates
- * between previous/current samples for rendering.
+ * InterpolationSystem — snapshots transform state after each tick and
+ * interpolates between previous/current samples for rendering.
+ *
+ * `afterTick` runs outside the transient-read guard. Snapshot and capture
+ * both happen there, after simulation has written `Transform`.
  */
 export class InterpolationSystem
   extends GameSystem
-  implements IBeforeTick, IAfterTick, IBeforeFrame
+  implements IAfterTick, IBeforeFrame
 {
-  private transformStore!: SoAComponentStore<typeof TransformSoASchema.definition>;
-  private readonly interpolatedSamples = new Map<number, InterpolatedTransformSample>();
+  private transformStore!: SoAComponentStore<
+    typeof TransformSoASchema.definition
+  >;
+  private readonly interpolatedSamples = new Map<
+    number,
+    InterpolatedTransformSample
+  >();
   /** Entities captured at least once while present in the interpolation query. */
   private readonly capturedEntities = new Set<number>();
 
   public override init(context: SystemContext): void {
     super.init(context);
-    this.transformStore = this.entityManager.getOrCreateSoAStore(TransformSoASchema);
-  }
-
-  public beforeTick(_tick: number, _commands: CommandsBatch): void {
-    this.snapshot();
+    this.transformStore =
+      this.entityManager.getOrCreateSoAStore(TransformSoASchema);
   }
 
   public afterTick(_tick: number): void {
+    this.snapshot();
     this.capture();
   }
 
@@ -62,37 +71,41 @@ export class InterpolationSystem
   }
 
   public snapshot(): void {
-    const entities = this.entityManager.queryEntities(INTERPOLATION_COMPONENT_TYPE);
+    const entities = this.entityManager.queryEntities(
+      INTERPOLATION_COMPONENT_TYPE
+    );
     for (const entity of entities) {
-      entity.getComponent<InterpolationComponent>(INTERPOLATION_COMPONENT_TYPE)?.snapshot();
+      const sample = interpolationOf(entity);
+      if (sample === undefined) continue;
+      snapshotInterpolation(sample);
     }
   }
 
   public capture(): void {
     const entities = this.entityManager.queryEntities(
       INTERPOLATION_COMPONENT_TYPE,
-      TRANSFORM_COMPONENT_TYPE,
+      TRANSFORM_COMPONENT_TYPE
     );
     const activeEntityIds = new Set<number>();
 
     for (const entity of entities) {
       activeEntityIds.add(entity.id);
 
-      const interpolation = entity.getComponent<InterpolationComponent>(INTERPOLATION_COMPONENT_TYPE);
+      const sample = interpolationOf(entity);
       const transformIndex = this.transformStore.indexOf(entity.id);
-      if (!interpolation || transformIndex === -1) continue;
+      if (sample === undefined || transformIndex === -1) continue;
 
       const fpPosition = this.readFpPosition(transformIndex);
       const fpRotation = this.readFpRotation(transformIndex);
 
       if (!this.capturedEntities.has(entity.id)) {
-        interpolation.capture(fpPosition, fpRotation);
-        interpolation.snapshot();
+        captureInterpolation(sample, fpPosition, fpRotation);
+        snapshotInterpolation(sample);
         this.capturedEntities.add(entity.id);
         continue;
       }
 
-      interpolation.capture(fpPosition, fpRotation);
+      captureInterpolation(sample, fpPosition, fpRotation);
     }
 
     for (const entityId of this.capturedEntities) {
@@ -110,20 +123,20 @@ export class InterpolationSystem
 
     const entities = this.entityManager.queryEntities(
       INTERPOLATION_COMPONENT_TYPE,
-      TRANSFORM_COMPONENT_TYPE,
+      TRANSFORM_COMPONENT_TYPE
     );
 
     for (const entity of entities) {
-      const interpolation = entity.getComponent<InterpolationComponent>(INTERPOLATION_COMPONENT_TYPE);
-      if (!interpolation) continue;
+      const sample = interpolationOf(entity);
+      if (sample === undefined) continue;
 
-      const previousPosition = FPVector3.ToFloat(interpolation.previousFpPosition);
-      const currentPosition = FPVector3.ToFloat(interpolation.currentFpPosition);
+      const previousPosition = FPVector3.ToFloat(sample.previousFpPosition);
+      const currentPosition = FPVector3.ToFloat(sample.currentFpPosition);
 
       const interpolatedRotation = FPQuaternion.Slerp(
-        interpolation.previousFpRotation,
-        interpolation.currentFpRotation,
-        fpAlpha,
+        sample.previousFpRotation,
+        sample.currentFpRotation,
+        fpAlpha
       );
 
       this.interpolatedSamples.set(entity.id, {
@@ -137,26 +150,28 @@ export class InterpolationSystem
     }
   }
 
-  public getInterpolatedTransform(entityId: number): InterpolatedTransformSample | undefined {
+  public getInterpolatedTransform(
+    entityId: number
+  ): InterpolatedTransformSample | undefined {
     return this.interpolatedSamples.get(entityId);
   }
 
   private readFpPosition(index: number): FPVector3Type {
     const arrays = this.transformStore.arrays;
     return {
-      x: FP.FromRaw(arrays.fpPositionX[index]),
-      y: FP.FromRaw(arrays.fpPositionY[index]),
-      z: FP.FromRaw(arrays.fpPositionZ[index]),
+      x: FP.FromRaw(arrays.fpPositionX[index] ?? 0n),
+      y: FP.FromRaw(arrays.fpPositionY[index] ?? 0n),
+      z: FP.FromRaw(arrays.fpPositionZ[index] ?? 0n),
     };
   }
 
   private readFpRotation(index: number): FPQuaternionType {
     const arrays = this.transformStore.arrays;
     return {
-      x: FP.FromRaw(arrays.fpRotationX[index]),
-      y: FP.FromRaw(arrays.fpRotationY[index]),
-      z: FP.FromRaw(arrays.fpRotationZ[index]),
-      w: FP.FromRaw(arrays.fpRotationW[index]),
+      x: FP.FromRaw(arrays.fpRotationX[index] ?? 0n),
+      y: FP.FromRaw(arrays.fpRotationY[index] ?? 0n),
+      z: FP.FromRaw(arrays.fpRotationZ[index] ?? 0n),
+      w: FP.FromRaw(arrays.fpRotationW[index] ?? 0n),
     };
   }
 }

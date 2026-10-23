@@ -107,7 +107,6 @@ const ROOT_NAMES = [
   'IRandom',
   'ITickFrameProvider',
   'IntegerSchema',
-  'InterpolatedTransformSample',
   'ObjectComponentDef',
   'ObjectPool',
   'PauseHandler',
@@ -138,6 +137,7 @@ const ROOT_NAMES = [
   'TransientComponentDef',
   'TypedArrayLike',
   'Unsubscribe',
+  'ValueComponent',
   'calculateSchemaByteSize',
   'createComponentTypeRegistry',
   'defineComponent',
@@ -167,6 +167,7 @@ const ROOT_VALUES = [
   'SystemContext',
   'SystemRegistry',
   'TYPED_ARRAY_CONSTRUCTORS',
+  'ValueComponent',
   'calculateSchemaByteSize',
   'createComponentTypeRegistry',
   'defineComponent',
@@ -224,7 +225,7 @@ describe('@phalanx-engine/ecs exports', () => {
     ).toEqual([73]);
     expect(
       resolved.map((entry) => actual.get(entry.file)?.values.length)
-    ).toEqual([26]);
+    ).toEqual([27]);
   });
 
   it('loads each entry by package name', async () => {

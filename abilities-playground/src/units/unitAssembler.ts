@@ -1,9 +1,9 @@
 import type { Entity } from '@phalanx-engine/ecs';
 import { FP, FPVector3, FPQuaternion } from '@phalanx-engine/math';
 import {
-  InterpolationComponent,
-  PhysicsBodyComponent,
-  TransformComponent,
+  attachInterpolation,
+  attachPhysicsBody,
+  attachTransform,
 } from '@phalanx-engine/physics';
 import {
   TeamComponent,
@@ -38,9 +38,7 @@ export function assembleUnit(
     teamId === 0 ? FPQuaternion.Identity() : FPQuaternion.FromYaw(FP.Pi);
 
   // --- common to every unit ---
-  entity.addComponent(
-    new TransformComponent(entity.id, fpPosition, fpRotation)
-  );
+  attachTransform(entity, fpPosition, fpRotation);
   entity.addComponent(new TeamComponent(teamId));
   entity.addComponent(
     new UnitTypeComponent(def.type, FP.FromFloat(def.detectionRange))
@@ -57,15 +55,13 @@ export function assembleUnit(
       refs.healthBarFullWidth
     )
   );
-  entity.addComponent(new InterpolationComponent(fpPosition, fpRotation));
-  entity.addComponent(
-    new PhysicsBodyComponent(entity.id, {
-      radius: FP.FromFloat(def.radius),
-      mass: FP.FromFloat(def.mass),
-      friction: FP.FromFloat(0.15),
-      restitution: FP.FromFloat(0.05),
-    })
-  );
+  attachInterpolation(entity, fpPosition, fpRotation);
+  attachPhysicsBody(entity, {
+    radius: FP.FromFloat(def.radius),
+    mass: FP.FromFloat(def.mass),
+    friction: FP.FromFloat(0.15),
+    restitution: FP.FromFloat(0.05),
+  });
 
   // --- optional components: driven purely by archetype data ---
   if (refs.spawnPoint)

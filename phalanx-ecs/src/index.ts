@@ -13,7 +13,7 @@ export { SystemContext } from './SystemContext.js';
 export { GameSystem } from './GameSystem.js';
 
 // GameWorld facade
-export { GameWorld, GameWorldEvents } from './GameWorld.js';
+export { GameWorld, GameWorldEvents, ValueComponent } from './GameWorld.js';
 export type { GameWorldConfig, GameWorldHooks } from './GameWorld.js';
 
 // Entity and Component
@@ -85,10 +85,7 @@ export {
 export type { IAbilitySystem } from './IAbilitySystem.js';
 
 // Physics world contract (implemented by phalanx-physics)
-export type {
-  IPhysicsWorld,
-  InterpolatedTransformSample,
-} from './IPhysicsWorld.js';
+export type { IPhysicsWorld } from './IPhysicsWorld.js';
 
 // Match-scoped deterministic RNG contract
 export type { IRandom } from './IRandom.js';

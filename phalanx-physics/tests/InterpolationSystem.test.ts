@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
-  CommandsBatch,
   Entity,
   EntityManager,
   EventBus,
@@ -9,13 +8,16 @@ import {
 } from '@phalanx-engine/ecs';
 import { FP, FPVector3, FPQuaternion } from '@phalanx-engine/math';
 import {
-  TransformComponent,
   TRANSFORM_COMPONENT_TYPE,
-} from '../src/components/TransformComponent';
+  attachTransform,
+  writeFpPosition,
+  writeYaw,
+} from '../src/components/transform';
 import {
-  InterpolationComponent,
   INTERPOLATION_COMPONENT_TYPE,
-} from '../src/components/InterpolationComponent';
+  attachInterpolation,
+  interpolationOf,
+} from '../src/components/interpolation';
 import { InterpolationSystem } from '../src/systems/InterpolationSystem';
 
 describe('InterpolationSystem', () => {
@@ -44,23 +46,16 @@ describe('InterpolationSystem', () => {
     rotationY = 0
   ): Entity {
     const entity = new Entity(entityManager.allocateEntityId());
-
-    const transform = new TransformComponent(
-      entity.id,
-      FPVector3.FromFloat(position.x, position.y, position.z),
-      FPQuaternion.FromAxisAngle(FPVector3.Up, FP.FromFloat(rotationY))
+    const fpPosition = FPVector3.FromFloat(position.x, position.y, position.z);
+    const fpRotation = FPQuaternion.FromAxisAngle(
+      FPVector3.Up,
+      FP.FromFloat(rotationY)
     );
-    const interpolation = new InterpolationComponent(
-      transform.fpPosition,
-      transform.fpRotation
-    );
-
-    entity.addComponent(transform);
-    entity.addComponent(interpolation);
+    attachTransform(entity, fpPosition, fpRotation);
+    attachInterpolation(entity, fpPosition, fpRotation);
     entityManager.addEntity(entity);
     entityManager.onComponentAdded(entity, TRANSFORM_COMPONENT_TYPE);
     entityManager.onComponentAdded(entity, INTERPOLATION_COMPONENT_TYPE);
-
     return entity;
   }
 
@@ -68,10 +63,7 @@ describe('InterpolationSystem', () => {
     const entity = addInterpolatedEntity({ x: 0, y: 0, z: 0 });
 
     system.capture();
-    const transform = entity.getComponent<TransformComponent>(
-      TRANSFORM_COMPONENT_TYPE
-    )!;
-    transform.fpPosition = FPVector3.FromFloat(10, 0, 0);
+    writeFpPosition(entity.id, FPVector3.FromFloat(10, 0, 0));
 
     system.snapshot();
     system.capture();
@@ -87,10 +79,7 @@ describe('InterpolationSystem', () => {
     const entity = addInterpolatedEntity({ x: 0, y: 0, z: 0 }, 0);
 
     system.capture();
-    const transform = entity.getComponent<TransformComponent>(
-      TRANSFORM_COMPONENT_TYPE
-    )!;
-    transform.fpRotationY = FP.FromFloat(Math.PI / 2);
+    writeYaw(entity.id, FP.FromFloat(Math.PI / 2));
 
     system.snapshot();
     system.capture();
@@ -99,10 +88,8 @@ describe('InterpolationSystem', () => {
     const sample = system.getInterpolatedTransform(entity.id);
     const r = sample!.rotation;
     const magnitude = Math.sqrt(r.x * r.x + r.y * r.y + r.z * r.z + r.w * r.w);
-    // Tolerance reflects the engine's Taylor-series trig precision.
     expect(magnitude).toBeCloseTo(1, 1);
 
-    // Halfway between identity and a +90° yaw is a +45° yaw quaternion.
     const expected = FPQuaternion.ToFloat(
       FPQuaternion.FromAxisAngle(FPVector3.Up, FP.FromFloat(Math.PI / 4))
     );
@@ -112,11 +99,7 @@ describe('InterpolationSystem', () => {
 
   it('snaps newly seen entities on first capture instead of lerping from defaults', () => {
     const entity = addInterpolatedEntity({ x: 0, y: 0, z: 0 });
-
-    const transform = entity.getComponent<TransformComponent>(
-      TRANSFORM_COMPONENT_TYPE
-    )!;
-    transform.fpPosition = FPVector3.FromFloat(20, 0, 0);
+    writeFpPosition(entity.id, FPVector3.FromFloat(20, 0, 0));
 
     system.capture();
     system.interpolate(0);
@@ -129,15 +112,10 @@ describe('InterpolationSystem', () => {
 
   it('re-snaps entities that leave and re-enter the interpolation query', () => {
     const entity = addInterpolatedEntity({ x: 0, y: 0, z: 0 });
-    const interpolation = entity.getComponent<InterpolationComponent>(
-      INTERPOLATION_COMPONENT_TYPE
-    )!;
-    const transform = entity.getComponent<TransformComponent>(
-      TRANSFORM_COMPONENT_TYPE
-    )!;
+    const interpolation = entity.getComponent(INTERPOLATION_COMPONENT_TYPE)!;
 
     system.capture();
-    transform.fpPosition = FPVector3.FromFloat(5, 0, 0);
+    writeFpPosition(entity.id, FPVector3.FromFloat(5, 0, 0));
     system.snapshot();
     system.capture();
 
@@ -145,7 +123,7 @@ describe('InterpolationSystem', () => {
     entityManager.onComponentRemoved(entity, INTERPOLATION_COMPONENT_TYPE);
     system.capture();
 
-    transform.fpPosition = FPVector3.FromFloat(30, 0, 0);
+    writeFpPosition(entity.id, FPVector3.FromFloat(30, 0, 0));
     entity.addComponent(interpolation);
     entityManager.onComponentAdded(entity, INTERPOLATION_COMPONENT_TYPE);
     system.capture();
@@ -153,20 +131,16 @@ describe('InterpolationSystem', () => {
 
     const sample = system.getInterpolatedTransform(entity.id);
     expect(sample?.position.x).toBeCloseTo(30);
+    expect(interpolationOf(entity)).toBeDefined();
   });
 
-  it('lifecycle hooks wire snapshot, capture, and interpolate', () => {
+  it('afterTick snapshots then captures so the previous sample is the last pose', () => {
     const entity = addInterpolatedEntity({ x: 0, y: 0, z: 0 });
-    const transform = entity.getComponent<TransformComponent>(
-      TRANSFORM_COMPONENT_TYPE
-    )!;
 
-    system.beforeTick(1, [] as unknown as CommandsBatch);
-    transform.fpPosition = FPVector3.FromFloat(10, 0, 0);
+    writeFpPosition(entity.id, FPVector3.FromFloat(10, 0, 0));
     system.afterTick(1);
 
-    system.beforeTick(2, [] as unknown as CommandsBatch);
-    transform.fpPosition = FPVector3.FromFloat(20, 0, 0);
+    writeFpPosition(entity.id, FPVector3.FromFloat(20, 0, 0));
     system.afterTick(2);
 
     system.beforeFrame(0.5, 0.016);

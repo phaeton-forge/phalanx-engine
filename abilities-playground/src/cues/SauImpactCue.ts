@@ -6,7 +6,7 @@ import type {
   CueContext,
   GameplayCueDispatchedEvent,
 } from '@phalanx-engine/abilities';
-import { ComponentType, TransformComponent } from '../components';
+import { ComponentType, copyFpPosition } from '../components';
 import { easeOutCubic, easeOutExpo } from './vfxHelpers';
 
 const DURATION_SECONDS = 0.6;
@@ -201,10 +201,7 @@ export function tryGetSourcePoint(
   event: GameplayCueDispatchedEvent
 ): THREE.Vector3 | null {
   const source = entityManager.getEntity(event.sourceEntityId);
-  const transform = source?.getComponent<TransformComponent>(
-    ComponentType.Transform
-  );
-  if (!transform) return null;
-  const p = FPVector3.ToFloat(transform.fpPosition);
+  if (!source?.hasComponent(ComponentType.Transform)) return null;
+  const p = FPVector3.ToFloat(copyFpPosition(source.id));
   return new THREE.Vector3(p.x, p.y, p.z);
 }

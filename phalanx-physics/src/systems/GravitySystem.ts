@@ -1,6 +1,10 @@
-import { GameSystem, type SoAComponentStore, type SystemContext } from '@phalanx-engine/ecs';
+import {
+  GameSystem,
+  type SoAComponentStore,
+  type SystemContext,
+} from '@phalanx-engine/ecs';
 import { FP, type FixedPoint } from '@phalanx-engine/math';
-import { PhysicsSoASchema } from '../components/PhysicsBodyComponent.js';
+import { PhysicsSoASchema } from '../components/physicsBody.js';
 
 /**
  * GravitySystem — applies gravitational ACCELERATION to velocity.
@@ -28,14 +32,18 @@ export class GravitySystem extends GameSystem {
   private readonly gravityAxis: 'x' | 'y' | 'z';
   private readonly tickDt: FixedPoint;
 
-  constructor(gravity: FixedPoint, gravityAxis: 'x' | 'y' | 'z', tickDt: FixedPoint) {
+  constructor(
+    gravity: FixedPoint,
+    gravityAxis: 'x' | 'y' | 'z',
+    tickDt: FixedPoint
+  ) {
     super();
     // TODO(v2): supporting 'x'/'z' would require PhysicsSystem to cede
     // integration of that axis to GravitySystem to avoid double-integration.
     if (gravityAxis !== 'y') {
       throw new Error(
         `GravitySystem: gravityAxis='${gravityAxis}' is not supported in v1. ` +
-          `Only 'y' is supported — X/Z are owned by PhysicsSystem's position integrator.`,
+          `Only 'y' is supported — X/Z are owned by PhysicsSystem's position integrator.`
       );
     }
     this.gravity = gravity;
@@ -45,7 +53,8 @@ export class GravitySystem extends GameSystem {
 
   public override init(context: SystemContext): void {
     super.init(context);
-    this.physicsStore = this.entityManager.getOrCreateSoAStore(PhysicsSoASchema);
+    this.physicsStore =
+      this.entityManager.getOrCreateSoAStore(PhysicsSoASchema);
   }
 
   public override processTick(_tick: number): void {
@@ -69,7 +78,9 @@ export class GravitySystem extends GameSystem {
       const multiplier = FP.FromRaw(physGravityMultiplier[physIndex]);
       // velocityY -= gravity * tickDt * gravityMultiplier
       const velY = FP.FromRaw(physVelocityY[physIndex]);
-      physVelocityY[physIndex] = FP.ToRaw(FP.Sub(velY, FP.Mul(delta, multiplier)));
+      physVelocityY[physIndex] = FP.ToRaw(
+        FP.Sub(velY, FP.Mul(delta, multiplier))
+      );
     }
   }
 

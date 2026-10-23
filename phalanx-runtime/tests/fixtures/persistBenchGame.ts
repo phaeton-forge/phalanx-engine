@@ -15,13 +15,13 @@ import {
   getAbilitySystemComponent,
 } from '@phalanx-engine/abilities';
 import {
-  PHYSICS_BODY_COMPONENT_TYPE,
-  PhysicsBodyComponent,
   PhysicsSoASchema,
   PhysicsWorld,
-  TRANSFORM_COMPONENT_TYPE,
-  TransformComponent,
   TransformSoASchema,
+  attachPhysicsBody,
+  attachTransform,
+  setVelocity,
+  writeFpPosition,
 } from '@phalanx-engine/physics';
 import {
   defineCommands,
@@ -90,18 +90,14 @@ export function createPersistBenchGame(unitCount: number) {
       if (abilities === undefined) {
         throw new Error('persist bench: ability system is not ready');
       }
-      this.addComponent(
-        new TransformComponent(this.id, { x: FP._0, y: FP._0, z: FP._0 })
-      );
-      this.addComponent(
-        new PhysicsBodyComponent(this.id, {
-          radius: FP._1,
-          mass: FP._1,
-          restitution: FP._0,
-          friction: FP._0,
-          useGravity: false,
-        })
-      );
+      attachTransform(this, { x: FP._0, y: FP._0, z: FP._0 });
+      attachPhysicsBody(this, {
+        radius: FP._1,
+        mass: FP._1,
+        restitution: FP._0,
+        friction: FP._0,
+        useGravity: false,
+      });
       this.addComponent(
         abilities.initComponent({
           attributes: { Health: HEALTH },
@@ -112,17 +108,9 @@ export function createPersistBenchGame(unitCount: number) {
     }
 
     public onSpawn(args: SpawnIndex): void {
-      const transform = this.getComponent<TransformComponent>(
-        TRANSFORM_COMPONENT_TYPE
-      );
       const position = positions[args.index];
-      if (transform !== undefined && position !== undefined) {
-        transform.fpPosition = position;
-      }
-      const body = this.getComponent<PhysicsBodyComponent>(
-        PHYSICS_BODY_COMPONENT_TYPE
-      );
-      body?.setVelocity(FP._0, FP._0, FP._0);
+      if (position !== undefined) writeFpPosition(this.id, position);
+      setVelocity(this.id, FP._0, FP._0, FP._0);
     }
 
     public onDespawn(): void {}

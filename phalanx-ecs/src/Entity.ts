@@ -1,4 +1,5 @@
 import type { IComponent } from './Component.js';
+import type { EntityManager } from './EntityManager.js';
 import { invokeComponentHooks } from './lifecycle.js';
 
 /**
@@ -22,6 +23,12 @@ export class Entity {
 
   /** @internal True while the entity sits despawned inside a pool. Managed by PoolManager. */
   public _inPool: boolean = false;
+
+  /**
+   * @internal Set while this entity is registered. Transient reads during
+   * a tick go through it. Cleared on remove.
+   */
+  public _manager: EntityManager | null = null;
 
   /**
    * @internal Set by the owning entity pool so {@link dispose} can drop
@@ -75,21 +82,38 @@ export class Entity {
    * Use: entity.getComponent<AttackComponent>(ComponentType.Attack)
    */
   public getComponent<T extends IComponent>(type: symbol): T | undefined {
+    this._manager?.assertComponentReadable(type);
+    return this._peekComponent<T>(type);
+  }
+
+  /**
+   * @internal Component lookup that does not apply the transient tick guard.
+   * Save and `world.add` use this so a tick can write a transient value.
+   */
+  public _peekComponent<T extends IComponent>(type: symbol): T | undefined {
     return this.components.get(type) as T | undefined;
   }
 
   /**
-   * Check if entity has a component
+   * Check if entity has a component.
+   * Reading a transient component during a tick throws.
    */
   public hasComponent(type: symbol): boolean {
+    this._manager?.assertComponentReadable(type);
+    return this._componentAttached(type);
+  }
+
+  /** @internal Presence check without the transient tick guard. */
+  public _componentAttached(type: symbol): boolean {
     return this.components.has(type);
   }
 
   /**
-   * Check if entity has all specified components
+   * Check if entity has all specified components.
+   * Reading a transient component during a tick throws.
    */
   public hasComponents(...types: symbol[]): boolean {
-    return types.every((type) => this.components.has(type));
+    return types.every((type) => this.hasComponent(type));
   }
 
   /**

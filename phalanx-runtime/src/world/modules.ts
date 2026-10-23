@@ -425,15 +425,22 @@ function ensureRows(
     if (store.indexOf(id) !== -1) continue;
     const entity = world.entityManager.getEntity(id) ?? pending.get(id);
     if (entity === undefined) continue;
-    if (registration !== undefined) {
-      entity.addComponent(registration.create(entity.id));
+    if (
+      registration !== undefined &&
+      !entity._componentAttached(registration.type)
+    ) {
+      entity.addComponent(
+        registration.create(entity.id, undefined, world.entityManager)
+      );
       // Shells are indexed when they are registered later. A startup
       // entity is already in the manager, so the new component has to
       // be published or queryEntities will not see it.
       if (pending.get(id) === undefined) {
         world.entityManager.onComponentAdded(entity, registration.type);
       }
-    } else {
+    } else if (store.indexOf(id) === -1) {
+      // Keep a factory row holder. Its spawn defaults are the values
+      // `create` stored; replacing the component would drop them.
       store.add(id, zeroValues(store));
     }
   }
@@ -508,7 +515,9 @@ export function spawn(
       if (values === undefined) {
         throw new Error(`spawn: missing values for '${name}'`);
       }
-      entity.addComponent(component.create(entity.id, values));
+      entity.addComponent(
+        component.create(entity.id, values, world.entityManager)
+      );
     }
   } catch (error) {
     try {
