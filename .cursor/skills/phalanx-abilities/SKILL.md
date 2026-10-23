@@ -330,7 +330,7 @@ use `Modifier.calculation` instead (see above).
 - Register `abilities.tickSystems` with other tick systems in **fixed order** (typically: input/commands → abilities activation → movement → physics → game reactions)
 - Each world owns its entity ids. Spawn with `world.createEntity` so peers that replay the same commands allocate the same ids
 - Subscribe to `ABILITY_ACTIVATED_EVENT` for UI feedback; do not rely on synchronous `activateAbility` return value for success
-- Attach `AbilitySystemComponent` via `abilities.initComponent()` rather than low-level attribute/tag components unless testing internals
+- Attach the `AbilityOwner` component via `entity.addComponent(abilities.initComponent())` rather than standalone `Attributes` / `ActiveEffects` / `GameplayTags` unless testing internals. Read state with `abilityOwnerOf` / `attributesOf` / `activeEffectsOf` / `gameplayTagsOf`
 - `GameplayCueBuffer` is world-scoped runtime — not an `IComponent`
 
 ## Determinism Rules
@@ -357,7 +357,7 @@ use `Modifier.calculation` instead (see above).
 | Read `current` attribute immediately after `applyEffect` | Wait for tick systems + aggregation |
 | `applyEffect` from cue listeners | Breaks determinism; use command/input systems |
 | Global attribute/effect registries | Registries are per `createAbilitySystem` / world |
-| Mutate `GameplayTagsComponent.tags` directly | Use `addTag` / effects / `removeEffectsByTag` |
+| Mutate `gameplayTagsOf(entity).tags` directly | Use `addTag` / effects / `removeEffectsByTag` |
 | Server relay simulating cues | Cues belong on client `GameWorld` only |
 
 ## Exports from phalanx-abilities
@@ -385,8 +385,16 @@ import {
 
 // Components
 import {
-  AbilitySystemComponent,
-  AbilitiesComponentType,
+  AbilityOwner,
+  ActiveEffects,
+  Attributes,
+  GameplayTags,
+  abilityOwnerOf,
+  activeEffectsOf,
+  attributesOf,
+  gameplayTagsOf,
+  type AbilityOwnerInit,
+  type AbilityOwnerState,
 } from '@phalanx-engine/abilities';
 
 // Events & cues

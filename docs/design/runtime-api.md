@@ -62,7 +62,7 @@ are separate subpaths. Fixed-point math is only on `/math`. Advanced
 helpers are `@phalanx-engine/game/advanced`.
 
 Initial GAS `pendingAdd` effects are captured on the first pool return and
-copied back by `AbilitySystemComponent.onEnable`. `restoreWorld` calls
+copied back by the `AbilityOwner` component `onEnable`. `restoreWorld` calls
 `onEnable('restore')` and does not reseed.
 
 `spawnWithId` throws `spawnWithId: entity N already exists` when that id is
@@ -1119,22 +1119,22 @@ the correction lands.
 ### 5. GAS state
 
 - **Evidence.** Per-entity components:
-  - `AttributesComponent`: `base`, `current` and `dirty: Uint8Array`
-    (`phalanx-abilities/src/components/AttributesComponent.ts:8`, `:19`). `dirty`
+  - `Attributes`: `base`, `current` and `dirty: Uint8Array`
+    (`phalanx-abilities/src/components/attributes.ts`). `dirty`
     is sim-relevant (it drives aggregation).
-  - `ActiveEffectsComponent`: `queue` of `ActiveEffectInstance`
+  - `ActiveEffects`: `queue` of `ActiveEffectInstance`
     (`instanceId`, `defId`, `remainingTicks`, `nextPeriodTick`,
     `sourceEntityId`, `enteredOnTick`, `capturedMagnitudes`, which may be
     `null`/`undefined`) and `pendingAdd` (`defId`, `sourceEntityId`,
     `setByCaller?: ReadonlyMap<string, unknown> | null`,
-    `ActiveEffectsComponent.ts:9`, `:15`).
-  - `GameplayTagsComponent`: `tags`, `adHocTags` (Sets) and
-    `effectGrantCounts` (Map) (`GameplayTagsComponent.ts:39`, `:47`).
-  - `AbilitySystemComponent.abilities` (a Set).
+    `activeEffects.ts`).
+  - `GameplayTags`: `tags`, `adHocTags` (Sets) and
+    `effectGrantCounts` (Map) (`gameplayTags.ts`).
+  - `AbilityOwner.abilities` (a Set, `abilityOwner.ts`).
 - **Draft errors.** There is no `stacks` field; `setByCaller` exists only on
   pending entries; there is no cooldown component (cooldowns are effects and
   tags).
-- **Lazy components.** `ActiveEffectsComponent` and others are created on
+- **Lazy components.** `ActiveEffects` and others are created on
   first use (`AbilityActivationSystem.ts:434–443`), so the helper must encode
   which GAS components each entity has and recreate them on restore.
 - **Blocker.** The per-world runtime is private inside `AbilitySystemImpl`

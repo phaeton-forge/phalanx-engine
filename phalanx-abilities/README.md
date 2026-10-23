@@ -132,7 +132,7 @@ const abilities = createAbilitySystem(world, {
 
 world.registerSystems([...abilities.tickSystems], [], 'default');
 
-// 3. Spawn a combatant with the bundled AbilitySystemComponent.
+// 3. Spawn a combatant with the AbilityOwner component.
 const hero = world.createEntity((id) => new Entity(id));
 const abilityComponent = abilities.initComponent({
   attributes: { Health: FP.FromInt(100), Mana: FP.FromInt(50) },
@@ -181,7 +181,7 @@ Gameplay cues exist only where deterministic simulation runs (typically each **c
 
 ### Attributes
 
-Registered with `defineAttribute`. Each entity with an `AbilitySystemComponent` holds `base` and `current` in `BigInt64Array` slots indexed by registration order.
+Registered with `defineAttribute`. Each entity with an `AbilityOwner` holds `base` and `current` in `BigInt64Array` slots indexed by registration order.
 
 Modifier aggregation (FIFO by `instanceId`):
 
@@ -204,7 +204,7 @@ aggregation is exactly the pre-existing `modifier.magnitude` path.
 | Type       | Behavior                                                                                |
 | ---------- | --------------------------------------------------------------------------------------- |
 | `Instant`  | Modifies `base` immediately when applied                                                |
-| `Duration` | Stays in `ActiveEffectsComponent.queue` for `durationTicks`; grants tags while active   |
+| `Duration` | Stays in the `ActiveEffects` queue for `durationTicks`; grants tags while active        |
 | `Periodic` | Duration + fires modifiers every `periodTicks`; optional `executePeriodicOnApplication` |
 
 Durations and periods are **whole simulation ticks** (`number`), compared to `runtime.currentTick` — not `FixedPoint` values.
@@ -269,7 +269,7 @@ abilities.applyEffect(enemyId, 'Effect.AutoAttack.Damage', casterId);
 
 A calculation reads source/target attributes exactly the way any other game system does:
 `ctx.abilities.tryGetAttribute(entityId, attrId)` returns `undefined` when the entity, its
-`AttributesComponent`, or the attribute id is missing (including a missing/despawned source) —
+`Attributes` component, or the attribute id is missing (including a missing/despawned source) —
 no separate reader type to learn, and no allocation per application.
 
 **Snapshot semantics — the one rule to remember:** every modifier's effective magnitude is
@@ -605,7 +605,7 @@ createAbilitySystem(world: GameWorld, config: CreateAbilitySystemConfig): Abilit
 
 | Method                                                     | Description                                                                                                                                                                                                                                                                                                                                                      |
 | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `initComponent(init?)`                                     | Create `AbilitySystemComponent` with optional seed data                                                                                                                                                                                                                                                                                                          |
+| `initComponent(init?)`                                     | Create the `AbilityOwner` component with optional seed data                                                                                                                                                                                                                                                                                                      |
 | `activateAbility(casterId, abilityId, providedTarget?)`    | Queue activation                                                                                                                                                                                                                                                                                                                                                 |
 | `applyEffect(targetId, effectId, sourceId?, setByCaller?)` | Queue effect (`sourceId` defaults to `-1`; `setByCaller` is an optional `ReadonlyMap<string, unknown>` forwarded to `Modifier.calculation`)                                                                                                                                                                                                                      |
 | `getAttribute` / `tryGetAttribute`                         | Read base/current                                                                                                                                                                                                                                                                                                                                                |
@@ -618,7 +618,7 @@ createAbilitySystem(world: GameWorld, config: CreateAbilitySystemConfig): Abilit
 
 ### Pooling
 
-A pooled entity loses transient GAS state when it returns to the pool. `createAbilitySystem` installs that reset on the pool. It runs on the factory's initial dormant pass, on `pools.despawn`, and again when a snapshot restore parks a free-list entity. The first call records the factory shell: attribute `base` / `current` / `dirty`, the equipped ability set, and ad-hoc tags plus effect grants as the factory left them (`initComponent` tags included). Later calls clear the effect queue and `pendingAdd`, copy that image back, and remove GAS components attached during the life (`applyEffect`, `addTag`, or a standalone `AttributesComponent` on a bare entity). Factory `pendingAdd` is captured in `initComponent`, before a snapshot can replace the list, and `onEnable` copies it back after a pool spawn. `onEnable('restore')` does not reseed. Effects added after that capture are not part of the image. Attributes, the granted ability set, and `initComponent` tags match a fresh spawn after despawn. A bare entity is component-free again once it is dormant. A free-list entity is not written by `writeAbilities`. Restore builds a fresh factory instance and runs the hook again, so a respawn whose `onSpawn` does not rewrite attributes matches a respawn that never snapshotted. The reset function is internal.
+A pooled entity loses transient GAS state when it returns to the pool. `createAbilitySystem` installs that reset on the pool. It runs on the factory's initial dormant pass, on `pools.despawn`, and again when a snapshot restore parks a free-list entity. The first call records the factory shell: attribute `base` / `current` / `dirty`, the equipped ability set, and ad-hoc tags plus effect grants as the factory left them (`initComponent` tags included). Later calls clear the effect queue and `pendingAdd`, copy that image back, and remove GAS components attached during the life (`applyEffect`, `addTag`, or a standalone `Attributes` component on a bare entity). Factory `pendingAdd` is captured in `initComponent`, before a snapshot can replace the list, and `onEnable` copies it back after a pool spawn. `onEnable('restore')` does not reseed. Effects added after that capture are not part of the image. Attributes, the granted ability set, and `initComponent` tags match a fresh spawn after despawn. A bare entity is component-free again once it is dormant. A free-list entity is not written by `writeAbilities`. Restore builds a fresh factory instance and runs the hook again, so a respawn whose `onSpawn` does not rewrite attributes matches a respawn that never snapshotted. The reset function is internal.
 
 Lower-level access: `AbilitySystemFacade` is exported for advanced wiring; most games use `createAbilitySystem` only.
 
@@ -650,7 +650,9 @@ import {
 
 ### Components and types
 
-Exported: `AbilitySystemComponent`, `AbilitiesComponentType`, effect/attribute/tag types, individual systems for custom pipelines.
+Components are `defineComponent` object definitions: `AbilityOwner` (attached by `initComponent`), and the standalone `Attributes`, `ActiveEffects` and `GameplayTags` that systems add on demand. Each has `save` / `load`; the `abilities` save section writes them, so do not pass them to `world.registerComponent`. `GameplayTags.save` and `AbilityOwner.save` write sets and maps sorted by UTF-16 code unit.
+
+Read values with `abilityOwnerOf(entity)`, `attributesOf(entity)`, `activeEffectsOf(entity)` and `gameplayTagsOf(entity)` (the last three fall back to the standalone component). Test presence with `entity.hasComponent(Attributes.type)`. Also exported: the `*State` value types, effect/attribute/tag types and individual systems for custom pipelines.
 
 See `src/index.ts` for the full public surface.
 

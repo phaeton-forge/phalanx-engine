@@ -354,7 +354,7 @@ Pooling is **engine-driven**. Game code calls exactly two APIs:
   idempotent and runs again when a restored free-list entity is parked.
   Factory `pendingAdd` is captured in `initComponent`, before a snapshot
   replaces the list on a restored live entity, and is not part of the
-  shell image. `AbilitySystemComponent.onEnable` copies that capture back
+  shell image. `AbilityOwner` `onEnable` copies that capture back
   after a pool spawn.
   `restoreWorld` calls `onEnable('restore')`, which does not reseed, so
   the snapshot's pending list is kept. Attributes, the granted ability set, and `initComponent`
@@ -408,7 +408,7 @@ Pooling is **engine-driven**. Game code calls exactly two APIs:
   `current` values before the tick pipeline has run.
 - The `providedTarget` object is snapshotted — MUST NOT be mutated after the
   call.
-- **Never mutate `GameplayTagsComponent.tags` directly.** Use `addTag()`,
+- **Never mutate `gameplayTagsOf(entity).tags` directly.** Use `addTag()`,
   effects with `tagsGranted`, or `removeEffectsByTag()`.
 - Tag naming: dot-namespaced PascalCase — `Team.Red`, `Cooldown.Ability.Strike`,
   `State.Debuff.ArmorShred`.
