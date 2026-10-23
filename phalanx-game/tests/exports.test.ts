@@ -283,7 +283,6 @@ const PHYSICS_NAMES: readonly string[] = [
 
 const ABILITIES_NAMES: readonly string[] = [
   'ABILITY_ACTIVATED_EVENT',
-  'AbilitiesComponentType',
   'AbilityActivatedEvent',
   'AbilityActivationContext',
   'AbilityActivationRequest',
@@ -292,26 +291,29 @@ const ABILITIES_NAMES: readonly string[] = [
   'AbilityHook',
   'AbilityHookExecutorSystem',
   'AbilityHooksRegistry',
+  'AbilityOwner',
+  'AbilityOwnerInit',
+  'AbilityOwnerState',
   'AbilityRegistry',
   'AbilityRuntimeState',
   'AbilityStateReader',
   'AbilitySystem',
-  'AbilitySystemComponent',
-  'AbilitySystemComponentInit',
   'AbilitySystemDefinitions',
   'AbilitySystemFacade',
   'AbilitySystemPipeline',
   'AbilitySystemRegistries',
   'AbilitySystemRuntime',
   'ActiveEffectInstance',
-  'ActiveEffectsComponent',
+  'ActiveEffects',
+  'ActiveEffectsState',
   'AttributeAggregationSystem',
   'AttributeClampMode',
   'AttributeDef',
   'AttributeInitializer',
   'AttributeRegistry',
   'AttributeValue',
-  'AttributesComponent',
+  'Attributes',
+  'AttributesState',
   'CreateAbilitySystemConfig',
   'Cue',
   'CueBufferCleanupSystem',
@@ -334,7 +336,8 @@ const ABILITIES_NAMES: readonly string[] = [
   'GameplayCueBuffer',
   'GameplayCueBufferView',
   'GameplayCueDispatchedEvent',
-  'GameplayTagsComponent',
+  'GameplayTags',
+  'GameplayTagsState',
   'InitialEffect',
   'InstanceIdCounter',
   'MagnitudeCalcContext',
@@ -352,7 +355,10 @@ const ABILITIES_NAMES: readonly string[] = [
   'TargetResolver',
   'TargetSpec',
   'abilityComponentTypes',
+  'abilityOwnerOf',
+  'activeEffectsOf',
   'appendGameplayCueEvents',
+  'attributesOf',
   'createAbilitySystem',
   'createAbilitySystemRegistries',
   'createAbilitySystemRuntime',
@@ -362,11 +368,8 @@ const ABILITIES_NAMES: readonly string[] = [
   'defineAttribute',
   'defineEffect',
   'gameplayCueKey',
-  'getAbilitySystemComponent',
-  'getActiveEffectsComponent',
-  'getAttributesComponent',
+  'gameplayTagsOf',
   'getCueIdsForPhase',
-  'getGameplayTagsComponent',
 ];
 
 const ADVANCED_NAMES: readonly string[] = [
@@ -527,7 +530,7 @@ describe('@phalanx-engine/game subpath exports', () => {
     }
     expect(
       resolved.map((entry) => actual.get(entry.file)?.names.length)
-    ).toEqual([185, 9, 63, 85, 20, 3]);
+    ).toEqual([185, 9, 63, 88, 20, 3]);
   });
 
   it('keeps the name sets pairwise disjoint', () => {
