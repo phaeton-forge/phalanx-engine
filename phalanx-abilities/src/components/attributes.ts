@@ -58,6 +58,11 @@ export function loadAttributes(r: StateReader): AttributesState {
   return attributes;
 }
 
+/**
+ * Standalone attributes. Attach with
+ * `AbilitySystemFacade.initAttributesForEntity`, never `world.add`:
+ * `world.add` creates zero-length arrays that ignore the attribute registry.
+ */
 export const Attributes = defineComponent<AttributesState>('Attributes', {
   kind: 'object',
   create: () => createAttributesState(0),

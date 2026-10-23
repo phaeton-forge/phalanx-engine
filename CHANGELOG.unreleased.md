@@ -741,6 +741,11 @@ Entries collected per package until the synchronized 0.3.0 release
   `AbilityOwnerState`, `AttributesState`, `ActiveEffectsState` and
   `GameplayTagsState` objects. `entity.hasComponent(Attributes.type)`
   replaces `AbilitiesComponentType.Attributes`.
+- **API change:** `AbilitySystemFacade.initAttributesForEntity` returns
+  `AttributesState` instead of `AttributesComponent`.
+- Attach `AbilityOwner` only through `initComponent` and standalone
+  `Attributes` only through `initAttributesForEntity`. `world.add` on
+  either creates a broken owner (no pool holder, zero attributes).
 - `AbilitySystemComponentInit` is renamed `AbilityOwnerInit`.
   `initComponent(init)` returns an `IComponent` for
   `entity.addComponent`; read it back with `abilityOwnerOf(entity)`.

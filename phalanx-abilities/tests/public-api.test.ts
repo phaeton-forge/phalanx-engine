@@ -11,7 +11,7 @@ import {
 } from '../src';
 
 describe('public ability system API', () => {
-  it('builds an initialized AbilitySystemComponent for direct entity attachment', () => {
+  it('builds an initialized AbilityOwner for direct entity attachment', () => {
     const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
     const abilities = createAbilitySystem(world, {
       definitions: defineAbilitySystem({
