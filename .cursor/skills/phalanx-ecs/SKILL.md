@@ -40,7 +40,7 @@ GameWorld (Facade)
     or PhalanxClient     ← Multiplayer tick/frame provider
 ```
 
-Pipeline per tick:  `IBeforeTick systems → beforeTick hook → [tick systems processTick()] → IAfterTick systems → afterTick hook`
+Pipeline per tick: `IBeforeTick systems → beforeTick hook → [tick systems processTick()] → IAfterTick systems → afterTick hook`
 Pipeline per frame: `IBeforeFrame systems → beforeFrame hook → [frame systems update()] → IAfterFrame systems → afterFrame hook`
 
 Systems that implement `IBeforeTick`, `IAfterTick`, `IBeforeFrame`, or `IAfterFrame` are invoked automatically by GameWorld — no manual hook wiring needed.
@@ -55,8 +55,8 @@ Systems that implement `IBeforeTick`, `IAfterTick`, `IBeforeFrame`, or `IAfterFr
 import { GameWorld } from '@phalanx-engine/ecs';
 
 const world = new GameWorld({
-  tickRate: 60,          // Ticks per second (default: 60)
-  maxFrameTime: 0.25,   // Max frame time cap in seconds (default: 0.25)
+  tickRate: 60, // Ticks per second (default: 60)
+  maxFrameTime: 0.25, // Max frame time cap in seconds (default: 0.25)
 });
 
 world.addSystem(movementSystem, { phase: 'input' });
@@ -76,7 +76,7 @@ import { GameWorld } from '@phalanx-engine/ecs';
 const client = await PhalanxClient.create({ serverUrl: '...' });
 
 const world = new GameWorld({
-  tickFrameProvider: client,   // PhalanxClient implements ITickFrameProvider
+  tickFrameProvider: client, // PhalanxClient implements ITickFrameProvider
 });
 
 world.addSystem(movementSystem, { phase: 'input' });
@@ -89,7 +89,7 @@ world.start({
     lockstepManager.cleanup();
   },
   afterFrame(alpha, dt) {
-    scene.render();  // Must call manually — GameWorld does NOT render
+    scene.render(); // Must call manually — GameWorld does NOT render
     // Interpolation is handled by phalanx-physics InterpolationSystem when registered
   },
 });
@@ -242,8 +242,12 @@ export class HealthComponent implements IComponent {
     this._maxHealth = maxHealth;
   }
 
-  public get health(): number { return this._health; }
-  public get maxHealth(): number { return this._maxHealth; }
+  public get health(): number {
+    return this._health;
+  }
+  public get maxHealth(): number {
+    return this._maxHealth;
+  }
 
   public takeDamage(amount: number): void {
     this._health = Math.max(0, this._health - amount);
@@ -253,7 +257,9 @@ export class HealthComponent implements IComponent {
     this._health = Math.min(this._maxHealth, this._health + amount);
   }
 
-  public get isDead(): boolean { return this._health <= 0; }
+  public get isDead(): boolean {
+    return this._health <= 0;
+  }
 }
 ```
 
@@ -320,14 +326,14 @@ Components backed by contiguous typed arrays (`Float64Array`, `BigInt64Array`, `
 
 #### SoA Field Types
 
-| Type  | TypedArray       | JS Value  | Use Case                                       |
-| ----- | ---------------- | --------- | ---------------------------------------------- |
-| `f64` | `Float64Array`   | `number`  | Floating-point values, visual positions         |
-| `f32` | `Float32Array`   | `number`  | Lower-precision floats                          |
-| `i32` | `Int32Array`     | `number`  | Signed integers (health, damage, counters)      |
-| `u32` | `Uint32Array`    | `number`  | Unsigned integers (entity IDs, indices)         |
-| `u8`  | `Uint8Array`     | `number`  | Boolean flags (0/1), small enums                |
-| `i64` | `BigInt64Array`  | `bigint`  | Fixed-point raw values (deterministic physics)  |
+| Type  | TypedArray      | JS Value | Use Case                                       |
+| ----- | --------------- | -------- | ---------------------------------------------- |
+| `f64` | `Float64Array`  | `number` | Floating-point values, visual positions        |
+| `f32` | `Float32Array`  | `number` | Lower-precision floats                         |
+| `i32` | `Int32Array`    | `number` | Signed integers (health, damage, counters)     |
+| `u32` | `Uint32Array`   | `number` | Unsigned integers (entity IDs, indices)        |
+| `u8`  | `Uint8Array`    | `number` | Boolean flags (0/1), small enums               |
+| `i64` | `BigInt64Array` | `bigint` | Fixed-point raw values (deterministic physics) |
 
 #### How to Create a SoA component
 
@@ -384,17 +390,17 @@ not touch another.
 
 ### Decision Matrix: IComponent vs SoA component
 
-| Criterion                        | IComponent            | SoA component         |
-| -------------------------------- | --------------------- | --------------------- |
-| Iterated every tick in hot loop  | No                    | **Yes**               |
-| Hundreds/thousands of instances  | No                    | **Yes**               |
-| Flat numeric fields              | Either                | **Yes**               |
-| Complex/nested data              | **Yes**               | No                    |
-| Few instances                    | **Yes**               | No                    |
-| Needs deterministic i64 storage  | No                    | **Yes**               |
-| Stores object references         | **Yes**               | No                    |
-| Strings / variable-length data   | **Yes**               | No                    |
-| Simple to implement              | **Yes**               | Moderate              |
+| Criterion                       | IComponent | SoA component |
+| ------------------------------- | ---------- | ------------- |
+| Iterated every tick in hot loop | No         | **Yes**       |
+| Hundreds/thousands of instances | No         | **Yes**       |
+| Flat numeric fields             | Either     | **Yes**       |
+| Complex/nested data             | **Yes**    | No            |
+| Few instances                   | **Yes**    | No            |
+| Needs deterministic i64 storage | No         | **Yes**       |
+| Stores object references        | **Yes**    | No            |
+| Strings / variable-length data  | **Yes**    | No            |
+| Simple to implement             | **Yes**    | Moderate      |
 
 ### 4. System Lifecycle Hooks
 
@@ -426,6 +432,7 @@ Type guards: `isBeforeTick`, `isAfterTick`, `isBeforeFrame`, `isAfterFrame`.
 ### 5. Create Entities
 
 Entities are containers for components. The base `Entity` class from phalanx-ecs provides:
+
 - Auto-incrementing `id` (deterministic across all clients)
 - A `Map<symbol, IComponent>` of components
 - Lifecycle: `destroy()`, `dispose()`
@@ -457,7 +464,13 @@ attachInterpolation(entity, fpPos);
 class Unit extends Entity {
   public mesh: Mesh | null = null;
 
-  constructor(id: number, scene: Scene, health: number, team: string, position: FPVector3Type) {
+  constructor(
+    id: number,
+    scene: Scene,
+    health: number,
+    team: string,
+    position: FPVector3Type
+  ) {
     super(id);
     this.addComponent(new HealthComponent(health));
     this.addComponent(new TeamComponent(team));
@@ -470,14 +483,14 @@ class Unit extends Entity {
 Entity API:
 
 ```typescript
-entity.addComponent(component)           // Add a component
-entity.getComponent<T>(ComponentType.X)  // Get component by type
-entity.hasComponent(ComponentType.X)     // Check if has component
-entity.hasComponents(TypeA, TypeB)       // Check if has ALL components
-entity.removeComponent(ComponentType.X)  // Remove a component
-entity.destroy()                         // Mark for destruction
-entity.dispose()                         // Full cleanup (called by EntityManager)
-entity.isDestroyed                       // Check if destroyed
+entity.addComponent(component); // Add a component
+entity.getComponent<T>(ComponentType.X); // Get component by type
+entity.hasComponent(ComponentType.X); // Check if has component
+entity.hasComponents(TypeA, TypeB); // Check if has ALL components
+entity.removeComponent(ComponentType.X); // Remove a component
+entity.destroy(); // Mark for destruction
+entity.dispose(); // Full cleanup (called by EntityManager)
+entity.isDestroyed; // Check if destroyed
 ```
 
 Save sections live on `GameWorld`. `registerSaveSection` rejects an empty key (`registerSaveSection: key is empty`) and a duplicate (`registerSaveSection: duplicate key '<key>'`). `saveSections` is a copy sorted by UTF-16 code units. `StateWriter`, `StateReader`, `BinaryStateWriter` and `BinaryStateReader` are exported from this package.
@@ -486,7 +499,10 @@ Save sections live on `GameWorld`. `registerSaveSection` rejects an empty key (`
 
 ```typescript
 const entity = world.createEntity((id) => new Unit(id, scene, 100, 'red', pos));
-const restored = world.createEntityWithId(savedId, (id) => new Unit(id, scene, 100, 'red', pos));
+const restored = world.createEntityWithId(
+  savedId,
+  (id) => new Unit(id, scene, 100, 'red', pos)
+);
 world.entityManager.restoreEntityIdHighWater(savedHighWater); // next id is savedHighWater + 1
 const manager = entity._owner; // set once the world adopts the entity
 world.pools?.ownedIds('unit'); // creation order; omits disposed entities
@@ -519,7 +535,7 @@ class CombatSystem extends GameSystem {
 
     const attackers = this.entityManager.queryEntities(
       ComponentType.Attack,
-      ComponentType.Team,
+      ComponentType.Team
     );
 
     for (const attacker of attackers) {
@@ -535,7 +551,7 @@ class CombatSystem extends GameSystem {
 
   public dispose(): void {
     // Custom cleanup
-    super.dispose();  // Auto-unsubscribes all events
+    super.dispose(); // Auto-unsubscribes all events
   }
 }
 ```
@@ -579,11 +595,11 @@ const sample = this.context
 
 Not every inter-system action should go through EventBus. Use this decision matrix:
 
-| Scenario | Mechanism | Why |
-| --- | --- | --- |
-| **Player commands** (move, attack, place unit) | Network → EventBus | Only player intent crosses the wire; all clients execute the same commands |
+| Scenario                                                                                        | Mechanism                                    | Why                                                                                      |
+| ----------------------------------------------------------------------------------------------- | -------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| **Player commands** (move, attack, place unit)                                                  | Network → EventBus                           | Only player intent crosses the wire; all clients execute the same commands               |
 | **Simulation-internal decisions** (combat chase, resume movement after target dies, AI pathing) | Direct system call via `context.getSystem()` | Deterministic outcomes computed identically on every client — network would be redundant |
-| **Cross-system notifications** (damage dealt, entity spawned, animation trigger) | EventBus (local) | Keeps systems decoupled without network overhead |
+| **Cross-system notifications** (damage dealt, entity spawned, animation trigger)                | EventBus (local)                             | Keeps systems decoupled without network overhead                                         |
 
 **Rule of thumb:** if every client will compute the same result from the same game state, call the system directly. If the action originates from a specific player's input, send it through the network.
 
@@ -619,12 +635,16 @@ import { FP, type FixedPoint } from '@phalanx-engine/math';
 class PhysicsSystem extends GameSystem {
   // Cache store references — resolved once in init()
   private physicsStore!: SoAComponentStore<typeof PhysicsSoASchema.definition>;
-  private transformStore!: SoAComponentStore<typeof TransformSoASchema.definition>;
+  private transformStore!: SoAComponentStore<
+    typeof TransformSoASchema.definition
+  >;
 
   public override init(context: SystemContext): void {
     super.init(context);
-    this.physicsStore = this.entityManager.getOrCreateSoAStore(PhysicsSoASchema);
-    this.transformStore = this.entityManager.getOrCreateSoAStore(TransformSoASchema);
+    this.physicsStore =
+      this.entityManager.getOrCreateSoAStore(PhysicsSoASchema);
+    this.transformStore =
+      this.entityManager.getOrCreateSoAStore(TransformSoASchema);
   }
 
   public processTick(tick: number): void {
@@ -699,6 +719,7 @@ this.subscribe<DamageEvent>('damage:applied', (event) => { ... });
 ```
 
 Event naming conventions:
+
 - **Past tense** for completed actions: `entity:destroyed`, `damage:applied`
 - **Requested suffix** for requests: `move:requested`, `attack:requested`
 - Use colon-separated namespaces: `combat:attack`, `resource:collected`
@@ -716,7 +737,10 @@ em.removeEntity(entity);
 const combatants = em.queryEntities(ComponentType.Attack, ComponentType.Health);
 
 // Query by component — OR (any component matches)
-const movableOrPhysics = em.queryEntitiesAny(ComponentType.Movement, ComponentType.PhysicsBody);
+const movableOrPhysics = em.queryEntitiesAny(
+  ComponentType.Movement,
+  ComponentType.PhysicsBody
+);
 
 // Get specific entity by ID
 const entity = em.getEntity(42);
@@ -725,7 +749,7 @@ const entity = em.getEntity(42);
 const all = em.getAllEntities();
 
 // Count entities
-const total = em.count;                                   // Total entity count
+const total = em.count; // Total entity count
 const withHealth = em.countWithComponent(ComponentType.Health); // Count with specific component
 
 // Cleanup destroyed entities (returns removed entities for disposal)
@@ -747,8 +771,8 @@ const hasStore = em.hasSoAStore(PhysicsSoASchema);
 const storeByType = em.getSoAStoreByType(TransformSoASchema.type);
 
 // Debug / introspection
-const allStores = em.getAllSoAStores();           // ReadonlyMap<symbol, SoAComponentStore>
-const stats = em.getComponentTypeStats();         // Map<symbol, number> — component type → entity count
+const allStores = em.getAllSoAStores(); // ReadonlyMap<symbol, SoAComponentStore>
+const stats = em.getComponentTypeStats(); // Map<symbol, number> — component type → entity count
 ```
 
 ### 9. GameWorld Lifecycle Hooks
@@ -837,11 +861,12 @@ Phalanx ECS includes built-in debug tooling for inspecting entities, components,
 
 ```typescript
 const world = new GameWorld({
-  debug: true,                          // Enables DebugDataProvider
+  debug: true, // Enables DebugDataProvider
   debugConfig: { updateInterval: 500 }, // Snapshot push interval (ms). 0 = pull-only
-  debugPanelConfig: {                   // Optional: enables built-in DOM overlay
-    toggleKey: '`',                     // Keyboard shortcut to show/hide (default: backtick)
-    startCollapsed: false,              // Start collapsed? (default: false)
+  debugPanelConfig: {
+    // Optional: enables built-in DOM overlay
+    toggleKey: '`', // Keyboard shortcut to show/hide (default: backtick)
+    startCollapsed: false, // Start collapsed? (default: false)
   },
 });
 ```
@@ -864,23 +889,23 @@ const unsub = provider.subscribe((snapshot: DebugSnapshot) => {
 const snapshot = provider.getSnapshot();
 
 // Lifecycle
-provider.start();   // Start automatic push interval
-provider.dispose();  // Stop and clean up
+provider.start(); // Start automatic push interval
+provider.dispose(); // Stop and clean up
 ```
 
 #### DebugSnapshot Structure
 
 ```typescript
 interface DebugSnapshot {
-  timestamp: number;                     // ms when snapshot was collected
+  timestamp: number; // ms when snapshot was collected
   world: {
     entityCount: number;
     soaStoreCount: number;
     paused: boolean;
   };
-  entities: DebugEntitySnapshot[];       // Per-entity data (IComponent entities)
-  soaStores: DebugSoAStoreSnapshot[];    // SoA store snapshots
-  pools: DebugPoolSnapshot[];            // Pool statistics
+  entities: DebugEntitySnapshot[]; // Per-entity data (IComponent entities)
+  soaStores: DebugSoAStoreSnapshot[]; // SoA store snapshots
+  pools: DebugPoolSnapshot[]; // Pool statistics
 }
 
 interface DebugEntitySnapshot {
@@ -890,9 +915,9 @@ interface DebugEntitySnapshot {
 }
 
 interface DebugComponentSnapshot {
-  typeName: string;                      // From symbol.description
+  typeName: string; // From symbol.description
   typeSymbol: symbol;
-  data: Record<string, unknown>;         // Shallow copy of component properties
+  data: Record<string, unknown>; // Shallow copy of component properties
 }
 
 interface DebugSoAStoreSnapshot {
@@ -1007,42 +1032,82 @@ import type { IComponent as Component } from '@phalanx-engine/ecs';
 
 // SoA storage
 import { defineComponent, type SoAComponentStore } from '@phalanx-engine/ecs';
-import { calculateSchemaByteSize, TYPED_ARRAY_CONSTRUCTORS, FIELD_BYTE_SIZES } from '@phalanx-engine/ecs';
+import {
+  calculateSchemaByteSize,
+  TYPED_ARRAY_CONSTRUCTORS,
+  FIELD_BYTE_SIZES,
+} from '@phalanx-engine/ecs';
 import type {
-  SoASchema, SoASchemaDefinition, SoAFieldType, SoAFieldsOf,
-  SoAArraysOf, SoAValueType, SoAArrayType, TypedArrayLike,
+  SoASchema,
+  SoASchemaDefinition,
+  SoAFieldType,
+  SoAFieldsOf,
+  SoAArraysOf,
+  SoAValueType,
+  SoAArrayType,
+  TypedArrayLike,
 } from '@phalanx-engine/ecs';
 
 // Object Pooling
 import { ObjectPool, EntityPool, PoolManager } from '@phalanx-engine/ecs';
 import type {
-  IPoolable, IPoolableEntity, SpawnArgsOf,
-  PoolConfig, PoolStats, EntityTypeConfig, PoolingConfig,
-  ComponentLifecycle, ComponentRegistration,
+  IPoolable,
+  IPoolableEntity,
+  SpawnArgsOf,
+  PoolConfig,
+  PoolStats,
+  EntityTypeConfig,
+  PoolingConfig,
+  ComponentLifecycle,
+  ComponentRegistration,
 } from '@phalanx-engine/ecs';
 
 // Debug / Introspection
 import { DebugDataProvider, DebugPanel } from '@phalanx-engine/ecs';
 import type {
-  DebugSnapshot, DebugEntitySnapshot, DebugComponentSnapshot,
-  DebugSoAStoreSnapshot, DebugPoolSnapshot,
-  DebugDataProviderConfig, DebugPanelConfig,
+  DebugSnapshot,
+  DebugEntitySnapshot,
+  DebugComponentSnapshot,
+  DebugSoAStoreSnapshot,
+  DebugPoolSnapshot,
+  DebugDataProviderConfig,
+  DebugPanelConfig,
 } from '@phalanx-engine/ecs';
 
 // Optional system lifecycle hook interfaces
-import type { IBeforeTick, IAfterTick, IBeforeFrame, IAfterFrame } from '@phalanx-engine/ecs';
-import { isBeforeTick, isAfterTick, isBeforeFrame, isAfterFrame } from '@phalanx-engine/ecs';
+import type {
+  IBeforeTick,
+  IAfterTick,
+  IBeforeFrame,
+  IAfterFrame,
+} from '@phalanx-engine/ecs';
+import {
+  isBeforeTick,
+  isAfterTick,
+  isBeforeFrame,
+  isAfterFrame,
+} from '@phalanx-engine/ecs';
 
 // Services and typed query
 import { defineService } from '@phalanx-engine/ecs';
-import type { ServiceKey, QueryComponent, QueryRow, QueryAnyRow } from '@phalanx-engine/ecs';
+import type {
+  ServiceKey,
+  QueryComponent,
+  QueryRow,
+  QueryAnyRow,
+} from '@phalanx-engine/ecs';
 
 // Tick/Frame management
 import { TickFrameManager } from '@phalanx-engine/ecs';
 import type { TickFrameManagerConfig } from '@phalanx-engine/ecs';
 import type {
-  ITickFrameProvider, TickHandler, FrameHandler,
-  Unsubscribe, CommandsBatch, PlayerCommand, PauseHandler,
+  ITickFrameProvider,
+  TickHandler,
+  FrameHandler,
+  Unsubscribe,
+  CommandsBatch,
+  PlayerCommand,
+  PauseHandler,
 } from '@phalanx-engine/ecs';
 ```
 
@@ -1105,7 +1170,10 @@ export interface ProjectileSpawnArgs {
   teamId: number;
 }
 
-export class ProjectileEntity extends Entity implements IPoolableEntity<ProjectileSpawnArgs> {
+export class ProjectileEntity
+  extends Entity
+  implements IPoolableEntity<ProjectileSpawnArgs>
+{
   private readonly projectile: ProjectileComponent;
 
   constructor(id: number) {
@@ -1146,7 +1214,9 @@ const world = new GameWorld({
 });
 
 const projectile = world.pools!.spawn<ProjectileEntity>('projectile', {
-  fpPosition, fpDirection2, teamId: caster.teamId,
+  fpPosition,
+  fpDirection2,
+  teamId: caster.teamId,
 });
 world.pools!.despawn(projectile);
 ```

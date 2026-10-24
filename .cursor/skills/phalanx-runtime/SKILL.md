@@ -49,15 +49,15 @@ new Phalanx({
 Follow [docs/guides/runtime-game-guide.md](../../../docs/guides/runtime-game-guide.md).
 One `defineGame` is the simulation. `MatchRunner` runs it. Subpaths:
 
-| Import | Subpath |
-| --- | --- |
-| `@phalanx-engine/game` or `@phalanx-engine/runtime` | `.` — `defineGame`, `MatchRunner`, `runLocalMatch`, `saveWorld` |
-| `@phalanx-engine/game/net` or `@phalanx-engine/runtime/net` | `./net` — `ServerPeerTransport` |
-| `@phalanx-engine/game/server` or `@phalanx-engine/runtime/server` | `./server` — `createServerSim` |
-| `@phalanx-engine/game/advanced` or `@phalanx-engine/runtime/advanced` | `./advanced` — `StateHelpers`, `spawnWithId`, `SaveHandler` |
-| `@phalanx-engine/game/math` | fixed-point and `DeterministicRandom` |
-| `@phalanx-engine/game/physics` | `PhysicsWorld.attach` |
-| `@phalanx-engine/game/abilities` | `createAbilitySystem` |
+| Import                                                                | Subpath                                                         |
+| --------------------------------------------------------------------- | --------------------------------------------------------------- |
+| `@phalanx-engine/game` or `@phalanx-engine/runtime`                   | `.` — `defineGame`, `MatchRunner`, `runLocalMatch`, `saveWorld` |
+| `@phalanx-engine/game/net` or `@phalanx-engine/runtime/net`           | `./net` — `ServerPeerTransport`                                 |
+| `@phalanx-engine/game/server` or `@phalanx-engine/runtime/server`     | `./server` — `createServerSim`                                  |
+| `@phalanx-engine/game/advanced` or `@phalanx-engine/runtime/advanced` | `./advanced` — `StateHelpers`, `spawnWithId`, `SaveHandler`     |
+| `@phalanx-engine/game/math`                                           | fixed-point and `DeterministicRandom`                           |
+| `@phalanx-engine/game/physics`                                        | `PhysicsWorld.attach`                                           |
+| `@phalanx-engine/game/abilities`                                      | `createAbilitySystem`                                           |
 
 ```ts
 import { defineGame, MatchRunner } from '@phalanx-engine/game';
@@ -75,9 +75,7 @@ export const MyGame = defineGame({
   onStart(ctx) {
     ctx.open();
   },
-  onCommand: {
-    /* one function per command type */
-  },
+  onCommand: {/* one function per command type */},
   checkOutcome: () => null,
 });
 export default MyGame;
@@ -364,7 +362,11 @@ handler. `defineCommands` builds the codec. The full template, including
 `MatchRunner.join`, is [Start a new game](#start-a-new-game).
 
 ```ts
-import { defineCommands, defineComponent, defineGame } from '@phalanx-engine/runtime';
+import {
+  defineCommands,
+  defineComponent,
+  defineGame,
+} from '@phalanx-engine/runtime';
 
 const Unit = defineComponent('Unit', { x: 'i64' }, { defaults: { x: 0n } });
 const commands = defineCommands({ stop: { x: 'i64' } });

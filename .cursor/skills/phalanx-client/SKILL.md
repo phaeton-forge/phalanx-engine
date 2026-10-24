@@ -85,21 +85,21 @@ await client.connect();
 
 ```typescript
 interface PhalanxClientConfig {
-  serverUrl: string;               // Server URL (e.g., 'http://localhost:3000')
-  playerId?: string;               // Unique player ID (auto-generated if omitted)
-  username?: string;               // Display name
-  buildId?: string;                // Sent on queue-join / room-create / room-join / match-resume when set
-  gameId?: string;                 // Persists session-token at phalanx.session.<gameId>. No default.
-  requireSessionToken?: boolean;   // When true, a resume timeout skips reconnect-match
-  autoReconnect?: boolean;         // Auto-reconnect on disconnect (default: true)
-  maxReconnectAttempts?: number;   // Max reconnection attempts (default: 5)
-  reconnectDelayMs?: number;       // Delay between attempts (default: 1000)
-  connectionTimeoutMs?: number;    // Connection timeout (default: 10000)
-  tickRate?: number;               // Must match server (default: 20)
-  debug?: boolean;                 // Enable debug logging (default: false)
-  authToken?: string;              // Pre-existing auth token
-  auth?: PhalanxAuthConfig;        // OAuth configuration
-  pause?: PauseConfig;             // Pause/resume configuration
+  serverUrl: string; // Server URL (e.g., 'http://localhost:3000')
+  playerId?: string; // Unique player ID (auto-generated if omitted)
+  username?: string; // Display name
+  buildId?: string; // Sent on queue-join / room-create / room-join / match-resume when set
+  gameId?: string; // Persists session-token at phalanx.session.<gameId>. No default.
+  requireSessionToken?: boolean; // When true, a resume timeout skips reconnect-match
+  autoReconnect?: boolean; // Auto-reconnect on disconnect (default: true)
+  maxReconnectAttempts?: number; // Max reconnection attempts (default: 5)
+  reconnectDelayMs?: number; // Delay between attempts (default: 1000)
+  connectionTimeoutMs?: number; // Connection timeout (default: 10000)
+  tickRate?: number; // Must match server (default: 20)
+  debug?: boolean; // Enable debug logging (default: false)
+  authToken?: string; // Pre-existing auth token
+  auth?: PhalanxAuthConfig; // OAuth configuration
+  pause?: PauseConfig; // Pause/resume configuration
 }
 ```
 
@@ -284,7 +284,7 @@ world.start({
   },
   afterFrame(alpha, dt) {
     interpolationSystem.interpolate(alpha);
-    scene.render();  // Must be called manually
+    scene.render(); // Must be called manually
   },
 });
 
@@ -294,6 +294,7 @@ await client.joinQueue();
 ```
 
 Key points about GameWorld integration:
+
 - `world.start(hooks?)` starts the loop — all registered systems run automatically
 - Tick systems (`processTick`) run at fixed rate, deterministically
 - Frame systems (`update`) run every render frame
@@ -337,7 +338,7 @@ function computeStateHash(tick: number): string {
     hasher.addInt(entity.health);
   }
 
-  return hasher.finalize();  // 8-char hex string
+  return hasher.finalize(); // 8-char hex string
 }
 
 // Handle desync events
@@ -367,14 +368,14 @@ client.configureDesyncDetection({ maxStoredHashes: 50 });
 
 ```typescript
 const hasher = new StateHasher();
-hasher.addInt(42);                    // Integer
-hasher.addFloat(3.14159);             // Float (converted to fixed-point)
-hasher.addString("entity-123");       // String
-hasher.addBool(true);                 // Boolean
-hasher.addIntArray([1, 2, 3]);        // Array of integers
-hasher.addFloatArray([1.5, 2.5]);     // Array of floats
-const hash = hasher.finalize();       // 8-char hex string (FNV-1a)
-hasher.reset();                       // Reuse hasher
+hasher.addInt(42); // Integer
+hasher.addFloat(3.14159); // Float (converted to fixed-point)
+hasher.addString('entity-123'); // String
+hasher.addBool(true); // Boolean
+hasher.addIntArray([1, 2, 3]); // Array of integers
+hasher.addFloatArray([1.5, 2.5]); // Array of floats
+const hash = hasher.finalize(); // 8-char hex string (FNV-1a)
+hasher.reset(); // Reuse hasher
 ```
 
 #### Best Practices for State Hashing
@@ -455,7 +456,9 @@ client.resumeGame();
 
 // Listen for pause/resume events
 client.on('gamePaused', (event) => {
-  console.log(`Game paused by ${event.requestedBy}, last tick: ${event.lastTick}`);
+  console.log(
+    `Game paused by ${event.requestedBy}, last tick: ${event.lastTick}`
+  );
 });
 
 client.on('gameResumed', (event) => {
@@ -466,8 +469,8 @@ client.on('gameResumed', (event) => {
 When PhalanxClient is used as a `tickFrameProvider` in GameWorld, you can also use:
 
 ```typescript
-world.pause();   // Calls client.requestPause() → client.pauseGame()
-world.resume();  // Calls client.requestResume() → client.resumeGame()
+world.pause(); // Calls client.requestPause() → client.pauseGame()
+world.resume(); // Calls client.requestResume() → client.resumeGame()
 ```
 
 > **Note:** `requestPause()` / `requestResume()` are ITickFrameProvider contract methods that delegate to `pauseGame()` / `resumeGame()`. Use the latter directly when calling on the client.
@@ -475,7 +478,11 @@ world.resume();  // Calls client.requestResume() → client.resumeGame()
 ### 11. Authentication
 
 ```typescript
-import { PhalanxClient, AuthManager, GoogleOAuthAdapter } from '@phalanx-engine/client';
+import {
+  PhalanxClient,
+  AuthManager,
+  GoogleOAuthAdapter,
+} from '@phalanx-engine/client';
 
 // Option A: Pre-existing token
 const client = new PhalanxClient({
@@ -498,7 +505,7 @@ const client = new PhalanxClient({
 // Check auth state
 const authState = client.getAuthState();
 if (!authState.isAuthenticated) {
-  await client.login('google');  // Opens OAuth flow
+  await client.login('google'); // Opens OAuth flow
 }
 ```
 
@@ -509,7 +516,7 @@ const tick = client.getCurrentTick();
 const matchId = client.getMatchId();
 const playerId = client.getPlayerId();
 const username = client.getUsername();
-const clientState = client.getClientState();      // 'idle' | 'in-queue' | 'match-found' | 'countdown' | 'playing' | 'paused' | 'reconnecting' | 'finished'
+const clientState = client.getClientState(); // 'idle' | 'in-queue' | 'match-found' | 'countdown' | 'playing' | 'paused' | 'reconnecting' | 'finished'
 const connectionState = client.getConnectionState(); // 'disconnected' | 'connecting' | 'connected' | 'reconnecting'
 const isConnected = client.isConnected();
 ```
@@ -605,47 +612,85 @@ import {
 // PhalanxClient.randomSeed is the seed; the client does not construct an RNG.
 
 // Authentication
-import { AuthManager, GoogleOAuthAdapter, LocalStorageAdapter, MemoryStorageAdapter } from '@phalanx-engine/client';
+import {
+  AuthManager,
+  GoogleOAuthAdapter,
+  LocalStorageAdapter,
+  MemoryStorageAdapter,
+} from '@phalanx-engine/client';
 
 // Types — Configuration
 import type {
-  PhalanxClientConfig, PhalanxAuthConfig, PauseConfig,
-  RenderLoopConfig, CommandFlushCallback,
-  SocketManagerConfig, SocketManagerCallbacks,
-  AuthManagerConfig, AuthStorage,
+  PhalanxClientConfig,
+  PhalanxAuthConfig,
+  PauseConfig,
+  RenderLoopConfig,
+  CommandFlushCallback,
+  SocketManagerConfig,
+  SocketManagerCallbacks,
+  AuthManagerConfig,
+  AuthStorage,
 } from '@phalanx-engine/client';
 
 // Types — Auth
 import type {
-  AuthAdapter, AuthResult, AuthState, AuthUser, AuthError,
-  CallbackParams, LoginOptions,
-  GoogleOAuthConfig, DiscordOAuthConfig, SteamAuthConfig, StoredAuthData,
-  PhalanxAuthState, PhalanxAuthUser,
+  AuthAdapter,
+  AuthResult,
+  AuthState,
+  AuthUser,
+  AuthError,
+  CallbackParams,
+  LoginOptions,
+  GoogleOAuthConfig,
+  DiscordOAuthConfig,
+  SteamAuthConfig,
+  StoredAuthData,
+  PhalanxAuthState,
+  PhalanxAuthUser,
 } from '@phalanx-engine/client';
 
 // Types — Commands & Handlers
 import type {
-  PlayerCommand, CommandsBatch,
-  TickHandler, FrameHandler, PauseHandler, Unsubscribe,
+  PlayerCommand,
+  CommandsBatch,
+  TickHandler,
+  FrameHandler,
+  PauseHandler,
+  Unsubscribe,
 } from '@phalanx-engine/client';
 
 // Types — Events
 import type {
-  MatchPlayerInfo, MatchFoundEvent, CountdownEvent,
-  GameStartEvent, MatchEndEvent,
-  TickSyncEvent, CommandsBatchEvent, QueueStatusEvent,
-  PlayerDisconnectedEvent, PlayerReconnectedEvent, PlayerReadyEvent,
-  GamePausedEvent, GameResumedEvent,
-  ReconnectStateEvent, MatchLogEntry, ReconnectStatusEvent,
-  SubmitCommandsAck, HashComparisonEvent,
-  ServerDesyncEvent, MatchSnapshot, MatchSnapshotRequest,
+  MatchPlayerInfo,
+  MatchFoundEvent,
+  CountdownEvent,
+  GameStartEvent,
+  MatchEndEvent,
+  TickSyncEvent,
+  CommandsBatchEvent,
+  QueueStatusEvent,
+  PlayerDisconnectedEvent,
+  PlayerReconnectedEvent,
+  PlayerReadyEvent,
+  GamePausedEvent,
+  GameResumedEvent,
+  ReconnectStateEvent,
+  MatchLogEntry,
+  ReconnectStatusEvent,
+  SubmitCommandsAck,
+  HashComparisonEvent,
+  ServerDesyncEvent,
+  MatchSnapshot,
+  MatchSnapshotRequest,
   PhalanxError,
 } from '@phalanx-engine/client';
 
 // Types — State & Desync
 import type {
-  ConnectionState, ClientState,
-  DesyncConfig, DesyncEvent,
+  ConnectionState,
+  ClientState,
+  DesyncConfig,
+  DesyncEvent,
   PhalanxClientEvents,
 } from '@phalanx-engine/client';
 ```
@@ -659,8 +704,12 @@ const client = await PhalanxClient.create({
   serverUrl: 'http://localhost:3000',
 });
 
-client.onTick((tick, commands) => { /* simulation */ });
-client.onFrame((alpha, dt) => { /* render */ });
+client.onTick((tick, commands) => {
+  /* simulation */
+});
+client.onFrame((alpha, dt) => {
+  /* render */
+});
 
 await client.joinQueue();
 ```
@@ -671,10 +720,10 @@ See section 7 above for the complete GameWorld integration pattern. This is the 
 
 ## Troubleshooting
 
-| Issue | Solution |
-| --- | --- |
-| Connection timeout | Check server URL. Use `http://` for dev, `wss://` for production TLS. |
-| `tickRate` mismatch | Client tickRate must match server. Default is 20. |
-| Commands not arriving | Ensure you are in `'playing'` state before sending commands. |
-| Auth errors | Check that the token is valid and the server has auth enabled. |
-| Desync detected | Check deterministic logic: no `Math.random()`, no `Date.now()`, use fixed-point math. |
+| Issue                 | Solution                                                                              |
+| --------------------- | ------------------------------------------------------------------------------------- |
+| Connection timeout    | Check server URL. Use `http://` for dev, `wss://` for production TLS.                 |
+| `tickRate` mismatch   | Client tickRate must match server. Default is 20.                                     |
+| Commands not arriving | Ensure you are in `'playing'` state before sending commands.                          |
+| Auth errors           | Check that the token is valid and the server has auth enabled.                        |
+| Desync detected       | Check deterministic logic: no `Math.random()`, no `Date.now()`, use fixed-point math. |
