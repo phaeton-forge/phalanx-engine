@@ -127,6 +127,8 @@ import {
 import { GameWorld, GameSystem } from '@phalanx-engine/ecs';
 import {
   PhysicsWorld,
+  GravitySystem,
+  PhysicsSystem,
   attachPhysicsBody,
   attachTransform,
   attachInterpolation,
@@ -177,10 +179,18 @@ const physicsWorld = new PhysicsWorld({
 // 2. Attach: components, Physics service, systems and save section
 physicsWorld.attach(world);
 
-// 3. Register game systems. Attached physics systems run first (gravity,
-//    physics; InterpolationSystem before the frame systems). To run physics
-//    after a game system, list it there: world.getSystem(PhysicsSystem).
-world.registerSystems([movementSystem], [renderSystem]);
+// 3. Register game systems. Unlisted, the attached systems run first
+//    (gravity, physics; InterpolationSystem before the frame systems).
+//    To place them, list gravity and physics together, in that order;
+//    listing only one throws.
+world.registerSystems(
+  [
+    movementSystem,
+    world.getSystem(GravitySystem)!,
+    world.getSystem(PhysicsSystem)!,
+  ],
+  [renderSystem]
+);
 
 world.start();
 
@@ -215,7 +225,10 @@ The game moves bodies (writes `Transform`); physics separates overlapping
 bodies once per tick. `subSteps`, friction, `maxVelocity` and `worldBounds`
 do not apply. The `'push'` force is `overlap × pushStrength` without
 restitution. The push still writes `velocity`, but velocity is not
-integrated into position. `collisionResponse: 'impulse'` also works. This
+integrated into position. `collisionResponse: 'impulse'` also works and
+keeps restitution. `GravitySystem` still runs and writes `velocity.y`, and
+the push velocity is not cleared, so `isSettled` is only meaningful if the
+game zeros velocity itself. This
 replaces the removed `CollisionSystem` and matches it tick for tick.
 
 ## API Reference

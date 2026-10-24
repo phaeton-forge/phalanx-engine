@@ -985,7 +985,20 @@ Entries collected per package until the synchronized 0.3.0 release
   one explicitly, which keeps the caller's position. After `registerSystems`
   it throws `addModuleSystems: call before registerSystems (attach modules first)`,
   so `PhysicsWorld.attach` after `registerSystems` throws too. Phases (A6d)
-  replace this ordering rule.
+  replace this ordering rule. `SystemRegistry.addModuleSystems` is the
+  underlying method (same contract). Each call's tick list and frame list
+  is a group: `registerSystems` throws if it lists only part of a group
+  (`... or none of them`) or lists it out of order (`... must keep their
+order`). Listing only `GravitySystem` therefore throws instead of running
+  physics before gravity.
+- `integrate: false` + `'impulse'` keeps restitution
+  (`PhysicsConfig.restitution`, else the per-body average); `FP._1` applies
+  to `'push'` only. In collisions-only mode `GravitySystem` still writes
+  `velocity.y` and the push velocity is kept, so `isSettled` is only
+  meaningful if the game zeros velocity.
+- `InterpolationSystem` iterates with `world.query`; no `queryEntities`
+  callers remain in physics. `InterpolationSystem.init` throws without a
+  world.
 - `PhysicsSystem` and `GravitySystem` iterate with `world.query(PhysicsBody,
 Transform)` / `world.query(PhysicsBody)` and read the typed arrays by row
   index. Order is still ascending entity id. A row without a registered
