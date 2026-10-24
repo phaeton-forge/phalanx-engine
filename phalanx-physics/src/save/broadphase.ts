@@ -7,7 +7,6 @@ import type {
 import { FixedPoint } from '@phalanx-engine/math';
 import type { BroadphaseCenter } from '../collision/SpatialHashGrid.js';
 import { restoreOwnedInterpolation } from '../components/interpolation.js';
-import { CollisionSystem } from '../systems/CollisionSystem.js';
 import { PhysicsSystem } from '../systems/PhysicsSystem.js';
 import { Physics } from '../service.js';
 
@@ -19,9 +18,6 @@ const PHYSICS_KEY = 'physics';
  * from the `Physics` service.
  */
 const PHYSICS_SYSTEM_KEY = 'physicsSystem';
-
-/** A registered `CollisionSystem` with its own grid. */
-const COLLISION_SYSTEM_KEY = 'collisionSystem';
 
 interface BroadphaseOwner {
   getBroadphaseCenters(): readonly BroadphaseCenter[];
@@ -67,8 +63,8 @@ function spatialGridOf(owner: BroadphaseOwner): object | null {
 }
 
 /**
- * The `Physics` service, then a registered `PhysicsSystem`
- * or `CollisionSystem` when that system has a different grid.
+ * The `Physics` service, then a registered `PhysicsSystem` when that
+ * system has a different grid.
  */
 function collectBroadphases(world: GameWorld): NamedBroadphase[] {
   const found: NamedBroadphase[] = [];
@@ -88,11 +84,6 @@ function collectBroadphases(world: GameWorld): NamedBroadphase[] {
   const physicsSystem = world.getSystem(PhysicsSystem);
   if (physicsSystem !== undefined && isBroadphaseOwner(physicsSystem)) {
     remember(PHYSICS_SYSTEM_KEY, physicsSystem);
-  }
-
-  const collisionSystem = world.getSystem(CollisionSystem);
-  if (collisionSystem !== undefined && isBroadphaseOwner(collisionSystem)) {
-    remember(COLLISION_SYSTEM_KEY, collisionSystem);
   }
 
   return found;

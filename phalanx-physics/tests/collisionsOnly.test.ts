@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { Entity, GameSystem, GameWorld } from '@phalanx-engine/ecs';
 import { FP } from '@phalanx-engine/math';
 import {
-  CollisionSystem,
   PhysicsBody,
   PhysicsEvents,
   PhysicsWorld,
@@ -105,15 +104,6 @@ function recordEvents(world: GameWorld): string[] {
   return events;
 }
 
-function legacyRun(filter?: Filter): Run {
-  const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
-  const collision = new CollisionSystem(CELL, PUSH);
-  if (filter) collision.setCollisionFilter(filter);
-  world.registerSystems([new MoveRight(), collision], []);
-  populate(world);
-  return { world, events: recordEvents(world) };
-}
-
 function collisionsOnlyRun(filter?: Filter): Run {
   const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
   const physics = new PhysicsWorld({
@@ -163,33 +153,41 @@ function state(world: GameWorld): string[] {
   return rows;
 }
 
-function expectSameEveryTick(legacy: Run, next: Run): number {
-  let collisions = 0;
+/** Positions, velocities and events after every tick, hashed. */
+function traceDigest(run: Run): { digest: string; lines: number } {
+  const trace: string[] = [];
   for (let tick = 1; tick <= TICKS; tick += 1) {
-    legacy.world.processAllTicks(tick);
-    next.world.processAllTicks(tick);
-    expect(state(next.world)).toEqual(state(legacy.world));
-    expect(next.events).toEqual(legacy.events);
-    collisions += legacy.events.length;
-    legacy.events.length = 0;
-    next.events.length = 0;
+    run.world.processAllTicks(tick);
+    trace.push(...state(run.world), ...run.events.splice(0));
   }
-  return collisions;
+  const text = trace.join('\n');
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return { digest: hash.toString(16), lines: trace.length };
 }
 
-describe('integrate: false matches CollisionSystem', () => {
-  it('positions, velocities and collision events match after every tick', () => {
-    const collisions = expectSameEveryTick(legacyRun(), collisionsOnlyRun());
-    expect(collisions).toBeGreaterThan(0);
+/**
+ * The digests were recorded from the removed `CollisionSystem` running the
+ * same scene (`CollisionSystem(CELL, PUSH)` after `MoveRight`). They pin
+ * `integrate: false` + `'push'` to its state after every tick.
+ */
+describe('integrate: false (collisions-only)', () => {
+  it('matches the former CollisionSystem after every tick', () => {
+    expect(traceDigest(collisionsOnlyRun())).toEqual({
+      digest: '65554957',
+      lines: 384,
+    });
   });
 
-  it('matches with a collision filter', () => {
+  it('matches the former CollisionSystem with a collision filter', () => {
     const filter: Filter = (a, b) => a + b !== 3;
-    const collisions = expectSameEveryTick(
-      legacyRun(filter),
-      collisionsOnlyRun(filter)
-    );
-    expect(collisions).toBeGreaterThan(0);
+    expect(traceDigest(collisionsOnlyRun(filter))).toEqual({
+      digest: 'a0953c20',
+      lines: 394,
+    });
   });
 
   it('does not integrate velocity into position', () => {

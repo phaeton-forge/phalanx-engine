@@ -57,7 +57,11 @@ export interface RayHit {
  *
  * @returns the entry hit, or `null` when the segment never intersects the box.
  */
-export function segmentVsAABB(prev: Vec3FP, cur: Vec3FP, box: AABB): RayHit | null {
+export function segmentVsAABB(
+  prev: Vec3FP,
+  cur: Vec3FP,
+  box: AABB
+): RayHit | null {
   const dx = FP.Sub(cur.x, prev.x);
   const dy = FP.Sub(cur.y, prev.y);
   const dz = FP.Sub(cur.z, prev.z);
@@ -76,7 +80,7 @@ export function segmentVsAABB(prev: Vec3FP, cur: Vec3FP, box: AABB): RayHit | nu
     lo: FixedPoint,
     hi: FixedPoint,
     negNormal: Vec3FP,
-    posNormal: Vec3FP,
+    posNormal: Vec3FP
   ): boolean => {
     if (FP.Eq(d, FP._0)) {
       // Parallel to this slab: only possible to hit if the origin is inside it.
@@ -105,7 +109,11 @@ export function segmentVsAABB(prev: Vec3FP, cur: Vec3FP, box: AABB): RayHit | nu
 
   // Entry never advanced past t = 0 → the segment started inside the box.
   if (entryNormal === null) {
-    return { t: FP._0, point: { x: prev.x, y: prev.y, z: prev.z }, normal: nearestFaceNormal(prev, box) };
+    return {
+      t: FP._0,
+      point: { x: prev.x, y: prev.y, z: prev.z },
+      normal: nearestFaceNormal(prev, box),
+    };
   }
 
   const t = tEnter;

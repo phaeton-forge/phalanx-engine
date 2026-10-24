@@ -160,7 +160,6 @@ export type {
   CollisionEvent,
   CollisionFilter,
   CollisionManifold,
-  CollisionSystem,
   ExternalPhysicsTickProvider,
   GravitySystem,
   IPhysicsTickProvider,

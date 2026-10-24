@@ -29,8 +29,7 @@ function createPhysicsConfig(
 }
 
 /**
- * Collision tests — now tested through PhysicsSystem which owns the full pipeline.
- * CollisionSystem is no longer a standalone GameSystem.
+ * Collision tests through PhysicsSystem, which owns the full pipeline.
  */
 describe('Collision (via PhysicsSystem)', () => {
   let entityManager: EntityManager;

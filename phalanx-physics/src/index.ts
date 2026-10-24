@@ -53,7 +53,6 @@ export {
   PhysicsSystem,
   GravitySystem,
   InterpolationSystem,
-  CollisionSystem,
 } from './systems/index.js';
 export type { InterpolatedTransformSample } from './systems/index.js';
 

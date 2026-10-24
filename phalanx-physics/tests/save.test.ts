@@ -11,7 +11,6 @@ import {
 import { FP } from '@phalanx-engine/math';
 import type { FixedPoint } from '@phalanx-engine/math';
 import {
-  CollisionSystem,
   Interpolation,
   Physics,
   PhysicsSystem,
@@ -147,50 +146,12 @@ describe('physics state helpers', () => {
     expect(query).not.toContain(2);
   });
 
-  it('saves a registered CollisionSystem under collisionSystem', () => {
-    const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
-    const collision = new CollisionSystem(FP.FromInt(4));
-    world.registerSystems([collision], []);
-    collision.restoreBroadphase([
-      {
-        entityId: 3,
-        x: FP.FromInt(1),
-        z: FP.FromInt(2),
-        radius: FP._1,
-      },
-    ]);
-
-    const bytes = finish((writer) => {
-      writeBroadphase(writer, world);
-    });
-    expect(new TextDecoder().decode(bytes)).toContain('collisionSystem');
-
-    const restored = new GameWorld({ tickFrameProvider: manualTickProvider() });
-    const restoredCollision = new CollisionSystem(FP.FromInt(4));
-    restored.registerSystems([restoredCollision], []);
-    const reader = new BinaryStateReader(bytes);
-    readBroadphase(reader, restored);
-    reader.done();
-    const center = restoredCollision.getBroadphaseCenters()[0];
-    expect(center?.entityId).toBe(3);
-    expect(FP.Eq(center?.x ?? FP._0, FP.FromInt(1))).toBe(true);
-    expect(FP.Eq(center?.z ?? FP._0, FP.FromInt(2))).toBe(true);
-  });
-
   it('registers physics.broadphase once for every grid owner', () => {
     const wired = wiredWorld();
     expect(wired.world.saveSections.map((section) => section.key)).toEqual([
       'physics.broadphase',
     ]);
     expect(wired.world.saveSections[0]?.version).toBe(1);
-
-    const collisionOnly = new GameWorld({
-      tickFrameProvider: manualTickProvider(),
-    });
-    collisionOnly.registerSystems([new CollisionSystem(FP.FromInt(4))], []);
-    expect(collisionOnly.saveSections.map((section) => section.key)).toEqual([
-      'physics.broadphase',
-    ]);
 
     const physicsOnly = new GameWorld({
       tickFrameProvider: manualTickProvider(),
@@ -210,7 +171,7 @@ describe('physics state helpers', () => {
     });
     physics.attach(both);
     both.registerSystems(
-      [new CollisionSystem(FP.FromInt(4)), physics.getSystems().physicsSystem],
+      [new PhysicsSystem(physicsConfig()), physics.getSystems().physicsSystem],
       []
     );
     expect(both.saveSections.map((section) => section.key)).toEqual([
@@ -324,13 +285,6 @@ describe('physics state helpers', () => {
     const system = new PhysicsSystem(physicsConfig());
     expect(() => system.init(bareContext())).toThrow(
       'PhysicsSystem.init: context.world is not set'
-    );
-  });
-
-  it('throws when CollisionSystem.init has no world', () => {
-    const system = new CollisionSystem(FP.FromInt(4));
-    expect(() => system.init(bareContext())).toThrow(
-      'CollisionSystem.init: context.world is not set'
     );
   });
 

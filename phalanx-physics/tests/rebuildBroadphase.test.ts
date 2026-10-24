@@ -11,7 +11,6 @@ import type { FixedPoint } from '@phalanx-engine/math';
 import { SpatialHashGrid } from '../src/collision/SpatialHashGrid';
 import { PhysicsSoASchema } from '../src/components/physicsBody';
 import { TransformSoASchema } from '../src/components/transform';
-import { CollisionSystem } from '../src/systems/CollisionSystem';
 import { PhysicsWorld } from '../src/PhysicsWorld';
 import { addTransformRow } from './testTransformHelpers';
 
@@ -192,33 +191,6 @@ describe('broadphase snapshot hooks', () => {
       throw new Error('missing refreshed center');
     }
     expect(FP.Eq(refreshed.x, FP.FromInt(moved.x + 25))).toBe(true);
-  });
-
-  it('CollisionSystem exposes cached centers and an explicit transform rebuild', () => {
-    const cellSize = FP.FromInt(4);
-    const system = new CollisionSystem(cellSize);
-    bindTestWorld(context);
-    system.init(context);
-    const physicsStore = entityManager.getOrCreateSoAStore(PhysicsSoASchema);
-    const transformStore =
-      entityManager.getOrCreateSoAStore(TransformSoASchema);
-    addBody(physicsStore, 1);
-    addTransformRow(transformStore, 1, 2, 6);
-
-    expect(system.getBroadphaseCenters()).toEqual([]);
-    system.rebuildBroadphase();
-    const centers = system.getBroadphaseCenters();
-    expect(centers).toHaveLength(1);
-    expect(centers[0]?.entityId).toBe(1);
-    expect(FP.Eq(centers[0]?.x ?? FP._0, FP.FromInt(2))).toBe(true);
-    expect(FP.Eq(centers[0]?.z ?? FP._0, FP.FromInt(6))).toBe(true);
-    expect(FP.Eq(centers[0]?.radius ?? FP._0, FP._1)).toBe(true);
-
-    system.restoreBroadphase([...centers].reverse());
-    const restored = system.getBroadphaseCenters();
-    expect(restored).toHaveLength(1);
-    expect(restored[0]?.entityId).toBe(1);
-    expect(FP.Eq(restored[0]?.radius ?? FP._0, FP._1)).toBe(true);
   });
 
   it('rebuildBroadphase throws before init', () => {

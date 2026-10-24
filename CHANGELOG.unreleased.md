@@ -949,3 +949,20 @@ Entries collected per package until the synchronized 0.3.0 release
   stays on the root export. ecs has no `/advanced` subpath yet, and the
   physics and abilities systems move to `world.query` in A7 and A8.
 - Goldens unchanged.
+
+## A7 — physics (physics, ecs, runtime, game, playground, integration)
+
+- New `PhysicsWorldConfig.integrate` / `PhysicsConfig.integrate`
+  (default `true`). `integrate: false` is collisions-only mode: the game
+  moves bodies, physics separates them. One resolution pass per tick;
+  `subSteps`, friction, `maxVelocity` and `worldBounds` do not apply. The
+  `'push'` force is `overlap × pushStrength` without restitution. The push
+  still writes `velocity`, which is not integrated into position.
+  `collisionResponse: 'impulse'` works in both modes.
+- Removed `CollisionSystem` (physics and game). Use
+  `new PhysicsWorld({ integrate: false, collisionResponse: 'push' })`.
+  Before removal, the same scene ran through both and matched positions,
+  velocities and collision events after every tick (with and without a
+  collision filter). There are no remaining differences. The
+  `physics.broadphase` section no longer looks for a `collisionSystem`
+  grid; the `physics` and `physicsSystem` entries are unchanged.

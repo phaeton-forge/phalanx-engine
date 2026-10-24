@@ -16,9 +16,14 @@ export class NarrowPhase {
    * Returns a manifold if the circles overlap, or null if separated.
    */
   static circleVsCircle(
-    posAX: FixedPoint, posAZ: FixedPoint, radiusA: FixedPoint,
-    posBX: FixedPoint, posBZ: FixedPoint, radiusB: FixedPoint,
-    entityA: number, entityB: number
+    posAX: FixedPoint,
+    posAZ: FixedPoint,
+    radiusA: FixedPoint,
+    posBX: FixedPoint,
+    posBZ: FixedPoint,
+    radiusB: FixedPoint,
+    entityA: number,
+    entityB: number
   ): CollisionManifold | null {
     const dx = FP.Sub(posBX, posAX);
     const dz = FP.Sub(posBZ, posAZ);
@@ -60,10 +65,15 @@ export class NarrowPhase {
    * which narrow-phase algorithm to use. Planned for v2.
    */
   static circleVsAABB(
-    circlePosX: FixedPoint, circlePosZ: FixedPoint, circleRadius: FixedPoint,
-    aabbMinX: FixedPoint, aabbMinZ: FixedPoint,
-    aabbMaxX: FixedPoint, aabbMaxZ: FixedPoint,
-    entityCircle: number, entityAABB: number
+    circlePosX: FixedPoint,
+    circlePosZ: FixedPoint,
+    circleRadius: FixedPoint,
+    aabbMinX: FixedPoint,
+    aabbMinZ: FixedPoint,
+    aabbMaxX: FixedPoint,
+    aabbMaxZ: FixedPoint,
+    entityCircle: number,
+    entityAABB: number
   ): CollisionManifold | null {
     // Find the closest point on the AABB to the circle center
     const closestX = FP.Clamp(circlePosX, aabbMinX, aabbMaxX);
@@ -135,9 +145,16 @@ export class NarrowPhase {
    * which narrow-phase algorithm to use. Planned for v2.
    */
   static aabbVsAABB(
-    aMinX: FixedPoint, aMinZ: FixedPoint, aMaxX: FixedPoint, aMaxZ: FixedPoint,
-    bMinX: FixedPoint, bMinZ: FixedPoint, bMaxX: FixedPoint, bMaxZ: FixedPoint,
-    entityA: number, entityB: number
+    aMinX: FixedPoint,
+    aMinZ: FixedPoint,
+    aMaxX: FixedPoint,
+    aMaxZ: FixedPoint,
+    bMinX: FixedPoint,
+    bMinZ: FixedPoint,
+    bMaxX: FixedPoint,
+    bMaxZ: FixedPoint,
+    entityA: number,
+    entityB: number
   ): CollisionManifold | null {
     // Check overlap on each axis
     const overlapX1 = FP.Sub(aMaxX, bMinX); // A right - B left
@@ -146,8 +163,12 @@ export class NarrowPhase {
     const overlapZ2 = FP.Sub(bMaxZ, aMinZ); // B bottom - A top
 
     // If any axis has no overlap, no collision
-    if (FP.Lte(overlapX1, FP._0) || FP.Lte(overlapX2, FP._0) ||
-        FP.Lte(overlapZ1, FP._0) || FP.Lte(overlapZ2, FP._0)) {
+    if (
+      FP.Lte(overlapX1, FP._0) ||
+      FP.Lte(overlapX2, FP._0) ||
+      FP.Lte(overlapZ1, FP._0) ||
+      FP.Lte(overlapZ2, FP._0)
+    ) {
       return null;
     }
 
