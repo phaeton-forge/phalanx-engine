@@ -370,7 +370,6 @@ function silentPoolWorld(): { world: GameWorld; abilities: AbilitySystem } {
     definitions,
     pipeline: 'full',
   });
-  world.registerSystems([...abilities.tickSystems], []);
   return { world, abilities };
 }
 
@@ -389,7 +388,6 @@ function barePoolWorld(): { world: GameWorld; abilities: AbilitySystem } {
     definitions,
     pipeline: 'full',
   });
-  world.registerSystems([...abilities.tickSystems], []);
   return { world, abilities };
 }
 
@@ -408,7 +406,6 @@ function pooledGasWorld(): { world: GameWorld; abilities: AbilitySystem } {
     definitions,
     pipeline: 'full',
   });
-  world.registerSystems([...abilities.tickSystems], []);
   return { world, abilities };
 }
 

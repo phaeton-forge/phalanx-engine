@@ -66,7 +66,7 @@ describe('SystemContext shared services', () => {
     expect(world.pools).toBeNull();
   });
 
-  it('gives systems a service provided before registerSystems', () => {
+  it('gives systems a service provided before addSystem', () => {
     const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
     const physics: FakePhysics = { label: 'physics' };
 
@@ -74,7 +74,7 @@ describe('SystemContext shared services', () => {
     expect(world.saveSections).toEqual([]);
 
     const probe = new ProbeSystem();
-    world.registerSystems([], [probe]);
+    world.addSystem(probe, { phase: 'render' });
 
     expect(probe.physicsRef).toBe(physics);
     expect(probe.poolsRef).toBeNull();
@@ -101,7 +101,7 @@ describe('SystemContext shared services', () => {
       random: rng,
     });
     const probe = new RandomProbeSystem();
-    world.registerSystems([], [probe]);
+    world.addSystem(probe, { phase: 'render' });
 
     expect(world.random).toBe(rng);
     expect(probe.randomRef).toBe(rng);
@@ -145,14 +145,14 @@ describe('SystemContext shared services', () => {
     second.dispose();
   });
 
-  it('runs only the tick systems passed to registerSystems', () => {
+  it('runs only systems passed to addSystem', () => {
     const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
     const listed = new CountingTickSystem();
     const unlisted = new CountingTickSystem();
     world.provide(defineService<{ tickSystems: GameSystem[] }>('abilities'), {
       tickSystems: [unlisted],
     });
-    world.registerSystems([listed], []);
+    world.addSystem(listed, { phase: 'late' });
 
     world.processAllTicks(1);
     expect(listed.tickCount).toBe(1);

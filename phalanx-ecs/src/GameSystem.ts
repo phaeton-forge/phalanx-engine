@@ -22,6 +22,15 @@ import type { IRandom } from './IRandom.js';
  * - dispose() must be implemented (call super.dispose() for auto-cleanup)
  */
 export abstract class GameSystem {
+  /**
+   * Stable name. The ordered names are part of `configHash`, so a peer
+   * with a different system order rejects the match. Defaults to the
+   * class name; override when that name is not stable.
+   */
+  public get name(): string {
+    return this.constructor.name;
+  }
+
   /** Shared system dependencies (assigned in init) */
   protected context!: SystemContext;
 

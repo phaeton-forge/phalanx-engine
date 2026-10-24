@@ -174,7 +174,7 @@ describe('world.query', () => {
         }
       }
     }
-    game.registerSystems([new Reader()], []);
+    game.addSystem(new Reader(), { phase: 'late' });
 
     expect(() => game.processAllTicks(1)).toThrow(
       "tick system must not branch on transient component 'Visual'"

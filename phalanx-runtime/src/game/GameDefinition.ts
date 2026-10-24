@@ -120,8 +120,16 @@ export interface GameDefinition<
    * `configHash`.
    */
   readonly components?: readonly GameComponent[];
-  /** Factories. Restore builds a new world, so instances are not reused. */
+  /**
+   * Tick-system factories. Restore builds a new world, so instances are not
+   * reused. The runner adds each one in the `late` phase. A system that
+   * must run in another phase is added from `onStart` with `world.addSystem`.
+   */
   readonly systems?: readonly (() => GameSystem)[];
+  /**
+   * Frame-system factories, added in the `render` phase. Same restore rule
+   * as {@link GameDefinition.systems}.
+   */
   readonly frameSystems?: readonly (() => GameSystem)[];
   /** Passed to the engine-owned `GameWorld`. */
   readonly pooling?: PoolingConfig;

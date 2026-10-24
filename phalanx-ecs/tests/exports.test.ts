@@ -74,6 +74,7 @@ function namesOf(files: readonly string[]): Map<string, ModuleExports> {
 }
 
 const ROOT_NAMES = [
+  'AddSystemOptions',
   'BinaryStateReader',
   'BinaryStateWriter',
   'CommandsBatch',
@@ -88,7 +89,9 @@ const ROOT_NAMES = [
   'EntityTypeConfig',
   'EventBus',
   'FIELD_BYTE_SIZES',
+  'FRAME_PHASES',
   'FrameHandler',
+  'FramePhase',
   'GameSystem',
   'GameWorld',
   'GameWorldConfig',
@@ -133,9 +136,13 @@ const ROOT_NAMES = [
   'StateReader',
   'StateWriter',
   'SystemContext',
+  'SystemOrder',
+  'SystemPhase',
   'SystemRegistry',
+  'TICK_PHASES',
   'TYPED_ARRAY_CONSTRUCTORS',
   'TickHandler',
+  'TickPhase',
   'TransientComponentDef',
   'TypedArrayLike',
   'Unsubscribe',
@@ -159,6 +166,7 @@ const ROOT_VALUES = [
   'EntityPool',
   'EventBus',
   'FIELD_BYTE_SIZES',
+  'FRAME_PHASES',
   'GameSystem',
   'GameWorld',
   'GameWorldEvents',
@@ -167,6 +175,7 @@ const ROOT_VALUES = [
   'SoAComponentStore',
   'SystemContext',
   'SystemRegistry',
+  'TICK_PHASES',
   'TYPED_ARRAY_CONSTRUCTORS',
   'ValueComponent',
   'calculateSchemaByteSize',
@@ -222,10 +231,10 @@ describe('@phalanx-engine/ecs exports', () => {
     }
     expect(
       resolved.map((entry) => actual.get(entry.file)?.names.length)
-    ).toEqual([75]);
+    ).toEqual([82]);
     expect(
       resolved.map((entry) => actual.get(entry.file)?.values.length)
-    ).toEqual([26]);
+    ).toEqual([28]);
   });
 
   it('loads each entry by package name', async () => {

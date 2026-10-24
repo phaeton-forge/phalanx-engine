@@ -211,10 +211,8 @@ export class FormationSystem extends GameSystem {
         const entity = this.unitFactory.spawnBattleUnit(
           unit.unitType,
           team,
-          pos,
-          this.entityManager.allocateEntityId()
+          pos
         );
-        this.entityManager.addEntity(entity);
 
         if (def.aura) {
           this.context

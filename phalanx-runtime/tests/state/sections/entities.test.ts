@@ -67,7 +67,7 @@ function prewarmedWorld(system: SpawnSystem): GameWorld {
       },
     },
   });
-  world.registerSystems([system], []);
+  world.addSystem(system, { phase: 'late' });
   world.start();
   return world;
 }

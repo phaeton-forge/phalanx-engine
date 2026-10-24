@@ -378,7 +378,8 @@ export class MatchRunner<G extends AnyGameDefinition> {
     this.configDigest = hashMatchConfig(
       this.config,
       schemas,
-      this.definition.commands.schema
+      this.definition.commands.schema,
+      this.simulation === null ? undefined : this.simulation.world.systemNames()
     );
     this.attachPersistence();
   }
@@ -1894,14 +1895,11 @@ export class MatchRunner<G extends AnyGameDefinition> {
       open: () => {
         if (opened) return;
         opened = true;
-        const systems = (this.definition.systems ?? []).map((create) =>
-          create()
-        );
-        const frames = (this.definition.frameSystems ?? []).map((create) =>
-          create()
-        );
-        if (systems.length > 0 || frames.length > 0) {
-          world.registerSystems(systems, frames);
+        for (const create of this.definition.systems ?? []) {
+          world.addSystem(create(), { phase: 'late' });
+        }
+        for (const create of this.definition.frameSystems ?? []) {
+          world.addSystem(create(), { phase: 'render' });
         }
         world.start();
       },
@@ -2080,10 +2078,14 @@ function remove<T>(handlers: T[], handler: T): void {
 function hashMatchConfig(
   config: MatchConfigBase,
   components?: readonly ComponentSchemaHash[],
-  commands?: readonly CommandSchemaHash[]
+  commands?: readonly CommandSchemaHash[],
+  systems?: {
+    readonly tick: readonly string[];
+    readonly frame: readonly string[];
+  }
 ): Digest {
   const { side: _side, ...shared } = config;
-  return configHash(shared, components, commands);
+  return configHash(shared, components, commands, systems);
 }
 
 function readHostNow(): number {

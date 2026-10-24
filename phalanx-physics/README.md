@@ -8,7 +8,7 @@ A deterministic, fixed-point physics engine for the [Phalanx Engine](../README.m
 
 - **Deterministic by Design**: All math uses `FP.*` fixed-point operations — no floating-point non-determinism
 - **SoA Storage**: Physics body data stored in contiguous typed arrays (`BigInt64Array` for fixed-point, `Uint8Array` for flags) via phalanx-ecs `defineComponent` SoA rows in per-world `SoAComponentStore`s
-- **`attach` wires everything**: `PhysicsWorld.attach(world)` registers `Transform`, `PhysicsBody` and transient `Interpolation` (in that order, so both SoA components are saved and in `configHash`), provides the `Physics` service, adds `GravitySystem` → `PhysicsSystem` as module tick systems and `InterpolationSystem` as a module frame system (`world.addModuleSystems`), and registers one world section `physics.broadphase` (version 1). Call it before `world.registerSystems`; module systems run before the systems passed there unless the game lists one explicitly (`world.getSystem(PhysicsSystem)`), which keeps the game's position. A second `attach` of the same world is a no-op; a different world throws. Registering a standalone `PhysicsSystem` registers the same section once. Providing `Physics` by hand does not. The save functions are not package exports. The section body is the former `broadphase` list (keys `physics`, `physicsSystem`) without a `section('broadphase')` wrapper.
+- **`attach` wires everything**: `PhysicsWorld.attach(world)` registers `Transform`, `PhysicsBody` and transient `Interpolation` (in that order, so both SoA components are saved and in `configHash`), provides the `Physics` service, adds `GravitySystem` then `PhysicsSystem` (`after` gravity) to the `physics` tick phase and `InterpolationSystem` to the `interpolation` frame phase, and registers one world section `physics.broadphase` (version 1). Call it before `world.start()`. A game system that must run first uses phase `input`; one that must see the physics step uses `after: 'PhysicsSystem'` or phase `late`. A second `attach` of the same world is a no-op; a different world throws. Registering a standalone `PhysicsSystem` registers the same section once. Providing `Physics` by hand does not. The save functions are not package exports. The section body is the former `broadphase` list (keys `physics`, `physicsSystem`) without a `section('broadphase')` wrapper.
 - **Spatial Hash Grid**: O(n) broad-phase collision detection with configurable cell size. `getCenters()` / `getBroadphaseCenters()` read the cached fixed-point centers and radii, preserving each value's precision (pre-separation after a resolve). `restoreBroadphase(centers)` clears the grid and re-inserts those saved centers in ascending entity id. `rebuildBroadphase()` re-inserts from current transforms and is valid only for a collision-free world; after a hit the live grid still holds the pre-separation centers. The live step still rebuilds before resolution only.
 - **Narrow Phase**: Circle vs Circle, Circle vs AABB, and AABB vs AABB collision tests
 - **Impulse Resolution**: Mass-weighted velocity impulse + positional separation for overlap correction
@@ -179,18 +179,10 @@ const physicsWorld = new PhysicsWorld({
 // 2. Attach: components, Physics service, systems and save section
 physicsWorld.attach(world);
 
-// 3. Register game systems. Unlisted, the attached systems run first
-//    (gravity, physics; InterpolationSystem before the frame systems).
-//    To place them, list gravity and physics together, in that order;
-//    listing only one throws.
-world.registerSystems(
-  [
-    movementSystem,
-    world.getSystem(GravitySystem)!,
-    world.getSystem(PhysicsSystem)!,
-  ],
-  [renderSystem]
-);
+// 3. Game systems. Gravity and the physics step are already in `physics`.
+//    Movement that writes velocity runs in `input`, before them.
+world.addSystem(movementSystem, { phase: 'input' });
+world.addSystem(renderSystem, { phase: 'render' });
 
 world.start();
 
@@ -284,7 +276,7 @@ class PhysicsWorld {
 }
 ```
 
-- **`attach(world)`** — Registers the components, provides `Physics`, adds the systems (`world.getSystem(GravitySystem | PhysicsSystem | InterpolationSystem)` finds them) and registers `physics.broadphase`. Call before `world.registerSystems`.
+- **`attach(world)`** — Registers the components, provides `Physics`, adds the systems (`world.getSystem(GravitySystem | PhysicsSystem | InterpolationSystem)` finds them) and registers `physics.broadphase`. Call before `world.start()`.
 - **`getEntityPosition(entityId)`** — Fixed-point position for gameplay queries (e.g. ability targeting).
 - **`getInterpolatedTransform(entityId)`** — Interpolated float transform for rendering, populated after `InterpolationSystem` runs. Returns an `InterpolatedTransformSample` with `position: { x, y, z }` and `rotation: { x, y, z, w }` — rotation is a float quaternion (slerped between tick samples), apply it directly to a mesh quaternion.
 - **`raycastSegment(prev, cur, boxes)`** — Swept-segment (raycast) query returning the nearest hit against caller-supplied AABBs. **Workaround for 3D collisions** (e.g. ordnance vs a building) until full 3D body-body collision exists; see [Raycast / swept-segment queries](#raycast--swept-segment-queries).
@@ -413,19 +405,20 @@ physicsWorld.applyImpulse3D(
 
 ### System ordering
 
-`attach` adds **`GravitySystem` before `PhysicsSystem`** so the tick's
-acceleration is applied before that tick's integration (semi-implicit Euler).
-To place them after a game system, list both explicitly:
+`attach` adds **`GravitySystem` before `PhysicsSystem`** in the `physics`
+phase so the tick's acceleration is applied before that tick's integration
+(semi-implicit Euler). A system that writes velocity first uses `input`.
+A system that reads the integrated positions uses `after: 'PhysicsSystem'`
+or the `late` phase:
 
 ```typescript
 physicsWorld.attach(world);
-const gravitySystem = world.getSystem(GravitySystem);
-const physicsSystem = world.getSystem(PhysicsSystem);
-if (!gravitySystem || !physicsSystem) throw new Error('physics not attached');
-world.registerSystems(
-  [movementSystem, gravitySystem, physicsSystem /* landing systems… */],
-  [renderSystem]
-);
+world.addSystem(movementSystem, { phase: 'input' });
+world.addSystem(landingSystem, {
+  phase: 'physics',
+  after: 'PhysicsSystem',
+});
+world.addSystem(renderSystem, { phase: 'render' });
 ```
 
 ### Tick-resolution gravity vs. sub-stepped integration

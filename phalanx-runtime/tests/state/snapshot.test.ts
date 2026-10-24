@@ -403,6 +403,20 @@ describe('canonicalConfigBytes / configHash', () => {
       configHash({ name: 'a', nested: { x: 1, y: 2 }, seed: 1 })
     );
     expect(configHash({ seed: 1 })).not.toBe(configHash({ seed: 2 }));
+    const gravityFirst = {
+      tick: ['GravitySystem', 'PhysicsSystem'],
+      frame: ['InterpolationSystem'],
+    };
+    const physicsFirst = {
+      tick: ['PhysicsSystem', 'GravitySystem'],
+      frame: ['InterpolationSystem'],
+    };
+    expect(
+      configHash({ seed: 1 }, undefined, undefined, gravityFirst)
+    ).not.toBe(configHash({ seed: 1 }, undefined, undefined, physicsFirst));
+    expect(
+      configHash({ seed: 1 }, undefined, undefined, { tick: [], frame: [] })
+    ).toBe(configHash({ seed: 1 }));
   });
 
   it('accepts safe integers, strings, bools, null and null-prototype objects', () => {

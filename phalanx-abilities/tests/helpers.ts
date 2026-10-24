@@ -139,7 +139,6 @@ export function createActivationWorld(opts: TestWorldOpts = {}): TestWorld {
     );
   }
 
-  world.registerSystems([...abilities.tickSystems], []);
   const abilityIds = (opts.abilities ?? []).map((def) => def.id);
   return { world, abilities, cueLog, abilityIds };
 }

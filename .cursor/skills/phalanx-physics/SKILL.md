@@ -81,7 +81,7 @@ RenderSystem reads context.getService(Physics).getInterpolatedTransform(entityId
 - **Built-in interpolation**: `InterpolationSystem` implements `IAfterTick` and `IBeforeFrame`. `afterTick` is outside the transient-read guard. Tick systems must not branch on `Interpolation`.
 - **SoA storage**: `BigInt64Array` for FixedPoint values, `Uint8Array` for flags
 - **Entity iteration**: Always sorted by ID for lockstep determinism
-- **Attach**: Call `physicsWorld.attach(world)` before `registerSystems()`. It registers `Transform`, `PhysicsBody` and `Interpolation`, adds `GravitySystem` → `PhysicsSystem` (tick) and `InterpolationSystem` (frame) as module systems, registers `physics.broadphase`, and provides the `Physics` service; systems read it with `this.context.getService(Physics)` / `tryGetService(Physics)`. Providing `Physics` by hand does not register the save section, and `saveWorld` rejects that.
+- **Attach**: Call `physicsWorld.attach(world)` before `world.start()`. It registers `Transform`, `PhysicsBody` and `Interpolation`, adds `GravitySystem` then `PhysicsSystem` to the `physics` phase and `InterpolationSystem` to `interpolation`, registers `physics.broadphase`, and provides the `Physics` service; systems read it with `this.context.getService(Physics)` / `tryGetService(Physics)`. Providing `Physics` by hand does not register the save section, and `saveWorld` rejects that.
 - **Collision filtering**: Game-specific logic injected via `setCollisionFilter()` callback
 
 ## Step-by-Step Instructions
@@ -137,30 +137,20 @@ class RenderSystem extends GameSystem {
 
 ### 3. Register Systems with GameWorld
 
-`attach` already added the physics systems. By default they run before the
-systems passed to `registerSystems` (gravity, then physics;
-`InterpolationSystem` before the frame systems). To run physics after a game
-system, list the attached instances explicitly — they keep that position:
+`attach` already added gravity, then the physics step, in the `physics`
+phase, and `InterpolationSystem` in `interpolation`. Game systems that
+write velocity use `input`. Systems that react to the step use `late`
+(or `physics` with `after: 'PhysicsSystem'`):
 
 ```typescript
-const gravitySystem = world.getSystem(GravitySystem);
-const physicsSystem = world.getSystem(PhysicsSystem);
-if (!gravitySystem || !physicsSystem) throw new Error('physics not attached');
-
-// ORDER MATTERS:
-const tickSystems = [
-  movementSystem,    // Game-specific: sets velocities on PhysicsBody
-  gravitySystem,     // phalanx-physics: acceleration (before integration)
-  physicsSystem,     // phalanx-physics: integrate + collide + resolve
-  combatSystem,      // Game-specific: reacts to updated positions
-];
-
-world.registerSystems(tickSystems, [renderSystem]);
+world.addSystem(movementSystem, { phase: 'input' });
+world.addSystem(combatSystem, { phase: 'late' });
+world.addSystem(renderSystem, { phase: 'render' });
 ```
 
 > **No `setTransformStore()` needed.** `PhysicsSystem` reads/writes the built-in `Transform` store directly and iterates with `world.query(PhysicsBody, Transform)`.
-> `gravitySystem` is always attached but is a no-op when `gravity` is 0.
-> `attach` after `registerSystems` throws (`addModuleSystems: call before registerSystems`).
+> `GravitySystem` is always attached but is a no-op when `gravity` is 0.
+> `attach` after `world.start()` throws (`world.addSystem: system order is frozen`).
 
 ### 4. Register Component Type Symbols
 
@@ -550,8 +540,8 @@ body-body collision resolution.
 
 ### Integration
 
-- Call `physicsWorld.attach(world)` before `registerSystems()`
-- `attach` adds `GravitySystem` → `PhysicsSystem` (tick) and `InterpolationSystem` (frame); list them explicitly only to change their position
+- Call `physicsWorld.attach(world)` before `world.start()`
+- `attach` adds `GravitySystem` then `PhysicsSystem` (`physics`) and `InterpolationSystem` (`interpolation`). Put earlier game systems in `input` and later ones in `late`
 - Collisions only (game moves bodies): `new PhysicsWorld({ integrate: false, collisionResponse: 'push' })` — replaces the removed `CollisionSystem`
 - Physics advances only on the world tick (no physics tick providers)
 - Attach `Transform` and `Interpolation` on every entity that moves and renders

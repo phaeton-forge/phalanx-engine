@@ -117,8 +117,9 @@ function requireSystem<T>(system: T | undefined, name: string): T {
 }
 
 /**
- * `PhysicsWorld.attach` on a fresh world, then `registerSystems`. The
- * attached systems are initialized and found with `world.getSystem`.
+ * `PhysicsWorld.attach` on a fresh world. Extra tick systems run in `late`,
+ * after gravity and the physics step. The attached systems are initialized
+ * and found with `world.getSystem`.
  */
 export function attachedPhysics(
   config?: PhysicsWorldConfig,
@@ -128,7 +129,9 @@ export function attachedPhysics(
   const physics = new PhysicsWorld(config);
   physics.attach(world);
   ownStores(world);
-  world.registerSystems(tickSystems, []);
+  for (const system of tickSystems) {
+    world.addSystem(system, { phase: 'late' });
+  }
   return {
     world,
     physics,

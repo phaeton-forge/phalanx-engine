@@ -29,7 +29,7 @@ describe('world services', () => {
     game.provide(ClockService, clock);
 
     const reader = new ClockReader();
-    game.registerSystems([reader], []);
+    game.addSystem(reader, { phase: 'late' });
 
     expect(reader.seen).toBe(clock);
     expect(game.context.tryGetService(ClockService)).toBe(clock);

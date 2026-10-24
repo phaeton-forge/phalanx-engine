@@ -29,6 +29,24 @@ Entries collected per package until the synchronized 0.3.0 release
 
 ## @phalanx-engine/ecs
 
+- System phases. Tick order is `input`, `physics`, `abilities`, `late`.
+  Frame order is `interpolation`, `render`, `present`.
+  `world.addSystem(system, { phase, before?, after? })` runs systems in
+  registration order inside a phase; `before` / `after` refine that order.
+  A cycle, an unknown name, or a constraint that names another phase throws
+  when the order is resolved (`start`, `systemNames`, `processAllTicks`,
+  `updateAll`), for example
+  `world.start: system order cycle in phase 'late': a → b → a`.
+  `start()` freezes the order; a later `addSystem` throws
+  `world.addSystem: system order is frozen`. `init` runs immediately.
+  `GameSystem.name` defaults to `constructor.name` and must be non-empty
+  and unique. `systemNames()` is `{ tick, frame }` in execution order.
+  Removed `registerSystems`, `addModuleSystems`, and `addFrameSystem`.
+  `EntityManager.queryEntities` / `queryEntitiesAny` stay: playground
+  systems and a few engine paths still query by component symbol.
+  Export snapshot: names `[75]` → `[82]`, values `[26]` → `[28]`
+  (`AddSystemOptions`, `FramePhase`, `SystemOrder`, `SystemPhase`,
+  `TickPhase`, `FRAME_PHASES`, `TICK_PHASES`).
 - `defineComponent` is exported from ecs (domain packages import it here).
   The runtime SoA helper of the same name is unchanged.
   - SoA: `defineComponent(name, fields, { defaults? })` with `i32`, `u32`,
@@ -215,6 +233,15 @@ Entries collected per package until the synchronized 0.3.0 release
 
 ## @phalanx-engine/runtime
 
+- `configHash` appends ordered system names (`{ tick, frame }` from
+  `world.systemNames()`) when either list is non-empty. An empty order
+  keeps the previous digest. A different order changes the digest, so
+  peers that disagree on system order reject the match. `GameDefinition.systems`
+  are added in the `late` phase and `frameSystems` in `render`. A system
+  that belongs in another phase is added from `onStart` with
+  `world.addSystem`. Snapshot goldens `tiny-*`, `arena-*`, and
+  `skirmish500-*` keep the same body and `stateDigest`; only the header
+  `configHash` changes.
 - `restoreWorld` calls `world.discardTransientComponents()` before module
   save sections are read. Worlds that do not register a transient
   component keep the same bytes. The runtime `defineComponent` SoA helper
@@ -725,6 +752,10 @@ Entries collected per package until the synchronized 0.3.0 release
 
 ## @phalanx-engine/abilities
 
+- `createAbilitySystem` registers its simulation systems in the `abilities`
+  tick phase, in pipeline order, and `CuePresentationSystem` in the
+  `present` frame phase when cues are configured. `AbilitySystem.tickSystems`
+  is removed. Callers no longer pass that list to the world.
 - `AbilityOwner` (the component formerly named `AbilitySystem`),
   `Attributes`, `ActiveEffects` and `GameplayTags` are object
   `defineComponent` definitions with `save` / `load`. They are not
@@ -804,6 +835,10 @@ Entries collected per package until the synchronized 0.3.0 release
 
 ## abilities-playground
 
+- `UnitFactory.spawnBattleUnit` creates the battle entity with
+  `world.createEntity()`, so `world.addComponent` sees an id this world
+  allocated. Battle systems use `world.addSystem`: input through artillery,
+  post-step systems in `physics` after `PhysicsSystem`, render, then present.
 - `SimulationContainer` no longer passes `debug` or `debugConfig` to
   `GameWorld`. The playground does not depend on runtime for a debug
   overlay.
@@ -812,6 +847,12 @@ Entries collected per package until the synchronized 0.3.0 release
 
 ## @phalanx-engine/physics
 
+- `PhysicsWorld.attach` adds `GravitySystem`, then `PhysicsSystem`
+  (`after` `GravitySystem`), to the `physics` tick phase, and
+  `InterpolationSystem` to the `interpolation` frame phase. Call it
+  before `world.start()`. A game system that must run first uses `input`;
+  one that must see the physics step uses `physics` with `after:
+'PhysicsSystem'`, or `late`.
 - `Transform` and `PhysicsBody` are `defineComponent` SoA components.
   `Interpolation` is transient. Wrapper classes
   `TransformComponent`, `PhysicsBodyComponent`, and

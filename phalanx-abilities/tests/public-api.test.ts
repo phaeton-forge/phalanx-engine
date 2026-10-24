@@ -34,8 +34,6 @@ describe('public ability system API', () => {
         ],
       }),
     });
-    world.registerSystems([...abilities.tickSystems], []);
-
     const unit = world.createEntity();
     world.addComponent(unit, AbilityOwner, {
       attributes: {
@@ -91,8 +89,6 @@ describe('public ability system API', () => {
         ],
       }),
     });
-    world.registerSystems([...abilities.tickSystems], []);
-
     const untrained = world.createEntity();
     world.addComponent(untrained, AbilityOwner);
     world.entityManager.addEntity(untrained);

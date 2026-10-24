@@ -254,11 +254,10 @@ const world = new GameWorld({
   tickFrameProvider: client,
 });
 
-// Register systems
-world.registerSystems(
-  [movementSystem, combatSystem, physicsSystem],  // Tick systems (deterministic)
-  [interpolationSystem, healthBarSystem],          // Frame systems (visual)
-);
+// Register systems. Physics attach already fills physics + interpolation.
+world.addSystem(movementSystem, { phase: 'input' });
+world.addSystem(combatSystem, { phase: 'late' });
+world.addSystem(healthBarSystem, { phase: 'present' });
 
 // Start with lifecycle hooks
 world.start({

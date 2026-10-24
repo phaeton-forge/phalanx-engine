@@ -34,7 +34,7 @@ GameWorld (phalanx-ecs)
 │   ├── AbilitySystemRegistries   (per-world defs)
 │   ├── AbilitySystemRuntime      (activation FIFO, instance ids, GameplayCueBuffer)
 │   ├── AbilitySystemFacade       (enqueue API)
-│   └── tickSystems[]             → world.registerSystems([...abilities.tickSystems], [])
+│   └── pipeline systems           → abilities phase (CuePresentationSystem in present)
 Per tick (full pipeline):
   AbilityActivationSystem → EffectApplicationSystem → AbilityHookExecutorSystem
   → EffectTickSystem → AttributeAggregationSystem
@@ -101,7 +101,7 @@ const abilities = createAbilitySystem(world, {
   },
 });
 
-world.registerSystems([...abilities.tickSystems], []);
+// Pipeline systems are already in the abilities phase.
 // Systems reach the facade through the Abilities service:
 // this.context.getService(Abilities).applyEffect(target, 'Effect.Hit');
 ```
@@ -326,7 +326,7 @@ use `Modifier.calculation` instead (see above).
 
 ## phalanx-ecs integration
 
-- Register `abilities.tickSystems` with other tick systems in **fixed order** (typically: input/commands → abilities activation → movement → physics → game reactions)
+- `createAbilitySystem` registers its systems in the `abilities` phase, after `physics` and before `late`. Put input and movement in `input` or before physics; put reactions that need ability results in `late`
 - Each world owns its entity ids. Spawn with `world.createEntity` so peers that replay the same commands allocate the same ids
 - Subscribe to `ABILITY_ACTIVATED_EVENT` for UI feedback; do not rely on synchronous `activateAbility` return value for success
 - Attach ability state via `world.addComponent(entity, AbilityOwner, init?)`: it attaches `AbilityOwner` (ability set only), `Attributes`, `ActiveEffects` and `GameplayTags`; `world.removeComponent(entity, AbilityOwner)` removes all four. Read state with `abilityOwnerOf` / `attributesOf` / `activeEffectsOf` / `gameplayTagsOf` (one component each, no owner fallback). Attaching the owner when one of the four is present throws `already has`; removing `Attributes` / `ActiveEffects` / `GameplayTags` while the owner is attached throws. `world.addComponent(entity, Attributes, overrides)` seeds a standalone component from the registry. They are queryable with `world.query` / `world.queryAny`
@@ -449,7 +449,6 @@ const abilities = createAbilitySystem(world, {
   definitions: myDefs,
   pipeline: 'activation', // or 'effects', 'full'
 });
-world.registerSystems([...abilities.tickSystems], []);
 world.processAllTicks(2);
 ```
 

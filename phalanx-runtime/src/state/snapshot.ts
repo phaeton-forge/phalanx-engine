@@ -1,5 +1,9 @@
 import { SNAPSHOT_MAGIC } from '../constants.js';
-import { BinaryStateReader, BinaryStateWriter } from '@phalanx-engine/ecs';
+import {
+  BinaryStateReader,
+  BinaryStateWriter,
+  type SystemOrder,
+} from '@phalanx-engine/ecs';
 import { digestBytes } from './digest.js';
 import { SnapshotRejectedError } from './errors.js';
 
@@ -264,14 +268,18 @@ export interface CommandSchemaHash {
  * Component records are appended only when the list is non-empty, in
  * registration order. Each record is the component name plus its field
  * names and types in declaration order. Command records are appended
- * only when that list is non-empty, in declaration order. An empty list
- * does not change the digest. Swapping two fields, or changing `u32` to
- * `i32`, changes the digest. A command schema change does too.
+ * only when that list is non-empty, in declaration order. System names
+ * are appended when `systems` has at least one tick or frame name, in
+ * execution order (`tick`, then `frame`). An empty list does not change
+ * the digest. Swapping two fields, or changing `u32` to `i32`, changes
+ * the digest. A command schema change does too. A different system order
+ * does too.
  */
 export function configHash(
   config: unknown,
   components?: readonly ComponentSchemaHash[],
-  commands?: readonly CommandSchemaHash[]
+  commands?: readonly CommandSchemaHash[],
+  systems?: SystemOrder
 ): Digest {
   const parts: Uint8Array[] = [canonicalConfigBytes(config)];
   if (components !== undefined && components.length > 0) {
@@ -279,6 +287,14 @@ export function configHash(
   }
   if (commands !== undefined && commands.length > 0) {
     parts.push(canonicalConfigBytes(commands));
+  }
+  if (
+    systems !== undefined &&
+    (systems.tick.length > 0 || systems.frame.length > 0)
+  ) {
+    parts.push(
+      canonicalConfigBytes({ tick: systems.tick, frame: systems.frame })
+    );
   }
   return digestBytes(concatBytes(parts));
 }

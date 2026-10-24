@@ -32,6 +32,14 @@ import {
   type IBeforeFrame,
   type IAfterFrame,
 } from './ISystemLifecycleHooks.js';
+import {
+  constraintNames,
+  laneOf,
+  orderedSystems,
+  type AddSystemOptions,
+  type SystemEntry,
+  type SystemOrder,
+} from './phases.js';
 
 /**
  * Well-known event names emitted on the GameWorld's EventBus when the
@@ -132,7 +140,8 @@ interface ModuleComponent {
  * Single-player usage (provider from `@phalanx-engine/runtime/advanced`):
  * ```ts
  * const world = new GameWorld({ tickFrameProvider: provider });
- * world.registerSystems(tickSystems, frameSystems);
+ * world.addSystem(movement, { phase: 'input' });
+ * world.addSystem(scoring, { phase: 'late' });
  * provider.start();
  * world.start({
  *   afterFrame(alpha, dt) { scene.render(); },
@@ -142,7 +151,7 @@ interface ModuleComponent {
  * Multiplayer usage (with PhalanxClient as tickFrameProvider):
  * ```ts
  * const world = new GameWorld({ tickFrameProvider: client });
- * world.registerSystems(tickSystems, frameSystems);
+ * world.addSystem(movement, { phase: 'input' });
  * world.start({
  *   beforeTick(tick, commands) { lockstepManager.processTick(tick, commands); },
  *   afterTick(tick) { interpolationSystem.captureCurrentPositions(); },
@@ -158,7 +167,7 @@ export class GameWorld {
   private readonly _poolingConfig: PoolingConfig | undefined;
 
   // Cached systems that implement the optional lifecycle hook interfaces.
-  // Built lazily on first registerSystems() call; rebuilt on subsequent calls.
+  // Rebuilt when the phase order is resolved.
   private beforeTickSystems: IBeforeTick[] = [];
   private afterTickSystems: IAfterTick[] = [];
   private beforeFrameSystems: IBeforeFrame[] = [];
@@ -203,6 +212,12 @@ export class GameWorld {
 
   /** Module save sections, kept sorted by key. */
   private readonly _saveSections: SaveSection[] = [];
+
+  /** Systems added with {@link addSystem}, in registration order. */
+  private readonly _systemEntries: SystemEntry[] = [];
+  private _systemOrderDirty = true;
+  /** Set by {@link start}. Further `addSystem` calls throw. */
+  private _systemsFrozen = false;
 
   constructor(config: GameWorldConfig) {
     // Create SystemRegistry with eagerly-initialized core deps
@@ -489,34 +504,69 @@ export class GameWorld {
   // ── System registration ──────────────────────────────────────────────
 
   /**
-   * Register tick and frame systems, then call init() on each.
-   * Also collects systems that implement optional lifecycle hook interfaces
-   * (IBeforeTick, IAfterTick, IBeforeFrame, IAfterFrame) so GameWorld can
-   * invoke them automatically at the right pipeline phase.
+   * Add `system` to a tick or frame phase. Within a phase, systems run in
+   * registration order, refined by `before` / `after`. A constraint cycle,
+   * or a constraint that names a system in another phase, throws when the
+   * order is resolved (`start`, or the first `processAllTicks` /
+   * `updateAll`).
+   *
+   * `init` runs immediately. `world.getSystem` finds the system at once.
+   * After {@link start} the order is frozen and this throws.
+   *
+   * @throws If the order is frozen, the phase is unknown, `name` is empty,
+   * the name is already used, or this instance was already added.
    */
-  public registerSystems(
-    tickSystems: GameSystem[],
-    frameSystems: GameSystem[]
-  ): void {
-    this.systemRegistry.registerSystems(tickSystems, frameSystems);
-    this.buildLifecycleCaches();
+  public addSystem(system: GameSystem, options: AddSystemOptions): void {
+    if (this._systemsFrozen) {
+      throw new Error('world.addSystem: system order is frozen');
+    }
+    const phase = options.phase;
+    laneOf(phase);
+    const name = system.name;
+    if (name.length === 0) {
+      throw new Error('world.addSystem: system name is required');
+    }
+    if (this._systemEntries.some((entry) => entry.system === system)) {
+      throw new Error(
+        `world.addSystem: system '${name}' is already registered`
+      );
+    }
+    if (this._systemEntries.some((entry) => entry.system.name === name)) {
+      throw new Error(
+        `world.addSystem: system '${name}' is already registered`
+      );
+    }
+    this._systemEntries.push({
+      system,
+      phase,
+      before: constraintNames(options.before),
+      after: constraintNames(options.after),
+      index: this._systemEntries.length,
+    });
+    this._systemOrderDirty = true;
+    this.systemRegistry.add(system);
+    system.init(this.systemRegistry.getContext());
   }
 
   /**
-   * Systems owned by a module (`PhysicsWorld.attach`). Call before
-   * {@link registerSystems}; `world.getSystem` finds them at once, and
-   * `init` runs from `registerSystems`. Each `registerSystems` call runs
-   * module tick systems before the given tick systems and module frame
-   * systems before the given frame systems, in module order. A module
-   * system the caller lists explicitly keeps the caller's position.
-   *
-   * @throws If `registerSystems` was already called.
+   * System names in execution order (tick phases, then frame phases).
+   * Resolves `before` / `after`. Does not freeze the order; {@link start}
+   * does. An empty world returns two empty lists.
    */
-  public addModuleSystems(
-    tickSystems: readonly GameSystem[],
-    frameSystems: readonly GameSystem[]
-  ): void {
-    this.systemRegistry.addModuleSystems(tickSystems, frameSystems);
+  public systemNames(): SystemOrder {
+    this.ensureSystemOrder();
+    return {
+      tick: this.systemRegistry.orderedTick().map((system) => system.name),
+      frame: this.systemRegistry.orderedFrame().map((system) => system.name),
+    };
+  }
+
+  private ensureSystemOrder(): void {
+    if (!this._systemOrderDirty) return;
+    const ordered = orderedSystems(this._systemEntries);
+    this.systemRegistry.setOrder(ordered.tick, ordered.frame);
+    this.buildLifecycleCaches();
+    this._systemOrderDirty = false;
   }
 
   private buildLifecycleCaches(): void {
@@ -533,20 +583,16 @@ export class GameWorld {
     }
   }
 
-  /**
-   * Add a late-initialized frame system (init() must already have been called).
-   */
-  public addFrameSystem(system: GameSystem): void {
-    this.systemRegistry.addFrameSystem(system);
-  }
-
   // ── Tick / Frame delegation ──────────────────────────────────────────
 
   /**
    * Run all tick-based systems for the given tick.
    * Reading a transient component from a tick system throws.
+   * Resolves phase order on the first call. Does not freeze it;
+   * {@link start} does.
    */
   public processAllTicks(tick: number): void {
+    this.ensureSystemOrder();
     this.enterTick();
     try {
       this.systemRegistry.processAllTicks(tick);
@@ -559,6 +605,7 @@ export class GameWorld {
    * Run all frame-based systems with the given delta time.
    */
   public updateAll(dt: number): void {
+    this.ensureSystemOrder();
     this.systemRegistry.updateAll(dt);
   }
 
@@ -578,6 +625,9 @@ export class GameWorld {
    * @param hooks - Optional lifecycle hooks to inject custom logic around the core steps.
    */
   public start(hooks?: GameWorldHooks): void {
+    this.ensureSystemOrder();
+    this._systemsFrozen = true;
+
     // Prewarm pools if configured
     if (this._pools && this._poolingConfig?.autoPrewarm !== false) {
       this._pools.prewarmAll();

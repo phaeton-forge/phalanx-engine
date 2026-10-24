@@ -126,7 +126,9 @@
 
 ## A6d. ecs: фазы систем
 
-Отдельный PR после A8. В A6c фазы не входят.
+Статус: реализовано. Отдельный PR после A8. В A6c фазы не входят.
+
+Фазы tick: `input → physics → abilities → late`. Фазы frame: `interpolation → render → present`. `before` / `after` уточняют порядок внутри фазы. `GameSystem.name` по умолчанию `constructor.name`. `EntityManager.queryEntities` (symbol[]) остаётся: playground и часть движка всё ещё ищут сущности по символу компонента.
 
 1. Фазы систем. Порядок систем — часть детерминизма, поэтому он задаётся явно:
    - фиксированный список фаз, например `input → abilities → physics → late` для tick и отдельный список для frame;
