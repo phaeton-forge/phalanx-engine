@@ -15,8 +15,8 @@ metadata:
 > `readModuleSections` for the `modules` container. Ability and physics
 > bytes are save sections those packages register (`abilities`,
 > `physics.broadphase`). Bind physics with `PhysicsWorld.attach(world)`.
-> Task 6 is `MatchRunner` (not `join`), `CommandLog`,
-> `BotHost` and `LocalTransport`. Task 7 is opt-in local persistence
+> Task 6 is `MatchRunner`, `CommandLog`, `BotHost` and `LocalTransport`.
+> Task 12 is `MatchRunner.join` with `ServerPeerTransport`. Task 7 is opt-in local persistence
 > (`MatchStore`, `MemoryMatchStore`, `IndexedDbMatchStore`,
 > `MatchRunner.resumeLocal`). Task 7.1 splits IndexedDB into `meta`,
 > command chunks, and snapshots (schema v2 drops pre-0.3.0 v1 rows) and
@@ -44,9 +44,72 @@ new Phalanx({
 });
 ```
 
+## Start a new game
+
+Follow [docs/guides/runtime-game-guide.md](../../../docs/guides/runtime-game-guide.md).
+One `defineGame` is the simulation. `MatchRunner` runs it. Subpaths:
+
+| Import                                                                | Subpath                                                         |
+| --------------------------------------------------------------------- | --------------------------------------------------------------- |
+| `@phalanx-engine/game` or `@phalanx-engine/runtime`                   | `.` — `defineGame`, `MatchRunner`, `runLocalMatch`, `saveWorld` |
+| `@phalanx-engine/game/net` or `@phalanx-engine/runtime/net`           | `./net` — `ServerPeerTransport`                                 |
+| `@phalanx-engine/game/server` or `@phalanx-engine/runtime/server`     | `./server` — `createServerSim`                                  |
+| `@phalanx-engine/game/advanced` or `@phalanx-engine/runtime/advanced` | `./advanced` — `StateHelpers`, `spawnWithId`, `SaveHandler`     |
+| `@phalanx-engine/game/math`                                           | fixed-point and `DeterministicRandom`                           |
+| `@phalanx-engine/game/physics`                                        | `PhysicsWorld.attach`                                           |
+| `@phalanx-engine/game/abilities`                                      | `createAbilitySystem`                                           |
+
+```ts
+import { defineGame, MatchRunner } from '@phalanx-engine/game';
+import { ServerPeerTransport } from '@phalanx-engine/game/net';
+import { createServerSim } from '@phalanx-engine/game/server';
+import { PhalanxClient } from '@phalanx-engine/client';
+import { Phalanx } from '@phalanx-engine/server';
+
+export const MyGame = defineGame({
+  id: 'my-game',
+  simVersion: '1',
+  tickRate: 20,
+  components: [Unit],
+  commands,
+  onStart(ctx) {
+    ctx.open();
+  },
+  onCommand: {/* one function per command type */},
+  checkOutcome: () => null,
+});
+export default MyGame;
+
+const client = new PhalanxClient({
+  serverUrl,
+  playerId,
+  gameId: MyGame.id,
+});
+await client.connect();
+const runner = await MatchRunner.join(
+  MyGame,
+  new ServerPeerTransport({ client, gameId: MyGame.id })
+);
+
+new Phalanx({
+  port: 3000,
+  tickRate: 20,
+  gameTypes: [{ gameType: MyGame.id, tickRate: 20, tickMode: 'continuous' }],
+  sim: createServerSim({
+    games: [{ module: './dist/myGame.js' }],
+    snapshotEveryTicks: 1000,
+  }),
+});
+```
+
+`join` is implemented. A fresh `game-start` starts the runner. A stored
+session with `matchConfig` resumes from the server snapshot and the log
+after it. A `serverDesync` for this player runs one `requestResync`.
+
 ## When to Use This Skill
 
 - Defining a game for engine 0.3 (`defineComponent`, `defineCommands`, `defineGame`, `runLocalMatch`).
+- Joining a server simulation with `MatchRunner.join` and `ServerPeerTransport`.
 - Custom snapshots (`save: { handler }`, advanced `SaveHandler`).
 - Writing bots as command producers (`BotPolicy`).
 - Choosing `side: 'client' | 'server'` and slots (`SlotConfig`, defined in `@phalanx-engine/protocol` and re-exported here). `runsOn` is independent of `side`. `SYSTEM_PLAYER_ID`, `botPlayerId`, and `isBotPlayerId` are defined in the protocol package and re-exported.
@@ -195,16 +258,16 @@ Call these inside a hand-written `GameState`, in this order on restore:
 
 ```ts
 const transport = new LocalTransport({ tickRate: game.tickRate });
-const runner = new MatchRunner(game, config, transport, { side: 'client' });
+const runner = new MatchRunner(game, config, transport);
 runner.start();
 runner.submit({ type: 'move', dx: 1n }); // executes at tick + inputDelayTicks
 ```
 
 Tests and replays use `LocalTransport.stepped()` and `step(n)`.
 `fastForward(log, { budgetMs, throughTick })` replays through `throughTick`
-inclusive, including empty ticks. `MatchRunner.fromReplay` never calls
-`decide`. Drive it only with `fastForward(replay.log, { throughTick:
-replay.lastTick })`. `start()` throws on a replay runner. Wrap nothing
+inclusive, including empty ticks. `ReplayPlayer.from` never calls
+`decide`. Drive it with `play({ budgetMs })` or `fastForward(replay.lastTick)`.
+`start()` and `submit` are not on a replay player. Wrap nothing
 yourself: each world owns its SoA stores, so no ambient world context exists. Two runners
 in one process keep separate entity ids.
 
@@ -244,7 +307,7 @@ transport. Catch-up applies buffered batches that land after
 `throughTick`, in order, and drops the ones the replay already covered.
 An already-started `restore` flushes the checkpoint after the transport
 seek. `restore` resets the match RNG to `config.seed` before
-`createWorld`; `GameState.restore` then installs the saved generator. A
+`onStart`, then the save handler installs the saved generator. A
 paused transport pauses the rebuilt world. Entity ids and SoA stores stay on each world's
 `EntityManager`. `LocalTransport`
 rejects a submit more than `maxAheadTicks` past `nextTick` (default 8).
@@ -254,10 +317,10 @@ after `decide` stores bot bytes and the input checkpoint outside the
 digest. `restore` applies every slot's controller mode from the bot
 section. Policy bytes and the checkpoint are applied only for slots this
 runner hosts or submits, so a client keeps a server snapshot's
-human-to-bot handover and ignores that snapshot's policy state. A custom `GameState` that calls `spawnWithId`
-for an id `createWorld` already made still throws
+human-to-bot handover and ignores that snapshot's policy state. A custom save handler that calls `spawnWithId`
+for an id `onStart` already registered still throws
 `createEntityWithId: entity N already exists`. `restoreWorld` skips that id.
-A throw inside a tick does not escape `LocalTransport.manual().step()`;
+A throw inside a tick does not escape `LocalTransport.stepped().step()`;
 `onError` already ran. `fastForward`, replay, and catch-up still
 propagate that error, including a final-digest mismatch. A timed
 transport swallows the same error in its timer. Other transports still
@@ -294,40 +357,35 @@ truncated buffer, trailing bytes, or a digest that does not match the body.
 
 ## Minimal game
 
+Omit `save` and the world modules (`saveWorld` / `restoreWorld`) are the
+handler. `defineCommands` builds the codec. The full template, including
+`MatchRunner.join`, is [Start a new game](#start-a-new-game).
+
 ```ts
-import { defineGame, rejectCommand } from '@phalanx-engine/runtime';
+import {
+  defineCommands,
+  defineComponent,
+  defineGame,
+} from '@phalanx-engine/runtime';
+
+const Unit = defineComponent('Unit', { x: 'i64' }, { defaults: { x: 0n } });
+const commands = defineCommands({ stop: { x: 'i64' } });
 
 export const TinyGame = defineGame({
   id: 'tiny',
   simVersion: 'tiny-1',
   tickRate: 10,
-  createWorld: (config: TinyConfig, ctx) => new TinySim(config, ctx),
-  commands: {
-    types: ['stop'],
-    decode: (raw) =>
-      isStop(raw) ? { type: 'stop' as const } : rejectCommand('unknown'),
+  components: [Unit],
+  commands,
+  onCommand: {
+    stop(ctx, stamped) {
+      // write Unit.x from stamped.command.x
+      void ctx;
+      void stamped;
+    },
   },
-  state: { formatVersion: 1, bind: (sim) => new TinyState(sim) },
-  outcome: () => null,
+  checkOutcome: () => null,
 });
-
-class TinyState implements GameState {
-  constructor(private readonly sim: TinySim) {}
-  save(w: StateWriter): void {
-    w.section('units', 1, (s) =>
-      s.list(this.sim.units, (u, iw) => {
-        iw.u32(u.id);
-        iw.i64(u.x);
-      })
-    );
-  }
-  restore(r: StateReader): void {
-    const units = r.section('units', (s) =>
-      s.list((ir) => ({ id: ir.u32(), x: ir.i64() }))
-    );
-    this.sim.units.splice(0, this.sim.units.length, ...units);
-  }
-}
 ```
 
 ## Local persistence

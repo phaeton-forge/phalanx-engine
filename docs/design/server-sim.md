@@ -1,8 +1,9 @@
 # Server-side simulation (engine 0.3)
 
-Status: design approved 2026-10-14; contracts in `@phalanx-engine/runtime`
-(skeleton, Task 1). Implementation follows Tasks 2–13
-(see [runtime-api.md § Task map](./runtime-api.md#task-map)).
+Status: **Implemented in 0.3.0.** The client and server entry points below
+are the ones a game imports. The task map in
+[runtime-api.md](./runtime-api.md#task-map) is the history of how this
+landed.
 
 **Task 11 as shipped.** One `worker_threads` sim (or `inProcess` for
 tests) runs beside the relay. The relay stamps and broadcasts without
@@ -41,44 +42,56 @@ pure relay, exactly as today.
     outcome). It MUST NOT import the renderer or the DOM, because the server
     runs it.
   - `src/view`: renderer, UI and input. Client only.
-- **`@phalanx-engine/runtime`** (new, isomorphic, no DOM, no sockets):
-  - `defineGame` / `GameDefinition`, `MatchConfigBase` / `SlotConfig` /
-    `simMode`;
-  - `GameState` / `GameStateSpec` / `StateWriter` / `StateReader`, plus the
-    optional `StateHelpers`;
-  - `MatchRunner`: the tick loop, the command log with decode/validate, the
-    digest, `snapshot` / `restore` (header, digest, version policy) and
-    `fastForward` catch-up;
-  - `BotHost`: runs the `BotPolicy` of the bot slots hosted on this side;
-  - `WorldScope`: isolates the process-global ecs registers per world
-    (removed in A6b.2c; worlds no longer share globals);
-  - the `Transport` interface and `LocalTransport` (optional `MatchStore`);
-  - replay records, `MatchStore`, `MemoryMatchStore` and
-    `IndexedDbMatchStore` (Task 7; IndexedDB is `globalThis.indexedDB`,
-    not a DOM import).
-- **`@phalanx-engine/ecs`, `abilities`, `physics`, `math`:** unchanged except
-  for small additive hooks (Task 3):
-  - entity id counter accessors and `SoAComponent.currentEntityManager()`
-    (both removed by A6a.2 / A6b.2c: counters and SoA stores are per world);
-  - `DeterministicRandom` moved into `math`, with state export/import;
-  - an `InstanceIdCounter` setter and a GAS runtime state accessor;
-  - pool state accessors;
-  - a public broadphase rebuild.
-- **`@phalanx-engine/client`:** `PhalanxClient` unchanged. It adds
-  `ServerPeerTransport` (Task 12), `RelayLockstepTransport` (later) and the
-  session storage. `IndexedDbMatchStore` is runtime (Task 7), not client.
-  It **re-exports `MatchRunner`, `LocalTransport` and `defineGame`**, so a game
-  can import the runner from the client.
-- **`@phalanx-engine/server`:** the relay (`GameRoom`, `PrivateRoomService`)
-  is unchanged. It adds `SimHost` (one `MatchRunner` per server-mode match,
-  Task 11), bot slots in rooms and an in-memory snapshot store (Redis later).
+- **`@phalanx-engine/protocol`** holds `ServerSimHook` and the socket
+  payloads (`ServerDesyncEvent`, `MatchSnapshot`, `MatchSnapshotRequest`).
+  No engine types, no sockets.
+- **`@phalanx-engine/runtime`** is the isomorphic match runtime (no DOM, no
+  sockets). Games import it through `@phalanx-engine/game`.
+  - Root (`.`) : `defineGame`, `defineCommands`, `defineComponent`,
+    `MatchRunner`, `runLocalMatch`, `LocalTransport`, `saveWorld` /
+    `restoreWorld`, `MatchStore`. The match config field is `side`
+    (`'client' | 'server'`), not a separate `simMode` on the runner.
+  - `./server`, re-exported by `@phalanx-engine/game/server`:
+    `createServerSim({ games, snapshotEveryTicks })` returns a
+    `ServerSimHook`. The relay never imports a game module. The hook's
+    worker (or `inProcess` host) does. `SimHost` lives in this subpath,
+    not inside `@phalanx-engine/server`.
+  - `./net`, re-exported by `@phalanx-engine/game/net`:
+    `ServerPeerTransport`. Construct it with
+    `{ client: PhalanxClient, gameId }`.
+  - `./advanced`: `StateHelpers`, `spawnWithId`, and a custom `SaveHandler`.
+  - `BotHost` runs the `BotPolicy` of the slots this side hosts.
+    `WorldScope` was removed: each world owns its entity ids and SoA stores.
+  - `MatchStore`, `MemoryMatchStore`, and `IndexedDbMatchStore` are runtime.
+    IndexedDB is `globalThis.indexedDB`, read when a method runs.
+- **`@phalanx-engine/ecs`, `abilities`, `physics`, `math`:** per-world entity
+  ids and SoA stores, `defineComponent`, services, system phases.
+  `DeterministicRandom` lives in `math`. Physics registers itself through
+  `PhysicsWorld.attach`. Abilities register themselves through
+  `createAbilitySystem`.
+- **`@phalanx-engine/client`:** `PhalanxClient`, `MatchSessionStore`,
+  `requestMatchSnapshot()`, and the `serverDesync` event. It does **not**
+  re-export `MatchRunner`, `LocalTransport`, `defineGame`, or
+  `ServerPeerTransport`. Session storage is the client's. The local match
+  journal (`IndexedDbMatchStore`) stays in the runtime.
+- **`@phalanx-engine/server`:** the relay (`GameRoom`, `PrivateRoomService`).
+  It accepts `sim: ServerSimHook` and does not construct the sim host.
+  Pass `sim: createServerSim(...)`. Bot slots and the in-memory snapshot
+  store are relay features on top of that hook. There is no Redis in 0.3.
 
-Dependency direction: `math ← ecs ← runtime ← client / server`. The runtime
-never depends on the client or the server.
+Dependency direction: `protocol` and `math` have no engine dependencies;
+`ecs` depends on `math`; `runtime` depends on `ecs`, `math`, and
+`protocol`; `client` and `server` sit above that. `runtime` does not
+import `client` or `server` on its root path. `runtime/net` is the
+exception that takes a `PhalanxClient`. The game facade
+(`@phalanx-engine/game`) re-exports the root, and `@phalanx-engine/game/net`
+and `@phalanx-engine/game/server` re-export those subpaths.
 
 ## 3. Modes
 
-The mode is chosen per match by `MatchConfigBase.simMode`.
+A room opts in with `matchConfig.simMode: 'server'`. The runner config
+both peers then share uses `side`: `'client'` on the player, `'server'`
+on the sim. `MatchConfigBase` has no `simMode` field.
 
 |                | `client`                                       | `server`                                                          |
 | -------------- | ---------------------------------------------- | ----------------------------------------------------------------- |
@@ -126,9 +139,11 @@ Per relay tick T, in `GameRoom.processTick`:
    the digest wait in a capped queue. Each client is compared **against
    the server**. The first mismatch sends `desync { playerId, tick }` to
    that player only; the match continues. A later hash from the same
-   player is not reported again. Relay rooms with no server sim are
-   unchanged: `receiveStateHash` still ends the match when
-   `enableStateHashing` is on.
+   player is not reported again while that player's `reported` flag is
+   set. Delivering `match-snapshot` to the player clears the flag in
+   `RoomSim`, so a divergence after the resync is reported again. Relay
+   rooms with no server sim are unchanged: `receiveStateHash` still ends
+   the match when `enableStateHashing` is on.
 6. Snapshots: every `snapshotEveryTicks` (default 1000, tick 0 excluded)
    and on `match-snapshot-request`. Each player has one pending request;
    a newer id replaces the previous one, and those waiters share one

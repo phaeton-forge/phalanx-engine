@@ -1,7 +1,24 @@
 # План A6–A8: изоляция мира, единые компоненты, сервисы, physics и abilities
 
+Статус: **все этапы выполнены и влиты в `main`** (Phalanx Engine 0.3.0).
+
+| Этап   | Статус                    |
+| ------ | ------------------------- |
+| A6a.1  | выполнено, влито в `main` |
+| A6a.2  | выполнено, влито в `main` |
+| A6b.1  | выполнено, влито в `main` |
+| A6b.2a | выполнено, влито в `main` |
+| A6b.2b | выполнено, влито в `main` |
+| A6b.2c | выполнено, влито в `main` |
+| A6c    | выполнено, влито в `main` |
+| A7     | выполнено, влито в `main` |
+| A8     | выполнено, влито в `main` |
+| A6d    | выполнено, влито в `main` |
+
+Дальше по файлу — исходный план. Он оставлен как история решений.
+Порядок работы был: A6a.1 → A6a.2 → A6b.1 → A6b.2a → A6b.2b → A6b.2c → A6c, затем A7 и A8 (не зависят друг от друга), затем A6d.
+
 Без обратной совместимости: тестовая игра переписывается на новом API после рефакторинга.
-Порядок: A6a.1 → A6a.2 → A6b.1 → A6b.2a → A6b.2b → A6b.2c → A6c, затем A7 и A8 (не зависят друг от друга), затем A6d.
 
 Правила для каждого PR:
 
@@ -15,7 +32,7 @@
 
 ### A6a.1. Без работы при импорте
 
-Статус: PR #83.
+Статус: выполнено, влито в `main` (PR #83).
 
 1. Убрать глобальный хост модулей мира. `save`/`restore`/`spawn`/`despawn`/`each` становятся функциями runtime: `saveWorld(world)`, `restoreWorld(world, bytes)`, `spawn(world, spec)`, `despawn(world, e)`, `each(world, Comp, fn)`. Удаляются `WorldModuleHost`, `setWorldModuleHost`, `requireWorldModules`, `phalanx-ecs/src/worldHost.ts`, `phalanx-runtime/src/world/host.ts` и вызов при импорте в `phalanx-runtime/src/index.ts`. Вызовы обновляются в ecs, runtime, game, integration и фикстурах.
 2. Удаляется экспорт `globalEventBus` из ecs и game. Шина уже у каждого мира своя (`world.eventBus`), глобальная нигде не используется.
@@ -32,6 +49,8 @@
 
 ### A6a.2. Счётчик id принадлежит миру
 
+Статус: выполнено, влито в `main`.
+
 1. `entityIdCounter` из `Entity.ts` становится полем `EntityManager`. Удаляются `resetEntityIdCounter`, `getEntityIdCounter`, `setEntityIdCounter`, `nextEntityId`; сущности создаются только через мир, `new Entity()` уходит из публичного API. Конструктор `GameWorld` больше ничего не сбрасывает.
 2. `world.createEntityWithId(id)` для восстановления. Секция `entities.ts` перестаёт двигать счётчик на `id - 1` и возвращать его обратно. Счётчик сохраняется и восстанавливается через мир, формат секции тот же.
 3. Из `WorldScope` уходит подмена счётчика (подмена контекста SoA остаётся до A6b.2c).
@@ -46,6 +65,8 @@
 
 ### A6b.1. Новый `defineComponent` рядом со старым
 
+Статус: выполнено, влито в `main`.
+
 1. `defineComponent` переезжает из runtime в ecs (domain-пакеты импортируют его оттуда).
 2. Три вида компонентов:
    - **SoA**: целочисленные поля (`i32`, `u32`, `u8`, `i64`), сохраняются автоматически, входят в `configHash`;
@@ -56,6 +77,8 @@
 
 ### A6b.2a. Перевод physics
 
+Статус: выполнено, влито в `main`.
+
 1. `Transform`, `PhysicsBody` через `defineComponent` (SoA). `Interpolation` через `defineComponent` как transient: это образцы для сглаживания отрисовки, в сейв они не попадают.
 2. `lastX/lastZ` (`f64`) удаляются из `PhysicsBody` без замены. Их пишут только `PhysicsSystem` и `CollisionSystem`, читает только геттер самого компонента; playground и integration их не используют. Float-позицию для отрисовки дают `Transform` и `Interpolation`. Обновить комментарии в `phalanx-physics/src/save/broadphase.ts` и `phalanx-runtime/src/state/sections/soa.ts`.
 3. physics при restore добавляет `Interpolation` каждому телу, у которого он был при создании (правило transient из A6b.1).
@@ -65,6 +88,8 @@
 
 ### A6b.2b. Перевод abilities
 
+Статус: выполнено, влито в `main`.
+
 1. `Attributes`, `ActiveEffects`, `GameplayTags` и компонент-владелец через `defineComponent` (объектный вид, где списки).
 2. Компонент `AbilitySystem` переименовывается в `AbilityOwner` (утверждено). Имя `AbilitySystem` остаётся за сервисом (A6c).
 3. `GameplayTags.save` сортирует теги.
@@ -73,12 +98,16 @@
 
 ### A6b.2c. Удаление старого пути
 
+Статус: выполнено, влито в `main`.
+
 1. Удаляются `createComponentTypeRegistry`, символы `*_COMPONENT_TYPE` (включая `PHYSICS_BODY_COMPONENT_TYPE`, `TRANSFORM_COMPONENT_TYPE`), `abilityComponentTypes`, базовый `SoAComponent` в старом виде, `registerComponentTypes` в `SystemRegistry`, старый `defineComponent` в runtime.
 2. Убрать статический `SoAComponent._entityManager` (`useEntityManager`, `resetContext`). Хранилище находится через мир, переданный в `world.addComponent`/`world.getComponent`. `dispose()` одного мира не трогает другие. `WorldScope` удаляется целиком (экспорты runtime и `/advanced` тоже).
 3. Тест: два мира вперемешку пишут в свои SoA-хранилища, закрытие одного не ломает другой.
 4. Голдены те же.
 
 ## A6c. ecs: сервисы и query
+
+Статус: выполнено, влито в `main`.
 
 1. Сервисы: `defineService<T>(name)`, `world.provide(key, impl)`, `ctx.getService(key)`, `ctx.tryGetService(key)`. Ключ сравнивается по ссылке. Ошибки:
    - повторный `provide` того же ключа;
@@ -97,6 +126,8 @@
 5. Тесты: порядок query, удаление и снятие компонента внутри цикла, создание внутри цикла, все ошибки сервисов. Фазы и их тесты — в A6d.
 
 ## A7. physics
+
+Статус: выполнено, влито в `main`.
 
 1. `physics.attach(world)` регистрирует компоненты, системы, сервис и секцию сейва. `getSystems()` удаляется. Фаз ещё нет: они в A6d, после A8.
 2. Две независимые настройки:
@@ -117,6 +148,8 @@
 
 ## A8. abilities
 
+Статус: выполнено, влито в `main`.
+
 1. `createAbilitySystem(world, config)` регистрирует компоненты, системы, сервис `Abilities` и секцию сейва. Фазы — в A6d.
 2. Одно представление данных. Сейчас attributes, effects и tags живут и внутри компонента-владельца, и отдельными компонентами, getter'ы проверяют оба варианта. Оставить только отдельные компоненты, `AbilityOwner` хранит лишь своё. Если это меняет формат сейва — новый формат и регенерация голденов отдельным коммитом.
 3. Системы эффектов на `world.queryAny`.
@@ -126,7 +159,7 @@
 
 ## A6d. ecs: фазы систем
 
-Статус: PR #93. Отдельный PR после A8. В A6c фазы не входят.
+Статус: выполнено, влито в `main` (PR #93). Отдельный PR после A8. В A6c фазы не входили.
 
 Фазы tick: `input → physics → abilities → late`. Фазы frame: `interpolation → render → present`. `before` / `after` уточняют порядок внутри фазы. `GameSystem.name` по умолчанию `constructor.name`. `EntityManager.queryEntities` (symbol[]) остаётся: playground и часть движка всё ещё ищут сущности по символу компонента.
 
