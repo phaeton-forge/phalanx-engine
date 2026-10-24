@@ -74,6 +74,7 @@ function namesOf(files: readonly string[]): Map<string, ModuleExports> {
 
 const ROOT_NAMES = [
   'ABILITY_ACTIVATED_EVENT',
+  'Abilities',
   'AbilityActivatedEvent',
   'AbilityActivationContext',
   'AbilityActivationRequest',
@@ -164,6 +165,7 @@ const ROOT_NAMES = [
 
 const ROOT_VALUES = [
   'ABILITY_ACTIVATED_EVENT',
+  'Abilities',
   'AbilityActivationSystem',
   'AbilityHookExecutorSystem',
   'AbilityHooksRegistry',
@@ -235,10 +237,10 @@ describe('@phalanx-engine/abilities exports', () => {
     }
     expect(
       resolved.map((entry) => actual.get(entry.file)?.names.length)
-    ).toEqual([87]);
+    ).toEqual([88]);
     expect(
       resolved.map((entry) => actual.get(entry.file)?.values.length)
-    ).toEqual([38]);
+    ).toEqual([39]);
   });
 
   it('loads each entry by package name', async () => {

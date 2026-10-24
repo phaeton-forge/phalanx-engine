@@ -5,6 +5,7 @@ import type {
   StateReader,
   StateWriter,
 } from '@phalanx-engine/ecs';
+import { Abilities } from '../api/service.js';
 import {
   AbilityOwner,
   AbilityOwnerSlot,
@@ -141,7 +142,7 @@ interface AbilityStateIO {
 }
 
 function abilityStateIO(world: GameWorld, helper: string): AbilityStateIO {
-  const abilities = world.context.abilities;
+  const abilities = world.context.tryGetService(Abilities);
   if (abilities === undefined || !hasAbilityStateIO(abilities)) {
     throw new Error(`${helper}: world has no ability system`);
   }

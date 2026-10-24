@@ -1,16 +1,13 @@
 import { GameSystem } from '@phalanx-engine/ecs';
 import type { AbilitySystem } from '@phalanx-engine/abilities';
 import {
+  Abilities,
   gameplayCueKey,
   type GameplayCueDispatchedEvent,
 } from '@phalanx-engine/abilities';
-import { PhysicsWorld } from '@phalanx-engine/physics';
+import { Physics, PhysicsWorld } from '@phalanx-engine/physics';
 import { FP, type FixedPoint } from '@phalanx-engine/math';
-import {
-  ComponentType,
-  StatsComponent,
-  TeamComponent,
-} from '../components';
+import { ComponentType, StatsComponent, TeamComponent } from '../components';
 import { ArtilleryShellComponent } from '../components/ArtilleryShellComponent';
 import type { ArtilleryShellEntity } from '../entities/ArtilleryShell';
 import { ShrapnelEntity } from '../entities/Shrapnel';
@@ -40,11 +37,11 @@ const SAU_SHADOW_LEAD_TICKS = 2;
  */
 export class ArtilleryShellSystem extends GameSystem {
   private get _abilities(): AbilitySystem | undefined {
-    return this.abilities as AbilitySystem | undefined;
+    return this.context.tryGetService(Abilities);
   }
 
   public override processTick(tick: number): void {
-    const physics = this.physics as PhysicsWorld | undefined;
+    const physics = this.context.tryGetService(Physics);
     if (!physics) return;
 
     const shells = this.entityManager.queryEntities(

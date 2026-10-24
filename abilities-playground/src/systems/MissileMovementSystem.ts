@@ -1,15 +1,21 @@
-import type { AbilitySystem, CueEvent } from '@phalanx-engine/abilities';
+import { Abilities } from '@phalanx-engine/abilities';
+import type { CueEvent } from '@phalanx-engine/abilities';
 import {
   GameSystem,
   type SoAComponentStore,
   type SystemContext,
 } from '@phalanx-engine/ecs';
 import {
-  PhysicsWorld,
+  Physics,
   PhysicsSoASchema,
   TransformSoASchema,
 } from '@phalanx-engine/physics';
-import { FP, FPVector3, FPQuaternion, type FixedPoint } from '@phalanx-engine/math';
+import {
+  FP,
+  FPVector3,
+  FPQuaternion,
+  type FixedPoint,
+} from '@phalanx-engine/math';
 import {
   networkConfig,
   MISSILE_SPEED,
@@ -183,9 +189,15 @@ export class MissileMovementSystem extends GameSystem {
     const my = FP.FromRaw(this.transformStore.arrays.fpPositionY[tIdx]);
     const mz = FP.FromRaw(this.transformStore.arrays.fpPositionZ[tIdx]);
 
-    this.transformStore.arrays.fpPositionX[tIdx] = FP.ToRaw(FP.Add(mx, delta.x));
-    this.transformStore.arrays.fpPositionY[tIdx] = FP.ToRaw(FP.Add(my, delta.y));
-    this.transformStore.arrays.fpPositionZ[tIdx] = FP.ToRaw(FP.Add(mz, delta.z));
+    this.transformStore.arrays.fpPositionX[tIdx] = FP.ToRaw(
+      FP.Add(mx, delta.x)
+    );
+    this.transformStore.arrays.fpPositionY[tIdx] = FP.ToRaw(
+      FP.Add(my, delta.y)
+    );
+    this.transformStore.arrays.fpPositionZ[tIdx] = FP.ToRaw(
+      FP.Add(mz, delta.z)
+    );
   }
 
   private tickLaunch(
@@ -304,7 +316,9 @@ export class MissileMovementSystem extends GameSystem {
 
     this.bufferMissileImpactCue(missile.id, tick);
 
-    softDeactivateProjectile(this.entityManager, missile, { keepTransform: true });
+    softDeactivateProjectile(this.entityManager, missile, {
+      keepTransform: true,
+    });
 
     this.eventBus.emit<ProjectileDespawnRequestedEvent>(
       GameEvents.PROJECTILE_DESPAWN_REQUESTED,
@@ -316,7 +330,7 @@ export class MissileMovementSystem extends GameSystem {
   }
 
   private bufferMissileImpactCue(missileId: number, tick: number): void {
-    const abilities = this.abilities as AbilitySystem | undefined;
+    const abilities = this.context.tryGetService(Abilities);
     if (!abilities) return;
 
     (abilities.gameplayCueBuffer.events as CueEvent[]).push({
@@ -350,9 +364,13 @@ export class MissileMovementSystem extends GameSystem {
       ComponentType.Projectile
     );
     const effectId = projectileComp?.damageEffectId ?? 'Effect.Damage.Missile';
-    this.abilities?.applyEffect(target.id, effectId, missile.id);
+    this.context
+      .tryGetService(Abilities)
+      ?.applyEffect(target.id, effectId, missile.id);
 
-    softDeactivateProjectile(this.entityManager, missile, { keepTransform: true });
+    softDeactivateProjectile(this.entityManager, missile, {
+      keepTransform: true,
+    });
     this.eventBus.emit<ProjectileDespawnRequestedEvent>(
       GameEvents.PROJECTILE_DESPAWN_REQUESTED,
       {
@@ -381,7 +399,7 @@ export class MissileMovementSystem extends GameSystem {
    * when no hostile is within {@link MISSILE_RETARGET_RANGE}.
    */
   private findNearestHostile(missile: MissileEntity, tIdx: number): number {
-    const physics = this.physics as PhysicsWorld | undefined;
+    const physics = this.context.tryGetService(Physics);
     if (!physics) return -1;
 
     const team = missile.getComponent<TeamComponent>(ComponentType.Team);

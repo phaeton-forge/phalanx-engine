@@ -80,11 +80,10 @@ export {
   isAfterFrame,
 } from './ISystemLifecycleHooks.js';
 
-// Ability system contract (implemented by phalanx-abilities)
-export type { IAbilitySystem } from './IAbilitySystem.js';
-
-// Physics world contract (implemented by phalanx-physics)
-export type { IPhysicsWorld } from './IPhysicsWorld.js';
+// World services
+export { defineService } from './services.js';
+export type { ServiceKey } from './services.js';
+export type { QueryComponent, QueryRow, QueryAnyRow } from './query.js';
 
 // Match-scoped deterministic RNG contract
 export type { IRandom } from './IRandom.js';

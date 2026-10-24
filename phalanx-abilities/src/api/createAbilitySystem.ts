@@ -1,9 +1,4 @@
-import type {
-  GameSystem,
-  GameWorld,
-  IAbilitySystem,
-  IComponent,
-} from '@phalanx-engine/ecs';
+import type { GameSystem, GameWorld, IComponent } from '@phalanx-engine/ecs';
 import { FP } from '@phalanx-engine/math';
 import type { FixedPoint } from '@phalanx-engine/math';
 import {
@@ -41,6 +36,7 @@ import {
   NO_SOURCE_ENTITY_ID,
 } from './AbilitySystemFacade.js';
 import { releasePooledAbilityState } from './releasePooledAbilityState.js';
+import { Abilities } from './service.js';
 import type { AttributeValue } from './AbilitySystemFacade.js';
 import type { AbilitySystemDefinitions } from './defineAbilitySystem.js';
 
@@ -87,7 +83,7 @@ export interface CreateAbilitySystemConfig {
   cues?: CueConfig;
 }
 
-export interface AbilitySystem extends IAbilitySystem {
+export interface AbilitySystem {
   readonly tickSystems: readonly GameSystem[];
   readonly gameplayCueBuffer: GameplayCueBufferView;
   /** High-water mark of allocated active-effect instance ids (for tests). */
@@ -171,10 +167,8 @@ export function createAbilitySystem(
     cues
   );
 
-  // Assign on context so every GameSystem can access it via this.abilities.
-  // Must be called before world.registerSystems() so that init() can safely
-  // read this.abilities during system initialisation.
-  world.context.abilities = abilitySystem;
+  // Before world.registerSystems(), so system init() can read the service.
+  world.provide(Abilities, abilitySystem);
   world.registerSaveSection(abilitiesSaveSection);
 
   // Free-list entities are omitted from the GAS snapshot. Clearing here

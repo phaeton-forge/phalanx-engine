@@ -2,8 +2,6 @@ import type { GameWorld } from './GameWorld.js';
 import type { SystemContext } from './SystemContext.js';
 import type { EventBus } from './EventBus.js';
 import type { EntityManager } from './EntityManager.js';
-import type { IAbilitySystem } from './IAbilitySystem.js';
-import type { IPhysicsWorld } from './IPhysicsWorld.js';
 import type { PoolManager } from './pool/PoolManager.js';
 import type { IRandom } from './IRandom.js';
 
@@ -40,24 +38,6 @@ export abstract class GameSystem {
   /** Convenience accessor for EntityManager */
   protected get entityManager(): EntityManager {
     return this.context.entityManager;
-  }
-
-  /**
-   * The ability system for this game world, or undefined if the game does not
-   * use phalanx-abilities. Set by `createAbilitySystem()` before systems are
-   * registered. The concrete AbilitySystem type from phalanx-abilities
-   * satisfies this interface structurally.
-   */
-  protected get abilities(): IAbilitySystem | undefined {
-    return this.context.abilities;
-  }
-
-  /**
-   * The physics world for this game, or undefined if the game does not
-   * use phalanx-physics. Set on SystemContext before systems are registered.
-   */
-  protected get physics(): IPhysicsWorld | undefined {
-    return this.context.physics;
   }
 
   /**

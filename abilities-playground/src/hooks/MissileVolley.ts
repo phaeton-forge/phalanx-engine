@@ -1,4 +1,4 @@
-import { PhysicsWorld } from '@phalanx-engine/physics';
+import { Physics } from '@phalanx-engine/physics';
 import { FP, type FixedPoint } from '@phalanx-engine/math';
 import type { AbilityActivationContext } from '@phalanx-engine/abilities';
 import { GameWorld } from '@phalanx-engine/ecs';
@@ -54,7 +54,7 @@ export const missileVolley = (
   );
   if (!team || !unitType) return;
 
-  const physics = world.context.physics as PhysicsWorld | undefined;
+  const physics = world.context.tryGetService(Physics);
   if (!physics || !world.pools) return;
 
   const origin = copyFpPosition(caster);

@@ -153,12 +153,12 @@ interface ModuleEntry {
 const PHYSICS_BROADPHASE_SECTION = 'physics.broadphase';
 
 /**
- * A physics facade that was assigned without `PhysicsWorld.attach` has
- * no save section. Runtime does not import physics; the section key is
- * the contract.
+ * A `physics` service provided without `PhysicsWorld.attach` has no save
+ * section. Runtime does not import physics; the service name and the
+ * section key are the contract.
  */
 function assertPhysicsBound(world: GameWorld): void {
-  if (world.context.physics === undefined) return;
+  if (!world.context.serviceNames().includes('physics')) return;
   if (
     world.saveSections.some(
       (section) => section.key === PHYSICS_BROADPHASE_SECTION
@@ -167,7 +167,7 @@ function assertPhysicsBound(world: GameWorld): void {
     return;
   }
   throw new Error(
-    "save: physics is assigned but save section 'physics.broadphase' is not registered; call PhysicsWorld.attach(world)"
+    "save: physics service is provided but save section 'physics.broadphase' is not registered; call PhysicsWorld.attach(world)"
   );
 }
 

@@ -4,8 +4,7 @@ import type { GameSystem } from './GameSystem.js';
 
 type SystemConstructor = abstract new (...args: never[]) => GameSystem;
 import type { GameWorld } from './GameWorld.js';
-import type { IAbilitySystem } from './IAbilitySystem.js';
-import type { IPhysicsWorld } from './IPhysicsWorld.js';
+import { ServiceRegistry, type ServiceKey } from './services.js';
 import type { PoolManager } from './pool/PoolManager.js';
 import type { IRandom } from './IRandom.js';
 
@@ -43,21 +42,7 @@ export class SystemContext {
   /** Internal registry of all systems for getSystem() lookup */
   private systemRegistry = new Map<SystemConstructor, GameSystem>();
 
-  /**
-   * The ability system for this game world.
-   * Set by `createAbilitySystem()` from phalanx-abilities before
-   * `registerSystems()` is called. Undefined in games that don't use
-   * phalanx-abilities.
-   */
-  public abilities: IAbilitySystem | undefined = undefined;
-
-  /**
-   * The physics world for this game.
-   * Set by `PhysicsWorld.attach(world)` before `registerSystems()` is
-   * called. Assignment has no side effects. Undefined in games that
-   * don't use phalanx-physics.
-   */
-  public physics: IPhysicsWorld | undefined = undefined;
+  private readonly services = new ServiceRegistry();
 
   /**
    * Entity pool manager for this game world.
@@ -89,6 +74,30 @@ export class SystemContext {
       );
     }
     return this._random;
+  }
+
+  /**
+   * Register `impl` under `key`. Throws when `key`, or another key with the
+   * same name, is already provided. Usually called through
+   * `GameWorld.provide`.
+   */
+  public provide<T>(key: ServiceKey<T>, impl: T): void {
+    this.services.provide(key, impl);
+  }
+
+  /** The service under `key`. Throws with the list of provided names. */
+  public getService<T>(key: ServiceKey<T>): T {
+    return this.services.get(key);
+  }
+
+  /** The service under `key`, or `undefined` when not provided. */
+  public tryGetService<T>(key: ServiceKey<T>): T | undefined {
+    return this.services.tryGet(key);
+  }
+
+  /** Names of provided services, in `provide` order. */
+  public serviceNames(): readonly string[] {
+    return this.services.names();
   }
 
   /**

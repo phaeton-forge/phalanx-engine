@@ -3,6 +3,7 @@ export { defineAttribute } from './defineAttribute.js';
 export { defineAbilitySystem } from './defineAbilitySystem.js';
 export { defineEffect } from './defineEffect.js';
 export { createAbilitySystem } from './createAbilitySystem.js';
+export { Abilities } from './service.js';
 export {
   AbilitySystemFacade,
   NO_SOURCE_ENTITY_ID,

@@ -94,13 +94,11 @@ const ROOT_NAMES = [
   'GameWorldConfig',
   'GameWorldEvents',
   'GameWorldHooks',
-  'IAbilitySystem',
   'IAfterFrame',
   'IAfterTick',
   'IBeforeFrame',
   'IBeforeTick',
   'IComponent',
-  'IPhysicsWorld',
   'IPoolable',
   'IPoolableComponent',
   'IPoolableEntity',
@@ -115,7 +113,11 @@ const ROOT_NAMES = [
   'PoolManager',
   'PoolStats',
   'PoolingConfig',
+  'QueryAnyRow',
+  'QueryComponent',
+  'QueryRow',
   'SaveSection',
+  'ServiceKey',
   'SoAArrayType',
   'SoAArraysOf',
   'SoAComponentStore',
@@ -139,6 +141,7 @@ const ROOT_NAMES = [
   'ValueComponent',
   'calculateSchemaByteSize',
   'defineComponent',
+  'defineService',
   'defineSoASchema',
   'isAfterFrame',
   'isAfterTick',
@@ -167,6 +170,7 @@ const ROOT_VALUES = [
   'ValueComponent',
   'calculateSchemaByteSize',
   'defineComponent',
+  'defineService',
   'defineSoASchema',
   'isAfterFrame',
   'isAfterTick',
@@ -200,15 +204,14 @@ describe('@phalanx-engine/ecs exports', () => {
     }
   });
 
-  it('keeps SystemContext.physics a plain field', () => {
+  it('has no physics or abilities field on SystemContext', () => {
     const declaration = fs.readFileSync(
       path.join(PACKAGE_ROOT, 'dist/SystemContext.d.ts'),
       'utf8'
     );
-    expect(declaration).toMatch(/physics:\s*IPhysicsWorld \| undefined/);
     expect(declaration).toMatch(/world: GameWorld;/);
-    expect(declaration).not.toContain('defineProperty');
-    expect(declaration).not.toContain('phalanx.physics');
+    expect(declaration).not.toMatch(/\bphysics\b/);
+    expect(declaration).not.toMatch(/\babilities\b/);
   });
 
   it('matches the checked-in name snapshot, types included', () => {
@@ -218,10 +221,10 @@ describe('@phalanx-engine/ecs exports', () => {
     }
     expect(
       resolved.map((entry) => actual.get(entry.file)?.names.length)
-    ).toEqual([71]);
+    ).toEqual([74]);
     expect(
       resolved.map((entry) => actual.get(entry.file)?.values.length)
-    ).toEqual([25]);
+    ).toEqual([26]);
   });
 
   it('loads each entry by package name', async () => {

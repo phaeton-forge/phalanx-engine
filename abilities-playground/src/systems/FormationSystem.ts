@@ -1,3 +1,4 @@
+import { Abilities } from '@phalanx-engine/abilities';
 import { GameSystem } from '@phalanx-engine/ecs';
 import type { CommandsBatch } from '@phalanx-engine/ecs';
 import { arenaParams } from '../config/constants';
@@ -215,8 +216,10 @@ export class FormationSystem extends GameSystem {
         );
         this.entityManager.addEntity(entity);
 
-        if (def.aura && this.abilities) {
-          this.abilities.activateAbility(entity.id, 'Ability.HealAura');
+        if (def.aura) {
+          this.context
+            .tryGetService(Abilities)
+            ?.activateAbility(entity.id, 'Ability.HealAura');
         }
       }
     }

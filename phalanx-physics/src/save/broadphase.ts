@@ -9,13 +9,14 @@ import type { BroadphaseCenter } from '../collision/SpatialHashGrid.js';
 import { restoreOwnedInterpolation } from '../components/interpolation.js';
 import { CollisionSystem } from '../systems/CollisionSystem.js';
 import { PhysicsSystem } from '../systems/PhysicsSystem.js';
+import { Physics } from '../service.js';
 
-/** `context.physics` when it exposes the broadphase hooks. */
+/** The `Physics` service when it exposes the broadphase hooks. */
 const PHYSICS_KEY = 'physics';
 
 /**
  * A registered `PhysicsSystem` whose grid is not the one already saved
- * from `context.physics`.
+ * from the `Physics` service.
  */
 const PHYSICS_SYSTEM_KEY = 'physicsSystem';
 
@@ -66,7 +67,7 @@ function spatialGridOf(owner: BroadphaseOwner): object | null {
 }
 
 /**
- * Physics facade on `context.physics`, then a registered `PhysicsSystem`
+ * The `Physics` service, then a registered `PhysicsSystem`
  * or `CollisionSystem` when that system has a different grid.
  */
 function collectBroadphases(world: GameWorld): NamedBroadphase[] {
@@ -79,7 +80,7 @@ function collectBroadphases(world: GameWorld): NamedBroadphase[] {
     found.push({ key, owner });
   };
 
-  const physics = world.context.physics;
+  const physics = world.context.tryGetService(Physics);
   if (isBroadphaseOwner(physics)) {
     remember(PHYSICS_KEY, physics);
   }

@@ -1,8 +1,9 @@
+import { Abilities } from '@phalanx-engine/abilities';
 import { GameSystem } from '@phalanx-engine/ecs';
 import type { SoAComponentStore, SystemContext } from '@phalanx-engine/ecs';
 import type { AbilitySystem } from '@phalanx-engine/abilities';
 import { FP } from '@phalanx-engine/math';
-import { PhysicsWorld, TransformSoASchema } from '@phalanx-engine/physics';
+import { Physics, TransformSoASchema } from '@phalanx-engine/physics';
 import {
   CUBE_MAX_BEAM_TARGETS,
   CUBE_SLOW_TAG,
@@ -25,13 +26,13 @@ const EFFECT_CUBE_SPEED_BUFF = 'Effect.Cube.SpeedBuff';
  * within their detection radius. Targets are picked deterministically via
  * {@link SystemContext.random}; effects are applied/removed through phalanx-abilities.
  *
- * Range queries use {@link PhysicsWorld.spatialGrid.queryRadius} — distance is
+ * Range queries use `PhysicsWorld.spatialGrid.queryRadius` — distance is
  * filtered inside the spatial grid (deterministic, id-sorted); game code only
  * applies team/alive/auto-attack/target-state filters on top.
  */
 export class CubeTargetingSystem extends GameSystem {
   private get _abilities(): AbilitySystem {
-    return this.abilities as AbilitySystem;
+    return this.context.getService(Abilities);
   }
 
   private transformStore!: SoAComponentStore<
@@ -47,7 +48,7 @@ export class CubeTargetingSystem extends GameSystem {
   public override processTick(): void {
     if (!this.getSimulationState()?.active) return;
 
-    const physics = this.physics as PhysicsWorld | undefined;
+    const physics = this.context.tryGetService(Physics);
     if (!physics) return;
 
     const cubes = this.entityManager.queryEntities(

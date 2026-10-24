@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   BinaryStateReader,
   BinaryStateWriter,
+  defineService,
   GameWorld,
   type SaveSection,
 } from '@phalanx-engine/ecs';
@@ -325,15 +326,11 @@ describe('module save sections', () => {
     );
   });
 
-  it('rejects a save when physics is assigned without its section', () => {
+  it('rejects a save when physics is provided without its section', () => {
     const source = world();
-    source.context.physics = {
-      getInterpolatedTransform: () => undefined,
-      getEntityPosition: () => undefined,
-      applyImpulse: () => {},
-    };
+    source.provide(defineService<object>('physics'), {});
     expect(() => saveWorld(source)).toThrow(
-      "save: physics is assigned but save section 'physics.broadphase' is not registered; call PhysicsWorld.attach(world)"
+      "save: physics service is provided but save section 'physics.broadphase' is not registered; call PhysicsWorld.attach(world)"
     );
   });
 

@@ -1,3 +1,4 @@
+import { Abilities } from '@phalanx-engine/abilities';
 import { GameSystem } from '@phalanx-engine/ecs';
 import type { SoAComponentStore, SystemContext } from '@phalanx-engine/ecs';
 import type { AbilitySystem } from '@phalanx-engine/abilities';
@@ -13,7 +14,7 @@ import {
 
 export class AttackSystem extends GameSystem {
   private get _abilities(): AbilitySystem {
-    return this.abilities as AbilitySystem;
+    return this.context.getService(Abilities);
   }
   private transformStore!: SoAComponentStore<
     typeof TransformSoASchema.definition

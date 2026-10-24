@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { Abilities } from '@phalanx-engine/abilities';
+import { Physics } from '@phalanx-engine/physics';
 import {
   Entity,
   EntityManager,
@@ -184,14 +186,14 @@ describe('ArtilleryShellSystem shrapnel determinism', () => {
     context.random = new DeterministicRandom(seed);
     const impulses: Array<[number, number, number]> = [];
     let nextId = 5000;
-    context.physics = {
+    context.provide(Physics, {
       spatialGrid: { queryRadius: () => [] as number[] },
       getEntityPosition: () => undefined,
       applyImpulse3D: (_id: number, vx: number, vy: number, vz: number) => {
         impulses.push([FP.ToRaw(vx), FP.ToRaw(vy), FP.ToRaw(vz)]);
       },
-    } as never;
-    context.abilities = { applyEffect: vi.fn() } as never;
+    } as never);
+    context.provide(Abilities, { applyEffect: vi.fn() } as never);
     context.pools = {
       spawn: () => ({ id: nextId++ }),
       despawn: vi.fn(),
@@ -244,7 +246,7 @@ describe('ShrapnelLandingSystem secondary blast', () => {
     applyEffect = vi.fn();
     despawn = vi.fn();
     queryRadius = vi.fn();
-    context.abilities = { applyEffect } as never;
+    context.provide(Abilities, { applyEffect } as never);
     context.pools = { despawn, spawn: vi.fn() } as never;
   });
 
@@ -282,10 +284,10 @@ describe('ShrapnelLandingSystem secondary blast', () => {
   it('applies the secondary effect at the exact ground landing point', () => {
     const victim = addVictim();
     queryRadius.mockReturnValue([victim.id]);
-    context.physics = {
+    context.provide(Physics, {
       spatialGrid: { queryRadius },
       getEntityPosition: () => ({ x: FP.FromFloat(2), z: FP.FromFloat(3) }),
-    } as never;
+    } as never);
 
     const shrapnel = addShrapnel(1);
     const system = new ShrapnelLandingSystem();
@@ -313,10 +315,10 @@ describe('ShrapnelLandingSystem secondary blast', () => {
   it('resolves the secondary even when the firing unit has already died', () => {
     const victim = addVictim();
     queryRadius.mockReturnValue([victim.id]);
-    context.physics = {
+    context.provide(Physics, {
       spatialGrid: { queryRadius },
       getEntityPosition: () => ({ x: FP.FromFloat(2), z: FP.FromFloat(3) }),
-    } as never;
+    } as never);
 
     // Source id 777 has no live entity in the manager (caster is gone).
     addShrapnel(777);
