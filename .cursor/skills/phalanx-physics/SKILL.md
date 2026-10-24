@@ -66,7 +66,7 @@ Pipeline per frame:
 ```
 IBeforeFrame: InterpolationSystem.interpolate(alpha)
     ↓
-RenderSystem reads this.physics.getInterpolatedTransform(entityId)
+RenderSystem reads context.getService(Physics).getInterpolatedTransform(entityId)
 ```
 
 > **Events actually emitted by `PhysicsSystem`:** `PhysicsEvents.COLLISION` and
@@ -81,7 +81,7 @@ RenderSystem reads this.physics.getInterpolatedTransform(entityId)
 - **Built-in interpolation**: `InterpolationSystem` implements `IAfterTick` and `IBeforeFrame`. `afterTick` is outside the transient-read guard. Tick systems must not branch on `Interpolation`.
 - **SoA storage**: `BigInt64Array` for FixedPoint values, `Uint8Array` for flags
 - **Entity iteration**: Always sorted by ID for lockstep determinism
-- **SystemContext integration**: Call `physicsWorld.attach(world)` before `registerSystems()` — systems access via `this.physics` getter. Assignment of `context.physics` does not register the save section.
+- **Service**: Call `physicsWorld.attach(world)` before `registerSystems()`. It provides the `Physics` service; systems read it with `this.context.getService(Physics)` / `tryGetService(Physics)`. Providing `Physics` by hand does not register the save section, and `saveWorld` rejects that.
 - **Collision filtering**: Game-specific logic injected via `setCollisionFilter()` callback
 
 ## Step-by-Step Instructions
@@ -118,12 +118,14 @@ const world = new GameWorld({ /* ... */ });
 physicsWorld.attach(world);
 ```
 
-Systems access the facade via the protected `this.physics` getter on `GameSystem`:
+Systems read the facade through the `Physics` service:
 
 ```typescript
 class RenderSystem extends GameSystem {
   update(_dt: number): void {
-    const sample = this.physics?.getInterpolatedTransform(entityId);
+    const sample = this.context
+      .tryGetService(Physics)
+      ?.getInterpolatedTransform(entityId);
     if (sample) {
       mesh.position.set(sample.position.x, sample.position.y, sample.position.z);
       // sample.rotation is a float quaternion { x, y, z, w } — apply it directly.
@@ -152,7 +154,7 @@ const tickSystems = [
 
 const frameSystems = [
   interpolationSystem, // phalanx-physics: snapshot/capture/interpolate via lifecycle hooks
-  renderSystem,        // reads this.physics.getInterpolatedTransform()
+  renderSystem,        // reads getService(Physics).getInterpolatedTransform()
 ];
 
 world.registerSystems(tickSystems, frameSystems);
@@ -563,7 +565,7 @@ body-body collision resolution.
 - Call `physicsWorld.attach(world)` before `registerSystems()`
 - Register `gravitySystem` then `physicsSystem` as tick systems, `interpolationSystem` as frame system
 - Attach `Transform` and `Interpolation` on every entity that moves and renders
-- Use `this.physics.getInterpolatedTransform()` in render systems — do not maintain separate visual position caches
+- Use `getService(Physics).getInterpolatedTransform()` in render systems — do not maintain separate visual position caches
 - Use `physicsWorld.getEntityPosition()` for fixed-point gameplay queries (ability targeting, range checks)
 - Use `applyImpulse3D` for ballistic launch (`v = i / mass`); use `applyImpulse` only for grounded XZ flick velocity
 - Use `setCollisionFilter()` for game-specific rules — keeps phalanx-physics decoupled from game concepts
