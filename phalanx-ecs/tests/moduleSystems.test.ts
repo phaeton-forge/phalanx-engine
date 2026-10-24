@@ -71,6 +71,24 @@ describe('world.addModuleSystems', () => {
     expect(log).toEqual(['game-tick', 'module-tick']);
   });
 
+  it('rejects a partial or reordered module group', () => {
+    const a = new ModuleTick('a', []);
+    const b = new ModuleTick('b', []);
+    const partial = world();
+    partial.addModuleSystems([a, b], []);
+    expect(() => partial.registerSystems([a], [])).toThrow('or none of them');
+    const reordered = world();
+    reordered.addModuleSystems([a, b], []);
+    expect(() => reordered.registerSystems([b, a], [])).toThrow(
+      'must keep their order'
+    );
+    const whole = world();
+    whole.addModuleSystems([a, b], []);
+    expect(() =>
+      whole.registerSystems([new ModuleTick('g', []), a, b], [])
+    ).not.toThrow();
+  });
+
   it('throws after registerSystems', () => {
     const w = world();
     w.registerSystems([], []);

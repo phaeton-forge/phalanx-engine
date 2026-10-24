@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Entity, GameSystem, GameWorld } from '@phalanx-engine/ecs';
 import { FP } from '@phalanx-engine/math';
 import {
+  GravitySystem,
   PhysicsBody,
   PhysicsEvents,
   PhysicsSystem,
@@ -126,7 +127,9 @@ function collisionsOnlyRun(filter?: Filter): Run {
   if (filter) physics.setCollisionFilter(filter);
   const physicsSystem = world.getSystem(PhysicsSystem);
   if (physicsSystem === undefined) throw new Error('attach adds PhysicsSystem');
-  world.registerSystems([new MoveRight(), physicsSystem], []);
+  const gravitySystem = world.getSystem(GravitySystem);
+  if (gravitySystem === undefined) throw new Error('attach adds GravitySystem');
+  world.registerSystems([new MoveRight(), gravitySystem, physicsSystem], []);
   populate(world);
   return { world, events: recordEvents(world) };
 }

@@ -78,9 +78,21 @@ describe('PhysicsWorld', () => {
       order.push('physics');
       physicsTick(tick);
     };
-    world.registerSystems([new Probe(), physicsSystem], []);
+    const gravitySystem = world.getSystem(GravitySystem);
+    if (gravitySystem === undefined) throw new Error('missing GravitySystem');
+    world.registerSystems([new Probe(), gravitySystem, physicsSystem], []);
     world.processAllTicks(1);
     expect(order).toEqual(['game', 'physics']);
+  });
+
+  it('listing only GravitySystem throws instead of reordering', () => {
+    const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
+    new PhysicsWorld().attach(world);
+    const gravitySystem = world.getSystem(GravitySystem);
+    if (gravitySystem === undefined) throw new Error('missing GravitySystem');
+    expect(() => world.registerSystems([gravitySystem], [])).toThrow(
+      'or none of them'
+    );
   });
 
   it('attach after registerSystems throws', () => {
