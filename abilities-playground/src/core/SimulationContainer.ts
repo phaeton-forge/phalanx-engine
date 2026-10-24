@@ -225,7 +225,7 @@ export class SimulationContainer {
       return true;
     });
 
-    this.unitFactory = new UnitFactory(this.scene, this.abilities);
+    this.unitFactory = new UnitFactory(this.scene, this.world);
     this.formationSystem = new FormationSystem(this.unitFactory);
 
     const gravitySystem = this.world.getSystem(GravitySystem);
@@ -377,7 +377,7 @@ export class SimulationContainer {
   }
 
   private spawnSimulationState(): void {
-    const stateEntity = this.world.createEntity((id) => new Entity(id));
+    const stateEntity = this.world.createEntity();
     stateEntity.addComponent(new SimulationStateComponent());
     this.world.entityManager.addEntity(stateEntity);
   }

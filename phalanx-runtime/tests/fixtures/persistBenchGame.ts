@@ -1,9 +1,4 @@
-import {
-  Entity,
-  GameSystem,
-  type EntityManager,
-  type IPoolableEntity,
-} from '@phalanx-engine/ecs';
+import { Entity, GameSystem, type IPoolableEntity } from '@phalanx-engine/ecs';
 import type { GameWorld, IRandom } from '@phalanx-engine/ecs';
 import { FP, type FixedPoint } from '@phalanx-engine/math';
 import {
@@ -50,11 +45,6 @@ const definitions = defineAbilitySystem({
   ],
 });
 
-const abilitiesByManager = new WeakMap<
-  object,
-  ReturnType<typeof createAbilitySystem>
->();
-
 interface SpawnIndex {
   readonly index: number;
 }
@@ -80,12 +70,8 @@ export function createPersistBenchGame(unitCount: number) {
   }
 
   class BenchUnit extends Entity implements IPoolableEntity<SpawnIndex> {
-    public constructor(id: number, manager: EntityManager) {
+    public constructor(id: number, world: GameWorld) {
       super(id);
-      const abilities = abilitiesByManager.get(manager);
-      if (abilities === undefined) {
-        throw new Error('persist bench: ability system is not ready');
-      }
       attachTransform(this, { x: FP._0, y: FP._0, z: FP._0 });
       attachPhysicsBody(this, {
         radius: FP._1,
@@ -94,13 +80,11 @@ export function createPersistBenchGame(unitCount: number) {
         friction: FP._0,
         useGravity: false,
       });
-      this.addComponents(
-        abilities.initComponent({
-          attributes: { Health: HEALTH },
-          tags: ['Team.Bench'],
-          abilities: ['Ability.Hold'],
-        })
-      );
+      world.addComponent(this, AbilityOwner, {
+        attributes: { Health: HEALTH },
+        tags: ['Team.Bench'],
+        abilities: ['Ability.Hold'],
+      });
     }
 
     public onSpawn(args: SpawnIndex): void {
@@ -139,7 +123,7 @@ export function createPersistBenchGame(unitCount: number) {
     pooling: {
       entityTypes: {
         unit: {
-          factory: (id, manager) => new BenchUnit(id, manager),
+          factory: (id, world) => new BenchUnit(id, world),
           pool: { initialSize: unitCount },
         },
       },
@@ -149,7 +133,6 @@ export function createPersistBenchGame(unitCount: number) {
         definitions,
         pipeline: 'effects',
       });
-      abilitiesByManager.set(ctx.world.entityManager, abilities);
       const physics = new PhysicsWorld({
         tickRate: 20,
         subSteps: 1,

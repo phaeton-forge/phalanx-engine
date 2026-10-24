@@ -75,8 +75,8 @@ function prewarmedWorld(system: SpawnSystem): GameWorld {
 describe('entity and pool state helpers', () => {
   it('saves and restores the entity id counter only', () => {
     const source = new GameWorld({ tickFrameProvider: manualTickProvider() });
-    const first = source.createEntity((id) => new Entity(id));
-    const second = source.createEntity((id) => new Entity(id));
+    const first = source.createEntity();
+    const second = source.createEntity();
     source.entityManager.addEntity(first);
     source.entityManager.addEntity(second);
     expect(source.entityManager.entityIdHighWater()).toBe(2);
@@ -91,7 +91,7 @@ describe('entity and pool state helpers', () => {
     reader.done();
 
     expect(restored.entityManager.entityIdHighWater()).toBe(2);
-    const next = restored.createEntity((id) => new Entity(id));
+    const next = restored.createEntity();
     expect(next.id).toBe(3);
   });
 
@@ -105,7 +105,7 @@ describe('entity and pool state helpers', () => {
     expect(hole.id).toBe(2);
     expect(world.entityManager.entityIdHighWater()).toBe(5);
 
-    const next = world.createEntity((id) => new Entity(id));
+    const next = world.createEntity();
     expect(next.id).toBe(6);
 
     expect(() => world.createEntityWithId(2, (id) => new Entity(id))).toThrow(

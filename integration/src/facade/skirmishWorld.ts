@@ -18,6 +18,7 @@ import {
   type StateWriter,
 } from '@phalanx-engine/game';
 import {
+  AbilityOwner,
   defineAbility,
   defineAbilitySystem,
   defineAttribute,
@@ -260,7 +261,7 @@ class PooledUnit extends Entity implements IPoolableEntity<UnitSpawn> {
   public constructor(
     id: number,
     private readonly kind: number,
-    abilities: AbilitySystem,
+    world: GameWorld,
     withBody: boolean,
     withRange: boolean
   ) {
@@ -279,13 +280,11 @@ class PooledUnit extends Entity implements IPoolableEntity<UnitSpawn> {
       });
     }
     if (withRange) this.addComponent(RangedDef.create(this.id));
-    this.addComponents(
-      abilities.initComponent({
-        attributes: { Health: HEALTH, Power: POWER },
-        abilities: [ABILITY_STRIKE, ABILITY_BANNER],
-        tags: [TAG_INIT],
-      })
-    );
+    world.addComponent(this, AbilityOwner, {
+      attributes: { Health: HEALTH, Power: POWER },
+      abilities: [ABILITY_STRIKE, ABILITY_BANNER],
+      tags: [TAG_INIT],
+    });
   }
 
   public onSpawn(args: UnitSpawn): void {
@@ -915,15 +914,11 @@ export class SkirmishSim implements CommandView, CommandSink {
 export function buildUnit(
   id: number,
   kind: number,
-  holder: { abilities?: AbilitySystem },
+  world: GameWorld,
   withBody: boolean,
   withRange: boolean
 ): PooledUnit {
-  const abilities = holder.abilities;
-  if (abilities === undefined) {
-    throw new Error('skirmish: ability system is not ready');
-  }
-  return new PooledUnit(id, kind, abilities, withBody, withRange);
+  return new PooledUnit(id, kind, world, withBody, withRange);
 }
 
 function teamOfSlot(config: SkirmishConfig, slot: number): number {

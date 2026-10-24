@@ -1,9 +1,4 @@
-import {
-  Entity,
-  GameSystem,
-  type EntityManager,
-  type IPoolableEntity,
-} from '@phalanx-engine/ecs';
+import { Entity, GameSystem, type IPoolableEntity } from '@phalanx-engine/ecs';
 import type { GameWorld, IRandom } from '@phalanx-engine/ecs';
 import { FP } from '@phalanx-engine/math';
 import {
@@ -79,18 +74,9 @@ export class ArenaSim {
   }
 }
 
-const abilitiesByManager = new WeakMap<
-  object,
-  ReturnType<typeof createAbilitySystem>
->();
-
 class ArenaPawn extends Entity implements IPoolableEntity<void> {
-  public constructor(id: number, manager: EntityManager) {
+  public constructor(id: number, world: GameWorld) {
     super(id);
-    const abilities = abilitiesByManager.get(manager);
-    if (abilities === undefined) {
-      throw new Error('arena: ability system is not ready');
-    }
     attachTransform(this, SPAWN_POSITION);
     attachPhysicsBody(this, {
       radius: FP._1,
@@ -99,13 +85,11 @@ class ArenaPawn extends Entity implements IPoolableEntity<void> {
       friction: FP._0,
       useGravity: false,
     });
-    this.addComponents(
-      abilities.initComponent({
-        attributes: { Health: HEALTH },
-        tags: ['Team.Pawn'],
-        abilities: ['Ability.Hold'],
-      })
-    );
+    world.addComponent(this, AbilityOwner, {
+      attributes: { Health: HEALTH },
+      tags: ['Team.Pawn'],
+      abilities: ['Ability.Hold'],
+    });
   }
 
   public onSpawn(_args: void): void {
@@ -147,7 +131,7 @@ export const ArenaGame = defineGame<ArenaConfig, ArenaCommand, ArenaSim>({
   pooling: {
     entityTypes: {
       pawn: {
-        factory: (id, manager) => new ArenaPawn(id, manager),
+        factory: (id, world) => new ArenaPawn(id, world),
         pool: { initialSize: 1 },
       },
     },
@@ -157,7 +141,6 @@ export const ArenaGame = defineGame<ArenaConfig, ArenaCommand, ArenaSim>({
       definitions,
       pipeline: 'effects',
     });
-    abilitiesByManager.set(ctx.world.entityManager, abilities);
     const physics = new PhysicsWorld({
       tickRate: 10,
       subSteps: 1,

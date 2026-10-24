@@ -11,10 +11,7 @@ import {
   type StateReader,
   type StateWriter,
 } from '@phalanx-engine/game';
-import {
-  createAbilitySystem,
-  type AbilitySystem,
-} from '@phalanx-engine/game/abilities';
+import { createAbilitySystem } from '@phalanx-engine/game/abilities';
 import { FP } from '@phalanx-engine/game/math';
 import {
   GravitySystem,
@@ -150,7 +147,6 @@ export function createSkirmishGame(
     slotCount: 2,
   }
 ): ReturnType<typeof defineGame<SkirmishConfig, SkirmishCommand, SkirmishSim>> {
-  const holder: { abilities?: AbilitySystem } = {};
   const soldierPool = pools.armySize > 0 ? pools.armySize : pools.slotCount + 8;
   const archerPool = pools.armySize > 0 ? 1 : 6;
   const totemPool = pools.armySize > 0 ? 1 : 4;
@@ -162,15 +158,17 @@ export function createSkirmishGame(
     pooling: {
       entityTypes: {
         soldier: {
-          factory: (id) => buildUnit(id, KIND_SOLDIER, holder, true, false),
+          factory: (id, world) =>
+            buildUnit(id, KIND_SOLDIER, world, true, false),
           pool: { initialSize: soldierPool },
         },
         archer: {
-          factory: (id) => buildUnit(id, KIND_ARCHER, holder, true, true),
+          factory: (id, world) => buildUnit(id, KIND_ARCHER, world, true, true),
           pool: { initialSize: archerPool },
         },
         totem: {
-          factory: (id) => buildUnit(id, KIND_TOTEM, holder, false, false),
+          factory: (id, world) =>
+            buildUnit(id, KIND_TOTEM, world, false, false),
           pool: { initialSize: totemPool },
         },
       },
@@ -181,7 +179,6 @@ export function createSkirmishGame(
         definitions: DEFINITIONS,
         pipeline: 'full',
       });
-      holder.abilities = abilities;
       const physics = new PhysicsWorld({
         tickRate: 10,
         subSteps: 1,
