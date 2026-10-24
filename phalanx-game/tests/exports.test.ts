@@ -543,7 +543,7 @@ describe('@phalanx-engine/game subpath exports', () => {
   it('matches the checked-in value counts', () => {
     expect(
       resolved.map((entry) => actual.get(entry.file)?.values.length)
-    ).toEqual([65, 6, 45, 39, 7, 1, 1]);
+    ).toEqual([67, 6, 45, 39, 7, 1, 1]);
   });
 
   it('keeps the name sets pairwise disjoint', () => {
