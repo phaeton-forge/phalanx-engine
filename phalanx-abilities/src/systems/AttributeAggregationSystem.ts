@@ -157,13 +157,11 @@ export class AttributeAggregationSystem extends GameSystem {
   /**
    * Resolve {@link EffectDef}s for the entity's ordered queue.
    *
-   * `Periodic` effects are deliberately filtered out here: in Stage 3 their
+   * `Periodic` effects are deliberately filtered out here: their
    * application path enqueues them like `Duration` effects (so their
-   * `tagsGranted` and lifecycle work today), but their modifiers must NOT be
-   * applied continuously to `current` — by definition periodic modifiers are
-   * supposed to fire on a per-period cadence, which Stage 4 will implement.
-   * Until then, treating their modifiers as always-on would be incorrect and
-   * would diverge from the documented Stage 3 contract.
+   * `tagsGranted` and lifecycle apply), but their modifiers must NOT be
+   * applied continuously to `current` — periodic modifiers fire on their
+   * per-period cadence in `EffectTickSystem`.
    */
   private resolveEffectDefs(
     orderedEffects: readonly ActiveEffectInstance[]

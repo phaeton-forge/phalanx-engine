@@ -15,12 +15,13 @@ import {
   type PendingEffectAdd,
 } from './activeEffects.js';
 import { Attributes, type AttributesState } from './attributes.js';
+import type { AbilityOwnerInit } from './init.js';
 import { GameplayTags, type GameplayTagsState } from './gameplayTags.js';
 
 /**
  * The ability set granted to one entity. Its attributes, effects and tags
  * are the separate {@link Attributes}, {@link ActiveEffects} and
- * {@link GameplayTags} components; `AbilitySystem.initComponent` attaches
+ * {@link GameplayTags} components; `world.addComponent(entity, AbilityOwner, init)` attaches
  * all four.
  */
 export interface AbilityOwnerState {
@@ -44,10 +45,15 @@ export function loadAbilityOwner(r: StateReader): AbilityOwnerState {
 }
 
 /**
- * Attach with `entity.addComponents(abilities.initComponent(init))`.
- * `world.addComponent` throws once `createAbilitySystem` has registered it.
+ * Attach with `world.addComponent(entity, AbilityOwner, init)` after
+ * `createAbilitySystem`. That also attaches `Attributes`, `ActiveEffects`
+ * and `GameplayTags`; `world.removeComponent(entity, AbilityOwner)` removes
+ * all four.
  */
-export const AbilityOwner = defineComponent<AbilityOwnerState>('AbilityOwner', {
+export const AbilityOwner = defineComponent<
+  AbilityOwnerState,
+  AbilityOwnerInit
+>('AbilityOwner', {
   kind: 'object',
   create: createAbilityOwnerState,
   save: saveAbilityOwner,
@@ -59,7 +65,7 @@ export const AbilityOwner = defineComponent<AbilityOwnerState>('AbilityOwner', {
  * `pendingAdd` image for pooled respawns next to the saved value.
  */
 export class AbilityOwnerSlot extends ValueComponent<AbilityOwnerState> {
-  /** Copied in `initComponent`, before a snapshot can replace `pendingAdd`. */
+  /** Copied when `AbilityOwner` is attached, before a snapshot can replace `pendingAdd`. */
   private initialPending: PendingEffectAdd[] | null = null;
   /** Set when the pool clears `pendingAdd`. The next live `onEnable` reseeds. */
   private reseedTarget: ActiveEffectsState | null = null;
@@ -119,7 +125,6 @@ export function attachValue<T extends object>(
   value: T = component.create()
 ): T {
   entity.addComponent(new ValueComponent(component.type, value));
-  entity._manager?.onComponentAdded(entity, component.type);
   return value;
 }
 

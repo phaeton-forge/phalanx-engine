@@ -4,7 +4,6 @@ import { FP } from '@phalanx-engine/math';
 import {
   AbilityOwner,
   abilityOwnerOf,
-  type AbilitySystem,
   ActiveEffects,
   activeEffectsOf,
   Attributes,
@@ -50,15 +49,13 @@ const definitions = defineAbilitySystem({
 const HEALTH_RAW = FP.ToRaw(FP.FromInt(100));
 
 class Minion extends Entity implements IPoolableEntity {
-  public constructor(id: number, abilities: AbilitySystem) {
+  public constructor(id: number, world: GameWorld) {
     super(id);
-    this.addComponents(
-      abilities.initComponent({
-        tags: ['Team.Red'],
-        effects: ['Effect.Burn'],
-        abilities: ['Ability.Hold'],
-      })
-    );
+    world.addComponent(this, AbilityOwner, {
+      tags: ['Team.Red'],
+      effects: ['Effect.Burn'],
+      abilities: ['Ability.Hold'],
+    });
   }
 
   public onSpawn(): void {}
@@ -68,25 +65,17 @@ class Minion extends Entity implements IPoolableEntity {
 
 describe('pooled GAS reset', () => {
   it('clears transient effects and restores the factory shell', () => {
-    const holder: { abilities?: AbilitySystem } = {};
     const world = new GameWorld({
       tickFrameProvider: manualTickProvider(),
       pooling: {
         entityTypes: {
           minion: {
-            factory: (id) => {
-              const abilities = holder.abilities;
-              if (abilities === undefined) {
-                throw new Error('ability system is not ready');
-              }
-              return new Minion(id, abilities);
-            },
+            factory: (id, owner) => new Minion(id, owner),
           },
         },
       },
     });
     const abilities = createAbilitySystem(world, { definitions });
-    holder.abilities = abilities;
     world.registerSystems([...abilities.tickSystems], []);
     const pools = world.pools;
     if (pools === null) throw new Error('expected pools');
@@ -210,19 +199,12 @@ describe('pooled GAS reset', () => {
   });
 
   it('matches a fresh spawn after three despawn and spawn cycles', () => {
-    const holder: { abilities?: AbilitySystem } = {};
     const world = new GameWorld({
       tickFrameProvider: manualTickProvider(),
       pooling: {
         entityTypes: {
           minion: {
-            factory: (id) => {
-              const abilities = holder.abilities;
-              if (abilities === undefined) {
-                throw new Error('ability system is not ready');
-              }
-              return new Minion(id, abilities);
-            },
+            factory: (id, owner) => new Minion(id, owner),
           },
         },
       },
@@ -230,7 +212,6 @@ describe('pooled GAS reset', () => {
     const abilities = createAbilitySystem(world, {
       definitions: reuseDefinitions,
     });
-    holder.abilities = abilities;
     world.registerSystems([...abilities.tickSystems], []);
     const pools = world.pools;
     if (pools === null) throw new Error('expected pools');

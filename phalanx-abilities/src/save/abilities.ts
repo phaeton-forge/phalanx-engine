@@ -101,9 +101,9 @@ import {
  * an entity to the pool clears its effect queue and `pendingAdd`, then
  * copies the factory shell back (`releasePooledAbilityState`): attribute
  * `base` / `current` / `dirty`, the equipped ability set, and ad-hoc tags
- * plus effect grants from construction (`initComponent` tags included).
+ * plus effect grants from construction (`AbilityOwner` init tags included).
  * Components attached after that shell are removed. Factory `pendingAdd`
- * is captured in `initComponent`, before a snapshot can replace the list,
+ * is captured when `AbilityOwner` is attached, before a snapshot can replace the list,
  * and `onEnable` copies it back. Effects added after that capture are not
  * part of the image.
  * A respawn whose `onSpawn` does not rewrite attributes still matches a
@@ -517,7 +517,6 @@ function applyOwner(entity: Entity, parsed: AbilityOwnerState): void {
   if (owner === undefined) {
     owner = createAbilityOwnerState();
     entity.addComponent(new AbilityOwnerSlot(owner));
-    entity._manager?.onComponentAdded(entity, AbilityOwner.type);
   }
   owner.abilities.clear();
   parsed.abilities.forEach((abilityId) => owner.abilities.add(abilityId));

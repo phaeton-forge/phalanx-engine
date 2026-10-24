@@ -55,7 +55,7 @@ const shellByEntity = new WeakMap<Entity, ShellImage>();
  *
  * The first call records the factory shell: attribute `base` / `current` /
  * `dirty`, the equipped ability set, and the tag sets as the factory left
- * them (`initComponent` tags included). Later calls clear the effect queue
+ * them (`AbilityOwner` init tags included). Later calls clear the effect queue
  * and `pendingAdd`, then copy that image back. Components attached after
  * the shell (`applyEffect`, `addTag`, standalone attributes) are removed.
  *
@@ -67,7 +67,7 @@ const shellByEntity = new WeakMap<Entity, ShellImage>();
  * factory instance and runs this again, so a respawn whose `onSpawn` does
  * not rewrite attributes still matches the restored copy.
  *
- * Factory `pendingAdd` is captured in `initComponent`, before snapshot
+ * Factory `pendingAdd` is captured when `AbilityOwner` is attached, before snapshot
  * effects replace the list on a restored live entity. The call below is
  * then a no-op. A component that was not built that way still captures
  * on the first return to the pool.

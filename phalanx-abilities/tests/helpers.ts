@@ -2,6 +2,7 @@ import { Entity, GameWorld, ValueComponent } from '@phalanx-engine/ecs';
 import { FP } from '@phalanx-engine/math';
 import type { FixedPoint } from '@phalanx-engine/math';
 import {
+  AbilityOwner,
   createAbilitySystem,
   Cue,
   defineAbilitySystem,
@@ -148,24 +149,17 @@ export function createTestWorld(opts: TestWorldOpts = {}): TestWorld {
 }
 
 export function addEntity(world: GameWorld): Entity {
-  const entity = world.createEntity((id) => new Entity(id));
-  world.entityManager.addEntity(entity);
+  const entity = world.createEntity();
   return entity;
 }
 
 export function equipEntity(
   world: GameWorld,
   entity: Entity,
-  abilities: AbilitySystem,
+  _abilities: AbilitySystem,
   init?: AbilityOwnerInit
 ): void {
-  const components = abilities.initComponent(init);
-  entity.addComponents(components);
-  if (world.entityManager.getEntity(entity.id)) {
-    for (const component of components) {
-      world.entityManager.onComponentAdded(entity, component.type);
-    }
-  }
+  world.addComponent(entity, AbilityOwner, init);
 }
 
 export function spawnEntity(
@@ -173,7 +167,7 @@ export function spawnEntity(
   abilities: AbilitySystem,
   init?: AbilityOwnerInit
 ): Entity {
-  const entity = world.createEntity((id) => new Entity(id));
+  const entity = world.createEntity();
   equipEntity(world, entity, abilities, init);
   world.entityManager.addEntity(entity);
   return entity;

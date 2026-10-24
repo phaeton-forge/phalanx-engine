@@ -137,15 +137,12 @@ world.registerSystems([...abilities.tickSystems], []);
 // this.context.getService(Abilities).applyEffect(target, 'Effect.Hit');
 
 // 3. Spawn a combatant: AbilityOwner, Attributes, ActiveEffects, GameplayTags.
-const hero = world.createEntity((id) => new Entity(id));
-hero.addComponents(
-  abilities.initComponent({
-    attributes: { Health: FP.FromInt(100), Mana: FP.FromInt(50) },
-    abilities: ['Ability.Fireball'],
-    tags: ['Team.Hero'],
-  })
-);
-world.entityManager.addEntity(hero);
+const hero = world.createEntity();
+world.addComponent(hero, AbilityOwner, {
+  attributes: { Health: FP.FromInt(100), Mana: FP.FromInt(50) },
+  abilities: ['Ability.Fireball'],
+  tags: ['Team.Hero'],
+});
 
 // 4. Drive simulation by tick (lockstep-safe).
 abilities.activateAbility(hero.id, 'Ability.Fireball', { entityId: enemyId });
@@ -610,7 +607,6 @@ createAbilitySystem(world: GameWorld, config: CreateAbilitySystemConfig): Abilit
 
 | Method                                                     | Description                                                                                                                                                                                                                                                                                                                                                      |
 | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `initComponent(init?)`                                     | Build `AbilityOwner`, `Attributes`, `ActiveEffects` and `GameplayTags` with optional seed data, for `entity.addComponents`                                                                                                                                                                                                                                       |
 | `activateAbility(casterId, abilityId, providedTarget?)`    | Queue activation                                                                                                                                                                                                                                                                                                                                                 |
 | `applyEffect(targetId, effectId, sourceId?, setByCaller?)` | Queue effect (`sourceId` defaults to `-1`; `setByCaller` is an optional `ReadonlyMap<string, unknown>` forwarded to `Modifier.calculation`)                                                                                                                                                                                                                      |
 | `getAttribute` / `tryGetAttribute`                         | Read base/current                                                                                                                                                                                                                                                                                                                                                |
@@ -623,7 +619,7 @@ createAbilitySystem(world: GameWorld, config: CreateAbilitySystemConfig): Abilit
 
 ### Pooling
 
-A pooled entity loses transient GAS state when it returns to the pool. `createAbilitySystem` installs that reset on the pool. It runs on the factory's initial dormant pass, on `pools.despawn`, and again when a snapshot restore parks a free-list entity. The first call records the factory shell: attribute `base` / `current` / `dirty`, the equipped ability set, and ad-hoc tags plus effect grants as the factory left them (`initComponent` tags included). Later calls clear the effect queue and `pendingAdd`, copy that image back, and remove GAS components attached during the life (`applyEffect`, `addTag`, or a standalone `Attributes` component on a bare entity). Factory `pendingAdd` is captured in `initComponent`, before a snapshot can replace the list, and `onEnable` copies it back after a pool spawn. `onEnable('restore')` does not reseed. Effects added after that capture are not part of the image. Attributes, the granted ability set, and `initComponent` tags match a fresh spawn after despawn. A bare entity is component-free again once it is dormant. A free-list entity is not written by `writeAbilities`. Restore builds a fresh factory instance and runs the hook again, so a respawn whose `onSpawn` does not rewrite attributes matches a respawn that never snapshotted. The reset function is internal.
+A pooled entity loses transient GAS state when it returns to the pool. `createAbilitySystem` installs that reset on the pool. It runs on the factory's initial dormant pass, on `pools.despawn`, and again when a snapshot restore parks a free-list entity. The first call records the factory shell: attribute `base` / `current` / `dirty`, the equipped ability set, and ad-hoc tags plus effect grants as the factory left them (`AbilityOwner` init tags included). Later calls clear the effect queue and `pendingAdd`, copy that image back, and remove GAS components attached during the life (`applyEffect`, `addTag`, or a standalone `Attributes` component on a bare entity). Factory `pendingAdd` is captured when `AbilityOwner` is attached, before a snapshot can replace the list, and `onEnable` copies it back after a pool spawn. `onEnable('restore')` does not reseed. Effects added after that capture are not part of the image. Attributes, the granted ability set, and `AbilityOwner` init tags match a fresh spawn after despawn. A bare entity is component-free again once it is dormant. A free-list entity is not written by `writeAbilities`. Restore builds a fresh factory instance and runs the hook again, so a respawn whose `onSpawn` does not rewrite attributes matches a respawn that never snapshotted. The reset function is internal.
 
 Lower-level access: `AbilitySystemFacade` is exported for advanced wiring; most games use `createAbilitySystem` only.
 
@@ -655,7 +651,7 @@ import {
 
 ### Components and types
 
-Components are `defineComponent` object definitions with `save` / `load`. Each value lives in one place: `AbilityOwner` holds only the granted ability set; attributes, effects and tags are always the `Attributes`, `ActiveEffects` and `GameplayTags` components. `initComponent` builds all four; without an owner, systems and the facade add `ActiveEffects` / `GameplayTags` on demand. `createAbilitySystem` registers the four as module components (`world.registerComponent(c, { module, attachWith })`): the `abilities` save section writes them (no per-component section), the ability pool hook resets them, and `world.addComponent` throws `world.addComponent: 'AbilityOwner' is owned by abilities; attach it with abilities.initComponent(init)` (same for the other three). They work with `world.query` / `world.queryAny`. `GameplayTags.save` and `AbilityOwner.save` write sets and maps sorted by UTF-16 code unit.
+Components are `defineComponent` object definitions with `save` / `load`. Each value lives in one place: `AbilityOwner` holds only the granted ability set; attributes, effects and tags are always the `Attributes`, `ActiveEffects` and `GameplayTags` components. `world.addComponent(entity, AbilityOwner, init)` attaches all four and throws `world.addComponent: entity N already has 'X'` when one is present; `world.addComponent(entity, Attributes, overrides)` sizes a standalone component to the registry and seeds defaults. Without an owner, systems and the facade add `ActiveEffects` / `GameplayTags` on demand. `createAbilitySystem` registers the four as module components with `attach` / `remove` hooks: the `abilities` save section writes them (no per-component section) and the ability pool hook resets them. `world.removeComponent(entity, AbilityOwner)` removes all four; removing one of the other three while the owner is attached throws. They work with `world.query` / `world.queryAny`. `GameplayTags.save` and `AbilityOwner.save` write sets and maps sorted by UTF-16 code unit.
 
 Read values with `abilityOwnerOf(entity)`, `attributesOf(entity)`, `activeEffectsOf(entity)` and `gameplayTagsOf(entity)`, each a single component lookup. Test presence with `entity.hasComponent(Attributes.type)`. Also exported: the `*State` value types, effect/attribute/tag types and individual systems for custom pipelines.
 

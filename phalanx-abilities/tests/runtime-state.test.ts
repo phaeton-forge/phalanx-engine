@@ -73,8 +73,7 @@ describe('ability runtime state', () => {
         ],
       }),
     });
-    const caster = world.createEntity((id) => new Entity(id));
-    world.entityManager.addEntity(caster);
+    const caster = world.createEntity();
     return { world, abilities, caster };
   }
 
