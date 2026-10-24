@@ -338,6 +338,51 @@ describe('session-token persistence', () => {
     expect(new MatchSessionStore('legion', storage).load()).toBeNull();
   });
 
+  it('stores game-start matchConfig and keeps it across a refreshed token', () => {
+    const storage = new MemoryKeyValueStorage();
+    const { socket } = clientWithSocket({
+      gameId: 'legion',
+      buildId: 'build-a',
+      storage,
+    });
+    const store = new MatchSessionStore('legion', storage);
+    const matchConfig = { matchId: 'match-9', seed: 3, slots: [] };
+
+    socket.fire('session-token', { token: 't1', matchId: 'match-9', slot: 0 });
+    socket.fire('game-start', { matchId: 'other', matchConfig: { seed: 1 } });
+    expect(store.load()?.matchConfig).toBeUndefined();
+    socket.fire('game-start', { matchId: 'match-9', matchConfig });
+    expect(store.load()).toEqual({
+      token: 't1',
+      matchId: 'match-9',
+      slot: 0,
+      buildId: 'build-a',
+      matchConfig,
+    });
+
+    socket.fire('session-token', { token: 't2', matchId: 'match-9', slot: 0 });
+    expect(store.load()?.token).toBe('t2');
+    expect(store.load()?.matchConfig).toEqual(matchConfig);
+
+    socket.fire('session-token', { token: 't3', matchId: 'match-10', slot: 1 });
+    expect(store.load()?.matchConfig).toBeUndefined();
+  });
+
+  it('drops a stored session whose matchConfig is not an object', () => {
+    const storage = new MemoryKeyValueStorage();
+    storage.setItem(
+      'phalanx.session.legion',
+      JSON.stringify({
+        token: 't',
+        matchId: 'm',
+        slot: 0,
+        buildId: '',
+        matchConfig: [1],
+      })
+    );
+    expect(new MatchSessionStore('legion', storage).load()).toBeNull();
+  });
+
   it('overwrites the stored token when the next match issues session-token', () => {
     const storage = new MemoryKeyValueStorage();
     const { client, socket } = clientWithSocket({

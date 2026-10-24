@@ -60,6 +60,29 @@ export function allowsDependency(from, to) {
   }
 }
 
+/**
+ * Planned adapter edge: the runtime `./net` subpath wraps the network
+ * client. Every other adapter follows the matrix.
+ */
+export function allowsAdapterDependency(pkgShort, subpath, to) {
+  return pkgShort === 'runtime' && subpath === './net' && to.short === 'client';
+}
+
+/** True when `pkg` or one of its `phalanx.subpaths` adapters may use `to`. */
+function packageOrAdapterAllows(pkg, to) {
+  if (allowsDependency({ layer: pkg.layer, short: pkg.short }, to)) {
+    return true;
+  }
+  const subpaths = pkg.raw.phalanx?.subpaths;
+  if (!subpaths || typeof subpaths !== 'object') return false;
+  return Object.entries(subpaths).some(
+    ([subpath, layer]) =>
+      layerKnown(layer) &&
+      (allowsDependency({ layer, short: pkg.short }, to) ||
+        allowsAdapterDependency(pkg.short, subpath, to))
+  );
+}
+
 export function loadWorkspace(rootDir) {
   const root = rootDir;
   const text = readFileSync(join(root, 'pnpm-workspace.yaml'), 'utf8');
@@ -122,12 +145,14 @@ export function checkLayerDeps(rootDir) {
       for (const depName of Object.keys(deps)) {
         const target = byName.get(depName);
         if (!target || !layerKnown(target.layer)) continue;
-        if (
-          !allowsDependency(
-            { layer: pkg.layer, short: pkg.short },
-            { layer: target.layer, short: target.short }
-          )
-        ) {
+        const to = { layer: target.layer, short: target.short };
+        const optionalPeer =
+          field === 'peerDependencies' &&
+          pkg.raw.peerDependenciesMeta?.[depName]?.optional === true;
+        const allowed = optionalPeer
+          ? packageOrAdapterAllows(pkg, to)
+          : allowsDependency({ layer: pkg.layer, short: pkg.short }, to);
+        if (!allowed) {
           violations.push(
             `${pkg.name}: ${label} ${depName} violates layer ${pkg.layer} → ${target.layer}`
           );
@@ -261,6 +286,7 @@ function sourceGroups(packages) {
         layer: adapter.layer,
         from: `^${escapeRe(pkg.rel)}/${escapeRe(adapter.folder)}/`,
         isAdapter: true,
+        subpath: adapter.subpath,
       });
     }
   }
@@ -286,11 +312,11 @@ function layerRules(packages) {
     for (const target of packages) {
       if (target.name === group.pkg.name) continue;
       if (!layerKnown(target.layer)) continue;
+      const to = { layer: target.layer, short: target.short };
       if (
-        allowsDependency(
-          { layer: group.layer, short: group.pkg.short },
-          { layer: target.layer, short: target.short }
-        )
+        allowsDependency({ layer: group.layer, short: group.pkg.short }, to) ||
+        (group.isAdapter &&
+          allowsAdapterDependency(group.pkg.short, group.subpath, to))
       ) {
         continue;
       }

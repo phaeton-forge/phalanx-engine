@@ -43,6 +43,9 @@ import type {
   MatchResumeErrorReason,
   SessionSupersededEvent,
   SessionTokenEvent,
+  MatchSnapshot,
+  MatchSnapshotRequest,
+  ServerDesyncEvent,
 } from './types.js';
 import type {
   MatchLogCancelRequest,
@@ -142,6 +145,9 @@ export interface SocketManagerCallbacks {
   /** Optional so existing callers do not have to supply it. */
   onSessionSuperseded?: (data: SessionSupersededEvent) => void;
 
+  /** Optional so existing callers do not have to supply it. */
+  onServerDesync?: (data: ServerDesyncEvent) => void;
+
   // State queries (for reconnection logic)
   isPlaying: () => boolean;
   getCurrentMatchId: () => string | null;
@@ -169,6 +175,8 @@ export class SocketManager {
   /** The one match-log read allowed on this socket. A new read aborts it. */
   private activeMatchLog: { abort: () => void } | null = null;
   private matchLogRequestSeq = 0;
+  private snapshotRequestSeq = 0;
+  private readonly snapshotWaiters: SnapshotWaiter[] = [];
 
   constructor(config: SocketManagerConfig, callbacks: SocketManagerCallbacks) {
     this.config = config;
@@ -226,6 +234,7 @@ export class SocketManager {
    * Disconnect from the server
    */
   disconnect(): void {
+    this.rejectSnapshotWaiters('disconnected');
     if (this.socket) {
       this.socket.removeAllListeners();
       this.socket.disconnect();
@@ -567,6 +576,62 @@ export class SocketManager {
   sendResumeGame(): void {
     this.ensureConnected();
     this.socket!.emit('resume-game');
+  }
+
+  /**
+   * Ask the server simulation for its latest snapshot. Sends
+   * `match-snapshot-request` with a new `requestId` (1, 2, ...). The
+   * server answers at most once per second with the latest id, so a
+   * `match-snapshot` resolves every waiter whose id is not above the
+   * delivered one. Rejects when not connected, on disconnect and on
+   * `match-end`.
+   */
+  requestMatchSnapshot(): Promise<MatchSnapshot> {
+    if (!this.socket || !this.isConnected()) {
+      return Promise.reject(
+        new Error('Not connected to server. Call connect() first.')
+      );
+    }
+    this.snapshotRequestSeq += 1;
+    const requestId = this.snapshotRequestSeq;
+    const promise = new Promise<MatchSnapshot>((resolve, reject) => {
+      this.snapshotWaiters.push({ requestId, resolve, reject });
+    });
+    this.socket.emit('match-snapshot-request', {
+      requestId,
+    } satisfies MatchSnapshotRequest);
+    return promise;
+  }
+
+  private onMatchSnapshot(data: MatchSnapshot): void {
+    if (
+      typeof data?.tick !== 'number' ||
+      typeof data.requestId !== 'number' ||
+      typeof data.bytes !== 'object' ||
+      data.bytes === null
+    ) {
+      return;
+    }
+    const snapshot: MatchSnapshot = {
+      tick: data.tick,
+      requestId: data.requestId,
+      bytes: toUint8Array(data.bytes),
+    };
+    const remaining = this.snapshotWaiters.filter(
+      (waiter) => waiter.requestId > snapshot.requestId
+    );
+    const due = this.snapshotWaiters.filter(
+      (waiter) => waiter.requestId <= snapshot.requestId
+    );
+    this.snapshotWaiters.splice(0, this.snapshotWaiters.length, ...remaining);
+    for (const waiter of due) waiter.resolve(snapshot);
+  }
+
+  private rejectSnapshotWaiters(reason: string): void {
+    const waiters = this.snapshotWaiters.splice(0);
+    for (const waiter of waiters) {
+      waiter.reject(new Error(`match snapshot request failed: ${reason}`));
+    }
   }
 
   /**
@@ -968,6 +1033,7 @@ export class SocketManager {
 
     // Match end
     this.socket.on('match-end', (data: MatchEndEvent) => {
+      this.rejectSnapshotWaiters('match-end');
       this.callbacks.onMatchEnd(data);
     });
 
@@ -1037,6 +1103,15 @@ export class SocketManager {
       }
     });
 
+    // Server simulation
+    this.socket.on('desync', (data: ServerDesyncEvent) => {
+      this.callbacks.onServerDesync?.(data);
+    });
+
+    this.socket.on('match-snapshot', (data: MatchSnapshot) => {
+      this.onMatchSnapshot(data);
+    });
+
     // Hash comparison (for desync detection)
     this.socket.on('hash-comparison', (data: HashComparisonEvent) => {
       this.callbacks.onHashComparison(data);
@@ -1070,6 +1145,7 @@ export class SocketManager {
 
     // Disconnection handling
     this.socket.on('disconnect', () => {
+      this.rejectSnapshotWaiters('disconnected');
       const wasPlaying = this.callbacks.isPlaying();
       this.connectionState = 'disconnected';
       this.callbacks.onDisconnected();
@@ -1169,4 +1245,19 @@ function buildIdField(
 ): { buildId: string } | Record<string, never> {
   if (buildId === undefined) return {};
   return { buildId };
+}
+
+interface SnapshotWaiter {
+  readonly requestId: number;
+  readonly resolve: (snapshot: MatchSnapshot) => void;
+  readonly reject: (error: Error) => void;
+}
+
+/** socket.io delivers binary as a Node `Buffer` or a browser `ArrayBuffer`. */
+function toUint8Array(bytes: Uint8Array | ArrayBuffer): Uint8Array {
+  const view =
+    bytes instanceof ArrayBuffer
+      ? new Uint8Array(bytes)
+      : new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  return view.slice();
 }

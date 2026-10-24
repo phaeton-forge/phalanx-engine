@@ -663,6 +663,37 @@ Giving up clears the store and emits `reconnectFailed`.
 `sessionSuperseded` fires with `{ matchId }` when another socket
 takes this player.
 
+`MatchSession` has an optional `matchConfig`. When a server-simulation
+`game-start` carries `matchConfig`, the client writes it into the stored
+session of that `matchId`; a refreshed `session-token` for the same match
+keeps it. A reloaded tab rebuilds its runner from it.
+
+### Server simulation
+
+In a `simMode: 'server'` match the server compares this client's state
+hashes with its own. `serverDesync` fires with `{ playerId, tick }`
+(`ServerDesyncEvent`) when they differ; the server sends it again only
+after a snapshot reached that player. `requestMatchSnapshot()` resolves
+with `{ tick, bytes, requestId }` (`MatchSnapshot`, `bytes` is a
+`Uint8Array`). It sends `match-snapshot-request` with `requestId` 1, 2, …;
+the server answers at most once per second with the latest id, and that
+reply resolves every caller whose id is not above it. It rejects when not
+connected, on disconnect and on `match-end`. A room the server cannot
+simulate fails with `roomError` `reason: 'sim-unavailable'`.
+
+The client does not run a simulation. `MatchRunner.join` with
+`ServerPeerTransport` (`@phalanx-engine/game/net`) uses these calls:
+
+```typescript
+import { MatchRunner } from '@phalanx-engine/game';
+import { ServerPeerTransport } from '@phalanx-engine/game/net';
+
+const runner = await MatchRunner.join(
+  MyGame,
+  new ServerPeerTransport({ client, gameId: MyGame.id })
+);
+```
+
 ### Events
 
 ```typescript
@@ -708,10 +739,11 @@ client.on('authError', (error) => {});
 
 // Desync detection events
 client.on('desync', (event) => {}); // Local hash mismatch detected
+client.on('serverDesync', (event) => {}); // { playerId, tick } — server sim disagrees
 
 // Private room events
 client.on('roomCreated', (event) => {}); // { code: string }
-client.on('roomError', (event) => {}); // { message: string }
+client.on('roomError', (event) => {}); // { message: string, reason?: 'session-token-required' | 'sim-unavailable' }
 client.on('roomExpired', (event) => {}); // { code: string }    — server evicted the room (TTL)
 client.on('roomCancelled', (event) => {}); // { code: string }    — host explicitly cancelled
 client.on('roomRecovered', (event) => {}); // { code: string }    — room reclaimed after disconnect

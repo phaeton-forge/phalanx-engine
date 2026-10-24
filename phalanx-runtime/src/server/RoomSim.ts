@@ -404,6 +404,8 @@ export class RoomSim implements ServerSimMatch {
     bytes: Uint8Array
   ): void {
     this.lastDeliveredAt.set(playerId, Date.now());
+    // A client that restores this snapshot may diverge again and must hear it.
+    this.reported.delete(playerId);
     const copy = new Uint8Array(bytes.byteLength);
     copy.set(bytes);
     this.options.room.emitToPlayer(playerId, 'match-snapshot', {

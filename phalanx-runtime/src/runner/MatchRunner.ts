@@ -43,7 +43,6 @@ import type {
   SlotConfig,
   SlotInfo,
 } from '../game/MatchConfig.js';
-import { notImplemented } from '../notImplemented.js';
 import {
   MatchJournal,
   type SealedSnapshot,
@@ -76,7 +75,7 @@ import {
   LocalTransport,
   type PersistenceFlushReason,
 } from '../transport/LocalTransport.js';
-import type { Transport } from '../transport/Transport.js';
+import type { Transport, TransportCatchUp } from '../transport/Transport.js';
 import { BotHost } from './BotHost.js';
 import { CommandLog, type LogEntry } from './CommandLog.js';
 import {
@@ -99,6 +98,9 @@ export type RunnerSide = 'client' | 'server';
  */
 export type RunnerStatus =
   'ready' | 'running' | 'ended' | 'failed' | 'disposed';
+
+/** Host time per catch-up chunk before yielding to live batches. */
+const CATCH_UP_BUDGET_MS = 8;
 
 export interface RunnerOptions {
   /**
@@ -304,6 +306,8 @@ export class MatchRunner<G extends AnyGameDefinition> {
   private readonly persistenceErrorListeners = new Emitter<[unknown]>();
   /** Set by {@link MatchRunner.resumeLocal}. Null on a runner that was not resumed. */
   private resumeReportValue: ResumeReport | null = null;
+  private unsubDesync: Unsubscribe = () => {};
+  private resyncing = false;
 
   public constructor(
     definition: G,
@@ -539,13 +543,41 @@ export class MatchRunner<G extends AnyGameDefinition> {
     return report;
   }
 
-  /** Join (or resume) through a network transport's `join()`. */
-  public static join<GDef extends AnyGameDefinition>(
-    _definition: GDef,
-    _transport: Transport,
-    _options?: RunnerOptions
+  /**
+   * Join (or resume) through a network transport's `join()`. A fresh
+   * join starts the runner. A resume restores the server snapshot (its
+   * bot state and input checkpoint are ignored), starts the runner so
+   * live batches are buffered, and fast-forwards the log through
+   * `currentTick - 1`. With `onDesync` and `requestResync`, a server
+   * desync report triggers one resync at a time with the same steps.
+   */
+  public static async join<GDef extends AnyGameDefinition>(
+    definition: GDef,
+    transport: Transport,
+    options?: RunnerOptions
   ): Promise<MatchRunner<GDef>> {
-    return notImplemented('MatchRunner.join', 12);
+    if (typeof transport.join !== 'function') {
+      throw new Error('MatchRunner.join: transport does not support join()');
+    }
+    const joined = await transport.join();
+    const runner = new MatchRunner(
+      definition,
+      joined.config as ConfigInput<GDef>,
+      transport,
+      { ...options, localSlots: joined.localSlots }
+    );
+    try {
+      if (joined.catchUp === undefined) {
+        runner.start();
+      } else {
+        await runner.applyCatchUp(joined.catchUp);
+      }
+    } catch (error) {
+      runner.dispose();
+      throw error;
+    }
+    runner.watchDesync();
+    return runner;
   }
 
   /**
@@ -679,6 +711,7 @@ export class MatchRunner<G extends AnyGameDefinition> {
     this.unsubFrame();
     this.unsubPause();
     this.unsubResume();
+    this.unsubDesync();
     this.transport.dispose?.();
     this.destroySim();
   }
@@ -733,6 +766,14 @@ export class MatchRunner<G extends AnyGameDefinition> {
    * abandoned timeline is not published.
    */
   public restore(bytes: SnapshotBytes): void {
+    this.restoreBytes(bytes, true);
+  }
+
+  /**
+   * `trustPeerState` false: a client restoring a server snapshot never
+   * applies the server's bot state or input checkpoint.
+   */
+  private restoreBytes(bytes: SnapshotBytes, trustPeerState: boolean): void {
     this.ensureLive();
     const decoded = decodeSnapshot(bytes);
     if (decoded.componentSchemas !== null) {
@@ -791,7 +832,11 @@ export class MatchRunner<G extends AnyGameDefinition> {
     this.pendingByTick.clear();
     this.nextSeq.clear();
     this.unsent = null;
-    if (decoded.botState !== null && decoded.botState.byteLength > 0) {
+    if (
+      trustPeerState &&
+      decoded.botState !== null &&
+      decoded.botState.byteLength > 0
+    ) {
       const reader = new BinaryStateReader(decoded.botState);
       this.botHost.restore(reader);
       reader.done();
@@ -799,6 +844,7 @@ export class MatchRunner<G extends AnyGameDefinition> {
       this.syncHostedModes();
     }
     if (
+      trustPeerState &&
       decoded.inputCheckpoint !== null &&
       decoded.inputCheckpoint.byteLength > 0
     ) {
@@ -810,6 +856,50 @@ export class MatchRunner<G extends AnyGameDefinition> {
     }
     if (this.started) this.flushUnsent();
     this.syncTerminalPhase();
+  }
+
+  /**
+   * Server snapshot, then the log through `currentTick - 1`. The runner
+   * starts before the fast-forward, so live batches are buffered and
+   * drained in order once it finishes.
+   */
+  private async applyCatchUp(catchUp: TransportCatchUp): Promise<void> {
+    if (catchUp.snapshot !== undefined) {
+      this.restoreBytes(catchUp.snapshot, false);
+    }
+    if (this.phase !== 'active') return;
+    this.start();
+    const throughTick = catchUp.currentTick - 1;
+    if (throughTick > this.completedTick) {
+      await this.fastForward(catchUp.log, {
+        budgetMs: CATCH_UP_BUDGET_MS,
+        throughTick,
+      });
+    }
+  }
+
+  private watchDesync(): void {
+    const transport = this.transport;
+    if (transport.onDesync === undefined) return;
+    if (transport.requestResync === undefined) return;
+    this.unsubDesync = transport.onDesync(() => {
+      void this.resync();
+    });
+  }
+
+  /** At most one resync in flight; reports land in the meantime are dropped. */
+  private async resync(): Promise<void> {
+    if (this.resyncing || this.stopped) return;
+    this.resyncing = true;
+    try {
+      const catchUp = await this.transport.requestResync?.();
+      if (catchUp === undefined || this.stopped) return;
+      await this.applyCatchUp(catchUp);
+    } catch (error) {
+      if (!this.stopped) this.errorListeners.emit(error, this.completedTick);
+    } finally {
+      this.resyncing = false;
+    }
   }
 
   /**
@@ -2303,7 +2393,7 @@ function emptyCommands(): CommandsBatch['commands'] {
   return Object.create(null) as CommandsBatch['commands'];
 }
 
-function entriesFromBatch(
+export function entriesFromBatch(
   tick: number,
   batch: CommandsBatch,
   slotByPlayerId: ReadonlyMap<string, number>,

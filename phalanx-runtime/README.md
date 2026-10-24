@@ -3,7 +3,8 @@
 > **Status: Tasks 1–6, 6.5a and 6.5b implemented.** A game is
 > `defineComponent` + `defineCommands` + `defineGame` + `runLocalMatch`.
 > The engine owns the world. Low-level section helpers live in
-> `@phalanx-engine/runtime/advanced`. `MatchRunner.join` is still Task 12.
+> `@phalanx-engine/runtime/advanced`. `MatchRunner.join` and
+> `ServerPeerTransport` (`@phalanx-engine/runtime/net`) run server-simulation clients.
 > The package is `private` until the synchronized 0.3.0 release.
 
 Isomorphic match runtime for Phalanx games (no sockets). The debug panel
@@ -16,6 +17,38 @@ snapshots. Games pass a `LocalTransport`. The port types (`Transport`,
 simulation is `@phalanx-engine/runtime/server` (`createServerSim`,
 `ServerSimConfig`, `GameModuleSpec`). The game-facing imports are
 re-exported from `@phalanx-engine/game` and `@phalanx-engine/game/server`.
+
+## Server-simulation client
+
+`@phalanx-engine/runtime/net` exports `ServerPeerTransport` and
+`ServerPeerTransportOptions` (`{ client: PhalanxClient; gameId: string;
+sessionStore?: MatchSessionStore }`). `@phalanx-engine/client` is an
+optional peer dependency; only this subpath imports it.
+
+```ts
+import { MatchRunner } from '@phalanx-engine/runtime';
+import { ServerPeerTransport } from '@phalanx-engine/runtime/net';
+import { PhalanxClient } from '@phalanx-engine/client';
+
+const client = new PhalanxClient({ serverUrl, playerId, gameId: MyGame.id });
+await client.connect();
+const transport = new ServerPeerTransport({ client, gameId: MyGame.id });
+const runner = await MatchRunner.join(MyGame, transport);
+```
+
+`MatchRunner.join(definition, transport, options?)` requires
+`transport.join()` (otherwise it rejects with
+`MatchRunner.join: transport does not support join()`). A fresh join waits
+for `game-start`, takes its `matchConfig` with `side: 'client'`, sends
+`client-ready` and starts the runner. After a reload, the stored session
+(token plus `matchConfig`) resumes the match: `resumeMatch(token, -1)`,
+the latest server snapshot when there is one, and the log after it. The
+runner restores the snapshot without its bot state or input checkpoint
+and fast-forwards through `currentTick - 1`; batches that arrive meanwhile
+are delivered once, in order. A server `desync` for this player runs one
+`requestResync()` at a time with the same steps. The runner publishes
+digests with `submitHash` every `hashEveryTicks` (the server compares
+multiples of `DEFAULT_HASH_EVERY_TICKS`).
 
 ## Host
 

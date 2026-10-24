@@ -204,6 +204,28 @@ describe('RoomSim', () => {
     sim.clientHash('p39', 0, 'bad-again');
     expect(desyncs).toHaveLength(32);
   });
+
+  it('reports desync again only after a snapshot reached that player', () => {
+    const { desyncs, sim } = harness();
+    sim.onMessage({ t: 'digest', matchId: 'm', tick: 0, digest: 'good' });
+    sim.clientHash('p1', 0, 'bad');
+    sim.clientHash('p2', 0, 'bad');
+    expect(desyncs).toEqual(['p1', 'p2']);
+    sim.clientHash('p1', 0, 'bad-again');
+    expect(desyncs).toEqual(['p1', 'p2']);
+    sim.requestSnapshot('p1', 1);
+    sim.onMessage({
+      t: 'snapshot',
+      matchId: 'm',
+      tick: 0,
+      requestId: 0,
+      bytes: new ArrayBuffer(4),
+    });
+    sim.clientHash('p2', 0, 'bad-again');
+    expect(desyncs).toEqual(['p1', 'p2']);
+    sim.clientHash('p1', 0, 'bad-after-snapshot');
+    expect(desyncs).toEqual(['p1', 'p2', 'p1']);
+  });
 });
 
 describe('simFaultKind', () => {

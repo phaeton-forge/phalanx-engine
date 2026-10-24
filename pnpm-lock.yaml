@@ -186,6 +186,9 @@ importers:
         specifier: workspace:*
         version: link:../phalanx-runtime
     devDependencies:
+      '@phalanx-engine/client':
+        specifier: workspace:*
+        version: link:../phalanx-client
       typescript:
         specifier: ~5.9.3
         version: 5.9.3
@@ -254,6 +257,9 @@ importers:
       '@phalanx-engine/abilities':
         specifier: workspace:*
         version: link:../phalanx-abilities
+      '@phalanx-engine/client':
+        specifier: workspace:*
+        version: link:../phalanx-client
       '@phalanx-engine/physics':
         specifier: workspace:*
         version: link:../phalanx-physics

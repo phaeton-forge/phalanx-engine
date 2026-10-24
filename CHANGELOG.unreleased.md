@@ -1130,3 +1130,59 @@ Transform)` / `world.query(PhysicsBody)` and read the typed arrays by row
   attributes, effects and tags, which is the old owner byte layout. A
   snapshot that flags `AbilityOwner` together with another component
   throws `unknown component flags`.
+
+## Task 12 — ServerPeerTransport and MatchRunner.join (client, runtime, game, scripts)
+
+- **client:** new types `MatchSnapshot`, `MatchSnapshotRequest` and
+  `ServerDesyncEvent`, re-exported from `@phalanx-engine/protocol`.
+  `PhalanxClientEvents` gains `serverDesync: (event: ServerDesyncEvent)`,
+  fired for the socket `desync` event of a server-simulation match.
+  `PhalanxClient.requestMatchSnapshot(): Promise<MatchSnapshot>` sends
+  `match-snapshot-request { requestId }` with `requestId` 1, 2, … and
+  resolves on `match-snapshot`. One reply resolves every waiter whose
+  `requestId` is not above the delivered one. It rejects when not
+  connected, on disconnect and on `match-end`. `bytes` is always a plain
+  `Uint8Array`. `MatchSession` gains optional
+  `matchConfig?: { readonly [key: string]: unknown }` (a stored non-object
+  value makes `load()` drop the record). `game-start` writes its
+  `matchConfig` into the stored session of the same `matchId`; a refreshed
+  `session-token` for the same match keeps it. Export snapshot `.` /
+  `./auth`: names `[107, 18]` → `[110, 18]`, values unchanged `[25, 5]`.
+  Client still depends only on `@phalanx-engine/protocol` and
+  `socket.io-client`.
+- **runtime:** `MatchRunner.join(definition, transport, options?)` is
+  implemented. A transport without `join()` rejects with
+  `MatchRunner.join: transport does not support join()`. A fresh join
+  starts the runner. A `catchUp` restores the server snapshot without its
+  bot state or input checkpoint, starts the runner (live batches are
+  buffered) and fast-forwards the log through `currentTick - 1`. With
+  `onDesync` and `requestResync`, a desync report runs one resync at a time
+  (reports while one is in flight are dropped); a failed resync is
+  reported through `onError`. Root value exports unchanged (45).
+- **runtime:** new subpath `@phalanx-engine/runtime/net`
+  (`phalanx.subpaths` `./net`: `infrastructure`): `ServerPeerTransport`
+  (`kind: 'server-peer'`) and type `ServerPeerTransportOptions
+{ client: PhalanxClient; gameId: string; sessionStore?: MatchSessionStore }`.
+  `sessionStore` defaults to `new MatchSessionStore(gameId)`. `join()`
+  resumes when the store holds a session with `matchConfig` and this
+  transport has not seen `game-start` (`resumeMatch(token, -1)`, then
+  `requestMatchSnapshot()` when the server has a snapshot, then
+  `fetchMatchLog(snapshot.tick + 1)` or `fetchMatchLog(0)`); otherwise it
+  waits for `game-start`, requires `matchConfig`, returns it with
+  `side: 'client'` and the human slots of `client.getPlayerId()`, and
+  sends `client-ready`. Batches that arrive during a catch-up or resync
+  are held and delivered once, in tick order. The transport records
+  `{ token, matchId, slot, buildId, matchConfig }` on `sessionToken` /
+  `gameStart` and clears the store on `matchEnd`. `dispose()` removes
+  every listener it added to the client. `@phalanx-engine/client` is an
+  optional peer dependency.
+- **runtime (server):** `RoomSim` reports `desync` to a player again after
+  a `match-snapshot` reached that player. No new events or fields.
+- **game:** new subpath `@phalanx-engine/game/net` re-exporting
+  `ServerPeerTransport` and `ServerPeerTransportOptions`;
+  `@phalanx-engine/client` is an optional peer dependency. Export snapshot
+  names `[193, 9, 58, 88, 19, 3]` → `[193, 9, 58, 88, 19, 2, 3]`; value
+  counts are now pinned: `[67, 6, 45, 39, 7, 1, 1]`.
+- **scripts:** `layers.mjs` allows the runtime `./net` adapter to import
+  `client`, and accepts an optional peer dependency when the package layer
+  or one of its `phalanx.subpaths` adapters allows it.

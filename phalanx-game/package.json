@@ -27,6 +27,10 @@
       "types": "./dist/advanced.d.ts",
       "import": "./dist/advanced.js"
     },
+    "./net": {
+      "types": "./dist/net.d.ts",
+      "import": "./dist/net.js"
+    },
     "./server": {
       "types": "./dist/server.d.ts",
       "import": "./dist/server.js"
@@ -42,14 +46,23 @@
     "@phalanx-engine/physics": "workspace:*",
     "@phalanx-engine/runtime": "workspace:*"
   },
+  "peerDependencies": {
+    "@phalanx-engine/client": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "@phalanx-engine/client": {
+      "optional": true
+    }
+  },
   "devDependencies": {
+    "@phalanx-engine/client": "workspace:*",
     "typescript": "~5.9.3",
     "vitest": "^1.0.0"
   },
   "scripts": {
     "build": "tsc",
     "clean": "rm -rf dist",
-    "test": "tsc -p tsconfig.test.json && vitest run && node --input-type=module -e \"await import('./dist/index.js'); await import('./dist/math.js'); await import('./dist/physics.js'); await import('./dist/abilities.js'); await import('./dist/advanced.js'); await import('./dist/server.js')\""
+    "test": "tsc -p tsconfig.test.json && vitest run && node --input-type=module -e \"await import('./dist/index.js'); await import('./dist/math.js'); await import('./dist/physics.js'); await import('./dist/abilities.js'); await import('./dist/advanced.js'); await import('./dist/net.js'); await import('./dist/server.js')\""
   },
   "keywords": [
     "phalanx",

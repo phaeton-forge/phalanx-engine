@@ -1,6 +1,6 @@
 ---
 name: phalanx-runtime
-description: Describe a Phalanx game as one GameDefinition and run it with MatchRunner from @phalanx-engine/runtime (engine 0.3). Use when defining games with defineGame, defineCommands, defineComponent, onCommand, runLocalMatch, ReplayPlayer, setController, saveWorld/restoreWorld, spawn/despawn/each, writing BotPolicy bots, choosing side 'client' vs 'server', snapshots, replays, reconnect, or Transport/LocalTransport. Local persistence is opt-in via MatchStore, MemoryMatchStore, IndexedDbMatchStore and MatchRunner.resumeLocal. World modules are the default save handler. StateHelpers and spawnWithId are in @phalanx-engine/runtime/advanced. MatchRunner.join is still Task 12.
+description: Describe a Phalanx game as one GameDefinition and run it with MatchRunner from @phalanx-engine/runtime (engine 0.3). Use when defining games with defineGame, defineCommands, defineComponent, onCommand, runLocalMatch, ReplayPlayer, setController, saveWorld/restoreWorld, spawn/despawn/each, writing BotPolicy bots, choosing side 'client' vs 'server', snapshots, replays, reconnect, or Transport/LocalTransport. Local persistence is opt-in via MatchStore, MemoryMatchStore, IndexedDbMatchStore and MatchRunner.resumeLocal. World modules are the default save handler. StateHelpers and spawnWithId are in @phalanx-engine/runtime/advanced. Server-simulation clients use MatchRunner.join with ServerPeerTransport from @phalanx-engine/runtime/net.
 metadata:
   author: phaeton2040-AI
   version: '0.1'
@@ -8,7 +8,7 @@ metadata:
 
 # Phalanx Runtime Skill
 
-> **Status: Tasks 1–7, 7.1, 6.5a and 6.5b implemented. `MatchRunner.join` is still Task 12.**
+> **Status: Tasks 1–7, 7.1, 6.5a, 6.5b and 12 implemented.**
 > Task 3 is engine hooks (ecs id counter, SoA context, pools, math RNG
 > state, ability runtime export, broadphase centers). Task 4 is
 > `StateHelpers` for engine sections, including `writeModuleSections` /
@@ -390,6 +390,35 @@ with `runner.onPersistenceError` and still leaves the header and commands
 committed. `lastPersistenceSyncMs` is the synchronous seal cost, including
 a world save shared with the digest, not the digest itself and not the
 write.
+
+## Server-simulation client
+
+`MatchRunner.join(def, transport, options?)` builds the runner from
+`transport.join()`. `ServerPeerTransport` (`@phalanx-engine/runtime/net`,
+also `@phalanx-engine/game/net`) wraps a `PhalanxClient`:
+
+```ts
+import { MatchRunner } from '@phalanx-engine/game';
+import { ServerPeerTransport } from '@phalanx-engine/game/net';
+import { PhalanxClient } from '@phalanx-engine/client';
+
+const client = new PhalanxClient({ serverUrl, playerId, gameId: MyGame.id });
+await client.connect();
+const transport = new ServerPeerTransport({ client, gameId: MyGame.id });
+const runner = await MatchRunner.join(MyGame, transport);
+```
+
+- Fresh join: waits for `game-start`, uses its `matchConfig` with
+  `side: 'client'`, sends `client-ready`, starts the runner.
+- Reload: the stored session (`MatchSessionStore`, token plus
+  `matchConfig`) resumes with `resumeMatch(token, -1)`, the latest server
+  snapshot and the log after it. The runner restores without the
+  snapshot's bot state or input checkpoint and fast-forwards through
+  `currentTick - 1`. Live batches meanwhile are delivered once, in order.
+- Desync: a server `desync` for this player runs one `requestResync()` at
+  a time (snapshot + log), then play continues. Failures go to `onError`.
+- A transport without `join()` rejects with
+  `MatchRunner.join: transport does not support join()`.
 
 ## References
 

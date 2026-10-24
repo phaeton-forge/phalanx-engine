@@ -952,11 +952,9 @@ export const SketchLegion = defineGame({
 });
 
 // client: offline vs a local bot
-import {
-  MatchRunner,
-  LocalTransport,
-  ServerPeerTransport,
-} from '@phalanx-engine/client';
+import { MatchRunner, LocalTransport } from '@phalanx-engine/game';
+import { ServerPeerTransport } from '@phalanx-engine/game/net';
+import { PhalanxClient } from '@phalanx-engine/client';
 const offline = new MatchRunner(
   SketchLegion,
   {
@@ -989,9 +987,15 @@ const offline = new MatchRunner(
 ); // persistence: Task 7 MatchStore
 
 // client: online, server mode (config comes from the server)
+const client = new PhalanxClient({
+  serverUrl,
+  playerId,
+  gameId: 'sketch-legion',
+});
+await client.connect();
 const online = await MatchRunner.join(
   SketchLegion,
-  new ServerPeerTransport({ url, auth })
+  new ServerPeerTransport({ client, gameId: 'sketch-legion' })
 );
 
 // server
@@ -1434,7 +1438,9 @@ Literal instructions for each task; they override the original task text.
   - Decode-only pre-filter on the server for human commands.
 - **Task 12 (ServerPeerTransport).** `MatchRunner.join` lives in the runtime
   and uses `Transport.join()`; the session token is the transport's
-  concern. Client re-exports `MatchRunner`, `LocalTransport`, `defineGame`.
+  concern. Client does not re-export runtime: `ServerPeerTransport` is
+  `@phalanx-engine/runtime/net` (re-exported by `@phalanx-engine/game/net`)
+  and takes a `PhalanxClient`.
   Catch-up calls `fastForward` with `throughTick = currentTick - 1` and
   does not apply the snapshot's bot state or input checkpoint.
 - **Task 13 (release prep).** Change the abilities/physics peer ranges to
@@ -1458,7 +1464,7 @@ Literal instructions for each task; they override the original task text.
 | 9    | Session token + match-resume                                          | — (server/client)                                                                                                                      |
 | 10   | Absence timer + `endMatch`                                            | — (server)                                                                                                                             |
 | 11   | SimHost                                                               | — (server)                                                                                                                             |
-| 12   | ServerPeerTransport + client re-exports                               | `MatchRunner.join`                                                                                                                     |
+| 12   | ServerPeerTransport (runtime/net) + client server-sim support         | `MatchRunner.join`                                                                                                                     |
 | 13   | Synchronized 0.3.0 release prep + CHANGELOG                           | —                                                                                                                                      |
 
 ## Decisions (Andrey, 2026-10-14)

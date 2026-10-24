@@ -14,6 +14,8 @@ export interface MatchSession {
   matchId: string;
   slot: number;
   buildId: string;
+  /** Server-sim `game-start` config, so a reloaded tab can rebuild the runner. */
+  matchConfig?: { readonly [key: string]: unknown };
 }
 
 /**
@@ -91,6 +93,10 @@ function isMatchSession(value: unknown): value is MatchSession {
     typeof record.slot === 'number' &&
     Number.isSafeInteger(record.slot) &&
     record.slot >= 0 &&
-    typeof record.buildId === 'string'
+    typeof record.buildId === 'string' &&
+    (record.matchConfig === undefined ||
+      (typeof record.matchConfig === 'object' &&
+        record.matchConfig !== null &&
+        !Array.isArray(record.matchConfig)))
   );
 }
