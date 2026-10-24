@@ -28,6 +28,10 @@ export class SystemRegistry {
    */
   private frameSystems: GameSystem[] = [];
 
+  private readonly moduleTickSystems: GameSystem[] = [];
+  private readonly moduleFrameSystems: GameSystem[] = [];
+  private registered = false;
+
   constructor() {
     // Initialize EventBus first (no dependencies)
     this.eventBus = new EventBus();
@@ -48,18 +52,41 @@ export class SystemRegistry {
     tickSystems: GameSystem[],
     frameSystems: GameSystem[]
   ): void {
-    // Store system lists
-    this.tickSystems = tickSystems;
-    this.frameSystems = frameSystems;
+    this.tickSystems = [
+      ...this.moduleTickSystems.filter((s) => !tickSystems.includes(s)),
+      ...tickSystems,
+    ];
+    this.frameSystems = [
+      ...this.moduleFrameSystems.filter((s) => !frameSystems.includes(s)),
+      ...frameSystems,
+    ];
+    this.registered = true;
 
     // Register all systems with context for getSystem() lookup
-    const allSystems = new Set([...tickSystems, ...frameSystems]);
+    const allSystems = new Set([...this.tickSystems, ...this.frameSystems]);
     for (const system of allSystems) {
       this.context.registerSystem(system);
     }
 
     for (const system of allSystems) {
       system.init(this.context);
+    }
+  }
+
+  /** See `GameWorld.addModuleSystems`. */
+  public addModuleSystems(
+    tickSystems: readonly GameSystem[],
+    frameSystems: readonly GameSystem[]
+  ): void {
+    if (this.registered) {
+      throw new Error(
+        'addModuleSystems: call before registerSystems (attach modules first)'
+      );
+    }
+    this.moduleTickSystems.push(...tickSystems);
+    this.moduleFrameSystems.push(...frameSystems);
+    for (const system of [...tickSystems, ...frameSystems]) {
+      this.context.registerSystem(system);
     }
   }
 

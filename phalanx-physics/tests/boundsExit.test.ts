@@ -1,5 +1,9 @@
+import {
+  physicsTestWorld,
+  addBodyRow,
+  addTransformRow,
+} from './support/physicsTestWorld.js';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { bindTestWorld } from './bindTestWorld.js';
 import { FP } from '@phalanx-engine/math';
 import {
   EntityManager,
@@ -12,7 +16,6 @@ import { PhysicsSoASchema } from '../src/components/physicsBody';
 import { TransformSoASchema } from '../src/components/transform';
 import { PhysicsEvents } from '../src/events';
 import type { PhysicsConfig, BoundsExitEvent } from '../src/types';
-import { addTransformRow } from './testTransformHelpers';
 
 const BOUNDS = {
   minX: FP.FromFloat(-10),
@@ -42,15 +45,12 @@ describe('boundsExit', () => {
   let context: SystemContext;
 
   beforeEach(() => {
-    entityManager = new EntityManager();
-    eventBus = new EventBus();
-    context = new SystemContext(eventBus, entityManager);
+    ({ entityManager, eventBus, context } = physicsTestWorld());
   });
 
   function setupSystem(overrides?: Partial<PhysicsConfig>) {
     const config = createPhysicsConfig(overrides);
     const system = new PhysicsSystem(config);
-    bindTestWorld(context);
     system.init(context);
 
     const physicsStore = entityManager.getOrCreateSoAStore(PhysicsSoASchema);
@@ -69,7 +69,7 @@ describe('boundsExit', () => {
     velX: number = 0,
     velZ: number = 0
   ): void {
-    physicsStore.add(entityId, {
+    addBodyRow(physicsStore, entityId, {
       velocityX: FP.ToRaw(FP.FromFloat(velX)),
       velocityY: FP.ToRaw(FP._0),
       velocityZ: FP.ToRaw(FP.FromFloat(velZ)),

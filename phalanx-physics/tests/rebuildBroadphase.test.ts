@@ -1,5 +1,9 @@
+import {
+  physicsTestWorld,
+  addTransformRow,
+} from './support/physicsTestWorld.js';
+import { addBodyRow, attachedPhysics } from './support/physicsTestWorld.js';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { bindTestWorld } from './bindTestWorld.js';
 import {
   EntityManager,
   EventBus,
@@ -12,7 +16,6 @@ import { SpatialHashGrid } from '../src/collision/SpatialHashGrid';
 import { PhysicsSoASchema } from '../src/components/physicsBody';
 import { TransformSoASchema } from '../src/components/transform';
 import { PhysicsWorld } from '../src/PhysicsWorld';
-import { addTransformRow } from './testTransformHelpers';
 
 const BODY_COUNT = 200;
 
@@ -26,7 +29,7 @@ function addBody(
   store: SoAComponentStore<typeof PhysicsSoASchema.definition>,
   entityId: number
 ): void {
-  store.add(entityId, {
+  addBodyRow(store, entityId, {
     velocityX: FP.ToRaw(FP._0),
     velocityY: FP.ToRaw(FP._0),
     velocityZ: FP.ToRaw(FP._0),
@@ -46,8 +49,7 @@ describe('broadphase snapshot hooks', () => {
   let context: SystemContext;
 
   beforeEach(() => {
-    entityManager = new EntityManager();
-    context = new SystemContext(new EventBus(), entityManager);
+    ({ entityManager, context } = physicsTestWorld());
   });
 
   it('re-inserting 200 seeded bodies in id order matches incremental queryPairs', () => {
@@ -119,13 +121,15 @@ describe('broadphase snapshot hooks', () => {
 
   it('PhysicsWorld.rebuildBroadphase matches that grid and does not move transforms', () => {
     const cellSize = FP.FromInt(4);
-    const physicsWorld = new PhysicsWorld({
+    const {
+      physics: physicsWorld,
+      physicsSystem,
+      world,
+    } = attachedPhysics({
       gridCellSize: cellSize,
       subSteps: 1,
     });
-    const { physicsSystem } = physicsWorld.getSystems();
-    bindTestWorld(context);
-    physicsSystem.init(context);
+    const entityManager = world.entityManager;
 
     const physicsStore = entityManager.getOrCreateSoAStore(PhysicsSoASchema);
     const transformStore =
@@ -275,13 +279,15 @@ describe('broadphase snapshot hooks', () => {
 
   it('after resolution, saved centers restore queryRadius and a transform rebuild does not', () => {
     const cellSize = FP.FromInt(4);
-    const physicsWorld = new PhysicsWorld({
+    const {
+      physics: physicsWorld,
+      physicsSystem,
+      world,
+    } = attachedPhysics({
       gridCellSize: cellSize,
       subSteps: 1,
     });
-    const { physicsSystem } = physicsWorld.getSystems();
-    bindTestWorld(context);
-    physicsSystem.init(context);
+    const entityManager = world.entityManager;
 
     const physicsStore = entityManager.getOrCreateSoAStore(PhysicsSoASchema);
     const transformStore =

@@ -6,8 +6,8 @@ import {
 } from '@phalanx-engine/ecs';
 import { ensureBroadphaseSection } from '../save/broadphase.js';
 import { FP, type FixedPoint } from '@phalanx-engine/math';
-import { PhysicsSoASchema } from '../components/physicsBody.js';
-import { TransformSoASchema } from '../components/transform.js';
+import { PhysicsBody, PhysicsSoASchema } from '../components/physicsBody.js';
+import { Transform, TransformSoASchema } from '../components/transform.js';
 import {
   SpatialHashGrid,
   type BroadphaseCenter,
@@ -160,8 +160,7 @@ export class PhysicsSystem extends GameSystem {
     const isStatic = this.physicsStore.arrays.isStatic;
     const ignore = this.physicsStore.arrays.ignorePhysics;
 
-    for (const entityId of this.physicsStore.entityIds()) {
-      const i = this.physicsStore.indexOf(entityId);
+    for (const [, i] of this.world.query(PhysicsBody)) {
       if (isStatic[i] === 1 || ignore[i] === 1) continue;
       const vx = FP.FromRaw(velX[i]);
       const vy = FP.FromRaw(velY[i]);
@@ -195,15 +194,13 @@ export class PhysicsSystem extends GameSystem {
 
     const pendingBoundsExits: BoundsExitEvent[] = [];
 
-    for (const entityId of this.physicsStore.entityIds()) {
-      const physIndex = this.physicsStore.indexOf(entityId);
-
+    for (const [entity, physIndex, transformIndex] of this.world.query(
+      PhysicsBody,
+      Transform
+    )) {
       // Skip static and ignored bodies
       if (physIsStatic[physIndex] === 1) continue;
       if (physIgnorePhysics[physIndex] === 1) continue;
-
-      const transformIndex = this.transformStore.indexOf(entityId);
-      if (transformIndex === -1) continue;
 
       // Read velocity
       let velX = FP.FromRaw(physVelocityX[physIndex]);
@@ -241,7 +238,7 @@ export class PhysicsSystem extends GameSystem {
           // Clamp position to boundary to avoid spatial grid issues
           newPosX = FP.Clamp(newPosX, bounds.minX, bounds.maxX);
           newPosZ = FP.Clamp(newPosZ, bounds.minZ, bounds.maxZ);
-          pendingBoundsExits.push({ entityId });
+          pendingBoundsExits.push({ entityId: entity.id });
         } else {
           newPosX = FP.Clamp(newPosX, bounds.minX, bounds.maxX);
           newPosZ = FP.Clamp(newPosZ, bounds.minZ, bounds.maxZ);
@@ -277,16 +274,15 @@ export class PhysicsSystem extends GameSystem {
     const fpPosXArr = this.transformStore.arrays.fpPositionX;
     const fpPosZArr = this.transformStore.arrays.fpPositionZ;
 
-    for (const entityId of this.physicsStore.entityIds()) {
-      const physIndex = this.physicsStore.indexOf(entityId);
-      const transformIndex = this.transformStore.indexOf(entityId);
-      if (transformIndex === -1) continue;
-
+    for (const [entity, physIndex, transformIndex] of this.world.query(
+      PhysicsBody,
+      Transform
+    )) {
       const posX = FP.FromRaw(fpPosXArr[transformIndex]);
       const posZ = FP.FromRaw(fpPosZArr[transformIndex]);
       const radius = FP.FromRaw(physRadius[physIndex]);
 
-      this.spatialGrid.insert(entityId, posX, posZ, radius);
+      this.spatialGrid.insert(entity.id, posX, posZ, radius);
     }
   }
 
@@ -648,8 +644,7 @@ export class PhysicsSystem extends GameSystem {
     const physIsStatic = this.physicsStore.arrays.isStatic;
     const physIgnore = this.physicsStore.arrays.ignorePhysics;
 
-    for (const entityId of this.physicsStore.entityIds()) {
-      const physIndex = this.physicsStore.indexOf(entityId);
+    for (const [, physIndex] of this.world.query(PhysicsBody)) {
       if (physIsStatic[physIndex] === 1) continue;
       if (physIgnore[physIndex] === 1) continue;
 

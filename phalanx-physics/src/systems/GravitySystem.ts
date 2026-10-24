@@ -4,7 +4,7 @@ import {
   type SystemContext,
 } from '@phalanx-engine/ecs';
 import { FP, type FixedPoint } from '@phalanx-engine/math';
-import { PhysicsSoASchema } from '../components/physicsBody.js';
+import { PhysicsBody, PhysicsSoASchema } from '../components/physicsBody.js';
 
 /**
  * GravitySystem — applies gravitational ACCELERATION to velocity.
@@ -53,6 +53,9 @@ export class GravitySystem extends GameSystem {
 
   public override init(context: SystemContext): void {
     super.init(context);
+    if (!context.world) {
+      throw new Error('GravitySystem.init: context.world is not set');
+    }
     this.physicsStore =
       this.entityManager.getOrCreateSoAStore(PhysicsSoASchema);
   }
@@ -68,8 +71,7 @@ export class GravitySystem extends GameSystem {
     const physIsStatic = this.physicsStore.arrays.isStatic;
     const physIgnorePhysics = this.physicsStore.arrays.ignorePhysics;
 
-    for (const entityId of this.physicsStore.entityIds()) {
-      const physIndex = this.physicsStore.indexOf(entityId);
+    for (const [, physIndex] of this.world.query(PhysicsBody)) {
       if (physUseGravity[physIndex] !== 1) continue;
       if (physIgnorePhysics[physIndex] === 1) continue;
       // Static bodies never integrate position, so accumulating velocity on

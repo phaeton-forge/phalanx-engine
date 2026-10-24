@@ -76,8 +76,7 @@ function wiredWorld(cellSize: FixedPoint = FP.FromInt(4)): {
     subSteps: 1,
   });
   physics.attach(world);
-  const { physicsSystem } = physics.getSystems();
-  world.registerSystems([physicsSystem], []);
+  world.registerSystems([], []);
   return { world, physics };
 }
 
@@ -170,10 +169,7 @@ describe('physics state helpers', () => {
       subSteps: 1,
     });
     physics.attach(both);
-    both.registerSystems(
-      [new PhysicsSystem(physicsConfig()), physics.getSystems().physicsSystem],
-      []
-    );
+    both.registerSystems([new PhysicsSystem(physicsConfig())], []);
     expect(both.saveSections.map((section) => section.key)).toEqual([
       'physics.broadphase',
     ]);

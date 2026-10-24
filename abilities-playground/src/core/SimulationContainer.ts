@@ -2,7 +2,11 @@ import * as THREE from 'three';
 import type { PhalanxClient } from '@phalanx-engine/client';
 import { Entity, GameWorld } from '@phalanx-engine/ecs';
 import { DeterministicRandom, FP } from '@phalanx-engine/math';
-import { PhysicsWorld } from '@phalanx-engine/physics';
+import {
+  GravitySystem,
+  PhysicsSystem,
+  PhysicsWorld,
+} from '@phalanx-engine/physics';
 import {
   type AbilityActivationContext,
   createAbilitySystem,
@@ -224,8 +228,11 @@ export class SimulationContainer {
     this.unitFactory = new UnitFactory(this.scene, this.abilities);
     this.formationSystem = new FormationSystem(this.unitFactory);
 
-    const { physicsSystem, gravitySystem, interpolationSystem } =
-      this.physicsWorld.getSystems();
+    const gravitySystem = this.world.getSystem(GravitySystem);
+    const physicsSystem = this.world.getSystem(PhysicsSystem);
+    if (gravitySystem === undefined || physicsSystem === undefined) {
+      throw new Error('SimulationContainer: physics is not attached');
+    }
     // SAU order (documented): AttackSystem → abilities (Hook.SAU.Fire) →
     // ArtilleryShellSystem → GravitySystem → physicsSystem →
     // ShrapnelLandingSystem. The shell system spawns shrapnel before gravity +
@@ -256,10 +263,11 @@ export class SimulationContainer {
         new ProjectileDespawnQueueSystem(),
         ...this.abilities.tickSystems,
       ],
-      // ShrapnelSpinSystem is cosmetic-only (rotates the shard mesh inside the
+      // InterpolationSystem (attached by physics) runs first. ShrapnelSpinSystem
+      // is cosmetic-only (rotates the shard mesh inside the
       // MeshComponent root) and must run after RenderSyncSystem has positioned
       // the roots for the frame.
-      [interpolationSystem, new RenderSyncSystem(), new ShrapnelSpinSystem()]
+      [new RenderSyncSystem(), new ShrapnelSpinSystem()]
     );
 
     this.spawnSimulationState();

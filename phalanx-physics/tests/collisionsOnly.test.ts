@@ -4,6 +4,7 @@ import { FP } from '@phalanx-engine/math';
 import {
   PhysicsBody,
   PhysicsEvents,
+  PhysicsSystem,
   PhysicsWorld,
   Transform,
   attachPhysicsBody,
@@ -123,10 +124,9 @@ function collisionsOnlyRun(filter?: Filter): Run {
   });
   physics.attach(world);
   if (filter) physics.setCollisionFilter(filter);
-  world.registerSystems(
-    [new MoveRight(), physics.getSystems().physicsSystem],
-    []
-  );
+  const physicsSystem = world.getSystem(PhysicsSystem);
+  if (physicsSystem === undefined) throw new Error('attach adds PhysicsSystem');
+  world.registerSystems([new MoveRight(), physicsSystem], []);
   populate(world);
   return { world, events: recordEvents(world) };
 }
