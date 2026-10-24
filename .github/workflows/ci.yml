@@ -32,6 +32,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Check package versions
+        run: pnpm version:check
+
       - name: Build @phalanx-engine packages
         run: pnpm --filter "@phalanx-engine/*" build
 

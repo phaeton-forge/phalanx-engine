@@ -1,7 +1,6 @@
 {
   "name": "@phalanx-engine/runtime",
   "version": "0.3.0",
-  "private": true,
   "description": "Isomorphic match runtime for Phalanx Engine: GameDefinition, GameState snapshot contract, MatchRunner, bots as command producers and transports (client and server simulation modes)",
   "type": "module",
   "sideEffects": [
