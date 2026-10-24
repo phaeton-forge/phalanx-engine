@@ -71,8 +71,8 @@ describe('world isolation', () => {
     const b = openWorld();
     const b1 = spawnCounter(b);
     const a2 = spawnCounter(a);
-    a.add(a2, Counter, { n: 7n });
-    b.add(b1, Counter, { n: 9n });
+    a.addComponent(a2, Counter, { n: 7n });
+    b.addComponent(b1, Counter, { n: 9n });
     const pooled = a.pools?.spawn<PooledCounter>('counter', 5n);
 
     expect(a1.id).toBe(1);
@@ -83,12 +83,14 @@ describe('world isolation', () => {
     expect(b.entityManager.getSoAStore(Counter.schema)?.entityIds()).toEqual([
       1,
     ]);
-    expect(a.get(a1, Counter)).toEqual({ n: 1n });
-    expect(a.get(a2, Counter)).toEqual({ n: 7n });
-    expect(pooled === undefined ? undefined : a.get(pooled, Counter)).toEqual({
+    expect(a.getComponent(a1, Counter)).toEqual({ n: 1n });
+    expect(a.getComponent(a2, Counter)).toEqual({ n: 7n });
+    expect(
+      pooled === undefined ? undefined : a.getComponent(pooled, Counter)
+    ).toEqual({
       n: 5n,
     });
-    expect(b.get(b1, Counter)).toEqual({ n: 9n });
+    expect(b.getComponent(b1, Counter)).toEqual({ n: 9n });
 
     a.dispose();
     b.dispose();
@@ -102,11 +104,13 @@ describe('world isolation', () => {
     a.dispose();
 
     const b2 = spawnCounter(b);
-    b.add(b2, Counter, { n: 4n });
+    b.addComponent(b2, Counter, { n: 4n });
     const pooled = b.pools?.spawn<PooledCounter>('counter', 6n);
-    expect(b.get(b1, Counter)).toEqual({ n: 1n });
-    expect(b.get(b2, Counter)).toEqual({ n: 4n });
-    expect(pooled === undefined ? undefined : b.get(pooled, Counter)).toEqual({
+    expect(b.getComponent(b1, Counter)).toEqual({ n: 1n });
+    expect(b.getComponent(b2, Counter)).toEqual({ n: 4n });
+    expect(
+      pooled === undefined ? undefined : b.getComponent(pooled, Counter)
+    ).toEqual({
       n: 6n,
     });
     expect(b.entityManager.getSoAStore(Counter.schema)?.entityIds()).toEqual([
@@ -127,5 +131,42 @@ describe('world isolation', () => {
     );
     a.dispose();
     b.dispose();
+  });
+
+  it('leaves the owner unset when a row is bound to another world', () => {
+    const a = openWorld();
+    const b = openWorld();
+    const entity = new Entity(1);
+    entity.addComponent(Counter.create(1, {}, a.entityManager));
+    expect(() => b.entityManager.addEntity(entity)).toThrow(
+      /SoA row in another world/
+    );
+    expect(entity._owner).toBeNull();
+    a.entityManager.addEntity(entity);
+    expect(entity._owner).toBe(a.entityManager);
+    a.dispose();
+    b.dispose();
+  });
+
+  it('runs SoA onCreate once the row is in a store', () => {
+    const world = openWorld();
+    const seen: number[] = [];
+    const Hooked = defineComponent(
+      'Hooked',
+      { n: 'i32' },
+      {
+        onCreate: () => {
+          seen.push(
+            world.entityManager.getSoAStore(Hooked.schema)?.indexOf(7) ?? -2
+          );
+        },
+      }
+    );
+    const entity = new Entity(7);
+    entity.addComponent(Hooked.create(7));
+    expect(seen).toEqual([]);
+    world.entityManager.addEntity(entity);
+    expect(seen).toEqual([0]);
+    world.dispose();
   });
 });

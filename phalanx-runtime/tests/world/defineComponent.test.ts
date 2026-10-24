@@ -42,7 +42,7 @@ describe('ecs defineComponent save', () => {
     const hp = defineComponent('Hp', { hp: 'i64', armor: 'i32' });
     source.registerComponent(hp);
     const entity = source.createEntityWithId(1);
-    source.add(entity, hp, { hp: 9n, armor: 2 });
+    source.addComponent(entity, hp, { hp: 9n, armor: 2 });
     const bytes = saveWorld(source);
 
     const restored = world();
@@ -50,7 +50,7 @@ describe('ecs defineComponent save', () => {
     restoreWorld(restored, bytes);
     const next = restored.entityManager.getEntity(1);
     if (next === undefined) throw new Error('entity 1 missing');
-    expect(restored.get(next, hp)).toEqual({ hp: 9n, armor: 2 });
+    expect(restored.getComponent(next, hp)).toEqual({ hp: 9n, armor: 2 });
   });
 
   it('saves a Set in the same bytes for either insertion order', () => {
@@ -59,8 +59,8 @@ describe('ecs defineComponent save', () => {
       const tags = tagsComponent();
       game.registerComponent(tags);
       const entity = game.createEntityWithId(1);
-      game.add(entity, tags);
-      const value = game.get(entity, tags);
+      game.addComponent(entity, tags);
+      const value = game.getComponent(entity, tags);
       if (value === undefined) throw new Error('tags missing');
       for (const tag of order) value.tags.add(tag);
       return saveWorld(game);
@@ -74,7 +74,7 @@ describe('ecs defineComponent save', () => {
     restoreWorld(restored, bytes);
     const entity = restored.entityManager.getEntity(1);
     if (entity === undefined) throw new Error('entity 1 missing');
-    expect([...(restored.get(entity, tags)?.tags ?? [])]).toEqual([
+    expect([...(restored.getComponent(entity, tags)?.tags ?? [])]).toEqual([
       'alpha',
       'mid',
       'zeta',
@@ -90,12 +90,12 @@ describe('ecs defineComponent save', () => {
     const source = world();
     source.registerComponent(hp);
     const entity = source.createEntityWithId(1);
-    source.add(entity, hp, { hp: 3n });
+    source.addComponent(entity, hp, { hp: 3n });
     const before = saveWorld(source);
     const hashBefore = configHash({ seed: 1 }, componentSchemaHashes(source));
 
     source.registerComponent(visual);
-    source.add(entity, visual, { x: 1.25 });
+    source.addComponent(entity, visual, { x: 1.25 });
     expect(saveWorld(source)).toEqual(before);
     expect(configHash({ seed: 1 }, componentSchemaHashes(source))).toBe(
       hashBefore
@@ -108,11 +108,11 @@ describe('ecs defineComponent save', () => {
     restored.registerComponent(hp);
     restored.registerComponent(visual);
     const kept = restored.createEntityWithId(1);
-    restored.add(kept, hp, { hp: 0n });
-    restored.add(kept, visual, { x: 9 });
+    restored.addComponent(kept, hp, { hp: 0n });
+    restored.addComponent(kept, visual, { x: 9 });
     restoreWorld(restored, before);
-    expect(restored.get(kept, visual)).toBeUndefined();
-    expect(restored.get(kept, hp)?.hp).toBe(3n);
+    expect(restored.getComponent(kept, visual)).toBeUndefined();
+    expect(restored.getComponent(kept, hp)?.hp).toBe(3n);
   });
 
   it('lets the owner section put a transient component back after restore', () => {
@@ -127,7 +127,7 @@ describe('ecs defineComponent save', () => {
       write() {},
       read(_reader, restored) {
         for (const entity of restored.entityManager.getAllEntities()) {
-          restored.add(entity, visual);
+          restored.addComponent(entity, visual);
         }
       },
     };
@@ -136,8 +136,8 @@ describe('ecs defineComponent save', () => {
     source.registerComponent(visual);
     source.registerSaveSection(owner);
     const entity = source.createEntityWithId(1);
-    source.add(entity, hp, { hp: 1n });
-    source.add(entity, visual, { x: 8 });
+    source.addComponent(entity, hp, { hp: 1n });
+    source.addComponent(entity, visual, { x: 8 });
     const bytes = saveWorld(source);
 
     const restored = world();
@@ -147,8 +147,8 @@ describe('ecs defineComponent save', () => {
     restoreWorld(restored, bytes);
     const next = restored.entityManager.getEntity(1);
     if (next === undefined) throw new Error('entity 1 missing');
-    expect(restored.get(next, visual)).toEqual({ x: 0 });
-    expect(restored.get(next, hp)?.hp).toBe(1n);
+    expect(restored.getComponent(next, visual)).toEqual({ x: 0 });
+    expect(restored.getComponent(next, hp)?.hp).toBe(1n);
   });
 
   it('saves a Map with numeric keys in numeric order', () => {
@@ -179,8 +179,8 @@ describe('ecs defineComponent save', () => {
       const game = world();
       game.registerComponent(counts);
       const entity = game.createEntityWithId(1);
-      game.add(entity, counts);
-      const value = game.get(entity, counts);
+      game.addComponent(entity, counts);
+      const value = game.getComponent(entity, counts);
       if (value === undefined) throw new Error('counts missing');
       for (const key of order) value.values.set(key, key + 1);
       return saveWorld(game);
@@ -193,7 +193,7 @@ describe('ecs defineComponent save', () => {
     restoreWorld(restored, bytes);
     const entity = restored.entityManager.getEntity(1);
     if (entity === undefined) throw new Error('entity 1 missing');
-    expect([...(restored.get(entity, counts)?.values ?? [])]).toEqual([
+    expect([...(restored.getComponent(entity, counts)?.values ?? [])]).toEqual([
       [2, 3],
       [10, 11],
     ]);
@@ -237,7 +237,7 @@ describe('ecs defineComponent save', () => {
     const pools = live.pools;
     if (pools === null) throw new Error('pools missing');
     const first = pools.spawn<NoteEntity>('note', undefined);
-    live.add(first, note, { text: 'stale' });
+    live.addComponent(first, note, { text: 'stale' });
     pools.despawn(first);
     const bytes = saveWorld(live);
 
@@ -250,8 +250,8 @@ describe('ecs defineComponent save', () => {
     const restoredPools = restored.pools;
     if (restoredPools === null) throw new Error('restored pools missing');
     const againRestored = restoredPools.spawn<NoteEntity>('note', undefined);
-    expect(live.get(againLive, note)).toBeUndefined();
-    expect(restored.get(againRestored, note)).toBeUndefined();
+    expect(live.getComponent(againLive, note)).toBeUndefined();
+    expect(restored.getComponent(againRestored, note)).toBeUndefined();
     expect(saveWorld(live)).toEqual(saveWorld(restored));
     live.stop();
     restored.stop();

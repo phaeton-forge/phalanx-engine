@@ -139,8 +139,18 @@ export class EntityManager {
     if (entity._owner !== null) {
       throw new Error(`entity ${String(entity.id)} belongs to another world`);
     }
+    const components = [...entity.getComponents().values()];
+    for (const component of components) {
+      if (!isStoreBound(component)) continue;
+      const bound = component._boundManager();
+      if (bound !== null && bound !== this) {
+        throw new Error(
+          `entity ${String(entity.id)} has a SoA row in another world`
+        );
+      }
+    }
     entity._owner = this;
-    for (const component of entity.getComponents().values()) {
+    for (const component of components) {
       if (isStoreBound(component)) component._bind(this);
     }
   }

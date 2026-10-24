@@ -14,6 +14,7 @@ export interface IComponent {
  */
 export interface IStoreBoundComponent extends IComponent {
   _bind(manager: EntityManager): void;
+  _boundManager(): EntityManager | null;
 }
 
 /** @internal */

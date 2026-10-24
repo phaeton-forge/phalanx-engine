@@ -175,8 +175,8 @@ const Visual = defineComponent('Visual', {
 });
 
 world.registerComponent(Hp);
-world.add(entity, Hp, { hp: 4n });
-world.get(entity, Hp);
+world.addComponent(entity, Hp, { hp: 4n });
+world.getComponent(entity, Hp);
 ```
 
 SoA fields are `i32`, `u32`, `u8`, `i64` (saved, included in `configHash`). An object component must pass `save` and `load` to `registerComponent`. `writeSorted` orders `Set` and `Map` keys. A transient component is display-only: not saved, not in `configHash`, and a tick system that reads it throws (`hasComponents` included). `restoreWorld` drops transient components. Physics ignores `discardedTransientIds` and seeds `Interpolation` from `Transform` for every body. Object and transient values use `ValueComponent`.

@@ -50,14 +50,16 @@ pure relay, exactly as today.
     digest, `snapshot` / `restore` (header, digest, version policy) and
     `fastForward` catch-up;
   - `BotHost`: runs the `BotPolicy` of the bot slots hosted on this side;
-  - `WorldScope`: isolates the process-global ecs registers per world;
+  - `WorldScope`: isolates the process-global ecs registers per world
+    (removed in A6b.2c; worlds no longer share globals);
   - the `Transport` interface and `LocalTransport` (optional `MatchStore`);
   - replay records, `MatchStore`, `MemoryMatchStore` and
     `IndexedDbMatchStore` (Task 7; IndexedDB is `globalThis.indexedDB`,
     not a DOM import).
 - **`@phalanx-engine/ecs`, `abilities`, `physics`, `math`:** unchanged except
   for small additive hooks (Task 3):
-  - entity id counter accessors and `SoAComponent.currentEntityManager()`;
+  - entity id counter accessors and `SoAComponent.currentEntityManager()`
+    (both removed by A6a.2 / A6b.2c: counters and SoA stores are per world);
   - `DeterministicRandom` moved into `math`, with state export/import;
   - an `InstanceIdCounter` setter and a GAS runtime state accessor;
   - pool state accessors;
@@ -194,6 +196,7 @@ phalanx-ecs state are process-global today:
 Without isolation, creating match B resets and steals the context of
 match A. The runtime therefore wraps every entry into a world in
 `WorldScope.run` (see [runtime-api.md § Review, finding 4](./runtime-api.md#review--corrections)).
+A6b.2c removed both globals and `WorldScope`; this paragraph is historical.
 Simulation code must never `await` inside a tick, which lockstep already
 requires.
 

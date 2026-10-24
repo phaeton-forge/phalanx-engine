@@ -98,7 +98,7 @@ export class Entity {
 
   /**
    * @internal Component lookup that does not apply the transient tick guard.
-   * Save and `world.add` use this so a tick can write a transient value.
+   * Save and `world.addComponent` use this so a tick can write a transient value.
    */
   public _peekComponent<T extends IComponent>(type: symbol): T | undefined {
     return this.components.get(type) as T | undefined;

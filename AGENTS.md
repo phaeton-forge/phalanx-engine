@@ -303,7 +303,7 @@ Domain code imports `defineComponent` from `@phalanx-engine/ecs`.
   `save` writes `Set` and `Map` values with `writeSorted` (string keys in
   UTF-16 order, safe-integer keys in numeric order).
 - Transient components are display state. They are not saved and are not
-  part of `configHash`. Tick code may `world.add` them and MUST NOT read
+  part of `configHash`. Tick code may `world.addComponent` them and MUST NOT read
   them; a tick read throws, including `entity.hasComponents`. After
   `restoreWorld`, physics ignores `discardedTransientIds` and seeds
   `Interpolation` from `Transform` for every entity that has `Transform`

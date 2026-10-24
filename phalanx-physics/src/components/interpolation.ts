@@ -101,7 +101,7 @@ export function restoreOwnedInterpolation(world: GameWorld): void {
     const entity = world.entityManager.getEntity(id);
     if (entity === undefined) continue;
     if (!entity._componentAttached(Interpolation.type)) {
-      world.add(entity, Interpolation);
+      world.addComponent(entity, Interpolation);
     }
     const sample = entity._peekComponent<InterpolationValue>(
       Interpolation.type

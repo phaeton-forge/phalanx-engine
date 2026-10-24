@@ -170,7 +170,7 @@ describe('physics broadphase save', () => {
     const entity = restored.entityManager.getEntity(disc.id);
     if (entity === undefined) throw new Error('entity missing');
     expect(entity.hasComponent(Interpolation.type)).toBe(true);
-    const sample = restored.get(entity, Interpolation);
+    const sample = restored.getComponent(entity, Interpolation);
     expect(sample?.currentFpPosition).toEqual({
       x: FP.FromInt(3),
       y: FP._0,

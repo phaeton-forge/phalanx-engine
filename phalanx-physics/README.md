@@ -7,7 +7,7 @@ A deterministic, fixed-point physics engine for the [Phalanx Engine](../README.m
 ## Features
 
 - **Deterministic by Design**: All math uses `FP.*` fixed-point operations — no floating-point non-determinism
-- **SoA Storage**: Physics body data stored in contiguous typed arrays (`BigInt64Array` for fixed-point, `Uint8Array` for flags) via phalanx-ecs `SoAComponent`
+- **SoA Storage**: Physics body data stored in contiguous typed arrays (`BigInt64Array` for fixed-point, `Uint8Array` for flags) via phalanx-ecs `defineComponent` SoA rows in per-world `SoAComponentStore`s
 - **Save section**: `PhysicsWorld.attach(world)` sets `context.physics` and registers one world section `physics.broadphase` (version 1). A second `attach` of the same world is a no-op; a different world throws. Registering a `PhysicsSystem` or `CollisionSystem` registers the same section once. Assigning `context.physics` does not. The save functions are not package exports. The section body is the former `broadphase` list (keys `physics`, `physicsSystem`, `collisionSystem`) without a `section('broadphase')` wrapper.
 - **Spatial Hash Grid**: O(n) broad-phase collision detection with configurable cell size. `getCenters()` / `getBroadphaseCenters()` read the cached fixed-point centers and radii, preserving each value's precision (pre-separation after a resolve). `restoreBroadphase(centers)` clears the grid and re-inserts those saved centers in ascending entity id. `rebuildBroadphase()` re-inserts from current transforms and is valid only for a collision-free world; after a hit the live grid still holds the pre-separation centers. The live step still rebuilds before resolution only.
 - **Narrow Phase**: Circle vs Circle, Circle vs AABB, and AABB vs AABB collision tests

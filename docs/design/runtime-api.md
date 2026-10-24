@@ -664,6 +664,10 @@ export function isBotPlayerId(playerId: string): boolean;
 
 ## 8. MatchRunner, CommandLog, WorldScope, replays
 
+> **A6b.2c:** `WorldScope` was removed. Each world owns its entity id
+> counter and SoA stores, so the runner calls into worlds directly. The
+> `WorldScope` text below is historical.
+
 `src/runner/*.ts`.
 
 ```ts
@@ -1113,6 +1117,9 @@ the correction lands.
   field of `EntityManager`. `new Entity(id)` takes the id the world
   assigns. `WorldScope` no longer swaps the counter. The SoA
   EntityManager context stays process-global until A6b.2c.
+- **A6b.2c.** The SoA context is per world too: SoA rows bind to the
+  world that adopts their entity. `SoAComponent` and `WorldScope` are
+  removed; the runner no longer wraps world entries.
 - `globalEventBus` was also global and unused by the engine. It was
   removed in A6a.1; each world has its own `world.eventBus`.
 

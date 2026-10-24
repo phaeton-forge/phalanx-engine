@@ -31,8 +31,8 @@ type IntegerFieldType = 'i32' | 'u32' | 'u8' | 'i64';
 export type IntegerSchema = Record<string, IntegerFieldType>;
 
 /**
- * Saved integer SoA component. Register it, then use `world.add` / `get` /
- * `remove`. `create` exists so snapshot restore can attach a row; callers
+ * Saved integer SoA component. Register it, then use `world.addComponent` / `getComponent` /
+ * `removeComponent`. `create` exists so snapshot restore can attach a row; callers
  * use the world methods.
  */
 export interface SoaComponentDef<
@@ -97,7 +97,7 @@ export interface DefineSoaOptions<
  *
  * Transient: `{ kind: 'transient', create }`. Any fields, including floats
  * and objects. Not saved, not in `configHash`. Tick systems may write it
- * through `world.add` and must not branch on it.
+ * through `world.addComponent` and must not branch on it.
  */
 export function defineComponent<S extends IntegerSchema>(
   name: string,
@@ -286,7 +286,7 @@ function createSoaRow<S extends SoASchemaDefinition>(
     defaults,
     type: schema.type,
     create() {
-      throw new Error(`defineComponent '${name}': use world.add`);
+      throw new Error(`defineComponent '${name}': use world.addComponent`);
     },
   };
   const initial = mergeSoaValues(component, values as Partial<SoAFieldsOf<S>>);
@@ -306,6 +306,7 @@ class SoaRow<S extends SoASchemaDefinition>
 {
   public readonly type: symbol;
   private manager: EntityManager | null = null;
+  private createPending = false;
 
   public constructor(
     private readonly schema: SoASchema<S>,
@@ -316,7 +317,12 @@ class SoaRow<S extends SoASchemaDefinition>
     this.type = schema.type;
   }
 
+  /** Deferred until the row is bound, so the hook always sees a store row. */
   public onCreate(): void {
+    if (this.manager === null) {
+      this.createPending = true;
+      return;
+    }
     this.hooks.onCreate?.();
   }
 
@@ -344,6 +350,14 @@ class SoaRow<S extends SoASchemaDefinition>
     if (store.indexOf(this.entityId) === -1) {
       store.add(this.entityId, this.defaults);
     }
+    if (this.createPending) {
+      this.createPending = false;
+      this.hooks.onCreate?.();
+    }
+  }
+
+  public _boundManager(): EntityManager | null {
+    return this.manager;
   }
 
   public onSpawn(): void {

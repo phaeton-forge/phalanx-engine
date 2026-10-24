@@ -423,7 +423,7 @@ class Mover extends Entity {
     this.addComponent(Velocity.create(id, { speed }));
   }
 }
-// On a registered entity, world.add / world.get / world.remove work too.
+// On a registered entity, world.addComponent / world.getComponent / world.removeComponent work too.
 
 // 3. Hot-path systems should bypass the component facade and access arrays directly
 //    Cache store references in init(), iterate entityIds() in tick methods
@@ -447,7 +447,7 @@ for (const entityId of store.entityIds()) {
 }
 ```
 
-**Important:** `world.get` returns a copy and allocates. Use it for infrequent access
+**Important:** `world.getComponent` returns a copy and allocates. Use it for infrequent access
 (spawning, event handlers); hot loops read the store arrays directly.
 
 ### SoA Field Types
@@ -630,11 +630,11 @@ const Visual = defineComponent('Visual', {
 world.registerComponent(Hp);
 world.registerComponent(Bag);
 world.registerComponent(Visual);
-world.add(entity, Hp, { hp: 4n });
-world.get(entity, Hp); // { hp: 4n }
+world.addComponent(entity, Hp, { hp: 4n });
+world.getComponent(entity, Hp); // { hp: 4n }
 ```
 
-SoA fields are `i32`, `u32`, `u8`, `i64`. They are saved and included in `configHash`. An object component without `save` and `load` throws at `registerComponent`. `writeSorted` orders `Set` and `Map` keys (UTF-16 for strings, numeric for safe integers). A transient component is display-only: it is omitted from the save and from `configHash`, and a tick system that reads it (`world.get`, `getComponent`, `hasComponent`, `hasComponents`, or a query) throws. `restoreWorld` drops transient components first. Physics does not use the discarded-id list: `readBroadphase` attaches `Interpolation` to every entity with `Transform` and `PhysicsBody` and seeds both samples from the transform. Object and transient values are stored in `ValueComponent`.
+SoA fields are `i32`, `u32`, `u8`, `i64`. They are saved and included in `configHash`. An object component without `save` and `load` throws at `registerComponent`. `writeSorted` orders `Set` and `Map` keys (UTF-16 for strings, numeric for safe integers). A transient component is display-only: it is omitted from the save and from `configHash`, and a tick system that reads it (`world.getComponent`, `getComponent`, `hasComponent`, `hasComponents`, or a query) throws. `restoreWorld` drops transient components first. Physics does not use the discarded-id list: `readBroadphase` attaches `Interpolation` to every entity with `Transform` and `PhysicsBody` and seeds both samples from the transform. Object and transient values are stored in `ValueComponent`.
 
 `EntityPool` remains available as a low-level storage primitive; prefer `PoolManager.spawn()` / `despawn()` for gameplay entities.
 

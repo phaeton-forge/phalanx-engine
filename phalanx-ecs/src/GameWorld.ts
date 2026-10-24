@@ -595,17 +595,17 @@ export class GameWorld {
    * fields and leaves the rest. The same call without `values` throws when
    * the component is already present.
    */
-  public add<S extends SoASchemaDefinition>(
+  public addComponent<S extends SoASchemaDefinition>(
     entity: Entity,
     component: SoaComponentDef<S>,
     values?: Partial<SoAFieldsOf<S>>
   ): void;
-  public add<T extends object>(
+  public addComponent<T extends object>(
     entity: Entity,
     component: ObjectComponentDef<T> | TransientComponentDef<T>,
     values?: Partial<T>
   ): void;
-  public add(
+  public addComponent(
     entity: Entity,
     component:
       | SoaComponentDef
@@ -613,8 +613,8 @@ export class GameWorld {
       | TransientComponentDef<object>,
     values?: object
   ): void {
-    this.assertEntity(entity, 'world.add');
-    this.assertRegistered(component, 'world.add');
+    this.assertEntity(entity, 'world.addComponent');
+    this.assertRegistered(component, 'world.addComponent');
     if (componentKind(component) === 'soa') {
       this.addSoa(entity, component as SoaComponentDef, values);
       return;
@@ -631,28 +631,28 @@ export class GameWorld {
    * A SoA result is a copy. An object or transient result is the stored
    * instance. Reading a transient component during a tick throws.
    */
-  public get<S extends SoASchemaDefinition>(
+  public getComponent<S extends SoASchemaDefinition>(
     entity: Entity,
     component: SoaComponentDef<S>
   ): SoAFieldsOf<S> | undefined;
-  public get<T extends object>(
+  public getComponent<T extends object>(
     entity: Entity,
     component: ObjectComponentDef<T> | TransientComponentDef<T>
   ): T | undefined;
-  public get(
+  public getComponent(
     entity: Entity,
     component:
       | SoaComponentDef
       | ObjectComponentDef<object>
       | TransientComponentDef<object>
   ): object | undefined {
-    this.assertEntity(entity, 'world.get');
+    this.assertEntity(entity, 'world.getComponent');
     if (componentKind(component) === 'transient' && this._tickDepth > 0) {
       throw new Error(
         `tick system must not branch on transient component '${component.name}'`
       );
     }
-    this.assertRegistered(component, 'world.get');
+    this.assertRegistered(component, 'world.getComponent');
     if (componentKind(component) === 'soa') {
       return this.readSoa(entity, component as SoaComponentDef);
     }
@@ -660,12 +660,12 @@ export class GameWorld {
   }
 
   /** Detach `component` from `entity`. Returns whether it was present. */
-  public remove(
+  public removeComponent(
     entity: Entity,
     component: { readonly name: string; readonly type: symbol }
   ): boolean {
-    this.assertEntity(entity, 'world.remove');
-    this.assertRegistered(component, 'world.remove');
+    this.assertEntity(entity, 'world.removeComponent');
+    this.assertRegistered(component, 'world.removeComponent');
     const soa = this.soaRegistration(component.type);
     if (soa !== undefined) {
       const store = this.entityManager.getSoAStore(soa.schema);
@@ -829,7 +829,7 @@ export class GameWorld {
     const hasComponent = entity._componentAttached(component.type);
     if (hasRow !== hasComponent) {
       throw new Error(
-        `world.add: entity ${String(entity.id)} component '${component.name}' is out of sync with its store`
+        `world.addComponent: entity ${String(entity.id)} component '${component.name}' is out of sync with its store`
       );
     }
     const patch = values as
@@ -837,7 +837,7 @@ export class GameWorld {
     if (hasRow) {
       if (patch === undefined) {
         throw new Error(
-          `world.add: entity ${String(entity.id)} already has '${component.name}'`
+          `world.addComponent: entity ${String(entity.id)} already has '${component.name}'`
         );
       }
       assertSoaPatch(component, patch);
@@ -857,7 +857,7 @@ export class GameWorld {
     if (existing !== undefined) {
       if (values === undefined) {
         throw new Error(
-          `world.add: entity ${String(entity.id)} already has '${component.name}'`
+          `world.addComponent: entity ${String(entity.id)} already has '${component.name}'`
         );
       }
       assignComponentValues(component.name, existing, values);
@@ -884,7 +884,7 @@ export class GameWorld {
     const hasComponent = entity._componentAttached(component.type);
     if (hasRow !== hasComponent) {
       throw new Error(
-        `world.get: entity ${String(entity.id)} component '${component.name}' is out of sync with its store`
+        `world.getComponent: entity ${String(entity.id)} component '${component.name}' is out of sync with its store`
       );
     }
     return store?.get(entity.id);
@@ -931,8 +931,8 @@ export class GameWorld {
 
 /**
  * Holder for an object or transient `defineComponent` value.
- * `world.add` and direct attaches (such as interpolation) use this one
- * class, so a later `world.get` reads the same object.
+ * `world.addComponent` and direct attaches (such as interpolation) use this one
+ * class, so a later `world.getComponent` reads the same object.
  */
 export class ValueComponent<T extends object = object> implements IComponent {
   public constructor(
@@ -985,7 +985,7 @@ function assignComponentValues(
   values: object
 ): void {
   if (values === null || typeof values !== 'object') {
-    throw new Error(`world.add: '${name}' values must be an object`);
+    throw new Error(`world.addComponent: '${name}' values must be an object`);
   }
   Object.assign(target, values);
 }
