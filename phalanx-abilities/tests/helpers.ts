@@ -19,6 +19,10 @@ import {
   type CueEvent,
   type EffectDef,
   type GameplayCueDispatchedEvent,
+  abilityOwnerOf,
+  activeEffectsOf,
+  attributesOf,
+  gameplayTagsOf,
 } from '../src';
 import { GAMEPLAY_CUE_EVENT } from '../src/events';
 import { manualTickProvider } from './support/manualTickProvider.js';
@@ -155,10 +159,12 @@ export function equipEntity(
   abilities: AbilitySystem,
   init?: AbilityOwnerInit
 ): void {
-  const component = abilities.initComponent(init);
-  entity.addComponent(component);
+  const components = abilities.initComponent(init);
+  entity.addComponents(components);
   if (world.entityManager.getEntity(entity.id)) {
-    world.entityManager.onComponentAdded(entity, component.type);
+    for (const component of components) {
+      world.entityManager.onComponentAdded(entity, component.type);
+    }
   }
 }
 
@@ -184,4 +190,21 @@ export function spawnCombatEntity(
     ...init,
     abilities: init?.abilities ?? abilityIds,
   });
+}
+
+/** The owner's ability set with the entity's attributes, effects and tags. */
+export function gasOf(entity: Entity) {
+  const owner = abilityOwnerOf(entity);
+  const attributes = attributesOf(entity);
+  const activeEffects = activeEffectsOf(entity);
+  const tags = gameplayTagsOf(entity);
+  if (
+    owner === undefined ||
+    attributes === undefined ||
+    activeEffects === undefined ||
+    tags === undefined
+  ) {
+    return undefined;
+  }
+  return { abilities: owner.abilities, attributes, activeEffects, tags };
 }

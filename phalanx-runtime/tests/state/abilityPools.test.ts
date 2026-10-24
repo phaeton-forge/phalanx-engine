@@ -302,7 +302,7 @@ describe('pooled ability save sections', () => {
 class SilentMinion extends Entity implements IPoolableEntity<void> {
   public constructor(id: number, abilities: AbilitySystem) {
     super(id);
-    this.addComponent(
+    this.addComponents(
       abilities.initComponent({
         abilities: ['Ability.Burn'],
         tags: ['Team.Silent'],
@@ -328,7 +328,7 @@ class PooledMinion
 {
   public constructor(id: number, abilities: AbilitySystem) {
     super(id);
-    this.addComponent(
+    this.addComponents(
       abilities.initComponent({
         abilities: ['Ability.Burn', 'Ability.Strike'],
         attributes: {
@@ -342,16 +342,17 @@ class PooledMinion
   }
 
   public onSpawn(args: { health: number }): void {
-    const component = abilityOwnerOf(this);
-    if (component === undefined) {
+    const attributes = attributesOf(this);
+    const tags = gameplayTagsOf(this);
+    if (attributes === undefined || tags === undefined) {
       throw new Error('missing ability component');
     }
     const raw = FP.ToRaw(FP.FromInt(args.health));
-    component.attributes.base[0] = raw;
-    component.attributes.current[0] = raw;
-    component.attributes.dirty[0] = 1;
-    component.tags.tags.add('Team.Red');
-    component.tags.adHocTags.add('Team.Red');
+    attributes.base[0] = raw;
+    attributes.current[0] = raw;
+    attributes.dirty[0] = 1;
+    tags.tags.add('Team.Red');
+    tags.adHocTags.add('Team.Red');
   }
 
   public onDespawn(): void {}

@@ -49,7 +49,7 @@ export class UnitFactory {
       spawnRotation.w
     );
 
-    entity.addComponent(
+    entity.addComponents(
       this.abilities.initComponent({
         attributes: {
           Health: FP.FromFloat(def.maxHealth),

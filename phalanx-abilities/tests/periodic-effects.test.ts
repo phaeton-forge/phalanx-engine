@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { FP } from '@phalanx-engine/math';
-import { abilityOwnerOf, defineEffect } from '../src';
+import { activeEffectsOf, defineEffect } from '../src';
 import {
   ArmorAttribute,
   HealthAttribute,
@@ -177,7 +177,7 @@ describe('Periodic effects', () => {
 
     abilities.applyEffect(entity.id, 'Effect.Tick', entity.id);
     world.processAllTicks(2);
-    const queue = activeEffectsOf(world, entity.id).queue;
+    const queue = effectsOf(world, entity.id).queue;
     expect(queue.length).toBe(1);
     expect(queue[0].nextPeriodTick).toBe(6);
 
@@ -457,10 +457,10 @@ describe('Periodic effects', () => {
   });
 });
 
-function activeEffectsOf(world: GameWorld, entityId: number) {
+function effectsOf(world: GameWorld, entityId: number) {
   const entity = world.entityManager.getEntity(entityId);
   if (!entity) throw new Error(`entity ${entityId} missing`);
-  const component = abilityOwnerOf(entity)?.activeEffects;
+  const component = activeEffectsOf(entity);
   if (!component) throw new Error(`ability effects missing on ${entityId}`);
   return component;
 }

@@ -130,18 +130,21 @@ const abilities = createAbilitySystem(world, {
   },
 });
 
+// createAbilitySystem already added abilities.tickSystems as module systems
+// (they run first). List the whole group to place it among your systems.
 world.registerSystems([...abilities.tickSystems], []);
 // Systems reach the facade through the Abilities service:
 // this.context.getService(Abilities).applyEffect(target, 'Effect.Hit');
 
-// 3. Spawn a combatant with the AbilityOwner component.
+// 3. Spawn a combatant: AbilityOwner, Attributes, ActiveEffects, GameplayTags.
 const hero = world.createEntity((id) => new Entity(id));
-const abilityComponent = abilities.initComponent({
-  attributes: { Health: FP.FromInt(100), Mana: FP.FromInt(50) },
-  abilities: ['Ability.Fireball'],
-  tags: ['Team.Hero'],
-});
-hero.addComponent(abilityComponent);
+hero.addComponents(
+  abilities.initComponent({
+    attributes: { Health: FP.FromInt(100), Mana: FP.FromInt(50) },
+    abilities: ['Ability.Fireball'],
+    tags: ['Team.Hero'],
+  })
+);
 world.entityManager.addEntity(hero);
 
 // 4. Drive simulation by tick (lockstep-safe).
@@ -607,7 +610,7 @@ createAbilitySystem(world: GameWorld, config: CreateAbilitySystemConfig): Abilit
 
 | Method                                                     | Description                                                                                                                                                                                                                                                                                                                                                      |
 | ---------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `initComponent(init?)`                                     | Create the `AbilityOwner` component with optional seed data                                                                                                                                                                                                                                                                                                      |
+| `initComponent(init?)`                                     | Build `AbilityOwner`, `Attributes`, `ActiveEffects` and `GameplayTags` with optional seed data, for `entity.addComponents`                                                                                                                                                                                                                                       |
 | `activateAbility(casterId, abilityId, providedTarget?)`    | Queue activation                                                                                                                                                                                                                                                                                                                                                 |
 | `applyEffect(targetId, effectId, sourceId?, setByCaller?)` | Queue effect (`sourceId` defaults to `-1`; `setByCaller` is an optional `ReadonlyMap<string, unknown>` forwarded to `Modifier.calculation`)                                                                                                                                                                                                                      |
 | `getAttribute` / `tryGetAttribute`                         | Read base/current                                                                                                                                                                                                                                                                                                                                                |
@@ -652,9 +655,9 @@ import {
 
 ### Components and types
 
-Components are `defineComponent` object definitions: `AbilityOwner` (attached by `initComponent`), and the standalone `Attributes`, `ActiveEffects` and `GameplayTags` that systems add on demand. Each has `save` / `load`; the `abilities` save section writes them, so do not pass them to `world.registerComponent`. `GameplayTags.save` and `AbilityOwner.save` write sets and maps sorted by UTF-16 code unit.
+Components are `defineComponent` object definitions with `save` / `load`. Each value lives in one place: `AbilityOwner` holds only the granted ability set; attributes, effects and tags are always the `Attributes`, `ActiveEffects` and `GameplayTags` components. `initComponent` builds all four; without an owner, systems and the facade add `ActiveEffects` / `GameplayTags` on demand. `createAbilitySystem` registers the four as module components (`world.registerComponent(c, { module, attachWith })`): the `abilities` save section writes them (no per-component section), the ability pool hook resets them, and `world.addComponent` throws `world.addComponent: 'AbilityOwner' is owned by abilities; attach it with abilities.initComponent(init)` (same for the other three). They work with `world.query` / `world.queryAny`. `GameplayTags.save` and `AbilityOwner.save` write sets and maps sorted by UTF-16 code unit.
 
-Read values with `abilityOwnerOf(entity)`, `attributesOf(entity)`, `activeEffectsOf(entity)` and `gameplayTagsOf(entity)` (the last three fall back to the standalone component). Test presence with `entity.hasComponent(Attributes.type)`. Also exported: the `*State` value types, effect/attribute/tag types and individual systems for custom pipelines.
+Read values with `abilityOwnerOf(entity)`, `attributesOf(entity)`, `activeEffectsOf(entity)` and `gameplayTagsOf(entity)`, each a single component lookup. Test presence with `entity.hasComponent(Attributes.type)`. Also exported: the `*State` value types, effect/attribute/tag types and individual systems for custom pipelines.
 
 See `src/index.ts` for the full public surface.
 

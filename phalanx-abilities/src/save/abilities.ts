@@ -69,16 +69,17 @@ import {
  *   order (empty between ticks; still stored so a mid-pipeline snapshot
  *   round-trips).
  * - Each entity with a GAS component, ascending entity id, and which of
- *   `AbilityOwner` / standalone `Attributes` / `ActiveEffects` /
- *   `GameplayTags` it has, each written by that component's `save`.
- *   Missing ones are created on read.
+ *   `AbilityOwner` / `Attributes` / `ActiveEffects` / `GameplayTags` it
+ *   has, each written by that component's `save`. An owner entity always
+ *   has all four and is flagged `AbilityOwner` alone. Missing ones are
+ *   created on read.
  * - `Attributes`: `base`, `current` (`i64`) and `dirty` (`u8`), index
  *   ascending.
  * - `ActiveEffects`: `queue` and `pendingAdd` in array order.
  * - `GameplayTags`: tags, ad-hoc tags and effect-grant counts, each sorted
  *   by UTF-16 code unit.
- * - `AbilityOwner`: ability ids sorted by UTF-16 code unit, then its
- *   attributes, effects and tags.
+ * - `AbilityOwner`: ability ids sorted by UTF-16 code unit, then the
+ *   entity's attributes, effects and tags.
  * - `setByCaller` keys sorted by UTF-16 code unit. Values: safe integer,
  *   bigint, string, boolean, or a FixedPoint (raw `base` and `precision`,
  *   both `i64`, the same encoding as broadphase centers). Any other value
@@ -159,9 +160,10 @@ function hasAbilityStateIO(value: object): value is AbilityStateIO {
   );
 }
 
+/** `AbilityOwner` alone stands for the owner and its three components. */
 function componentFlags(entity: Entity): number {
+  if (entity.hasComponent(AbilityOwner.type)) return HAS_ABILITY_OWNER;
   let flags = 0;
-  if (entity.hasComponent(AbilityOwner.type)) flags |= HAS_ABILITY_OWNER;
   if (entity.hasComponent(Attributes.type)) flags |= HAS_ATTRIBUTES;
   if (entity.hasComponent(ActiveEffects.type)) flags |= HAS_ACTIVE_EFFECTS;
   if (entity.hasComponent(GameplayTags.type)) flags |= HAS_GAMEPLAY_TAGS;
@@ -326,16 +328,17 @@ function writeEntityGas(w: StateWriter, entity: Entity): void {
   const flags = componentFlags(entity);
   w.u32(entity.id);
   w.u8(flags);
-  if ((flags & HAS_ABILITY_OWNER) !== 0) {
+  const owner = (flags & HAS_ABILITY_OWNER) !== 0;
+  if (owner) {
     saveAbilityOwner(requireValue(entity, AbilityOwner), w);
   }
-  if ((flags & HAS_ATTRIBUTES) !== 0) {
+  if (owner || (flags & HAS_ATTRIBUTES) !== 0) {
     saveAttributes(requireValue(entity, Attributes), w);
   }
-  if ((flags & HAS_ACTIVE_EFFECTS) !== 0) {
+  if (owner || (flags & HAS_ACTIVE_EFFECTS) !== 0) {
     saveActiveEffects(requireValue(entity, ActiveEffects), w);
   }
-  if ((flags & HAS_GAMEPLAY_TAGS) !== 0) {
+  if (owner || (flags & HAS_GAMEPLAY_TAGS) !== 0) {
     saveGameplayTags(requireValue(entity, GameplayTags), w);
   }
 }
@@ -398,23 +401,17 @@ function assertRegisteredEffect(
 
 function readOwner(
   r: StateReader,
-  entity: Entity,
+  entityId: number,
   abilities: AbilityStateIO
 ): AbilityOwnerState {
   const owner = loadAbilityOwner(r);
   for (const abilityId of owner.abilities) {
     if (!abilities.isAbilityRegistered(abilityId)) {
       throw new Error(
-        `readAbilities: ability '${abilityId}' is not registered on entity ${String(entity.id)}`
+        `readAbilities: ability '${abilityId}' is not registered on entity ${String(entityId)}`
       );
     }
   }
-  assertAttributeCount(
-    owner.attributes,
-    abilityOwnerOf(entity)?.attributes,
-    entity.id
-  );
-  assertRegisteredEffects(abilities, owner.activeEffects, entity.id);
   return owner;
 }
 
@@ -434,7 +431,10 @@ function readParsedEntity(
     throw new Error(`readAbilities: missing entity ${String(entityId)}`);
   }
   const flags = r.u8();
-  if ((flags & ~KNOWN_COMPONENT_FLAGS) !== 0) {
+  if (
+    (flags & ~KNOWN_COMPONENT_FLAGS) !== 0 ||
+    ((flags & HAS_ABILITY_OWNER) !== 0 && flags !== HAS_ABILITY_OWNER)
+  ) {
     throw new Error(
       `readAbilities: unknown component flags ${String(flags)} on entity ${String(entityId)}`
     );
@@ -445,23 +445,23 @@ function readParsedEntity(
       `readAbilities: extra ${flagNames(extra)} on entity ${String(entityId)}`
     );
   }
-  // Read order is the byte order: owner, then each standalone component.
-  const owner =
-    (flags & HAS_ABILITY_OWNER) !== 0
-      ? readOwner(r, entity, abilities)
-      : undefined;
+  // Read order is the byte order: owner, attributes, effects, tags.
+  const hasOwner = (flags & HAS_ABILITY_OWNER) !== 0;
+  const owner = hasOwner ? readOwner(r, entityId, abilities) : undefined;
   let attributes: AttributesState | undefined;
-  if ((flags & HAS_ATTRIBUTES) !== 0) {
+  if (hasOwner || (flags & HAS_ATTRIBUTES) !== 0) {
     attributes = loadAttributes(r);
     assertAttributeCount(attributes, valueOf(entity, Attributes), entityId);
   }
   let effects: ActiveEffectsState | undefined;
-  if ((flags & HAS_ACTIVE_EFFECTS) !== 0) {
+  if (hasOwner || (flags & HAS_ACTIVE_EFFECTS) !== 0) {
     effects = loadActiveEffects(r);
     assertRegisteredEffects(abilities, effects, entityId);
   }
   const tags =
-    (flags & HAS_GAMEPLAY_TAGS) !== 0 ? loadGameplayTags(r) : undefined;
+    hasOwner || (flags & HAS_GAMEPLAY_TAGS) !== 0
+      ? loadGameplayTags(r)
+      : undefined;
   return { entityId, owner, attributes, effects, tags };
 }
 
@@ -487,14 +487,10 @@ function assertInstanceIdBound(parsed: ParsedGas): void {
   let max = -1;
   let entityId = -1;
   for (const entity of parsed.entities) {
-    const queues = [entity.owner?.activeEffects.queue, entity.effects?.queue];
-    for (const queue of queues) {
-      if (queue === undefined) continue;
-      for (const effect of queue) {
-        if (effect.instanceId > max) {
-          max = effect.instanceId;
-          entityId = entity.entityId;
-        }
+    for (const effect of entity.effects?.queue ?? []) {
+      if (effect.instanceId > max) {
+        max = effect.instanceId;
+        entityId = entity.entityId;
       }
     }
   }
@@ -519,13 +515,10 @@ function assertNoExtraGasEntities(
 function applyOwner(entity: Entity, parsed: AbilityOwnerState): void {
   let owner = abilityOwnerOf(entity);
   if (owner === undefined) {
-    owner = createAbilityOwnerState(parsed.attributes.base.length);
+    owner = createAbilityOwnerState();
     entity.addComponent(new AbilityOwnerSlot(owner));
     entity._manager?.onComponentAdded(entity, AbilityOwner.type);
   }
-  copyAttributes(owner.attributes, parsed.attributes);
-  copyActiveEffects(owner.activeEffects, parsed.activeEffects);
-  copyGameplayTags(owner.tags, parsed.tags);
   owner.abilities.clear();
   parsed.abilities.forEach((abilityId) => owner.abilities.add(abilityId));
 }

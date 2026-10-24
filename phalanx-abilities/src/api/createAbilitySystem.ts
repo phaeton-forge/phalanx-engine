@@ -1,11 +1,33 @@
-import type { GameSystem, GameWorld, IComponent } from '@phalanx-engine/ecs';
+import { ValueComponent } from '@phalanx-engine/ecs';
+import type {
+  GameSystem,
+  GameWorld,
+  IComponent,
+  ModuleComponentOptions,
+} from '@phalanx-engine/ecs';
 import { FP } from '@phalanx-engine/math';
 import type { FixedPoint } from '@phalanx-engine/math';
 import {
+  AbilityOwner,
   AbilityOwnerSlot,
   createAbilityOwnerState,
   type AbilityOwnerState,
 } from '../components/abilityOwner.js';
+import {
+  ActiveEffects,
+  createActiveEffectsState,
+  type ActiveEffectsState,
+} from '../components/activeEffects.js';
+import {
+  Attributes,
+  createAttributesState,
+  type AttributesState,
+} from '../components/attributes.js';
+import {
+  GameplayTags,
+  createGameplayTagsState,
+  type GameplayTagsState,
+} from '../components/gameplayTags.js';
 import type { CueConfig } from '../cues/index.js';
 import {
   AbilityActivationSystem,
@@ -84,6 +106,11 @@ export interface CreateAbilitySystemConfig {
 }
 
 export interface AbilitySystem {
+  /**
+   * Ability systems in pipeline order. `createAbilitySystem` adds them as
+   * module systems; list the whole group in `registerSystems` only to place
+   * it among the game's systems.
+   */
   readonly tickSystems: readonly GameSystem[];
   readonly gameplayCueBuffer: GameplayCueBufferView;
   /** High-water mark of allocated active-effect instance ids (for tests). */
@@ -113,10 +140,11 @@ export interface AbilitySystem {
   /** True when `effectId` is in this world's effect registry. */
   isEffectRegistered(effectId: string): boolean;
   /**
-   * Build the `AbilityOwner` component for `entity.addComponent`.
-   * Read it back with `abilityOwnerOf(entity)`.
+   * Build `AbilityOwner`, `Attributes`, `ActiveEffects` and `GameplayTags`
+   * for `entity.addComponents`. Read them back with `abilityOwnerOf`,
+   * `attributesOf`, `activeEffectsOf` and `gameplayTagsOf`.
    */
-  initComponent(init?: AbilityOwnerInit): IComponent;
+  initComponent(init?: AbilityOwnerInit): readonly IComponent[];
   activateAbility(
     casterEntityId: number,
     abilityId: string,
@@ -136,6 +164,11 @@ export interface AbilitySystem {
   addTag(entityId: number, tag: string): void;
   removeTag(entityId: number, tag: string): boolean;
 }
+
+const ABILITY_COMPONENT: ModuleComponentOptions = {
+  module: 'abilities',
+  attachWith: 'abilities.initComponent(init)',
+};
 
 export function createAbilitySystem(
   world: GameWorld,
@@ -167,8 +200,14 @@ export function createAbilitySystem(
     cues
   );
 
+  // The `abilities` section saves these; the pool hook below resets them.
+  world.registerComponent(AbilityOwner, ABILITY_COMPONENT);
+  world.registerComponent(Attributes, ABILITY_COMPONENT);
+  world.registerComponent(ActiveEffects, ABILITY_COMPONENT);
+  world.registerComponent(GameplayTags, ABILITY_COMPONENT);
   // Before world.registerSystems(), so system init() can read the service.
   world.provide(Abilities, abilitySystem);
+  world.addModuleSystems(abilitySystem.tickSystems, []);
   world.registerSaveSection(abilitiesSaveSection);
 
   // Free-list entities are omitted from the GAS snapshot. Clearing here
@@ -230,18 +269,26 @@ class AbilitySystemImpl implements AbilitySystem {
     );
   }
 
-  public initComponent(init: AbilityOwnerInit = {}): IComponent {
-    const component = createAbilityOwnerState(this.registries.attributes.size);
-    this.seedAttributes(component, init.attributes);
-    this.seedAbilities(component, init.abilities);
-    this.seedTags(component, init.tags);
-    this.seedEffects(component, init.effects);
-    const slot = new AbilityOwnerSlot(component);
+  public initComponent(init: AbilityOwnerInit = {}): readonly IComponent[] {
+    const owner = createAbilityOwnerState();
+    const attributes = createAttributesState(this.registries.attributes.size);
+    const effects = createActiveEffectsState();
+    const tags = createGameplayTagsState();
+    this.seedAttributes(attributes, init.attributes);
+    this.seedAbilities(owner, init.abilities);
+    this.seedTags(tags, init.tags);
+    this.seedEffects(effects, init.effects);
+    const slot = new AbilityOwnerSlot(owner);
     // Capture before any snapshot can replace pendingAdd. A restored live
     // pooled entity is built by this factory and then overwritten; the
     // later pool return must reseed these factory effects, not the snapshot.
-    slot.captureInitialPending();
-    return slot;
+    slot.captureInitialPending(effects);
+    return [
+      slot,
+      new ValueComponent(Attributes.type, attributes),
+      new ValueComponent(ActiveEffects.type, effects),
+      new ValueComponent(GameplayTags.type, tags),
+    ];
   }
 
   public activateAbility(
@@ -302,15 +349,15 @@ class AbilitySystemImpl implements AbilitySystem {
   }
 
   private seedAttributes(
-    component: AbilityOwnerState,
+    attributes: AttributesState,
     overrides: Record<string, AttributeInitializer> | undefined
   ): void {
     const defs = this.registries.attributes.values();
     for (let index = 0; index < defs.length; index++) {
       const rawDefault = FP.ToRaw(defs[index].default);
-      component.attributes.base[index] = rawDefault;
-      component.attributes.current[index] = rawDefault;
-      component.attributes.dirty[index] = 1;
+      attributes.base[index] = rawDefault;
+      attributes.current[index] = rawDefault;
+      attributes.dirty[index] = 1;
     }
     if (!overrides) {
       return;
@@ -321,9 +368,9 @@ class AbilitySystemImpl implements AbilitySystem {
       const current = isAttributeValuePair(value)
         ? (value.current ?? value.base)
         : value;
-      component.attributes.base[index] = FP.ToRaw(base);
-      component.attributes.current[index] = FP.ToRaw(current);
-      component.attributes.dirty[index] = 1;
+      attributes.base[index] = FP.ToRaw(base);
+      attributes.current[index] = FP.ToRaw(current);
+      attributes.dirty[index] = 1;
     }
   }
 
@@ -343,20 +390,20 @@ class AbilitySystemImpl implements AbilitySystem {
   }
 
   private seedTags(
-    component: AbilityOwnerState,
+    gameplayTags: GameplayTagsState,
     tags: readonly string[] | undefined
   ): void {
     if (!tags) {
       return;
     }
     for (const tag of tags) {
-      component.tags.adHocTags.add(tag);
-      component.tags.tags.add(tag);
+      gameplayTags.adHocTags.add(tag);
+      gameplayTags.tags.add(tag);
     }
   }
 
   private seedEffects(
-    component: AbilityOwnerState,
+    activeEffects: ActiveEffectsState,
     effects: readonly (string | InitialEffect)[] | undefined
   ): void {
     if (!effects) {
@@ -367,7 +414,7 @@ class AbilitySystemImpl implements AbilitySystem {
       if (!this.registries.effects.has(effectId)) {
         throw new Error(`EffectRegistry does not contain '${effectId}'`);
       }
-      component.activeEffects.pendingAdd.push({
+      activeEffects.pendingAdd.push({
         defId: effectId,
         sourceEntityId:
           typeof entry === 'string'

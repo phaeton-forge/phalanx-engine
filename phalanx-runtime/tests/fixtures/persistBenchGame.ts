@@ -8,7 +8,7 @@ import type { GameWorld, IRandom } from '@phalanx-engine/ecs';
 import { FP, type FixedPoint } from '@phalanx-engine/math';
 import {
   AbilityOwner,
-  abilityOwnerOf,
+  Attributes,
   createAbilitySystem,
   defineAbility,
   defineAbilitySystem,
@@ -94,7 +94,7 @@ export function createPersistBenchGame(unitCount: number) {
         friction: FP._0,
         useGravity: false,
       });
-      this.addComponent(
+      this.addComponents(
         abilities.initComponent({
           attributes: { Health: HEALTH },
           tags: ['Team.Bench'],
@@ -115,11 +115,12 @@ export function createPersistBenchGame(unitCount: number) {
   class HpDecaySystem extends GameSystem {
     public override processTick(_tick: number): void {
       this.random.int(1);
-      const pawns = this.entityManager.queryEntities(AbilityOwner.type);
-      for (const pawn of pawns) {
-        const attributes = abilityOwnerOf(pawn)?.attributes;
-        const base = attributes?.base[0];
-        if (attributes === undefined || base === undefined || base <= 0n) {
+      for (const [, , attributes] of this.world.query(
+        AbilityOwner,
+        Attributes
+      )) {
+        const base = attributes.base[0];
+        if (base === undefined || base <= 0n) {
           continue;
         }
         const next = base > HEALTH_STEP ? base - HEALTH_STEP : 0n;

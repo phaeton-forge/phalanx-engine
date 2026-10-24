@@ -14,7 +14,6 @@ import type {
   ModifierOp,
 } from '../types/index.js';
 import {
-  AbilityOwner,
   attributesOf,
   activeEffectsOf,
   gameplayTagsOf,
@@ -80,16 +79,11 @@ export class EffectApplicationSystem extends GameSystem {
   }
 
   public override processTick(tick: number): void {
-    const entities = this.entityManager.queryEntitiesAny(
-      AbilityOwner.type,
-      ActiveEffects.type
-    );
     const attributeIndexCache = this.attributeIndexCache;
     attributeIndexCache.clear();
 
-    for (const entity of entities) {
-      const activeEffects = activeEffectsOf(entity);
-      if (!activeEffects || activeEffects.pendingAdd.length === 0) {
+    for (const [entity, activeEffects] of this.world.query(ActiveEffects)) {
+      if (activeEffects.pendingAdd.length === 0) {
         continue;
       }
 

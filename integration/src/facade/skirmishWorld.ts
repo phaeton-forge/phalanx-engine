@@ -23,6 +23,9 @@ import {
   defineAttribute,
   defineEffect,
   abilityOwnerOf,
+  activeEffectsOf,
+  attributesOf,
+  gameplayTagsOf,
   type AbilitySystem,
 } from '@phalanx-engine/game/abilities';
 import { FP, type FixedPoint } from '@phalanx-engine/game/math';
@@ -276,7 +279,7 @@ class PooledUnit extends Entity implements IPoolableEntity<UnitSpawn> {
       });
     }
     if (withRange) this.addComponent(RangedDef.create(this.id));
-    this.addComponent(
+    this.addComponents(
       abilities.initComponent({
         attributes: { Health: HEALTH, Power: POWER },
         abilities: [ABILITY_STRIKE, ABILITY_BANNER],
@@ -300,7 +303,7 @@ class PooledUnit extends Entity implements IPoolableEntity<UnitSpawn> {
     // shell on the first despawn. Install the factory image first; the
     // hook then copies that, and a respawn matches a peer that never
     // restored.
-    const gas = abilityOwnerOf(this);
+    const gas = ownerGas(this);
     if (gas === undefined) return;
     const base = gas.attributes.base;
     const current = gas.attributes.current;
@@ -933,7 +936,23 @@ function teamOfSlot(config: SkirmishConfig, slot: number): number {
 function gasOf(world: GameWorld, id: number) {
   const entity = world.entityManager.getEntity(id);
   if (entity === undefined) return undefined;
-  return abilityOwnerOf(entity);
+  return ownerGas(entity);
+}
+
+function ownerGas(entity: Entity) {
+  const owner = abilityOwnerOf(entity);
+  const attributes = attributesOf(entity);
+  const activeEffects = activeEffectsOf(entity);
+  const tags = gameplayTagsOf(entity);
+  if (
+    owner === undefined ||
+    attributes === undefined ||
+    activeEffects === undefined ||
+    tags === undefined
+  ) {
+    return undefined;
+  }
+  return { abilities: owner.abilities, attributes, activeEffects, tags };
 }
 
 function sortedFields(fields: Record<string, string>): Record<string, string> {

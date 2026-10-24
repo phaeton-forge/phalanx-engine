@@ -11,78 +11,45 @@ import {
 } from '@phalanx-engine/ecs';
 import {
   ActiveEffects,
-  createActiveEffectsState,
-  loadActiveEffects,
-  saveActiveEffects,
   type ActiveEffectsState,
   type PendingEffectAdd,
 } from './activeEffects.js';
-import {
-  Attributes,
-  createAttributesState,
-  loadAttributes,
-  saveAttributes,
-  type AttributesState,
-} from './attributes.js';
-import {
-  createGameplayTagsState,
-  GameplayTags,
-  loadGameplayTags,
-  saveGameplayTags,
-  type GameplayTagsState,
-} from './gameplayTags.js';
+import { Attributes, type AttributesState } from './attributes.js';
+import { GameplayTags, type GameplayTagsState } from './gameplayTags.js';
 
 /**
- * Gameplay ability state owned by one entity. Game code attaches it through
- * `AbilitySystem.initComponent` instead of the standalone components.
+ * The ability set granted to one entity. Its attributes, effects and tags
+ * are the separate {@link Attributes}, {@link ActiveEffects} and
+ * {@link GameplayTags} components; `AbilitySystem.initComponent` attaches
+ * all four.
  */
 export interface AbilityOwnerState {
-  readonly attributes: AttributesState;
-  readonly activeEffects: ActiveEffectsState;
-  readonly tags: GameplayTagsState;
   readonly abilities: Set<string>;
 }
 
-export function createAbilityOwnerState(
-  attributeCount: number
-): AbilityOwnerState {
-  return {
-    attributes: createAttributesState(attributeCount),
-    activeEffects: createActiveEffectsState(),
-    tags: createGameplayTagsState(),
-    abilities: new Set<string>(),
-  };
+export function createAbilityOwnerState(): AbilityOwnerState {
+  return { abilities: new Set<string>() };
 }
 
-/** Abilities sorted by UTF-16 code unit, then attributes, effects and tags. */
+/** Ability ids sorted by UTF-16 code unit. */
 export function saveAbilityOwner(
   owner: AbilityOwnerState,
   w: StateWriter
 ): void {
   writeSorted(w, owner.abilities, (id, item) => item.str(id));
-  saveAttributes(owner.attributes, w);
-  saveActiveEffects(owner.activeEffects, w);
-  saveGameplayTags(owner.tags, w);
 }
 
 export function loadAbilityOwner(r: StateReader): AbilityOwnerState {
-  const abilities = new Set(r.list((item) => item.str()));
-  return {
-    abilities,
-    attributes: loadAttributes(r),
-    activeEffects: loadActiveEffects(r),
-    tags: loadGameplayTags(r),
-  };
+  return { abilities: new Set(r.list((item) => item.str())) };
 }
 
 /**
- * Attach with `entity.addComponent(abilities.initComponent(init))`, never
- * `world.addComponent`: `world.addComponent` stores a plain value without the pool holder and
- * with zero attributes, which leaves a broken owner.
+ * Attach with `entity.addComponents(abilities.initComponent(init))`.
+ * `world.addComponent` throws once `createAbilitySystem` has registered it.
  */
 export const AbilityOwner = defineComponent<AbilityOwnerState>('AbilityOwner', {
   kind: 'object',
-  create: () => createAbilityOwnerState(0),
+  create: createAbilityOwnerState,
   save: saveAbilityOwner,
   load: loadAbilityOwner,
 });
@@ -95,34 +62,31 @@ export class AbilityOwnerSlot extends ValueComponent<AbilityOwnerState> {
   /** Copied in `initComponent`, before a snapshot can replace `pendingAdd`. */
   private initialPending: PendingEffectAdd[] | null = null;
   /** Set when the pool clears `pendingAdd`. The next live `onEnable` reseeds. */
-  private reseedPending = false;
+  private reseedTarget: ActiveEffectsState | null = null;
 
   public constructor(value: AbilityOwnerState) {
     super(AbilityOwner.type, value);
   }
 
   /** The first call wins, so a despawn after restore keeps the factory list. */
-  public captureInitialPending(): void {
+  public captureInitialPending(effects: ActiveEffectsState): void {
     if (this.initialPending !== null) return;
-    this.initialPending = this.value.activeEffects.pendingAdd.map(copyPending);
+    this.initialPending = effects.pendingAdd.map(copyPending);
   }
 
-  /** Ask the next non-restore `onEnable` to copy the captured pending list. */
-  public requestReseed(): void {
-    this.reseedPending = true;
+  /** Ask the next non-restore `onEnable` to copy the captured list into `effects`. */
+  public requestReseed(effects: ActiveEffectsState): void {
+    this.reseedTarget = effects;
   }
 
   public onEnable(reason?: 'restore'): void {
-    if (reason === 'restore') {
-      this.reseedPending = false;
-      return;
-    }
-    if (!this.reseedPending) return;
-    this.reseedPending = false;
+    const target = this.reseedTarget;
+    this.reseedTarget = null;
+    if (reason === 'restore' || target === null) return;
     const initial = this.initialPending;
     if (initial === null) return;
     for (const entry of initial) {
-      this.value.activeEffects.pendingAdd.push(copyPending(entry));
+      target.pendingAdd.push(copyPending(entry));
     }
   }
 }
@@ -171,21 +135,16 @@ export function abilityOwnerOf(entity: Entity): AbilityOwnerState | undefined {
   return valueOf(entity, AbilityOwner);
 }
 
-/** The owner's attributes, or the standalone {@link Attributes} component. */
 export function attributesOf(entity: Entity): AttributesState | undefined {
-  return abilityOwnerOf(entity)?.attributes ?? valueOf(entity, Attributes);
+  return valueOf(entity, Attributes);
 }
 
-/** The owner's effects, or the standalone {@link ActiveEffects} component. */
 export function activeEffectsOf(
   entity: Entity
 ): ActiveEffectsState | undefined {
-  return (
-    abilityOwnerOf(entity)?.activeEffects ?? valueOf(entity, ActiveEffects)
-  );
+  return valueOf(entity, ActiveEffects);
 }
 
-/** The owner's tags, or the standalone {@link GameplayTags} component. */
 export function gameplayTagsOf(entity: Entity): GameplayTagsState | undefined {
-  return abilityOwnerOf(entity)?.tags ?? valueOf(entity, GameplayTags);
+  return valueOf(entity, GameplayTags);
 }

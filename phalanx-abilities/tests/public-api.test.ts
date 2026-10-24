@@ -36,7 +36,7 @@ describe('public ability system API', () => {
     world.registerSystems([...abilities.tickSystems], []);
 
     const unit = world.createEntity((id) => new Entity(id));
-    unit.addComponent(
+    unit.addComponents(
       abilities.initComponent({
         attributes: {
           Health: FP.FromInt(80),
@@ -95,7 +95,7 @@ describe('public ability system API', () => {
     world.registerSystems([...abilities.tickSystems], []);
 
     const untrained = world.createEntity((id) => new Entity(id));
-    untrained.addComponent(abilities.initComponent());
+    untrained.addComponents(abilities.initComponent());
     world.entityManager.addEntity(untrained);
 
     expect(abilities.activateAbility(untrained.id, 'Ability.SelfDamage')).toBe(
@@ -107,7 +107,7 @@ describe('public ability system API', () => {
     ).toBe(100);
 
     const trained = world.createEntity((id) => new Entity(id));
-    trained.addComponent(
+    trained.addComponents(
       abilities.initComponent({
         abilities: ['Ability.SelfDamage'],
       })

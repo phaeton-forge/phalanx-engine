@@ -25,7 +25,7 @@ import {
   type AttributesState,
 } from '../src/index.js';
 import { readAbilities, writeAbilities } from '../src/save/abilities.js';
-import { attributesValue, standalone } from './helpers.js';
+import { attributesValue, gasOf, standalone } from './helpers.js';
 import { manualTickProvider } from './support/manualTickProvider.js';
 
 const ENTITY_COUNT = 20;
@@ -189,7 +189,7 @@ function spawnShells(world: GameWorld, abilities: AbilitySystem): Entity[] {
           : ['Ability.Burn', 'Ability.Strike'];
       const tags =
         index % 3 === 0 ? ['Team.Red', 'Role.Caster'] : ['Team.Blue'];
-      entity.addComponent(
+      entity.addComponents(
         abilities.initComponent({
           abilities: granted,
           tags,
@@ -267,7 +267,7 @@ describe('ability state helpers', () => {
   it('throws on an unsupported setByCaller value', () => {
     const { world, abilities } = makeWorld();
     const entity = world.createEntity((id) => new Entity(id));
-    entity.addComponent(abilities.initComponent({}));
+    entity.addComponents(abilities.initComponent({}));
     world.entityManager.addEntity(entity);
     abilities.applyEffect(
       entity.id,
@@ -281,7 +281,7 @@ describe('ability state helpers', () => {
 
     const fractional = makeWorld();
     const other = fractional.world.createEntity((id) => new Entity(id));
-    other.addComponent(fractional.abilities.initComponent({}));
+    other.addComponents(fractional.abilities.initComponent({}));
     fractional.world.entityManager.addEntity(other);
     fractional.abilities.applyEffect(
       other.id,
@@ -313,7 +313,7 @@ describe('ability state helpers', () => {
     function pendingWorld(payload: Map<string, unknown>): GameWorld {
       const { world, abilities } = makeWorld();
       const entity = world.createEntity((id) => new Entity(id));
-      entity.addComponent(abilities.initComponent({}));
+      entity.addComponents(abilities.initComponent({}));
       world.entityManager.addEntity(entity);
       abilities.applyEffect(entity.id, 'Effect.Strike.Damage', -1, payload);
       return world;
@@ -326,12 +326,12 @@ describe('ability state helpers', () => {
 
     const restored = makeWorld();
     const entity = restored.world.createEntity((id) => new Entity(id));
-    entity.addComponent(restored.abilities.initComponent({}));
+    entity.addComponents(restored.abilities.initComponent({}));
     restored.world.entityManager.addEntity(entity);
     loadGas(bytes, restored.world);
     expect(saveGas(restored.world)).toEqual(bytes);
 
-    const effects = abilityOwnerOf(entity)?.activeEffects;
+    const effects = activeEffectsOf(entity);
     const payload = effects?.pendingAdd[0]?.setByCaller;
     expect(payload).toBeInstanceOf(Map);
     if (!(payload instanceof Map)) {
@@ -358,7 +358,7 @@ describe('ability state helpers', () => {
     function bytesFor(order: readonly string[]): Uint8Array {
       const { world, abilities } = makeWorld();
       const entity = world.createEntity((id) => new Entity(id));
-      entity.addComponent(abilities.initComponent({ tags: order }));
+      entity.addComponents(abilities.initComponent({ tags: order }));
       world.entityManager.addEntity(entity);
       const tags = gameplayTagsOf(entity);
       if (tags === undefined) throw new Error('missing tags');
@@ -373,14 +373,14 @@ describe('ability state helpers', () => {
   it('keeps effect queue array order and sorts tags and abilities', () => {
     const { world, abilities } = makeWorld();
     const entity = world.createEntity((id) => new Entity(id));
-    entity.addComponent(
+    entity.addComponents(
       abilities.initComponent({
         abilities: ['Ability.Strike', 'Ability.Burn'],
         tags: ['zeta', 'alpha'],
       })
     );
     world.entityManager.addEntity(entity);
-    const component = abilityOwnerOf(entity);
+    const component = gasOf(entity);
     if (component === undefined) throw new Error('missing ability component');
     component.attributes.base[0] = FP.ToRaw(FP.FromInt(40));
     component.attributes.current[0] = FP.ToRaw(FP.FromInt(33));
@@ -418,12 +418,12 @@ describe('ability state helpers', () => {
     const bytes = saveGas(world);
     const restored = makeWorld();
     const copy = restored.world.createEntity((id) => new Entity(id));
-    copy.addComponent(restored.abilities.initComponent({}));
+    copy.addComponents(restored.abilities.initComponent({}));
     restored.world.entityManager.addEntity(copy);
     loadGas(bytes, restored.world);
     expect(saveGas(restored.world)).toEqual(bytes);
 
-    const restoredComponent = abilityOwnerOf(copy);
+    const restoredComponent = gasOf(copy);
     if (restoredComponent === undefined) {
       throw new Error('missing restored ability component');
     }
@@ -532,7 +532,7 @@ describe('ability state helpers', () => {
     const first = extra.world.createEntity((id) => new Entity(id));
     extra.world.entityManager.addEntity(first);
     const second = extra.world.createEntity((id) => new Entity(id));
-    second.addComponent(extra.abilities.initComponent({}));
+    second.addComponents(extra.abilities.initComponent({}));
     extra.world.entityManager.addEntity(second);
     expect(() => loadGas(bytes, extra.world)).toThrow(
       /readAbilities: extra entity 2/
@@ -548,7 +548,7 @@ describe('ability state helpers', () => {
 
     const restored = makeWorld();
     const entity = restored.world.createEntity((id) => new Entity(id));
-    entity.addComponent(
+    entity.addComponents(
       restored.abilities.initComponent({ tags: ['Team.Red'] })
     );
     restored.world.entityManager.addEntity(entity);
@@ -572,7 +572,7 @@ describe('ability state helpers', () => {
       });
       world.registerSystems([...abilities.tickSystems], []);
       const entity = world.createEntity((id) => new Entity(id));
-      entity.addComponent(abilities.initComponent({}));
+      entity.addComponents(abilities.initComponent({}));
       world.entityManager.addEntity(entity);
       abilities.applyEffect(entity.id, 'Effect.Cue', entity.id);
       world.processAllTicks(0);
@@ -638,9 +638,9 @@ describe('ability state helpers', () => {
   it('rejects an ability id or effect def id that is not registered', () => {
     const queued = makeWorld();
     const queuedEntity = queued.world.createEntity((id) => new Entity(id));
-    queuedEntity.addComponent(queued.abilities.initComponent({}));
+    queuedEntity.addComponents(queued.abilities.initComponent({}));
     queued.world.entityManager.addEntity(queuedEntity);
-    const queuedEffects = abilityOwnerOf(queuedEntity)?.activeEffects;
+    const queuedEffects = activeEffectsOf(queuedEntity);
     if (queuedEffects === undefined) throw new Error('missing effects');
     queuedEffects.queue.push({
       instanceId: 1,
@@ -662,7 +662,7 @@ describe('ability state helpers', () => {
     const queuedShell = queuedRestore.world.createEntity(
       (id) => new Entity(id)
     );
-    queuedShell.addComponent(queuedRestore.abilities.initComponent({}));
+    queuedShell.addComponents(queuedRestore.abilities.initComponent({}));
     queuedRestore.world.entityManager.addEntity(queuedShell);
     expect(() => loadGas(queuedBytes, queuedRestore.world)).toThrow(
       /readAbilities: effect 'Effect.Missing' is not registered on entity 1/
@@ -670,10 +670,10 @@ describe('ability state helpers', () => {
 
     const pending = makeWorld();
     const pendingEntity = pending.world.createEntity((id) => new Entity(id));
-    pendingEntity.addComponent(pending.abilities.initComponent({}));
+    pendingEntity.addComponents(pending.abilities.initComponent({}));
     pending.world.entityManager.addEntity(pendingEntity);
     pending.abilities.applyEffect(pendingEntity.id, 'Effect.Burn', -1);
-    const pendingEffects = abilityOwnerOf(pendingEntity)?.activeEffects;
+    const pendingEffects = activeEffectsOf(pendingEntity);
     const pendingEntry = pendingEffects?.pendingAdd[0];
     if (pendingEntry === undefined) throw new Error('missing pending add');
     pendingEntry.defId = 'Effect.AlsoMissing';
@@ -682,7 +682,7 @@ describe('ability state helpers', () => {
     const pendingShell = pendingRestore.world.createEntity(
       (id) => new Entity(id)
     );
-    pendingShell.addComponent(pendingRestore.abilities.initComponent({}));
+    pendingShell.addComponents(pendingRestore.abilities.initComponent({}));
     pendingRestore.world.entityManager.addEntity(pendingShell);
     expect(() => loadGas(pendingBytes, pendingRestore.world)).toThrow(
       /readAbilities: effect 'Effect.AlsoMissing' is not registered on entity 1/
@@ -690,7 +690,7 @@ describe('ability state helpers', () => {
 
     const granted = makeWorld();
     const grantedEntity = granted.world.createEntity((id) => new Entity(id));
-    grantedEntity.addComponent(
+    grantedEntity.addComponents(
       granted.abilities.initComponent({ abilities: ['Ability.Strike'] })
     );
     granted.world.entityManager.addEntity(grantedEntity);
@@ -700,7 +700,7 @@ describe('ability state helpers', () => {
     const grantedShell = grantedRestore.world.createEntity(
       (id) => new Entity(id)
     );
-    grantedShell.addComponent(grantedRestore.abilities.initComponent({}));
+    grantedShell.addComponents(grantedRestore.abilities.initComponent({}));
     grantedRestore.world.entityManager.addEntity(grantedShell);
     expect(() => loadGas(grantedBytes, grantedRestore.world)).toThrow(
       /readAbilities: ability 'Ability.Missing' is not registered on entity 1/
@@ -716,7 +716,7 @@ describe('ability state helpers', () => {
       resolvedActivationsThisTick: [],
     });
     const first = source.world.createEntity((id) => new Entity(id));
-    first.addComponent(
+    first.addComponents(
       source.abilities.initComponent({
         attributes: { Health: FP.FromInt(11) },
         abilities: ['Ability.Strike'],
@@ -724,7 +724,7 @@ describe('ability state helpers', () => {
     );
     source.world.entityManager.addEntity(first);
     const second = source.world.createEntity((id) => new Entity(id));
-    second.addComponent(
+    second.addComponents(
       source.abilities.initComponent({ abilities: ['Ability.Burn'] })
     );
     source.world.entityManager.addEntity(second);
@@ -733,14 +733,14 @@ describe('ability state helpers', () => {
 
     const restored = makeWorld();
     const shellA = restored.world.createEntity((id) => new Entity(id));
-    shellA.addComponent(
+    shellA.addComponents(
       restored.abilities.initComponent({
         attributes: { Health: FP.FromInt(99) },
       })
     );
     restored.world.entityManager.addEntity(shellA);
     const shellB = restored.world.createEntity((id) => new Entity(id));
-    shellB.addComponent(restored.abilities.initComponent({}));
+    shellB.addComponents(restored.abilities.initComponent({}));
     restored.world.entityManager.addEntity(shellB);
 
     expect(() => loadGas(bytes, restored.world)).toThrow(
@@ -762,9 +762,9 @@ describe('ability state helpers', () => {
   it('rejects an instanceId counter below a queued effect and ignores pending adds', () => {
     const low = makeWorld();
     const entity = low.world.createEntity((id) => new Entity(id));
-    entity.addComponent(low.abilities.initComponent({}));
+    entity.addComponents(low.abilities.initComponent({}));
     low.world.entityManager.addEntity(entity);
-    const effects = abilityOwnerOf(entity)?.activeEffects;
+    const effects = activeEffectsOf(entity);
     if (effects === undefined) throw new Error('missing effects');
     effects.queue.push({
       instanceId: 9,
@@ -783,19 +783,19 @@ describe('ability state helpers', () => {
     const bytes = saveGas(low.world);
     const restored = makeWorld();
     const shell = restored.world.createEntity((id) => new Entity(id));
-    shell.addComponent(restored.abilities.initComponent({}));
+    shell.addComponents(restored.abilities.initComponent({}));
     restored.world.entityManager.addEntity(shell);
     expect(() => loadGas(bytes, restored.world)).toThrow(
       /readAbilities: instanceId 0 is below effect instance 9 on entity 1/
     );
-    expect(abilityOwnerOf(shell)?.activeEffects.queue).toHaveLength(0);
+    expect(activeEffectsOf(shell)?.queue).toHaveLength(0);
     expect(restored.abilities.instanceIdCounter).toBe(0);
 
     const pendingOnly = makeWorld();
     const pendingEntity = pendingOnly.world.createEntity(
       (id) => new Entity(id)
     );
-    pendingEntity.addComponent(pendingOnly.abilities.initComponent({}));
+    pendingEntity.addComponents(pendingOnly.abilities.initComponent({}));
     pendingOnly.world.entityManager.addEntity(pendingEntity);
     pendingOnly.abilities.applyEffect(pendingEntity.id, 'Effect.Burn', -1);
     const pendingBytes = saveGas(pendingOnly.world);
@@ -803,19 +803,17 @@ describe('ability state helpers', () => {
     const pendingShell = pendingRestore.world.createEntity(
       (id) => new Entity(id)
     );
-    pendingShell.addComponent(pendingRestore.abilities.initComponent({}));
+    pendingShell.addComponents(pendingRestore.abilities.initComponent({}));
     pendingRestore.world.entityManager.addEntity(pendingShell);
     loadGas(pendingBytes, pendingRestore.world);
     expect(pendingRestore.abilities.instanceIdCounter).toBe(0);
-    expect(abilityOwnerOf(pendingShell)?.activeEffects.pendingAdd).toHaveLength(
-      1
-    );
+    expect(activeEffectsOf(pendingShell)?.pendingAdd).toHaveLength(1);
   });
 
   it('applies a large effect list without spreading into splice', () => {
     const source = makeWorld('effects');
     const entity = source.world.createEntity((id) => new Entity(id));
-    entity.addComponent(source.abilities.initComponent({}));
+    entity.addComponents(source.abilities.initComponent({}));
     source.world.entityManager.addEntity(entity);
     const effects = activeEffectsOf(entity);
     if (effects === undefined) throw new Error('missing effects');
@@ -841,7 +839,7 @@ describe('ability state helpers', () => {
     const bytes = saveGas(source.world);
     const restored = makeWorld('effects');
     const shell = restored.world.createEntity((id) => new Entity(id));
-    shell.addComponent(restored.abilities.initComponent({}));
+    shell.addComponents(restored.abilities.initComponent({}));
     restored.world.entityManager.addEntity(shell);
     const restoredEffects = activeEffectsOf(shell);
     if (restoredEffects === undefined) throw new Error('missing effects');
