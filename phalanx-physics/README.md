@@ -1,561 +1,305 @@
-# Phalanx Physics
+# @phalanx-engine/physics
 
-A deterministic, fixed-point physics engine for the [Phalanx Engine](../README.md). Designed for lockstep multiplayer games where every client must produce identical simulation results.
+Deterministic physics for lockstep games. Positions, velocities, and
+collision response are fixed-point, so two peers that run the same ticks
+separate the same bodies by the same amounts.
 
-> Sibling packages: [phalanx-ecs](../phalanx-ecs/README.md) (ECS core), [phalanx-math](../phalanx-math/README.md) (fixed-point math), [phalanx-server](../phalanx-server/README.md), [phalanx-client](../phalanx-client/README.md).
-
-## Features
-
-- **Deterministic by Design**: All math uses `FP.*` fixed-point operations — no floating-point non-determinism
-- **SoA Storage**: Physics body data stored in contiguous typed arrays (`BigInt64Array` for fixed-point, `Uint8Array` for flags) via phalanx-ecs `defineComponent` SoA rows in per-world `SoAComponentStore`s
-- **`attach` wires everything**: `PhysicsWorld.attach(world)` registers `Transform`, `PhysicsBody` and transient `Interpolation` (in that order, so both SoA components are saved and in `configHash`), provides the `Physics` service, adds `GravitySystem` then `PhysicsSystem` (`after` gravity) to the `physics` tick phase and `InterpolationSystem` to the `interpolation` frame phase, and registers one world section `physics.broadphase` (version 1). Call it before `world.start()`. A game system that must run first uses phase `input`; one that must see the physics step uses `after: 'PhysicsSystem'` or phase `late`. A second `attach` of the same world is a no-op; a different world throws. Registering a standalone `PhysicsSystem` registers the same section once. Providing `Physics` by hand does not. The save functions are not package exports. The section body is the former `broadphase` list (keys `physics`, `physicsSystem`) without a `section('broadphase')` wrapper.
-- **Spatial Hash Grid**: O(n) broad-phase collision detection with configurable cell size. `getCenters()` / `getBroadphaseCenters()` read the cached fixed-point centers and radii, preserving each value's precision (pre-separation after a resolve). `restoreBroadphase(centers)` clears the grid and re-inserts those saved centers in ascending entity id. `rebuildBroadphase()` re-inserts from current transforms and is valid only for a collision-free world; after a hit the live grid still holds the pre-separation centers. The live step still rebuilds before resolution only.
-- **Narrow Phase**: Circle vs Circle, Circle vs AABB, and AABB vs AABB collision tests
-- **Impulse Resolution**: Mass-weighted velocity impulse + positional separation for overlap correction
-- **Sub-stepping**: Configurable physics sub-steps per tick for higher fidelity at the same tick rate
-- **Collision Filtering**: Inject game-specific collision rules via callback — no coupling to game concepts
-- **Collisions-only mode**: `integrate: false` — the game moves bodies, physics separates them (one pass per tick, no sub-steps, friction, `maxVelocity` or `worldBounds`; `'push'` force `overlap × pushStrength`). Replaces the removed `CollisionSystem`
-- **World tick only**: physics advances on the world tick; `PhysicsSystem.step()` is for tests and tools
-- **Impulse API**: `applyImpulse()` sets body XZ velocity for flick/strike mechanics; `applyImpulse3D()` applies a true 3D momentum impulse (`velocity = impulse / mass`) for arcing ordnance; `isSettled()` queries whether all bodies are at rest
-- **Gravity**: opt-in gravitational acceleration via `GravitySystem` + per-body `useGravity` / `gravityMultiplier`; position integrated on all three axes by `PhysicsSystem` (see [Gravity](#gravity))
-- **Raycast / Swept-Segment Query**: `raycastSegment()` / `segmentVsAABB()` return the nearest hit (point + surface normal) against caller-supplied AABBs — a **workaround for 3D collisions** (e.g. ordnance vs a building) until full 3D body-body collision exists (see [Raycast / swept-segment queries](#raycast--swept-segment-queries))
-- **Bounds Exit Mode**: Optional `ejectOnBoundsExit` mode marks out-of-bounds bodies as ignored and emits `BOUNDS_EXIT` events instead of clamping
-- **Event-Driven**: Collision, trigger enter, trigger exit, and bounds exit events emitted via phalanx-ecs `EventBus`
-- **Built-in Transform & Interpolation**: `Transform` and `PhysicsBody` are ecs `defineComponent` SoA components. `Interpolation` is transient (render samples; not saved, not in `configHash`). Helpers (`attachTransform`, `readFpPosition`, `attachPhysicsBody`, `setVelocity`, `attachInterpolation`) replace the deleted wrapper classes. `InterpolationSystem` snapshots in `afterTick` (outside the transient-read guard) and interpolates in `beforeFrame`.
-- **PhysicsWorld Facade**: One-liner setup — wraps GravitySystem + PhysicsSystem + InterpolationSystem, exposes event subscriptions, spatial queries, and interpolated transforms
-
-## Core Components
-
-### PhysicsWorld (Recommended Entry Point)
-
-- **PhysicsWorld**: High-level facade — creates GravitySystem, PhysicsSystem, and InterpolationSystem, wires collision pipeline, exposes event subscriptions, spatial queries, and `getInterpolatedTransform()`
-
-### Transform & Interpolation
-
-- **Transform**: SoA fixed-point position and quaternion (`Transform`, `TransformSoASchema`; the component type is `Transform.type`). Attach with `attachTransform`. Read and write with `readFpPosition` / `writeFpPosition`, `readFpRotation` / `writeFpRotation`, `readYaw` / `writeYaw`. Helpers take the entity; its owning world holds the row. Reads return shared scratch.
-- **Interpolation**: transient tick samples (`Interpolation`, type `Interpolation.type`). `attachInterpolation` before the entity is registered. `readBroadphase` attaches it to every entity that has `Transform` and `PhysicsBody`, seeded from that transform.
-- **InterpolationSystem**: `afterTick` snapshots then captures; `beforeFrame` interpolates (`IAfterTick`, `IBeforeFrame`). Tick systems must not branch on `Interpolation`.
-- **PhysicsBody**: SoA velocity, radius, mass, restitution, friction, isStatic, ignorePhysics, useGravity, and gravityMultiplier (`PhysicsBody`, `PhysicsSoASchema`, type `PhysicsBody.type`). No display-float caches. Attach with `attachPhysicsBody`. Velocity helpers: `readVelocity`, `setVelocity`, `addVelocity`, `stopVelocity`.
-- **PhysicsSoASchema**: Schema definition for the SoA storage layout
-
-### Collision Detection
-
-- **SpatialHashGrid**: Broad-phase spatial partitioning with `queryPairs()` and `queryRadius()`
-- **NarrowPhase**: Static methods for precise collision geometry tests
-
-### Systems
-
-- **GravitySystem**: Opt-in acceleration along Y for bodies with `useGravity=true` (scaled by `gravityMultiplier`). Register as a **tick system before** `PhysicsSystem`.
-- **PhysicsSystem**: Velocity integration with sub-stepping, world bounds handling, broad/narrow/resolve collision pipeline, `step()` / `applyImpulse()` / `applyImpulse3D()` / `isSettled()` / `setCollisionFilter()` API. Created and owned by `PhysicsWorld`; `attach` adds it to the world. Iterates bodies with `world.query(PhysicsBody, Transform)` and reads the typed arrays by row index.
-- **InterpolationSystem**: Tick/frame lifecycle hooks for transform interpolation. `attach` adds it as a module **frame system** (runs before the game's frame systems).
-
-### Events
-
-- **PhysicsEvents.COLLISION**: Emitted when two bodies collide
-- **PhysicsEvents.TRIGGER_ENTER**: Emitted when a trigger overlap starts
-- **PhysicsEvents.TRIGGER_EXIT**: Emitted when a trigger overlap ends
-- **PhysicsEvents.BOUNDS_EXIT**: Emitted when a body exits `worldBounds` and `ejectOnBoundsExit` is `true`
-
-## Installation
+The pipeline is two-dimensional on XZ. Height is a velocity the integrator
+applies on Y. A building hit uses a swept-segment query against boxes you
+supply.
 
 ```bash
-npm install @phalanx-engine/physics
+pnpm add @phalanx-engine/physics
 ```
 
-Peer dependencies: `@phalanx-engine/ecs` ^0.1.0, `@phalanx-engine/math` ^0.1.0
+Peers: `@phalanx-engine/ecs`, `@phalanx-engine/math`. Games import this
+package through `@phalanx-engine/game/physics`.
 
-For monorepo development, clone and build with pnpm:
+## Quick start
 
-```bash
-git clone https://github.com/phaeton-forge/phalanx-engine.git
-cd phalanx-engine
-pnpm install
-pnpm --filter @phalanx-engine/physics build
-```
+`PhysicsWorld.attach(world)` is the setup. Call it before
+`world.start()`.
 
-## Imports
-
-```typescript
-import {
-  // Facade & config
-  PhysicsWorld,
-  type PhysicsWorldConfig,
-
-  // Components
-  PhysicsBody,
-  PhysicsSoASchema,
-  attachPhysicsBody,
-  Transform,
-  TransformSoASchema,
-  attachTransform,
-  Interpolation,
-  attachInterpolation,
-  type PhysicsBodyConfig,
-  type InterpolationSample,
-
-  // Collision primitives
-  SpatialHashGrid,
-  NarrowPhase,
-  type CollisionManifold,
-
-  // Systems
-  PhysicsSystem,
-  GravitySystem,
-  InterpolationSystem,
-  type InterpolatedTransformSample,
-
-  // Raycast / swept-segment (3D collision workaround)
-  segmentVsAABB,
-  type RayHit,
-  type Vec3FP,
-  type AABB,
-
-  // Events & event types
-  PhysicsEvents,
-  type CollisionEvent,
-  type BoundsExitEvent,
-
-  // Misc types
-  type CollisionFilter,
-  type PhysicsConfig,
-} from '@phalanx-engine/physics';
-```
-
-## Quick Start
-
-```typescript
-import { GameWorld, GameSystem } from '@phalanx-engine/ecs';
+```ts
+import { GameWorld, type ITickFrameProvider } from '@phalanx-engine/ecs';
+import { FP, FPVector3 } from '@phalanx-engine/math';
 import {
   PhysicsWorld,
-  GravitySystem,
-  PhysicsSystem,
   attachPhysicsBody,
   attachTransform,
-  attachInterpolation,
+  setVelocity,
 } from '@phalanx-engine/physics';
-import { FP, FPVector3, FPQuaternion } from '@phalanx-engine/math';
 
-// Minimal placeholder systems — replace with your real ones.
-class MovementSystem extends GameSystem {
-  public override processTick(_tick: number): void {
-    /* set velocities here */
-  }
-}
-class RenderSystem extends GameSystem {
-  public override update(_dt: number): void {
-    const sample = this.context
-      .tryGetService(Physics)
-      ?.getInterpolatedTransform(entityId);
-    if (sample) {
-      mesh.position.set(
-        sample.position.x,
-        sample.position.y,
-        sample.position.z
-      );
-      // sample.rotation is a float quaternion { x, y, z, w } — apply it as-is.
-      mesh.quaternion.set(
-        sample.rotation.x,
-        sample.rotation.y,
-        sample.rotation.z,
-        sample.rotation.w
-      );
-    }
-  }
-}
-const movementSystem = new MovementSystem();
-const renderSystem = new RenderSystem();
+const tickFrameProvider: ITickFrameProvider = {
+  onTick: () => () => {},
+  onFrame: () => () => {},
+};
 
-// 1. Create GameWorld and the physics facade
 const world = new GameWorld({ tickFrameProvider });
-
-const physicsWorld = new PhysicsWorld({
+const physics = new PhysicsWorld({
   gridCellSize: FP.FromFloat(8),
   subSteps: 3,
   tickRate: 20,
-  maxVelocity: FP.FromFloat(15),
-  pushStrength: FP.FromFloat(15),
 });
-
-// 2. Attach: components, Physics service, systems and save section
-physicsWorld.attach(world);
-
-// 3. Game systems. Gravity and the physics step are already in `physics`.
-//    Movement that writes velocity runs in `input`, before them.
-world.addSystem(movementSystem, { phase: 'input' });
-world.addSystem(renderSystem, { phase: 'render' });
-
+physics.attach(world);
 world.start();
 
-// 4. Add transform, interpolation, and physics body to entities
-declare const entity: import('@phalanx-engine/ecs').Entity;
-const fpPosition = FPVector3.FromFloat(0, 0, 0);
-const fpRotation = FPQuaternion.Identity();
-attachTransform(entity, fpPosition, fpRotation);
-attachInterpolation(entity, fpPosition, fpRotation);
-attachPhysicsBody(entity, { radius: FP.FromFloat(1.0) });
-world.entityManager.addEntity(entity);
+const entity = world.createEntity();
+attachTransform(entity, FPVector3.FromFloat(0, 0, 0));
+attachPhysicsBody(entity, { radius: FP.FromFloat(1) });
+setVelocity(entity, FP.FromFloat(2), FP._0, FP._0);
 
-// 5. Subscribe to collision events (must be called after world.start())
-physicsWorld.onCollision((event) => {
-  console.log(`Collision: ${event.entityA} ↔ ${event.entityB}`);
+const hits: number[] = [];
+physics.onCollision((event) => {
+  hits.push(event.entityA, event.entityB);
 });
 ```
 
-> **Note:** `PhysicsSystem` reads and writes the built-in `Transform` store directly — no `setTransformStore()` or consumer-defined transform schema is required. `attach` registers `Transform`, `PhysicsBody` and `Interpolation`; do not register them again.
+Subscribe to `onCollision` and `onBoundsExit` after `world.start()`.
+Earlier throws. `TRIGGER_ENTER` and `TRIGGER_EXIT` are reserved and are
+not emitted.
 
-## Collisions-only mode (`integrate: false`)
+## What `attach` wires
 
-```typescript
-const physicsWorld = new PhysicsWorld({
+One call, in this order:
+
+1. Registers `Transform`, `PhysicsBody`, and transient `Interpolation`.
+   The two SoA components are saved and included in `configHash`.
+   `Interpolation` is display samples: not saved, not hashed.
+2. Provides the `Physics` service (`defineService`), so
+   `world.context.getService(Physics)` is this `PhysicsWorld`.
+3. Adds `GravitySystem`, then `PhysicsSystem` (`after: 'GravitySystem'`),
+   to the `physics` tick phase.
+4. Adds `InterpolationSystem` to the `interpolation` frame phase.
+5. Registers save section `physics.broadphase` (version 1).
+
+A second `attach` of the same world does nothing. A different world
+throws. Do not register `Transform`, `PhysicsBody`, or `Interpolation`
+again yourself.
+
+Movement that writes velocity runs in `input`, before the physics phase.
+A system that must see the integrated positions uses
+`after: 'PhysicsSystem'` or the `late` phase.
+
+`PhysicsSystem.step()` is for tests and tools. A running world advances
+physics on the tick.
+
+## Helpers
+
+Wrapper classes are gone. These functions take the entity. Reads return
+shared scratch. Copy the values before the next read.
+
+| Function                                                      | Role                          |
+| ------------------------------------------------------------- | ----------------------------- |
+| `attachTransform(entity, position?, rotation?)`               | SoA position and quaternion   |
+| `readFpPosition(entity)` / `writeFpPosition(entity, value)`   | Authoritative position        |
+| `readFpRotation` / `writeFpRotation` / `readYaw` / `writeYaw` | Orientation                   |
+| `attachPhysicsBody(entity, config)`                           | Velocity, radius, mass, flags |
+| `readVelocity(entity)` / `setVelocity(entity, x, y, z)`       | Body velocity                 |
+| `addVelocity` / `stopVelocity`                                | Accumulate or zero            |
+| `attachInterpolation(entity, position?, rotation?)`           | Render samples                |
+
+`readBroadphase` attaches `Interpolation` to every entity that has
+`Transform` and `PhysicsBody`, seeded from the transform.
+`InterpolationSystem.afterTick` snapshots, then captures.
+`beforeFrame` interpolates. Tick code must not branch on
+`Interpolation`.
+
+```ts
+const position = readFpPosition(entity);
+const copy = { x: position.x, y: position.y, z: position.z };
+writeFpPosition(entity, copy);
+setVelocity(entity, FP.FromFloat(1), FP._0, FP._0);
+```
+
+`PhysicsBody` fields: `velocityX/Y/Z`, `radius`, `mass`, `restitution`,
+`friction`, `isStatic`, `ignorePhysics`, `useGravity`,
+`gravityMultiplier`. There is no display-float cache on the body.
+
+```ts
+attachPhysicsBody(entity, {
+  radius: FP.FromFloat(0.4),
+  mass: FP._1,
+  isStatic: false,
+  restitution: FP.FromFloat(0.5),
+  friction: FP._0,
+  useGravity: false,
+  gravityMultiplier: FP._1,
+});
+```
+
+A missing SoA row (`indexOf(entityId) === -1`) returns early. Invalid
+configuration throws from the constructor.
+
+For a hot loop, read the arrays by the row from `world.query`:
+
+```ts
+for (const [, row] of world.query(PhysicsBody, Transform)) {
+  const vx = physicsStore.arrays.velocityX[row];
+  if (vx === undefined) continue;
+  physicsStore.arrays.velocityX[row] = vx;
+}
+```
+
+## Collisions-only mode
+
+`integrate: false` separates overlaps and leaves movement to the game.
+One pass per tick. Sub-steps, friction, `maxVelocity`, and `worldBounds`
+do not apply.
+
+```ts
+const physics = new PhysicsWorld({
   integrate: false,
   collisionResponse: 'push',
   pushStrength: FP.FromFloat(15),
 });
 ```
 
-The game moves bodies (writes `Transform`); physics separates overlapping
-bodies once per tick. `subSteps`, friction, `maxVelocity` and `worldBounds`
-do not apply. The `'push'` force is `overlap × pushStrength` without
-restitution. The push still writes `velocity`, but velocity is not
-integrated into position. `collisionResponse: 'impulse'` also works and
-keeps restitution. `GravitySystem` still runs and writes `velocity.y`, and
-the push velocity is not cleared, so `isSettled` is only meaningful if the
-game zeros velocity itself. This
-replaces the removed `CollisionSystem` and matches it tick for tick.
+`'push'` writes a velocity of `overlap × pushStrength` and does not
+integrate it into position. `'impulse'` keeps restitution. `GravitySystem`
+still runs and writes `velocity.y`. The push velocity is not cleared, so
+`isSettled` means something only if the game zeros velocity itself.
 
-## API Reference
+## Collision response
 
-### `PhysicsWorld`
+`collisionResponse` defaults to `'push'`.
 
-```typescript
-class PhysicsWorld {
-  constructor(config?: PhysicsWorldConfig);
+| Mode        | What happens                                                                                                                                                |
+| ----------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `'push'`    | Positional separation plus a mass-weighted push scaled by `pushStrength`. Stable for crowds and characters.                                                 |
+| `'impulse'` | Momentum along the contact normal, `j = (1 + e) · vₙ / (1/mₐ + 1/m_b)`, skipped when the bodies are already separating. XZ only. `velocityY` is left alone. |
 
-  // Wiring: components, Physics service, systems, save section
-  attach(world: GameWorld): void;
-  setCollisionFilter(
-    filter: (entityA: number, entityB: number) => boolean
-  ): void;
+`e` is `config.restitution` when set, otherwise the average of the two
+bodies. Static bodies are infinite mass.
 
-  // Event subscriptions (must be called after GameWorld.start())
-  onCollision(callback: (event: CollisionEvent) => void): () => void;
-  onBoundsExit(callback: (event: BoundsExitEvent) => void): () => void;
-
-  // Planned — not yet emitted by PhysicsSystem.
-  onTriggerEnter(callback: (event: CollisionEvent) => void): () => void;
-  onTriggerExit(callback: (event: CollisionEvent) => void): () => void;
-
-  // Impulse / settle queries
-  /** Sets XZ velocity directly (does NOT divide by mass). Historical flick API. */
-  applyImpulse(entityId: number, vx: FixedPoint, vz: FixedPoint): void;
-  /** True 3D momentum impulse: velocity = impulse / mass on all axes. */
-  applyImpulse3D(
-    entityId: number,
-    ix: FixedPoint,
-    iy: FixedPoint,
-    iz: FixedPoint
-  ): void;
-  isSettled(threshold?: FixedPoint): boolean;
-
-  // Spatial / transform queries
-  readonly spatialGrid: SpatialHashGrid;
-  getEntityPosition(
-    entityId: number
-  ): { x: FixedPoint; z: FixedPoint } | undefined;
-  getInterpolatedTransform(
-    entityId: number
-  ): InterpolatedTransformSample | undefined;
-  raycastSegment(
-    prev: Vec3FP,
-    cur: Vec3FP,
-    boxes: ReadonlyArray<AABB>
-  ): RayHit | null;
-
-  // Cleanup
-  dispose(): void;
-}
-```
-
-- **`attach(world)`** — Registers the components, provides `Physics`, adds the systems (`world.getSystem(GravitySystem | PhysicsSystem | InterpolationSystem)` finds them) and registers `physics.broadphase`. Call before `world.start()`.
-- **`getEntityPosition(entityId)`** — Fixed-point position for gameplay queries (e.g. ability targeting).
-- **`getInterpolatedTransform(entityId)`** — Interpolated float transform for rendering, populated after `InterpolationSystem` runs. Returns an `InterpolatedTransformSample` with `position: { x, y, z }` and `rotation: { x, y, z, w }` — rotation is a float quaternion (slerped between tick samples), apply it directly to a mesh quaternion.
-- **`raycastSegment(prev, cur, boxes)`** — Swept-segment (raycast) query returning the nearest hit against caller-supplied AABBs. **Workaround for 3D collisions** (e.g. ordnance vs a building) until full 3D body-body collision exists; see [Raycast / swept-segment queries](#raycast--swept-segment-queries).
-
-- **`applyImpulse(entityId, vx, vz)`** — Set body XZ velocity directly (replaces, does not accumulate; does **not** divide by mass). Re-enables previously ejected bodies. Kept for flick/grounded knockback.
-- **`applyImpulse3D(entityId, ix, iy, iz)`** — Apply a true 3D momentum impulse: `velocity = impulse / mass` on all three axes (bodies with `mass <= 0` are unchanged). Re-enables previously ejected bodies. Use for arcing ordnance; see [Gravity](#gravity).
-- **`isSettled(threshold?)`** — Pure query: `true` when all non-static, non-ignored bodies are below velocity threshold (default from config, falling back to `FP.FromFloat(0.01)`). Considers the full 3D velocity (X, Y, Z), so a body falling on Y alone is correctly reported as not settled.
-- **`onBoundsExit(callback)`** — Subscribe to `BOUNDS_EXIT` events (requires `ejectOnBoundsExit: true`).
-- **`setCollisionFilter(filter)`** — Inject a per-pair predicate. Return `false` to skip collision resolution for that pair.
-
-### `PhysicsWorldConfig`
-
-```typescript
-interface PhysicsWorldConfig {
-  gridCellSize?: FixedPoint; // default FP.FromFloat(4)
-  subSteps?: number; // default 3
-  tickRate?: number; // default 20 — used to compute tickDt
-  worldBounds?: {
-    minX: FixedPoint;
-    minZ: FixedPoint;
-    maxX: FixedPoint;
-    maxZ: FixedPoint;
-  };
-  defaultFriction?: FixedPoint; // default FP.FromFloat(0.92) — applied when body friction is 0
-  maxVelocity?: FixedPoint; // default FP.FromFloat(15)
-  pushStrength?: FixedPoint; // default FP.FromFloat(15)
-  collisionResponse?: 'push' | 'impulse'; // default 'push'
-  restitution?: FixedPoint; // impulse mode only; falls back to per-body restitution
-  integrate?: boolean; // default true; false = collisions-only mode
-  ejectOnBoundsExit?: boolean; // default false
-  settleThreshold?: FixedPoint; // default FP.FromFloat(0.01)
-  gravity?: FixedPoint; // acceleration magnitude, default 0 (disabled)
-  gravityAxis?: 'x' | 'y' | 'z'; // default 'y'; only 'y' supported in v1
-}
-```
-
-### Collision Response (`'push'` vs `'impulse'`)
-
-`collisionResponse` selects how overlapping bodies are resolved. It defaults to
-`'push'`, so existing consumers are unchanged.
-
-| Mode                 | Behavior                                                                                                                                                                                                                                               | Use when                                                                                       |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
-| `'push'` _(default)_ | Positional separation plus a mass-weighted push velocity scaled by `pushStrength`. Does **not** conserve momentum — a fast body slides past a slower one. Cheap and very stable.                                                                       | Crowd/soft separation, characters, projectiles that shouldn't ricochet — most real-time games. |
-| `'impulse'`          | Momentum-conserving elastic collision along the contact normal. Applies the impulse scalar `j = (1 + e) · vₙ / (1/mₐ + 1/m_b)` (`vₙ` = relative velocity along the normal), with a "skip if separating" guard. Restores the "click / knock-away" feel. | Billiards / Chapayev checkers / air-hockey — anything where a strike must transfer momentum.   |
-
-In `'impulse'` mode the restitution coefficient `e` comes from
-`config.restitution` when set, otherwise from the average of the two bodies'
-per-body `restitution`. `e = 0` is perfectly inelastic; `e = 1` is perfectly
-elastic (equal-mass head-on bodies swap velocities). Only the XZ velocity
-components are affected — `velocityY` is left untouched. Static bodies are
-treated as infinite mass (they don't move and reflect the dynamic body).
-
-```typescript
-// Chapayev-style knock-away collisions
-const physicsWorld = new PhysicsWorld({
+```ts
+const physics = new PhysicsWorld({
   collisionResponse: 'impulse',
   restitution: FP.FromFloat(0.85),
 });
 ```
 
+`setCollisionFilter((entityA, entityB) => boolean)` skips a pair when it
+returns false.
+
 ## Gravity
 
-Gravity is **opt-in** and off by default (`gravity` defaults to `0`, so
-`GravitySystem` is a no-op and existing bodies are unaffected). It is designed
-for arcing ordnance — artillery shrapnel, thrown grenades, anything that leaves
-the ground plane.
+Off by default (`gravity` is 0). Opt in for arcs: shells, grenades,
+anything that leaves the ground.
 
-### Model: acceleration vs. integration
+`GravitySystem` accelerates. For `useGravity` bodies it does
+`velocityY -= gravity * tickDt * gravityMultiplier` and never writes
+position. `PhysicsSystem` is the only integrator, on all three axes.
+`gravityAxis` is `'y'`. `'x'` and `'z'` throw, because those axes already
+belong to the integrator.
 
-The engine follows the "one owner per axis" rule to avoid double-integration:
+`maxVelocity` and `worldBounds` stay on XZ. A body with `velocityY = 0`
+does not move on Y.
 
-| Concern          | Owner                           | What it does                                                                                                                                                         |
-| ---------------- | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Acceleration** | `GravitySystem`                 | For bodies with `useGravity=true`, decays velocity along the gravity axis each tick: `velocityY -= gravity * tickDt * gravityMultiplier`. **Never writes position.** |
-| **Integration**  | `PhysicsSystem.applyVelocities` | Integrates position from velocity on **all three axes**: `posX/Y/Z += velX/Y/Z * dt`. This is the _only_ position integrator.                                        |
-
-Because `PhysicsSystem` already integrates X/Z, gravity is restricted to the Y
-axis — applying it to X/Z would double-integrate those axes (the body would move
-twice and desync friction/clamp). See `gravityAxis` below.
-
-Y integration is **additive and safe**: `maxVelocity` and `worldBounds` clamps
-remain XZ-only, and collision detection stays 2D/XZ (a shrapnel body at altitude
-flies over ground units). Bodies with `velocityY = 0` — i.e. every pre-existing
-body — do not move on Y, so behavior is unchanged.
-
-### `useGravity` and `gravityMultiplier`
-
-Per-body opt-in, set via `PhysicsBodyConfig` (defaults: `useGravity=false`, `gravityMultiplier=FP._1`):
-
-```typescript
-attachPhysicsBody(entity, {
-  radius: FP.FromFloat(0.2),
-  mass: FP._1, // with mass 1, applyImpulse3D args equal desired velocity
-  friction: FP._1, // no XZ damping for a projectile
-  useGravity: true, // GravitySystem will pull it down
-  gravityMultiplier: FP.FromFloat(2), // optional per-body scale on world gravity
+```ts
+const physics = new PhysicsWorld({
+  gravity: FP.FromFloat(9.81),
+  tickRate: 20,
 });
-```
 
-`gravityMultiplier` scales the world gravity for that body only (`0` disables gravity without clearing `useGravity`). Bodies with `useGravity=false` ignore both gravity and the multiplier.
+attachPhysicsBody(shell, {
+  radius: FP.FromFloat(0.2),
+  mass: FP._1,
+  friction: FP._1,
+  useGravity: true,
+  gravityMultiplier: FP.FromFloat(2),
+});
 
-### `gravityAxis` — why only `'y'`
-
-`gravityAxis` defaults to `'y'` and **only `'y'` is supported in v1**.
-Constructing `GravitySystem` with `'x'` or `'z'` throws. Those axes are owned by
-`PhysicsSystem`'s position integrator; letting `GravitySystem` also drive them
-would double-integrate. `'x'`/`'z'` are reserved for a future version that would
-cede an axis from `PhysicsSystem`.
-
-### `applyImpulse3D`
-
-`applyImpulse()` sets only XZ **velocity** directly (backward-compatible flick API; does not divide by mass).
-`applyImpulse3D(entityId, ix, iy, iz)` applies a true 3D **momentum impulse**: `velocity = impulse / mass` on all axes, and clears `ignorePhysics`. Bodies with `mass <= 0` are unchanged.
-
-```typescript
-// Launch shrapnel up and out; GravitySystem arcs it back down.
-// With mass = 1, these impulse values equal the resulting velocity.
-physicsWorld.applyImpulse3D(
-  shrapnelId,
+physics.applyImpulse3D(
+  shell.id,
   FP.FromFloat(6),
   FP.FromFloat(8),
   FP.FromFloat(-3)
 );
 ```
 
-### System ordering
+`applyImpulse(entityId, vx, vz)` sets XZ velocity directly and does not
+divide by mass. `applyImpulse3D` applies momentum: `velocity = impulse /
+mass` on all three axes. Mass `<= 0` is unchanged. Both clear
+`ignorePhysics`.
 
-`attach` adds **`GravitySystem` before `PhysicsSystem`** in the `physics`
-phase so the tick's acceleration is applied before that tick's integration
-(semi-implicit Euler). A system that writes velocity first uses `input`.
-A system that reads the integrated positions uses `after: 'PhysicsSystem'`
-or the `late` phase:
+`isSettled(threshold?)` is true when every non-static, non-ignored body
+is under the threshold (default `FP.FromFloat(0.01)`), counting X, Y, and
+Z.
 
-```typescript
-physicsWorld.attach(world);
-world.addSystem(movementSystem, { phase: 'input' });
-world.addSystem(landingSystem, {
-  phase: 'physics',
-  after: 'PhysicsSystem',
-});
-world.addSystem(renderSystem, { phase: 'render' });
-```
+Gravity runs once per world tick. The physics step may sub-step. That
+same `velocityY` is integrated on every sub-step.
 
-### Tick-resolution gravity vs. sub-stepped integration
+## Raycasts
 
-`GravitySystem` runs once per `GameWorld` tick, while `PhysicsSystem` sub-steps
-(e.g. 3×). Gravity is applied once per tick, then that same `velocityY` is
-integrated across every sub-step. The net ΔY per tick is `velocityY * tickDt`
-(semi-implicit Euler) — correct for gameplay. Sub-step-accurate gravity would
-require folding the acceleration into `PhysicsSystem.step()`'s loop (at which
-point it would no longer be a separate system); this is intentionally not done.
+The body pipeline does not collide on Y. For a point moving through a
+box, pass the previous position, the current position, and the boxes:
 
-## Raycast / swept-segment queries
-
-> ⚠️ **Workaround for 3D collisions.** The core physics pipeline is 2D/XZ
-> (circle-vs-circle broad/narrow phase); it does **not** detect collisions on
-> the Y axis. For 3D collisions — e.g. ordnance hitting a static obstacle like a
-> building — use this swept-segment raycast query as a workaround until full 3D
-> body-body collision is implemented (planned for v2). It answers "did this
-> moving point cross a box between last tick and this tick, and if so, where and
-> on which face?"
-
-Pass a moving body's previous and current position, plus the AABBs of the static
-obstacles you care about. The query returns the nearest impact point and the
-outward surface normal, or `null` if nothing was hit.
-
-```typescript
-import { PhysicsWorld } from '@phalanx-engine/physics';
-import type { Vec3FP, AABB, RayHit } from '@phalanx-engine/physics';
-
-const hit: RayHit | null = physicsWorld.raycastSegment(
-  prevPos,
-  curPos,
-  buildingBoxes
-);
+```ts
+const hit = physics.raycastSegment(prevPos, curPos, buildingBoxes);
 if (hit) {
-  // hit.t     — parametric distance along the segment, 0 at prev, 1 at cur
-  // hit.point — impact position (= lerp(prev, cur, t)), fixed-point
-  // hit.normal — outward face normal at the impact (±X / ±Y / ±Z), fixed-point
   detonateAt(hit.point, hit.normal);
 }
 ```
 
-`RayHit`, `Vec3FP`, and `AABB` are exported from the package root. The low-level
-`segmentVsAABB(prev, cur, box)` tests a single box (returns the same `RayHit`
-shape or `null`); `raycastSegment` is the multi-box convenience wrapper.
+`hit.t` is 0 at `prev` and 1 at `cur`. `hit.point` is the fixed-point
+impact. `hit.normal` is the outward face normal. A segment that starts
+inside a box returns `t = 0`. The query is a linear scan of the boxes
+you pass. The moving body is a point; inflate the box by the radius when
+you need a margin. `segmentVsAABB` tests one box.
 
-### Semantics
+`getInterpolatedTransform(entityId)` is for frame systems, after
+`InterpolationSystem.beforeFrame`. It returns float `position` and a
+float quaternion `rotation`. Those floats must not flow back into the
+simulation.
 
-- **`t ∈ [0, 1]`** — `0` at `prev`, `1` at `cur`; `point = lerp(prev, cur, t)`.
-- **Segment starting inside a box** → `t = 0`, `point = prev`, `normal` = the
-  nearest face's outward normal.
-- **Normal convention** — outward normal of the entry face: moving `+X` enters
-  the min-X face → `normal = -X`; moving `-Y` enters the max-Y (top) face →
-  `normal = +Y`, and so on.
-- **Deterministic** — pure `FP.*` fixed-point math, no floats. Degenerate cases
-  (segment parallel to a slab, zero-length segment) are handled without
-  divide-by-zero or `NaN`; identical inputs always yield a bit-for-bit identical
-  `RayHit`.
+## Events
 
-### v1 limitations (workaround scope)
-
-- **Pure linear scan** over the boxes you pass — no broad-phase acceleration
-  (the spatial hash grid is not consulted).
-- **Caller-supplied boxes** — the query does not read colliders from the ECS; you
-  assemble the `AABB[]` yourself.
-- **Point-vs-box only** — the moving body is treated as a point (its radius is
-  not swept); inflate the box by the radius if you need a Minkowski-style margin.
-- **Unit-vs-unit collisions remain 2D/XZ** in `PhysicsSystem` — this query does
-  not change the body-body pipeline.
-
-### v2 path (planned)
-
-Full 3D collision is planned for v2: a `BoxColliderComponent`, grid-accelerated
-raycasts (broad-phase against the spatial hash), and true 3D body-body collision
-resolution — at which point this swept-segment query becomes an optimization
-detail rather than the only 3D path.
-
-### Transform, Interpolation, PhysicsBody
-
-Wrapper classes are gone. `Transform` and `PhysicsBody` are `defineComponent` SoA components. `Interpolation` is transient.
-
-```typescript
-attachTransform(entity, fpPosition, fpRotation);
-attachPhysicsBody(entity, { radius: FP.FromFloat(1) });
-attachInterpolation(entity, fpPosition, fpRotation);
-
-writeFpPosition(entity, fpPosition);
-writeFpRotation(entity, fpRotation);
-setVelocity(entity, vx, vy, vz);
-```
-
-`readFpPosition`, `readFpRotation`, and `readVelocity` return shared scratch. Copy before the next read. `readBroadphase` attaches `Interpolation` to every `Transform` + `PhysicsBody`, seeded from the transform. `InterpolationSystem.afterTick` snapshots then captures. Tick code must not branch on `Interpolation`.
-
-`PhysicsBody` fields: `velocityX/Y/Z`, `radius`, `mass`, `restitution`, `friction`, `isStatic`, `ignorePhysics`, `useGravity`, `gravityMultiplier`. There is no `lastX` / `lastZ`.
-
-```typescript
-interface PhysicsBodyConfig {
-  radius: FixedPoint;
-  mass?: FixedPoint; // default FP._1 — scales applyImpulse3D (v = i / mass)
-  isStatic?: boolean; // default false
-  restitution?: FixedPoint; // default FP.FromFloat(0.5)
-  friction?: FixedPoint; // default FP._0
-  useGravity?: boolean; // default false — opt in to GravitySystem acceleration
-  gravityMultiplier?: FixedPoint; // default FP._1 — scales gravity when useGravity is true
-}
-```
-
-For hot-path access, prefer the SoA store directly:
-
-```typescript
-const store = entityManager.getOrCreateSoAStore(PhysicsSoASchema);
-const idx = store.indexOf(entityId);
-store.arrays.velocityX[idx] = FP.ToRaw(newVx);
-```
-
-### Collision primitives
-
-- **`SpatialHashGrid`** — broad-phase O(n) neighbor pairing. Methods: `clear()`, `insert(...)`, `queryPairs()`, `queryRadius(...)`. Access via `physicsWorld.spatialGrid` for ad-hoc range queries.
-- **`NarrowPhase`** — static methods for circle/AABB intersection tests. Returns `CollisionManifold | null`.
-- **`CollisionManifold`** — `{ entityA, entityB, normalX, normalZ, penetration }`.
-
-### Events
-
-```typescript
+```ts
 const PhysicsEvents = {
   COLLISION: 'physics:collision',
   TRIGGER_ENTER: 'physics:trigger:enter',
   TRIGGER_EXIT: 'physics:trigger:exit',
   BOUNDS_EXIT: 'physics:bounds:exit',
 } as const;
+```
 
-interface CollisionEvent {
-  entityA: number;
-  entityB: number;
-  manifold: CollisionManifold;
-}
-interface BoundsExitEvent {
-  entityId: number;
+`BOUNDS_EXIT` requires `ejectOnBoundsExit: true`. The body is marked
+ignored instead of clamped.
+
+## Config
+
+```ts
+interface PhysicsWorldConfig {
+  gridCellSize?: FixedPoint; // default FP.FromFloat(4)
+  subSteps?: number; // default 3
+  tickRate?: number; // default 20
+  worldBounds?: {
+    minX: FixedPoint;
+    minZ: FixedPoint;
+    maxX: FixedPoint;
+    maxZ: FixedPoint;
+  };
+  defaultFriction?: FixedPoint; // default FP.FromFloat(0.92)
+  maxVelocity?: FixedPoint; // default FP.FromFloat(15)
+  pushStrength?: FixedPoint; // default FP.FromFloat(15)
+  collisionResponse?: 'push' | 'impulse'; // default 'push'
+  restitution?: FixedPoint;
+  integrate?: boolean; // default true
+  ejectOnBoundsExit?: boolean; // default false
+  settleThreshold?: FixedPoint; // default FP.FromFloat(0.01)
+  gravity?: FixedPoint; // default 0
+  gravityAxis?: 'x' | 'y' | 'z'; // only 'y' is accepted
 }
 ```
+
+`spatialGrid` is the broad-phase hash. `queryPairs()` and
+`queryRadius()` return reused, already-sorted buffers. Consume them
+before the next call.
+
+Narrow phase covers circle/circle, circle/AABB, and AABB/AABB. A manifold
+is `{ entityA, entityB, normalX, normalZ, penetration }`.
+
+## License
+
+MIT

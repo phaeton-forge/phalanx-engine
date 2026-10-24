@@ -5,8 +5,9 @@ repository. These rules are **normative**. `MUST` / `MUST NOT` are hard
 requirements — a change that violates one is a defect, even if it compiles and
 the tests pass.
 
-Scope: `phalanx-math`, `phalanx-physics`, `phalanx-ecs`, `phalanx-abilities`,
-`phalanx-client`, `phalanx-server`, `abilities-playground`.
+Scope: `phalanx-math`, `phalanx-protocol`, `phalanx-ecs`, `phalanx-physics`,
+`phalanx-abilities`, `phalanx-runtime`, `phalanx-game`, `phalanx-client`,
+`phalanx-server`, `abilities-playground`, `integration`.
 
 For rules that apply to games built on top of the engine, see
 `../phalanx-games/AGENTS.md`.
@@ -77,13 +78,17 @@ timers, and DOM stay in `@phalanx-engine/runtime`.
 
 The dependency matrix lives in `scripts/layers.mjs`. Every workspace
 package declares `phalanx.layer` in its `package.json`. A new package
-must set that field before it is imported. Adapter subpaths (runtime
-`./server`) set `phalanx.subpaths`.
+must set that field before it is imported. Adapter subpaths set
+`phalanx.subpaths`. Runtime declares both: `./net` and `./server` are
+`infrastructure` (the package root stays `application`).
 
 ```bash
+pnpm lint:determinism
 pnpm lint:layers
 pnpm test:layers
 pnpm check:isomorphic
+pnpm check:side-effects
+pnpm smoke:lands
 ```
 
 ---
@@ -261,29 +266,47 @@ client.sendReady();
 
 ### 4.3 Storage: `IComponent` vs SoA `defineComponent`
 
-Use a SoA `defineComponent` when the data is hot-path, flat/numeric, high-cardinality, or
-fixed-point. Use `IComponent` for complex/nested data, strings, object
-references (meshes, callbacks) and render-only state.
+Use a SoA `defineComponent` (`SoaComponentDef`) when the data is hot-path,
+flat, numeric, high-cardinality, or fixed-point. It accepts only integer
+fields: `'i64'`, `'i32'`, `'u32'`, `'u8'`. `'i64'` (`BigInt64Array`) is the
+column for every fixed-point simulation value. Display floats are a
+transient component:
 
-Field types: `'i64'` (BigInt64Array) for **all** fixed-point simulation values;
-`'f64'`/`'f32'` for display floats; `'i32'`/`'u32'` for ints/ids; `'u8'` for
-flags.
+```ts
+const Visual = defineComponent('Visual', {
+  kind: 'transient',
+  create: () => ({ x: 0 }),
+});
+```
 
-Hot-path access pattern (mandatory in tick systems):
+Transient components are not saved and are not part of `configHash`. A tick
+read throws. Object components (`kind: 'object'`, with `save` and `load`)
+hold nested data, strings, and collections. A class `IComponent` remains
+for a bag the snapshot does not store (a mesh, a callback).
+
+Systems walk rows with `this.world.query(...)` and `this.world.queryAny(...)`.
+A SoA slot is the row index. Read the typed arrays by that index. Cache the
+store in `init()`:
 
 ```ts
 public override init(ctx: SystemContext): void {
   super.init(ctx);
-  this.store = this.entityManager.getOrCreateSoAStore(MySchema); // cache in init()
+  this.store = this.entityManager.getOrCreateSoAStore(MySchema);
 }
 public processTick(): void {
-  const velX = this.store.arrays.velocityX;      // hoist arrays out of the loop
-  for (const id of this.store.entityIds()) {     // sorted => deterministic
-    const i = this.store.indexOf(id);
-    ...
+  const velX = this.store.arrays.velocityX; // hoist arrays out of the loop
+  for (const [, row] of this.world.query(MyComponent)) {
+    const value = velX[row];
+    if (value === undefined) continue;
+    // FP.Add / FP.FromRaw / FP.ToRaw — no float arithmetic
   }
 }
 ```
+
+`queryAny` yields `undefined` for a component the entity does not have.
+A single store may also be walked with `store.entityIds()` (sorted) and
+`store.indexOf`. That walk stays deterministic. Prefer `query` when the
+system names the components it needs.
 
 - **MUST NOT** call `store.get(entityId)` in a hot loop — it allocates.
 - **MUST NOT** call `store.add` / `store.remove` / `reattach` / `detach` from
@@ -326,9 +349,10 @@ Sub(id))` → `world.addComponent(entity, Component, init)`. Both
 - Destroy: `entity.destroy()`, then `entityManager.cleanupDestroyed()` in the
   `afterTick` hook, then `dispose()` the returned entities. **Never call
   `entity.dispose()` from game code directly.**
-- **Never cache entity references across ticks.** Re-query each tick;
-  `queryEntities()` returns results sorted ascending by entity ID (a determinism
-  invariant — any optimisation MUST preserve it).
+- **Never cache entity references across ticks.** Re-query each tick.
+  `this.world.query(CompA, CompB)` and `this.world.queryAny(...)` walk
+  entities in ascending id (a determinism invariant — any optimisation
+  MUST preserve it). The row array is reused between steps; do not keep it.
 
 ### 4.5 Pooling
 
