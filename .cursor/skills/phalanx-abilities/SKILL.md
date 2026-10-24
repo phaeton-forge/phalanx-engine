@@ -114,7 +114,7 @@ Prefer the bundled component:
 import { Entity } from '@phalanx-engine/ecs';
 
 const unit = world.createEntity((id) => new Entity(id));
-unit.addComponent(
+unit.addComponents(
   abilities.initComponent({
     attributes: { Health: FP.FromInt(100) },
     abilities: ['Ability.Strike'],
@@ -332,7 +332,7 @@ use `Modifier.calculation` instead (see above).
 - Register `abilities.tickSystems` with other tick systems in **fixed order** (typically: input/commands → abilities activation → movement → physics → game reactions)
 - Each world owns its entity ids. Spawn with `world.createEntity` so peers that replay the same commands allocate the same ids
 - Subscribe to `ABILITY_ACTIVATED_EVENT` for UI feedback; do not rely on synchronous `activateAbility` return value for success
-- Attach the `AbilityOwner` component via `entity.addComponent(abilities.initComponent())` rather than standalone `Attributes` / `ActiveEffects` / `GameplayTags` unless testing internals. Read state with `abilityOwnerOf` / `attributesOf` / `activeEffectsOf` / `gameplayTagsOf`. Attach the owner only via `initComponent` and standalone attributes only via `initAttributesForEntity`; never `world.addComponent` them, which creates a broken owner (no pool holder, zero attributes)
+- Attach ability state via `entity.addComponents(abilities.initComponent())`: it returns `AbilityOwner` (ability set only), `Attributes`, `ActiveEffects` and `GameplayTags`. Read state with `abilityOwnerOf` / `attributesOf` / `activeEffectsOf` / `gameplayTagsOf` (one component each, no owner fallback). `world.addComponent` throws for all four once `createAbilitySystem` has registered them (`... is owned by abilities; attach it with abilities.initComponent(init)`). They are queryable with `world.query` / `world.queryAny`
 - `GameplayCueBuffer` is world-scoped runtime — not an `IComponent`
 
 ## Determinism Rules

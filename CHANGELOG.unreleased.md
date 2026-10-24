@@ -1017,3 +1017,44 @@ Transform)` / `world.query(PhysicsBody)` and read the typed arrays by row
   (`CollisionSystem`, `ExternalPhysicsTickProvider`, type
   `IPhysicsTickProvider`); game `[186, 9, 61, 88, 19, 3]` →
   `[186, 9, 58, 88, 19, 3]`.
+
+## A8 — abilities (abilities, ecs, runtime, playground, integration)
+
+- One data representation. `AbilityOwnerState` is now only
+  `{ abilities: Set<string> }`; attributes, effects and tags always live in
+  the `Attributes`, `ActiveEffects` and `GameplayTags` components.
+  `attributesOf` / `activeEffectsOf` / `gameplayTagsOf` read that one
+  component (no owner fallback). `createAbilityOwnerState()` takes no
+  argument.
+- `AbilitySystem.initComponent(init)` returns `readonly IComponent[]`
+  (`AbilityOwner`, `Attributes`, `ActiveEffects`, `GameplayTags`). Attach
+  with the new ecs `entity.addComponents(abilities.initComponent(init))`.
+- `createAbilitySystem` registers the four components, provides
+  `Abilities`, adds `abilities.tickSystems` with `world.addModuleSystems`
+  and registers the `abilities` save section. Listing the whole
+  `tickSystems` group in `registerSystems` still places it; phases come in
+  A6d.
+- New in ecs: `world.registerComponent(objectDef, { module, attachWith })`
+  (`ModuleComponentOptions`). The world adds no save section for such a
+  component, does not drop it on pool return (its module resets it), and
+  `world.addComponent` throws
+  `world.addComponent: 'AbilityOwner' is owned by abilities; attach it with abilities.initComponent(init)`
+  (same for `Attributes`, `ActiveEffects`, `GameplayTags`). `world.query`
+  and `world.getComponent` work on it. ecs export snapshot: names
+  `[74]` → `[75]`.
+- `EffectApplicationSystem` and `EffectTickSystem` iterate with
+  `world.query(ActiveEffects)`; `AttributeAggregationSystem` with
+  `world.queryAny(Attributes, ActiveEffects)`. Order is still ascending
+  entity id. No `queryEntities` callers remain in abilities. The runtime
+  arena and persist bench fixtures use `world.query(AbilityOwner, Attributes)`.
+  The playground's `queryEntities` callers stay: their components are
+  plain symbol `IComponent`s, not registered definitions.
+- `releasePooledAbilityState` keeps or removes each of the four components
+  by the factory shell, one path per component. It does not overlap the
+  world's own pool reset: that reset drops registered object and transient
+  components, and module components are excluded from it.
+- `abilities` save format unchanged, goldens unchanged. An owner entity is
+  still flagged `AbilityOwner` alone and written as ability ids, then its
+  attributes, effects and tags, which is the old owner byte layout. A
+  snapshot that flags `AbilityOwner` together with another component
+  throws `unknown component flags`.
