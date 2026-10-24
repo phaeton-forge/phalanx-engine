@@ -24,7 +24,7 @@ the simulation pipeline to the `abilities` phase, adds
 and registers save section `abilities` (version 1).
 
 ```ts
-import { GameWorld } from '@phalanx-engine/ecs';
+import { GameWorld, type ITickFrameProvider } from '@phalanx-engine/ecs';
 import { FP } from '@phalanx-engine/math';
 import {
   AbilityOwner,
@@ -74,6 +74,10 @@ const definitions = defineAbilitySystem({
   ],
 });
 
+const tickFrameProvider: ITickFrameProvider = {
+  onTick: () => () => {},
+  onFrame: () => () => {},
+};
 const world = new GameWorld({ tickFrameProvider });
 const abilities = createAbilitySystem(world, { definitions });
 

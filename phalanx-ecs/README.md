@@ -19,9 +19,34 @@ single-player clock, `TickFrameManager`, lives in
 unsubscribes in `stop()`. It does not start the provider.
 
 ```ts
-import { GameWorld } from '@phalanx-engine/ecs';
+import {
+  Entity,
+  GameSystem,
+  GameWorld,
+  type IPoolableEntity,
+} from '@phalanx-engine/ecs';
 import { DeterministicRandom } from '@phalanx-engine/math';
 import { TickFrameManager } from '@phalanx-engine/runtime/advanced';
+
+class Projectile extends Entity implements IPoolableEntity {
+  public constructor(id: number, _world: GameWorld) {
+    super(id);
+  }
+
+  public onSpawn(): void {}
+
+  public onDespawn(): void {}
+}
+
+class MoveSystem extends GameSystem {
+  public override readonly name = 'MoveSystem';
+  public override processTick(): void {}
+}
+
+class RenderSystem extends GameSystem {
+  public override readonly name = 'RenderSystem';
+  public override update(_dt: number): void {}
+}
 
 const provider = new TickFrameManager({ tickRate: 20, maxFrameTime: 0.25 });
 const world = new GameWorld({
@@ -31,7 +56,7 @@ const world = new GameWorld({
     autoPrewarm: true,
     entityTypes: {
       projectile: {
-        factory: (id, world) => new Projectile(id, world),
+        factory: (id, owned) => new Projectile(id, owned),
         pool: { initialSize: 32 },
       },
     },
@@ -43,9 +68,6 @@ world.addSystem(new RenderSystem(), { phase: 'render' });
 
 provider.start();
 world.start({
-  beforeTick(tick, commands) {
-    applyCommands(tick, commands);
-  },
   afterTick() {
     world.entityManager.cleanupDestroyed();
   },
@@ -253,21 +275,35 @@ A service is a per-world object found by a typed key. Keys compare by
 reference. The name is for errors.
 
 ```ts
-import { defineService } from '@phalanx-engine/ecs';
+import {
+  defineService,
+  GameSystem,
+  GameWorld,
+  type ITickFrameProvider,
+} from '@phalanx-engine/ecs';
 
 interface ClockService {
   tick: number;
 }
 export const Clock = defineService<ClockService>('clock');
 
+const tickFrameProvider: ITickFrameProvider = {
+  onTick: () => () => {},
+  onFrame: () => () => {},
+};
+const world = new GameWorld({ tickFrameProvider });
 world.provide(Clock, { tick: 0 });
 
 class MySystem extends GameSystem {
+  public override readonly name = 'MySystem';
+
   public override processTick(): void {
     const clock = this.context.getService(Clock);
     clock.tick += 1;
   }
 }
+
+world.addSystem(new MySystem(), { phase: 'late' });
 ```
 
 `provide` throws on a second provide of the same key, and when another

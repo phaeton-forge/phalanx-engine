@@ -21,15 +21,19 @@ package through `@phalanx-engine/game/physics`.
 `world.start()`.
 
 ```ts
-import { GameWorld, GameSystem } from '@phalanx-engine/ecs';
+import { GameWorld, type ITickFrameProvider } from '@phalanx-engine/ecs';
 import { FP, FPVector3 } from '@phalanx-engine/math';
 import {
-  Physics,
   PhysicsWorld,
   attachPhysicsBody,
   attachTransform,
   setVelocity,
 } from '@phalanx-engine/physics';
+
+const tickFrameProvider: ITickFrameProvider = {
+  onTick: () => () => {},
+  onFrame: () => () => {},
+};
 
 const world = new GameWorld({ tickFrameProvider });
 const physics = new PhysicsWorld({
@@ -38,9 +42,6 @@ const physics = new PhysicsWorld({
   tickRate: 20,
 });
 physics.attach(world);
-
-world.addSystem(new MovementSystem(), { phase: 'input' });
-world.addSystem(new RenderSystem(), { phase: 'render' });
 world.start();
 
 const entity = world.createEntity();
@@ -48,8 +49,9 @@ attachTransform(entity, FPVector3.FromFloat(0, 0, 0));
 attachPhysicsBody(entity, { radius: FP.FromFloat(1) });
 setVelocity(entity, FP.FromFloat(2), FP._0, FP._0);
 
+const hits: number[] = [];
 physics.onCollision((event) => {
-  react(event.entityA, event.entityB);
+  hits.push(event.entityA, event.entityB);
 });
 ```
 

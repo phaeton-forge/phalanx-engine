@@ -429,8 +429,18 @@ Catch-up and the one-in-flight resync are described in the
 
 ```ts
 import { PhalanxClient } from '@phalanx-engine/client';
-import { GameWorld } from '@phalanx-engine/ecs';
+import { GameSystem, GameWorld } from '@phalanx-engine/ecs';
 import { DeterministicRandom } from '@phalanx-engine/math';
+
+class MovementSystem extends GameSystem {
+  public override readonly name = 'MovementSystem';
+  public override processTick(): void {}
+}
+
+class RenderSystem extends GameSystem {
+  public override readonly name = 'RenderSystem';
+  public override update(_dt: number): void {}
+}
 
 const client = new PhalanxClient({
   serverUrl: 'http://localhost:3000',

@@ -28,15 +28,14 @@ the only side effect.
 ## Define a game
 
 ```ts
+import { GameSystem } from '@phalanx-engine/ecs';
+import { FP } from '@phalanx-engine/math';
 import {
   defineCommands,
   defineComponent,
   defineGame,
   each,
-  GameSystem,
-  runLocalMatch,
 } from '@phalanx-engine/runtime';
-import { FP } from '@phalanx-engine/math';
 
 const Unit = defineComponent('Unit', { x: 'i64', vx: 'i64' });
 const commands = defineCommands({ push: { vx: 'i64' } });
