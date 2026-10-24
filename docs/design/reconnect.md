@@ -196,10 +196,31 @@ base64url(HMAC-SHA256(secret, payloadPart))`.
   `requireSessionToken` is true, that timeout does not call
   `reconnectToMatch` (the server always refuses it). Giving up clears
   the store and emits `reconnectFailed`.
-- In the runtime, the token is the transport's concern:
-  `ServerPeerTransport.join()` (Task 12) performs `match-resume` and returns
-  a `TransportJoin` with `catchUp`. `MatchRunner.join(def, transport)` then
-  restores and fast-forwards.
+- In the runtime, the token is the transport's concern.
+  `ServerPeerTransport` (`@phalanx-engine/game/net`, also
+  `@phalanx-engine/runtime/net`) is constructed with
+  `{ client, gameId }` and uses `MatchSessionStore` for that `gameId`
+  unless a store is passed in. `join()` does one of two things:
+  - **Fresh.** No stored session with a `matchConfig`. Wait for
+    `game-start`. That payload's `matchConfig` is kept on the transport
+    and, when a session for the same `matchId` already exists, written
+    onto it. `PhalanxClient` does the same write from `game-start` when
+    its own store has that match. `side` is rewritten to `'client'`,
+    `sendReady()` is sent, and `TransportJoin` has no `catchUp`.
+  - **Reload.** The stored session includes `matchConfig`. `join()` calls
+    `resumeMatch(token, -1)`, then `requestMatchSnapshot()` when the
+    resume says a snapshot exists, then `fetchMatchLog(snapshot.tick + 1)`
+    (tick 0 when there is no snapshot). The returned `TransportJoin`
+    carries that `catchUp`. `MatchRunner.join(def, transport)` restores
+    the snapshot, ignoring its bot bytes and input checkpoint, and
+    fast-forwards through `currentTick - 1`.
+    A later `session-token` overwrites the token. The same `matchId` keeps
+    the stored `matchConfig`. A new match takes `matchConfig` from that
+    match's `game-start` when the event has already been seen. `match-end`
+    clears the store. `onDesync` listens for `serverDesync` for this player;
+    `requestResync()` repeats the snapshot-plus-log catch-up. Delivering
+    `match-snapshot` clears that player's `reported` flag in `RoomSim`, so
+    the next divergence is reported again.
 
 ## 5. Absence while `playing` (Task 10)
 

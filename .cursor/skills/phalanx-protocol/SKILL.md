@@ -8,9 +8,9 @@ metadata:
 
 # Phalanx Protocol Skill
 
-`@phalanx-engine/protocol` is the contracts layer. It has no dependencies
-and is private at `0.3.0` until the synchronized release. Do not add it to
-`PACKAGE_DIRS`.
+`@phalanx-engine/protocol` is the contracts layer. It has no dependencies.
+At 0.3.0 it is a public package and is included in `PACKAGE_DIRS` with the
+other version-locked engine packages.
 
 Client, server, and runtime import message types and
 `SYSTEM_PLAYER_ID` / `BOT_PLAYER_ID_PREFIX` / `botPlayerId` /

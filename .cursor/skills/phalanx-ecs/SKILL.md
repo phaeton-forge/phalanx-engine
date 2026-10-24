@@ -176,9 +176,9 @@ to pass to `GameWorld`.
 
 ## Component Types: IComponent vs SoA components
 
-Phalanx ECS offers two component types. **Choosing the right one is critical for performance and correctness.**
+Phalanx ECS components are `defineComponent` results: SoA (`i32` / `u32` / `u8` / `i64`), object (`save` / `load`), or transient (display only). **Choosing the kind is part of determinism and of `configHash`.** A class that implements `IComponent` is still available for a rare object bag; new simulation data uses `defineComponent`.
 
-Domain packages define new components with `defineComponent` from this package. The runtime package still exports an SoA-only helper used by `defineGame`.
+Domain packages and games import `defineComponent` from this package. `@phalanx-engine/runtime` and `@phalanx-engine/game` re-export the same function.
 
 ```typescript
 import { defineComponent, writeSorted } from '@phalanx-engine/ecs';

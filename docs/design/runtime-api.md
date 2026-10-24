@@ -68,19 +68,37 @@ copied back by the `AbilityOwner` component `onEnable`. `restoreWorld` calls
 `spawnWithId` throws `spawnWithId: entity N already exists` when that id is
 already registered.
 
-Sections below this one were written in Tasks 1–6.5a. Where they still say
+Status: **Implemented in 0.3.0.** The step-by-step walkthrough is
+[the runtime game guide](../guides/runtime-game-guide.md). Sections below
+this status were written while the tasks landed. Where they still say
 `createWorld`, `applyCommand`, `outcome`, `GameState`, `state.bind`,
-`simMode`, `LocalTransport.manual` or `MatchRunner.fromReplay`, use the table
-above.
+`simMode`, `LocalTransport.manual`, or `MatchRunner.fromReplay`, use the
+table at the top of this file. Signatures here were copied from
+`phalanx-runtime/src`; when they disagree, the code wins.
 
-Status: contracts and skeleton committed in Task 1. Every signature below is
-copied from `phalanx-runtime/src`; when the two differ, the code wins and
-this document has a bug. Skeleton members throw
-`not implemented: <member> (Task NN)` (`NotImplementedError`) until the task
-in the [task map](#task-map) lands. Implemented now: `defineGame`,
-`defineCommands`, `runLocalMatch`, `ReplayPlayer`, the constants,
-`botPlayerId` / `isBotPlayerId`, `botSlotSeed`, `rejectCommand` /
-`isCommandRejection`.
+Shipped with A6–A8 and A6d:
+
+- `defineComponent` builds a SoA row (`i32` / `u32` / `u8` / `i64`, saved,
+  included in `configHash`), an object component (`save` / `load`,
+  `writeSorted` for `Set` and `Map`), or a transient component (display
+  only: not saved, not hashed, and a tick read throws).
+- Attach and read with `world.addComponent`, `world.getComponent`, and
+  `world.removeComponent`. `saveWorld` / `restoreWorld` are the default
+  snapshot body when `defineGame` omits `save`.
+- `world.addSystem(system, { phase, before?, after? })`. Tick phases run
+  `input → physics → abilities → late`. Frame phases run
+  `interpolation → render → present`. `defineGame` `systems` are added in
+  `late`; `frameSystems` are added in `render`.
+- `configHash` appends component records, then command records, then
+  `systems.tick` in execution order when that list is non-empty. Frame
+  names are not hashed. Set `public override readonly name` on every
+  system that ships in a bundle: the default name is `constructor.name`.
+- `MatchRunner.join` takes a transport. `ServerPeerTransport` is
+  `@phalanx-engine/game/net` (and `@phalanx-engine/runtime/net`),
+  constructed as `new ServerPeerTransport({ client, gameId })`.
+  `createServerSim` is `@phalanx-engine/game/server` (and
+  `@phalanx-engine/runtime/server`). The client package does not
+  re-export the runner.
 
 Related: [server-sim.md](./server-sim.md), [reconnect.md](./reconnect.md).
 
@@ -939,22 +957,35 @@ use `list`.
 ### 10.2 Public usage (corrected)
 
 ```ts
-// shared: sketch-legion/src/sim
+// shared simulation. Default save handler is saveWorld / restoreWorld.
 export const SketchLegion = defineGame({
   id: 'sketch-legion', // = server gameTypes[].gameType
   simVersion: SIM_VERSION,
   tickRate: 10,
-  createWorld: (config: LegionConfig, ctx) => new LegionSim(config, ctx),
-  commands: LegionCommands, // CommandSchema: { types, decode, validate, encode }
-  state: { formatVersion: 1, bind: (sim) => new LegionState(sim) },
-  bots: { standard: (config, slot, rng) => new LegionBot(slot.level, rng) },
-  outcome: (sim) => sim.buildings.baseDestroyed() ?? sim.timeoutWinner(),
+  components: [Unit, Transform],
+  systems: [() => new LateRules()],
+  commands, // defineCommands({ ... }, { validate })
+  pooling,
+  onStart(ctx) {
+    physics.attach(ctx.world);
+    createAbilitySystem(ctx.world, { definitions });
+    ctx.world.addSystem(new InputSystem(), { phase: 'input' });
+    ctx.open();
+    if (ctx.purpose !== 'fresh') return;
+  },
+  onCommand: {/* one handler per command type */},
+  bots: {
+    standard: (_config, slot, rng) => new LegionBot(slot.level, rng),
+  },
+  checkOutcome: () => null, // `{ kind: 'win' | 'draw' }` or null while running
 });
 
 // client: offline vs a local bot
 import { MatchRunner, LocalTransport } from '@phalanx-engine/game';
 import { ServerPeerTransport } from '@phalanx-engine/game/net';
+import { createServerSim } from '@phalanx-engine/game/server';
 import { PhalanxClient } from '@phalanx-engine/client';
+
 const offline = new MatchRunner(
   SketchLegion,
   {
@@ -962,16 +993,10 @@ const offline = new MatchRunner(
     gameId: 'sketch-legion',
     simVersion: SIM_VERSION,
     seed,
-    simMode: 'client',
+    side: 'client',
     inputDelayTicks: 2,
     slots: [
-      {
-        slot: 0,
-        team: 0,
-        kind: 'human',
-        playerId: 'local:0',
-        faction: 'guard',
-      },
+      { slot: 0, team: 0, kind: 'human', playerId: 'local:0' },
       {
         slot: 1,
         team: 1,
@@ -979,14 +1004,13 @@ const offline = new MatchRunner(
         policy: 'standard',
         level: 2,
         runsOn: 'local',
-        faction: 'swarm',
       },
     ],
   },
-  new LocalTransport({ tickRate: 10 })
-); // persistence: Task 7 MatchStore
+  new LocalTransport({ tickRate: 10, store })
+);
 
-// client: online, server mode (config comes from the server)
+// client: online server simulation (config comes from game-start)
 const client = new PhalanxClient({
   serverUrl,
   playerId,
@@ -998,19 +1022,25 @@ const online = await MatchRunner.join(
   new ServerPeerTransport({ client, gameId: 'sketch-legion' })
 );
 
-// server
+// server. The worker imports the game module; the relay does not.
 import { Phalanx } from '@phalanx-engine/server';
 const server = new Phalanx({
-  gameTypes: [{ gameType: 'sketch-legion', tickRate: 10 /* ... */ }],
+  gameTypes: [
+    { gameType: 'sketch-legion', tickRate: 10, tickMode: 'continuous' },
+  ],
   sim: createServerSim({
     games: [{ module: './myGame.js' }],
     snapshotEveryTicks: 1000,
   }),
-  // reconnect window/budget: Task 10 config fields
 });
-// Rooms with a server bot: a new room path in Task 11 (private rooms are
-// hard-coded to 2 humans today).
 ```
+
+`MatchRunner`, `LocalTransport`, and `defineGame` are imported from
+`@phalanx-engine/game`. `ServerPeerTransport` is
+`new ServerPeerTransport({ client, gameId })` from
+`@phalanx-engine/game/net`. `createServerSim` is
+`@phalanx-engine/game/server`. `@phalanx-engine/client` is only
+`PhalanxClient`.
 
 ---
 
@@ -1436,13 +1466,18 @@ Literal instructions for each task; they override the original task text.
   - No Redis and no snapshot recovery across a process restart. In-memory
     matches end with "no result".
   - Decode-only pre-filter on the server for human commands.
-- **Task 12 (ServerPeerTransport).** `MatchRunner.join` lives in the runtime
-  and uses `Transport.join()`; the session token is the transport's
-  concern. Client does not re-export runtime: `ServerPeerTransport` is
-  `@phalanx-engine/runtime/net` (re-exported by `@phalanx-engine/game/net`)
-  and takes a `PhalanxClient`.
-  Catch-up calls `fastForward` with `throughTick = currentTick - 1` and
-  does not apply the snapshot's bot state or input checkpoint.
+- **Task 12 (ServerPeerTransport). Implemented.** `MatchRunner.join` lives
+  in the runtime and uses `Transport.join()`. The session token stays the
+  transport's concern. The client package does not re-export the runtime.
+  Import `MatchRunner` and `LocalTransport` from `@phalanx-engine/game`.
+  Import `ServerPeerTransport` from `@phalanx-engine/game/net` (the same
+  class is `@phalanx-engine/runtime/net`) and construct it with
+  `new ServerPeerTransport({ client, gameId })`. Catch-up calls
+  `fastForward` with `throughTick = currentTick - 1` and does not apply
+  the snapshot's bot state or input checkpoint. After `match-snapshot`
+  delivery, `RoomSim` clears that player's `reported` flag so a later
+  desync is reported again. See [server-sim.md](./server-sim.md) §4 and
+  [reconnect.md](./reconnect.md) §4.
 - **Task 13 (release prep).** Change the abilities/physics peer ranges to
   `workspace:^`; remove `private`; add `phalanx-runtime` to `PACKAGE_DIRS`;
   bump everything to 0.3.0 together; turn `CHANGELOG.unreleased.md` into

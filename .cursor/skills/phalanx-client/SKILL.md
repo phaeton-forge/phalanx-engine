@@ -103,7 +103,11 @@ interface PhalanxClientConfig {
 }
 ```
 
-`gameId` opts into `MatchSessionStore` (`localStorage` key `phalanx.session.<gameId>`). On `session-token` the client saves `{ token, matchId, slot, buildId }` and emits `sessionToken` with `{ token }`. A later `session-token` overwrites that record, so the next match replaces the previous token. The server issues the event at `match-found`, so a drop during countdown still has a token. It does not parse the token. The token is signed, not encrypted. Never log `sessionToken.token`. `match-end` clears the record. `resumeMatch` also clears it on `invalid`, `expired`, `match-ended`, and `build-mismatch`. `timeout` keeps it. Without `gameId` nothing is stored.
+`gameId` opts into `MatchSessionStore` (`localStorage` key `phalanx.session.<gameId>`). On `session-token` the client saves `{ token, matchId, slot, buildId }` and emits `sessionToken` with `{ token }`. A later `session-token` overwrites that record. The same `matchId` keeps a stored `matchConfig`. A different match does not carry the previous config forward. The server issues the token at `match-found`, so a drop during countdown still has a token. The client does not parse the token. The token is signed, not encrypted. Never log `sessionToken.token`. `match-end` clears the record. `resumeMatch` also clears it on `invalid`, `expired`, `match-ended`, and `build-mismatch`. `timeout` keeps it. Without `gameId` nothing is stored.
+
+A server-simulation `game-start` carries `matchConfig`. When the store already has a session for that `matchId`, the client writes `matchConfig` onto it. `ServerPeerTransport` from `@phalanx-engine/game/net` (same class: `@phalanx-engine/runtime/net`) does this too, and it keeps `matchConfig` when a `session-token` refresh is for the same match. Construct it with `new ServerPeerTransport({ client, gameId })`. `MatchRunner.join(game, transport)` calls `transport.join()`.
+
+`join()` with no stored `matchConfig` waits for `game-start`, rewrites `side` to `'client'`, and calls `sendReady()`. `join()` with a stored token and `matchConfig` calls `resumeMatch(token, -1)`, then `requestMatchSnapshot()` when the resume includes a snapshot, then `fetchMatchLog(snapshot.tick + 1)`. The runner restores that snapshot and fast-forwards the log. Do not also call `sendReady()` yourself on that path: the transport sends it for a fresh match.
 
 Tab killed: `store.load()` → `connect()` → `resumeMatch(token, haveTick)` → `fetchMatchLog(haveTick + 1)`. `resumeMatch` resolves on `match-resume-state` and rejects `MatchResumeRejected`. `reconnect-state` uses the same path as `reconnectToMatch`, so the client is back in the match before the promise resolves. Pass `matchSessionStorage` to replace `localStorage` (tests use `MemoryKeyValueStorage`). `autoReconnect` tries `resumeMatch(token, lastTick)` when the store has a token for the current match, then `reconnectToMatch` if that resume does not bind. Set `requireSessionToken: true` when the server has that flag: a resume timeout then does not call `reconnectToMatch`. Giving up clears the store and emits `reconnectFailed`. `sessionSuperseded` fires when the server binds this player to another socket.
 
@@ -419,13 +423,19 @@ client.on('sessionToken', ({ token }) => {
   // A server-sim game-start adds matchConfig to that record.
 });
 
-// Server simulation (simMode: 'server')
-client.on('serverDesync', ({ playerId, tick }) => {
-  // The server says playerId diverged at tick. Sent again only after a
-  // snapshot reached that player.
+// Server simulation (matchConfig.simMode: 'server', runner config side: 'client')
+client.on('serverDesync', (event: ServerDesyncEvent) => {
+  // { playerId, tick }. The server compared this player's hash with its
+  // own digest. Relay desync is the other event (`desync`) and ends the match.
+  // After match-snapshot delivery, RoomSim clears that player's reported
+  // flag, so a later divergence emits serverDesync again.
+  void event;
 });
-const snap = await client.requestMatchSnapshot(); // { tick, bytes, requestId }
-// MatchRunner.join + ServerPeerTransport (@phalanx-engine/game/net) do this for you.
+const snap = await client.requestMatchSnapshot();
+// { tick, bytes, requestId }. Callers inside the server's one-second
+// answer window share one reply. Rejects when disconnected or after match-end.
+// MatchRunner.join + ServerPeerTransport (@phalanx-engine/game/net) call
+// this from join() and from requestResync(). Prefer that path.
 
 client.on('reconnectState', (event) => {
   // event contains command history for fast-forward replay
