@@ -27,9 +27,9 @@ A lightweight, renderer-agnostic Entity-Component-System (ECS) library with opti
 
 ### System Architecture
 
-- **GameSystem**: Base class for all game systems (convenience accessors for `eventBus`, `entityManager`, `abilities`, `physics`, `pools`)
+- **GameSystem**: Base class for all game systems (convenience accessors for `eventBus`, `entityManager`, `pools`, `random`, `world`)
 - **SystemRegistry**: Low-level system lifecycle and execution order (used internally by GameWorld)
-- **SystemContext**: Dependency injection container (`eventBus`, `entityManager`, optional `abilities` / `physics`, `pools`)
+- **SystemContext**: Dependency injection container (`eventBus`, `entityManager`, `pools`, services via `provide` / `getService` / `tryGetService`)
 - **ISystemLifecycleHooks**: Optional `IBeforeTick`, `IAfterTick`, `IBeforeFrame`, `IAfterFrame` interfaces — GameWorld invokes them automatically
 
 ### Event System
@@ -234,6 +234,7 @@ class SystemContext {
   readonly entityManager: EntityManager;
   pools: PoolManager | null; // wired automatically when pooling is configured
 
+  provide<T>(key: ServiceKey<T>, impl: T): void; // same as world.provide
   getService<T>(key: ServiceKey<T>): T; // throws, listing provided names
   tryGetService<T>(key: ServiceKey<T>): T | undefined;
   serviceNames(): readonly string[];
@@ -293,6 +294,10 @@ for (const [entity, hpRow, tag] of world.queryAny(Hp, Tag)) {
   Removal swaps the last row into the hole, so read the index inside the
   step that produced it.
 - Reading a transient component during a tick throws.
+- An empty component list throws.
+- Pass `defineComponent` results directly. A component widened to
+  `QueryComponent` types its slot as `number | object`.
+- A SoA component attached without a store row throws (store desync).
 
 `EntityManager.queryEntities(...symbols)` stays for code not yet on
 `defineComponent`.

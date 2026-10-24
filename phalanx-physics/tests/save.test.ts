@@ -13,6 +13,7 @@ import type { FixedPoint } from '@phalanx-engine/math';
 import {
   CollisionSystem,
   Interpolation,
+  Physics,
   PhysicsSystem,
   PhysicsWorld,
   attachInterpolation,
@@ -217,12 +218,12 @@ describe('physics state helpers', () => {
     ]);
   });
 
-  it('does not register a section when physics is only assigned', () => {
+  it('does not register a section when physics is only provided', () => {
     const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
-    world.context.physics = new PhysicsWorld({
-      gridCellSize: FP.FromInt(4),
-      subSteps: 1,
-    });
+    world.provide(
+      Physics,
+      new PhysicsWorld({ gridCellSize: FP.FromInt(4), subSteps: 1 })
+    );
     expect(world.saveSections).toEqual([]);
   });
 

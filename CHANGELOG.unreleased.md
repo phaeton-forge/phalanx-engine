@@ -909,7 +909,8 @@ Entries collected per package until the synchronized 0.3.0 release
 ## A6c — services and query (ecs, physics, abilities, runtime, game)
 
 - New in ecs: `defineService<T>(name)`, `ServiceKey<T>`,
-  `world.provide(key, impl)`, `context.getService(key)`,
+  `world.provide(key, impl)` and the public `SystemContext.provide(key, impl)`
+  (same registry), `context.getService(key)`,
   `context.tryGetService(key)` and `context.serviceNames()`. Keys compare by
   reference. Errors:
   `provide: service 'x' is already provided`;
@@ -923,7 +924,10 @@ Entries collected per package until the synchronized 0.3.0 release
   entities that lost a component are skipped, entities created during the
   loop are not visited. The row array is reused. A row index is valid until
   the next add or remove in its store. Reading a transient component during
-  a tick throws.
+  a tick throws. An empty component list throws
+  (`world.query: pass at least one component`). A SoA component attached
+  without a store row throws (out of sync with its store). A widened
+  `QueryComponent` types its slot as `number | object`.
 - Removed `SystemContext.physics`, `SystemContext.abilities`, the
   `GameSystem.physics` / `GameSystem.abilities` getters, and the types
   `IPhysicsWorld` and `IAbilitySystem` (ecs and game).

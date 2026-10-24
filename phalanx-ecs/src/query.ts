@@ -18,6 +18,7 @@ export interface QueryComponent {
 /**
  * Query slot for one component. A SoA component yields its row index in
  * the store; an object or transient component yields the stored value.
+ * A component widened to `QueryComponent` yields `number | object`.
  */
 type QueryValue<C> = C extends { readonly kind: 'soa' }
   ? number
@@ -25,7 +26,7 @@ type QueryValue<C> = C extends { readonly kind: 'soa' }
     ? T
     : C extends TransientComponentDef<infer T>
       ? T
-      : never;
+      : number | object;
 
 /** `world.query` row: the entity, then one slot per component. */
 export type QueryRow<Cs extends readonly QueryComponent[]> = [

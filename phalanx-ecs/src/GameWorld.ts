@@ -697,7 +697,7 @@ export class GameWorld {
    * between steps; do not keep it. A row index is valid until the next add
    * or remove in that store (removal swaps the last row into the hole), so
    * read it inside the step. Reading a transient component during a tick
-   * throws.
+   * throws, and so does an empty component list.
    */
   public query<const Cs extends readonly QueryComponent[]>(
     ...components: Cs
@@ -721,6 +721,9 @@ export class GameWorld {
     requireAll: boolean
   ): Generator<unknown[]> {
     const label = requireAll ? 'world.query' : 'world.queryAny';
+    if (components.length === 0) {
+      throw new Error(`${label}: pass at least one component`);
+    }
     for (const component of components) {
       this.assertRegistered(component, label);
       if (componentKind(component) === 'transient' && this._tickDepth > 0) {
@@ -761,7 +764,12 @@ export class GameWorld {
         (component as SoaComponentDef).schema
       );
       const index = store?.indexOf(entity.id) ?? -1;
-      return index === -1 ? undefined : index;
+      if (index === -1) {
+        throw new Error(
+          `world.query: entity ${String(entity.id)} component '${component.name}' is out of sync with its store`
+        );
+      }
+      return index;
     }
     return this.readValue(entity, component.type);
   }

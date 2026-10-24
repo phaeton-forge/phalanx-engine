@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { GameSystem, GameWorld, defineComponent } from '../src/index.js';
-import type { Entity } from '../src/index.js';
+import type { Entity, QueryComponent } from '../src/index.js';
 import {
   manualTickProvider,
   ManualTickProvider,
@@ -123,6 +123,35 @@ describe('world.query', () => {
 
     expect(seen).toEqual([1, 2]);
     expect([...game.query(Hp)].length).toBe(3);
+  });
+
+  it('throws on an empty component list', () => {
+    const game = world();
+    spawn(game, 1, 1);
+    expect(() => [...game.query()]).toThrow(
+      'world.query: pass at least one component'
+    );
+    expect(() => [...game.queryAny()]).toThrow(
+      'world.queryAny: pass at least one component'
+    );
+  });
+
+  it('throws when a SoA component has no row in its store', () => {
+    const game = world();
+    spawn(game, 1, 1);
+    game.entityManager.getSoAStore(Hp.schema)?.remove(1);
+    expect(() => [...game.query(Hp)]).toThrow(
+      "world.query: entity 1 component 'Hp' is out of sync with its store"
+    );
+  });
+
+  it('types a widened component slot as number | object', () => {
+    const game = world();
+    spawn(game, 1, 7);
+    const widened: QueryComponent = Hp;
+    const slots: (number | object)[] = [];
+    for (const [, slot] of game.query(widened)) slots.push(slot);
+    expect(slots).toEqual([0]);
   });
 
   it('throws for an unregistered component', () => {
