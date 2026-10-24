@@ -348,13 +348,13 @@ export class PhysicsSystem extends GameSystem {
 
       if (!manifold) continue;
 
-      // Average of both bodies, 1.0 if both unset. Collisions-only mode
-      // pushes with overlap × pushStrength and ignores restitution.
+      // Average of both bodies, 1.0 if both unset. Collisions-only 'push'
+      // uses overlap × pushStrength and ignores restitution; 'impulse'
+      // keeps it in both modes.
       const restitutionA = FP.FromRaw(physRestitution[physIndexA]);
       const restitutionB = FP.FromRaw(physRestitution[physIndexB]);
       const restitution =
-        this.config.integrate === false ||
-        (FP.Eq(restitutionA, FP._0) && FP.Eq(restitutionB, FP._0))
+        FP.Eq(restitutionA, FP._0) && FP.Eq(restitutionB, FP._0)
           ? FP._1
           : FP.Div(FP.Add(restitutionA, restitutionB), FP.FromFloat(2));
 
@@ -378,7 +378,7 @@ export class PhysicsSystem extends GameSystem {
       } else {
         this.resolveCollision(
           manifold,
-          restitution,
+          this.config.integrate === false ? FP._1 : restitution,
           physIndexA,
           physIndexB,
           transformIndexA,

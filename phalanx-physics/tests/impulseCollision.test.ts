@@ -129,6 +129,23 @@ describe('impulse collision response', () => {
     expect(velX(physicsStore, 2)).toBeCloseTo(10, 3);
   });
 
+  it('integrate: false keeps per-body restitution for impulse', () => {
+    const { system, physicsStore, transformStore } = setup({
+      collisionResponse: 'impulse',
+      integrate: false,
+    });
+    // e = avg(0.5, 0.5); j = (1 + e) * 10 / 2 = 7.5
+    addBody(physicsStore, transformStore, 1, -0.9, 10);
+    addBody(physicsStore, transformStore, 2, 0.9, 0);
+
+    system.step();
+
+    const raw = (id: number) =>
+      FP.FromRaw(physicsStore.arrays.velocityX[physicsStore.indexOf(id)] ?? 0n);
+    expect(FP.Eq(raw(1), FP.FromFloat(2.5))).toBe(true);
+    expect(FP.Eq(raw(2), FP.FromFloat(7.5))).toBe(true);
+  });
+
   it('non-static body with mass=0 is treated as infinite mass (no divide-by-zero, immovable)', () => {
     const { system, physicsStore, transformStore } = setup({
       collisionResponse: 'impulse',
