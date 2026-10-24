@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { Entity } from '../src/Entity';
 import { EntityManager } from '../src/EntityManager';
-import { SoAComponent } from '../src/SoAComponent';
 import { defineSoASchema } from '../src/SoASchema';
 import type { IComponent } from '../src/Component';
 
@@ -25,13 +24,10 @@ const TestSoASchema = defineSoASchema(
   'TestTransform'
 );
 
-class TestSoAComponent extends SoAComponent<typeof TestSoASchema.definition> {
-  public readonly type = Symbol('TestSoA');
-  static readonly soaSchema = TestSoASchema;
-
-  constructor(entityId: number) {
-    super(TestSoASchema, entityId, { posX: 0, posY: 0, flags: 0 });
-  }
+function addTestRow(manager: EntityManager, entityId: number): void {
+  manager
+    .getOrCreateSoAStore(TestSoASchema)
+    .add(entityId, { posX: 0, posY: 0, flags: 0 });
 }
 
 // ── Entity accessor tests ──────────────────────────────────────────
@@ -84,8 +80,6 @@ describe('EntityManager debug accessors', () => {
 
   beforeEach(() => {
     em = new EntityManager();
-    em.registerComponentTypes([HealthType, ArmorType]);
-    SoAComponent.useEntityManager(em);
   });
 
   it('getAllSoAStores returns empty map when no SoA stores exist', () => {
@@ -97,8 +91,8 @@ describe('EntityManager debug accessors', () => {
     const entity = new Entity(1);
     em.addEntity(entity);
 
-    // Creating a SoAComponent triggers store creation
-    new TestSoAComponent(entity.id);
+    // Adding a row creates the store
+    addTestRow(em, entity.id);
 
     const stores = em.getAllSoAStores();
     expect(stores.size).toBe(1);
@@ -123,13 +117,9 @@ describe('EntityManager debug accessors', () => {
     expect(stats.get(ArmorType)).toBe(1);
   });
 
-  it('getComponentTypeStats returns zero for unused types', () => {
+  it('getComponentTypeStats has no entry for a type no entity used', () => {
     const stats = em.getComponentTypeStats();
-    expect(stats.get(HealthType)).toBe(0);
-    expect(stats.get(ArmorType)).toBe(0);
-  });
-
-  afterEach(() => {
-    SoAComponent.resetContext();
+    expect(stats.get(HealthType)).toBeUndefined();
+    expect(stats.get(ArmorType)).toBeUndefined();
   });
 });

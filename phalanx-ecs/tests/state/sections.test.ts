@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { GameWorld, SoAComponent } from '../../src/index.js';
+import { GameWorld } from '../../src/index.js';
 import type { SaveSection } from '../../src/index.js';
 import { manualTickProvider } from '../support/manualTickProvider.js';
 
@@ -13,10 +13,6 @@ function section(key: string): SaveSection {
 }
 
 describe('save sections', () => {
-  afterEach(() => {
-    SoAComponent.resetContext();
-  });
-
   it('sorts keys by UTF-16 code units regardless of registration order', () => {
     const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
     for (const key of ['b', 'a', 'physics.broadphase', 'abilities']) {

@@ -1,15 +1,13 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   BinaryStateReader,
   BinaryStateWriter,
   Entity,
   GameWorld,
-  SoAComponent,
 } from '@phalanx-engine/ecs';
 import { DeterministicRandom, FP } from '@phalanx-engine/math';
 import type { FixedPoint } from '@phalanx-engine/math';
 import {
-  INTERPOLATION_COMPONENT_TYPE,
   Interpolation,
   PhysicsSoASchema,
   PhysicsWorld,
@@ -68,10 +66,6 @@ function addDisc(world: GameWorld, x: number, z: number): Disc {
 }
 
 describe('physics broadphase save', () => {
-  afterEach(() => {
-    SoAComponent.resetContext();
-  });
-
   it('restores pre-separation centers, which a transform rebuild does not', () => {
     const { world, physics } = wiredWorld();
     addDisc(world, 0, 0);
@@ -158,7 +152,7 @@ describe('physics broadphase save', () => {
     source.registerSystems([sourcePhysics.getSystems().physicsSystem], []);
     const disc = source.createEntity((id) => new Disc(id, 3, 4));
     source.entityManager.addEntity(disc);
-    expect(disc.hasComponent(INTERPOLATION_COMPONENT_TYPE)).toBe(false);
+    expect(disc.hasComponent(Interpolation.type)).toBe(false);
     const bytes = saveWorld(source);
 
     const restored = new GameWorld({
@@ -175,8 +169,8 @@ describe('physics broadphase save', () => {
 
     const entity = restored.entityManager.getEntity(disc.id);
     if (entity === undefined) throw new Error('entity missing');
-    expect(entity.hasComponent(INTERPOLATION_COMPONENT_TYPE)).toBe(true);
-    const sample = restored.get(entity, Interpolation);
+    expect(entity.hasComponent(Interpolation.type)).toBe(true);
+    const sample = restored.getComponent(entity, Interpolation);
     expect(sample?.currentFpPosition).toEqual({
       x: FP.FromInt(3),
       y: FP._0,

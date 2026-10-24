@@ -126,8 +126,7 @@ describe('public exports', () => {
     expect('nextEntityId' in advanced).toBe(false);
     expect(advanced.TYPED_ARRAY_CONSTRUCTORS.i64).toBe(BigInt64Array);
     expect('rebuildBroadphaseFromTransforms' in advanced).toBe(false);
-    const scope = new advanced.WorldScope();
-    expect(scope.run(() => 7)).toBe(7);
+    expect('WorldScope' in advanced).toBe(false);
   });
 
   it('has the approved constants', () => {

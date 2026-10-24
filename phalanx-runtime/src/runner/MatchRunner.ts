@@ -88,7 +88,6 @@ import {
   type SlotSequence,
 } from './InputCheckpoint.js';
 import { assertReplayRecord, type ReplayRecord } from './replay.js';
-import { WorldScope } from './WorldScope.js';
 
 /** Which bot slots a runner hosts: `'client'` → `runsOn: 'local'`. */
 export type RunnerSide = 'client' | 'server';
@@ -223,7 +222,7 @@ interface TickPlan {
 /**
  * Drives one `GameDefinition` from any `Transport`.
  *
- * Per tick T (all inside `WorldScope.run`):
+ * Per tick T:
  *  1. take the batch of T from the transport, append it to the log;
  *  2. map `playerId` → slot via the config, drop unknown ids;
  *  3. sort by (slot, seq); for each: `commands.decode` → `commands.validate`
@@ -250,7 +249,6 @@ export class MatchRunner<G extends AnyGameDefinition> {
   private readonly configDigest: Digest;
   /** Writer/reader schema text. `null` when no component is registered. */
   private componentSchemaKey: string | null = null;
-  private readonly scope = new WorldScope();
   private readonly commandLog = new CommandLog();
   private readonly random: DeterministicRandom;
   private readonly provider: RunnerProvider;
@@ -371,9 +369,7 @@ export class MatchRunner<G extends AnyGameDefinition> {
           this.provider.fireResume();
         })
       : () => {};
-    this.scope.run(() => {
-      this.boot('fresh');
-    });
+    this.boot('fresh');
     const schemas =
       this.simulation === null
         ? []
@@ -683,9 +679,7 @@ export class MatchRunner<G extends AnyGameDefinition> {
     this.unsubPause();
     this.unsubResume();
     this.transport.dispose?.();
-    this.scope.run(() => {
-      this.destroySim();
-    });
+    this.destroySim();
   }
 
   /**
@@ -716,7 +710,7 @@ export class MatchRunner<G extends AnyGameDefinition> {
     if (this.completedTick < 0) {
       throw new Error('MatchRunner.snapshot: no tick has completed');
     }
-    return this.scope.run(() => this.captureSnapshot());
+    return this.captureSnapshot();
   }
 
   /**
@@ -775,23 +769,21 @@ export class MatchRunner<G extends AnyGameDefinition> {
         : decoded.body;
     this.dropPendingDigests();
     this.resetModes();
-    this.scope.run(() => {
-      this.destroySim();
-      this.random.setState(
-        new DeterministicRandom(this.config.seed >>> 0).getState()
-      );
-      this.boot('restore');
-      const reader = new BinaryStateReader(body);
-      this.requireGameState().restore(reader);
-      reader.done();
-      if (this.roundTripCheck) {
-        const again = new BinaryStateWriter();
-        this.requireGameState().save(again);
-        if (!sameBytes(again.finish(), body)) {
-          throw new SnapshotRoundTripError();
-        }
+    this.destroySim();
+    this.random.setState(
+      new DeterministicRandom(this.config.seed >>> 0).getState()
+    );
+    this.boot('restore');
+    const reader = new BinaryStateReader(body);
+    this.requireGameState().restore(reader);
+    reader.done();
+    if (this.roundTripCheck) {
+      const again = new BinaryStateWriter();
+      this.requireGameState().save(again);
+      if (!sameBytes(again.finish(), body)) {
+        throw new SnapshotRoundTripError();
       }
-    });
+    }
     if (this.transportPaused) this.provider.firePause();
     this.completedTick = decoded.header.tick;
     this.commandLog.rewindTo(decoded.header.tick);
@@ -847,7 +839,7 @@ export class MatchRunner<G extends AnyGameDefinition> {
   /** `digestBytes(GameState.save())` of the current tick. */
   public digest(): Digest {
     this.ensureLive();
-    return this.scope.run(() => this.computeDigest());
+    return this.computeDigest();
   }
 
   /**
@@ -1116,9 +1108,7 @@ export class MatchRunner<G extends AnyGameDefinition> {
       this.transport.seek(tick + 1);
     }
     try {
-      this.scope.run(() => {
-        this.playEntries(tick, entries, plan);
-      });
+      this.playEntries(tick, entries, plan);
     } catch (error) {
       this.fail(tick, error);
       // A live stepped transport reports the failure through onError and

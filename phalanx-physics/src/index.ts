@@ -2,7 +2,6 @@
 export {
   PhysicsBody,
   PhysicsSoASchema,
-  PHYSICS_BODY_COMPONENT_TYPE,
   attachPhysicsBody,
   readVelocity,
   writeVelocity,
@@ -22,7 +21,6 @@ export {
   writeGravityMultiplier,
   Transform,
   TransformSoASchema,
-  TRANSFORM_COMPONENT_TYPE,
   attachTransform,
   readFpPosition,
   writeFpPosition,
@@ -33,7 +31,6 @@ export {
   readYaw,
   writeYaw,
   Interpolation,
-  INTERPOLATION_COMPONENT_TYPE,
   attachInterpolation,
   interpolationOf,
   snapshotInterpolation,

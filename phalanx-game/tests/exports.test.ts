@@ -58,7 +58,7 @@ const ROOT_NAMES: readonly string[] = [
   'DebugSoAStoreSnapshot',
   'DecodedSnapshot',
   'DefineCommandsOptions',
-  'DefineComponentOptions',
+  'DefineSoaOptions',
   'DefinedCommands',
   'DefinedComponent',
   'Digest',
@@ -150,7 +150,6 @@ const ROOT_NAMES: readonly string[] = [
   'SnapshotRoundTripError',
   'SoAArrayType',
   'SoAArraysOf',
-  'SoAComponent',
   'SoAComponentStoreOptions',
   'SoAFieldType',
   'SoAFieldsOf',
@@ -178,7 +177,6 @@ const ROOT_NAMES: readonly string[] = [
   'canonicalConfigBytes',
   'checkSnapshotCompatibility',
   'configHash',
-  'createComponentTypeRegistry',
   'decodeSnapshot',
   'defineCommands',
   'defineComponent',
@@ -225,14 +223,12 @@ const PHYSICS_NAMES: readonly string[] = [
   'CollisionSystem',
   'ExternalPhysicsTickProvider',
   'GravitySystem',
-  'INTERPOLATION_COMPONENT_TYPE',
   'IPhysicsTickProvider',
   'InterpolatedTransformSample',
   'Interpolation',
   'InterpolationSample',
   'InterpolationSystem',
   'NarrowPhase',
-  'PHYSICS_BODY_COMPONENT_TYPE',
   'PhysicsBody',
   'PhysicsBodyConfig',
   'PhysicsConfig',
@@ -243,7 +239,6 @@ const PHYSICS_NAMES: readonly string[] = [
   'PhysicsWorldConfig',
   'RayHit',
   'SpatialHashGrid',
-  'TRANSFORM_COMPONENT_TYPE',
   'Transform',
   'TransformSoASchema',
   'Vec3FP',
@@ -354,7 +349,6 @@ const ABILITIES_NAMES: readonly string[] = [
   'TargetResolutionResult',
   'TargetResolver',
   'TargetSpec',
-  'abilityComponentTypes',
   'abilityOwnerOf',
   'activeEffectsOf',
   'appendGameplayCueEvents',
@@ -391,7 +385,6 @@ const ADVANCED_NAMES: readonly string[] = [
   'TransportCommand',
   'TransportJoin',
   'TransportKind',
-  'WorldScope',
   'spawnWithId',
 ];
 
@@ -530,7 +523,7 @@ describe('@phalanx-engine/game subpath exports', () => {
     }
     expect(
       resolved.map((entry) => actual.get(entry.file)?.names.length)
-    ).toEqual([185, 9, 63, 88, 20, 3]);
+    ).toEqual([183, 9, 60, 87, 19, 3]);
   });
 
   it('keeps the name sets pairwise disjoint', () => {

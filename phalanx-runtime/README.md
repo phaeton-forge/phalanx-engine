@@ -101,10 +101,11 @@ the world modules (`formatVersion` 1). When `save` is present,
 exhaustive handler map. `defineCommands` rejects a bad payload and does
 not throw. `i64` is a canonical decimal string on the wire.
 
-- **`defineComponent(name, fields, { defaults? })`**: a named SoA schema.
-  Object and transient components are `defineComponent` from
-  `@phalanx-engine/ecs`. Register it with `world.registerComponent` before
-  the first spawn.
+- **`defineComponent(name, fields, { defaults?, onCreate?, onEnable?,
+onDisable?, onDestroy? })`**: a named SoA schema. This is the
+  `@phalanx-engine/ecs` function, re-exported; object and transient
+  components use the same call. Register it with `world.registerComponent`
+  before the first spawn.
   Registration order and each field's name and type are part of
   `configHash` (an empty list keeps the previous hash). A field type
   outside `i32`, `u32`, `u8`, `i64`, `f32`, `f64` throws at definition
@@ -137,8 +138,8 @@ not throw. `i64` is a canonical decimal string on the wire.
   `save: { formatVersion, handler(sim) }`. Canonical bytes only (no
   floats; FP values as raw `i64`). `restore(save(x))` must re-save to
   identical bytes.
-- **`@phalanx-engine/runtime/advanced`**: `StateHelpers`, `spawnWithId`
-  and `WorldScope`. These are not on the package root.
+- **`@phalanx-engine/runtime/advanced`**: `StateHelpers` and
+  `spawnWithId`. These are not on the package root.
   `rebuildBroadphaseFromTransforms`, `writeAbilities`, `readAbilities`,
   `writeBroadphase` and `readBroadphase` are not exported.
   `StateHelpers.writeModuleSections` / `readModuleSections` write the
@@ -181,7 +182,7 @@ and the offline runner: `MatchRunner`, `ReplayPlayer`, `runLocalMatch`,
 `MemoryMatchStore`, `IndexedDbMatchStore` and `MatchRunner.resumeLocal`.
 `StateHelpers` (`writeModuleSections` / `readModuleSections` for the
 `modules` container; not `writeAbilities` / `readAbilities`),
-`spawnWithId` and `WorldScope` are exported from
+`spawnWithId` are exported from
 `@phalanx-engine/runtime/advanced`.
 There is no `f32` or `f64` writer.
 
@@ -216,9 +217,9 @@ records a system command (player id `system`), applied at the start of
 applied only when the runner has a server peer (`side: 'server'` or a
 `server-peer` transport). A relay or local client rejects it. The default `fromTick` is
 `tick + inputDelayTicks`. `inputDelayTicks` defaults to 2. `gameId` and
-`simVersion` are filled from the definition. `WorldScope.run` isolates the
-SoA entity manager so two matches can share a process. Entity ids belong
-to each world and are not swapped.
+`simVersion` are filled from the definition. Two matches can share a
+process: SoA stores and entity ids belong to each world, and there is no
+process-global context to swap.
 
 A malformed envelope is logged and rejected with `'malformed envelope'`
 instead of throwing. Exceptions from `decode` and `validate` become
@@ -271,9 +272,8 @@ batches covered by the replayed range and then runs the rest in order.
 An already-started runner flushes its checkpoint after `restore`.
 `restore` resets the match RNG to `config.seed` before `onStart`,
 then the save handler installs the saved generator, and a paused
-transport pauses the rebuilt world. `WorldScope` saves the active
-scope's SoA entity manager before entering another scope. The entity id
-counter stays on that world's `EntityManager`.
+transport pauses the rebuilt world. SoA stores and the entity id
+counter stay on that world's `EntityManager`.
 
 `LocalTransport` rejects `submit` when
 `targetTick > nextTick + maxAheadTicks` (default 8) so the pending map

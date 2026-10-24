@@ -118,7 +118,6 @@ const ROOT_NAMES = [
   'SaveSection',
   'SoAArrayType',
   'SoAArraysOf',
-  'SoAComponent',
   'SoAComponentStore',
   'SoAComponentStoreOptions',
   'SoAFieldType',
@@ -139,7 +138,6 @@ const ROOT_NAMES = [
   'Unsubscribe',
   'ValueComponent',
   'calculateSchemaByteSize',
-  'createComponentTypeRegistry',
   'defineComponent',
   'defineSoASchema',
   'isAfterFrame',
@@ -162,14 +160,12 @@ const ROOT_VALUES = [
   'GameWorldEvents',
   'ObjectPool',
   'PoolManager',
-  'SoAComponent',
   'SoAComponentStore',
   'SystemContext',
   'SystemRegistry',
   'TYPED_ARRAY_CONSTRUCTORS',
   'ValueComponent',
   'calculateSchemaByteSize',
-  'createComponentTypeRegistry',
   'defineComponent',
   'defineSoASchema',
   'isAfterFrame',
@@ -222,10 +218,10 @@ describe('@phalanx-engine/ecs exports', () => {
     }
     expect(
       resolved.map((entry) => actual.get(entry.file)?.names.length)
-    ).toEqual([73]);
+    ).toEqual([71]);
     expect(
       resolved.map((entry) => actual.get(entry.file)?.values.length)
-    ).toEqual([27]);
+    ).toEqual([25]);
   });
 
   it('loads each entry by package name', async () => {

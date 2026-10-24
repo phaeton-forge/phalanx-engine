@@ -4,7 +4,6 @@ import {
   BinaryStateWriter,
   Entity,
   GameWorld,
-  SoAComponent,
   ValueComponent,
 } from '@phalanx-engine/ecs';
 import { FP } from '@phalanx-engine/math';
@@ -244,10 +243,6 @@ function drive(
 }
 
 describe('ability state helpers', () => {
-  afterEach(() => {
-    SoAComponent.resetContext();
-  });
-
   it('registers the abilities section once', () => {
     const { world } = makeWorld();
     expect(world.saveSections.map((section) => section.key)).toEqual([

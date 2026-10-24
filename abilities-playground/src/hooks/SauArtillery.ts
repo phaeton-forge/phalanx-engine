@@ -54,8 +54,8 @@ export const sauArtillery = (
   const casterTeam = caster.getComponent<TeamComponent>(ComponentType.Team);
   if (!casterTeam) return;
 
-  const casterPos = copyFpPosition(caster.id);
-  const targetPos = copyFpPosition(target.id);
+  const casterPos = copyFpPosition(caster);
+  const targetPos = copyFpPosition(target);
 
   // Dead zone: refuse to fire on enemies inside the minimum engage range.
   const dx = FP.Sub(targetPos.x, casterPos.x);

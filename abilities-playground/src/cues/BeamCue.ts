@@ -153,7 +153,7 @@ export class BeamCue extends Cue {
 
   private getBeamAnchor(entity: Entity): THREE.Vector3 | null {
     if (entity.hasComponent(ComponentType.Transform)) {
-      const p = FPVector3.ToFloat(copyFpPosition(entity.id));
+      const p = FPVector3.ToFloat(copyFpPosition(entity));
       return new THREE.Vector3(p.x, p.y + BEAM_HEIGHT_OFFSET, p.z);
     }
 

@@ -2,7 +2,6 @@ import {
   BinaryStateReader,
   BinaryStateWriter,
   Entity,
-  SoAComponent,
   type ComponentRegistration,
   type GameWorld,
   type SaveSection,
@@ -63,34 +62,28 @@ export function writeWorld(world: GameWorld, writer: StateWriter): void {
  * kept entities) receive that component. Section bytes are unchanged.
  */
 export function readWorld(world: GameWorld, reader: StateReader): void {
-  const previous = SoAComponent.currentEntityManager();
-  SoAComponent.useEntityManager(world.entityManager);
-  try {
-    const rosterIds =
-      leadingSectionKey(reader) === ROSTER_SECTION
-        ? reader.section(ROSTER_SECTION, (section, version) => {
-            assertSectionVersion('readRoster', version);
-            return section.list((item) => item.u32());
-          })
-        : [];
-    const pending = new Map<number, Entity>();
-    reconcileStartup(world, rosterIds, pending);
-    readPools(reader, world);
-    readComponentSections(world, reader, pending);
-    for (const entity of pending.values()) {
-      world.entityManager.addEntity(entity);
-    }
-    readEntityIds(reader, world);
-    readRandom(reader, world.random);
-    // Transient values are display state. The owner section adds them
-    // back; until then they are absent and the next add uses defaults.
-    world.discardTransientComponents();
-    readModuleSections(reader, world);
-    singletonHooks(world)?.onRestore?.(reader);
-    enableLive(world);
-  } finally {
-    SoAComponent.useEntityManager(previous);
+  const rosterIds =
+    leadingSectionKey(reader) === ROSTER_SECTION
+      ? reader.section(ROSTER_SECTION, (section, version) => {
+          assertSectionVersion('readRoster', version);
+          return section.list((item) => item.u32());
+        })
+      : [];
+  const pending = new Map<number, Entity>();
+  reconcileStartup(world, rosterIds, pending);
+  readPools(reader, world);
+  readComponentSections(world, reader, pending);
+  for (const entity of pending.values()) {
+    world.entityManager.addEntity(entity);
   }
+  readEntityIds(reader, world);
+  readRandom(reader, world.random);
+  // Transient values are display state. The owner section adds them
+  // back; until then they are absent and the next add uses defaults.
+  world.discardTransientComponents();
+  readModuleSections(reader, world);
+  singletonHooks(world)?.onRestore?.(reader);
+  enableLive(world);
 }
 
 /**

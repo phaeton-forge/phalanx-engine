@@ -51,7 +51,7 @@
    - **SoA**: целочисленные поля (`i32`, `u32`, `u8`, `i64`), сохраняются автоматически, входят в `configHash`;
    - **объектный**: класс плюс `save`/`load`. Без них ошибка на `registerComponent`, а не при первом сейве. `save` обязан писать коллекции в детерминированном порядке: `Set`/`Map` сортируются по ключу (порядок вставки у разных клиентов может отличаться). Нужен хелпер для сортированной записи и тест;
    - **несохраняемый (transient)**: вид принят. Любые поля, включая `f32`/`f64` и объекты. Не попадает в сейв и `configHash`. Только для отображения: tick-системы могут его писать, но не принимают по нему решений. Страж: tick-система не ветвится по transient-компоненту; это проверяется хотя бы в dev-режиме. После `restoreWorld` его присутствие восстанавливает модуль-владелец в restore-хуке своей секции сейва (секции модулей есть с A3), значения берутся по умолчанию.
-3. Доступ без статического контекста: `world.get(e, Comp)`, `world.add(e, Comp, values)`, `world.remove(e, Comp)`. Мир передаётся явно, `defineComponent.create` статика не нужна.
+3. Доступ без статического контекста: `world.getComponent(e, Comp)`, `world.addComponent(e, Comp, values)`, `world.removeComponent(e, Comp)`. Мир передаётся явно, `defineComponent.create` статика не нужна.
 4. Тесты: три вида, ошибка объектного без `save`/`load` при регистрации, детерминированный сейв `Set` при разном порядке вставки, transient не меняет байты сейва и `configHash`, dev-проверка не даёт tick-системе принять решение по transient-компоненту.
 
 ### A6b.2a. Перевод physics
@@ -74,7 +74,7 @@
 ### A6b.2c. Удаление старого пути
 
 1. Удаляются `createComponentTypeRegistry`, символы `*_COMPONENT_TYPE` (включая `PHYSICS_BODY_COMPONENT_TYPE`, `TRANSFORM_COMPONENT_TYPE`), `abilityComponentTypes`, базовый `SoAComponent` в старом виде, `registerComponentTypes` в `SystemRegistry`, старый `defineComponent` в runtime.
-2. Убрать статический `SoAComponent._entityManager` (`useEntityManager`, `resetContext`). Хранилище находится через мир, переданный в `world.add`/`world.get`. `dispose()` одного мира не трогает другие. `WorldScope` удаляется целиком (экспорты runtime и `/advanced` тоже).
+2. Убрать статический `SoAComponent._entityManager` (`useEntityManager`, `resetContext`). Хранилище находится через мир, переданный в `world.addComponent`/`world.getComponent`. `dispose()` одного мира не трогает другие. `WorldScope` удаляется целиком (экспорты runtime и `/advanced` тоже).
 3. Тест: два мира вперемешку пишут в свои SoA-хранилища, закрытие одного не ломает другой.
 4. Голдены те же.
 
@@ -122,6 +122,7 @@
 3. Системы эффектов на `world.queryAny`.
 4. `releasePooledAbilityState` упростить: после п. 2 ветвления по двум представлениям уходят. Проверить на дубли с автосбросом пулов.
 5. Формат сейва abilities не меняется, кроме случая из п. 2.
+6. Когда `createAbilitySystem` начнёт регистрировать компоненты, `world.addComponent(e, AbilityOwner)` должен бросать явную ошибку с указанием использовать `abilities.initComponent(init)` (с тестом).
 
 ## A6d. ecs: фазы систем
 
@@ -154,7 +155,7 @@
 Вторая правка:
 
 - A6a разделён на A6a.1 (без работы при импорте, `globalEventBus`, `sideEffects: false`) и A6a.2 (счётчик id в мире, `createEntityWithId`).
-- Статический контекст SoA и `WorldScope` удаляются в A6b.2: без статики конструктору компонента нужен мир, а это `world.add` из A6b.
+- Статический контекст SoA и `WorldScope` удаляются в A6b.2: без статики конструктору компонента нужен мир, а это `world.addComponent` из A6b.
 - `globalEventBus` — только лишний экспорт, шина уже у каждого мира своя.
 - Для `integrate: false` добавлены открытые вопросы: судьба скорости от расталкивания и название настройки.
 

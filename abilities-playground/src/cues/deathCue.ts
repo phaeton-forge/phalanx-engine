@@ -113,7 +113,7 @@ export class DeathCue extends Cue {
     const entity = entityManager.getEntity(event.targetEntityId);
     if (!entity) return null;
     if (!entity.hasComponent(ComponentType.Transform)) return null;
-    const p = FPVector3.ToFloat(copyFpPosition(entity.id));
+    const p = FPVector3.ToFloat(copyFpPosition(entity));
     return new THREE.Vector3(p.x, p.y, p.z);
   }
 }

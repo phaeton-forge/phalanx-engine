@@ -1,6 +1,6 @@
 ---
 name: phalanx-runtime
-description: Describe a Phalanx game as one GameDefinition and run it with MatchRunner from @phalanx-engine/runtime (engine 0.3). Use when defining games with defineGame, defineCommands, defineComponent, onCommand, runLocalMatch, ReplayPlayer, setController, saveWorld/restoreWorld, spawn/despawn/each, writing BotPolicy bots, choosing side 'client' vs 'server', snapshots, replays, reconnect, or Transport/LocalTransport. Local persistence is opt-in via MatchStore, MemoryMatchStore, IndexedDbMatchStore and MatchRunner.resumeLocal. World modules are the default save handler. StateHelpers, spawnWithId and WorldScope are in @phalanx-engine/runtime/advanced. MatchRunner.join is still Task 12.
+description: Describe a Phalanx game as one GameDefinition and run it with MatchRunner from @phalanx-engine/runtime (engine 0.3). Use when defining games with defineGame, defineCommands, defineComponent, onCommand, runLocalMatch, ReplayPlayer, setController, saveWorld/restoreWorld, spawn/despawn/each, writing BotPolicy bots, choosing side 'client' vs 'server', snapshots, replays, reconnect, or Transport/LocalTransport. Local persistence is opt-in via MatchStore, MemoryMatchStore, IndexedDbMatchStore and MatchRunner.resumeLocal. World modules are the default save handler. StateHelpers and spawnWithId are in @phalanx-engine/runtime/advanced. MatchRunner.join is still Task 12.
 metadata:
   author: phaeton2040-AI
   version: '0.1'
@@ -15,7 +15,7 @@ metadata:
 > `readModuleSections` for the `modules` container. Ability and physics
 > bytes are save sections those packages register (`abilities`,
 > `physics.broadphase`). Bind physics with `PhysicsWorld.attach(world)`.
-> Task 6 is `MatchRunner` (not `join`), `CommandLog`, `WorldScope`,
+> Task 6 is `MatchRunner` (not `join`), `CommandLog`,
 > `BotHost` and `LocalTransport`. Task 7 is opt-in local persistence
 > (`MatchStore`, `MemoryMatchStore`, `IndexedDbMatchStore`,
 > `MatchRunner.resumeLocal`). Task 7.1 splits IndexedDB into `meta`,
@@ -204,7 +204,7 @@ Tests and replays use `LocalTransport.stepped()` and `step(n)`.
 inclusive, including empty ticks. `MatchRunner.fromReplay` never calls
 `decide`. Drive it only with `fastForward(replay.log, { throughTick:
 replay.lastTick })`. `start()` throws on a replay runner. Wrap nothing
-yourself: the runner enters the world through `WorldScope`. Two runners
+yourself: each world owns its SoA stores, so no ambient world context exists. Two runners
 in one process keep separate entity ids.
 
 Validation runs inside the tick, after `(slot, seq)` sort. A malformed
@@ -244,10 +244,8 @@ transport. Catch-up applies buffered batches that land after
 An already-started `restore` flushes the checkpoint after the transport
 seek. `restore` resets the match RNG to `config.seed` before
 `createWorld`; `GameState.restore` then installs the saved generator. A
-paused transport pauses the rebuilt world. `WorldScope` (advanced) tracks
-the active scope's SoA entity manager. Entity ids stay on each world's
-`EntityManager` and are not swapped. Entering a different scope saves
-that manager, and only an immediate re-entry skips install. `LocalTransport`
+paused transport pauses the rebuilt world. Entity ids and SoA stores stay on each world's
+`EntityManager`. `LocalTransport`
 rejects a submit more than `maxAheadTicks` past `nextTick` (default 8).
 Its timer waits
 `tickDuration - accumulator`. A snapshot taken

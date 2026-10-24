@@ -8,7 +8,6 @@
 
 export { StateHelpers } from './StateHelpers.js';
 export { spawnWithId } from '../state/sections/entities.js';
-export { WorldScope } from '../runner/WorldScope.js';
 export {
   PoolManager,
   SoAComponentStore,

@@ -106,7 +106,6 @@ describe('attachDebug', () => {
   it('shows entities added to the world', () => {
     const world = new GameWorld({
       tickFrameProvider: bareProvider(),
-      componentTypes: [HealthType],
     });
     const entity = world.createEntity((id) => new Entity(id));
     entity.addComponent(new HealthComponent(50));

@@ -282,8 +282,8 @@ export class MachineGunFireCue extends Cue {
     ) {
       return false;
     }
-    const sourcePosition = copyFpPosition(source.id);
-    const sourceRotation = copyFpRotation(source.id);
+    const sourcePosition = copyFpPosition(source);
+    const sourceRotation = copyFpRotation(source);
 
     const mesh = source.getComponent<MeshComponent>(ComponentType.Mesh);
     const muzzlePoint = mesh?.root.userData.muzzleFlashPoint as
@@ -305,7 +305,7 @@ export class MachineGunFireCue extends Cue {
       this.muzzle.set(tip.x, tip.y, tip.z);
     }
 
-    const t = FPVector3.ToFloat(copyFpPosition(target.id));
+    const t = FPVector3.ToFloat(copyFpPosition(target));
     this.targetPoint.set(t.x, t.y + TARGET_HEIGHT, t.z);
 
     // Flash/flare and spark spray face along the barrel: the hull's forward

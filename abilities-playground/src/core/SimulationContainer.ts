@@ -95,7 +95,6 @@ export class SimulationContainer {
       );
     }
     this.world = new GameWorld({
-      componentTypes: Object.values(ComponentType),
       tickFrameProvider: client,
       random: new DeterministicRandom(seed),
       pooling: {

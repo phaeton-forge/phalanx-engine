@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { Entity, GameWorld, SoAComponent } from '@phalanx-engine/ecs';
+import { Entity, GameWorld } from '@phalanx-engine/ecs';
 import { DeterministicRandom } from '@phalanx-engine/math';
 import {
   defineComponent,
@@ -21,7 +21,6 @@ describe('per-world entity ids', () => {
 
   afterEach(() => {
     while (live.length > 0) live.pop()?.dispose();
-    SoAComponent.resetContext();
   });
 
   it('keeps each world on its own ids when two worlds are interleaved', () => {
@@ -47,7 +46,6 @@ describe('per-world entity ids', () => {
     b.dispose();
     live.splice(live.indexOf(b), 1);
     // SoA lookup is still process-global. Ids are not.
-    SoAComponent.useEntityManager(a.entityManager);
     const second = spawn(a, { Unit: { x: 2 } });
     expect(second.id).toBe(2);
     expect(saveWorld(a)).toEqual(soloBytes);

@@ -116,7 +116,7 @@ export class MissileEntity
 
   onSpawn(args: MissileSpawnArgs): void {
     this._active = true;
-    writeFpPosition(this.id, args.fpPosition);
+    writeFpPosition(this, args.fpPosition);
 
     this.projectile.damageEffectId = 'Effect.Damage.Missile';
     this.missile.targetEntityId = args.targetEntityId;
@@ -151,7 +151,7 @@ export class MissileEntity
       : FPQuaternion.LookRotation(launchDir);
 
     this.team.teamId = args.teamId;
-    writeFpRotation(this.id, launchQuat);
+    writeFpRotation(this, launchQuat);
     attachInterpolation(this, args.fpPosition, launchQuat);
   }
 

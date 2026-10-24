@@ -3,14 +3,13 @@ import {
   Entity,
   EntityManager,
   EventBus,
-  SoAComponent,
   SystemContext,
 } from '@phalanx-engine/ecs';
 import { FP, FPVector3, FPQuaternion } from '@phalanx-engine/math';
 import {
   TransformSoASchema,
-  TRANSFORM_COMPONENT_TYPE,
   attachTransform,
+  Transform,
 } from '@phalanx-engine/physics';
 import {
   ComponentType,
@@ -32,23 +31,11 @@ describe('RotationSystem', () => {
 
   beforeEach(() => {
     entityManager = new EntityManager();
-    entityManager.registerComponentTypes([
-      TRANSFORM_COMPONENT_TYPE,
-      ComponentType.Team,
-      ComponentType.TargetState,
-      ComponentType.UnitStats,
-      ComponentType.Turret,
-    ]);
-    SoAComponent.useEntityManager(entityManager);
 
     const context = new SystemContext(new EventBus(), entityManager);
     system = new RotationSystem();
     system.init(context);
     transformStore = entityManager.getOrCreateSoAStore(TransformSoASchema);
-  });
-
-  afterEach(() => {
-    SoAComponent.resetContext();
   });
 
   function addUnit(options: {
@@ -76,7 +63,7 @@ describe('RotationSystem', () => {
     entity.addComponent(stats);
     if (options.hasTurret) entity.addComponent(new TurretComponent());
     entityManager.addEntity(entity);
-    entityManager.onComponentAdded(entity, TRANSFORM_COMPONENT_TYPE);
+    entityManager.onComponentAdded(entity, Transform.type);
     entityManager.onComponentAdded(entity, ComponentType.Team);
     entityManager.onComponentAdded(entity, ComponentType.TargetState);
     entityManager.onComponentAdded(entity, ComponentType.UnitStats);

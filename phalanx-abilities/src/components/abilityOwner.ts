@@ -77,7 +77,7 @@ export function loadAbilityOwner(r: StateReader): AbilityOwnerState {
 
 /**
  * Attach with `entity.addComponent(abilities.initComponent(init))`, never
- * `world.add`: `world.add` stores a plain value without the pool holder and
+ * `world.addComponent`: `world.addComponent` stores a plain value without the pool holder and
  * with zero attributes, which leaves a broken owner.
  */
 export const AbilityOwner = defineComponent<AbilityOwnerState>('AbilityOwner', {

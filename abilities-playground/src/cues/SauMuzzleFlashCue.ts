@@ -51,8 +51,8 @@ export class SauMuzzleFlashCue extends Cue {
       this.done = true;
       return;
     }
-    const position = copyFpPosition(caster.id);
-    const rotation = copyFpRotation(caster.id);
+    const position = copyFpPosition(caster);
+    const rotation = copyFpRotation(caster);
 
     const local = FPVector3.FromFloat(
       MUZZLE_LOCAL.x,

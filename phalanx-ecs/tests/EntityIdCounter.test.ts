@@ -1,12 +1,8 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { manualTickProvider } from './support/manualTickProvider.js';
-import { Entity, EntityManager, GameWorld, SoAComponent } from '../src';
+import { Entity, EntityManager, GameWorld } from '../src';
 
 describe('entity id counter', () => {
-  afterEach(() => {
-    SoAComponent.resetContext();
-  });
-
   it('allocateEntityId advances the high-water mark', () => {
     const manager = new EntityManager();
     expect(manager.entityIdHighWater()).toBe(0);
@@ -74,15 +70,6 @@ describe('entity id counter', () => {
     expect(world.entityManager.getEntity(5)).toBe(high);
     expect(world.entityManager.entityIdHighWater()).toBe(5);
     expect(world.createEntity((id) => new Entity(id)).id).toBe(6);
-    world.dispose();
-  });
-
-  it('SoAComponent.currentEntityManager is null after resetContext', () => {
-    expect(SoAComponent.currentEntityManager()).toBeNull();
-    const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
-    expect(SoAComponent.currentEntityManager()).toBe(world.entityManager);
-    SoAComponent.resetContext();
-    expect(SoAComponent.currentEntityManager()).toBeNull();
     world.dispose();
   });
 });

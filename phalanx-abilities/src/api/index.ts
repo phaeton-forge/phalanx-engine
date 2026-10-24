@@ -2,10 +2,7 @@ export { defineAbility } from './defineAbility.js';
 export { defineAttribute } from './defineAttribute.js';
 export { defineAbilitySystem } from './defineAbilitySystem.js';
 export { defineEffect } from './defineEffect.js';
-export {
-  createAbilitySystem,
-  abilityComponentTypes,
-} from './createAbilitySystem.js';
+export { createAbilitySystem } from './createAbilitySystem.js';
 export {
   AbilitySystemFacade,
   NO_SOURCE_ENTITY_ID,

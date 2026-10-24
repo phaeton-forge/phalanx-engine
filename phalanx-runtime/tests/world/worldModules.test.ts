@@ -3,6 +3,7 @@ import {
   Entity,
   GameWorld,
   type IPoolableEntity,
+  type SoaComponentDef,
   type SoASchemaDefinition,
 } from '@phalanx-engine/ecs';
 import { DeterministicRandom } from '@phalanx-engine/math';
@@ -21,7 +22,6 @@ import {
   restoreWorld,
   saveWorld,
   spawn,
-  type DefinedComponent,
   type MatchConfigBase,
 } from '../../src/index.js';
 import { StateHelpers } from '../../src/advanced/index.js';
@@ -123,7 +123,9 @@ describe('world modules', () => {
   });
 
   it('rejects float fields and reserved section names', () => {
+    // @ts-expect-error saved SoA fields are integers
     expect(() => defineComponent('Floaty', { x: 'f32' })).toThrow(/f32/);
+    // @ts-expect-error saved SoA fields are integers
     expect(() => defineComponent('Floaty', { x: 'f64' })).toThrow(/f64/);
     expect(() => defineComponent('gas', { n: 'u8' })).toThrow(/reserved/);
     expect(() => defineComponent('SoASchema', { n: 'u8' })).toThrow(/reserved/);
@@ -673,7 +675,7 @@ const THROUGH = 7;
 
 function setHp(
   world: GameWorld,
-  unit: DefinedComponent<{ hp: 'i64' }>,
+  unit: SoaComponentDef<{ hp: 'i64' }>,
   entityId: number,
   hp: bigint
 ): void {
@@ -687,7 +689,7 @@ function setHp(
 
 function hpOf(
   world: GameWorld,
-  unit: DefinedComponent<{ hp: 'i64' }>,
+  unit: SoaComponentDef<{ hp: 'i64' }>,
   entityId: number
 ): bigint {
   let value: bigint | undefined;
@@ -708,7 +710,7 @@ function silentProvider() {
   };
 }
 
-function openWorld(component: DefinedComponent<{ hp: 'i64' }>): GameWorld {
+function openWorld(component: SoaComponentDef<{ hp: 'i64' }>): GameWorld {
   const world = new GameWorld({
     random: new DeterministicRandom(1),
     tickFrameProvider: silentProvider(),
@@ -836,7 +838,7 @@ function openRegistered(register: (world: GameWorld) => void): GameWorld {
   return world;
 }
 
-function schemaGame<S extends SoASchemaDefinition>(unit: DefinedComponent<S>) {
+function schemaGame<S extends SoASchemaDefinition>(unit: SoaComponentDef<S>) {
   const commands = defineCommands({ noop: {} });
   return defineGame({
     id: 'schema-hash',

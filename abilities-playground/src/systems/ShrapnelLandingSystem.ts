@@ -101,7 +101,7 @@ export class ShrapnelLandingSystem extends GameSystem {
       if (!payload || payload.landed) continue;
       if (!entity.hasComponent(ComponentType.Transform)) continue;
 
-      const cur = copyFpPosition(entity.id);
+      const cur = copyFpPosition(entity);
       const landing = computeGroundLanding(
         payload.prevPosX,
         payload.prevPosY,

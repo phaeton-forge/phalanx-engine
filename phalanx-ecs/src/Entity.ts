@@ -1,4 +1,4 @@
-import type { IComponent } from './Component.js';
+import { isStoreBound, type IComponent } from './Component.js';
 import type { EntityManager } from './EntityManager.js';
 import { invokeComponentHooks } from './lifecycle.js';
 
@@ -29,6 +29,13 @@ export class Entity {
    * a tick go through it. Cleared on remove.
    */
   public _manager: EntityManager | null = null;
+
+  /**
+   * @internal The world whose stores hold this entity's SoA rows. Set once
+   * by `createEntity`, a pool factory or the first `addEntity`, and kept
+   * while the entity sits in a pool.
+   */
+  public _owner: EntityManager | null = null;
 
   /**
    * @internal Set by the owning entity pool so {@link dispose} can drop
@@ -73,6 +80,9 @@ export class Entity {
    */
   public addComponent<T extends IComponent>(component: T): T {
     this.components.set(component.type, component);
+    if (this._owner !== null && isStoreBound(component)) {
+      component._bind(this._owner);
+    }
     invokeComponentHooks([component], 'onCreate');
     return component;
   }
@@ -88,7 +98,7 @@ export class Entity {
 
   /**
    * @internal Component lookup that does not apply the transient tick guard.
-   * Save and `world.add` use this so a tick can write a transient value.
+   * Save and `world.addComponent` use this so a tick can write a transient value.
    */
   public _peekComponent<T extends IComponent>(type: symbol): T | undefined {
     return this.components.get(type) as T | undefined;

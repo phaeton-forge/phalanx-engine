@@ -252,7 +252,6 @@ const client = await PhalanxClient.create({
 // Create GameWorld with client as tick/frame provider
 const world = new GameWorld({
   tickFrameProvider: client,
-  componentTypes: Object.values(ComponentType),
 });
 
 // Register systems

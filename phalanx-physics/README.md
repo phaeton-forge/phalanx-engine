@@ -7,7 +7,7 @@ A deterministic, fixed-point physics engine for the [Phalanx Engine](../README.m
 ## Features
 
 - **Deterministic by Design**: All math uses `FP.*` fixed-point operations — no floating-point non-determinism
-- **SoA Storage**: Physics body data stored in contiguous typed arrays (`BigInt64Array` for fixed-point, `Uint8Array` for flags) via phalanx-ecs `SoAComponent`
+- **SoA Storage**: Physics body data stored in contiguous typed arrays (`BigInt64Array` for fixed-point, `Uint8Array` for flags) via phalanx-ecs `defineComponent` SoA rows in per-world `SoAComponentStore`s
 - **Save section**: `PhysicsWorld.attach(world)` sets `context.physics` and registers one world section `physics.broadphase` (version 1). A second `attach` of the same world is a no-op; a different world throws. Registering a `PhysicsSystem` or `CollisionSystem` registers the same section once. Assigning `context.physics` does not. The save functions are not package exports. The section body is the former `broadphase` list (keys `physics`, `physicsSystem`, `collisionSystem`) without a `section('broadphase')` wrapper.
 - **Spatial Hash Grid**: O(n) broad-phase collision detection with configurable cell size. `getCenters()` / `getBroadphaseCenters()` read the cached fixed-point centers and radii, preserving each value's precision (pre-separation after a resolve). `restoreBroadphase(centers)` clears the grid and re-inserts those saved centers in ascending entity id. `rebuildBroadphase()` re-inserts from current transforms and is valid only for a collision-free world; after a hit the live grid still holds the pre-separation centers. The live step still rebuilds before resolution only.
 - **Narrow Phase**: Circle vs Circle, Circle vs AABB, and AABB vs AABB collision tests
@@ -31,10 +31,10 @@ A deterministic, fixed-point physics engine for the [Phalanx Engine](../README.m
 
 ### Transform & Interpolation
 
-- **Transform**: SoA fixed-point position and quaternion (`Transform`, `TransformSoASchema`, `TRANSFORM_COMPONENT_TYPE`). Attach with `attachTransform`. Read and write with `readFpPosition` / `writeFpPosition`, `readFpRotation` / `writeFpRotation`, `readYaw` / `writeYaw`. Reads return shared scratch.
-- **Interpolation**: transient tick samples (`Interpolation`, `INTERPOLATION_COMPONENT_TYPE`). `attachInterpolation` before the entity is registered. `readBroadphase` attaches it to every entity that has `Transform` and `PhysicsBody`, seeded from that transform.
+- **Transform**: SoA fixed-point position and quaternion (`Transform`, `TransformSoASchema`; the component type is `Transform.type`). Attach with `attachTransform`. Read and write with `readFpPosition` / `writeFpPosition`, `readFpRotation` / `writeFpRotation`, `readYaw` / `writeYaw`. Helpers take the entity; its owning world holds the row. Reads return shared scratch.
+- **Interpolation**: transient tick samples (`Interpolation`, type `Interpolation.type`). `attachInterpolation` before the entity is registered. `readBroadphase` attaches it to every entity that has `Transform` and `PhysicsBody`, seeded from that transform.
 - **InterpolationSystem**: `afterTick` snapshots then captures; `beforeFrame` interpolates (`IAfterTick`, `IBeforeFrame`). Tick systems must not branch on `Interpolation`.
-- **PhysicsBody**: SoA velocity, radius, mass, restitution, friction, isStatic, ignorePhysics, useGravity, and gravityMultiplier (`PhysicsBody`, `PhysicsSoASchema`, `PHYSICS_BODY_COMPONENT_TYPE`). No display-float caches. Attach with `attachPhysicsBody`. Velocity helpers: `readVelocity`, `setVelocity`, `addVelocity`, `stopVelocity`.
+- **PhysicsBody**: SoA velocity, radius, mass, restitution, friction, isStatic, ignorePhysics, useGravity, and gravityMultiplier (`PhysicsBody`, `PhysicsSoASchema`, type `PhysicsBody.type`). No display-float caches. Attach with `attachPhysicsBody`. Velocity helpers: `readVelocity`, `setVelocity`, `addVelocity`, `stopVelocity`.
 - **PhysicsSoASchema**: Schema definition for the SoA storage layout
 
 ### Collision Detection
@@ -88,14 +88,11 @@ import {
   // Components
   PhysicsBody,
   PhysicsSoASchema,
-  PHYSICS_BODY_COMPONENT_TYPE,
   attachPhysicsBody,
   Transform,
   TransformSoASchema,
-  TRANSFORM_COMPONENT_TYPE,
   attachTransform,
   Interpolation,
-  INTERPOLATION_COMPONENT_TYPE,
   attachInterpolation,
   type PhysicsBodyConfig,
   type InterpolationSample,
@@ -136,33 +133,14 @@ import {
 ## Quick Start
 
 ```typescript
-import {
-  GameWorld,
-  GameSystem,
-  createComponentTypeRegistry,
-} from '@phalanx-engine/ecs';
+import { GameWorld, GameSystem } from '@phalanx-engine/ecs';
 import {
   PhysicsWorld,
   attachPhysicsBody,
   attachTransform,
   attachInterpolation,
-  PHYSICS_BODY_COMPONENT_TYPE,
-  TRANSFORM_COMPONENT_TYPE,
-  INTERPOLATION_COMPONENT_TYPE,
 } from '@phalanx-engine/physics';
 import { FP, FPVector3, FPQuaternion } from '@phalanx-engine/math';
-
-// Register canonical component type symbols from phalanx-physics
-export const ComponentType = createComponentTypeRegistry({
-  Transform: 'Transform',
-  Interpolation: 'Interpolation',
-  PhysicsBody: 'PhysicsBody',
-});
-(ComponentType as Record<string, symbol>).Transform = TRANSFORM_COMPONENT_TYPE;
-(ComponentType as Record<string, symbol>).Interpolation =
-  INTERPOLATION_COMPONENT_TYPE;
-(ComponentType as Record<string, symbol>).PhysicsBody =
-  PHYSICS_BODY_COMPONENT_TYPE;
 
 // Minimal placeholder systems — replace with your real ones.
 class MovementSystem extends GameSystem {
@@ -193,7 +171,7 @@ const movementSystem = new MovementSystem();
 const renderSystem = new RenderSystem();
 
 // 1. Create GameWorld and the physics facade
-const world = new GameWorld({ componentTypes: Object.values(ComponentType) });
+const world = new GameWorld({ tickFrameProvider });
 
 const physicsWorld = new PhysicsWorld({
   gridCellSize: FP.FromFloat(8),
@@ -527,9 +505,9 @@ attachTransform(entity, fpPosition, fpRotation);
 attachPhysicsBody(entity, { radius: FP.FromFloat(1) });
 attachInterpolation(entity, fpPosition, fpRotation);
 
-writeFpPosition(entity.id, fpPosition);
-writeFpRotation(entity.id, fpRotation);
-setVelocity(entity.id, vx, vy, vz);
+writeFpPosition(entity, fpPosition);
+writeFpRotation(entity, fpRotation);
+setVelocity(entity, vx, vy, vz);
 ```
 
 `readFpPosition`, `readFpRotation`, and `readVelocity` return shared scratch. Copy before the next read. `readBroadphase` attaches `Interpolation` to every `Transform` + `PhysicsBody`, seeded from the transform. `InterpolationSystem.afterTick` snapshots then captures. Tick code must not branch on `Interpolation`.

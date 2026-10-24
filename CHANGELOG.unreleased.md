@@ -46,13 +46,13 @@ Entries collected per package until the synchronized 0.3.0 release
     Mixed keys throw `writeSorted: mixed string and number keys`.
   - Transient: `{ kind: 'transient', create }`. Any fields, including
     floats and objects. Omitted from the save and from `configHash`.
-  - Access is `world.add(entity, component, values?)`,
-    `world.get(entity, component)` and `world.remove(entity, component)`.
+  - Access is `world.addComponent(entity, component, values?)`,
+    `world.getComponent(entity, component)` and `world.removeComponent(entity, component)`.
     A second `add` without `values` throws
-    `world.add: entity N already has 'Name'`. Passing `values` writes
+    `world.addComponent: entity N already has 'Name'`. Passing `values` writes
     those fields. A tick read of a transient component throws
     `tick system must not branch on transient component 'Name'` from
-    `world.get`, `entity.getComponent`, `entity.hasComponent`, and
+    `world.getComponent`, `entity.getComponent`, `entity.hasComponent`, and
     `entityManager.queryEntities` / `queryEntitiesAny` (every build).
     `beforeTick` and tick systems run inside that guard. `afterTick`
     (systems and `hooks.afterTick`) runs after it, so presentation can
@@ -69,7 +69,7 @@ Entries collected per package until the synchronized 0.3.0 release
     section already uses that key.
   - Returning a pooled entity to the pool removes its object and transient
     components. SoA rows stay on the poolable row holder. A respawn then
-    matches a client restored from the save. `world.add` for a SoA
+    matches a client restored from the save. `world.addComponent` for a SoA
     component writes the row on that world's `EntityManager`, and the
     row keeps that manager for `onSpawn` / `onDespawn`. The process-wide
     `SoAComponent` context is not consulted.
@@ -744,7 +744,7 @@ Entries collected per package until the synchronized 0.3.0 release
 - **API change:** `AbilitySystemFacade.initAttributesForEntity` returns
   `AttributesState` instead of `AttributesComponent`.
 - Attach `AbilityOwner` only through `initComponent` and standalone
-  `Attributes` only through `initAttributesForEntity`. `world.add` on
+  `Attributes` only through `initAttributesForEntity`. `world.addComponent` on
   either creates a broken owner (no pool holder, zero attributes).
 - `AbilitySystemComponentInit` is renamed `AbilityOwnerInit`.
   `initComponent(init)` returns an `IComponent` for
@@ -877,3 +877,31 @@ Entries collected per package until the synchronized 0.3.0 release
   for a collision-free world. After resolution the live grid still holds
   the pre-separation centers. Exported centers copy each value's own
   precision (`FP.FromRaw` would default to 5).
+
+## A6b.2c — old SoA path removed (ecs, physics, abilities, runtime, game)
+
+- Removed `SoAComponent` (including `useEntityManager`, `resetContext`,
+  `currentEntityManager`), `createComponentTypeRegistry`, the
+  `*_COMPONENT_TYPE` symbols, `abilityComponentTypes`,
+  `SystemRegistry` component-type registration, `GameWorldConfig.componentTypes`
+  and the runtime `defineComponent` implementation (the runtime now re-exports
+  the ecs `defineComponent`, `DefinedComponent`, `DefineSoaOptions`).
+- Removed `WorldScope` from `@phalanx-engine/runtime` and `/advanced`.
+- SoA rows bind to the owning world when the entity is adopted
+  (`createEntity`, pools, `addEntity`). Adding an entity to a second world
+  throws. Disposing one world does not affect another.
+- `EntityManager` indexes component types lazily.
+- Physics helpers (`readFpPosition`, `setVelocity`, ...) take the entity
+  instead of its id. Use `Transform.type` etc. in queries.
+- Pool factories receive `(id, manager)`.
+- Renamed `DefineComponentOptions` to `DefineSoaOptions` (ecs; also
+  re-exported by runtime and game).
+- Lazy component type indexing keeps queries in ascending entity id order.
+- `GameWorld` component access is `world.addComponent`,
+  `world.getComponent` and `world.removeComponent` (error prefixes match).
+  `world.add` / `world.get` / `world.remove` are removed with no alias.
+- `EntityManager.adopt` checks every SoA row before taking ownership, so a
+  row bound to another world leaves the entity unowned.
+- A SoA `onCreate` hook on a row attached before adoption runs once the row
+  is in a store.
+- Goldens unchanged.

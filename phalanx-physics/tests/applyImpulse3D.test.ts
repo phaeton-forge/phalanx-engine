@@ -5,7 +5,6 @@ import {
   EntityManager,
   EventBus,
   SystemContext,
-  SoAComponent,
   type SoAComponentStore,
 } from '@phalanx-engine/ecs';
 import { PhysicsSystem } from '../src/systems/PhysicsSystem';
@@ -63,11 +62,6 @@ describe('applyImpulse3D', () => {
     entityManager = new EntityManager();
     eventBus = new EventBus();
     context = new SystemContext(eventBus, entityManager);
-    SoAComponent.useEntityManager(entityManager);
-  });
-
-  afterEach(() => {
-    SoAComponent.resetContext();
   });
 
   function setup(overrides?: Partial<PhysicsConfig>) {
@@ -244,7 +238,6 @@ describe('applyImpulse3D', () => {
       const em = new EntityManager();
       const eb = new EventBus();
       const ctx = new SystemContext(eb, em);
-      SoAComponent.useEntityManager(em);
       const phys = new PhysicsSystem(createPhysicsConfig());
       bindTestWorld(ctx);
       phys.init(ctx);
@@ -267,7 +260,6 @@ describe('applyImpulse3D', () => {
         const txIdx = ts.indexOf(1);
         samples.push(ts.arrays.fpPositionY[txIdx]);
       }
-      SoAComponent.resetContext();
       return samples;
     }
 

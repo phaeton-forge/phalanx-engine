@@ -3,7 +3,6 @@ import {
   Entity,
   EntityManager,
   PoolManager,
-  SoAComponent,
   defineSoASchema,
   type IComponent,
   type IPoolableEntity,
@@ -50,20 +49,17 @@ const PhysicsSoASchema = defineSoASchema(
   'PhysicsBody'
 );
 
-class PhysicsBodyComponent extends SoAComponent<
-  typeof PhysicsSoASchema.definition
-> {
-  public readonly type = Symbol('PhysicsBody');
-  static readonly soaSchema = PhysicsSoASchema;
-
-  constructor(entityId: number, radius: number = 1.0) {
-    super(PhysicsSoASchema, entityId, {
-      velocityX: 0n,
-      velocityY: 0n,
-      radius,
-      isStatic: 0,
-    });
-  }
+function addPhysicsRow(
+  manager: EntityManager,
+  entityId: number,
+  radius: number = 1.0
+): void {
+  manager.getOrCreateSoAStore(PhysicsSoASchema).add(entityId, {
+    velocityX: 0n,
+    velocityY: 0n,
+    radius,
+    isStatic: 0,
+  });
 }
 
 // ── Helper ─────────────────────────────────────────────────────
@@ -83,12 +79,6 @@ describe('DebugDataProvider', () => {
 
   beforeEach(() => {
     em = new EntityManager();
-    em.registerComponentTypes([HealthType, ArmorType]);
-    SoAComponent.useEntityManager(em);
-  });
-
-  afterEach(() => {
-    SoAComponent.resetContext();
   });
 
   // ── Snapshot content ────────────────────────────────────────────
@@ -149,7 +139,6 @@ describe('DebugDataProvider', () => {
     });
 
     it('copies enumerable getter values', () => {
-      em.registerComponentTypes([GaugeType]);
       const entity = new Entity(em.allocateEntityId());
       entity.addComponent(new GaugeComponent(7));
       em.addEntity(entity);
@@ -171,7 +160,7 @@ describe('DebugDataProvider', () => {
     it('collects SoA store data with correct field types', () => {
       const entity = new Entity(em.allocateEntityId());
       em.addEntity(entity);
-      new PhysicsBodyComponent(entity.id, 2.5);
+      addPhysicsRow(em, entity.id, 2.5);
 
       const snap = createProvider(em).getSnapshot();
 
@@ -198,7 +187,7 @@ describe('DebugDataProvider', () => {
     it('includes per-entity SoA field values with bigint preserved', () => {
       const entity = new Entity(em.allocateEntityId());
       em.addEntity(entity);
-      new PhysicsBodyComponent(entity.id, 3.14);
+      addPhysicsRow(em, entity.id, 3.14);
 
       const snap = createProvider(em).getSnapshot();
       const storeSnap = snap.soaStores[0];
@@ -217,7 +206,7 @@ describe('DebugDataProvider', () => {
     it('reports soaStoreCount in world summary', () => {
       const entity = new Entity(em.allocateEntityId());
       em.addEntity(entity);
-      new PhysicsBodyComponent(entity.id);
+      addPhysicsRow(em, entity.id);
 
       const snap = createProvider(em).getSnapshot();
       expect(snap.world.soaStoreCount).toBe(1);

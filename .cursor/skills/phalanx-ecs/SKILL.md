@@ -1,6 +1,6 @@
 ---
 name: phalanx-ecs
-description: Create game logic using the phalanx-ecs library from the phalanx-engine repository. Use when the user wants to build entities, components, systems, game events, or a GameWorld using the Phalanx ECS architecture. Covers IComponent vs SoAComponent, GameSystem, EntityManager, EventBus, SystemContext (abilities, physics, pools), system lifecycle hooks, deterministic lockstep game loop patterns, and SaveSection registration (StateWriter, StateReader, BinaryStateWriter, BinaryStateReader).
+description: Create game logic using the phalanx-ecs library from the phalanx-engine repository. Use when the user wants to build entities, components, systems, game events, or a GameWorld using the Phalanx ECS architecture. Covers IComponent vs defineComponent SoA rows, GameSystem, EntityManager, EventBus, SystemContext (abilities, physics, pools), system lifecycle hooks, deterministic lockstep game loop patterns, and SaveSection registration (StateWriter, StateReader, BinaryStateWriter, BinaryStateReader).
 metadata:
   author: phaeton2040-AI
   version: '1.1'
@@ -14,7 +14,7 @@ Use this skill when the user asks to:
 
 - Create game entities, components, or systems using phalanx-ecs
 - Set up a GameWorld for single-player or multiplayer
-- Decide between IComponent and SoAComponent for a given use case
+- Decide between IComponent and a SoA `defineComponent` for a given use case
 - Implement deterministic game logic with ECS
 - Create event-driven communication between systems
 - Query entities by component composition
@@ -77,7 +77,6 @@ const client = await PhalanxClient.create({ serverUrl: '...' });
 
 const world = new GameWorld({
   tickFrameProvider: client,   // PhalanxClient implements ITickFrameProvider
-  componentTypes: Object.values(ComponentType),
 });
 
 world.registerSystems(tickSystems, frameSystems);
@@ -124,37 +123,33 @@ class RenderSystem extends GameSystem {
 
 ### 3. Create a Component Type Registry
 
-Every game needs a registry mapping component names to unique symbols:
+Plain `IComponent` types are unique symbols. Physics components carry
+their own symbol (`Transform.type`, `PhysicsBody.type`,
+`Interpolation.type`):
 
 ```typescript
-import { IComponent, createComponentTypeRegistry } from '@phalanx-engine/ecs';
-import {
-  TRANSFORM_COMPONENT_TYPE,
-  INTERPOLATION_COMPONENT_TYPE,
-  PHYSICS_BODY_COMPONENT_TYPE,
-} from '@phalanx-engine/physics';
+import type { IComponent } from '@phalanx-engine/ecs';
+import { Interpolation, PhysicsBody, Transform } from '@phalanx-engine/physics';
 
 export type { IComponent };
 
-export const ComponentType = createComponentTypeRegistry({
-  Health: 'Health',
-  Attack: 'Attack',
-  Movement: 'Movement',
-  Team: 'Team',
-  Transform: 'Transform',
-  Interpolation: 'Interpolation',
-  PhysicsBody: 'PhysicsBody',
-  Resource: 'Resource',
-  UnitType: 'UnitType',
-});
-
-// Override with canonical symbols from phalanx-physics
-(ComponentType as Record<string, symbol>).Transform = TRANSFORM_COMPONENT_TYPE;
-(ComponentType as Record<string, symbol>).Interpolation = INTERPOLATION_COMPONENT_TYPE;
-(ComponentType as Record<string, symbol>).PhysicsBody = PHYSICS_BODY_COMPONENT_TYPE;
+export const ComponentType = {
+  Health: Symbol('Health'),
+  Attack: Symbol('Attack'),
+  Movement: Symbol('Movement'),
+  Team: Symbol('Team'),
+  Transform: Transform.type,
+  Interpolation: Interpolation.type,
+  PhysicsBody: PhysicsBody.type,
+  Resource: Symbol('Resource'),
+  UnitType: Symbol('UnitType'),
+} as const;
 ```
 
-## Component Types: IComponent vs SoAComponent
+Queries index every component type on first use; there is no type list
+to pass to `GameWorld`.
+
+## Component Types: IComponent vs SoA components
 
 Phalanx ECS offers two component types. **Choosing the right one is critical for performance and correctness.**
 
@@ -180,8 +175,8 @@ const Visual = defineComponent('Visual', {
 });
 
 world.registerComponent(Hp);
-world.add(entity, Hp, { hp: 4n });
-world.get(entity, Hp);
+world.addComponent(entity, Hp, { hp: 4n });
+world.getComponent(entity, Hp);
 ```
 
 SoA fields are `i32`, `u32`, `u8`, `i64` (saved, included in `configHash`). An object component must pass `save` and `load` to `registerComponent`. `writeSorted` orders `Set` and `Map` keys. A transient component is display-only: not saved, not in `configHash`, and a tick system that reads it throws (`hasComponents` included). `restoreWorld` drops transient components. Physics ignores `discardedTransientIds` and seeds `Interpolation` from `Transform` for every body. Object and transient values use `ValueComponent`.
@@ -279,11 +274,11 @@ class HealthBarComponent implements IComponent {
 }
 ```
 
-### SoAComponent (Structure-of-Arrays Components)
+### SoA components (Structure-of-Arrays)
 
 Components backed by contiguous typed arrays (`Float64Array`, `BigInt64Array`, `Uint8Array`, etc.) for cache-friendly memory layout. All instances of the same SoA schema share a single store with dense packed arrays.
 
-#### When to Use SoAComponent
+#### When to Use a SoA component
 
 - The component is **iterated every tick in a hot loop** (physics, transforms, velocities, steering forces)
 - There are **many instances** (hundreds or thousands of entities)
@@ -291,7 +286,7 @@ Components backed by contiguous typed arrays (`Float64Array`, `BigInt64Array`, `
 - You need **deterministic fixed-point storage** via `BigInt64Array` (`'i64'` fields)
 - **Cache-friendly iteration** matters (iterating contiguous arrays vs chasing pointers)
 
-#### When NOT to Use SoAComponent
+#### When NOT to Use a SoA component
 
 - The data is **complex** (nested objects, strings, variable-length arrays, callbacks)
 - There are **very few instances** — the typed-array overhead is not worth it
@@ -309,7 +304,7 @@ Components backed by contiguous typed arrays (`Float64Array`, `BigInt64Array`, `
 | `u8`  | `Uint8Array`     | `number`  | Boolean flags (0/1), small enums                |
 | `i64` | `BigInt64Array`  | `bigint`  | Fixed-point raw values (deterministic physics)  |
 
-#### How to Create a SoAComponent
+#### How to Create a SoA component
 
 For physics games, use `Transform` from phalanx-physics instead of defining your own:
 
@@ -320,7 +315,7 @@ import { FPVector3 } from '@phalanx-engine/math';
 attachTransform(entity, FPVector3.FromFloat(10, 0, 20));
 ```
 
-For custom SoA components, define a schema and extend `SoAComponent`. For physics bodies, import from phalanx-physics:
+For custom SoA components, use `defineComponent`. For physics bodies, import from phalanx-physics:
 
 ```typescript
 import { attachPhysicsBody } from '@phalanx-engine/physics';
@@ -332,46 +327,39 @@ attachPhysicsBody(entity, { radius: FP.FromFloat(1.0) });
 Custom example:
 
 ```typescript
-// src/components/CustomSoAComponent.ts
-import { SoAComponent, defineSoASchema } from '@phalanx-engine/ecs';
-import { ComponentType } from './Component';
+// src/components/velocity.ts
+import { defineComponent } from '@phalanx-engine/ecs';
 
-export const VelocitySoASchema = defineSoASchema({
+export const Velocity = defineComponent('Velocity', {
   velocityX: 'i64',
   velocityY: 'i64',
   velocityZ: 'i64',
-}, 'Velocity');
+});
+world.registerComponent(Velocity);
 
-export class VelocityComponent extends SoAComponent<typeof VelocitySoASchema.definition> {
-  public readonly type = ComponentType.Velocity;
-  static readonly soaSchema = VelocitySoASchema;
-
-  constructor(entityId: number) {
-    super(VelocitySoASchema, entityId, {
-      velocityX: 0n,
-      velocityY: 0n,
-      velocityZ: 0n,
-    });
-  }
-}
+// In the entity constructor:
+this.addComponent(Velocity.create(this.id));
+// Hot loops read world.entityManager.getSoAStore(Velocity.schema).
 ```
 
 #### SoA Store Lifecycle
 
-Stores are **lazily created** when the first SoAComponent of a given schema is constructed. GameWorld sets the EntityManager context automatically:
+Stores belong to one world. There is no process-global context. A row
+reaches the store of the entity's owning world, which is set by
+`world.createEntity`, a pool factory, or the first `addEntity`:
 
 ```
-GameWorld created → SoAComponent.useEntityManager(em)
-First SoA row for a schema → store created in that world's EntityManager
+createEntity / pool factory / addEntity → entity owned by that world
+Constructor rows → written to that world's stores
 Later rows of that schema → share the same store
-GameWorld disposed → SoAComponent.resetContext()
 ```
 
-No manual store registration needed.
+Adding an entity owned by another world throws. Disposing one world does
+not touch another.
 
-### Decision Matrix: IComponent vs SoAComponent
+### Decision Matrix: IComponent vs SoA component
 
-| Criterion                        | IComponent            | SoAComponent          |
+| Criterion                        | IComponent            | SoA component         |
 | -------------------------------- | --------------------- | --------------------- |
 | Iterated every tick in hot loop  | No                    | **Yes**               |
 | Hundreds/thousands of instances  | No                    | **Yes**               |
@@ -473,17 +461,14 @@ Save sections live on `GameWorld`. `registerSaveSection` rejects an empty key (`
 **Important:** Each world has its own id counter. Do not share ids across worlds.
 
 ```typescript
-import { SoAComponent } from '@phalanx-engine/ecs';
-
 const entity = world.createEntity((id) => new Unit(id, scene, 100, 'red', pos));
 const restored = world.createEntityWithId(savedId, (id) => new Unit(id, scene, 100, 'red', pos));
 world.entityManager.restoreEntityIdHighWater(savedHighWater); // next id is savedHighWater + 1
-const manager = SoAComponent.currentEntityManager();
+const manager = entity._owner; // set once the world adopts the entity
 world.pools?.ownedIds('unit'); // creation order; omits disposed entities
 world.pools?.freeListIds('unit'); // oldest first; spawn pops the last
 world.pools?.restore('unit', entitiesInCreationOrder, freeListIds);
 world.entityManager.entityIdHighWater();
-SoAComponent.useEntityManager(null); // same clear as resetContext()
 ```
 
 ### 6. Create Systems
@@ -777,7 +762,6 @@ world.dispose();
 const world = new GameWorld(config: GameWorldConfig);
 
 interface GameWorldConfig {
-  componentTypes?: symbol[];           // Component type symbols for EntityManager indexing
   tickRate?: number;                   // Default: 60 (only used when no tickFrameProvider)
   maxFrameTime?: number;               // Default: 0.25s (only used when no tickFrameProvider)
   tickFrameProvider?: ITickFrameProvider; // External provider (e.g. PhalanxClient)
@@ -993,11 +977,11 @@ import { SystemRegistry } from '@phalanx-engine/ecs';
 import { SystemContext } from '@phalanx-engine/ecs';
 
 // Components
-import { IComponent, createComponentTypeRegistry } from '@phalanx-engine/ecs';
+import type { IComponent } from '@phalanx-engine/ecs';
 import type { IComponent as Component } from '@phalanx-engine/ecs';
 
 // SoA storage
-import { SoAComponent, SoAComponentStore, defineSoASchema } from '@phalanx-engine/ecs';
+import { defineComponent, type SoAComponentStore } from '@phalanx-engine/ecs';
 import { calculateSchemaByteSize, TYPED_ARRAY_CONSTRUCTORS, FIELD_BYTE_SIZES } from '@phalanx-engine/ecs';
 import type {
   SoASchema, SoASchemaDefinition, SoAFieldType, SoAFieldsOf,
@@ -1053,7 +1037,7 @@ import type {
 
 - Keep components as **pure data containers** with optional helper methods
 - Use `IComponent` for: flags, config, UI state, complex data, few instances, external references
-- Use `SoAComponent` for: hot-path data, many instances, flat numerics, deterministic i64 storage
+- Use `defineComponent` SoA rows for: hot-path data, many instances, flat numerics, deterministic i64 storage
 - Avoid component-to-component dependencies
 - Avoid putting complex game logic in components — that belongs in systems
 
@@ -1109,7 +1093,7 @@ export class ProjectileEntity extends Entity implements IPoolableEntity<Projecti
   }
 
   onSpawn(args: ProjectileSpawnArgs): void {
-    writeFpPosition(this.id, args.fpPosition);
+    writeFpPosition(this, args.fpPosition);
     attachInterpolation(this, args.fpPosition);
     this.projectile.fpDirection2 = args.fpDirection2;
     this.teamId = args.teamId;
@@ -1125,7 +1109,6 @@ export class ProjectileEntity extends Entity implements IPoolableEntity<Projecti
 
 ```typescript
 const world = new GameWorld({
-  componentTypes: Object.values(ComponentType),
   pooling: {
     autoPrewarm: true,
     entityTypes: {

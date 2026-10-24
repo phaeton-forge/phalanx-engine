@@ -6,7 +6,6 @@ import {
   EntityManager,
   EventBus,
   GameWorld,
-  SoAComponent,
   SystemContext,
 } from '@phalanx-engine/ecs';
 import { FP } from '@phalanx-engine/math';
@@ -14,7 +13,6 @@ import type { FixedPoint } from '@phalanx-engine/math';
 import {
   CollisionSystem,
   Interpolation,
-  INTERPOLATION_COMPONENT_TYPE,
   PhysicsSystem,
   PhysicsWorld,
   attachInterpolation,
@@ -90,10 +88,6 @@ function addDisc(world: GameWorld, x: number, z: number): Disc {
 }
 
 describe('physics state helpers', () => {
-  afterEach(() => {
-    SoAComponent.resetContext();
-  });
-
   it('keeps a non-default precision through writeBroadphase', () => {
     const precision = 2;
     const cellSize = FP.FromInt(4, precision);
@@ -282,7 +276,7 @@ describe('physics state helpers', () => {
     world.entityManager.addEntity(bare);
 
     world.discardTransientComponents();
-    expect(kept.hasComponent(INTERPOLATION_COMPONENT_TYPE)).toBe(false);
+    expect(kept.hasComponent(Interpolation.type)).toBe(false);
 
     const bytes = finish((writer) => {
       writeBroadphase(writer, world);
@@ -291,17 +285,17 @@ describe('physics state helpers', () => {
     readBroadphase(reader, world);
     reader.done();
 
-    expect(kept.hasComponent(INTERPOLATION_COMPONENT_TYPE)).toBe(true);
-    expect(bare.hasComponent(INTERPOLATION_COMPONENT_TYPE)).toBe(true);
-    expect(world.get(kept, Interpolation)?.currentFpPosition).toEqual({
+    expect(kept.hasComponent(Interpolation.type)).toBe(true);
+    expect(bare.hasComponent(Interpolation.type)).toBe(true);
+    expect(world.getComponent(kept, Interpolation)?.currentFpPosition).toEqual({
       x: FP.FromInt(3),
       y: FP.FromInt(1),
       z: FP.FromInt(4),
     });
-    expect(world.get(kept, Interpolation)?.previousFpPosition).toEqual(
-      world.get(kept, Interpolation)?.currentFpPosition
+    expect(world.getComponent(kept, Interpolation)?.previousFpPosition).toEqual(
+      world.getComponent(kept, Interpolation)?.currentFpPosition
     );
-    expect(world.get(bare, Interpolation)?.currentFpPosition).toEqual({
+    expect(world.getComponent(bare, Interpolation)?.currentFpPosition).toEqual({
       x: FP.FromInt(8),
       y: FP._0,
       z: FP.FromInt(2),
@@ -312,7 +306,7 @@ describe('physics state helpers', () => {
     expect(again).toEqual(bytes);
   });
 
-  it('stores interpolation in one ValueComponent for attach and world.get', () => {
+  it('stores interpolation in one ValueComponent for attach and world.getComponent', () => {
     const { world } = wiredWorld();
     const entity = world.createEntityWithId(1);
     const sample = attachInterpolation(entity, {
@@ -320,7 +314,7 @@ describe('physics state helpers', () => {
       y: FP._0,
       z: FP._0,
     });
-    expect(world.get(entity, Interpolation)).toBe(sample);
+    expect(world.getComponent(entity, Interpolation)).toBe(sample);
     expect(interpolationOf(entity)).toBe(sample);
     expect(sample.currentFpPosition.x).toEqual(FP.FromInt(2));
   });

@@ -4,7 +4,6 @@ import {
   Entity,
   EntityManager,
   EventBus,
-  SoAComponent,
   SystemContext,
 } from '@phalanx-engine/ecs';
 import { FPVector3, FPQuaternion } from '@phalanx-engine/math';
@@ -14,13 +13,13 @@ import { PhysicsSystem } from '../src/systems/PhysicsSystem';
 import { GravitySystem } from '../src/systems/GravitySystem';
 import { InterpolationSystem } from '../src/systems/InterpolationSystem';
 import {
-  TRANSFORM_COMPONENT_TYPE,
   attachTransform,
   writeFpPosition,
+  Transform,
 } from '../src/components/transform';
 import {
-  INTERPOLATION_COMPONENT_TYPE,
   attachInterpolation,
+  Interpolation,
 } from '../src/components/interpolation';
 
 describe('PhysicsWorld', () => {
@@ -29,16 +28,7 @@ describe('PhysicsWorld', () => {
 
   beforeEach(() => {
     entityManager = new EntityManager();
-    entityManager.registerComponentTypes([
-      TRANSFORM_COMPONENT_TYPE,
-      INTERPOLATION_COMPONENT_TYPE,
-    ]);
-    SoAComponent.useEntityManager(entityManager);
     context = new SystemContext(new EventBus(), entityManager);
-  });
-
-  afterEach(() => {
-    SoAComponent.resetContext();
   });
 
   it('getSystems returns both physics and interpolation systems', () => {
@@ -122,14 +112,14 @@ describe('PhysicsWorld', () => {
       FPQuaternion.Identity()
     );
     entityManager.addEntity(entity);
-    entityManager.onComponentAdded(entity, TRANSFORM_COMPONENT_TYPE);
-    entityManager.onComponentAdded(entity, INTERPOLATION_COMPONENT_TYPE);
+    entityManager.onComponentAdded(entity, Transform.type);
+    entityManager.onComponentAdded(entity, Interpolation.type);
 
-    writeFpPosition(entity.id, FPVector3.FromFloat(10, 0, 0));
+    writeFpPosition(entity, FPVector3.FromFloat(10, 0, 0));
 
     interpolationSystem.snapshot();
     interpolationSystem.capture();
-    writeFpPosition(entity.id, FPVector3.FromFloat(20, 0, 0));
+    writeFpPosition(entity, FPVector3.FromFloat(20, 0, 0));
     interpolationSystem.capture();
     interpolationSystem.interpolate(0.5);
 

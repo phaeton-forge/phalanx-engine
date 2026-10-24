@@ -3,7 +3,7 @@ description: Entity pooling lifecycle conventions for Phalanx (IPoolableEntity a
 globs:
   - "phalanx-ecs/src/pool/**"
   - "phalanx-ecs/src/Entity.ts"
-  - "phalanx-ecs/src/SoAComponent.ts"
+  - "phalanx-ecs/src/defineComponent.ts"
   - "**/components/**"
   - "**/entities/**"
 alwaysApply: false
@@ -36,7 +36,7 @@ Game code calls only `pools.spawn(typeKey, args)` and `pools.despawn(entity)`.
 - Component lifecycle — `onCreate`, `onEnable`, `onDisable`, `onDestroy`.
   The engine calls these. Game code does not.
   - `onEnable` / `onDisable` are the place for presentation (mesh visibility).
-  - Internal storage reset stays on `SoAComponent.onSpawn` / `onDespawn`.
+  - Internal storage reset stays on the SoA row's `onSpawn` / `onDespawn`.
     `IPoolableComponent` is not a public export.
 
 ## Engine-enforced ordering (do not change)
@@ -61,9 +61,9 @@ Game code calls only `pools.spawn(typeKey, args)` and `pools.despawn(entity)`.
 
 ## Maintenance invariants
 
-- `SoAComponent._spawnDefaults` retains the constructor's `initialValues`
-  reference. Callers must pass fresh object literals to the constructor; never
-  pass a shared/mutable object, or pooled respawns will drift.
+- A SoA row keeps the values merged at `create` and writes them back on
+  every pooled respawn. It reaches the store of the entity's owning world
+  when the pool factory returns.
 - `onDespawn()` on components must be idempotent (row may already be cleared by
   `removeEntity`; prewarmed factory-fresh entities also call it once).
 

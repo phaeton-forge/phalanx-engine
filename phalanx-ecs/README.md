@@ -43,7 +43,7 @@ A lightweight, renderer-agnostic Entity-Component-System (ECS) library with opti
 
 ### SoA (Structure-of-Arrays) Storage
 
-- **SoAComponent**: Base class for components backed by contiguous typed arrays
+- **SoA components**: `defineComponent` with integer fields, backed by contiguous typed arrays
 - **SoAComponentStore**: Dense, cache-friendly storage with O(1) entity lookup
 - **defineSoASchema**: Type-safe schema definition for SoA field layout
 
@@ -142,7 +142,7 @@ For advanced use-cases you can still use `SystemRegistry` and `ITickFrameProvide
 import { SystemRegistry } from '@phalanx-engine/ecs';
 import { TickFrameManager } from '@phalanx-engine/runtime/advanced';
 
-const registry = new SystemRegistry(componentTypes);
+const registry = new SystemRegistry();
 registry.registerSystems(tickSystems, frameSystems);
 
 const tickManager = new TickFrameManager({ tickRate: 60 });
@@ -190,7 +190,6 @@ class GameWorld {
 }
 
 interface GameWorldConfig {
-  componentTypes?: symbol[];
   tickFrameProvider: ITickFrameProvider; // required; GameWorld does not start it
   pooling?: PoolingConfig; // Object pooling configuration
   random?: IRandom;
@@ -309,7 +308,7 @@ Type guards are also exported: `isBeforeTick`, `isAfterTick`, `isBeforeFrame`, `
 
 ```typescript
 class SystemRegistry {
-  constructor(componentTypes?: symbol[]);
+  constructor();
   registerSystems(tickSystems: GameSystem[], frameSystems: GameSystem[]): void;
   processAllTicks(tick: number): void;
   updateAll(deltaTime: number): void;
@@ -361,7 +360,7 @@ type PauseHandler = () => void;
 
 `ITickFrameProvider` does not carry the match RNG. `GameWorldConfig.random` is the only source. When it is omitted, `world.random` throws `SystemContext.random is not configured: pass GameWorldConfig.random`.
 
-## Component Types: IComponent vs SoAComponent
+## Component Types: IComponent vs SoA components
 
 Phalanx ECS offers two component types. Choose based on your performance and data layout needs.
 
@@ -388,7 +387,7 @@ class ArmorComponent implements IComponent {
 entity.addComponent(new ArmorComponent(15));
 ```
 
-### SoAComponent (Structure-of-Arrays Components)
+### SoA components (Structure-of-Arrays)
 
 Components backed by contiguous typed arrays (`Float64Array`, `BigInt64Array`, etc.) for cache-friendly memory layout.
 
@@ -406,44 +405,29 @@ Components backed by contiguous typed arrays (`Float64Array`, `BigInt64Array`, e
 - The component is rarely queried
 
 ```typescript
-import { SoAComponent, defineSoASchema } from '@phalanx-engine/ecs';
+import { defineComponent } from '@phalanx-engine/ecs';
 
-// 1. Define a schema — maps field names to typed-array element types
-const VelocitySoASchema = defineSoASchema(
-  {
-    velocityX: 'i64', // BigInt64Array — deterministic fixed-point
-    velocityY: 'i64',
-    velocityZ: 'i64',
-    speed: 'i64',
-  },
-  'Velocity'
+// 1. Define the component: integer fields, saved and part of configHash
+export const Velocity = defineComponent(
+  'Velocity',
+  { velocityX: 'i64', velocityY: 'i64', velocityZ: 'i64', speed: 'i64' },
+  { defaults: { speed: 0n } }
 );
+world.registerComponent(Velocity);
 
-// 2. Extend SoAComponent
-class VelocityComponent extends SoAComponent<
-  typeof VelocitySoASchema.definition
-> {
-  public readonly type = ComponentType.Velocity;
-  static readonly soaSchema = VelocitySoASchema;
-
-  constructor(entityId: number, speed: bigint) {
-    super(VelocitySoASchema, entityId, {
-      velocityX: 0n,
-      velocityY: 0n,
-      velocityZ: 0n,
-      speed,
-    });
-  }
-
-  // Getters/setters provide a clean API over raw array access
-  get speedRaw(): bigint {
-    return this.store.arrays.speed[this.getIndex()];
+// 2. Attach in the entity constructor; the row reaches the store of the
+//    world that owns the entity (createEntity, pool factory or addEntity)
+class Mover extends Entity {
+  constructor(id: number, speed: bigint) {
+    super(id);
+    this.addComponent(Velocity.create(id, { speed }));
   }
 }
+// On a registered entity, world.addComponent / world.getComponent / world.removeComponent work too.
 
 // 3. Hot-path systems should bypass the component facade and access arrays directly
 //    Cache store references in init(), iterate entityIds() in tick methods
-const store = entityManager.getSoAStore(VelocitySoASchema)!;
+const store = entityManager.getSoAStore(Velocity.schema)!;
 
 // Single-store loop — ideal case, zero cross-store overhead
 for (const entityId of store.entityIds()) {
@@ -463,9 +447,8 @@ for (const entityId of store.entityIds()) {
 }
 ```
 
-**Important:** The facade (getters/setters on `SoAComponent`) is convenient for infrequent
-access (spawning, event handlers) but adds overhead in hot loops — each field access calls
-`getIndex()` (a `Map.get()` + stale check). Direct store access removes this overhead.
+**Important:** `world.getComponent` returns a copy and allocates. Use it for infrequent access
+(spawning, event handlers); hot loops read the store arrays directly.
 
 ### SoA Field Types
 
@@ -480,13 +463,16 @@ access (spawning, event handlers) but adds overhead in hot loops — each field 
 
 ### SoA Store Lifecycle
 
-Stores are **lazily created** when the first `SoAComponent` of a given schema is instantiated. `GameWorld` sets the `EntityManager` context automatically — no manual store registration needed.
+Stores belong to one world. `registerComponent` creates the store; an
+unregistered schema gets its store on the first row. There is no
+process-global context: a row is written when the entity's owning world
+binds it, so two worlds in one process never share a store and disposing
+one does not touch the other.
 
 ```
-GameWorld created → SoAComponent.useEntityManager(em)
-First SoA row for a schema → store created in that world's EntityManager
+world.createEntity / pool factory / addEntity → entity owned by that world
+Constructor rows → written to that world's stores
 Later rows of that schema → share the same store
-GameWorld disposed → SoAComponent.resetContext()
 ```
 
 ## Object Pooling
@@ -554,7 +540,7 @@ export class ProjectileEntity
   }
 
   onSpawn(args: ProjectileSpawnArgs): void {
-    writeFpPosition(this.id, args.fpPosition);
+    writeFpPosition(this, args.fpPosition);
     this.projectile.fpDirection2 = args.fpDirection2;
     this.teamId = args.teamId;
   }
@@ -565,7 +551,6 @@ export class ProjectileEntity
 }
 
 const world = new GameWorld({
-  componentTypes: Object.values(ComponentType),
   pooling: {
     autoPrewarm: true,
     entityTypes: {
@@ -603,7 +588,7 @@ const stats = world.pools!.getStats(); // Map<string, PoolStats>
 
 `onEnable` after restore must not overwrite saved fields. Per-spawn simulation writes belong in the entity `onSpawn`.
 
-SoA rows are reset by internal storage hooks (`SoAComponent.onSpawn` / `onDespawn`). Those hooks are not a public import. Presentation such as mesh visibility belongs in `onEnable` / `onDisable`:
+SoA rows are reset by internal storage hooks (the row's `onSpawn` / `onDespawn`). Those hooks are not a public import. Presentation such as mesh visibility belongs in `onEnable` / `onDisable`:
 
 ```typescript
 import type { IComponent } from '@phalanx-engine/ecs';
@@ -645,11 +630,11 @@ const Visual = defineComponent('Visual', {
 world.registerComponent(Hp);
 world.registerComponent(Bag);
 world.registerComponent(Visual);
-world.add(entity, Hp, { hp: 4n });
-world.get(entity, Hp); // { hp: 4n }
+world.addComponent(entity, Hp, { hp: 4n });
+world.getComponent(entity, Hp); // { hp: 4n }
 ```
 
-SoA fields are `i32`, `u32`, `u8`, `i64`. They are saved and included in `configHash`. An object component without `save` and `load` throws at `registerComponent`. `writeSorted` orders `Set` and `Map` keys (UTF-16 for strings, numeric for safe integers). A transient component is display-only: it is omitted from the save and from `configHash`, and a tick system that reads it (`world.get`, `getComponent`, `hasComponent`, `hasComponents`, or a query) throws. `restoreWorld` drops transient components first. Physics does not use the discarded-id list: `readBroadphase` attaches `Interpolation` to every entity with `Transform` and `PhysicsBody` and seeds both samples from the transform. Object and transient values are stored in `ValueComponent`.
+SoA fields are `i32`, `u32`, `u8`, `i64`. They are saved and included in `configHash`. An object component without `save` and `load` throws at `registerComponent`. `writeSorted` orders `Set` and `Map` keys (UTF-16 for strings, numeric for safe integers). A transient component is display-only: it is omitted from the save and from `configHash`, and a tick system that reads it (`world.getComponent`, `getComponent`, `hasComponent`, `hasComponents`, or a query) throws. `restoreWorld` drops transient components first. Physics does not use the discarded-id list: `readBroadphase` attaches `Interpolation` to every entity with `Transform` and `PhysicsBody` and seeds both samples from the transform. Object and transient values are stored in `ValueComponent`.
 
 `EntityPool` remains available as a low-level storage primitive; prefer `PoolManager.spawn()` / `despawn()` for gameplay entities.
 
@@ -740,23 +725,20 @@ Restore rejects a modules container with:
 
 ## Entity ids
 
-Each `EntityManager` owns its id counter, starting at `0`. `GameWorld` does not reset a process-global counter. `world.createEntity((id) => new Entity(id))` allocates the next id and does not register the entity. `world.createEntityWithId(id, create?)` builds that exact id, raises the high-water mark to `max(current, id)` and registers it. A hole does not rewind the next id. Pass the id into a subclass constructor (`super(id)`). Pool factories are `(id: number) => T`.
+Each `EntityManager` owns its id counter, starting at `0`. `GameWorld` does not reset a process-global counter. `world.createEntity((id) => new Entity(id))` allocates the next id and does not register the entity. `world.createEntityWithId(id, create?)` builds that exact id, raises the high-water mark to `max(current, id)` and registers it. A hole does not rewind the next id. Pass the id into a subclass constructor (`super(id)`). Pool factories are `(id: number, manager: EntityManager) => T`; `manager` owns the entity and its SoA rows.
 
 ```typescript
-import { SoAComponent } from '@phalanx-engine/ecs';
-
 const entity = world.createEntity((id) => new Entity(id));
 const restored = world.createEntityWithId(5, (id) => new Unit(id));
 const highWater = world.entityManager.entityIdHighWater(); // last allocated id
 world.entityManager.restoreEntityIdHighWater(highWater); // next id is highWater + 1
-const manager = SoAComponent.currentEntityManager(); // null after resetContext()
 
 const typeKeys = world.pools?.typeKeys() ?? []; // registration order
 const owned = world.pools?.ownedIds(typeKeys[0]); // creation order
 const freeList = world.pools?.freeListIds(typeKeys[0]); // oldest release first; acquire pops the last
 ```
 
-`restoreEntityIdHighWater` throws if the value is not an integer `>= 0` (`restoreEntityIdHighWater: value must be an integer >= 0`). A lower value is accepted and the next id can collide. `createEntityWithId` throws `createEntityWithId: entity N already exists` when that id is registered, and `createEntityWithId: id must be an integer >= 1` for a bad id. `SoAComponent.useEntityManager(null)` clears the context (`resetContext()` does the same). The SoA manager is still process-global. Pool `ownedIds` include checked-out entities and the free list, and omit an entity disposed outside despawn. `destroy()` does not remove the entity; the next acquire revives the same instance. `PoolManager.restore(typeKey, entities, freeListIds)` puts that free list back so the next spawn returns the same id. `drain()` still drops free-list objects.
+`restoreEntityIdHighWater` throws if the value is not an integer `>= 0` (`restoreEntityIdHighWater: value must be an integer >= 0`). A lower value is accepted and the next id can collide. `createEntityWithId` throws `createEntityWithId: entity N already exists` when that id is registered, and `createEntityWithId: id must be an integer >= 1` for a bad id. There is no process-global SoA context: an entity's rows live in its owning world, and adding an entity owned by another world throws `entity N belongs to another world`. Pool `ownedIds` include checked-out entities and the free list, and omit an entity disposed outside despawn. `destroy()` does not remove the entity; the next acquire revives the same instance. `PoolManager.restore(typeKey, entities, freeListIds)` puts that free list back so the next spawn returns the same id. `drain()` still drops free-list objects.
 
 ## License
 

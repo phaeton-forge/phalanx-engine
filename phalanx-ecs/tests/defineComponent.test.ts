@@ -4,7 +4,6 @@ import {
   BinaryStateWriter,
   GameSystem,
   GameWorld,
-  SoAComponent,
   defineComponent,
   writeSorted,
 } from '../src/index.js';
@@ -18,10 +17,6 @@ function world(): GameWorld {
 }
 
 describe('defineComponent', () => {
-  afterEach(() => {
-    SoAComponent.resetContext();
-  });
-
   it('stores SoA, object, and transient values through the world', () => {
     const game = world();
     const hp = defineComponent('Hp', { hp: 'i64', armor: 'i32' });
@@ -48,27 +43,30 @@ describe('defineComponent', () => {
     game.registerComponent(visual);
 
     const entity = game.createEntityWithId(1);
-    game.add(entity, hp, { hp: 4n, armor: 2 });
-    game.add(entity, bag);
-    game.get(entity, bag)?.tags.add('a');
-    game.add(entity, visual, { x: 1.5, label: 'spark' });
+    game.addComponent(entity, hp, { hp: 4n, armor: 2 });
+    game.addComponent(entity, bag);
+    game.getComponent(entity, bag)?.tags.add('a');
+    game.addComponent(entity, visual, { x: 1.5, label: 'spark' });
 
-    expect(game.get(entity, hp)).toEqual({ hp: 4n, armor: 2 });
-    expect(game.get(entity, bag)?.tags.has('a')).toBe(true);
-    expect(game.get(entity, visual)).toEqual({ x: 1.5, label: 'spark' });
+    expect(game.getComponent(entity, hp)).toEqual({ hp: 4n, armor: 2 });
+    expect(game.getComponent(entity, bag)?.tags.has('a')).toBe(true);
+    expect(game.getComponent(entity, visual)).toEqual({
+      x: 1.5,
+      label: 'spark',
+    });
     expect(game.componentNames()).toEqual(['Hp']);
     expect(game.saveSections.map((section) => section.key)).toEqual(['Bag']);
 
-    game.add(entity, hp, { hp: 9n });
-    expect(game.get(entity, hp)).toEqual({ hp: 9n, armor: 2 });
+    game.addComponent(entity, hp, { hp: 9n });
+    expect(game.getComponent(entity, hp)).toEqual({ hp: 9n, armor: 2 });
 
-    game.add(entity, hp, { hp: undefined, armor: undefined });
-    expect(game.get(entity, hp)).toEqual({ hp: 9n, armor: 2 });
+    game.addComponent(entity, hp, { hp: undefined, armor: undefined });
+    expect(game.getComponent(entity, hp)).toEqual({ hp: 9n, armor: 2 });
 
-    expect(game.remove(entity, visual)).toBe(true);
-    expect(game.get(entity, visual)).toBeUndefined();
-    expect(game.remove(entity, hp)).toBe(true);
-    expect(game.get(entity, hp)).toBeUndefined();
+    expect(game.removeComponent(entity, visual)).toBe(true);
+    expect(game.getComponent(entity, visual)).toBeUndefined();
+    expect(game.removeComponent(entity, hp)).toBe(true);
+    expect(game.getComponent(entity, hp)).toBeUndefined();
   });
 
   it('treats an explicit undefined SoA field as omitted', () => {
@@ -81,15 +79,15 @@ describe('defineComponent', () => {
     game.registerComponent(hp);
     const entity = game.createEntityWithId(1);
 
-    game.add(entity, hp, { hp: undefined, armor: 3 });
-    expect(game.get(entity, hp)).toEqual({ hp: 5n, armor: 3 });
+    game.addComponent(entity, hp, { hp: undefined, armor: 3 });
+    expect(game.getComponent(entity, hp)).toEqual({ hp: 5n, armor: 3 });
 
-    game.add(entity, hp, { hp: 9n });
-    game.add(entity, hp, { hp: undefined });
-    expect(game.get(entity, hp)).toEqual({ hp: 9n, armor: 3 });
+    game.addComponent(entity, hp, { hp: 9n });
+    game.addComponent(entity, hp, { hp: undefined });
+    expect(game.getComponent(entity, hp)).toEqual({ hp: 9n, armor: 3 });
 
-    game.add(entity, hp, { armor: undefined, hp: 1n });
-    expect(game.get(entity, hp)).toEqual({ hp: 1n, armor: 3 });
+    game.addComponent(entity, hp, { armor: undefined, hp: 1n });
+    expect(game.getComponent(entity, hp)).toEqual({ hp: 1n, armor: 3 });
   });
 
   it('rejects an object component without save and load at registration', () => {
@@ -189,13 +187,13 @@ describe('defineComponent', () => {
     });
     game.registerComponent(visual);
     const entity = game.createEntityWithId(1);
-    game.add(entity, visual, { x: 4 });
+    game.addComponent(entity, visual, { x: 4 });
 
     class Branch extends GameSystem {
       public override processTick(): void {
-        const value = this.world.get(entity, visual);
+        const value = this.world.getComponent(entity, visual);
         if (value !== undefined && value.x > 0) {
-          this.world.add(entity, visual, { x: 0 });
+          this.world.addComponent(entity, visual, { x: 0 });
         }
       }
     }
@@ -203,7 +201,7 @@ describe('defineComponent', () => {
     expect(() => game.processAllTicks(1)).toThrow(
       "tick system must not branch on transient component 'Visual'"
     );
-    expect(game.get(entity, visual)?.x).toBe(4);
+    expect(game.getComponent(entity, visual)?.x).toBe(4);
   });
 
   it('stops a tick system from branching on hasComponents', () => {
@@ -214,7 +212,7 @@ describe('defineComponent', () => {
     });
     game.registerComponent(visual);
     const entity = game.createEntityWithId(1);
-    game.add(entity, visual, { x: 4 });
+    game.addComponent(entity, visual, { x: 4 });
 
     class Branch extends GameSystem {
       public saw = false;
@@ -243,13 +241,13 @@ describe('defineComponent', () => {
 
     class Write extends GameSystem {
       public override processTick(): void {
-        this.world.add(entity, visual, { x: 3 });
+        this.world.addComponent(entity, visual, { x: 3 });
       }
     }
     class Read extends GameSystem {
       public seen: number | undefined;
       public override update(): void {
-        this.seen = this.world.get(entity, visual)?.x;
+        this.seen = this.world.getComponent(entity, visual)?.x;
       }
     }
     const read = new Read();
@@ -257,7 +255,7 @@ describe('defineComponent', () => {
     game.processAllTicks(1);
     game.updateAll(0.016);
     expect(read.seen).toBe(3);
-    expect(game.get(entity, visual)?.x).toBe(3);
+    expect(game.getComponent(entity, visual)?.x).toBe(3);
   });
 
   it('rejects a component name already used by a save section', () => {
@@ -283,7 +281,7 @@ describe('defineComponent', () => {
     });
     game.registerComponent(visual);
     const entity = game.createEntityWithId(1);
-    game.add(entity, visual);
+    game.addComponent(entity, visual);
 
     class ReadComponent extends GameSystem {
       public override processTick(): void {
@@ -314,7 +312,7 @@ describe('defineComponent', () => {
     expect(() => game.processAllTicks(1)).toThrow(
       "tick system must not branch on transient component 'Visual'"
     );
-    expect(game.get(entity, visual)?.x).toBe(1);
+    expect(game.getComponent(entity, visual)?.x).toBe(1);
   });
 
   it('lets afterTick read a transient component', () => {
@@ -326,13 +324,13 @@ describe('defineComponent', () => {
     });
     game.registerComponent(visual);
     const entity = game.createEntityWithId(1);
-    game.add(entity, visual, { x: 2 });
+    game.addComponent(entity, visual, { x: 2 });
 
     class After extends GameSystem {
       public seen: number | undefined;
 
       public afterTick(): void {
-        this.seen = this.world.get(entity, visual)?.x;
+        this.seen = this.world.getComponent(entity, visual)?.x;
         entity.getComponent(visual.type);
         this.entityManager.queryEntities(visual.type);
       }
@@ -342,7 +340,7 @@ describe('defineComponent', () => {
     game.registerSystems([after], []);
     game.start({
       afterTick() {
-        hookSeen = game.get(entity, visual)?.x;
+        hookSeen = game.getComponent(entity, visual)?.x;
       },
     });
     provider.step(1);
@@ -357,13 +355,12 @@ describe('defineComponent', () => {
     a.registerComponent(hp);
     const b = world();
     const entity = a.createEntityWithId(1);
-    SoAComponent.useEntityManager(b.entityManager);
-    a.add(entity, hp, { hp: 7n });
+    a.addComponent(entity, hp, { hp: 7n });
 
     const storeA = a.entityManager.getSoAStore(hp.schema);
     if (storeA === undefined) throw new Error('missing store on A');
     expect(storeA.indexOf(entity.id)).toBeGreaterThanOrEqual(0);
-    expect(a.get(entity, hp)).toEqual({ hp: 7n });
+    expect(a.getComponent(entity, hp)).toEqual({ hp: 7n });
     expect(
       b.entityManager.getSoAStore(hp.schema)?.indexOf(entity.id) ?? -1
     ).toBe(-1);
@@ -382,7 +379,7 @@ describe('defineComponent', () => {
     expect(storeA.indexOf(entity.id)).toBe(-1);
     row.onSpawn();
     expect(storeA.indexOf(entity.id)).toBeGreaterThanOrEqual(0);
-    expect(a.get(entity, hp)).toEqual({ hp: 7n });
+    expect(a.getComponent(entity, hp)).toEqual({ hp: 7n });
     expect(
       b.entityManager.getSoAStore(hp.schema)?.indexOf(entity.id) ?? -1
     ).toBe(-1);

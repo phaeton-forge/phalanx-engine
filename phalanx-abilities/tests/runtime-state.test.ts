@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { Entity, GameWorld, SoAComponent } from '@phalanx-engine/ecs';
+import { Entity, GameWorld } from '@phalanx-engine/ecs';
 import { FP } from '@phalanx-engine/math';
 import {
   InstanceIdCounter,
@@ -45,7 +45,6 @@ describe('ability runtime state', () => {
       world.dispose();
     }
     worlds.length = 0;
-    SoAComponent.resetContext();
   });
 
   function createWorld(): {

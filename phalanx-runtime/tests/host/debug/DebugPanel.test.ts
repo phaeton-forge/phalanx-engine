@@ -4,7 +4,6 @@ import {
   Entity,
   EntityManager,
   PoolManager,
-  SoAComponent,
   defineSoASchema,
   type IComponent,
   type IPoolableEntity,
@@ -37,20 +36,17 @@ const PhysicsSoASchema = defineSoASchema(
   'PhysicsBody'
 );
 
-class PhysicsBodyComponent extends SoAComponent<
-  typeof PhysicsSoASchema.definition
-> {
-  public readonly type = Symbol('PhysicsBody');
-  static readonly soaSchema = PhysicsSoASchema;
-
-  constructor(entityId: number, radius: number = 1.0) {
-    super(PhysicsSoASchema, entityId, {
-      velocityX: 0n,
-      velocityY: 0n,
-      radius,
-      isStatic: 0,
-    });
-  }
+function addPhysicsRow(
+  manager: EntityManager,
+  entityId: number,
+  radius: number = 1.0
+): void {
+  manager.getOrCreateSoAStore(PhysicsSoASchema).add(entityId, {
+    velocityX: 0n,
+    velocityY: 0n,
+    radius,
+    isStatic: 0,
+  });
 }
 
 // ── Helper ─────────────────────────────────────────────────────
@@ -71,8 +67,6 @@ describe('DebugPanel', () => {
 
   beforeEach(() => {
     em = new EntityManager();
-    em.registerComponentTypes([HealthType, ArmorType]);
-    SoAComponent.useEntityManager(em);
     provider = createProvider(em);
   });
 
@@ -81,7 +75,6 @@ describe('DebugPanel', () => {
     if (panel) {
       panel.destroy();
     }
-    SoAComponent.resetContext();
   });
 
   // ── DOM lifecycle ──────────────────────────────────────────────
@@ -177,7 +170,7 @@ describe('DebugPanel', () => {
     it('renders SoA store section with field types', () => {
       const entity = new Entity(em.allocateEntityId());
       em.addEntity(entity);
-      new PhysicsBodyComponent(entity.id, 2.5);
+      addPhysicsRow(em, entity.id, 2.5);
 
       panel = new DebugPanel(provider);
 
@@ -216,7 +209,7 @@ describe('DebugPanel', () => {
     it('formats bigint values with n suffix', () => {
       const entity = new Entity(em.allocateEntityId());
       em.addEntity(entity);
-      new PhysicsBodyComponent(entity.id, 3.14);
+      addPhysicsRow(em, entity.id, 3.14);
 
       panel = new DebugPanel(provider);
 

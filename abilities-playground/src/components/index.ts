@@ -1,3 +1,4 @@
+import type { Entity } from '@phalanx-engine/ecs';
 import type {
   FPQuaternion as FPQuaternionType,
   FPVector3 as FPVector3Type,
@@ -10,14 +11,14 @@ export type { ComponentTypeKey, IComponent } from './Component';
 export { TransformSoASchema } from '@phalanx-engine/physics';
 
 /** Copy of the shared transform scratch. Safe to keep. */
-export function copyFpPosition(entityId: number): FPVector3Type {
-  const value = readFpPosition(entityId);
+export function copyFpPosition(entity: Entity): FPVector3Type {
+  const value = readFpPosition(entity);
   return { x: value.x, y: value.y, z: value.z };
 }
 
 /** Copy of the shared rotation scratch. Safe to keep. */
-export function copyFpRotation(entityId: number): FPQuaternionType {
-  const value = readFpRotation(entityId);
+export function copyFpRotation(entity: Entity): FPQuaternionType {
+  const value = readFpRotation(entity);
   return { x: value.x, y: value.y, z: value.z, w: value.w };
 }
 export {

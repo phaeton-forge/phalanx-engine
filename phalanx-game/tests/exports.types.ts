@@ -36,7 +36,7 @@ export type {
   DebugSoAStoreSnapshot,
   DecodedSnapshot,
   DefineCommandsOptions,
-  DefineComponentOptions,
+  DefineSoaOptions,
   DefinedCommands,
   DefinedComponent,
   Digest,
@@ -122,7 +122,6 @@ export type {
   SnapshotRoundTripError,
   SoAArrayType,
   SoAArraysOf,
-  SoAComponent,
   SoAComponentStoreOptions,
   SoAFieldType,
   SoAFieldsOf,
@@ -269,7 +268,6 @@ export type {
   TransportCommand,
   TransportJoin,
   TransportKind,
-  WorldScope,
 } from '@phalanx-engine/game/advanced';
 
 export type {

@@ -116,13 +116,13 @@ export class MissileImpactCue extends Cue {
 
     if (!source.hasComponent(ComponentType.Transform)) return null;
 
-    const src = FPVector3.ToFloat(copyFpPosition(source.id));
+    const src = FPVector3.ToFloat(copyFpPosition(source));
     const target = entityManager.getEntity(event.targetEntityId);
     if (!target?.hasComponent(ComponentType.Transform)) {
       return new THREE.Vector3(src.x, src.y, src.z);
     }
 
-    const tgt = FPVector3.ToFloat(copyFpPosition(target.id));
+    const tgt = FPVector3.ToFloat(copyFpPosition(target));
 
     const physStore = entityManager.getOrCreateSoAStore(PhysicsSoASchema);
     const physIdx = physStore.indexOf(target.id);

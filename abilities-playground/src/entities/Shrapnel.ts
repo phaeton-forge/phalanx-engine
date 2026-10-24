@@ -79,8 +79,8 @@ export class ShrapnelEntity
 
   onSpawn(args: ShrapnelSpawnArgs): void {
     this._active = true;
-    writeFpPosition(this.id, args.fpPosition);
-    writeFpRotation(this.id, FPQuaternion.Identity());
+    writeFpPosition(this, args.fpPosition);
+    writeFpRotation(this, FPQuaternion.Identity());
 
     this.team.teamId = args.teamId;
     this.payload.sourceEntityId = args.sourceEntityId;
@@ -94,8 +94,8 @@ export class ShrapnelEntity
 
     // Fragments spawn with gravity on and velocity zeroed; the caller applies
     // the cone impulse via PhysicsWorld.applyImpulse3D right after spawn.
-    writeUseGravity(this.id, true);
-    stopVelocity(this.id);
+    writeUseGravity(this, true);
+    stopVelocity(this);
     attachInterpolation(this, args.fpPosition, FPQuaternion.Identity());
   }
 

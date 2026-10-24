@@ -28,17 +28,12 @@ export class SystemRegistry {
    */
   private frameSystems: GameSystem[] = [];
 
-  constructor(componentTypes?: symbol[]) {
+  constructor() {
     // Initialize EventBus first (no dependencies)
     this.eventBus = new EventBus();
 
     // Initialize EntityManager
     this.entityManager = new EntityManager();
-
-    // Register component types for efficient queries (if provided)
-    if (componentTypes) {
-      this.entityManager.registerComponentTypes(componentTypes);
-    }
 
     // Create SystemContext for systems
     this.context = new SystemContext(this.eventBus, this.entityManager);

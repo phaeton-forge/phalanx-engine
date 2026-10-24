@@ -1,7 +1,7 @@
 import {
   Entity,
   GameSystem,
-  SoAComponent,
+  type EntityManager,
   type IPoolableEntity,
 } from '@phalanx-engine/ecs';
 import type { GameWorld, IRandom } from '@phalanx-engine/ecs';
@@ -86,11 +86,9 @@ const abilitiesByManager = new WeakMap<
 >();
 
 class ArenaPawn extends Entity implements IPoolableEntity<void> {
-  public constructor(id: number) {
+  public constructor(id: number, manager: EntityManager) {
     super(id);
-    const manager = SoAComponent.currentEntityManager();
-    const abilities =
-      manager === null ? undefined : abilitiesByManager.get(manager);
+    const abilities = abilitiesByManager.get(manager);
     if (abilities === undefined) {
       throw new Error('arena: ability system is not ready');
     }
@@ -112,8 +110,8 @@ class ArenaPawn extends Entity implements IPoolableEntity<void> {
   }
 
   public onSpawn(_args: void): void {
-    writeFpPosition(this.id, SPAWN_POSITION);
-    setVelocity(this.id, MOVE_X, FP._0, FP._0);
+    writeFpPosition(this, SPAWN_POSITION);
+    setVelocity(this, MOVE_X, FP._0, FP._0);
   }
 
   public onDespawn(): void {}
@@ -152,7 +150,7 @@ export const ArenaGame = defineGame<ArenaConfig, ArenaCommand, ArenaSim>({
   pooling: {
     entityTypes: {
       pawn: {
-        factory: (id) => new ArenaPawn(id),
+        factory: (id, manager) => new ArenaPawn(id, manager),
         pool: { initialSize: 1 },
       },
     },
