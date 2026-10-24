@@ -1,7 +1,7 @@
 import { defineWorkspace } from 'vitest/config';
 
 /**
- * Worker sim tests share one fork and a longer timeout. The rest of the
+ * Worker sim and live-socket tests share one fork and a longer timeout. The rest of the
  * suite keeps Vitest's defaults so a hang is not hidden for 30s.
  */
 export default defineWorkspace([
@@ -9,7 +9,7 @@ export default defineWorkspace([
     extends: './vitest.config.ts',
     test: {
       name: 'server',
-      include: ['tests/server/**/*.test.ts'],
+      include: ['tests/server/**/*.test.ts', 'tests/net/**/*.test.ts'],
       testTimeout: 30_000,
       hookTimeout: 30_000,
       pool: 'forks',
@@ -25,7 +25,12 @@ export default defineWorkspace([
     test: {
       name: 'unit',
       include: ['tests/**/*.test.ts'],
-      exclude: ['tests/server/**', '**/node_modules/**', '**/dist/**'],
+      exclude: [
+        'tests/server/**',
+        'tests/net/**',
+        '**/node_modules/**',
+        '**/dist/**',
+      ],
     },
   },
 ]);
