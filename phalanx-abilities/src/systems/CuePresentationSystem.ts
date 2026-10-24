@@ -9,7 +9,7 @@ import type { Cue, CueConfig, CueContext } from '../cues/index.js';
  * its per-frame update via the GameWorld afterFrame hook, disposing it once it
  * reports completion.
  *
- * Registered as part of abilities.tickSystems (auto-appended by SystemRegistry)
+ * Registered as part of abilities.tickSystems (pass them to registerSystems)
  * but performs NO tick work — presentation runs only in afterFrame.
  */
 export class CuePresentationSystem extends GameSystem implements IAfterFrame {

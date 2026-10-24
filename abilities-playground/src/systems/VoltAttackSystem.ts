@@ -1,8 +1,9 @@
+import { Abilities } from '@phalanx-engine/abilities';
 import { GameSystem } from '@phalanx-engine/ecs';
 import type { SoAComponentStore, SystemContext } from '@phalanx-engine/ecs';
 import type { AbilitySystem } from '@phalanx-engine/abilities';
 import { FP } from '@phalanx-engine/math';
-import { PhysicsWorld, TransformSoASchema } from '@phalanx-engine/physics';
+import { Physics, TransformSoASchema } from '@phalanx-engine/physics';
 import { VOLT_COOLDOWN_TAG } from '../config/abilityDefinitions';
 import { UnitType } from '../units';
 import {
@@ -24,7 +25,7 @@ import {
  */
 export class VoltAttackSystem extends GameSystem {
   private get _abilities(): AbilitySystem {
-    return this.abilities as AbilitySystem;
+    return this.context.getService(Abilities);
   }
 
   private transformStore!: SoAComponentStore<
@@ -40,7 +41,7 @@ export class VoltAttackSystem extends GameSystem {
   public override processTick(): void {
     if (!this.getSimulationState()?.active) return;
 
-    const physics = this.physics as PhysicsWorld | undefined;
+    const physics = this.context.tryGetService(Physics);
     if (!physics) return;
 
     const volts = this.entityManager.queryEntities(

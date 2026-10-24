@@ -1,8 +1,13 @@
+import { Abilities } from '@phalanx-engine/abilities';
 import { GameSystem } from '@phalanx-engine/ecs';
 import type { SoAComponentStore, SystemContext } from '@phalanx-engine/ecs';
 import type { AbilitySystem } from '@phalanx-engine/abilities';
 import { FP } from '@phalanx-engine/math';
-import { PhysicsWorld, TransformSoASchema } from '@phalanx-engine/physics';
+import {
+  Physics,
+  PhysicsWorld,
+  TransformSoASchema,
+} from '@phalanx-engine/physics';
 import {
   ComponentType,
   HealAuraComponent,
@@ -29,7 +34,7 @@ const HEAL_AURA_ACTIVE_TAG = 'State.HealAura.Active';
  */
 export class HealingAuraSystem extends GameSystem {
   private get _abilities(): AbilitySystem {
-    return this.abilities as AbilitySystem;
+    return this.context.getService(Abilities);
   }
 
   private transformStore!: SoAComponentStore<
@@ -45,7 +50,7 @@ export class HealingAuraSystem extends GameSystem {
   public override processTick(): void {
     if (!this.getSimulationState()?.active) return;
 
-    const physics = this.physics as PhysicsWorld | undefined;
+    const physics = this.context.tryGetService(Physics);
     if (!physics) return;
 
     const auras = this.entityManager.queryEntities(

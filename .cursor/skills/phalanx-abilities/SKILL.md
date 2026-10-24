@@ -101,7 +101,9 @@ const abilities = createAbilitySystem(world, {
   },
 });
 
-world.registerSystems([...abilities.tickSystems], [], 'default');
+world.registerSystems([...abilities.tickSystems], []);
+// Systems reach the facade through the Abilities service:
+// this.context.getService(Abilities).applyEffect(target, 'Effect.Hit');
 ```
 
 ### 3. Equip entities

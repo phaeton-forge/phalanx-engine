@@ -2,8 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { Entity } from '../src/Entity';
 import { GameSystem } from '../src/GameSystem';
 import { GameWorld } from '../src/GameWorld';
-import type { IAbilitySystem } from '../src/IAbilitySystem';
-import type { IPhysicsWorld } from '../src/IPhysicsWorld';
+import { defineService } from '../src/services';
 import type { IRandom } from '../src/IRandom';
 import type { ITickFrameProvider } from '../src/ITickFrameProvider';
 import type { SystemContext } from '../src/SystemContext';
@@ -17,13 +16,19 @@ class CountingTickSystem extends GameSystem {
   }
 }
 
+interface FakePhysics {
+  readonly label: string;
+}
+
+const FakePhysicsKey = defineService<FakePhysics>('fakePhysics');
+
 class ProbeSystem extends GameSystem {
-  public physicsRef: IPhysicsWorld | undefined;
+  public physicsRef: FakePhysics | undefined;
   public poolsRef: unknown;
 
   public override init(context: SystemContext): void {
     super.init(context);
-    this.physicsRef = this.physics;
+    this.physicsRef = context.getService(FakePhysicsKey);
     this.poolsRef = this.pools;
   }
 }
@@ -61,15 +66,11 @@ describe('SystemContext shared services', () => {
     expect(world.pools).toBeNull();
   });
 
-  it('allows optional physics to be set before registerSystems', () => {
+  it('gives systems a service provided before registerSystems', () => {
     const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
-    const physics: IPhysicsWorld = {
-      getInterpolatedTransform: () => undefined,
-      getEntityPosition: () => undefined,
-      applyImpulse: () => {},
-    };
+    const physics: FakePhysics = { label: 'physics' };
 
-    world.context.physics = physics;
+    world.provide(FakePhysicsKey, physics);
     expect(world.saveSections).toEqual([]);
 
     const probe = new ProbeSystem();
@@ -144,24 +145,17 @@ describe('SystemContext shared services', () => {
     second.dispose();
   });
 
-  it('does not run ability tick systems twice when they are registered explicitly', () => {
+  it('runs only the tick systems passed to registerSystems', () => {
     const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
-    const abilityTick = new CountingTickSystem();
-    const abilities: IAbilitySystem = {
-      tickSystems: [abilityTick],
-      activateAbility: () => false,
-      applyEffect: () => {},
-      tryGetAttribute: () => undefined,
-      getAttribute: () => ({ base: 0, current: 0 }),
-      hasTag: () => false,
-      addTag: () => {},
-      removeTag: () => false,
-    };
-
-    world.context.abilities = abilities;
-    world.registerSystems([...abilities.tickSystems], []);
+    const listed = new CountingTickSystem();
+    const unlisted = new CountingTickSystem();
+    world.provide(defineService<{ tickSystems: GameSystem[] }>('abilities'), {
+      tickSystems: [unlisted],
+    });
+    world.registerSystems([listed], []);
 
     world.processAllTicks(1);
-    expect(abilityTick.tickCount).toBe(1);
+    expect(listed.tickCount).toBe(1);
+    expect(unlisted.tickCount).toBe(0);
   });
 });

@@ -1,4 +1,5 @@
 import { type EventBus, type GameWorld } from '@phalanx-engine/ecs';
+import { Physics } from './service.js';
 import { Interpolation } from './components/interpolation.js';
 import { ensureBroadphaseSection } from './save/broadphase.js';
 import { FP } from '@phalanx-engine/math';
@@ -75,7 +76,7 @@ export class PhysicsWorld {
   }
 
   /**
-   * Bind this facade to `world`. Sets `world.context.physics`,
+   * Bind this facade to `world`. Provides the {@link Physics} service,
    * registers transient `Interpolation`, and registers save section
    * `physics.broadphase` once. Calling again with the same world is a
    * no-op. A different world throws.
@@ -91,8 +92,10 @@ export class PhysicsWorld {
     }
     const first = this.attachedWorld === undefined;
     this.attachedWorld = world;
-    if (first) world.registerComponent(Interpolation);
-    world.context.physics = this;
+    if (first) {
+      world.registerComponent(Interpolation);
+      world.provide(Physics, this);
+    }
     ensureBroadphaseSection(world);
   }
 

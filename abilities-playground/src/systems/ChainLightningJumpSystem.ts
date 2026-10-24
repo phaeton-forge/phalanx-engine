@@ -1,4 +1,9 @@
-import { GameSystem, type Entity, type SystemContext } from '@phalanx-engine/ecs';
+import { Abilities } from '@phalanx-engine/abilities';
+import {
+  GameSystem,
+  type Entity,
+  type SystemContext,
+} from '@phalanx-engine/ecs';
 import type { AbilitySystem } from '@phalanx-engine/abilities';
 import { ComponentType, StatsComponent } from '../components';
 import {
@@ -22,7 +27,7 @@ interface PendingJump {
  */
 export class ChainLightningJumpSystem extends GameSystem {
   private get _abilities(): AbilitySystem {
-    return this.abilities as AbilitySystem;
+    return this.context.getService(Abilities);
   }
 
   private readonly pending: PendingJump[] = [];

@@ -89,6 +89,7 @@ const ROOT_NAMES = [
   'InterpolationSample',
   'InterpolationSystem',
   'NarrowPhase',
+  'Physics',
   'PhysicsBody',
   'PhysicsBodyConfig',
   'PhysicsConfig',
@@ -143,6 +144,7 @@ const ROOT_VALUES = [
   'Interpolation',
   'InterpolationSystem',
   'NarrowPhase',
+  'Physics',
   'PhysicsBody',
   'PhysicsEvents',
   'PhysicsSoASchema',
@@ -219,10 +221,10 @@ describe('@phalanx-engine/physics exports', () => {
     expect(declaration).not.toContain('PHYSICS_SAVE_ATTACH');
     expect(
       resolved.map((entry) => actual.get(entry.file)?.names.length)
-    ).toEqual([60]);
+    ).toEqual([61]);
     expect(
       resolved.map((entry) => actual.get(entry.file)?.values.length)
-    ).toEqual([46]);
+    ).toEqual([47]);
   });
 
   it('matches the checked-in name snapshot, types included', () => {
@@ -232,10 +234,10 @@ describe('@phalanx-engine/physics exports', () => {
     }
     expect(
       resolved.map((entry) => actual.get(entry.file)?.names.length)
-    ).toEqual([60]);
+    ).toEqual([61]);
     expect(
       resolved.map((entry) => actual.get(entry.file)?.values.length)
-    ).toEqual([46]);
+    ).toEqual([47]);
   });
 
   it('loads each entry by package name', async () => {

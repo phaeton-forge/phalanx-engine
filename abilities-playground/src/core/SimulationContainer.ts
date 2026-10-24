@@ -254,6 +254,7 @@ export class SimulationContainer {
         new DeathSystem(),
         new CubeTargetingSystem(),
         new ProjectileDespawnQueueSystem(),
+        ...this.abilities.tickSystems,
       ],
       // ShrapnelSpinSystem is cosmetic-only (rotates the shard mesh inside the
       // MeshComponent root) and must run after RenderSyncSystem has positioned

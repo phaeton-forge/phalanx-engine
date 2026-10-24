@@ -97,7 +97,7 @@ world.start({
 
 ### 2. Wire Optional Services on SystemContext
 
-Set `abilities` and/or `physics` on `world.context` **before** `registerSystems()`:
+Provide services **before** `registerSystems()`. Physics and abilities do it for you:
 
 ```typescript
 import { PhysicsWorld } from '@phalanx-engine/physics';
@@ -107,19 +107,37 @@ const physicsWorld = new PhysicsWorld({ tickRate: 20 });
 physicsWorld.attach(world);
 
 const abilities = createAbilitySystem(world, { definitions: combatDefs });
-// createAbilitySystem sets world.context.abilities internally
+// provides the Abilities service; pass abilities.tickSystems to registerSystems
 ```
 
-Systems access these via protected getters on `GameSystem`:
+Systems read services by key (`Physics` from physics, `Abilities` from
+abilities, or your own `defineService<T>(name)` + `world.provide(key, impl)`):
 
 ```typescript
 class RenderSystem extends GameSystem {
   update(_dt: number): void {
-    const sample = this.physics?.getInterpolatedTransform(entityId);
-    const health = this.abilities?.tryGetAttribute(entityId, 'Health');
+    const sample = this.context
+      .tryGetService(Physics)
+      ?.getInterpolatedTransform(entityId);
+    const health = this.context
+      .getService(Abilities)
+      .tryGetAttribute(entityId, 'Health');
   }
 }
 ```
+
+`provide` throws on a repeated key and on a second key with a taken name
+(two copies of a package). `getService` throws with the missing name and the
+provided names. Services talk through the world event bus; direct calls go
+through `getService`.
+
+Query typed components with `world.query(A, B)` / `world.queryAny(A, B)`:
+rows are `[entity, ...slots]` ascending by id; a SoA slot is the row index,
+an object/transient slot is the value (`undefined` when absent in
+`queryAny`). The id list is snapshotted at loop start; removed entities or
+ones that lost a component are skipped, entities created in the loop are
+not visited. The row array is reused. A row index is valid only until the
+next add/remove in that store (swap-and-pop).
 
 ### 3. Create a Component Type Registry
 
@@ -542,12 +560,14 @@ world.registerSystems(
 
 #### Accessing Other Systems
 
-Use `context.getSystem()` or the convenience getters `this.physics`, `this.abilities`, `this.pools`:
+Use `context.getSystem()`, `context.getService(key)` or the `this.pools` getter:
 
 ```typescript
 // In any system
 const movementSystem = this.context.getSystem(MovementSystem);
-const sample = this.physics?.getInterpolatedTransform(entityId);
+const sample = this.context
+  .tryGetService(Physics)
+  ?.getInterpolatedTransform(entityId);
 ```
 
 #### EventBus vs Direct System Calls
@@ -639,7 +659,7 @@ class PhysicsSystem extends GameSystem {
 2. **Use `entityIds()`** for deterministic iteration (sorted by entity ID — required for lockstep)
 3. **Cross-store lookup** via `indexOf(entityId)` when correlating two stores (one `Map.get()` per entity vs the facade's `Map.get()` per field access)
 4. **Single-store loops** are the ideal case — zero cross-store overhead
-5. **Sync visual positions** via `InterpolationSystem` + `this.physics.getInterpolatedTransform()` for rendering. Do not keep a display-float cache on `Transform`.
+5. **Sync visual positions** via `InterpolationSystem` + `context.getService(Physics).getInterpolatedTransform()` for rendering. Do not keep a display-float cache on `Transform`.
 
 ### 7. EventBus — Decoupled Communication
 
@@ -1008,9 +1028,9 @@ import type {
 import type { IBeforeTick, IAfterTick, IBeforeFrame, IAfterFrame } from '@phalanx-engine/ecs';
 import { isBeforeTick, isAfterTick, isBeforeFrame, isAfterFrame } from '@phalanx-engine/ecs';
 
-// Ability / physics contracts (implemented by sibling packages)
-import type { IAbilitySystem } from '@phalanx-engine/ecs';
-import type { IPhysicsWorld } from '@phalanx-engine/ecs';
+// Services and typed query
+import { defineService } from '@phalanx-engine/ecs';
+import type { ServiceKey, QueryComponent, QueryRow, QueryAnyRow } from '@phalanx-engine/ecs';
 
 // Tick/Frame management
 import { TickFrameManager } from '@phalanx-engine/ecs';

@@ -1,4 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { Abilities } from '@phalanx-engine/abilities';
+import { Physics } from '@phalanx-engine/physics';
 import * as THREE from 'three';
 import {
   Entity,
@@ -6,7 +8,6 @@ import {
   EventBus,
   SystemContext,
 } from '@phalanx-engine/ecs';
-import type { IPhysicsWorld } from '@phalanx-engine/ecs';
 import { attachInterpolation, Interpolation } from '@phalanx-engine/physics';
 import {
   ComponentType,
@@ -48,7 +49,7 @@ describe('RenderSyncSystem', () => {
       position: { x: 1, y: 2, z: 3 },
       rotation: { x: 0.1, y: 0.2, z: 0.3, w: 0.9 },
     }));
-    context.physics = { getInterpolatedTransform } as unknown as IPhysicsWorld;
+    context.provide(Physics, { getInterpolatedTransform } as never);
 
     system.update(0.016);
 
@@ -92,12 +93,12 @@ describe('RenderSyncSystem', () => {
       entityManager.onComponentAdded(entity, type);
     }
 
-    context.physics = {
+    context.provide(Physics, {
       getInterpolatedTransform: () => undefined,
-    } as unknown as IPhysicsWorld;
-    context.abilities = {
+    } as never);
+    context.provide(Abilities, {
       tryGetAttribute: () => undefined,
-    } as unknown as SystemContext['abilities'];
+    } as never);
 
     const flat = new THREE.Quaternion().setFromAxisAngle(
       new THREE.Vector3(1, 0, 0),
@@ -140,9 +141,9 @@ describe('RenderSyncSystem', () => {
     entityManager.onComponentAdded(entity, ComponentType.Mesh);
     entityManager.onComponentAdded(entity, Interpolation.type);
 
-    context.physics = {
+    context.provide(Physics, {
       getInterpolatedTransform: () => undefined,
-    } as unknown as IPhysicsWorld;
+    } as never);
 
     system.update(0.016);
 

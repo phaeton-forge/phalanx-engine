@@ -58,23 +58,7 @@ export class SystemRegistry {
       this.context.registerSystem(system);
     }
 
-    // Implicitly append ability tick systems if present in context.
-    // Skip systems already passed explicitly to avoid running them twice per tick.
-    if (this.context.abilities) {
-      for (const system of this.context.abilities.tickSystems) {
-        if (this.tickSystems.includes(system)) {
-          continue;
-        }
-        this.tickSystems.push(system);
-        this.context.registerSystem(system);
-      }
-    }
-
-    // Initialize all systems (call init() on each).
-    // Iterate tickSystems directly so ability tick systems appended above
-    // are included alongside the original allSystems.
-    const toInit = new Set([...this.tickSystems, ...this.frameSystems]);
-    for (const system of toInit) {
+    for (const system of allSystems) {
       system.init(this.context);
     }
   }

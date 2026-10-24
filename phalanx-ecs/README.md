@@ -27,9 +27,9 @@ A lightweight, renderer-agnostic Entity-Component-System (ECS) library with opti
 
 ### System Architecture
 
-- **GameSystem**: Base class for all game systems (convenience accessors for `eventBus`, `entityManager`, `abilities`, `physics`, `pools`)
+- **GameSystem**: Base class for all game systems (convenience accessors for `eventBus`, `entityManager`, `pools`, `random`, `world`)
 - **SystemRegistry**: Low-level system lifecycle and execution order (used internally by GameWorld)
-- **SystemContext**: Dependency injection container (`eventBus`, `entityManager`, optional `abilities` / `physics`, `pools`)
+- **SystemContext**: Dependency injection container (`eventBus`, `entityManager`, `pools`, services via `provide` / `getService` / `tryGetService`)
 - **ISystemLifecycleHooks**: Optional `IBeforeTick`, `IAfterTick`, `IBeforeFrame`, `IAfterFrame` interfaces — GameWorld invokes them automatically
 
 ### Event System
@@ -232,48 +232,75 @@ class EntityManager {
 class SystemContext {
   readonly eventBus: EventBus;
   readonly entityManager: EntityManager;
-  abilities: IAbilitySystem | undefined; // set by createAbilitySystem() before registerSystems()
-  physics: IPhysicsWorld | undefined; // set by game bootstrap before registerSystems()
   pools: PoolManager | null; // wired automatically when pooling is configured
 
+  provide<T>(key: ServiceKey<T>, impl: T): void; // same as world.provide
+  getService<T>(key: ServiceKey<T>): T; // throws, listing provided names
+  tryGetService<T>(key: ServiceKey<T>): T | undefined;
+  serviceNames(): readonly string[];
   getSystem<T extends GameSystem>(
     systemClass: new (...args: any[]) => T
   ): T | undefined;
 }
 ```
 
-Set optional services on `world.context` before calling `registerSystems()`:
+### Services
+
+A service is a per-world object found by a typed key. Keys compare by
+reference; the name is for error messages.
 
 ```typescript
-import { PhysicsWorld } from '@phalanx-engine/physics';
+import { defineService } from '@phalanx-engine/ecs';
 
-const physicsWorld = new PhysicsWorld({ tickRate: 20 });
-physicsWorld.attach(world);
+export const Clock = defineService<ClockService>('clock'); // module scope
+world.provide(Clock, new ClockService()); // before registerSystems()
 
-// Systems access it via the protected getter:
-class RenderSystem extends GameSystem {
-  update(_dt: number): void {
-    const sample = this.physics?.getInterpolatedTransform(entityId);
+class MySystem extends GameSystem {
+  processTick(): void {
+    const clock = this.context.getService(Clock);
   }
 }
 ```
 
-### IPhysicsWorld (optional contract)
+`world.provide` throws on a second provide of the same key, and on a
+different key with a name that is already taken (usually two copies of one
+package in the bundle). `getService` throws with the missing name and the
+provided ones. Services talk to each other through the world event bus;
+direct calls go through `getService`.
 
-Implemented by `PhysicsWorld` from phalanx-physics. Keeps phalanx-ecs dependency-free via `unknown` for fixed-point types.
+`PhysicsWorld.attach(world)` provides `Physics` (`@phalanx-engine/physics`).
+`createAbilitySystem(world, ...)` provides `Abilities`
+(`@phalanx-engine/abilities`). Ability tick systems are not appended by
+`registerSystems`; pass `abilities.tickSystems` yourself.
+
+### Query
 
 ```typescript
-interface IPhysicsWorld {
-  getInterpolatedTransform(entityId: number):
-    | {
-        position: { x: number; y: number; z: number };
-        rotation: { x: number; y: number; z: number; w: number };
-      }
-    | undefined;
-  getEntityPosition(entityId: number): { x: unknown; z: unknown } | undefined;
-  applyImpulse(entityId: number, vx: unknown, vz: unknown): void;
+for (const [entity, hpRow, tag] of world.query(Hp, Tag)) {
+  hp[hpRow] -= 1; // SoA slot: row index into store.arrays
+  tag.label; // object or transient slot: the stored value
+}
+for (const [entity, hpRow, tag] of world.queryAny(Hp, Tag)) {
+  // absent components are undefined
 }
 ```
+
+- Entities come ascending by id.
+- The id list is taken when the loop starts. An entity removed, or one that
+  lost a queried component, before its turn is skipped. Entities created
+  during the loop are not visited in this pass.
+- The row array is reused between steps. Do not keep it.
+- A SoA row index is valid until the next add or remove in that store.
+  Removal swaps the last row into the hole, so read the index inside the
+  step that produced it.
+- Reading a transient component during a tick throws.
+- An empty component list throws.
+- Pass `defineComponent` results directly. A component widened to
+  `QueryComponent` types its slot as `number | object`.
+- A SoA component attached without a store row throws (store desync).
+
+`EntityManager.queryEntities(...symbols)` stays for code not yet on
+`defineComponent`.
 
 ### System Lifecycle Hooks
 
@@ -647,10 +674,10 @@ class MySystem extends GameSystem {
   init(context: SystemContext): void {
     super.init(context);
 
-    // Optional: resolve other systems or optional services
+    // Optional: resolve other systems or services
     const movement = context.getSystem(MovementSystem);
-    const physics = this.physics; // IPhysicsWorld | undefined
-    const abilities = this.abilities; // IAbilitySystem | undefined
+    const physics = context.tryGetService(Physics); // PhysicsWorld | undefined
+    const abilities = context.tryGetService(Abilities); // AbilitySystem | undefined
 
     // Subscribe to events
     this.subscribe('MY_EVENT', (data) => {

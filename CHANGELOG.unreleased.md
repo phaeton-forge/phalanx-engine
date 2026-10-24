@@ -905,3 +905,47 @@ Entries collected per package until the synchronized 0.3.0 release
 - A SoA `onCreate` hook on a row attached before adoption runs once the row
   is in a store.
 - Goldens unchanged.
+
+## A6c — services and query (ecs, physics, abilities, runtime, game)
+
+- New in ecs: `defineService<T>(name)`, `ServiceKey<T>`,
+  `world.provide(key, impl)` and the public `SystemContext.provide(key, impl)`
+  (same registry), `context.getService(key)`,
+  `context.tryGetService(key)` and `context.serviceNames()`. Keys compare by
+  reference. Errors:
+  `provide: service 'x' is already provided`;
+  `provide: another service key named 'x' is already provided; the bundle probably contains two copies of the package that defines it`;
+  `getService: service 'x' is not provided; provided: a, b` (or `(none)`).
+- New in ecs: `world.query(A, B, ...)` and `world.queryAny(A, B, ...)` with
+  types `QueryComponent`, `QueryRow`, `QueryAnyRow`. Rows are
+  `[entity, ...slots]` ascending by id; a SoA slot is the store row index,
+  an object or transient slot is the value (`undefined` when absent in
+  `queryAny`). The id list is taken at loop start; removed entities and
+  entities that lost a component are skipped, entities created during the
+  loop are not visited. The row array is reused. A row index is valid until
+  the next add or remove in its store. Reading a transient component during
+  a tick throws. An empty component list throws
+  (`world.query: pass at least one component`). A SoA component attached
+  without a store row throws (out of sync with its store). A widened
+  `QueryComponent` types its slot as `number | object`.
+- Removed `SystemContext.physics`, `SystemContext.abilities`, the
+  `GameSystem.physics` / `GameSystem.abilities` getters, and the types
+  `IPhysicsWorld` and `IAbilitySystem` (ecs and game).
+- `registerSystems` no longer appends `context.abilities.tickSystems`.
+  Pass `abilities.tickSystems` explicitly (the playground now does, at the
+  same position).
+- physics: new export `Physics = defineService<PhysicsWorld>('physics')`.
+  `PhysicsWorld.attach` provides it instead of assigning `context.physics`.
+- abilities: new export `Abilities = defineService<AbilitySystem>('abilities')`.
+  `createAbilitySystem` provides it. `AbilitySystem` no longer extends
+  `IAbilitySystem`.
+- runtime: `saveWorld` checks for a provided `physics` service without the
+  `physics.broadphase` section. The message is now
+  `save: physics service is provided but save section 'physics.broadphase' is not registered; call PhysicsWorld.attach(world)`.
+- Export snapshots: ecs names 71 → 74, values 25 → 26; physics 60 → 61,
+  46 → 47; abilities 87 → 88, 38 → 39; game `[183, 9, 60, 87, 19, 3]` →
+  `[186, 9, 61, 88, 19, 3]`.
+- Not in this step: the `symbol[]` query (`EntityManager.queryEntities`)
+  stays on the root export. ecs has no `/advanced` subpath yet, and the
+  physics and abilities systems move to `world.query` in A7 and A8.
+- Goldens unchanged.

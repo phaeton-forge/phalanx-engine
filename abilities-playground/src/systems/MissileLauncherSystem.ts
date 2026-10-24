@@ -1,8 +1,9 @@
+import { Abilities } from '@phalanx-engine/abilities';
 import { GameSystem } from '@phalanx-engine/ecs';
 import type { SoAComponentStore, SystemContext } from '@phalanx-engine/ecs';
 import type { AbilitySystem } from '@phalanx-engine/abilities';
 import { FP } from '@phalanx-engine/math';
-import { PhysicsWorld, TransformSoASchema } from '@phalanx-engine/physics';
+import { Physics, TransformSoASchema } from '@phalanx-engine/physics';
 import { MISSILE_VOLLEY_COOLDOWN_TAG } from '../config/abilityDefinitions';
 import { UnitType } from '../units';
 import {
@@ -32,7 +33,7 @@ import {
  */
 export class MissileLauncherSystem extends GameSystem {
   private get _abilities(): AbilitySystem {
-    return this.abilities as AbilitySystem;
+    return this.context.getService(Abilities);
   }
 
   private transformStore!: SoAComponentStore<
@@ -47,7 +48,7 @@ export class MissileLauncherSystem extends GameSystem {
 
   public override processTick(): void {
     if (!this.getSimulationState()?.active) return;
-    const physics = this.physics as PhysicsWorld | undefined;
+    const physics = this.context.tryGetService(Physics);
     if (!physics) return;
 
     const rockets = this.entityManager.queryEntities(
@@ -65,7 +66,8 @@ export class MissileLauncherSystem extends GameSystem {
       const type = rocket.getComponent<UnitTypeComponent>(
         ComponentType.UnitType
       );
-      if (!stats?.alive || !team || !type || type.kind !== UnitType.Rocket) continue;
+      if (!stats?.alive || !team || !type || type.kind !== UnitType.Rocket)
+        continue;
 
       // Cooldown is owned by the ability system; skip while the cooldown tag
       // is present so we neither enqueue nor re-check targets uselessly.

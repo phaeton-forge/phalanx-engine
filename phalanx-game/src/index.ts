@@ -34,8 +34,13 @@ export {
   isAfterTick,
   isBeforeFrame,
   isAfterFrame,
+  defineService,
 } from '@phalanx-engine/ecs';
 export type {
+  ServiceKey,
+  QueryComponent,
+  QueryRow,
+  QueryAnyRow,
   GameWorldConfig,
   GameWorldHooks,
   Component,
@@ -61,8 +66,6 @@ export type {
   IAfterTick,
   IBeforeFrame,
   IAfterFrame,
-  IAbilitySystem,
-  IPhysicsWorld,
   IRandom,
   ITickFrameProvider,
   TickHandler,

@@ -1,10 +1,11 @@
 import { GameSystem } from '@phalanx-engine/ecs';
 import type { AbilitySystem } from '@phalanx-engine/abilities';
 import {
+  Abilities,
   gameplayCueKey,
   type GameplayCueDispatchedEvent,
 } from '@phalanx-engine/abilities';
-import { PhysicsWorld } from '@phalanx-engine/physics';
+import { Physics, PhysicsWorld } from '@phalanx-engine/physics';
 import { FP, type FixedPoint } from '@phalanx-engine/math';
 import {
   ComponentType,
@@ -80,11 +81,11 @@ export function computeGroundLanding(
  */
 export class ShrapnelLandingSystem extends GameSystem {
   private get _abilities(): AbilitySystem | undefined {
-    return this.abilities as AbilitySystem | undefined;
+    return this.context.tryGetService(Abilities);
   }
 
   public override processTick(tick: number): void {
-    const physics = this.physics as PhysicsWorld | undefined;
+    const physics = this.context.tryGetService(Physics);
     if (!physics) return;
 
     const fragments = this.entityManager.queryEntities(

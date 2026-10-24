@@ -18,6 +18,8 @@ import {
   type TransientComponentDef,
 } from './defineComponent.js';
 import type { SoAFieldsOf, SoASchemaDefinition } from './SoASchema.js';
+import type { QueryAnyRow, QueryComponent, QueryRow } from './query.js';
+import type { ServiceKey } from './services.js';
 import type { StateReader, StateWriter } from './state/StateIO.js';
 import { compareSaveSectionKeys, type SaveSection } from './state/sections.js';
 import {
@@ -673,6 +675,103 @@ export class GameWorld {
       return this.detach(entity, component.type) || hadRow;
     }
     return this.detach(entity, component.type);
+  }
+
+  /**
+   * Provide `impl` under `key` for this world. Systems read it with
+   * `context.getService(key)`. Throws when `key` is already provided, or
+   * when another key with the same name is (two copies of one package).
+   */
+  public provide<T>(key: ServiceKey<T>, impl: T): void {
+    this.context.provide(key, impl);
+  }
+
+  /**
+   * Entities that have every component, ascending by id, as
+   * `[entity, ...slots]`. A SoA slot is the row index in that component's
+   * store; an object or transient slot is the stored value.
+   *
+   * The id list is taken when the loop starts. An entity removed, or one
+   * that lost a component, before its turn is skipped. Entities created
+   * during the loop are not visited in this pass. The row array is reused
+   * between steps; do not keep it. A row index is valid until the next add
+   * or remove in that store (removal swaps the last row into the hole), so
+   * read it inside the step. Reading a transient component during a tick
+   * throws, and so does an empty component list.
+   */
+  public query<const Cs extends readonly QueryComponent[]>(
+    ...components: Cs
+  ): Iterable<QueryRow<Cs>> {
+    return this.queryRows(components, true) as Iterable<QueryRow<Cs>>;
+  }
+
+  /**
+   * Entities that have at least one of the components, ascending by id.
+   * An absent component is `undefined`. Same iteration rules as
+   * {@link query}.
+   */
+  public queryAny<const Cs extends readonly QueryComponent[]>(
+    ...components: Cs
+  ): Iterable<QueryAnyRow<Cs>> {
+    return this.queryRows(components, false) as Iterable<QueryAnyRow<Cs>>;
+  }
+
+  private *queryRows(
+    components: readonly QueryComponent[],
+    requireAll: boolean
+  ): Generator<unknown[]> {
+    const label = requireAll ? 'world.query' : 'world.queryAny';
+    if (components.length === 0) {
+      throw new Error(`${label}: pass at least one component`);
+    }
+    for (const component of components) {
+      this.assertRegistered(component, label);
+      if (componentKind(component) === 'transient' && this._tickDepth > 0) {
+        throw new Error(
+          `tick system must not branch on transient component '${component.name}'`
+        );
+      }
+    }
+    const types = components.map((component) => component.type);
+    const manager = this.entityManager;
+    const ids = (
+      requireAll
+        ? manager.queryEntities(...types)
+        : manager.queryEntitiesAny(...types)
+    ).map((entity) => entity.id);
+    const row: unknown[] = new Array<unknown>(components.length + 1);
+    for (const id of ids) {
+      const entity = manager.getEntity(id);
+      if (entity === undefined || entity.isDestroyed) continue;
+      let present = 0;
+      for (let i = 0; i < components.length; i++) {
+        const slot = this.querySlot(entity, components[i]);
+        if (slot !== undefined) present++;
+        row[i + 1] = slot;
+      }
+      if (present === 0 || (requireAll && present < components.length)) {
+        continue;
+      }
+      row[0] = entity;
+      yield row;
+    }
+  }
+
+  private querySlot(entity: Entity, component: QueryComponent): unknown {
+    if (!entity._componentAttached(component.type)) return undefined;
+    if (componentKind(component) === 'soa') {
+      const store = this.entityManager.getSoAStore(
+        (component as SoaComponentDef).schema
+      );
+      const index = store?.indexOf(entity.id) ?? -1;
+      if (index === -1) {
+        throw new Error(
+          `world.query: entity ${String(entity.id)} component '${component.name}' is out of sync with its store`
+        );
+      }
+      return index;
+    }
+    return this.readValue(entity, component.type);
   }
 
   /**

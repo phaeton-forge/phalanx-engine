@@ -83,13 +83,11 @@ const ROOT_NAMES: readonly string[] = [
   'GameWorldEvents',
   'GameWorldHooks',
   'HumanSlotConfig',
-  'IAbilitySystem',
   'IAfterFrame',
   'IAfterTick',
   'IBeforeFrame',
   'IBeforeTick',
   'IComponent',
-  'IPhysicsWorld',
   'IPoolable',
   'IPoolableEntity',
   'IRandom',
@@ -126,6 +124,9 @@ const ROOT_NAMES: readonly string[] = [
   'PoolConfig',
   'PoolStats',
   'PoolingConfig',
+  'QueryAnyRow',
+  'QueryComponent',
+  'QueryRow',
   'REPLAY_FORMAT',
   'ReplayPlayer',
   'ReplayRecord',
@@ -137,6 +138,7 @@ const ROOT_NAMES: readonly string[] = [
   'RunnerStatus',
   'SNAPSHOT_MAGIC',
   'SYSTEM_PLAYER_ID',
+  'ServiceKey',
   'SimMode',
   'SimOf',
   'SimWorld',
@@ -181,6 +183,7 @@ const ROOT_NAMES: readonly string[] = [
   'defineCommands',
   'defineComponent',
   'defineGame',
+  'defineService',
   'defineSoASchema',
   'despawn',
   'digestBytes',
@@ -229,6 +232,7 @@ const PHYSICS_NAMES: readonly string[] = [
   'InterpolationSample',
   'InterpolationSystem',
   'NarrowPhase',
+  'Physics',
   'PhysicsBody',
   'PhysicsBodyConfig',
   'PhysicsConfig',
@@ -278,6 +282,7 @@ const PHYSICS_NAMES: readonly string[] = [
 
 const ABILITIES_NAMES: readonly string[] = [
   'ABILITY_ACTIVATED_EVENT',
+  'Abilities',
   'AbilityActivatedEvent',
   'AbilityActivationContext',
   'AbilityActivationRequest',
@@ -523,7 +528,7 @@ describe('@phalanx-engine/game subpath exports', () => {
     }
     expect(
       resolved.map((entry) => actual.get(entry.file)?.names.length)
-    ).toEqual([183, 9, 60, 87, 19, 3]);
+    ).toEqual([186, 9, 61, 88, 19, 3]);
   });
 
   it('keeps the name sets pairwise disjoint', () => {

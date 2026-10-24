@@ -59,6 +59,7 @@ export type { InterpolatedTransformSample } from './systems/index.js';
 
 // Facade
 export { PhysicsWorld } from './PhysicsWorld.js';
+export { Physics } from './service.js';
 
 // Config & Types
 export type { PhysicsWorldConfig } from './PhysicsWorldConfig.js';

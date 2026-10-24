@@ -1,9 +1,9 @@
+import { Physics } from '@phalanx-engine/physics';
 import type {
   AbilityActivationContext,
   AbilitySystem,
 } from '@phalanx-engine/abilities';
 import type { GameWorld } from '@phalanx-engine/ecs';
-import { PhysicsWorld } from '@phalanx-engine/physics';
 import {
   CHAIN_LIGHTNING_JUMP_DELAY_TICKS,
   CHAIN_LIGHTNING_JUMP_RADIUS,
@@ -37,7 +37,7 @@ export const voltChainLightning = (
   );
   if (!unitType) return;
 
-  const physics = world.context.physics as PhysicsWorld | undefined;
+  const physics = world.context.tryGetService(Physics);
   if (!physics) return;
 
   const chain = resolveChainLightning(
