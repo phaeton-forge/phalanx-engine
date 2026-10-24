@@ -1,8 +1,10 @@
 // @vitest-environment happy-dom
+import { manualTickProvider } from '../../support/manualTickProvider.js';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   Entity,
   EntityManager,
+  GameWorld,
   PoolManager,
   defineSoASchema,
   type IComponent,
@@ -62,11 +64,13 @@ function createProvider(
 
 describe('DebugPanel', () => {
   let em: EntityManager;
+  let world: GameWorld;
   let provider: DebugDataProvider;
   let panel: DebugPanel;
 
   beforeEach(() => {
-    em = new EntityManager();
+    world = new GameWorld({ tickFrameProvider: manualTickProvider() });
+    em = world.entityManager;
     provider = createProvider(em);
   });
 
@@ -182,7 +186,7 @@ describe('DebugPanel', () => {
     });
 
     it('renders pool stats table', () => {
-      const pools = new PoolManager(em);
+      const pools = new PoolManager(world);
       pools.registerEntityType('projectile', {
         factory: (id) => new PoolableEntity(id),
         pool: { initialSize: 5 },

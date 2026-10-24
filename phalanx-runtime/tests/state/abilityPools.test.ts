@@ -8,6 +8,7 @@ import {
 } from '@phalanx-engine/ecs';
 import { FP } from '@phalanx-engine/math';
 import {
+  AbilityOwner,
   abilityOwnerOf,
   type AbilitySystem,
   ActiveEffects,
@@ -300,15 +301,13 @@ describe('pooled ability save sections', () => {
 });
 
 class SilentMinion extends Entity implements IPoolableEntity<void> {
-  public constructor(id: number, abilities: AbilitySystem) {
+  public constructor(id: number, world: GameWorld) {
     super(id);
-    this.addComponent(
-      abilities.initComponent({
-        abilities: ['Ability.Burn'],
-        tags: ['Team.Silent'],
-        attributes: { Health: FP.FromInt(100) },
-      })
-    );
+    world.addComponent(this, AbilityOwner, {
+      abilities: ['Ability.Burn'],
+      tags: ['Team.Silent'],
+      attributes: { Health: FP.FromInt(100) },
+    });
   }
 
   public onSpawn(_args: void): void {}
@@ -326,51 +325,43 @@ class PooledMinion
   extends Entity
   implements IPoolableEntity<{ health: number }>
 {
-  public constructor(id: number, abilities: AbilitySystem) {
+  public constructor(id: number, world: GameWorld) {
     super(id);
-    this.addComponent(
-      abilities.initComponent({
-        abilities: ['Ability.Burn', 'Ability.Strike'],
-        attributes: {
-          Health: FP.FromInt(100),
-          Armor: FP.FromInt(10),
-        },
-        tags: ['Team.Red'],
-        effects: ['Effect.Shield'],
-      })
-    );
+    world.addComponent(this, AbilityOwner, {
+      abilities: ['Ability.Burn', 'Ability.Strike'],
+      attributes: {
+        Health: FP.FromInt(100),
+        Armor: FP.FromInt(10),
+      },
+      tags: ['Team.Red'],
+      effects: ['Effect.Shield'],
+    });
   }
 
   public onSpawn(args: { health: number }): void {
-    const component = abilityOwnerOf(this);
-    if (component === undefined) {
+    const attributes = attributesOf(this);
+    const tags = gameplayTagsOf(this);
+    if (attributes === undefined || tags === undefined) {
       throw new Error('missing ability component');
     }
     const raw = FP.ToRaw(FP.FromInt(args.health));
-    component.attributes.base[0] = raw;
-    component.attributes.current[0] = raw;
-    component.attributes.dirty[0] = 1;
-    component.tags.tags.add('Team.Red');
-    component.tags.adHocTags.add('Team.Red');
+    attributes.base[0] = raw;
+    attributes.current[0] = raw;
+    attributes.dirty[0] = 1;
+    tags.tags.add('Team.Red');
+    tags.adHocTags.add('Team.Red');
   }
 
   public onDespawn(): void {}
 }
 
 function silentPoolWorld(): { world: GameWorld; abilities: AbilitySystem } {
-  const holder: { abilities?: AbilitySystem } = {};
   const world = new GameWorld({
     tickFrameProvider: manualTickProvider(),
     pooling: {
       entityTypes: {
         silent: {
-          factory: (id) => {
-            const abilities = holder.abilities;
-            if (abilities === undefined) {
-              throw new Error('ability system is not ready');
-            }
-            return new SilentMinion(id, abilities);
-          },
+          factory: (id, owner) => new SilentMinion(id, owner),
         },
       },
     },
@@ -379,7 +370,6 @@ function silentPoolWorld(): { world: GameWorld; abilities: AbilitySystem } {
     definitions,
     pipeline: 'full',
   });
-  holder.abilities = abilities;
   world.registerSystems([...abilities.tickSystems], []);
   return { world, abilities };
 }
@@ -404,19 +394,12 @@ function barePoolWorld(): { world: GameWorld; abilities: AbilitySystem } {
 }
 
 function pooledGasWorld(): { world: GameWorld; abilities: AbilitySystem } {
-  const holder: { abilities?: AbilitySystem } = {};
   const world = new GameWorld({
     tickFrameProvider: manualTickProvider(),
     pooling: {
       entityTypes: {
         minion: {
-          factory: (id) => {
-            const abilities = holder.abilities;
-            if (abilities === undefined) {
-              throw new Error('ability system is not ready');
-            }
-            return new PooledMinion(id, abilities);
-          },
+          factory: (id, owner) => new PooledMinion(id, owner),
         },
       },
     },
@@ -425,7 +408,6 @@ function pooledGasWorld(): { world: GameWorld; abilities: AbilitySystem } {
     definitions,
     pipeline: 'full',
   });
-  holder.abilities = abilities;
   world.registerSystems([...abilities.tickSystems], []);
   return { world, abilities };
 }

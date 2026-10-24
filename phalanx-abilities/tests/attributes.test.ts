@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { GameWorld } from '@phalanx-engine/ecs';
 import { FP } from '@phalanx-engine/math';
 import {
-  abilityOwnerOf,
+  activeEffectsOf,
+  attributesOf,
   createAbilitySystem,
   defineAbilitySystem,
   defineAttribute,
@@ -15,6 +16,7 @@ import {
   addEntity,
   createTestWorld,
   spawnEntity,
+  gasOf,
 } from './helpers';
 
 describe('attributes and aggregation', () => {
@@ -25,7 +27,7 @@ describe('attributes and aggregation', () => {
     });
     const entity = spawnEntity(world, abilities);
 
-    const attributes = abilityOwnerOf(entity)!.attributes;
+    const attributes = attributesOf(entity)!;
 
     expect(attributes.base.length).toBe(2);
     expect(attributes.current.length).toBe(2);
@@ -146,7 +148,7 @@ describe('attributes and aggregation', () => {
     world.registerSystems([...abilities.tickSystems], []);
 
     const entity = spawnEntity(world, abilities);
-    const component = abilityOwnerOf(entity)!;
+    const component = gasOf(entity)!;
     const attributes = component.attributes;
     const activeEffects = component.activeEffects;
     activeEffects.queue.push(
@@ -223,7 +225,7 @@ describe('attributes and aggregation', () => {
       attributes: [HealthAttribute, ManaAttribute],
     });
     const entity = spawnEntity(world, abilities);
-    const attributes = abilityOwnerOf(entity)!.attributes;
+    const attributes = attributesOf(entity)!;
 
     const sample = FP.FromFloat(12.5);
     const raw = FP.ToRaw(sample);
@@ -273,7 +275,7 @@ describe('attributes and aggregation', () => {
       ],
     });
     const entity = spawnEntity(world, abilities);
-    const component = abilityOwnerOf(entity)!;
+    const component = gasOf(entity)!;
     const attributes = component.attributes;
     const activeEffects = component.activeEffects;
 
@@ -328,7 +330,7 @@ describe('attributes and aggregation', () => {
       ],
     });
     const entity = spawnEntity(world, abilities);
-    const component = abilityOwnerOf(entity)!;
+    const component = gasOf(entity)!;
     const attributes = component.attributes;
     const activeEffects = component.activeEffects;
 
@@ -369,7 +371,7 @@ describe('attributes and aggregation', () => {
       ],
     });
     const entity = spawnEntity(world, abilities);
-    const attributes = abilityOwnerOf(entity)!.attributes;
+    const attributes = attributesOf(entity)!;
 
     world.processAllTicks(1);
     expect(
@@ -377,7 +379,7 @@ describe('attributes and aggregation', () => {
     ).toBe(100);
     expect(attributes.dirty[0]).toBe(0);
 
-    const activeEffects = abilityOwnerOf(entity)!.activeEffects;
+    const activeEffects = activeEffectsOf(entity)!;
     activeEffects.queue.push({
       instanceId: 1,
       defId: 'Effect.HealthDamage',
@@ -425,7 +427,7 @@ describe('attributes and aggregation', () => {
       ],
     });
     const entity = spawnEntity(world, abilities);
-    const component = abilityOwnerOf(entity)!;
+    const component = gasOf(entity)!;
     const attributes = component.attributes;
     const activeEffects = component.activeEffects;
 

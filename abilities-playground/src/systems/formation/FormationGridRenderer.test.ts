@@ -16,9 +16,8 @@ describe('FormationGridRenderer', () => {
   beforeEach(() => {
     scene = new THREE.Scene();
     gridData = new FormationGridData();
-    const abilities =
-      {} as unknown as import('@phalanx-engine/abilities').AbilitySystem;
-    const unitFactory = new UnitFactory(scene, abilities);
+    const world = {} as unknown as import('@phalanx-engine/ecs').GameWorld;
+    const unitFactory = new UnitFactory(scene, world);
     renderer = new FormationGridRenderer(scene, unitFactory);
   });
 

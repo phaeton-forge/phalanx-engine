@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { Entity } from '@phalanx-engine/ecs';
+import { Entity, type GameWorld } from '@phalanx-engine/ecs';
 import { FP, FPQuaternion } from '@phalanx-engine/math';
-import type { AbilitySystem } from '@phalanx-engine/abilities';
+import { AbilityOwner } from '@phalanx-engine/abilities';
 import type { TeamId } from '../components';
 import { UNIT_DEFINITIONS } from './unitDefinitions';
 import { assembleUnit } from './unitAssembler';
@@ -11,11 +11,11 @@ import type { UnitDefinition } from './UnitDefinition';
 
 export class UnitFactory {
   private readonly scene: THREE.Scene;
-  private readonly abilities: AbilitySystem;
+  private readonly world: GameWorld;
 
-  constructor(scene: THREE.Scene, abilities: AbilitySystem) {
+  constructor(scene: THREE.Scene, world: GameWorld) {
     this.scene = scene;
-    this.abilities = abilities;
+    this.world = world;
   }
 
   /** Full deterministic battle entity (caller adds it to the world). */
@@ -49,16 +49,14 @@ export class UnitFactory {
       spawnRotation.w
     );
 
-    entity.addComponent(
-      this.abilities.initComponent({
-        attributes: {
-          Health: FP.FromFloat(def.maxHealth),
-          MaxHealth: FP.FromFloat(def.maxHealth),
-        },
-        abilities: def.abilities,
-        tags: [`Team.${teamId}`],
-      })
-    );
+    this.world.addComponent(entity, AbilityOwner, {
+      attributes: {
+        Health: FP.FromFloat(def.maxHealth),
+        MaxHealth: FP.FromFloat(def.maxHealth),
+      },
+      abilities: def.abilities,
+      tags: [`Team.${teamId}`],
+    });
     return entity;
   }
 

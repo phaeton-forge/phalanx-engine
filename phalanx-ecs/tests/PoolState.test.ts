@@ -1,7 +1,9 @@
+import { manualTickProvider } from './support/manualTickProvider.js';
 import { describe, it, expect } from 'vitest';
 import {
   Entity,
   EntityManager,
+  GameWorld,
   EntityPool,
   PoolManager,
   type IPoolableEntity,
@@ -73,7 +75,9 @@ describe('pool state accessors', () => {
   });
 
   it('PoolManager reports registration order, owned ids, and LIFO free list', () => {
-    const manager = new PoolManager(new EntityManager());
+    const manager = new PoolManager(
+      new GameWorld({ tickFrameProvider: manualTickProvider() })
+    );
     manager.registerEntityType('unit', {
       factory: (id) => new UnitEntity(id),
     });
@@ -99,7 +103,9 @@ describe('pool state accessors', () => {
   });
 
   it('restore puts a non-empty free list back so the next spawn id matches', () => {
-    const manager = new PoolManager(new EntityManager());
+    const manager = new PoolManager(
+      new GameWorld({ tickFrameProvider: manualTickProvider() })
+    );
     manager.registerEntityType('unit', {
       factory: (id) => new UnitEntity(id),
     });
@@ -113,7 +119,9 @@ describe('pool state accessors', () => {
     expect(free).toEqual([first.id, third.id]);
     const expectedId = free[free.length - 1];
 
-    const restored = new PoolManager(new EntityManager());
+    const restored = new PoolManager(
+      new GameWorld({ tickFrameProvider: manualTickProvider() })
+    );
     restored.registerEntityType('unit', {
       factory: (id) => new UnitEntity(id),
     });
@@ -133,7 +141,9 @@ describe('pool state accessors', () => {
   });
 
   it('drops an entity disposed outside despawn', () => {
-    const manager = new PoolManager(new EntityManager());
+    const manager = new PoolManager(
+      new GameWorld({ tickFrameProvider: manualTickProvider() })
+    );
     manager.registerEntityType('unit', {
       factory: (id) => new UnitEntity(id),
     });

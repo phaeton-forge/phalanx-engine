@@ -99,6 +99,29 @@ export interface GameWorldHooks {
 }
 
 /**
+ * Registration of an object component owned by a module. The world adds no
+ * save section for it (the module's section saves it) and does not drop it
+ * when the entity returns to the pool (the module resets it).
+ *
+ * `attach` replaces the default `world.addComponent`; `remove` replaces the
+ * default `world.removeComponent`. Both work through `entity.addComponent` /
+ * `entity.removeComponent`, which keep the manager's index in sync.
+ */
+export interface ModuleComponentOptions<
+  T extends object = object,
+  Init = Partial<T>,
+> {
+  readonly attach?: (entity: Entity, values: Init | undefined) => void;
+  readonly remove?: (entity: Entity) => boolean;
+}
+
+interface ModuleComponent {
+  readonly name: string;
+  readonly type: symbol;
+  readonly options: ModuleComponentOptions<object, unknown>;
+}
+
+/**
  * GameWorld - High-level facade for the ECS engine
  *
  * Replaces the manual wiring of SystemRegistry and a tick provider with a
@@ -158,6 +181,9 @@ export class GameWorld {
   /** Object components. Saved as module sections, not SoA stores. */
   private readonly _objectComponents: StoredObjectComponent[] = [];
 
+  /** Object components saved and attached by their module. */
+  private readonly _moduleComponents: ModuleComponent[] = [];
+
   /** Transient components. Omitted from saves and from `configHash`. */
   private readonly _transientComponents: TransientComponentDef<object>[] = [];
 
@@ -185,7 +211,7 @@ export class GameWorld {
     // Setup pooling if configured
     if (config.pooling) {
       this._poolingConfig = config.pooling;
-      this._pools = new PoolManager(this.systemRegistry.entityManager);
+      this._pools = new PoolManager(this);
       for (const [typeKey, typeConfig] of Object.entries(
         config.pooling.entityTypes
       )) {
@@ -211,22 +237,26 @@ export class GameWorld {
   }
 
   /**
-   * Allocate the next id from this world and pass it to `create`.
+   * Allocate the next id from this world, build the entity and register it.
    *
-   * Does not register the entity. The caller adds it, or a pool does on
-   * spawn. `create` must return the entity for that id. SoA rows attached
-   * in the constructor are written to this world's stores when `create`
-   * returns; until then they cannot be read.
+   * Pass `create` for a subclass. Without it, the result is a plain
+   * {@link Entity}. `create` must return the entity for that id; it may
+   * register the entity itself. SoA rows attached in the constructor are
+   * written to this world's stores when `create` returns.
    */
-  public createEntity<E extends Entity>(create: (id: number) => E): E {
+  public createEntity(): Entity;
+  public createEntity<E extends Entity>(create: (id: number) => E): E;
+  public createEntity<E extends Entity>(
+    create?: (id: number) => E
+  ): Entity | E {
     const id = this.entityManager.allocateEntityId();
-    const entity = create(id);
+    const entity = create === undefined ? new Entity(id) : create(id);
     if (entity.id !== id) {
       throw new Error(
         `createEntity: factory must return the entity with id ${String(id)}`
       );
     }
-    this.entityManager.adopt(entity);
+    this.entityManager.addEntity(entity);
     return entity;
   }
 
@@ -264,7 +294,10 @@ export class GameWorld {
       );
     }
 
-    const entity = create === undefined ? new Entity(id) : create(id);
+    const entity =
+      create === undefined
+        ? new Entity(id)
+        : this.entityManager.constructWithId(id, () => create(id));
     if (entity.id !== id) {
       throw new Error(
         `createEntityWithId: factory must return the entity with id ${String(id)}`
@@ -370,13 +403,17 @@ export class GameWorld {
    * Object: `save` and `load` are required here. The component is written
    * as a module save section under its name. It is not a SoA schema.
    *
+   * Object with {@link ModuleComponentOptions}: the module saves, attaches
+   * and resets it; see that type.
+   *
    * Transient: not saved and not included in `configHash`.
    */
   public registerComponent<S extends SoASchemaDefinition>(
     component: ComponentRegistration<S>
   ): void;
-  public registerComponent<T extends object>(
-    component: ObjectComponentDef<T>
+  public registerComponent<T extends object, Init>(
+    component: ObjectComponentDef<T, Init>,
+    options?: ModuleComponentOptions<T, Init>
   ): void;
   public registerComponent<T extends object>(
     component: TransientComponentDef<T>
@@ -384,12 +421,22 @@ export class GameWorld {
   public registerComponent(
     component:
       | ComponentRegistration
-      | ObjectComponentDef<object>
-      | TransientComponentDef<object>
+      | ObjectComponentDef<object, unknown>
+      | TransientComponentDef<object>,
+    options?: ModuleComponentOptions<object, unknown>
   ): void {
     const kind = componentKind(component);
+    if (kind === 'object' && options !== undefined) {
+      this.assertNameFree(component.name);
+      this._moduleComponents.push({
+        name: component.name,
+        type: component.type,
+        options,
+      });
+      return;
+    }
     if (kind === 'object') {
-      this.registerObject(component as ObjectComponentDef<object>);
+      this.registerObject(component as ObjectComponentDef<object, unknown>);
       return;
     }
     if (kind === 'transient') {
@@ -612,37 +659,78 @@ export class GameWorld {
   /**
    * Attach `component` to `entity`. A later call with `values` writes those
    * fields and leaves the rest. The same call without `values` throws when
-   * the component is already present.
+   * the component is already present. A module component with an `attach`
+   * hook delegates to it.
+   *
+   * `entity` may be one this world created that is not registered yet (a
+   * constructor or pool factory); it is adopted, and its component index is
+   * written when the entity is registered.
    */
   public addComponent<S extends SoASchemaDefinition>(
     entity: Entity,
     component: SoaComponentDef<S>,
     values?: Partial<SoAFieldsOf<S>>
   ): void;
+  public addComponent<T extends object, Init>(
+    entity: Entity,
+    component: ObjectComponentDef<T, Init>,
+    values?: Init
+  ): void;
   public addComponent<T extends object>(
     entity: Entity,
-    component: ObjectComponentDef<T> | TransientComponentDef<T>,
+    component: TransientComponentDef<T>,
     values?: Partial<T>
   ): void;
   public addComponent(
     entity: Entity,
     component:
       | SoaComponentDef
-      | ObjectComponentDef<object>
+      | ObjectComponentDef<object, unknown>
       | TransientComponentDef<object>,
-    values?: object
+    values?: unknown
   ): void {
-    this.assertEntity(entity, 'world.addComponent');
+    this.adoptForAdd(entity);
     this.assertRegistered(component, 'world.addComponent');
+    const attach = this.moduleComponent(component.type)?.options.attach;
+    if (attach !== undefined) {
+      attach(entity, values);
+      return;
+    }
     if (componentKind(component) === 'soa') {
-      this.addSoa(entity, component as SoaComponentDef, values);
+      this.addSoa(entity, component as SoaComponentDef, values as object);
       return;
     }
     this.addValue(
       entity,
-      component as ObjectComponentDef<object> | TransientComponentDef<object>,
-      values
+      component as
+        ObjectComponentDef<object, unknown> | TransientComponentDef<object>,
+      values as object | undefined
     );
+  }
+
+  private moduleComponent(type: symbol): ModuleComponent | undefined {
+    return this._moduleComponents.find((existing) => existing.type === type);
+  }
+
+  /** Registered here, or allocated by this world and not registered yet. */
+  private adoptForAdd(entity: Entity): void {
+    const label = 'world.addComponent';
+    if (entity._owner !== null && entity._owner !== this.entityManager) {
+      throw new Error(
+        `${label}: entity ${String(entity.id)} belongs to another world`
+      );
+    }
+    const registered = this.entityManager.getEntity(entity.id);
+    if (registered === entity) return;
+    if (
+      registered !== undefined ||
+      !this.entityManager.isAllocatedId(entity.id)
+    ) {
+      throw new Error(
+        `${label}: entity ${String(entity.id)} is not in this world`
+      );
+    }
+    this.entityManager.adopt(entity);
   }
 
   /**
@@ -656,13 +744,13 @@ export class GameWorld {
   ): SoAFieldsOf<S> | undefined;
   public getComponent<T extends object>(
     entity: Entity,
-    component: ObjectComponentDef<T> | TransientComponentDef<T>
+    component: ObjectComponentDef<T, unknown> | TransientComponentDef<T>
   ): T | undefined;
   public getComponent(
     entity: Entity,
     component:
       | SoaComponentDef
-      | ObjectComponentDef<object>
+      | ObjectComponentDef<object, unknown>
       | TransientComponentDef<object>
   ): object | undefined {
     this.assertEntity(entity, 'world.getComponent');
@@ -685,6 +773,8 @@ export class GameWorld {
   ): boolean {
     this.assertEntity(entity, 'world.removeComponent');
     this.assertRegistered(component, 'world.removeComponent');
+    const remove = this.moduleComponent(component.type)?.options.remove;
+    if (remove !== undefined) return remove(entity);
     const soa = this.soaRegistration(component.type);
     if (soa !== undefined) {
       const store = this.entityManager.getSoAStore(soa.schema);
@@ -828,7 +918,7 @@ export class GameWorld {
     this.entityManager.getOrCreateSoAStore(component.schema);
   }
 
-  private registerObject(component: ObjectComponentDef<object>): void {
+  private registerObject(component: ObjectComponentDef<object, unknown>): void {
     if (
       typeof component.save !== 'function' ||
       typeof component.load !== 'function'
@@ -893,6 +983,9 @@ export class GameWorld {
     if (this._objectComponents.some((existing) => existing.name === name)) {
       return true;
     }
+    if (this._moduleComponents.some((existing) => existing.name === name)) {
+      return true;
+    }
     if (this._transientComponents.some((existing) => existing.name === name)) {
       return true;
     }
@@ -932,6 +1025,9 @@ export class GameWorld {
     if (this._objectComponents.some((existing) => existing.type === type)) {
       return true;
     }
+    if (this._moduleComponents.some((existing) => existing.type === type)) {
+      return true;
+    }
     return this._transientComponents.some((existing) => existing.type === type);
   }
 
@@ -961,12 +1057,12 @@ export class GameWorld {
       return;
     }
     entity.addComponent(component.create(entity.id, patch, this.entityManager));
-    this.entityManager.onComponentAdded(entity, component.type);
   }
 
   private addValue(
     entity: Entity,
-    component: ObjectComponentDef<object> | TransientComponentDef<object>,
+    component:
+      ObjectComponentDef<object, unknown> | TransientComponentDef<object>,
     values: object | undefined
   ): void {
     const existing = this.readValue(entity, component.type);
@@ -988,7 +1084,6 @@ export class GameWorld {
       assignComponentValues(component.name, created, values);
     }
     entity.addComponent(new ValueComponent(component.type, created));
-    this.entityManager.onComponentAdded(entity, component.type);
   }
 
   private readSoa(
@@ -1023,15 +1118,10 @@ export class GameWorld {
   private removeEphemeral(entity: Entity, type: symbol): void {
     if (!entity._componentAttached(type)) return;
     entity.removeComponent(type);
-    if (this.entityManager.getEntity(entity.id) === entity) {
-      this.entityManager.onComponentRemoved(entity, type);
-    }
   }
 
   private detach(entity: Entity, type: symbol): boolean {
-    const had = entity.removeComponent(type);
-    if (had) this.entityManager.onComponentRemoved(entity, type);
-    return had;
+    return entity.removeComponent(type);
   }
 
   private enterTick(): void {
@@ -1144,7 +1234,6 @@ function readObjectComponent(
       existing.value = value;
     } else {
       entity.addComponent(new ValueComponent(component.type, value));
-      world.entityManager.onComponentAdded(entity, component.type);
     }
     saved.add(id);
     return id;
@@ -1152,8 +1241,7 @@ function readObjectComponent(
   const live = world.entityManager.queryEntities(component.type);
   for (const entity of live) {
     if (!saved.has(entity.id)) {
-      const had = entity.removeComponent(component.type);
-      if (had) world.entityManager.onComponentRemoved(entity, component.type);
+      entity.removeComponent(component.type);
     }
   }
 }

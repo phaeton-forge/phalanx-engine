@@ -3,7 +3,9 @@ import {
   BinaryStateReader,
   BinaryStateWriter,
   GameSystem,
+  Entity,
   GameWorld,
+  ValueComponent,
   defineComponent,
   writeSorted,
 } from '../src/index.js';
@@ -17,6 +19,99 @@ function world(): GameWorld {
 }
 
 describe('defineComponent', () => {
+  it('delegates a module component to its attach and remove hooks', () => {
+    const game = world();
+    const owned = defineComponent<{ n: number }, { seed: number }>('Owned', {
+      kind: 'object',
+      create: () => ({ n: 0 }),
+      save(value, writer) {
+        writer.i32(value.n);
+      },
+      load: (reader) => ({ n: reader.i32() }),
+    });
+    const removed: number[] = [];
+    game.registerComponent(owned, {
+      attach(entity, values) {
+        entity.addComponent(
+          new ValueComponent(owned.type, { n: (values?.seed ?? 0) * 2 })
+        );
+      },
+      remove(entity) {
+        removed.push(entity.id);
+        return entity.removeComponent(owned.type);
+      },
+    });
+    expect(game.saveSections).toEqual([]);
+    expect(() => game.registerComponent(owned)).toThrow('already registered');
+
+    const entity = game.createEntityWithId(1);
+    game.addComponent(entity, owned, { seed: 3 });
+    expect(game.getComponent(entity, owned)).toEqual({ n: 6 });
+    expect([...game.query(owned)].map(([e]) => e.id)).toEqual([1]);
+
+    expect(game.removeComponent(entity, owned)).toBe(true);
+    expect(removed).toEqual([1]);
+    expect([...game.query(owned)]).toEqual([]);
+  });
+
+  it('adopts an entity this world allocated before it is registered', () => {
+    const game = world();
+    const bag = defineComponent('Bag', {
+      kind: 'object',
+      create: () => ({ n: 0 }),
+      save: (value, writer) => writer.i32(value.n),
+      load: (reader) => ({ n: reader.i32() }),
+    });
+    game.registerComponent(bag);
+    const entity = new Entity(game.entityManager.allocateEntityId());
+    game.addComponent(entity, bag, { n: 2 });
+    expect([...game.query(bag)]).toEqual([]);
+    game.entityManager.addEntity(entity);
+    expect([...game.query(bag)].map(([e]) => e.id)).toEqual([entity.id]);
+
+    entity.removeComponent(bag.type);
+    expect([...game.query(bag)]).toEqual([]);
+
+    const stranger = new Entity(99);
+    expect(() => game.addComponent(stranger, bag)).toThrow(
+      'world.addComponent: entity 99 is not in this world'
+    );
+    const other = world();
+    const foreign = other.createEntity();
+    expect(() => game.addComponent(foreign, bag)).toThrow(
+      `world.addComponent: entity ${String(foreign.id)} belongs to another world`
+    );
+  });
+
+  it('createEntity returns a registered entity ready for addComponent', () => {
+    const game = world();
+    const bag = defineComponent('Bag', {
+      kind: 'object',
+      create: () => ({ n: 0 }),
+      save: (value, writer) => writer.i32(value.n),
+      load: (reader) => ({ n: reader.i32() }),
+    });
+    game.registerComponent(bag);
+    const entity = game.createEntity();
+    expect(entity).toBeInstanceOf(Entity);
+    expect(game.entityManager.getEntity(entity.id)).toBe(entity);
+    game.addComponent(entity, bag, { n: 3 });
+    expect([...game.query(bag)].map(([e, v]) => [e.id, v.n])).toEqual([
+      [entity.id, 3],
+    ]);
+
+    const registered = game.createEntity((id) => {
+      const e = new Entity(id);
+      game.entityManager.addEntity(e);
+      return e;
+    });
+    game.entityManager.addEntity(registered);
+    expect(game.entityManager.queryEntities().map((e) => e.id)).toEqual([
+      entity.id,
+      registered.id,
+    ]);
+  });
+
   it('stores SoA, object, and transient values through the world', () => {
     const game = world();
     const hp = defineComponent('Hp', { hp: 'i64', armor: 'i32' });

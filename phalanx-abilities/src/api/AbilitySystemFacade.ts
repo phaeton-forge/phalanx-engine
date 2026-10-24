@@ -17,11 +17,6 @@ import {
   attachValue,
 } from '../components/abilityOwner.js';
 import {
-  Attributes,
-  type AttributesState,
-  createAttributesState,
-} from '../components/attributes.js';
-import {
   ActiveEffects,
   type ActiveEffectsState,
 } from '../components/activeEffects.js';
@@ -63,31 +58,6 @@ export class AbilitySystemFacade {
   // Attributes
   // -----------------------------------------------------------------------
 
-  public initAttributesForEntity(entityId: number): AttributesState {
-    const entity = this.requireEntity(entityId);
-
-    const existing = attributesOf(entity);
-
-    if (existing) {
-      return existing;
-    }
-
-    const attributes = createAttributesState(this.registries.attributes.size);
-    const defs = this.registries.attributes.values();
-
-    for (let index = 0; index < defs.length; index++) {
-      const rawDefault = FP.ToRaw(defs[index].default);
-      attributes.base[index] = rawDefault;
-      attributes.current[index] = rawDefault;
-      // Mark every attribute dirty so AttributeAggregationSystem clamps the
-      // seeded default value on the next tick. Without this, a default that
-      // violates its own min/max would silently persist in `current`.
-      attributes.dirty[index] = 1;
-    }
-
-    return attachValue(entity, Attributes, attributes);
-  }
-
   public getAttribute(entityId: number, attrId: string): AttributeValue {
     const value = this.tryGetAttribute(entityId, attrId);
     if (!value) {
@@ -106,7 +76,7 @@ export class AbilitySystemFacade {
 
   /**
    * Non-throwing read. Returns `undefined` when the entity is missing, has no
-   * {@link Attributes}, or the attribute id is not registered. Useful
+   * `Attributes`, or the attribute id is not registered. Useful
    * for user-side damage pipelines that need to fall back to a neutral value
    * (e.g. `IncomingDamageMultiplier === 1`) when the target has no abilities
    * setup.

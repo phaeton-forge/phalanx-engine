@@ -136,11 +136,11 @@ describe('SystemContext shared services', () => {
   it('gives each world its own entity id counter', () => {
     const first = new GameWorld({ tickFrameProvider: manualTickProvider() });
     const second = new GameWorld({ tickFrameProvider: manualTickProvider() });
-    const a = first.createEntity((id) => new Entity(id));
-    const b = second.createEntity((id) => new Entity(id));
+    const a = first.createEntity();
+    const b = second.createEntity();
     expect(a.id).toBe(1);
     expect(b.id).toBe(1);
-    expect(first.createEntity((id) => new Entity(id)).id).toBe(2);
+    expect(first.createEntity().id).toBe(2);
     first.dispose();
     second.dispose();
   });

@@ -47,17 +47,17 @@ describe('entity id counter', () => {
 
   it('each world keeps its own counter and construction does not reset another', () => {
     const worldA = new GameWorld({ tickFrameProvider: manualTickProvider() });
-    const first = worldA.createEntity((id) => new Entity(id));
+    const first = worldA.createEntity();
     expect(first.id).toBe(1);
 
     const worldB = new GameWorld({ tickFrameProvider: manualTickProvider() });
     expect(worldB.entityManager.entityIdHighWater()).toBe(0);
-    expect(worldB.createEntity((id) => new Entity(id)).id).toBe(1);
+    expect(worldB.createEntity().id).toBe(1);
     expect(worldA.entityManager.entityIdHighWater()).toBe(1);
-    expect(worldA.createEntity((id) => new Entity(id)).id).toBe(2);
+    expect(worldA.createEntity().id).toBe(2);
 
     worldB.dispose();
-    expect(worldA.createEntity((id) => new Entity(id)).id).toBe(3);
+    expect(worldA.createEntity().id).toBe(3);
     worldA.dispose();
   });
 
@@ -69,7 +69,7 @@ describe('entity id counter', () => {
     expect(hole.id).toBe(2);
     expect(world.entityManager.getEntity(5)).toBe(high);
     expect(world.entityManager.entityIdHighWater()).toBe(5);
-    expect(world.createEntity((id) => new Entity(id)).id).toBe(6);
+    expect(world.createEntity().id).toBe(6);
     world.dispose();
   });
 });

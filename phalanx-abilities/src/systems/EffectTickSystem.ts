@@ -10,12 +10,7 @@ import type {
   EffectDef,
   ModifierOp,
 } from '../types/index.js';
-import {
-  AbilityOwner,
-  attributesOf,
-  activeEffectsOf,
-  gameplayTagsOf,
-} from '../components/abilityOwner.js';
+import { attributesOf, gameplayTagsOf } from '../components/abilityOwner.js';
 import { type AttributesState } from '../components/attributes.js';
 import {
   ActiveEffects,
@@ -64,14 +59,8 @@ export class EffectTickSystem extends GameSystem {
   }
 
   public override processTick(tick: number): void {
-    const entities = this.entityManager.queryEntitiesAny(
-      AbilityOwner.type,
-      ActiveEffects.type
-    );
-
-    for (const entity of entities) {
-      const activeEffects = activeEffectsOf(entity);
-      if (!activeEffects || activeEffects.queue.length === 0) {
+    for (const [entity, activeEffects] of this.world.query(ActiveEffects)) {
+      if (activeEffects.queue.length === 0) {
         continue;
       }
 

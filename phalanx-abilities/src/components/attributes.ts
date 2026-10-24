@@ -1,5 +1,6 @@
 import type { StateReader, StateWriter } from '@phalanx-engine/ecs';
 import { defineComponent } from '@phalanx-engine/ecs';
+import type { AttributeInitializer } from './init.js';
 
 /** Raw fixed-point attribute values, indexed by the world's attribute registry. */
 export interface AttributesState {
@@ -59,11 +60,14 @@ export function loadAttributes(r: StateReader): AttributesState {
 }
 
 /**
- * Standalone attributes. Attach with
- * `AbilitySystemFacade.initAttributesForEntity`, never `world.addComponent`:
- * `world.addComponent` creates zero-length arrays that ignore the attribute registry.
+ * Attribute values. After `createAbilitySystem`,
+ * `world.addComponent(entity, Attributes, overrides?)` sizes them to the
+ * attribute registry and seeds registry defaults (all dirty).
  */
-export const Attributes = defineComponent<AttributesState>('Attributes', {
+export const Attributes = defineComponent<
+  AttributesState,
+  Record<string, AttributeInitializer>
+>('Attributes', {
   kind: 'object',
   create: () => createAttributesState(0),
   save: saveAttributes,

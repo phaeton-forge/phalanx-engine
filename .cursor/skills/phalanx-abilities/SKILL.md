@@ -111,17 +111,14 @@ world.registerSystems([...abilities.tickSystems], []);
 Prefer the bundled component:
 
 ```typescript
-import { Entity } from '@phalanx-engine/ecs';
+import { AbilityOwner } from '@phalanx-engine/abilities';
 
-const unit = world.createEntity((id) => new Entity(id));
-unit.addComponent(
-  abilities.initComponent({
-    attributes: { Health: FP.FromInt(100) },
-    abilities: ['Ability.Strike'],
-    tags: ['Team.Red'],
-  })
-);
-world.entityManager.addEntity(unit);
+const unit = world.createEntity();
+world.addComponent(unit, AbilityOwner, {
+  attributes: { Health: FP.FromInt(100) },
+  abilities: ['Ability.Strike'],
+  tags: ['Team.Red'],
+});
 ```
 
 ### 4. Activate and advance ticks
@@ -332,7 +329,7 @@ use `Modifier.calculation` instead (see above).
 - Register `abilities.tickSystems` with other tick systems in **fixed order** (typically: input/commands → abilities activation → movement → physics → game reactions)
 - Each world owns its entity ids. Spawn with `world.createEntity` so peers that replay the same commands allocate the same ids
 - Subscribe to `ABILITY_ACTIVATED_EVENT` for UI feedback; do not rely on synchronous `activateAbility` return value for success
-- Attach the `AbilityOwner` component via `entity.addComponent(abilities.initComponent())` rather than standalone `Attributes` / `ActiveEffects` / `GameplayTags` unless testing internals. Read state with `abilityOwnerOf` / `attributesOf` / `activeEffectsOf` / `gameplayTagsOf`. Attach the owner only via `initComponent` and standalone attributes only via `initAttributesForEntity`; never `world.addComponent` them, which creates a broken owner (no pool holder, zero attributes)
+- Attach ability state via `world.addComponent(entity, AbilityOwner, init?)`: it attaches `AbilityOwner` (ability set only), `Attributes`, `ActiveEffects` and `GameplayTags`; `world.removeComponent(entity, AbilityOwner)` removes all four. Read state with `abilityOwnerOf` / `attributesOf` / `activeEffectsOf` / `gameplayTagsOf` (one component each, no owner fallback). Attaching the owner when one of the four is present throws `already has`; removing `Attributes` / `ActiveEffects` / `GameplayTags` while the owner is attached throws. `world.addComponent(entity, Attributes, overrides)` seeds a standalone component from the registry. They are queryable with `world.query` / `world.queryAny`
 - `GameplayCueBuffer` is world-scoped runtime — not an `IComponent`
 
 ## Determinism Rules
@@ -464,7 +461,7 @@ Use `pipeline: 'effects-retain-cues'` to assert on `abilities.gameplayCueBuffer`
 
 `createAbilitySystem` registers save section `abilities` (version 1) on the world. That section is not exported. Its body is the former `gas` payload without a section wrapper.
 
-Pooled entities lose transient GAS state on despawn. `createAbilitySystem` registers an internal pool hook. The first call records the factory shell: attribute `base` / `current` / `dirty`, the equipped ability set, and ad-hoc tags plus effect grants (`initComponent` tags included). Later calls clear the effect queue and `pendingAdd`, copy that shell back, and remove GAS components attached during the life (`applyEffect`, `addTag`, or a standalone attributes component on a bare entity). Factory `pendingAdd` is captured in `initComponent`, before a snapshot can replace the list, and `onEnable` copies it back after a pool spawn. `onEnable('restore')` does not reseed. Effects added after that capture are not part of the image. The hook is idempotent and runs again for a restored free-list entity. A free-list entity is not in the GAS snapshot; the shell copy is what makes a respawn whose `onSpawn` does not rewrite attributes match a restored copy. A dormant bare entity has the same component layout as the factory shell `readPools` rebuilds.
+Pooled entities lose transient GAS state on despawn. `createAbilitySystem` registers an internal pool hook. The first call records the factory shell: attribute `base` / `current` / `dirty`, the equipped ability set, and ad-hoc tags plus effect grants (`AbilityOwner` init tags included). Later calls clear the effect queue and `pendingAdd`, copy that shell back, and remove GAS components attached during the life (`applyEffect`, `addTag`, or a standalone attributes component on a bare entity). Factory `pendingAdd` is captured when `AbilityOwner` is attached, before a snapshot can replace the list, and `onEnable` copies it back after a pool spawn. `onEnable('restore')` does not reseed. Effects added after that capture are not part of the image. The hook is idempotent and runs again for a restored free-list entity. A free-list entity is not in the GAS snapshot; the shell copy is what makes a respawn whose `onSpawn` does not rewrite attributes match a restored copy. A dormant bare entity has the same component layout as the factory shell `readPools` rebuilds.
 
 ## Related skills
 

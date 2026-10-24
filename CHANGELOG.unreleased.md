@@ -484,7 +484,7 @@ Entries collected per package until the synchronized 0.3.0 release
   handover. A hosted bot is reused only when policy, level, and `runsOn`
   match the saved record. `ReplayPlayer.play` and `fastForward` apply only
   entries in `(currentTick, throughTick]`. Player id `system` is reserved.
-  Factory GAS `pendingAdd` is captured in `initComponent`, before a
+  Factory GAS `pendingAdd` is captured when `AbilityOwner` is attached, before a
   snapshot replaces it. `start` throws if a slot
   has `runsOn: 'server'` and the match has no server peer.
   `inputDelayTicks` defaults to 2; `gameId` and `simVersion` are filled
@@ -741,14 +741,8 @@ Entries collected per package until the synchronized 0.3.0 release
   `AbilityOwnerState`, `AttributesState`, `ActiveEffectsState` and
   `GameplayTagsState` objects. `entity.hasComponent(Attributes.type)`
   replaces `AbilitiesComponentType.Attributes`.
-- **API change:** `AbilitySystemFacade.initAttributesForEntity` returns
-  `AttributesState` instead of `AttributesComponent`.
-- Attach `AbilityOwner` only through `initComponent` and standalone
-  `Attributes` only through `initAttributesForEntity`. `world.addComponent` on
-  either creates a broken owner (no pool holder, zero attributes).
-- `AbilitySystemComponentInit` is renamed `AbilityOwnerInit`.
-  `initComponent(init)` returns an `IComponent` for
-  `entity.addComponent`; read it back with `abilityOwnerOf(entity)`.
+- `AbilitySystemComponentInit` is renamed `AbilityOwnerInit`. Read the
+  owner back with `abilityOwnerOf(entity)`.
 - Error text: `readAbilities: extra AbilitySystem on entity N` is now
   `extra AbilityOwner`; `Entity N does not have AttributesComponent` is
   now `does not have Attributes`.
@@ -790,7 +784,7 @@ Entries collected per package until the synchronized 0.3.0 release
 - Pooled entities lose transient GAS state on despawn.
   `releasePooledAbilityState` records the factory shell on the first call
   (attribute `base` / `current` / `dirty`, the equipped ability set, and
-  ad-hoc tags plus effect grants, including `initComponent` tags). Later
+  ad-hoc tags plus effect grants, including `AbilityOwner` init tags). Later
   calls clear the effect queue and `pendingAdd`, copy that shell back, and
   remove `AbilitySystem`, `Attributes`, `ActiveEffects`, and
   `GameplayTags` components attached after that shell. A bare pooled
@@ -803,7 +797,7 @@ Entries collected per package until the synchronized 0.3.0 release
   instance. The hook also runs on the factory's initial dormant pass.
 - The pool reset stays installed by `createAbilitySystem` and is no longer
   a public export. Attributes, the granted ability set, and
-  `initComponent` tags match a fresh spawn after despawn and spawn.
+  `AbilityOwner` init tags match a fresh spawn after despawn and spawn.
 - Fixed-point fields on a restored `providedTarget` are recognized by
   shape (`base` and `precision` bigints), not by `instanceof FixedPoint`,
   then reconstructed as a local `FixedPoint` so arithmetic methods exist.
@@ -893,7 +887,7 @@ Entries collected per package until the synchronized 0.3.0 release
 - `EntityManager` indexes component types lazily.
 - Physics helpers (`readFpPosition`, `setVelocity`, ...) take the entity
   instead of its id. Use `Transform.type` etc. in queries.
-- Pool factories receive `(id, manager)`.
+- Pool factories receive `(id, world)`.
 - Renamed `DefineComponentOptions` to `DefineSoaOptions` (ecs; also
   re-exported by runtime and game).
 - Lazy component type indexing keeps queries in ascending entity id order.
@@ -1017,3 +1011,59 @@ Transform)` / `world.query(PhysicsBody)` and read the typed arrays by row
   (`CollisionSystem`, `ExternalPhysicsTickProvider`, type
   `IPhysicsTickProvider`); game `[186, 9, 61, 88, 19, 3]` →
   `[186, 9, 58, 88, 19, 3]`.
+
+## A8 — abilities (abilities, ecs, runtime, playground, integration)
+
+- One data representation. `AbilityOwnerState` is now only
+  `{ abilities: Set<string> }`; attributes, effects and tags always live in
+  the `Attributes`, `ActiveEffects` and `GameplayTags` components.
+  `attributesOf` / `activeEffectsOf` / `gameplayTagsOf` read that one
+  component (no owner fallback). `createAbilityOwnerState()` takes no
+  argument.
+- **API change:** components attach only through
+  `world.addComponent(entity, Component, init)`.
+  `world.addComponent(entity, AbilityOwner, init)` attaches `AbilityOwner`,
+  `Attributes`, `ActiveEffects` and `GameplayTags` and throws
+  `world.addComponent: entity N already has 'X'` when one is present.
+  `world.addComponent(entity, Attributes, overrides)` sizes a standalone
+  component to the registry. `world.removeComponent(entity, AbilityOwner)`
+  removes all four; removing one of the other three while the owner is
+  attached throws. Removed: `AbilitySystem.initComponent`,
+  `AbilitySystemFacade.initAttributesForEntity`, ecs
+  `entity.addComponents`.
+- `createAbilitySystem` registers the four components, provides
+  `Abilities`, adds `abilities.tickSystems` with `world.addModuleSystems`
+  and registers the `abilities` save section. Listing the whole
+  `tickSystems` group in `registerSystems` still places it; phases come in
+  A6d.
+- New in ecs: `world.registerComponent(objectDef, { attach?, remove? })`
+  (`ModuleComponentOptions`). The world adds no save section for such a
+  component and does not drop it on pool return (its module resets it).
+  `attach(entity, init)` / `remove(entity)` replace the default
+  `world.addComponent` / `world.removeComponent`. `defineComponent<T, Init>`
+  and `ObjectComponentDef<T, Init>` type the `init` argument.
+  `entity.addComponent` / `removeComponent` keep the manager's index in
+  sync. `world.addComponent` adopts an entity this world allocated but has
+  not registered, and throws `belongs to another world` /
+  `is not in this world` otherwise.
+- **API change (ecs):** `world.createEntity(create?)` registers the entity
+  (a plain `Entity` without `create`). Registering it again is a no-op.
+  Pool factories receive `(id, world: GameWorld)` and `PoolManager` takes
+  the `GameWorld`; dormant pool entities stay unregistered until `spawn`. ecs export snapshot: names
+  `[74]` → `[75]`.
+- `EffectApplicationSystem` and `EffectTickSystem` iterate with
+  `world.query(ActiveEffects)`; `AttributeAggregationSystem` with
+  `world.queryAny(Attributes, ActiveEffects)`. Order is still ascending
+  entity id. No `queryEntities` callers remain in abilities. The runtime
+  arena and persist bench fixtures use `world.query(AbilityOwner, Attributes)`.
+  The playground's `queryEntities` callers stay: their components are
+  plain symbol `IComponent`s, not registered definitions.
+- `releasePooledAbilityState` keeps or removes each of the four components
+  by the factory shell, one path per component. It does not overlap the
+  world's own pool reset: that reset drops registered object and transient
+  components, and module components are excluded from it.
+- `abilities` save format unchanged, goldens unchanged. An owner entity is
+  still flagged `AbilityOwner` alone and written as ability ids, then its
+  attributes, effects and tags, which is the old owner byte layout. A
+  snapshot that flags `AbilityOwner` together with another component
+  throws `unknown component flags`.

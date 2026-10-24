@@ -548,7 +548,7 @@ optional game sections after the `modules` container.
 Component lifecycle is `onCreate` (add), `onEnable` (pool spawn, `spawn`,
 and after restore), `onDisable` (return to pool or despawn) and `onDestroy`
 (`dispose`, including pool drain). Pool return resets SoA fields to schema
-defaults and GAS attributes, the granted ability set, and `initComponent`
+defaults and GAS attributes, the granted ability set, and `AbilityOwner` init
 tags to the factory shell. `addReturnToPoolHook` and
 `isPoolableComponent` are internal. `IPoolableComponent` is exported.
 

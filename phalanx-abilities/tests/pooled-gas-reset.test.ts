@@ -4,7 +4,6 @@ import { FP } from '@phalanx-engine/math';
 import {
   AbilityOwner,
   abilityOwnerOf,
-  type AbilitySystem,
   ActiveEffects,
   activeEffectsOf,
   Attributes,
@@ -18,7 +17,7 @@ import {
   attributesOf,
 } from '../src';
 import { releasePooledAbilityState } from '../src/api/releasePooledAbilityState.js';
-import { attributesValue, standalone } from './helpers.js';
+import { attributesValue, gasOf, standalone } from './helpers.js';
 import { manualTickProvider } from './support/manualTickProvider.js';
 
 const definitions = defineAbilitySystem({
@@ -50,15 +49,13 @@ const definitions = defineAbilitySystem({
 const HEALTH_RAW = FP.ToRaw(FP.FromInt(100));
 
 class Minion extends Entity implements IPoolableEntity {
-  public constructor(id: number, abilities: AbilitySystem) {
+  public constructor(id: number, world: GameWorld) {
     super(id);
-    this.addComponent(
-      abilities.initComponent({
-        tags: ['Team.Red'],
-        effects: ['Effect.Burn'],
-        abilities: ['Ability.Hold'],
-      })
-    );
+    world.addComponent(this, AbilityOwner, {
+      tags: ['Team.Red'],
+      effects: ['Effect.Burn'],
+      abilities: ['Ability.Hold'],
+    });
   }
 
   public onSpawn(): void {}
@@ -68,31 +65,23 @@ class Minion extends Entity implements IPoolableEntity {
 
 describe('pooled GAS reset', () => {
   it('clears transient effects and restores the factory shell', () => {
-    const holder: { abilities?: AbilitySystem } = {};
     const world = new GameWorld({
       tickFrameProvider: manualTickProvider(),
       pooling: {
         entityTypes: {
           minion: {
-            factory: (id) => {
-              const abilities = holder.abilities;
-              if (abilities === undefined) {
-                throw new Error('ability system is not ready');
-              }
-              return new Minion(id, abilities);
-            },
+            factory: (id, owner) => new Minion(id, owner),
           },
         },
       },
     });
     const abilities = createAbilitySystem(world, { definitions });
-    holder.abilities = abilities;
     world.registerSystems([...abilities.tickSystems], []);
     const pools = world.pools;
     if (pools === null) throw new Error('expected pools');
 
     const minion = pools.spawn<Minion>('minion');
-    const component = abilityOwnerOf(minion);
+    const component = gasOf(minion);
     if (component === undefined) throw new Error('missing ability component');
     expect(component.activeEffects.pendingAdd).toHaveLength(1);
     expect(component.tags.tags.has('Team.Red')).toBe(true);
@@ -210,19 +199,12 @@ describe('pooled GAS reset', () => {
   });
 
   it('matches a fresh spawn after three despawn and spawn cycles', () => {
-    const holder: { abilities?: AbilitySystem } = {};
     const world = new GameWorld({
       tickFrameProvider: manualTickProvider(),
       pooling: {
         entityTypes: {
           minion: {
-            factory: (id) => {
-              const abilities = holder.abilities;
-              if (abilities === undefined) {
-                throw new Error('ability system is not ready');
-              }
-              return new Minion(id, abilities);
-            },
+            factory: (id, owner) => new Minion(id, owner),
           },
         },
       },
@@ -230,7 +212,6 @@ describe('pooled GAS reset', () => {
     const abilities = createAbilitySystem(world, {
       definitions: reuseDefinitions,
     });
-    holder.abilities = abilities;
     world.registerSystems([...abilities.tickSystems], []);
     const pools = world.pools;
     if (pools === null) throw new Error('expected pools');
@@ -241,7 +222,7 @@ describe('pooled GAS reset', () => {
     const wounded = FP.ToRaw(FP.FromInt(32));
 
     for (let life = 0; life < 3; life += 1) {
-      const component = abilityOwnerOf(recycled);
+      const component = gasOf(recycled);
       if (component === undefined) throw new Error('missing ability component');
       component.attributes.base[0] = wounded;
       component.attributes.current[0] = wounded;
@@ -294,7 +275,7 @@ function gasShell(entity: Entity): {
   pending: number;
   queued: number;
 } {
-  const component = abilityOwnerOf(entity);
+  const component = gasOf(entity);
   if (component === undefined) throw new Error('missing ability component');
   return {
     base: [...component.attributes.base],

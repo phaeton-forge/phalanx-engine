@@ -52,7 +52,7 @@ Game code calls only `pools.spawn(typeKey, args)` and `pools.despawn(entity)`.
   first dormant pass does not call `onDisable`.
 - `createAbilitySystem` registers an internal return-to-pool hook that
   restores the factory shell: attributes, the granted ability set, and
-  `initComponent` tags, and clears the effect queue, pending adds, and
+  `AbilityOwner` init tags, and clears the effect queue, pending adds, and
   grants. GAS components stay plain data. Initial `pendingAdd` effects are
   not in the shell, so `onSpawn` must re-seed those.
 - This order must stay identical across all clients — it is part of lockstep

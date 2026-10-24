@@ -8,13 +8,11 @@ import type {
   EffectDef,
   ModifierOp,
 } from '../types/index.js';
-import {
-  AbilityOwner,
-  attributesOf,
-  activeEffectsOf,
-} from '../components/abilityOwner.js';
 import { Attributes } from '../components/attributes.js';
-import { type ActiveEffectsState } from '../components/activeEffects.js';
+import {
+  ActiveEffects,
+  type ActiveEffectsState,
+} from '../components/activeEffects.js';
 
 /**
  * Reusable per-tick buffer reused across entities to avoid per-entity allocations
@@ -46,14 +44,12 @@ export class AttributeAggregationSystem extends GameSystem {
   }
 
   public override processTick(_tick: number): void {
-    const entities = this.entityManager.queryEntitiesAny(
-      AbilityOwner.type,
-      Attributes.type
-    );
     const attributeDefs = this.registries.attributes.values();
 
-    for (const entity of entities) {
-      const attributes = attributesOf(entity);
+    for (const [, attributes, activeEffects] of this.world.queryAny(
+      Attributes,
+      ActiveEffects
+    )) {
       if (!attributes) {
         continue;
       }
@@ -63,7 +59,6 @@ export class AttributeAggregationSystem extends GameSystem {
         continue;
       }
 
-      const activeEffects = activeEffectsOf(entity);
       const orderedEffects = this.takeOrderedEffects(activeEffects);
       // Resolve each EffectDef once per entity per tick instead of per dirty attribute.
       const resolvedEffectDefs = this.resolveEffectDefs(orderedEffects);
@@ -162,13 +157,11 @@ export class AttributeAggregationSystem extends GameSystem {
   /**
    * Resolve {@link EffectDef}s for the entity's ordered queue.
    *
-   * `Periodic` effects are deliberately filtered out here: in Stage 3 their
+   * `Periodic` effects are deliberately filtered out here: their
    * application path enqueues them like `Duration` effects (so their
-   * `tagsGranted` and lifecycle work today), but their modifiers must NOT be
-   * applied continuously to `current` — by definition periodic modifiers are
-   * supposed to fire on a per-period cadence, which Stage 4 will implement.
-   * Until then, treating their modifiers as always-on would be incorrect and
-   * would diverge from the documented Stage 3 contract.
+   * `tagsGranted` and lifecycle apply), but their modifiers must NOT be
+   * applied continuously to `current` — periodic modifiers fire on their
+   * per-period cadence in `EffectTickSystem`.
    */
   private resolveEffectDefs(
     orderedEffects: readonly ActiveEffectInstance[]

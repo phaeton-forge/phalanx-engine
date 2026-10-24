@@ -2,6 +2,7 @@ import { Entity, GameWorld, ValueComponent } from '@phalanx-engine/ecs';
 import { FP } from '@phalanx-engine/math';
 import type { FixedPoint } from '@phalanx-engine/math';
 import {
+  AbilityOwner,
   createAbilitySystem,
   Cue,
   defineAbilitySystem,
@@ -19,6 +20,10 @@ import {
   type CueEvent,
   type EffectDef,
   type GameplayCueDispatchedEvent,
+  abilityOwnerOf,
+  activeEffectsOf,
+  attributesOf,
+  gameplayTagsOf,
 } from '../src';
 import { GAMEPLAY_CUE_EVENT } from '../src/events';
 import { manualTickProvider } from './support/manualTickProvider.js';
@@ -144,22 +149,17 @@ export function createTestWorld(opts: TestWorldOpts = {}): TestWorld {
 }
 
 export function addEntity(world: GameWorld): Entity {
-  const entity = world.createEntity((id) => new Entity(id));
-  world.entityManager.addEntity(entity);
+  const entity = world.createEntity();
   return entity;
 }
 
 export function equipEntity(
   world: GameWorld,
   entity: Entity,
-  abilities: AbilitySystem,
+  _abilities: AbilitySystem,
   init?: AbilityOwnerInit
 ): void {
-  const component = abilities.initComponent(init);
-  entity.addComponent(component);
-  if (world.entityManager.getEntity(entity.id)) {
-    world.entityManager.onComponentAdded(entity, component.type);
-  }
+  world.addComponent(entity, AbilityOwner, init);
 }
 
 export function spawnEntity(
@@ -167,7 +167,7 @@ export function spawnEntity(
   abilities: AbilitySystem,
   init?: AbilityOwnerInit
 ): Entity {
-  const entity = world.createEntity((id) => new Entity(id));
+  const entity = world.createEntity();
   equipEntity(world, entity, abilities, init);
   world.entityManager.addEntity(entity);
   return entity;
@@ -184,4 +184,21 @@ export function spawnCombatEntity(
     ...init,
     abilities: init?.abilities ?? abilityIds,
   });
+}
+
+/** The owner's ability set with the entity's attributes, effects and tags. */
+export function gasOf(entity: Entity) {
+  const owner = abilityOwnerOf(entity);
+  const attributes = attributesOf(entity);
+  const activeEffects = activeEffectsOf(entity);
+  const tags = gameplayTagsOf(entity);
+  if (
+    owner === undefined ||
+    attributes === undefined ||
+    activeEffects === undefined ||
+    tags === undefined
+  ) {
+    return undefined;
+  }
+  return { abilities: owner.abilities, attributes, activeEffects, tags };
 }

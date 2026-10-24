@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { Entity, GameWorld } from '@phalanx-engine/ecs';
+import { GameWorld } from '@phalanx-engine/ecs';
 import { FP } from '@phalanx-engine/math';
 import { manualTickProvider } from './support/manualTickProvider.js';
 import {
+  AbilityOwner,
   createAbilitySystem,
   defineAbility,
   defineAbilitySystem,
@@ -11,7 +12,7 @@ import {
 } from '../src';
 
 describe('public ability system API', () => {
-  it('builds an initialized AbilityOwner for direct entity attachment', () => {
+  it('attaches an initialized AbilityOwner with world.addComponent', () => {
     const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
     const abilities = createAbilitySystem(world, {
       definitions: defineAbilitySystem({
@@ -35,15 +36,13 @@ describe('public ability system API', () => {
     });
     world.registerSystems([...abilities.tickSystems], []);
 
-    const unit = world.createEntity((id) => new Entity(id));
-    unit.addComponent(
-      abilities.initComponent({
-        attributes: {
-          Health: FP.FromInt(80),
-        },
-        tags: ['Team.Blue'],
-      })
-    );
+    const unit = world.createEntity();
+    world.addComponent(unit, AbilityOwner, {
+      attributes: {
+        Health: FP.FromInt(80),
+      },
+      tags: ['Team.Blue'],
+    });
     world.entityManager.addEntity(unit);
 
     expect(FP.ToFloat(abilities.getAttribute(unit.id, 'Health').base)).toBe(80);
@@ -94,8 +93,8 @@ describe('public ability system API', () => {
     });
     world.registerSystems([...abilities.tickSystems], []);
 
-    const untrained = world.createEntity((id) => new Entity(id));
-    untrained.addComponent(abilities.initComponent());
+    const untrained = world.createEntity();
+    world.addComponent(untrained, AbilityOwner);
     world.entityManager.addEntity(untrained);
 
     expect(abilities.activateAbility(untrained.id, 'Ability.SelfDamage')).toBe(
@@ -106,12 +105,10 @@ describe('public ability system API', () => {
       FP.ToFloat(abilities.getAttribute(untrained.id, 'Health').current)
     ).toBe(100);
 
-    const trained = world.createEntity((id) => new Entity(id));
-    trained.addComponent(
-      abilities.initComponent({
-        abilities: ['Ability.SelfDamage'],
-      })
-    );
+    const trained = world.createEntity();
+    world.addComponent(trained, AbilityOwner, {
+      abilities: ['Ability.SelfDamage'],
+    });
     world.entityManager.addEntity(trained);
 
     expect(abilities.activateAbility(trained.id, 'Ability.SelfDamage')).toBe(
@@ -125,9 +122,9 @@ describe('public ability system API', () => {
     world.dispose();
   });
 
-  it('throws near spawn code when initComponent references unknown ids', () => {
+  it('throws near spawn code when the init references unknown ids', () => {
     const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
-    const abilities = createAbilitySystem(world, {
+    createAbilitySystem(world, {
       definitions: defineAbilitySystem({
         attributes: [
           defineAttribute({
@@ -141,8 +138,9 @@ describe('public ability system API', () => {
       }),
     });
 
+    const unit = world.createEntity();
     expect(() =>
-      abilities.initComponent({
+      world.addComponent(unit, AbilityOwner, {
         attributes: { NotRegistered: FP.FromInt(1) },
       })
     ).toThrow("AttributeRegistry does not contain 'NotRegistered'");

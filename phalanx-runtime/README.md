@@ -344,7 +344,7 @@ has a GAS component is written in ascending id order, with flags so lazy
 components are created on read. Free-list entities are omitted.
 The pool records the factory shell on the first return
 (attribute `base` / `current` / `dirty`, the equipped ability set, and
-ad-hoc tags plus effect grants, including `initComponent` tags). Later
+ad-hoc tags plus effect grants, including `AbilityOwner` init tags). Later
 returns clear the effect queue and `pendingAdd`, copy that shell back,
 and remove GAS components attached after it (a bare pooled entity that
 gained `ActiveEffects` or `GameplayTags` during its life is dormant

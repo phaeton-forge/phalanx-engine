@@ -107,7 +107,8 @@ const physicsWorld = new PhysicsWorld({ tickRate: 20 });
 physicsWorld.attach(world); // also adds the physics systems (world.addModuleSystems)
 
 const abilities = createAbilitySystem(world, { definitions: combatDefs });
-// provides the Abilities service; pass abilities.tickSystems to registerSystems
+// provides Abilities, registers its components, adds abilities.tickSystems
+// as module systems (list them in registerSystems only to place them)
 ```
 
 Modules add their own systems with `world.addModuleSystems(tick, frame)`
@@ -202,7 +203,7 @@ world.addComponent(entity, Hp, { hp: 4n });
 world.getComponent(entity, Hp);
 ```
 
-SoA fields are `i32`, `u32`, `u8`, `i64` (saved, included in `configHash`). An object component must pass `save` and `load` to `registerComponent`. `writeSorted` orders `Set` and `Map` keys. A transient component is display-only: not saved, not in `configHash`, and a tick system that reads it throws (`hasComponents` included). `restoreWorld` drops transient components. Physics ignores `discardedTransientIds` and seeds `Interpolation` from `Transform` for every body. Object and transient values use `ValueComponent`.
+SoA fields are `i32`, `u32`, `u8`, `i64` (saved, included in `configHash`). An object component must pass `save` and `load` to `registerComponent`. `writeSorted` orders `Set` and `Map` keys. A transient component is display-only: not saved, not in `configHash`, and a tick system that reads it throws (`hasComponents` included). `restoreWorld` drops transient components. Physics ignores `discardedTransientIds` and seeds `Interpolation` from `Transform` for every body. Object and transient values use `ValueComponent`. A module that saves and resets an object component itself registers it with `world.registerComponent(def, { attach?, remove? })` (`ModuleComponentOptions`): no per-component save section and not dropped on pool return. `attach(entity, init)` replaces the default `world.addComponent`, `remove(entity)` the default `world.removeComponent`. `defineComponent<T, Init>` types the `init` argument. `entity.addComponent` / `removeComponent` keep the manager's index in sync for registered entities. `world.addComponent` also accepts an entity this world allocated but has not registered (a pool factory's entity); an entity of another world throws `belongs to another world`.
 
 ### IComponent (Standard Components)
 
@@ -443,14 +444,13 @@ const entity = world.createEntity((id) => {
 ```
 
 ```typescript
-// Option A: Use Entity directly. The world assigns the id.
-const entity = world.createEntity((id) => new Entity(id));
+// Option A: Use Entity directly. The world assigns the id and registers it.
+const entity = world.createEntity();
 const fpPos = FPVector3.FromFloat(10, 0, 20);
 entity.addComponent(new HealthComponent(100));
 entity.addComponent(new TeamComponent('red'));
 attachTransform(entity, fpPos);
 attachInterpolation(entity, fpPos);
-entityManager.addEntity(entity);
 
 // Option B: Extend Entity for game-specific entities
 class Unit extends Entity {
@@ -1090,7 +1090,7 @@ import type {
 - Implement `IPoolableEntity<TSpawnArgs>` on pooled entities: `onSpawn(args)` assigns per-spawn values via typed setters; `onDespawn()` clears game state
 - Component `onEnable` runs after `addEntity`; `onDisable` runs before `removeEntity`. `onDestroy` runs from `dispose`, including pool drain. Use those for presentation. Do not import `IPoolableComponent`
 - SoA rows are removed while dormant and restored to constructor defaults on spawn by internal storage hooks
-- Pool return also restores GAS attributes, the granted ability set, and `initComponent` tags to the factory shell
+- Pool return also restores GAS attributes, the granted ability set, and `AbilityOwner` init tags to the factory shell
 - Prewarm pools at game start with `prewarmAll()` to avoid allocation spikes during gameplay
 - Check `pool.stats` for diagnostics (acquireCount, releaseCount, missCount)
 

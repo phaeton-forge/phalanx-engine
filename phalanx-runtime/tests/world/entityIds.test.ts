@@ -68,6 +68,6 @@ describe('per-world entity ids', () => {
     expect(restored.entityManager.getEntity(5)?.id).toBe(5);
     expect(restored.entityManager.getEntity(2)?.id).toBe(2);
     expect(restored.entityManager.entityIdHighWater()).toBe(5);
-    expect(restored.createEntity((id) => new Entity(id)).id).toBe(6);
+    expect(restored.createEntity().id).toBe(6);
   });
 });

@@ -311,12 +311,12 @@ Domain code imports `defineComponent` from `@phalanx-engine/ecs`.
 
 ### 4.4 Entity lifecycle
 
-- Create: `world.createEntity((id) => new Entity(id))` (or a subclass whose
-  constructor takes that id) → `addComponent(...)` in the **constructor
-  only** → `entityManager.addEntity(entity)`. `createEntity` does not
-  register. `createEntityWithId` does. Pool factories are
-  `(id: number, manager: EntityManager) => T`; `manager` is the owning
-  world's manager.
+- Create: `world.createEntity()` or `world.createEntity((id) => new
+Sub(id))` → `world.addComponent(entity, Component, init)`. Both
+  `createEntity` and `createEntityWithId` register the entity. Pool
+  factories are `(id: number, world: GameWorld) => T`; they may call
+  `world.addComponent` on the dormant entity, which is registered on
+  `spawn`.
 - Destroy: `entity.destroy()`, then `entityManager.cleanupDestroyed()` in the
   `afterTick` hook, then `dispose()` the returned entities. **Never call
   `entity.dispose()` from game code directly.**
@@ -350,16 +350,16 @@ Pooling is **engine-driven**. Game code calls exactly two APIs:
 - `createAbilitySystem` registers an internal return-to-pool hook. The
   first call records the factory shell (attribute `base` / `current` /
   `dirty`, the equipped ability set, and ad-hoc tags plus effect grants,
-  including `initComponent` tags). Later calls clear the effect queue and
+  including `AbilityOwner` init tags). Later calls clear the effect queue and
   `pendingAdd`, copy that shell back, and remove GAS components attached
   after it (`applyEffect`, `addTag`, standalone attributes). The hook is
   idempotent and runs again when a restored free-list entity is parked.
-  Factory `pendingAdd` is captured in `initComponent`, before a snapshot
+  Factory `pendingAdd` is captured when `AbilityOwner` is attached, before a snapshot
   replaces the list on a restored live entity, and is not part of the
   shell image. `AbilityOwnerSlot.onEnable` copies that capture back
   after a pool spawn.
   `restoreWorld` calls `onEnable('restore')`, which does not reseed, so
-  the snapshot's pending list is kept. Attributes, the granted ability set, and `initComponent`
+  the snapshot's pending list is kept. Attributes, the granted ability set, and `AbilityOwner` init
   tags come back from the shell. A free-list entity is not in the GAS
   snapshot; the shell restore is what keeps a respawn whose `onSpawn` does
   not rewrite attributes identical to a restored copy.

@@ -62,7 +62,6 @@ export function attachInterpolation(
   }
   const value = createInterpolationSample(position, rotation);
   entity.addComponent(new ValueComponent(Interpolation.type, value));
-  entity._manager?.onComponentAdded(entity, Interpolation.type);
   return value;
 }
 

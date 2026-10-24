@@ -3,10 +3,10 @@ import {
   AbilityOwner,
   abilityOwnerOf,
   abilityOwnerSlotOf,
+  activeEffectsOf,
   attributesOf,
   gameplayTagsOf,
   valueOf,
-  type AbilityOwnerState,
 } from '../components/abilityOwner.js';
 import {
   ActiveEffects,
@@ -55,7 +55,7 @@ const shellByEntity = new WeakMap<Entity, ShellImage>();
  *
  * The first call records the factory shell: attribute `base` / `current` /
  * `dirty`, the equipped ability set, and the tag sets as the factory left
- * them (`initComponent` tags included). Later calls clear the effect queue
+ * them (`AbilityOwner` init tags included). Later calls clear the effect queue
  * and `pendingAdd`, then copy that image back. Components attached after
  * the shell (`applyEffect`, `addTag`, standalone attributes) are removed.
  *
@@ -67,7 +67,7 @@ const shellByEntity = new WeakMap<Entity, ShellImage>();
  * factory instance and runs this again, so a respawn whose `onSpawn` does
  * not rewrite attributes still matches the restored copy.
  *
- * Factory `pendingAdd` is captured in `initComponent`, before snapshot
+ * Factory `pendingAdd` is captured when `AbilityOwner` is attached, before snapshot
  * effects replace the list on a restored live entity. The call below is
  * then a no-op. A component that was not built that way still captures
  * on the first return to the pool.
@@ -79,88 +79,66 @@ const shellByEntity = new WeakMap<Entity, ShellImage>();
 export function releasePooledAbilityState(entity: Entity): void {
   const shell = rememberShell(entity);
 
-  if ((shell.flags & SHELL_ABILITY_OWNER) !== 0) {
-    const slot = abilityOwnerSlotOf(entity);
-    if (slot !== undefined) {
-      slot.captureInitialPending();
-      clearEffects(slot.value.activeEffects);
-      slot.requestReseed();
-      restoreAbility(slot.value, shell);
-    }
-  } else if (entity.hasComponent(AbilityOwner.type)) {
-    entity.removeComponent(AbilityOwner.type);
+  const owner = keepOrRemove(entity, shell, SHELL_ABILITY_OWNER, AbilityOwner);
+  if (owner !== undefined && shell.abilities !== null) {
+    owner.abilities.clear();
+    for (const id of shell.abilities) owner.abilities.add(id);
   }
 
-  if ((shell.flags & SHELL_ACTIVE_EFFECTS) !== 0) {
-    const effects = valueOf(entity, ActiveEffects);
-    if (effects !== undefined) clearEffects(effects);
-  } else if (entity.hasComponent(ActiveEffects.type)) {
-    entity.removeComponent(ActiveEffects.type);
+  const effects = keepOrRemove(
+    entity,
+    shell,
+    SHELL_ACTIVE_EFFECTS,
+    ActiveEffects
+  );
+  if (effects !== undefined) {
+    const slot = owner === undefined ? undefined : abilityOwnerSlotOf(entity);
+    slot?.captureInitialPending(effects);
+    clearEffects(effects);
+    slot?.requestReseed(effects);
   }
 
-  if ((shell.flags & SHELL_ABILITY_OWNER) === 0) {
-    if ((shell.flags & SHELL_GAMEPLAY_TAGS) !== 0) {
-      const tags = valueOf(entity, GameplayTags);
-      if (tags !== undefined && shell.tags !== null)
-        restoreTags(tags, shell.tags);
-    } else if (entity.hasComponent(GameplayTags.type)) {
-      entity.removeComponent(GameplayTags.type);
-    }
+  const tags = keepOrRemove(entity, shell, SHELL_GAMEPLAY_TAGS, GameplayTags);
+  if (tags !== undefined && shell.tags !== null) restoreTags(tags, shell.tags);
 
-    if ((shell.flags & SHELL_ATTRIBUTES) !== 0) {
-      const attributes = attributesOf(entity);
-      if (attributes !== undefined && shell.attributes !== null) {
-        restoreAttributes(attributes, shell.attributes);
-      }
-    } else if (entity.hasComponent(Attributes.type)) {
-      entity.removeComponent(Attributes.type);
-    }
+  const attributes = keepOrRemove(entity, shell, SHELL_ATTRIBUTES, Attributes);
+  if (attributes !== undefined && shell.attributes !== null) {
+    restoreAttributes(attributes, shell.attributes);
   }
+}
+
+/** The value when the shell had `component`; otherwise drop it and return `undefined`. */
+function keepOrRemove<T extends object>(
+  entity: Entity,
+  shell: ShellImage,
+  flag: number,
+  component: { readonly type: symbol; create(): T }
+): T | undefined {
+  if ((shell.flags & flag) !== 0) return valueOf(entity, component);
+  if (entity.hasComponent(component.type))
+    entity.removeComponent(component.type);
+  return undefined;
 }
 
 function rememberShell(entity: Entity): ShellImage {
   const remembered = shellByEntity.get(entity);
   if (remembered !== undefined) return remembered;
+  const owner = abilityOwnerOf(entity);
+  const attributes = attributesOf(entity);
+  const tags = gameplayTagsOf(entity);
   let flags = 0;
-  if (entity.hasComponent(AbilityOwner.type)) {
-    flags |= SHELL_ABILITY_OWNER;
-  }
-  if (entity.hasComponent(Attributes.type)) {
-    flags |= SHELL_ATTRIBUTES;
-  }
-  if (entity.hasComponent(ActiveEffects.type)) {
-    flags |= SHELL_ACTIVE_EFFECTS;
-  }
-  if (entity.hasComponent(GameplayTags.type)) {
-    flags |= SHELL_GAMEPLAY_TAGS;
-  }
-  const ability =
-    (flags & SHELL_ABILITY_OWNER) !== 0 ? abilityOwnerOf(entity) : undefined;
-  const attributes =
-    ability?.attributes ??
-    ((flags & SHELL_ATTRIBUTES) !== 0 ? attributesOf(entity) : undefined);
-  const tags =
-    ability?.tags ??
-    ((flags & SHELL_GAMEPLAY_TAGS) !== 0 ? gameplayTagsOf(entity) : undefined);
+  if (owner !== undefined) flags |= SHELL_ABILITY_OWNER;
+  if (attributes !== undefined) flags |= SHELL_ATTRIBUTES;
+  if (activeEffectsOf(entity) !== undefined) flags |= SHELL_ACTIVE_EFFECTS;
+  if (tags !== undefined) flags |= SHELL_GAMEPLAY_TAGS;
   const image: ShellImage = {
     flags,
     attributes: attributes === undefined ? null : captureAttributes(attributes),
-    abilities: ability === undefined ? null : [...ability.abilities],
+    abilities: owner === undefined ? null : [...owner.abilities],
     tags: tags === undefined ? null : captureTags(tags),
   };
   shellByEntity.set(entity, image);
   return image;
-}
-
-function restoreAbility(ability: AbilityOwnerState, shell: ShellImage): void {
-  if (shell.attributes !== null) {
-    restoreAttributes(ability.attributes, shell.attributes);
-  }
-  if (shell.abilities !== null) {
-    ability.abilities.clear();
-    for (const id of shell.abilities) ability.abilities.add(id);
-  }
-  if (shell.tags !== null) restoreTags(ability.tags, shell.tags);
 }
 
 function captureAttributes(attributes: AttributesState): AttributeImage {
