@@ -122,7 +122,7 @@ singleton bytes go through `bindWorldSingletons(world, { onSave, onRestore })`.
 Component hooks are `onCreate`, `onEnable`, `onDisable`, `onDestroy`.
 `onEnable` also runs after restore and must not overwrite saved fields.
 Returning an entity to the pool resets SoA fields to the schema defaults
-and resets GAS attributes, the granted ability set, and `initComponent`
+and resets GAS attributes, the granted ability set, and `AbilityOwner` init
 tags to the factory shell.
 
 ## State helpers
@@ -159,7 +159,7 @@ Call these inside a hand-written `GameState`, in this order on restore:
   read. Free-list entities are omitted. `createAbilitySystem` records the
   factory shell on the first pool return (attribute `base` / `current` /
   `dirty`, the equipped ability set, ad-hoc tags and effect grants,
-  including `initComponent` tags). Later returns clear the effect queue
+  including `AbilityOwner` init tags). Later returns clear the effect queue
   and `pendingAdd`, copy that shell back, and remove GAS components
   attached after it. `readPools` runs the hook again. Initial `pendingAdd`
   effects are not in the shell, so `onSpawn` must re-seed those. A respawn

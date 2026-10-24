@@ -122,7 +122,7 @@
 3. Системы эффектов на `world.queryAny`.
 4. `releasePooledAbilityState` упростить: после п. 2 ветвления по двум представлениям уходят. Проверить на дубли с автосбросом пулов.
 5. Формат сейва abilities не меняется, кроме случая из п. 2.
-6. Когда `createAbilitySystem` начнёт регистрировать компоненты, `world.addComponent(e, AbilityOwner)` должен бросать явную ошибку с указанием использовать `abilities.initComponent(init)` (с тестом).
+6. Компоненты присоединяются только через `world.addComponent(entity, Component, init)`. `createAbilitySystem` регистрирует `attach` / `remove` хуки: `world.addComponent(e, AbilityOwner, init)` создаёт все четыре компонента, `world.removeComponent(e, AbilityOwner)` удаляет все четыре, удаление `Attributes` / `ActiveEffects` / `GameplayTags` при наличии владельца бросает ошибку (с тестами). Фабрики пулов получают `(id, world)`, `world.createEntity()` сразу регистрирует сущность.
 
 ## A6d. ecs: фазы систем
 
