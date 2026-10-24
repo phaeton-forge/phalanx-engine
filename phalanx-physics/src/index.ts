@@ -69,7 +69,4 @@ export type {
 } from './types.js';
 export { PhysicsEvents } from './events.js';
 
-// Tick providers
-export type { IPhysicsTickProvider } from './tick/IPhysicsTickProvider.js';
-export { ExternalPhysicsTickProvider } from './tick/ExternalPhysicsTickProvider.js';
 export type { BoundsExitEvent } from './types.js';

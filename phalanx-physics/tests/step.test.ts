@@ -10,7 +10,6 @@ import {
 import { PhysicsSystem } from '../src/systems/PhysicsSystem';
 import { PhysicsSoASchema } from '../src/components/physicsBody';
 import { TransformSoASchema } from '../src/components/transform';
-import { ExternalPhysicsTickProvider } from '../src/tick/ExternalPhysicsTickProvider';
 import type { PhysicsConfig } from '../src/types';
 import { addTransformRow } from './testTransformHelpers';
 
@@ -155,31 +154,6 @@ describe('step()', () => {
 
     expect(posAX).toBe(posBX);
     expect(posAZ).toBe(posBZ);
-  });
-
-  it('processTick is no-op when provider is set', () => {
-    const { system, physicsStore, transformStore } = setupSystem();
-    addEntity(physicsStore, transformStore, 1, 0, 0, 10, 0);
-
-    const provider = new ExternalPhysicsTickProvider();
-    system.setTickProvider(provider);
-
-    // processTick should be a no-op now
-    system.processTick(1);
-
-    const txIdx = transformStore.indexOf(1);
-    const posX = FP.ToFloat(
-      FP.FromRaw(transformStore.arrays.fpPositionX[txIdx])
-    );
-    expect(posX).toBeCloseTo(0, 5); // unchanged
-
-    // But provider.tick() should advance simulation
-    provider.tick();
-
-    const posXAfter = FP.ToFloat(
-      FP.FromRaw(transformStore.arrays.fpPositionX[txIdx])
-    );
-    expect(posXAfter).toBeCloseTo(0.5, 1); // vel=10, dt=0.05
   });
 
   it('step() can be called directly', () => {

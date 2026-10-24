@@ -966,3 +966,7 @@ Entries collected per package until the synchronized 0.3.0 release
   collision filter). There are no remaining differences. The
   `physics.broadphase` section no longer looks for a `collisionSystem`
   grid; the `physics` and `physicsSystem` entries are unchanged.
+- Removed `IPhysicsTickProvider`, `ExternalPhysicsTickProvider`,
+  `PhysicsWorldConfig.tickProvider` and `PhysicsSystem.setTickProvider`
+  (physics and game). Physics advances only on the world tick.
+  `PhysicsSystem.step()` stays for tests and tools.

@@ -20,7 +20,6 @@ import type {
   CollisionEvent,
   BoundsExitEvent,
 } from '../types.js';
-import type { IPhysicsTickProvider } from '../tick/IPhysicsTickProvider.js';
 
 const SEPARATION_HALF = FP.FromFloat(0.5);
 
@@ -45,8 +44,6 @@ export class PhysicsSystem extends GameSystem {
   private readonly spatialGrid: SpatialHashGrid;
   private collisionFilter:
     ((entityA: number, entityB: number) => boolean) | null = null;
-  private externalTickProvider: IPhysicsTickProvider | null = null;
-  private providerStarted = false;
 
   constructor(config: PhysicsConfig) {
     super();
@@ -64,23 +61,6 @@ export class PhysicsSystem extends GameSystem {
       this.entityManager.getOrCreateSoAStore(PhysicsSoASchema);
     this.transformStore =
       this.entityManager.getOrCreateSoAStore(TransformSoASchema);
-    this.tryStartProvider();
-  }
-
-  /**
-   * Start the external tick provider only when ALL required state is ready.
-   * Called from init() and setTickProvider().
-   */
-  private tryStartProvider(): void {
-    if (
-      this.providerStarted ||
-      !this.physicsStore ||
-      !this.transformStore ||
-      !this.externalTickProvider
-    )
-      return;
-    this.providerStarted = true;
-    this.externalTickProvider.start(() => this.step());
   }
 
   /**
@@ -95,7 +75,7 @@ export class PhysicsSystem extends GameSystem {
 
   /**
    * Advance the simulation by one tick (all sub-steps).
-   * Called by processTick() in default mode, or directly by a custom IPhysicsTickProvider.
+   * Called by processTick().
    */
   public step(): void {
     if (this.config.integrate === false) {
@@ -116,16 +96,7 @@ export class PhysicsSystem extends GameSystem {
   }
 
   public override processTick(_tick: number): void {
-    if (this.externalTickProvider) return; // provider drives step() directly
     this.step();
-  }
-
-  /** Hand off tick control to a custom provider. */
-  public setTickProvider(provider: IPhysicsTickProvider): void {
-    this.externalTickProvider?.stop();
-    this.providerStarted = false;
-    this.externalTickProvider = provider;
-    this.tryStartProvider();
   }
 
   /**
@@ -793,8 +764,6 @@ export class PhysicsSystem extends GameSystem {
   }
 
   public override dispose(): void {
-    this.externalTickProvider?.stop();
-    this.providerStarted = false;
     super.dispose();
     this.spatialGrid.clear();
   }

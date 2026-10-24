@@ -70,10 +70,6 @@ export class PhysicsWorld {
     this.gravitySystem = new GravitySystem(gravity, gravityAxis, tickDt);
     this.interpolationSystem = new InterpolationSystem();
     this.settleThreshold = config?.settleThreshold;
-
-    if (config?.tickProvider) {
-      this.physicsSystem.setTickProvider(config.tickProvider);
-    }
   }
 
   /**

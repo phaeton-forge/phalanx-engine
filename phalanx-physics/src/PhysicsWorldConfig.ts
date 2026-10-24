@@ -1,5 +1,4 @@
 import type { FixedPoint } from '@phalanx-engine/math';
-import type { IPhysicsTickProvider } from './tick/IPhysicsTickProvider.js';
 
 /**
  * High-level configuration for PhysicsWorld facade.
@@ -50,14 +49,6 @@ export interface PhysicsWorldConfig {
    * Falls back to per-body restitution when omitted. Ignored by `'push'`.
    */
   restitution?: FixedPoint;
-
-  /**
-   * Optional custom tick provider.
-   * When set, PhysicsSystem.processTick() becomes a no-op and the provider
-   * drives the simulation via PhysicsSystem.step().
-   * Omit to use default GameWorld-driven mode.
-   */
-  tickProvider?: IPhysicsTickProvider;
 
   /**
    * When true, bodies exiting worldBounds are ejected instead of clamped.

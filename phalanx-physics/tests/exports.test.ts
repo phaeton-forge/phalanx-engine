@@ -80,9 +80,7 @@ const ROOT_NAMES = [
   'CollisionEvent',
   'CollisionFilter',
   'CollisionManifold',
-  'ExternalPhysicsTickProvider',
   'GravitySystem',
-  'IPhysicsTickProvider',
   'InterpolatedTransformSample',
   'Interpolation',
   'InterpolationSample',
@@ -137,7 +135,6 @@ const ROOT_NAMES = [
 ];
 
 const ROOT_VALUES = [
-  'ExternalPhysicsTickProvider',
   'GravitySystem',
   'Interpolation',
   'InterpolationSystem',
@@ -219,10 +216,10 @@ describe('@phalanx-engine/physics exports', () => {
     expect(declaration).not.toContain('PHYSICS_SAVE_ATTACH');
     expect(
       resolved.map((entry) => actual.get(entry.file)?.names.length)
-    ).toEqual([60]);
+    ).toEqual([58]);
     expect(
       resolved.map((entry) => actual.get(entry.file)?.values.length)
-    ).toEqual([46]);
+    ).toEqual([45]);
   });
 
   it('matches the checked-in name snapshot, types included', () => {
@@ -232,10 +229,10 @@ describe('@phalanx-engine/physics exports', () => {
     }
     expect(
       resolved.map((entry) => actual.get(entry.file)?.names.length)
-    ).toEqual([60]);
+    ).toEqual([58]);
     expect(
       resolved.map((entry) => actual.get(entry.file)?.values.length)
-    ).toEqual([46]);
+    ).toEqual([45]);
   });
 
   it('loads each entry by package name', async () => {
