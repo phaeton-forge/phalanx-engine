@@ -1,199 +1,137 @@
-# Phalanx Math
+# @phalanx-engine/math
 
-Deterministic fixed-point math library for Phalanx Engine. Ensures identical calculations across all platforms and hardware for lockstep multiplayer games.
-
-## Overview
-
-This library wraps `@hastom/fixed-point` to provide a Unity/Quantum-style API for deterministic arithmetic. All clients using the same operations will produce identical results, preventing desync in lockstep multiplayer games.
-
-## Installation
+Fixed-point math for Phalanx. JavaScript `number` is IEEE-754, and two
+CPUs can disagree on the last bit. Lockstep cannot afford that. Every
+simulation value in Phalanx is a `FixedPoint`: an integer with a fixed
+scale of 5 decimal places, so the same operations produce the same bits
+everywhere.
 
 ```bash
 pnpm add @phalanx-engine/math
 ```
 
-## Usage
+Games import it as `@phalanx-engine/game/math`. The package wraps
+`@hastom/fixed-point` in a small, Unity-style surface: `FP`, vectors,
+quaternions, and the match RNG.
 
-```typescript
-import { FP, FPVector2, FPVector3, FPQuaternion } from '@phalanx-engine/math';
+## A tick's worth of math
 
-// Create fixed-point numbers
+```ts
+import {
+  DeterministicRandom,
+  FP,
+  FPQuaternion,
+  FPVector2,
+  FPVector3,
+} from '@phalanx-engine/math';
+
 const speed = FP.FromFloat(5.5);
-const deltaTime = FP.FromFloat(0.016);
-
-// Arithmetic operations
-const distance = FP.Mul(speed, deltaTime);
-
-// 2D vectors
+const step = FP.Mul(speed, FP.FromFloat(0.05));
 const velocity = FPVector2.FromFloat(3, 4);
-const length = FPVector2.Magnitude(velocity); // 5
+const length = FPVector2.Magnitude(velocity);
 
-// 3D positions (for game entities)
 const position = FPVector3.FromFloat(10, 0, 20);
 const target = FPVector3.FromFloat(15, 0, 25);
 const dist = FPVector3.Distance(position, target);
 
-// Quaternion rotations (deterministic, XYZ Euler order)
-const yaw = FPQuaternion.FromAxisAngle(FPVector3.Up, FP.PiOver2); // 90° around +Y
-const facing = FPQuaternion.RotateVector(yaw, FPVector3.Forward); // rotate a direction
-const blended = FPQuaternion.Slerp(
-  FPQuaternion.Identity(),
-  yaw,
-  FP.FromFloat(0.5)
-);
-
-// Convert back to numbers for rendering
-console.log(FP.ToFloat(dist));
-console.log(FPQuaternion.ToFloat(blended)); // { x, y, z, w }
-```
-
-## API
-
-### FP
-
-Unified namespace for fixed-point operations (Unity/Quantum style):
-
-#### Creation
-
-- `FP.FromFloat(value: number)` - Create from JavaScript number
-- `FP.FromString(value: string)` - Create from string representation
-- `FP.FromInt(value: number | bigint)` - Create from integer
-- `FP.ToFloat(fp: FixedPoint)` - Convert back to JavaScript number (**presentation only** — never use on the tick path to derive simulation state; see `ToInt` for the deterministic alternative)
-- `FP.ToInt(fp: FixedPoint)` - Truncate to an integer as a plain JS number, via raw bigint division — **no float round-trip**. The FP-native inverse of `FromInt` and the deterministic replacement for `Math.trunc(FP.ToFloat(fp))`. Use it on the tick path when a simulation value (ability level, count, index) must drive a branch or table lookup. Assumes default precision (10^5); for custom precision, scale `FP.ToRaw` manually.
-
-#### Constants
-
-- `FP._0`, `FP._1` - Zero and One (Quantum naming)
-- `FP.Pi`, `FP.Pi2`, `FP.PiOver2` - Pi constants
-
-#### Arithmetic
-
-- `FP.Add`, `FP.Sub`, `FP.Mul`, `FP.Div`, `FP.Neg` - Basic arithmetic
-
-#### Math Functions
-
-- `FP.Sqrt`, `FP.Abs` - Unary operations
-- `FP.Floor`, `FP.Ceil`, `FP.Round` - Rounding
-- `FP.Min`, `FP.Max`, `FP.Clamp` - Range operations
-- `FP.Lerp` - Linear interpolation
-
-#### Comparison
-
-- `FP.Eq`, `FP.Lt`, `FP.Lte`, `FP.Gt`, `FP.Gte` - Comparisons
-
-#### Trigonometry
-
-- `FP.Sin`, `FP.Cos`, `FP.Atan2` - Deterministic approximations
-- `FP.Acos` - Arccosine via the `atan2` identity; input clamped to `[-1, 1]`, returns radians in `[0, PI]`
-
-### FPVector2
-
-2D vector operations for game logic:
-
-#### Creation
-
-- `FPVector2.Create(x, y)` - Create from FixedPoint values
-- `FPVector2.FromFloat(x, y)` - Create from numbers
-
-#### Constants
-
-- `FPVector2.Zero`, `FPVector2.One` - Common vectors
-- `FPVector2.Up`, `FPVector2.Right` - Direction vectors
-
-#### Operations
-
-- `FPVector2.Add`, `FPVector2.Sub`, `FPVector2.Scale` - Vector arithmetic
-- `FPVector2.Magnitude`, `FPVector2.SqrMagnitude` - Length (Unity naming)
-- `FPVector2.Normalize`, `FPVector2.Dot` - Geometric operations
-- `FPVector2.Distance`, `FPVector2.SqrDistance` - Distance calculations
-- `FPVector2.Lerp` - Interpolation
-- `FPVector2.ToFloat` - Convert for rendering
-
-### FPVector3
-
-3D vector operations for entity positions:
-
-#### Creation
-
-- `FPVector3.Create(x, y, z)` - Create from FixedPoint values
-- `FPVector3.FromFloat(x, y, z)` - Create from numbers
-
-#### Constants
-
-- `FPVector3.Zero`, `FPVector3.One` - Common vectors
-- `FPVector3.Up`, `FPVector3.Right`, `FPVector3.Forward` - Direction vectors
-
-#### Operations
-
-- `FPVector3.Add`, `FPVector3.Sub`, `FPVector3.Scale` - Vector arithmetic
-- `FPVector3.Magnitude`, `FPVector3.SqrMagnitude` - Length (Unity naming)
-- `FPVector3.Normalize`, `FPVector3.Dot`, `FPVector3.Cross` - Geometric operations
-- `FPVector3.Distance`, `FPVector3.SqrDistance` - Distance calculations
-- `FPVector3.Lerp` - Interpolation
-- `FPVector3.ToFloat` - Convert for rendering
-
-### FPQuaternion
-
-Deterministic fixed-point quaternion for entity rotations. Stored in `(x, y, z, w)` order where `w` is the scalar component. All conversions use the XYZ Euler order (matching Unity's `Transform`), with intermediate math kept in `FixedPoint` for lockstep determinism. The `FPQuaternion` type/interface is also exported as `FPQuaternionInterface`.
-
-#### Creation
-
-- `FPQuaternion.Identity()` - Identity rotation `{ 0, 0, 0, 1 }`
-- `FPQuaternion.Create(x, y, z, w)` - Create from FixedPoint components
-- `FPQuaternion.FromFloat(x, y, z, w)` - Create from numbers
-
-#### Rotation constructors
-
-- `FPQuaternion.FromAxisAngle(axis: FPVector3, angle: FixedPoint)` - Rotation of `angle` radians around `axis`. The `axis` is assumed to be unit length (the caller's responsibility).
-- `FPQuaternion.LookRotation(forwardDir: FPVector3, upDir?: FPVector3)` - Rotation aligning +Z with `forwardDir`, using `upDir` (default `FPVector3.Up`) as the reference up. Falls back to `Identity()` for degenerate inputs (zero-length forward, or up parallel to forward).
-- `FPQuaternion.FromEulerXYZ(euler: FPVector3)` - Build from Euler angles (radians) applied in XYZ order
-- `FPQuaternion.ToEulerXYZ(q: FPQuaternion)` - Extract Euler angles (radians, XYZ order); pitch sine is clamped to `[-1, 1]` to avoid NaN at the gimbal poles
-
-#### Base operations
-
-- `FPQuaternion.Mul(a, b)` - Hamilton product `a * b` (applies rotation `b` first, then `a`)
-- `FPQuaternion.Dot(a, b)` - Dot product
-- `FPQuaternion.Magnitude`, `FPQuaternion.SqrMagnitude` - Length (Unity naming)
-- `FPQuaternion.Normalize(q)` - Normalize; returns `Identity()` if magnitude is zero
-- `FPQuaternion.Conjugate(q)` - Conjugate `{ -x, -y, -z, w }`
-- `FPQuaternion.Inverse(q)` - Inverse `Conjugate(q) / sqrMagnitude`; returns `Identity()` if magnitude is zero
-
-#### Interpolation
-
-- `FPQuaternion.Slerp(a, b, t: FixedPoint)` - Spherical linear interpolation along the shortest arc; falls back to normalized LERP for near-parallel inputs
-- `FPQuaternion.RotateVector(q, v: FPVector3)` - Rotate a vector by a quaternion (`q * [v, 0] * Conjugate(q)`)
-
-#### Conversion
-
-- `FPQuaternion.ToFloat(q)` - Convert to `{ x, y, z, w }` floats for display/serialization
-
-## DeterministicRandom
-
-`DeterministicRandom` is the canonical match RNG (`xoroshiro128plus` via `pure-rand`). Games construct it from the match seed (`PhalanxClient.randomSeed` or the runtime config seed).
-
-```typescript
-import { DeterministicRandom } from '@phalanx-engine/math';
+const yaw = FPQuaternion.FromAxisAngle(FPVector3.Up, FP.PiOver2);
+const facing = FPQuaternion.RotateVector(yaw, FPVector3.Forward);
 
 const rng = new DeterministicRandom(12345);
-rng.intRange(1, 6);
-
-const saved = rng.getState(); // 4 safe integers
-const continued = DeterministicRandom.fromState(saved);
+const damage = rng.intRange(10, 20);
+const saved = rng.getState();
 rng.setState(saved);
 ```
 
-`getState()` does not draw. `fromState` / `setState` continue the same sequence. `float`, `floatRange`, and `boolean` remain as deprecated wrappers so existing call sites keep compiling. New simulation code uses `int` / `intRange` only. `getGenerator` / `setGenerator` are deprecated in favour of `getState` / `setState` / `fromState` (`pure-rand`'s generator type stays off new call sites).
+`FP.ToFloat`, `FPVector3.ToFloat`, and `FPQuaternion.ToFloat` are for the
+frame. A float that came from them must not be written back into
+simulation state. On the tick, `FP.ToInt` truncates with integer
+arithmetic.
 
-## Why Fixed-Point?
+`FP.FromFloat` parses `toFixed(5)`. Hoist it to module scope. Do not call
+it per entity.
 
-JavaScript's `Number` type uses IEEE 754 floating-point, which can produce slightly different results on different platforms/hardware. In lockstep multiplayer, even tiny differences compound over time, causing desync.
+`FP.Div` throws on a zero denominator. Guard it.
 
-Fixed-point math uses integer arithmetic with a fixed decimal scale, guaranteeing identical results everywhere.
+SoA columns store the raw integer: write `FP.ToRaw(fp)`, read
+`FP.FromRaw(raw)`.
 
-## Performance Considerations
+## FP
 
-Fixed-point operations using BigInt are slower than native floats. For most games, this overhead is negligible. If you encounter performance issues:
+Creation: `FromFloat`, `FromString`, `FromInt`, `ToFloat`, `ToInt`,
+`ToRaw`, `FromRaw`.
 
-1. Profile to confirm fixed-point math is the bottleneck
-2. Consider batching operations
-3. Only use fixed-point for deterministic simulation; use floats for visual-only calculations
+Constants: `FP._0`, `FP._1`, `FP.Pi`, `FP.Pi2`, `FP.PiOver2`. Use these.
+Do not rebuild them.
+
+Arithmetic: `Add`, `Sub`, `Mul`, `Div`, `Neg`.
+
+Functions: `Sqrt`, `Abs`, `Floor`, `Ceil`, `Round`, `Min`, `Max`,
+`Clamp`, `Lerp`.
+
+Compare with `Eq`, `Lt`, `Lte`, `Gt`, `Gte`. Tests should use these, not
+`toBeCloseTo`, on values that are still fixed-point.
+
+Trigonometry: `Sin`, `Cos`, `Atan2`, and `Acos` (input clamped to
+`[-1, 1]`, result in `[0, π]`).
+
+A zero-length vector or a zero quaternion returns a safe fallback
+(`FPQuaternion.Identity()` or a zero vector). Helpers do not return
+`NaN` and do not throw on degenerate geometry.
+
+## FPVector2 and FPVector3
+
+`Create` from fixed-point components, `FromFloat` from numbers.
+Constants: `Zero`, `One`, and the axis directions (`Up`, `Right`, and
+`Forward` on `FPVector3`).
+
+`Add`, `Sub`, `Scale`, `Magnitude`, `SqrMagnitude`, `Normalize`, `Dot`,
+`Distance`, `SqrDistance`, `Lerp`. `FPVector3` also has `Cross`.
+`ToFloat` is presentation.
+
+Squared distances use the `Sq` suffix (`SqrMagnitude`, `SqrDistance`) so
+a hot loop can skip the square root.
+
+## FPQuaternion
+
+Stored as `(x, y, z, w)` with `w` scalar. Euler conversions use XYZ
+order, matching Unity, and stay in fixed-point. The interface is also
+exported as `FPQuaternionInterface`.
+
+- `Identity()`, `Create`, `FromFloat`
+- `FromAxisAngle(axis, angleRadians)` — `axis` is the caller's unit vector
+- `LookRotation(forward, up?)` — `Identity()` when the inputs are degenerate
+- `FromEulerXYZ` / `ToEulerXYZ` — pitch sine is clamped to `[-1, 1]`
+- `Mul` (Hamilton product: `b` applies first), `Dot`, `Magnitude`,
+  `SqrMagnitude`, `Normalize`, `Conjugate`, `Inverse`
+- `Slerp(a, b, t)` along the shortest arc
+- `RotateVector(q, v)`
+- `ToFloat` for the renderer
+
+## DeterministicRandom
+
+The match RNG is `xoroshiro128plus`. Construct it from
+`PhalanxClient.randomSeed` or from the runtime config seed, and pass it
+as `GameWorldConfig.random`.
+
+```ts
+const rng = new DeterministicRandom(seed);
+rng.int(6); // 0..5
+rng.intRange(1, 6); // inclusive
+
+const state = rng.getState(); // four safe integers, draws nothing
+const continued = DeterministicRandom.fromState(state);
+rng.setState(state);
+```
+
+`getState` does not draw. `fromState` and `setState` continue the same
+sequence. Snapshots store these four words.
+
+Simulation code uses `int` and `intRange` only. `float`, `floatRange`,
+and `boolean` still compile and are deprecated. `getGenerator` and
+`setGenerator` are deprecated in favour of `getState`, `setState`, and
+`fromState`.
+
+## License
+
+MIT

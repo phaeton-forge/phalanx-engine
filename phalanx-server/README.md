@@ -1,8 +1,13 @@
 # Phalanx Server
 
-Server component of [Phalanx Engine](../README.md) - a game-agnostic deterministic lockstep multiplayer engine with authentication, matchmaking, and command synchronization.
+The lockstep server for [Phalanx Engine](../README.md). It matchmakes,
+keeps private rooms, owns the tick clock, and rebroadcasts commands in a
+stable order. With no `sim` hook it never simulates the world. Pass
+`createServerSim` and it runs the same `defineGame` as the clients, as a
+lockstep peer: bots, state hashes, and snapshots. It still does not
+stream positions or health.
 
-For a high-level overview of engine features, see the [root README](../README.md).
+For the full picture, see the [root README](../README.md).
 
 ## Table of Contents
 
@@ -136,7 +141,7 @@ const config: Partial<PhalanxConfig> = {
   // requireBuildId: false,  // reject the match when build ids differ
   // shutdownGraceMs: 0,     // wait after server-shutdown before stop(), and again for archive hooks
   // handleSignals: false,   // SIGTERM → shutdown('sigterm')
-  // onMatchArchived: (rec) => {}, // Task 8.1. Omit: log is released, nothing is stored
+  // onMatchArchived: (rec) => {}, // Omit: the log is released, nothing is stored
 
   // === Ready Handshake ===
   readyTimeoutMs: 30000, // Max time for clients to send ready (default: 30000)
@@ -156,7 +161,7 @@ const config: Partial<PhalanxConfig> = {
     requireSamePlayerToResume: true,
   },
 
-  // === Session token (Task 9, opt-in) ===
+  // === Session token (opt-in) ===
   // Omit `session` and no token is issued. `match-resume` then
   // answers `{ reason: 'invalid' }`.
   session: {
@@ -165,8 +170,8 @@ const config: Partial<PhalanxConfig> = {
   },
   // reconnect: { requireSessionToken: false }, // true closes legacy rebind
 
-  // === Absence (Task 10, opt-in) ===
-  // Omit `absence` to keep today's behaviour (no timer).
+  // === Absence (opt-in) ===
+  // Omit `absence` and a disconnected player never loses the match.
   // import { DEFAULT_ABSENCE } from '@phalanx-engine/server';
   absence: {
     windowMs: 120000, // per absence
@@ -380,8 +385,8 @@ game finishes a match. It returns `false` when the match is already
 finished, and when `winnerTeamId` is not a team in the match. The command
 that ended the match is not stored and not broadcast. `getAbsences()`
 returns the current absences with
-`deadlineMs` / `budgetLeftMs` in the same millisecond sense (Task 9
-reads the resume deadline from it).
+`deadlineMs` / `budgetLeftMs` in the same millisecond sense. A session
+resume reads its deadline from the same clock.
 
 ## Server simulation
 
@@ -426,9 +431,13 @@ command that still arrives after its tick is reported as `bot-commands-late`
 and is not moved onto a later tick.
 
 The sim's digest is compared with each client's `state-hash`. A mismatch
-emits `desync` `{ playerId, tick }` to that player only and the match
-continues. Relay rooms (no server sim) keep the previous all-client desync
-behaviour. Snapshots are stored in memory (latest only): every
+emits `desync` (`ServerDesyncEvent`: `{ playerId, tick }`) to that player
+only, and the match continues. The server records that this player has
+been told. After it delivers a `match-snapshot` to that player it clears
+the flag, so a later divergence — after the client has restored — is
+reported again. Relay rooms, with no server sim, still end the match on a
+confirmed desync (`desync.action`, default `'end-match'`). Snapshots are
+stored in memory (latest only): every
 `snapshotEveryTicks`, and on `match-snapshot-request`. Each player has one
 pending request; a newer `requestId` replaces the older one, and those
 waiters share one snapshot. A player is answered at most once a
@@ -447,17 +456,17 @@ text says "out of memory". `process.exit` inside a match is `sim-crash` for
 that match. A worker heap limit (`ERR_WORKER_OUT_OF_MEMORY`) or a dead
 thread ends **every** server match on that worker as `sim-oom` /
 `sim-crash`. A later `room-create` gets `room-error` with reason
-`sim-unavailable` and does not start. Nothing respawns the worker (that
-is Task 17). Relay rooms are not on that thread. A normal `close` is not a
+`sim-unavailable` and does not start. Nothing respawns the worker.
+Relay rooms are not on that thread. A normal `close` is not a
 `sim-crash`.
 `shutdown` / `stop` posts `end` for every server match, waits for the sim
 to drop them, then closes the host.
 
 When `absence` is set and the room config includes `absencePolicy`, an
 absent human is driven by that bot policy until the absence window expires,
-then the Task 10 forfeit still runs (`disconnect`, or `abandoned` when
+then the absence forfeit still runs (`disconnect`, or `abandoned` when
 every human is gone). Return before expiry restores `human`. Without
-`absencePolicy`, expiry ends the match immediately, as in Task 10.
+`absencePolicy`, expiry ends the match immediately.
 
 ## Event Hooks
 

@@ -1,6 +1,13 @@
 # Phalanx Client
 
-Client library for [Phalanx Engine](../README.md) - a game-agnostic deterministic lockstep multiplayer engine.
+The browser and Node client for [Phalanx Engine](../README.md). It speaks
+the lockstep protocol: matchmaking, private rooms, the server tick clock,
+command batching, resume, and — in a server-simulation match — snapshot
+resync when this client's state hash diverges.
+
+Use it on its own when the simulation is yours. Use it with
+`@phalanx-engine/game` when Phalanx owns the world. See
+[Engine integration](#engine-integration).
 
 ## Table of Contents
 
@@ -10,6 +17,7 @@ Client library for [Phalanx Engine](../README.md) - a game-agnostic deterministi
 - [Complete Game Loop Example](#complete-game-loop-example)
 - [Common Tasks](#common-tasks)
 - [Choosing an API](#choosing-an-api)
+- [Engine integration](#engine-integration)
 - [API Reference](#api-reference)
   - [Configuration](#configuration)
   - [Connection](#connection)
@@ -325,7 +333,129 @@ Phalanx Client offers two ways to drive your game loop:
 | **Simplified Game Loop API** (`onTick` / `onFrame` / `sendCommand`)                  | Most games                                           | Low — timing, batching, and interpolation are handled for you. |
 | **Legacy Event-Based API** (`on('tick')` / `on('commands')` / `submitCommandsAsync`) | Custom timing or integrating into an existing engine | Higher — you manage your own render loop and command flushing. |
 
-The simplified API is recommended for new projects.
+The simplified API is recommended when this client is driving a simulation
+you already own. A Phalanx game (`defineGame`) uses
+[Engine integration](#engine-integration) instead, and does not call
+`submitCommands` from inside `onTick`.
+
+## Engine integration
+
+### Authoritative server simulation
+
+The game module is the same one the server runs. `ServerPeerTransport`
+(`@phalanx-engine/game/net`) turns this client into a transport.
+`MatchRunner.join` waits for `game-start`, sends `client-ready`, and
+starts the runner. `@phalanx-engine/client` is an optional peer of
+`@phalanx-engine/game`; install both.
+
+```ts
+import { MatchRunner } from '@phalanx-engine/game';
+import { ServerPeerTransport } from '@phalanx-engine/game/net';
+import { PhalanxClient } from '@phalanx-engine/client';
+
+const client = new PhalanxClient({
+  serverUrl: 'http://localhost:3000',
+  playerId: 'p1',
+  gameId: MyGame.id,
+});
+await client.connect();
+
+const runner = await MatchRunner.join(
+  MyGame,
+  new ServerPeerTransport({ client, gameId: MyGame.id })
+);
+```
+
+The match itself is a private room whose `room-create` payload includes
+`matchConfig`:
+
+```ts
+{
+  gameId: MyGame.id,
+  simMode: 'server',
+  slots: [
+    { slot: 0, team: 0, kind: 'human', playerId: 'p1' },
+    {
+      slot: 1,
+      team: 1,
+      kind: 'bot',
+      policy: 'idle',
+      level: 0,
+      runsOn: 'server',
+    },
+  ],
+}
+```
+
+`PhalanxClient.createRoom(gameType)` opens a relay room and does not send
+`matchConfig`. Put that object on the `room-create` event. After
+`game-start`, the client stores `matchConfig` on the `MatchSession` for
+that `matchId` (`MatchSessionStore`, key `phalanx.session.<gameId>`), so a
+reloaded tab can rebuild the runner.
+
+`client.requestMatchSnapshot(): Promise<MatchSnapshot>` asks for the
+latest server snapshot (`{ tick, bytes, requestId }`, `bytes` is a
+`Uint8Array`). It sends `match-snapshot-request` (`MatchSnapshotRequest`,
+`{ requestId }`) with ids 1, 2, …. The server answers at most once a
+second, with the latest id, and that reply resolves every caller whose id
+is not above it. The call rejects when the socket is down, on disconnect,
+and on `match-end`.
+
+```ts
+import type { MatchSnapshot, ServerDesyncEvent } from '@phalanx-engine/client';
+
+client.on('serverDesync', (event: ServerDesyncEvent) => {
+  // { playerId, tick } — this client's hash disagreed with the server.
+  // MatchRunner.join requests one snapshot resync at a time.
+  void event.tick;
+});
+
+const snapshot: MatchSnapshot = await client.requestMatchSnapshot();
+```
+
+`ServerDesyncEvent`, `MatchSnapshot`, and `MatchSnapshotRequest` are
+exported from this package. The server emits `desync` again for this
+player only after a `match-snapshot` has been delivered, so a second
+divergence after the resync is reported.
+
+Catch-up and the one-in-flight resync are described in the
+[runtime README](../phalanx-runtime/README.md#join-a-server-match).
+
+### Relay lockstep with your own world
+
+`PhalanxClient` is an `ITickFrameProvider`. Pass it to `GameWorld` after
+`waitForGameStart()`, when `randomSeed` is set. Register each system with
+`world.addSystem(system, { phase })`.
+
+```ts
+import { PhalanxClient } from '@phalanx-engine/client';
+import { GameWorld } from '@phalanx-engine/ecs';
+import { DeterministicRandom } from '@phalanx-engine/math';
+
+const client = new PhalanxClient({
+  serverUrl: 'http://localhost:3000',
+  playerId: 'p1',
+});
+await client.connect();
+await client.waitForGameStart();
+
+const seed = client.randomSeed;
+if (seed === null) throw new Error('match seed missing');
+
+const world = new GameWorld({
+  tickFrameProvider: client,
+  random: new DeterministicRandom(seed),
+});
+world.addSystem(new MovementSystem(), { phase: 'input' });
+world.addSystem(new RenderSystem(), { phase: 'render' });
+world.start();
+client.sendReady();
+```
+
+`DeterministicRandom` is also exported from `@phalanx-engine/game/math`.
+The server owns the tick clock. `sendCommand` buffers intent and the
+client flushes it once per frame. `onTick` runs the simulation for the
+batch it was given.
 
 ## API Reference
 
