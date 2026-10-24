@@ -16,7 +16,6 @@ import {
   Interpolation,
   Transform,
   TransformSoASchema,
-  interpolationOf,
   snapshotInterpolation,
   captureInterpolation,
 } from '../components/index.js';
@@ -55,6 +54,9 @@ export class InterpolationSystem
 
   public override init(context: SystemContext): void {
     super.init(context);
+    if (!context.world) {
+      throw new Error('InterpolationSystem.init: context.world is not set');
+    }
     this.transformStore =
       this.entityManager.getOrCreateSoAStore(TransformSoASchema);
   }
@@ -69,27 +71,19 @@ export class InterpolationSystem
   }
 
   public snapshot(): void {
-    const entities = this.entityManager.queryEntities(Interpolation.type);
-    for (const entity of entities) {
-      const sample = interpolationOf(entity);
-      if (sample === undefined) continue;
+    for (const [, sample] of this.world.query(Interpolation)) {
       snapshotInterpolation(sample);
     }
   }
 
   public capture(): void {
-    const entities = this.entityManager.queryEntities(
-      Interpolation.type,
-      Transform.type
-    );
     const activeEntityIds = new Set<number>();
 
-    for (const entity of entities) {
+    for (const [entity, sample, transformIndex] of this.world.query(
+      Interpolation,
+      Transform
+    )) {
       activeEntityIds.add(entity.id);
-
-      const sample = interpolationOf(entity);
-      const transformIndex = this.transformStore.indexOf(entity.id);
-      if (sample === undefined || transformIndex === -1) continue;
 
       const fpPosition = this.readFpPosition(transformIndex);
       const fpRotation = this.readFpRotation(transformIndex);
@@ -117,15 +111,7 @@ export class InterpolationSystem
     const fpAlpha = FP.FromFloat(clampedAlpha);
     this.interpolatedSamples.clear();
 
-    const entities = this.entityManager.queryEntities(
-      Interpolation.type,
-      Transform.type
-    );
-
-    for (const entity of entities) {
-      const sample = interpolationOf(entity);
-      if (sample === undefined) continue;
-
+    for (const [entity, sample] of this.world.query(Interpolation, Transform)) {
       const previousPosition = FPVector3.ToFloat(sample.previousFpPosition);
       const currentPosition = FPVector3.ToFloat(sample.currentFpPosition);
 

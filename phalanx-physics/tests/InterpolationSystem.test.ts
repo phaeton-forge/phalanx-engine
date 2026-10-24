@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   Entity,
-  EntityManager,
-  EventBus,
-  SystemContext,
+  type EntityManager,
+  type SystemContext,
 } from '@phalanx-engine/ecs';
+import { physicsTestWorld } from './support/physicsTestWorld.js';
 import { FP, FPVector3, FPQuaternion } from '@phalanx-engine/math';
 import {
   attachTransform,
@@ -24,9 +24,8 @@ describe('InterpolationSystem', () => {
   let system: InterpolationSystem;
 
   beforeEach(() => {
-    entityManager = new EntityManager();
-
-    const context = new SystemContext(new EventBus(), entityManager);
+    let context: SystemContext;
+    ({ entityManager, context } = physicsTestWorld());
     system = new InterpolationSystem();
     system.init(context);
   });
