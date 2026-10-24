@@ -1,5 +1,9 @@
+import {
+  physicsTestWorld,
+  addBodyRow,
+  addTransformRow,
+} from './support/physicsTestWorld.js';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { bindTestWorld } from './bindTestWorld.js';
 import { FP } from '@phalanx-engine/math';
 import {
   EntityManager,
@@ -11,7 +15,6 @@ import { PhysicsSystem } from '../src/systems/PhysicsSystem';
 import { PhysicsSoASchema } from '../src/components/physicsBody';
 import { TransformSoASchema } from '../src/components/transform';
 import type { PhysicsConfig } from '../src/types';
-import { addTransformRow } from './testTransformHelpers';
 
 function createConfig(overrides?: Partial<PhysicsConfig>): PhysicsConfig {
   return {
@@ -33,14 +36,11 @@ describe('impulse collision response', () => {
   let context: SystemContext;
 
   beforeEach(() => {
-    entityManager = new EntityManager();
-    eventBus = new EventBus();
-    context = new SystemContext(eventBus, entityManager);
+    ({ entityManager, eventBus, context } = physicsTestWorld());
   });
 
   function setup(overrides?: Partial<PhysicsConfig>) {
     const system = new PhysicsSystem(createConfig(overrides));
-    bindTestWorld(context);
     system.init(context);
     const physicsStore = entityManager.getOrCreateSoAStore(PhysicsSoASchema);
     const transformStore =
@@ -57,7 +57,7 @@ describe('impulse collision response', () => {
     mass = 1,
     restitution = 0.5
   ): void {
-    physicsStore.add(entityId, {
+    addBodyRow(physicsStore, entityId, {
       velocityX: FP.ToRaw(FP.FromFloat(velX)),
       velocityY: FP.ToRaw(FP._0),
       velocityZ: FP.ToRaw(FP._0),
@@ -127,6 +127,23 @@ describe('impulse collision response', () => {
     // Striker stops, struck body carries the momentum.
     expect(velX(physicsStore, 1)).toBeCloseTo(0, 3);
     expect(velX(physicsStore, 2)).toBeCloseTo(10, 3);
+  });
+
+  it('integrate: false keeps per-body restitution for impulse', () => {
+    const { system, physicsStore, transformStore } = setup({
+      collisionResponse: 'impulse',
+      integrate: false,
+    });
+    // e = avg(0.5, 0.5); j = (1 + e) * 10 / 2 = 7.5
+    addBody(physicsStore, transformStore, 1, -0.9, 10);
+    addBody(physicsStore, transformStore, 2, 0.9, 0);
+
+    system.step();
+
+    const raw = (id: number) =>
+      FP.FromRaw(physicsStore.arrays.velocityX[physicsStore.indexOf(id)] ?? 0n);
+    expect(FP.Eq(raw(1), FP.FromFloat(2.5))).toBe(true);
+    expect(FP.Eq(raw(2), FP.FromFloat(7.5))).toBe(true);
   });
 
   it('non-static body with mass=0 is treated as infinite mass (no divide-by-zero, immovable)', () => {

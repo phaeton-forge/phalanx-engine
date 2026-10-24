@@ -10,6 +10,7 @@ import type { FixedPoint } from '@phalanx-engine/math';
 import {
   Interpolation,
   PhysicsSoASchema,
+  PhysicsSystem,
   PhysicsWorld,
   TransformSoASchema,
   attachPhysicsBody,
@@ -54,8 +55,7 @@ function wiredWorld(cellSize: FixedPoint = FP.FromInt(4)): {
     subSteps: 1,
   });
   physics.attach(world);
-  const { physicsSystem } = physics.getSystems();
-  world.registerSystems([physicsSystem], []);
+  world.registerSystems([], []);
   return { world, physics };
 }
 
@@ -70,7 +70,7 @@ describe('physics broadphase save', () => {
     const { world, physics } = wiredWorld();
     addDisc(world, 0, 0);
     addDisc(world, 1, 0);
-    physics.getSystems().physicsSystem.step();
+    world.getSystem(PhysicsSystem)?.step();
 
     const savedCenters = physics.getBroadphaseCenters();
     const moved = savedCenters.find((center) => center.entityId === 1);
@@ -149,7 +149,7 @@ describe('physics broadphase save', () => {
       subSteps: 1,
     });
     sourcePhysics.attach(source);
-    source.registerSystems([sourcePhysics.getSystems().physicsSystem], []);
+    source.registerSystems([], []);
     const disc = source.createEntity((id) => new Disc(id, 3, 4));
     source.entityManager.addEntity(disc);
     expect(disc.hasComponent(Interpolation.type)).toBe(false);
@@ -164,7 +164,7 @@ describe('physics broadphase save', () => {
       subSteps: 1,
     });
     restoredPhysics.attach(restored);
-    restored.registerSystems([restoredPhysics.getSystems().physicsSystem], []);
+    restored.registerSystems([], []);
     restoreWorld(restored, bytes);
 
     const entity = restored.entityManager.getEntity(disc.id);

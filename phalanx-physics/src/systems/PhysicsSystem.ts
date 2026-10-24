@@ -6,8 +6,8 @@ import {
 } from '@phalanx-engine/ecs';
 import { ensureBroadphaseSection } from '../save/broadphase.js';
 import { FP, type FixedPoint } from '@phalanx-engine/math';
-import { PhysicsSoASchema } from '../components/physicsBody.js';
-import { TransformSoASchema } from '../components/transform.js';
+import { PhysicsBody, PhysicsSoASchema } from '../components/physicsBody.js';
+import { Transform, TransformSoASchema } from '../components/transform.js';
 import {
   SpatialHashGrid,
   type BroadphaseCenter,
@@ -20,7 +20,6 @@ import type {
   CollisionEvent,
   BoundsExitEvent,
 } from '../types.js';
-import type { IPhysicsTickProvider } from '../tick/IPhysicsTickProvider.js';
 
 const SEPARATION_HALF = FP.FromFloat(0.5);
 
@@ -45,8 +44,6 @@ export class PhysicsSystem extends GameSystem {
   private readonly spatialGrid: SpatialHashGrid;
   private collisionFilter:
     ((entityA: number, entityB: number) => boolean) | null = null;
-  private externalTickProvider: IPhysicsTickProvider | null = null;
-  private providerStarted = false;
 
   constructor(config: PhysicsConfig) {
     super();
@@ -64,23 +61,6 @@ export class PhysicsSystem extends GameSystem {
       this.entityManager.getOrCreateSoAStore(PhysicsSoASchema);
     this.transformStore =
       this.entityManager.getOrCreateSoAStore(TransformSoASchema);
-    this.tryStartProvider();
-  }
-
-  /**
-   * Start the external tick provider only when ALL required state is ready.
-   * Called from init() and setTickProvider().
-   */
-  private tryStartProvider(): void {
-    if (
-      this.providerStarted ||
-      !this.physicsStore ||
-      !this.transformStore ||
-      !this.externalTickProvider
-    )
-      return;
-    this.providerStarted = true;
-    this.externalTickProvider.start(() => this.step());
   }
 
   /**
@@ -95,9 +75,14 @@ export class PhysicsSystem extends GameSystem {
 
   /**
    * Advance the simulation by one tick (all sub-steps).
-   * Called by processTick() in default mode, or directly by a custom IPhysicsTickProvider.
+   * Called by processTick().
    */
   public step(): void {
+    if (this.config.integrate === false) {
+      this.rebuildSpatialGrid();
+      this.detectAndResolve();
+      return;
+    }
     const subDt = FP.Div(
       this.config.tickDt,
       FP.FromFloat(this.config.subSteps)
@@ -111,16 +96,7 @@ export class PhysicsSystem extends GameSystem {
   }
 
   public override processTick(_tick: number): void {
-    if (this.externalTickProvider) return; // provider drives step() directly
     this.step();
-  }
-
-  /** Hand off tick control to a custom provider. */
-  public setTickProvider(provider: IPhysicsTickProvider): void {
-    this.externalTickProvider?.stop();
-    this.providerStarted = false;
-    this.externalTickProvider = provider;
-    this.tryStartProvider();
   }
 
   /**
@@ -184,8 +160,7 @@ export class PhysicsSystem extends GameSystem {
     const isStatic = this.physicsStore.arrays.isStatic;
     const ignore = this.physicsStore.arrays.ignorePhysics;
 
-    for (const entityId of this.physicsStore.entityIds()) {
-      const i = this.physicsStore.indexOf(entityId);
+    for (const [, i] of this.world.query(PhysicsBody)) {
       if (isStatic[i] === 1 || ignore[i] === 1) continue;
       const vx = FP.FromRaw(velX[i]);
       const vy = FP.FromRaw(velY[i]);
@@ -219,15 +194,13 @@ export class PhysicsSystem extends GameSystem {
 
     const pendingBoundsExits: BoundsExitEvent[] = [];
 
-    for (const entityId of this.physicsStore.entityIds()) {
-      const physIndex = this.physicsStore.indexOf(entityId);
-
+    for (const [entity, physIndex, transformIndex] of this.world.query(
+      PhysicsBody,
+      Transform
+    )) {
       // Skip static and ignored bodies
       if (physIsStatic[physIndex] === 1) continue;
       if (physIgnorePhysics[physIndex] === 1) continue;
-
-      const transformIndex = this.transformStore.indexOf(entityId);
-      if (transformIndex === -1) continue;
 
       // Read velocity
       let velX = FP.FromRaw(physVelocityX[physIndex]);
@@ -265,7 +238,7 @@ export class PhysicsSystem extends GameSystem {
           // Clamp position to boundary to avoid spatial grid issues
           newPosX = FP.Clamp(newPosX, bounds.minX, bounds.maxX);
           newPosZ = FP.Clamp(newPosZ, bounds.minZ, bounds.maxZ);
-          pendingBoundsExits.push({ entityId });
+          pendingBoundsExits.push({ entityId: entity.id });
         } else {
           newPosX = FP.Clamp(newPosX, bounds.minX, bounds.maxX);
           newPosZ = FP.Clamp(newPosZ, bounds.minZ, bounds.maxZ);
@@ -301,16 +274,15 @@ export class PhysicsSystem extends GameSystem {
     const fpPosXArr = this.transformStore.arrays.fpPositionX;
     const fpPosZArr = this.transformStore.arrays.fpPositionZ;
 
-    for (const entityId of this.physicsStore.entityIds()) {
-      const physIndex = this.physicsStore.indexOf(entityId);
-      const transformIndex = this.transformStore.indexOf(entityId);
-      if (transformIndex === -1) continue;
-
+    for (const [entity, physIndex, transformIndex] of this.world.query(
+      PhysicsBody,
+      Transform
+    )) {
       const posX = FP.FromRaw(fpPosXArr[transformIndex]);
       const posZ = FP.FromRaw(fpPosZArr[transformIndex]);
       const radius = FP.FromRaw(physRadius[physIndex]);
 
-      this.spatialGrid.insert(entityId, posX, posZ, radius);
+      this.spatialGrid.insert(entity.id, posX, posZ, radius);
     }
   }
 
@@ -376,7 +348,9 @@ export class PhysicsSystem extends GameSystem {
 
       if (!manifold) continue;
 
-      // Compute restitution: average of both bodies, default to 1.0 if both unset
+      // Average of both bodies, 1.0 if both unset. Collisions-only 'push'
+      // uses overlap × pushStrength and ignores restitution; 'impulse'
+      // keeps it in both modes.
       const restitutionA = FP.FromRaw(physRestitution[physIndexA]);
       const restitutionB = FP.FromRaw(physRestitution[physIndexB]);
       const restitution =
@@ -404,7 +378,7 @@ export class PhysicsSystem extends GameSystem {
       } else {
         this.resolveCollision(
           manifold,
-          restitution,
+          this.config.integrate === false ? FP._1 : restitution,
           physIndexA,
           physIndexB,
           transformIndexA,
@@ -670,8 +644,7 @@ export class PhysicsSystem extends GameSystem {
     const physIsStatic = this.physicsStore.arrays.isStatic;
     const physIgnore = this.physicsStore.arrays.ignorePhysics;
 
-    for (const entityId of this.physicsStore.entityIds()) {
-      const physIndex = this.physicsStore.indexOf(entityId);
+    for (const [, physIndex] of this.world.query(PhysicsBody)) {
       if (physIsStatic[physIndex] === 1) continue;
       if (physIgnore[physIndex] === 1) continue;
 
@@ -786,8 +759,6 @@ export class PhysicsSystem extends GameSystem {
   }
 
   public override dispose(): void {
-    this.externalTickProvider?.stop();
-    this.providerStarted = false;
     super.dispose();
     this.spatialGrid.clear();
   }

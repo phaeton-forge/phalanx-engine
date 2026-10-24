@@ -1,14 +1,11 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { bindTestWorld } from './bindTestWorld.js';
-import {
-  Entity,
-  EntityManager,
-  EventBus,
-  SystemContext,
-} from '@phalanx-engine/ecs';
+import { addBodyRow, attachedPhysics } from './support/physicsTestWorld.js';
+import { manualTickProvider } from './support/manualTickProvider.js';
+import { describe, it, expect } from 'vitest';
+import { Entity, GameSystem, GameWorld } from '@phalanx-engine/ecs';
 import { FPVector3, FPQuaternion } from '@phalanx-engine/math';
 import { FP } from '@phalanx-engine/math';
 import { PhysicsWorld } from '../src/PhysicsWorld';
+import { Physics } from '../src/service';
 import { PhysicsSystem } from '../src/systems/PhysicsSystem';
 import { GravitySystem } from '../src/systems/GravitySystem';
 import { InterpolationSystem } from '../src/systems/InterpolationSystem';
@@ -23,25 +20,91 @@ import {
 } from '../src/components/interpolation';
 
 describe('PhysicsWorld', () => {
-  let entityManager: EntityManager;
-  let context: SystemContext;
-
-  beforeEach(() => {
-    entityManager = new EntityManager();
-    context = new SystemContext(new EventBus(), entityManager);
+  it('attach registers components, service, systems and save section', () => {
+    const { world, physics } = attachedPhysics();
+    expect(world.componentNames()).toEqual(['Transform', 'PhysicsBody']);
+    expect(
+      world.registeredComponents().map((component) => component.name)
+    ).toEqual(['Transform', 'PhysicsBody']);
+    expect(world.context.getService(Physics)).toBe(physics);
+    expect(world.saveSections.map((section) => section.key)).toEqual([
+      'physics.broadphase',
+    ]);
+    expect(world.getSystem(PhysicsSystem)).toBeInstanceOf(PhysicsSystem);
+    expect(world.getSystem(GravitySystem)).toBeInstanceOf(GravitySystem);
+    expect(world.getSystem(InterpolationSystem)).toBeInstanceOf(
+      InterpolationSystem
+    );
+    expect('getSystems' in physics).toBe(false);
   });
 
-  it('getSystems returns both physics and interpolation systems', () => {
-    const physicsWorld = new PhysicsWorld();
-    const { physicsSystem, interpolationSystem } = physicsWorld.getSystems();
-
-    expect(physicsSystem).toBeInstanceOf(PhysicsSystem);
-    expect(interpolationSystem).toBeInstanceOf(InterpolationSystem);
+  it('runs attached tick systems before the game tick systems', () => {
+    const order: string[] = [];
+    class Probe extends GameSystem {
+      public override processTick(): void {
+        order.push('game');
+      }
+    }
+    const { world, physicsSystem, gravitySystem } = attachedPhysics(undefined, [
+      new Probe(),
+    ]);
+    const physicsTick = physicsSystem.processTick.bind(physicsSystem);
+    physicsSystem.processTick = (tick) => {
+      order.push('physics');
+      physicsTick(tick);
+    };
+    const gravityTick = gravitySystem.processTick.bind(gravitySystem);
+    gravitySystem.processTick = (tick) => {
+      order.push('gravity');
+      gravityTick(tick);
+    };
+    world.processAllTicks(1);
+    expect(order).toEqual(['gravity', 'physics', 'game']);
   });
 
-  it('getSystems exposes a gravitySystem (backward-compatible destructure)', () => {
-    const physicsWorld = new PhysicsWorld({ gravity: FP.FromFloat(9.8) });
-    const { gravitySystem } = physicsWorld.getSystems();
+  it('keeps the position of attached systems the game lists explicitly', () => {
+    const order: string[] = [];
+    class Probe extends GameSystem {
+      public override processTick(): void {
+        order.push('game');
+      }
+    }
+    const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
+    new PhysicsWorld().attach(world);
+    const physicsSystem = world.getSystem(PhysicsSystem);
+    if (physicsSystem === undefined) throw new Error('missing PhysicsSystem');
+    const physicsTick = physicsSystem.processTick.bind(physicsSystem);
+    physicsSystem.processTick = (tick) => {
+      order.push('physics');
+      physicsTick(tick);
+    };
+    const gravitySystem = world.getSystem(GravitySystem);
+    if (gravitySystem === undefined) throw new Error('missing GravitySystem');
+    world.registerSystems([new Probe(), gravitySystem, physicsSystem], []);
+    world.processAllTicks(1);
+    expect(order).toEqual(['game', 'physics']);
+  });
+
+  it('listing only GravitySystem throws instead of reordering', () => {
+    const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
+    new PhysicsWorld().attach(world);
+    const gravitySystem = world.getSystem(GravitySystem);
+    if (gravitySystem === undefined) throw new Error('missing GravitySystem');
+    expect(() => world.registerSystems([gravitySystem], [])).toThrow(
+      'or none of them'
+    );
+  });
+
+  it('attach after registerSystems throws', () => {
+    const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
+    world.registerSystems([], []);
+    expect(() => new PhysicsWorld().attach(world)).toThrow(
+      'addModuleSystems: call before registerSystems'
+    );
+  });
+
+  it('exposes a gravitySystem configured from PhysicsWorldConfig', () => {
+    const { gravitySystem } = attachedPhysics({ gravity: FP.FromFloat(9.8) });
 
     expect(gravitySystem).toBeInstanceOf(GravitySystem);
     expect(FP.ToFloat(gravitySystem.getGravity())).toBeCloseTo(9.8, 3);
@@ -49,20 +112,16 @@ describe('PhysicsWorld', () => {
   });
 
   it('defaults gravity to 0 (GravitySystem no-op) when not configured', () => {
-    const physicsWorld = new PhysicsWorld();
-    const { gravitySystem } = physicsWorld.getSystems();
+    const { gravitySystem } = attachedPhysics();
 
     expect(FP.ToFloat(gravitySystem.getGravity())).toBe(0);
   });
 
   it('applyImpulse3D delegates to PhysicsSystem and sets all three axes', () => {
-    const physicsWorld = new PhysicsWorld();
-    const { physicsSystem } = physicsWorld.getSystems();
-    bindTestWorld(context);
-    physicsSystem.init(context);
+    const { physics: physicsWorld, physicsSystem } = attachedPhysics();
 
     const physicsStore = physicsSystem.getPhysicsStore();
-    physicsStore.add(1, {
+    addBodyRow(physicsStore, 1, {
       velocityX: FP.ToRaw(FP._0),
       velocityY: FP.ToRaw(FP._0),
       velocityZ: FP.ToRaw(FP._0),
@@ -96,9 +155,12 @@ describe('PhysicsWorld', () => {
   });
 
   it('getInterpolatedTransform delegates to the owned interpolation system', () => {
-    const physicsWorld = new PhysicsWorld();
-    const { interpolationSystem } = physicsWorld.getSystems();
-    interpolationSystem.init(context);
+    const {
+      world,
+      physics: physicsWorld,
+      interpolationSystem,
+    } = attachedPhysics();
+    const entityManager = world.entityManager;
 
     const entity = new Entity(entityManager.allocateEntityId());
     attachTransform(
@@ -136,9 +198,7 @@ describe('PhysicsWorld', () => {
   });
 
   it('getInterpolatedTransform returns undefined for unknown entities', () => {
-    const physicsWorld = new PhysicsWorld();
-    const { interpolationSystem } = physicsWorld.getSystems();
-    interpolationSystem.init(context);
+    const { physics: physicsWorld } = attachedPhysics();
 
     expect(physicsWorld.getInterpolatedTransform(999)).toBeUndefined();
   });

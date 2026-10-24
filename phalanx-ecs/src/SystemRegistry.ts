@@ -28,6 +28,11 @@ export class SystemRegistry {
    */
   private frameSystems: GameSystem[] = [];
 
+  private readonly moduleTickSystems: GameSystem[] = [];
+  private readonly moduleFrameSystems: GameSystem[] = [];
+  private readonly moduleGroups: (readonly GameSystem[])[] = [];
+  private registered = false;
+
   constructor() {
     // Initialize EventBus first (no dependencies)
     this.eventBus = new EventBus();
@@ -48,18 +53,46 @@ export class SystemRegistry {
     tickSystems: GameSystem[],
     frameSystems: GameSystem[]
   ): void {
-    // Store system lists
-    this.tickSystems = tickSystems;
-    this.frameSystems = frameSystems;
+    for (const group of this.moduleGroups) {
+      assertWholeGroup(group, tickSystems);
+      assertWholeGroup(group, frameSystems);
+    }
+    this.tickSystems = [
+      ...this.moduleTickSystems.filter((s) => !tickSystems.includes(s)),
+      ...tickSystems,
+    ];
+    this.frameSystems = [
+      ...this.moduleFrameSystems.filter((s) => !frameSystems.includes(s)),
+      ...frameSystems,
+    ];
+    this.registered = true;
 
     // Register all systems with context for getSystem() lookup
-    const allSystems = new Set([...tickSystems, ...frameSystems]);
+    const allSystems = new Set([...this.tickSystems, ...this.frameSystems]);
     for (const system of allSystems) {
       this.context.registerSystem(system);
     }
 
     for (const system of allSystems) {
       system.init(this.context);
+    }
+  }
+
+  /** See `GameWorld.addModuleSystems`. */
+  public addModuleSystems(
+    tickSystems: readonly GameSystem[],
+    frameSystems: readonly GameSystem[]
+  ): void {
+    if (this.registered) {
+      throw new Error(
+        'addModuleSystems: call before registerSystems (attach modules first)'
+      );
+    }
+    this.moduleTickSystems.push(...tickSystems);
+    this.moduleFrameSystems.push(...frameSystems);
+    this.moduleGroups.push([...tickSystems], [...frameSystems]);
+    for (const system of [...tickSystems, ...frameSystems]) {
+      this.context.registerSystem(system);
     }
   }
 
@@ -131,5 +164,31 @@ export class SystemRegistry {
     // Clear core
     this.eventBus?.clearAll();
     this.entityManager?.clear();
+  }
+}
+
+/**
+ * A module group listed in `registerSystems` must appear whole and in its
+ * module order; a partial listing would silently reorder the group.
+ */
+function assertWholeGroup(
+  group: readonly GameSystem[],
+  listed: readonly GameSystem[]
+): void {
+  const positions = group.map((s) => listed.indexOf(s));
+  const present = positions.filter((p) => p !== -1);
+  if (present.length === 0) return;
+  const names = group.map((s) => s.constructor.name).join(', ');
+  if (present.length !== group.length) {
+    throw new Error(
+      `registerSystems: list all module systems [${names}] or none of them`
+    );
+  }
+  for (let i = 1; i < present.length; i++) {
+    if ((present[i] ?? 0) <= (present[i - 1] ?? 0)) {
+      throw new Error(
+        `registerSystems: module systems [${names}] must keep their order`
+      );
+    }
   }
 }

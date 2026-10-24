@@ -455,6 +455,23 @@ export class GameWorld {
     this.buildLifecycleCaches();
   }
 
+  /**
+   * Systems owned by a module (`PhysicsWorld.attach`). Call before
+   * {@link registerSystems}; `world.getSystem` finds them at once, and
+   * `init` runs from `registerSystems`. Each `registerSystems` call runs
+   * module tick systems before the given tick systems and module frame
+   * systems before the given frame systems, in module order. A module
+   * system the caller lists explicitly keeps the caller's position.
+   *
+   * @throws If `registerSystems` was already called.
+   */
+  public addModuleSystems(
+    tickSystems: readonly GameSystem[],
+    frameSystems: readonly GameSystem[]
+  ): void {
+    this.systemRegistry.addModuleSystems(tickSystems, frameSystems);
+  }
+
   private buildLifecycleCaches(): void {
     this.beforeTickSystems = [];
     this.afterTickSystems = [];

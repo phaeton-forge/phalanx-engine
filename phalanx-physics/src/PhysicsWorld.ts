@@ -1,6 +1,8 @@
 import { type EventBus, type GameWorld } from '@phalanx-engine/ecs';
 import { Physics } from './service.js';
 import { Interpolation } from './components/interpolation.js';
+import { PhysicsBody } from './components/physicsBody.js';
+import { Transform } from './components/transform.js';
 import { ensureBroadphaseSection } from './save/broadphase.js';
 import { FP } from '@phalanx-engine/math';
 import { PhysicsSystem } from './systems/PhysicsSystem.js';
@@ -26,9 +28,9 @@ import type {
  * PhysicsWorld — high-level facade that owns GravitySystem, PhysicsSystem,
  * and InterpolationSystem.
  *
- * Consumers create a PhysicsWorld, register systems from getSystems()
- * with GameWorld (gravity before physics), and read interpolated transforms
- * for rendering via getInterpolatedTransform().
+ * Consumers create a PhysicsWorld, call {@link attach} before
+ * `world.registerSystems`, and read interpolated transforms for rendering
+ * via getInterpolatedTransform().
  */
 export class PhysicsWorld {
   private readonly physicsSystem: PhysicsSystem;
@@ -60,6 +62,7 @@ export class PhysicsWorld {
       worldBounds: config?.worldBounds,
       ejectOnBoundsExit: config?.ejectOnBoundsExit,
       collisionResponse: config?.collisionResponse,
+      integrate: config?.integrate,
       restitution: config?.restitution,
       gravity,
       gravityAxis,
@@ -69,49 +72,35 @@ export class PhysicsWorld {
     this.gravitySystem = new GravitySystem(gravity, gravityAxis, tickDt);
     this.interpolationSystem = new InterpolationSystem();
     this.settleThreshold = config?.settleThreshold;
-
-    if (config?.tickProvider) {
-      this.physicsSystem.setTickProvider(config.tickProvider);
-    }
   }
 
   /**
-   * Bind this facade to `world`. Provides the {@link Physics} service,
-   * registers transient `Interpolation`, and registers save section
-   * `physics.broadphase` once. Calling again with the same world is a
-   * no-op. A different world throws.
-   *
-   * `Transform` and `PhysicsBody` stay unregistered. Their stores are
-   * created by {@link attachTransform} / {@link attachPhysicsBody}, so
-   * `configHash` and the SoA section order stay as they are. A7 registers
-   * them from `attach`.
+   * Bind this facade to `world`. Registers `Transform`, `PhysicsBody` and
+   * transient `Interpolation` (in that order), provides the {@link Physics}
+   * service, adds `GravitySystem` → `PhysicsSystem` as module tick systems
+   * and `InterpolationSystem` as a module frame system
+   * (`world.addModuleSystems`), and registers save section
+   * `physics.broadphase`. Call before `world.registerSystems`. A game that
+   * needs physics at a given position in its tick list passes
+   * `world.getSystem(GravitySystem)` / `world.getSystem(PhysicsSystem)`
+   * there. Calling again with the same world is a no-op. A different world
+   * throws.
    */
   public attach(world: GameWorld): void {
-    if (this.attachedWorld !== undefined && this.attachedWorld !== world) {
+    if (this.attachedWorld !== undefined) {
+      if (this.attachedWorld === world) return;
       throw new Error('PhysicsWorld.attach: already attached to another world');
     }
-    const first = this.attachedWorld === undefined;
     this.attachedWorld = world;
-    if (first) {
-      world.registerComponent(Interpolation);
-      world.provide(Physics, this);
-    }
+    world.registerComponent(Transform);
+    world.registerComponent(PhysicsBody);
+    world.registerComponent(Interpolation);
+    world.provide(Physics, this);
+    world.addModuleSystems(
+      [this.gravitySystem, this.physicsSystem],
+      [this.interpolationSystem]
+    );
     ensureBroadphaseSection(world);
-  }
-
-  /**
-   * Returns physics and interpolation systems to register with GameWorld.
-   */
-  public getSystems(): {
-    physicsSystem: PhysicsSystem;
-    gravitySystem: GravitySystem;
-    interpolationSystem: InterpolationSystem;
-  } {
-    return {
-      physicsSystem: this.physicsSystem,
-      gravitySystem: this.gravitySystem,
-      interpolationSystem: this.interpolationSystem,
-    };
   }
 
   /**

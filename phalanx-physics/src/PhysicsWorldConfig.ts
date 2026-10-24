@@ -1,5 +1,4 @@
 import type { FixedPoint } from '@phalanx-engine/math';
-import type { IPhysicsTickProvider } from './tick/IPhysicsTickProvider.js';
 
 /**
  * High-level configuration for PhysicsWorld facade.
@@ -39,18 +38,17 @@ export interface PhysicsWorldConfig {
   collisionResponse?: 'push' | 'impulse';
 
   /**
+   * `false` is collisions-only mode: no integration, friction, clamping or
+   * sub-steps; one resolution pass per tick. See `PhysicsConfig.integrate`.
+   * Default: `true`.
+   */
+  integrate?: boolean;
+
+  /**
    * Coefficient of restitution `e` for the `'impulse'` response.
    * Falls back to per-body restitution when omitted. Ignored by `'push'`.
    */
   restitution?: FixedPoint;
-
-  /**
-   * Optional custom tick provider.
-   * When set, PhysicsSystem.processTick() becomes a no-op and the provider
-   * drives the simulation via PhysicsSystem.step().
-   * Omit to use default GameWorld-driven mode.
-   */
-  tickProvider?: IPhysicsTickProvider;
 
   /**
    * When true, bodies exiting worldBounds are ejected instead of clamped.

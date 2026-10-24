@@ -15,9 +15,7 @@ import {
   defineAttribute,
 } from '@phalanx-engine/abilities';
 import {
-  PhysicsSoASchema,
   PhysicsWorld,
-  TransformSoASchema,
   attachPhysicsBody,
   attachTransform,
   setVelocity,
@@ -158,16 +156,8 @@ export function createPersistBenchGame(unitCount: number) {
         gravity: FP._0,
       });
       physics.attach(ctx.world);
-      ctx.world.entityManager.getOrCreateSoAStore(TransformSoASchema);
-      ctx.world.entityManager.getOrCreateSoAStore(PhysicsSoASchema);
-      const { gravitySystem, physicsSystem } = physics.getSystems();
       ctx.world.registerSystems(
-        [
-          gravitySystem,
-          physicsSystem,
-          ...abilities.tickSystems,
-          new HpDecaySystem(),
-        ],
+        [...abilities.tickSystems, new HpDecaySystem()],
         []
       );
       ctx.open();

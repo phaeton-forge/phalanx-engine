@@ -104,11 +104,16 @@ import { PhysicsWorld } from '@phalanx-engine/physics';
 import { createAbilitySystem } from '@phalanx-engine/abilities';
 
 const physicsWorld = new PhysicsWorld({ tickRate: 20 });
-physicsWorld.attach(world);
+physicsWorld.attach(world); // also adds the physics systems (world.addModuleSystems)
 
 const abilities = createAbilitySystem(world, { definitions: combatDefs });
 // provides the Abilities service; pass abilities.tickSystems to registerSystems
 ```
+
+Modules add their own systems with `world.addModuleSystems(tick, frame)`
+before `registerSystems`. Module systems run before the systems passed to
+`registerSystems`; a module system listed there explicitly keeps that
+position. `addModuleSystems` after `registerSystems` throws.
 
 Systems read services by key (`Physics` from physics, `Abilities` from
 abilities, or your own `defineService<T>(name)` + `world.provide(key, impl)`):
@@ -414,7 +419,7 @@ class SnapshotSystem extends GameSystem implements IBeforeTick, IAfterTick {
 
 Type guards: `isBeforeTick`, `isAfterTick`, `isBeforeFrame`, `isAfterFrame`.
 
-> phalanx-physics `InterpolationSystem` implements `IAfterTick` and `IBeforeFrame`. Register it via `physicsWorld.getSystems().interpolationSystem`. `afterTick` reads `Interpolation`; tick systems must not.
+> phalanx-physics `InterpolationSystem` implements `IAfterTick` and `IBeforeFrame`. `physicsWorld.attach(world)` adds it as a module frame system. `afterTick` reads `Interpolation`; tick systems must not.
 
 ### 5. Create Entities
 

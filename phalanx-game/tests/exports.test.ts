@@ -223,10 +223,7 @@ const PHYSICS_NAMES: readonly string[] = [
   'CollisionEvent',
   'CollisionFilter',
   'CollisionManifold',
-  'CollisionSystem',
-  'ExternalPhysicsTickProvider',
   'GravitySystem',
-  'IPhysicsTickProvider',
   'InterpolatedTransformSample',
   'Interpolation',
   'InterpolationSample',
@@ -528,7 +525,7 @@ describe('@phalanx-engine/game subpath exports', () => {
     }
     expect(
       resolved.map((entry) => actual.get(entry.file)?.names.length)
-    ).toEqual([186, 9, 61, 88, 19, 3]);
+    ).toEqual([186, 9, 58, 88, 19, 3]);
   });
 
   it('keeps the name sets pairwise disjoint', () => {

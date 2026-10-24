@@ -53,7 +53,6 @@ export {
   PhysicsSystem,
   GravitySystem,
   InterpolationSystem,
-  CollisionSystem,
 } from './systems/index.js';
 export type { InterpolatedTransformSample } from './systems/index.js';
 
@@ -70,7 +69,4 @@ export type {
 } from './types.js';
 export { PhysicsEvents } from './events.js';
 
-// Tick providers
-export type { IPhysicsTickProvider } from './tick/IPhysicsTickProvider.js';
-export { ExternalPhysicsTickProvider } from './tick/ExternalPhysicsTickProvider.js';
 export type { BoundsExitEvent } from './types.js';

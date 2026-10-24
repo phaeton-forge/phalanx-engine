@@ -15,9 +15,7 @@ import {
   defineAttribute,
 } from '@phalanx-engine/abilities';
 import {
-  PhysicsSoASchema,
   PhysicsWorld,
-  TransformSoASchema,
   attachPhysicsBody,
   attachTransform,
   setVelocity,
@@ -168,18 +166,8 @@ export const ArenaGame = defineGame<ArenaConfig, ArenaCommand, ArenaSim>({
       gravity: FP._0,
     });
     physics.attach(ctx.world);
-    // Store order is the snapshot order. Gravity init would create
-    // PhysicsBody first; the fixture's manual save lists Transform first.
-    ctx.world.entityManager.getOrCreateSoAStore(TransformSoASchema);
-    ctx.world.entityManager.getOrCreateSoAStore(PhysicsSoASchema);
-    const { gravitySystem, physicsSystem } = physics.getSystems();
     ctx.world.registerSystems(
-      [
-        gravitySystem,
-        physicsSystem,
-        ...abilities.tickSystems,
-        new HpDecaySystem(),
-      ],
+      [...abilities.tickSystems, new HpDecaySystem()],
       []
     );
     ctx.open();

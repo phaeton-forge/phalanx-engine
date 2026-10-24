@@ -1,5 +1,10 @@
+import {
+  physicsTestWorld,
+  addBodyRow,
+  addTransformRow,
+} from './support/physicsTestWorld.js';
+import { attachedPhysics } from './support/physicsTestWorld.js';
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
-import { bindTestWorld } from './bindTestWorld.js';
 import { FP } from '@phalanx-engine/math';
 import { EntityManager, EventBus, SystemContext } from '@phalanx-engine/ecs';
 import { PhysicsSystem } from '../src/systems/PhysicsSystem';
@@ -7,7 +12,6 @@ import { PhysicsSoASchema } from '../src/components/physicsBody';
 import { TransformSoASchema } from '../src/components/transform';
 import { PhysicsWorld } from '../src/PhysicsWorld';
 import type { PhysicsConfig } from '../src/types';
-import { addTransformRow } from './testTransformHelpers';
 
 function createPhysicsConfig(): PhysicsConfig {
   return {
@@ -25,19 +29,17 @@ describe('getEntityPosition', () => {
   let context: SystemContext;
 
   beforeEach(() => {
-    entityManager = new EntityManager();
-    context = new SystemContext(new EventBus(), entityManager);
+    ({ entityManager, context } = physicsTestWorld());
   });
 
   it('PhysicsSystem returns fixed-point transform positions', () => {
     const system = new PhysicsSystem(createPhysicsConfig());
-    bindTestWorld(context);
     system.init(context);
     const physicsStore = entityManager.getOrCreateSoAStore(PhysicsSoASchema);
     const transformStore =
       entityManager.getOrCreateSoAStore(TransformSoASchema);
 
-    physicsStore.add(1, {
+    addBodyRow(physicsStore, 1, {
       velocityX: FP.ToRaw(FP._0),
       velocityY: FP.ToRaw(FP._0),
       velocityZ: FP.ToRaw(FP._0),
@@ -60,16 +62,14 @@ describe('getEntityPosition', () => {
   });
 
   it('PhysicsWorld delegates getEntityPosition to PhysicsSystem', () => {
-    const physicsWorld = new PhysicsWorld();
-    const { physicsSystem } = physicsWorld.getSystems();
-    bindTestWorld(context);
-    physicsSystem.init(context);
+    const { physics: physicsWorld, physicsSystem, world } = attachedPhysics();
+    const entityManager = world.entityManager;
 
     const physicsStore = entityManager.getOrCreateSoAStore(PhysicsSoASchema);
     const transformStore =
       entityManager.getOrCreateSoAStore(TransformSoASchema);
 
-    physicsStore.add(2, {
+    addBodyRow(physicsStore, 2, {
       velocityX: FP.ToRaw(FP._0),
       velocityY: FP.ToRaw(FP._0),
       velocityZ: FP.ToRaw(FP._0),

@@ -1,5 +1,9 @@
+import {
+  physicsTestWorld,
+  addBodyRow,
+  addTransformRow,
+} from './support/physicsTestWorld.js';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { bindTestWorld } from './bindTestWorld.js';
 import { FP } from '@phalanx-engine/math';
 import {
   EntityManager,
@@ -11,7 +15,6 @@ import { PhysicsSystem } from '../src/systems/PhysicsSystem';
 import { PhysicsSoASchema } from '../src/components/physicsBody';
 import { TransformSoASchema } from '../src/components/transform';
 import type { PhysicsConfig } from '../src/types';
-import { addTransformRow } from './testTransformHelpers';
 
 function createPhysicsConfig(
   overrides?: Partial<PhysicsConfig>
@@ -33,15 +36,12 @@ describe('isSettled', () => {
   let context: SystemContext;
 
   beforeEach(() => {
-    entityManager = new EntityManager();
-    eventBus = new EventBus();
-    context = new SystemContext(eventBus, entityManager);
+    ({ entityManager, eventBus, context } = physicsTestWorld());
   });
 
   function setupSystem(overrides?: Partial<PhysicsConfig>) {
     const config = createPhysicsConfig(overrides);
     const system = new PhysicsSystem(config);
-    bindTestWorld(context);
     system.init(context);
 
     const physicsStore = entityManager.getOrCreateSoAStore(PhysicsSoASchema);
@@ -60,7 +60,7 @@ describe('isSettled', () => {
     isStatic: boolean = false,
     ignorePhysics: boolean = false
   ): void {
-    physicsStore.add(entityId, {
+    addBodyRow(physicsStore, entityId, {
       velocityX: FP.ToRaw(FP.FromFloat(velX)),
       velocityY: FP.ToRaw(FP._0),
       velocityZ: FP.ToRaw(FP.FromFloat(velZ)),

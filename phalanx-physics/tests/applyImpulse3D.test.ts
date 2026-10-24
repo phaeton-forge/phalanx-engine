@@ -1,5 +1,9 @@
+import {
+  physicsTestWorld,
+  addBodyRow,
+  addTransformRow,
+} from './support/physicsTestWorld.js';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { bindTestWorld } from './bindTestWorld.js';
 import { FP } from '@phalanx-engine/math';
 import {
   EntityManager,
@@ -12,7 +16,6 @@ import { GravitySystem } from '../src/systems/GravitySystem';
 import { PhysicsSoASchema } from '../src/components/physicsBody';
 import { TransformSoASchema } from '../src/components/transform';
 import type { PhysicsConfig } from '../src/types';
-import { addTransformRow } from './testTransformHelpers';
 
 const TICK_DT = FP.FromFloat(0.05);
 const GRAVITY = FP.FromFloat(10);
@@ -37,7 +40,7 @@ function addBody(
   entityId: number,
   useGravity: boolean
 ): void {
-  physicsStore.add(entityId, {
+  addBodyRow(physicsStore, entityId, {
     velocityX: FP.ToRaw(FP._0),
     velocityY: FP.ToRaw(FP._0),
     velocityZ: FP.ToRaw(FP._0),
@@ -59,14 +62,11 @@ describe('applyImpulse3D', () => {
   let context: SystemContext;
 
   beforeEach(() => {
-    entityManager = new EntityManager();
-    eventBus = new EventBus();
-    context = new SystemContext(eventBus, entityManager);
+    ({ entityManager, eventBus, context } = physicsTestWorld());
   });
 
   function setup(overrides?: Partial<PhysicsConfig>) {
     const physicsSystem = new PhysicsSystem(createPhysicsConfig(overrides));
-    bindTestWorld(context);
     physicsSystem.init(context);
     const gravitySystem = new GravitySystem(GRAVITY, 'y', TICK_DT);
     gravitySystem.init(context);
@@ -235,11 +235,12 @@ describe('applyImpulse3D', () => {
 
   it('is deterministic across two identical worlds', () => {
     function runWorld(): bigint[] {
-      const em = new EntityManager();
-      const eb = new EventBus();
-      const ctx = new SystemContext(eb, em);
+      const {
+        entityManager: em,
+        eventBus: eb,
+        context: ctx,
+      } = physicsTestWorld();
       const phys = new PhysicsSystem(createPhysicsConfig());
-      bindTestWorld(ctx);
       phys.init(ctx);
       const grav = new GravitySystem(GRAVITY, 'y', TICK_DT);
       grav.init(ctx);

@@ -81,7 +81,7 @@ RenderSystem reads context.getService(Physics).getInterpolatedTransform(entityId
 - **Built-in interpolation**: `InterpolationSystem` implements `IAfterTick` and `IBeforeFrame`. `afterTick` is outside the transient-read guard. Tick systems must not branch on `Interpolation`.
 - **SoA storage**: `BigInt64Array` for FixedPoint values, `Uint8Array` for flags
 - **Entity iteration**: Always sorted by ID for lockstep determinism
-- **Service**: Call `physicsWorld.attach(world)` before `registerSystems()`. It provides the `Physics` service; systems read it with `this.context.getService(Physics)` / `tryGetService(Physics)`. Providing `Physics` by hand does not register the save section, and `saveWorld` rejects that.
+- **Attach**: Call `physicsWorld.attach(world)` before `registerSystems()`. It registers `Transform`, `PhysicsBody` and `Interpolation`, adds `GravitySystem` → `PhysicsSystem` (tick) and `InterpolationSystem` (frame) as module systems, registers `physics.broadphase`, and provides the `Physics` service; systems read it with `this.context.getService(Physics)` / `tryGetService(Physics)`. Providing `Physics` by hand does not register the save section, and `saveWorld` rejects that.
 - **Collision filtering**: Game-specific logic injected via `setCollisionFilter()` callback
 
 ## Step-by-Step Instructions
@@ -137,14 +137,17 @@ class RenderSystem extends GameSystem {
 
 ### 3. Register Systems with GameWorld
 
-```typescript
-const { gravitySystem, physicsSystem, interpolationSystem } = physicsWorld.getSystems();
+`attach` already added the physics systems. By default they run before the
+systems passed to `registerSystems` (gravity, then physics;
+`InterpolationSystem` before the frame systems). To run physics after a game
+system, list the attached instances explicitly — they keep that position:
 
-// Register in tick system order — ORDER MATTERS:
-// 1. Game-specific system sets velocities (e.g., MovementSystem)
-// 2. GravitySystem applies acceleration (no-op when gravity=0 / useGravity=false)
-// 3. PhysicsSystem integrates velocities, detects, and resolves collisions
-// 4. Game-specific systems react to the updated positions
+```typescript
+const gravitySystem = world.getSystem(GravitySystem);
+const physicsSystem = world.getSystem(PhysicsSystem);
+if (!gravitySystem || !physicsSystem) throw new Error('physics not attached');
+
+// ORDER MATTERS:
 const tickSystems = [
   movementSystem,    // Game-specific: sets velocities on PhysicsBody
   gravitySystem,     // phalanx-physics: acceleration (before integration)
@@ -152,16 +155,12 @@ const tickSystems = [
   combatSystem,      // Game-specific: reacts to updated positions
 ];
 
-const frameSystems = [
-  interpolationSystem, // phalanx-physics: snapshot/capture/interpolate via lifecycle hooks
-  renderSystem,        // reads getService(Physics).getInterpolatedTransform()
-];
-
-world.registerSystems(tickSystems, frameSystems);
+world.registerSystems(tickSystems, [renderSystem]);
 ```
 
-> **No `setTransformStore()` needed.** `PhysicsSystem` reads/writes the built-in `TransformSoASchema` store directly.
-> Destructure only `{ physicsSystem, interpolationSystem }` if you do not need gravity — `gravitySystem` is always created but is a no-op when `gravity` is 0.
+> **No `setTransformStore()` needed.** `PhysicsSystem` reads/writes the built-in `Transform` store directly and iterates with `world.query(PhysicsBody, Transform)`.
+> `gravitySystem` is always attached but is a no-op when `gravity` is 0.
+> `attach` after `registerSystems` throws (`addModuleSystems: call before registerSystems`).
 
 ### 4. Register Component Type Symbols
 
@@ -344,7 +343,7 @@ interface PhysicsWorldConfig {
   defaultFriction?: FixedPoint; // Applied when body friction is 0 (default: FP.FromFloat(0.92))
   collisionResponse?: 'push' | 'impulse'; // default 'push'
   restitution?: FixedPoint;    // impulse mode only; falls back to per-body restitution
-  tickProvider?: IPhysicsTickProvider;
+  integrate?: boolean;         // default true; false = collisions-only (game moves, physics separates)
   ejectOnBoundsExit?: boolean;
   settleThreshold?: FixedPoint;
   gravity?: FixedPoint;             // Acceleration magnitude (default: FP._0 = disabled)
@@ -381,7 +380,7 @@ grid.restoreBroadphase(grid.getCenters()); // clear, then insert saved centers
 physicsWorld.getBroadphaseCenters();
 physicsWorld.restoreBroadphase(savedCenters); // snapshot restore
 physicsWorld.rebuildBroadphase(); // transforms only; collision-free world
-// PhysicsWorld.attach(world), or registering PhysicsSystem / CollisionSystem,
+// PhysicsWorld.attach(world), or registering a standalone PhysicsSystem,
 // registers save section 'physics.broadphase' (version 1) once. Not exported.
 ```
 
@@ -416,18 +415,11 @@ import { SpatialHashGrid, NarrowPhase, segmentVsAABB } from '@phalanx-engine/phy
 import type { CollisionManifold, RayHit, Vec3FP, AABB } from '@phalanx-engine/physics';
 
 // Systems
-import { PhysicsSystem, GravitySystem, InterpolationSystem, CollisionSystem } from '@phalanx-engine/physics';
+import { PhysicsSystem, GravitySystem, InterpolationSystem } from '@phalanx-engine/physics';
 import type { InterpolatedTransformSample } from '@phalanx-engine/physics';
 
 // Facade
 import { PhysicsWorld } from '@phalanx-engine/physics';
-
-// Tick providers
-import {
-  AutonomousPhysicsTickProvider,
-  ExternalPhysicsTickProvider,
-} from '@phalanx-engine/physics';
-import type { IPhysicsTickProvider, AutonomousProviderOptions } from '@phalanx-engine/physics';
 
 // Events & types
 import { PhysicsEvents } from '@phalanx-engine/physics';
@@ -468,12 +460,8 @@ attachPhysicsBody(entity, {
 });
 ```
 
-Register `gravitySystem` as a tick system **before** `physicsSystem`:
-
-```typescript
-const { gravitySystem, physicsSystem, interpolationSystem } = physicsWorld.getSystems();
-world.registerSystems([gravitySystem, physicsSystem, /* ... */], [interpolationSystem]);
-```
+`attach` adds `GravitySystem` **before** `PhysicsSystem`. If you list them
+explicitly (`world.getSystem(GravitySystem)`), keep gravity first.
 
 ### Firing arcing ordnance (artillery / shrapnel)
 
@@ -563,7 +551,9 @@ body-body collision resolution.
 ### Integration
 
 - Call `physicsWorld.attach(world)` before `registerSystems()`
-- Register `gravitySystem` then `physicsSystem` as tick systems, `interpolationSystem` as frame system
+- `attach` adds `GravitySystem` → `PhysicsSystem` (tick) and `InterpolationSystem` (frame); list them explicitly only to change their position
+- Collisions only (game moves bodies): `new PhysicsWorld({ integrate: false, collisionResponse: 'push' })` — replaces the removed `CollisionSystem`
+- Physics advances only on the world tick (no physics tick providers)
 - Attach `Transform` and `Interpolation` on every entity that moves and renders
 - Use `getService(Physics).getInterpolatedTransform()` in render systems — do not maintain separate visual position caches
 - Use `physicsWorld.getEntityPosition()` for fixed-point gameplay queries (ability targeting, range checks)

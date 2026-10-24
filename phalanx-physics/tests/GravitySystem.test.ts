@@ -1,5 +1,9 @@
+import {
+  physicsTestWorld,
+  addBodyRow,
+  addTransformRow,
+} from './support/physicsTestWorld.js';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { bindTestWorld } from './bindTestWorld.js';
 import { FP } from '@phalanx-engine/math';
 import {
   EntityManager,
@@ -12,7 +16,6 @@ import { PhysicsSystem } from '../src/systems/PhysicsSystem';
 import { PhysicsSoASchema } from '../src/components/physicsBody';
 import { TransformSoASchema } from '../src/components/transform';
 import type { PhysicsConfig } from '../src/types';
-import { addTransformRow } from './testTransformHelpers';
 
 const TICK_DT = FP.FromFloat(0.05);
 const GRAVITY = FP.FromFloat(10);
@@ -43,7 +46,7 @@ function addBody(
     posY?: number;
   } = {}
 ): void {
-  physicsStore.add(entityId, {
+  addBodyRow(physicsStore, entityId, {
     velocityX: FP.ToRaw(FP.FromFloat(opts.velX ?? 0)),
     velocityY: FP.ToRaw(FP.FromFloat(opts.velY ?? 0)),
     velocityZ: FP.ToRaw(FP.FromFloat(opts.velZ ?? 0)),
@@ -65,9 +68,7 @@ describe('GravitySystem', () => {
   let context: SystemContext;
 
   beforeEach(() => {
-    entityManager = new EntityManager();
-    eventBus = new EventBus();
-    context = new SystemContext(eventBus, entityManager);
+    ({ entityManager, eventBus, context } = physicsTestWorld());
   });
 
   function setup(gravity = GRAVITY, gravityAxis: 'x' | 'y' | 'z' = 'y') {
@@ -178,7 +179,6 @@ describe('GravitySystem', () => {
 
     // Now PhysicsSystem integrates the accumulated velocity into position.
     const physicsSystem = new PhysicsSystem(createPhysicsConfig());
-    bindTestWorld(context);
     physicsSystem.init(context);
     physicsSystem.processTick(1);
 
@@ -226,9 +226,11 @@ describe('GravitySystem', () => {
 
   it('is deterministic: two identical worlds produce identical velY each tick', () => {
     const worldA = (() => {
-      const em = new EntityManager();
-      const eb = new EventBus();
-      const ctx = new SystemContext(eb, em);
+      const {
+        entityManager: em,
+        eventBus: eb,
+        context: ctx,
+      } = physicsTestWorld();
       const sys = new GravitySystem(GRAVITY, 'y', TICK_DT);
       sys.init(ctx);
       const ps = em.getOrCreateSoAStore(PhysicsSoASchema);
@@ -238,9 +240,11 @@ describe('GravitySystem', () => {
     })();
 
     const worldB = (() => {
-      const em = new EntityManager();
-      const eb = new EventBus();
-      const ctx = new SystemContext(eb, em);
+      const {
+        entityManager: em,
+        eventBus: eb,
+        context: ctx,
+      } = physicsTestWorld();
       const sys = new GravitySystem(GRAVITY, 'y', TICK_DT);
       sys.init(ctx);
       const ps = em.getOrCreateSoAStore(PhysicsSoASchema);
