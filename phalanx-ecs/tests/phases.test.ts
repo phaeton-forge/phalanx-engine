@@ -1,25 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { GameSystem, GameWorld } from '../src/index.js';
+import { GameSystem, GameWorld, SystemRegistry } from '../src/index.js';
 import { manualTickProvider } from './support/manualTickProvider.js';
 
 class Named extends GameSystem {
   public constructor(
-    private readonly label: string,
+    public override readonly name: string,
     private readonly log: string[]
   ) {
     super();
   }
 
-  public override get name(): string {
-    return this.label;
-  }
-
   public override processTick(): void {
-    this.log.push(this.label);
+    this.log.push(this.name);
   }
 
   public override update(): void {
-    this.log.push(this.label);
+    this.log.push(this.name);
   }
 }
 
@@ -103,7 +99,7 @@ describe('system phases', () => {
     });
 
     expect(() => game.systemNames()).toThrow(
-      "world.start: system 'scoring' is before 'early', which is in phase 'input' not 'late'"
+      "world.systemNames: system 'scoring' is before 'early', which is in phase 'input' not 'late'"
     );
   });
 
@@ -115,7 +111,7 @@ describe('system phases', () => {
     });
 
     expect(() => game.processAllTicks(1)).toThrow(
-      "world.start: system 'scoring' is after unknown system 'missing'"
+      "world.processAllTicks: system 'scoring' is after unknown system 'missing'"
     );
   });
 
@@ -140,16 +136,47 @@ describe('system phases', () => {
     );
     game.addSystem(named, { phase: 'late' });
     expect(() => game.addSystem(named, { phase: 'late' })).toThrow(
-      "world.addSystem: system 'scoring' is already registered"
+      "world.addSystem: system instance 'scoring' is already registered"
     );
+    expect(() =>
+      game.addSystem(new Named('scoring', []), { phase: 'late' })
+    ).toThrow("world.addSystem: system name 'scoring' is already registered");
 
     class Blank extends GameSystem {
-      public override get name(): string {
-        return '';
-      }
+      public override readonly name = '';
     }
     expect(() => game.addSystem(new Blank(), { phase: 'late' })).toThrow(
       'world.addSystem: system name is required'
     );
+  });
+
+  it('names updateAll when a frame constraint cannot be resolved', () => {
+    const game = world();
+    game.addSystem(new Named('draw', []), {
+      phase: 'render',
+      after: 'missing',
+    });
+
+    expect(() => game.updateAll(0)).toThrow(
+      "world.updateAll: system 'draw' is after unknown system 'missing'"
+    );
+  });
+
+  it('inits each ordered system once from SystemRegistry', () => {
+    const seen: string[] = [];
+    class Probe extends GameSystem {
+      public override readonly name = 'probe';
+
+      public override init(): void {
+        seen.push(this.name);
+      }
+    }
+    const registry = new SystemRegistry();
+    const probe = new Probe();
+    registry.add(probe);
+    registry.setOrder([probe], [probe]);
+    registry.init();
+
+    expect(seen).toEqual(['probe']);
   });
 });

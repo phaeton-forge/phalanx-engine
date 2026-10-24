@@ -28,7 +28,7 @@ export interface AddSystemOptions {
   readonly after?: string | readonly string[];
 }
 
-/** System names in execution order. Folded into `configHash`. */
+/** System names in execution order. Tick names are folded into `configHash`. */
 export interface SystemOrder {
   readonly tick: readonly string[];
   readonly frame: readonly string[];
@@ -61,7 +61,10 @@ export function constraintNames(
   return value;
 }
 
-export function orderedSystems(entries: readonly SystemEntry[]): {
+export function orderedSystems(
+  entries: readonly SystemEntry[],
+  where: string
+): {
   readonly tick: GameSystem[];
   readonly frame: GameSystem[];
 } {
@@ -71,12 +74,14 @@ export function orderedSystems(entries: readonly SystemEntry[]): {
     tick: orderLane(
       entries.filter((entry) => laneOf(entry.phase) === 'tick'),
       TICK_PHASES,
-      all
+      all,
+      where
     ),
     frame: orderLane(
       entries.filter((entry) => laneOf(entry.phase) === 'frame'),
       FRAME_PHASES,
-      all
+      all,
+      where
     ),
   };
 }
@@ -84,12 +89,15 @@ export function orderedSystems(entries: readonly SystemEntry[]): {
 function orderLane(
   entries: readonly SystemEntry[],
   phases: readonly string[],
-  all: ReadonlyMap<string, SystemEntry>
+  all: ReadonlyMap<string, SystemEntry>,
+  where: string
 ): GameSystem[] {
   const ordered: GameSystem[] = [];
   for (const phase of phases) {
     const group = entries.filter((entry) => entry.phase === phase);
-    for (const system of sortPhase(phase, group, all)) ordered.push(system);
+    for (const system of sortPhase(phase, group, all, where)) {
+      ordered.push(system);
+    }
   }
   return ordered;
 }
@@ -97,7 +105,8 @@ function orderLane(
 function sortPhase(
   phase: string,
   group: readonly SystemEntry[],
-  all: ReadonlyMap<string, SystemEntry>
+  all: ReadonlyMap<string, SystemEntry>,
+  where: string
 ): GameSystem[] {
   const local = new Map<string, SystemEntry>();
   const outgoing = new Map<string, string[]>();
@@ -119,12 +128,12 @@ function sortPhase(
     for (const name of entry.before) {
       addEdge(
         entry.system.name,
-        requireTarget(entry, name, 'before', phase, all)
+        requireTarget(entry, name, 'before', phase, all, where)
       );
     }
     for (const name of entry.after) {
       addEdge(
-        requireTarget(entry, name, 'after', phase, all),
+        requireTarget(entry, name, 'after', phase, all, where),
         entry.system.name
       );
     }
@@ -149,7 +158,7 @@ function sortPhase(
     }
   }
   if (left.size > 0) {
-    throw new Error(cycleMessage(phase, left, outgoing));
+    throw new Error(cycleMessage(where, phase, left, outgoing));
   }
   return result;
 }
@@ -159,28 +168,30 @@ function requireTarget(
   name: string,
   kind: 'before' | 'after',
   phase: string,
-  all: ReadonlyMap<string, SystemEntry>
+  all: ReadonlyMap<string, SystemEntry>,
+  where: string
 ): string {
   const target = all.get(name);
   if (target === undefined) {
     throw new Error(
-      `world.start: system '${entry.system.name}' is ${kind} unknown system '${name}'`
+      `${where}: system '${entry.system.name}' is ${kind} unknown system '${name}'`
     );
   }
   if (laneOf(target.phase) !== laneOf(phase)) {
     throw new Error(
-      `world.start: system '${entry.system.name}' is ${kind} '${name}', which is a ${laneOf(target.phase)} system`
+      `${where}: system '${entry.system.name}' is ${kind} '${name}', which is a ${laneOf(target.phase)} system`
     );
   }
   if (target.phase !== phase) {
     throw new Error(
-      `world.start: system '${entry.system.name}' is ${kind} '${name}', which is in phase '${target.phase}' not '${phase}'`
+      `${where}: system '${entry.system.name}' is ${kind} '${name}', which is in phase '${target.phase}' not '${phase}'`
     );
   }
   return target.system.name;
 }
 
 function cycleMessage(
+  where: string,
   phase: string,
   left: ReadonlySet<string>,
   outgoing: ReadonlyMap<string, readonly string[]>
@@ -205,5 +216,5 @@ function cycleMessage(
   };
   for (const name of left) visit(name);
   const path = found !== undefined ? found.join(' → ') : [...left].join(', ');
-  return `world.start: system order cycle in phase '${phase}': ${path}`;
+  return `${where}: system order cycle in phase '${phase}': ${path}`;
 }

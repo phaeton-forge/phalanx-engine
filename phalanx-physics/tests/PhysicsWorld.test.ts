@@ -89,7 +89,7 @@ describe('PhysicsWorld', () => {
     const gravitySystem = world.getSystem(GravitySystem);
     if (gravitySystem === undefined) throw new Error('missing GravitySystem');
     expect(() => world.addSystem(gravitySystem, { phase: 'physics' })).toThrow(
-      "world.addSystem: system 'GravitySystem' is already registered"
+      "world.addSystem: system instance 'GravitySystem' is already registered"
     );
   });
 

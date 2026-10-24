@@ -507,8 +507,8 @@ export class GameWorld {
    * Add `system` to a tick or frame phase. Within a phase, systems run in
    * registration order, refined by `before` / `after`. A constraint cycle,
    * or a constraint that names a system in another phase, throws when the
-   * order is resolved (`start`, or the first `processAllTicks` /
-   * `updateAll`).
+   * order is resolved (`start`, `systemNames`, `processAllTicks`, or
+   * `updateAll`). The error names that caller.
    *
    * `init` runs immediately. `world.getSystem` finds the system at once.
    * After {@link start} the order is frozen and this throws.
@@ -528,12 +528,12 @@ export class GameWorld {
     }
     if (this._systemEntries.some((entry) => entry.system === system)) {
       throw new Error(
-        `world.addSystem: system '${name}' is already registered`
+        `world.addSystem: system instance '${name}' is already registered`
       );
     }
     if (this._systemEntries.some((entry) => entry.system.name === name)) {
       throw new Error(
-        `world.addSystem: system '${name}' is already registered`
+        `world.addSystem: system name '${name}' is already registered`
       );
     }
     this._systemEntries.push({
@@ -554,16 +554,16 @@ export class GameWorld {
    * does. An empty world returns two empty lists.
    */
   public systemNames(): SystemOrder {
-    this.ensureSystemOrder();
+    this.ensureSystemOrder('world.systemNames');
     return {
       tick: this.systemRegistry.orderedTick().map((system) => system.name),
       frame: this.systemRegistry.orderedFrame().map((system) => system.name),
     };
   }
 
-  private ensureSystemOrder(): void {
+  private ensureSystemOrder(where: string): void {
     if (!this._systemOrderDirty) return;
-    const ordered = orderedSystems(this._systemEntries);
+    const ordered = orderedSystems(this._systemEntries, where);
     this.systemRegistry.setOrder(ordered.tick, ordered.frame);
     this.buildLifecycleCaches();
     this._systemOrderDirty = false;
@@ -592,7 +592,7 @@ export class GameWorld {
    * {@link start} does.
    */
   public processAllTicks(tick: number): void {
-    this.ensureSystemOrder();
+    this.ensureSystemOrder('world.processAllTicks');
     this.enterTick();
     try {
       this.systemRegistry.processAllTicks(tick);
@@ -605,7 +605,7 @@ export class GameWorld {
    * Run all frame-based systems with the given delta time.
    */
   public updateAll(dt: number): void {
-    this.ensureSystemOrder();
+    this.ensureSystemOrder('world.updateAll');
     this.systemRegistry.updateAll(dt);
   }
 
@@ -625,7 +625,7 @@ export class GameWorld {
    * @param hooks - Optional lifecycle hooks to inject custom logic around the core steps.
    */
   public start(hooks?: GameWorldHooks): void {
-    this.ensureSystemOrder();
+    this.ensureSystemOrder('world.start');
     this._systemsFrozen = true;
 
     // Prewarm pools if configured

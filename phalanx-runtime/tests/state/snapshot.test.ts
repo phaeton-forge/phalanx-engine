@@ -414,8 +414,25 @@ describe('canonicalConfigBytes / configHash', () => {
     expect(
       configHash({ seed: 1 }, undefined, undefined, gravityFirst)
     ).not.toBe(configHash({ seed: 1 }, undefined, undefined, physicsFirst));
+    const serverFrame = {
+      tick: ['GravitySystem', 'PhysicsSystem'],
+      frame: [] as readonly string[],
+    };
+    const clientFrame = {
+      tick: ['GravitySystem', 'PhysicsSystem'],
+      frame: ['InterpolationSystem', 'RenderSystem'],
+    };
+    expect(configHash({ seed: 1 }, undefined, undefined, serverFrame)).toBe(
+      configHash({ seed: 1 }, undefined, undefined, clientFrame)
+    );
     expect(
       configHash({ seed: 1 }, undefined, undefined, { tick: [], frame: [] })
+    ).toBe(configHash({ seed: 1 }));
+    expect(
+      configHash({ seed: 1 }, undefined, undefined, {
+        tick: [],
+        frame: ['RenderSystem'],
+      })
     ).toBe(configHash({ seed: 1 }));
   });
 

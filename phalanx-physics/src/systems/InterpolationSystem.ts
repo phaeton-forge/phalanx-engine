@@ -42,6 +42,8 @@ export class InterpolationSystem
   extends GameSystem
   implements IAfterTick, IBeforeFrame
 {
+  public override readonly name = 'InterpolationSystem';
+
   private transformStore!: SoAComponentStore<
     typeof TransformSoASchema.definition
   >;

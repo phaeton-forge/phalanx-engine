@@ -557,6 +557,12 @@ world.addSystem(renderSystem, { phase: 'render' });
 A system is in one phase. Tick systems implement `processTick`; frame
 systems implement `update`.
 
+`GameSystem.name` defaults to `constructor.name`. Tick names are part of
+`configHash`, and `before` / `after` name systems. A minifier can rename
+the class differently in a browser bundle and a Node server, so a game
+system in a multiplayer or bundled build declares
+`override readonly name = '...'`.
+
 #### Accessing Other Systems
 
 Use `context.getSystem()`, `context.getService(key)` or the `this.pools` getter:

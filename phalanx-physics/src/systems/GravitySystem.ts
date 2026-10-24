@@ -27,6 +27,8 @@ import { PhysicsBody, PhysicsSoASchema } from '../components/physicsBody.js';
  * reserved and rejected at construction.
  */
 export class GravitySystem extends GameSystem {
+  public override readonly name = 'GravitySystem';
+
   private physicsStore!: SoAComponentStore<typeof PhysicsSoASchema.definition>;
   private readonly gravity: FixedPoint;
   private readonly gravityAxis: 'x' | 'y' | 'z';

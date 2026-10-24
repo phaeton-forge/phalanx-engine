@@ -70,6 +70,8 @@ import {
  * helpers (which queue removals into the same pipeline).
  */
 export class EffectApplicationSystem extends GameSystem {
+  public override readonly name = 'EffectApplicationSystem';
+
   public constructor(
     private readonly registries: AbilitySystemRegistries,
     private readonly runtime: AbilitySystemRuntime,

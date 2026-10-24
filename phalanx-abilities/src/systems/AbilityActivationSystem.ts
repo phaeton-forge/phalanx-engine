@@ -80,6 +80,8 @@ import {
  * server-authoritative side decides whether the ability actually fires.
  */
 export class AbilityActivationSystem extends GameSystem {
+  public override readonly name = 'AbilityActivationSystem';
+
   /** Per-tick scratch buffer: tag string → caster id → tag granted in flight. */
   private readonly inFlightTagsByCaster = new Map<number, Set<string>>();
   /**

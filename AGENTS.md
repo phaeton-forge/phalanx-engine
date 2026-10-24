@@ -250,8 +250,10 @@ client.sendReady();
 - **Phase order, then registration order, is execution order.** Tick phases
   are `input`, `physics`, `abilities`, `late`. Frame phases are
   `interpolation`, `render`, `present`. `before` / `after` refine the order
-  inside one phase. The ordered system names are part of `configHash`.
-  Changing the order changes simulation results.
+  inside one phase. The ordered tick system names are part of
+  `configHash`. Frame names are not. A game system in a bundled
+  multiplayer build sets `override readonly name` so a minifier cannot
+  change that string. Changing the tick order changes simulation results.
 - Never call `world.processAllTicks()` / `world.updateAll()` manually outside
   unit tests — `world.start()` owns the pipeline.
 - Lifecycle hooks (`IBeforeTick`, `IAfterTick`, `IBeforeFrame`, `IAfterFrame`)

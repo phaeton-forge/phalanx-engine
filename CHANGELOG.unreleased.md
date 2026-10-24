@@ -35,12 +35,22 @@ Entries collected per package until the synchronized 0.3.0 release
   registration order inside a phase; `before` / `after` refine that order.
   A cycle, an unknown name, or a constraint that names another phase throws
   when the order is resolved (`start`, `systemNames`, `processAllTicks`,
-  `updateAll`), for example
-  `world.start: system order cycle in phase 'late': a → b → a`.
+  `updateAll`). The error names that caller, for example
+  `world.systemNames: system 'scoring' is before 'early', which is in phase 'input' not 'late'`
+  and `world.start: system order cycle in phase 'late': a → b → a`.
   `start()` freezes the order; a later `addSystem` throws
   `world.addSystem: system order is frozen`. `init` runs immediately.
   `GameSystem.name` defaults to `constructor.name` and must be non-empty
-  and unique. `systemNames()` is `{ tick, frame }` in execution order.
+  and unique. A duplicate instance throws
+  `world.addSystem: system instance 'GravitySystem' is already registered`.
+  A second system with the same name throws
+  `world.addSystem: system name 'scoring' is already registered`.
+  Built-in physics and abilities systems set `override readonly name`.
+  A game system in a bundled multiplayer build should do the same:
+  tick names are part of `configHash`, and `before` / `after` use them.
+  `SystemRegistry.init(context)` inits the ordered lists for the
+  low-level path (`GameWorld.addSystem` still inits immediately).
+  `systemNames()` is `{ tick, frame }` in execution order.
   Removed `registerSystems`, `addModuleSystems`, and `addFrameSystem`.
   `EntityManager.queryEntities` / `queryEntitiesAny` stay: playground
   systems and a few engine paths still query by component symbol.
@@ -181,6 +191,9 @@ Entries collected per package until the synchronized 0.3.0 release
 
 ## @phalanx-engine/game
 
+- Root re-exports `AddSystemOptions`, `TickPhase`, `FramePhase`,
+  `SystemPhase`, `SystemOrder`, `TICK_PHASES` and `FRAME_PHASES`.
+  Name count `[186, 9, 58, 88, 19, 3]` → `[193, 9, 58, 88, 19, 3]`.
 - `./abilities` follows the abilities package: wrapper classes,
   `AbilitiesComponentType` and the `get*Component` helpers are gone; the
   component definitions, `*Of` helpers and `*State` types are exported.
@@ -233,10 +246,12 @@ Entries collected per package until the synchronized 0.3.0 release
 
 ## @phalanx-engine/runtime
 
-- `configHash` appends ordered system names (`{ tick, frame }` from
-  `world.systemNames()`) when either list is non-empty. An empty order
-  keeps the previous digest. A different order changes the digest, so
-  peers that disagree on system order reject the match. `GameDefinition.systems`
+- `configHash` appends tick system names (`systems.tick` from
+  `world.systemNames()`) when that list is non-empty. Frame names are
+  not hashed, so a client-only render or present system does not reject
+  a headless server snapshot. An empty tick list keeps the previous
+  digest. A different tick order changes the digest, so peers that
+  disagree on tick-system order reject the match. `GameDefinition.systems`
   are added in the `late` phase and `frameSystems` in `render`. A system
   that belongs in another phase is added from `onStart` with
   `world.addSystem`. Snapshot goldens `tiny-*`, `arena-*`, and
@@ -755,7 +770,13 @@ Entries collected per package until the synchronized 0.3.0 release
 - `createAbilitySystem` registers its simulation systems in the `abilities`
   tick phase, in pipeline order, and `CuePresentationSystem` in the
   `present` frame phase when cues are configured. `AbilitySystem.tickSystems`
-  is removed. Callers no longer pass that list to the world.
+  is removed. Callers no longer pass that list to the world. Each pipeline
+  system sets `override readonly name` to its class name
+  (`AbilityActivationSystem`, `EffectApplicationSystem`,
+  `AbilityHookExecutorSystem`, `EffectTickSystem`,
+  `AttributeAggregationSystem`, `CueDispatchSystem`,
+  `CueBufferCleanupSystem`, `CuePresentationSystem`) so a minifier cannot
+  change `configHash` or `before` / `after` targets.
 - `AbilityOwner` (the component formerly named `AbilitySystem`),
   `Attributes`, `ActiveEffects` and `GameplayTags` are object
   `defineComponent` definitions with `save` / `load`. They are not
@@ -852,7 +873,8 @@ Entries collected per package until the synchronized 0.3.0 release
   `InterpolationSystem` to the `interpolation` frame phase. Call it
   before `world.start()`. A game system that must run first uses `input`;
   one that must see the physics step uses `physics` with `after:
-'PhysicsSystem'`, or `late`.
+'PhysicsSystem'`, or `late`. `GravitySystem`, `PhysicsSystem` and
+  `InterpolationSystem` set `override readonly name` to those strings.
 - `Transform` and `PhysicsBody` are `defineComponent` SoA components.
   `Interpolation` is transient. Wrapper classes
   `TransformComponent`, `PhysicsBodyComponent`, and

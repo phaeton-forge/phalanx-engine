@@ -12,6 +12,8 @@ import type { AbilitySystemRuntime } from '../runtime/index.js';
  * gameplay state.
  */
 export class CueDispatchSystem extends GameSystem {
+  public override readonly name = 'CueDispatchSystem';
+
   public constructor(private readonly runtime: AbilitySystemRuntime) {
     super();
   }

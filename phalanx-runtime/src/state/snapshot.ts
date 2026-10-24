@@ -268,12 +268,14 @@ export interface CommandSchemaHash {
  * Component records are appended only when the list is non-empty, in
  * registration order. Each record is the component name plus its field
  * names and types in declaration order. Command records are appended
- * only when that list is non-empty, in declaration order. System names
- * are appended when `systems` has at least one tick or frame name, in
- * execution order (`tick`, then `frame`). An empty list does not change
- * the digest. Swapping two fields, or changing `u32` to `i32`, changes
- * the digest. A command schema change does too. A different system order
- * does too.
+ * only when that list is non-empty, in declaration order. Tick system
+ * names are appended when `systems.tick` is non-empty, in execution
+ * order. Frame names are not hashed: a client may register render and
+ * present systems a headless server does not. An empty tick list does
+ * not change the digest. Swapping two fields, or changing `u32` to
+ * `i32`, changes the digest. A command schema change does too. A
+ * different tick-system order does too. A different frame order does
+ * not.
  */
 export function configHash(
   config: unknown,
@@ -288,13 +290,8 @@ export function configHash(
   if (commands !== undefined && commands.length > 0) {
     parts.push(canonicalConfigBytes(commands));
   }
-  if (
-    systems !== undefined &&
-    (systems.tick.length > 0 || systems.frame.length > 0)
-  ) {
-    parts.push(
-      canonicalConfigBytes({ tick: systems.tick, frame: systems.frame })
-    );
+  if (systems !== undefined && systems.tick.length > 0) {
+    parts.push(canonicalConfigBytes(systems.tick));
   }
   return digestBytes(concatBytes(parts));
 }

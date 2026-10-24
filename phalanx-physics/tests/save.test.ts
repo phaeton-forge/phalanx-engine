@@ -169,9 +169,7 @@ describe('physics state helpers', () => {
     });
     physics.attach(both);
     class ExtraPhysics extends PhysicsSystem {
-      public override get name(): string {
-        return 'ExtraPhysics';
-      }
+      public override readonly name = 'ExtraPhysics';
     }
     both.addSystem(new ExtraPhysics(physicsConfig()), { phase: 'physics' });
     expect(both.saveSections.map((section) => section.key)).toEqual([

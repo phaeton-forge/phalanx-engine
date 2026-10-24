@@ -207,9 +207,11 @@ must not spawn entities when `purpose` is `'restore'` if a custom save
 handler calls `spawnWithId` for those ids. The default world-module
 restore skips an id that already exists. A client
 restoring a server snapshot ignores both. `side` is omitted from
-`configHash`, so the two peers share a hash. Ordered system names are
-appended when the world has any system, so a different phase order also
-changes the hash. An empty system list leaves the digest unchanged. `fastForward(entries, { budgetMs,
+`configHash`, so the two peers share a hash. Tick system names are
+appended when that list is non-empty, so a different tick order changes
+the hash. Frame names are not hashed: a client may register render and
+present systems a headless server does not. An empty tick list leaves
+the digest unchanged. `fastForward(entries, { budgetMs,
 throughTick })` is inclusive and runs empty ticks. `ReplayPlayer.from`
 never calls `decide` and has no `start` or `submit`. Drive it with
 `play({ budgetMs })` or `fastForward(throughTick)`. A final-digest

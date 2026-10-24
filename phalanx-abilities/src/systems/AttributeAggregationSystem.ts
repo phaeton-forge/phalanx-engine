@@ -37,6 +37,8 @@ type OrderedEffectsBuffer = ActiveEffectInstance[];
  *    sorts defensively to remain correct if test code or future systems push out of order.
  */
 export class AttributeAggregationSystem extends GameSystem {
+  public override readonly name = 'AttributeAggregationSystem';
+
   private readonly orderedEffectsBuffer: OrderedEffectsBuffer = [];
 
   public constructor(private readonly registries: AbilitySystemRegistries) {

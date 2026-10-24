@@ -89,8 +89,9 @@ new Phalanx({
    `MatchRunner` folds each registered component's name and its field
    names and types, in registration and declaration order, into that
    digest when the list is non-empty. An empty list keeps the
-   one-argument hash. Restore compares the schema text stored outside
-   the snapshot digest and throws
+   one-argument hash. Tick system names are appended the same way when
+   that list is non-empty. Frame names are not hashed. Restore compares
+   the schema text stored outside the snapshot digest and throws
    `component 'Unit' schema changed: expected x:i32,hp:u32, got hp:u32,x:i32`
    when the fields differ.
 

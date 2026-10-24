@@ -34,6 +34,8 @@ import type { AbilityActivationContext } from '../types/index.js';
  * silent no-op.
  */
 export class AbilityHookExecutorSystem extends GameSystem {
+  public override readonly name = 'AbilityHookExecutorSystem';
+
   public constructor(
     private readonly registries: AbilitySystemRegistries,
     private readonly runtime: AbilitySystemRuntime

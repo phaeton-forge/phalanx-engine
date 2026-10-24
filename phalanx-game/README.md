@@ -26,7 +26,8 @@ The root re-exports `@phalanx-engine/runtime` (including `MatchStore`,
 `MemoryMatchStore`, `IndexedDbMatchStore`, `MatchRunner.resumeLocal`,
 `attachDebug`, `AttachDebugOptions`, `DebugAttachment` and
 `DebugDataProvider`) and the ecs names games use (`GameWorld`,
-`GameSystem`, `Entity`, …).
+`GameSystem`, `Entity`, `AddSystemOptions`, `TickPhase`, `FramePhase`,
+`SystemPhase`, `SystemOrder`, `TICK_PHASES`, `FRAME_PHASES`, …).
 
 `StateHelpers`, `spawnWithId`,
 `SaveHandler`, `CommandSchema`, `SaveSpec`, `StateMigration`,

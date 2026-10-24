@@ -141,7 +141,9 @@ import { SystemRegistry } from '@phalanx-engine/ecs';
 import { TickFrameManager } from '@phalanx-engine/runtime/advanced';
 
 const registry = new SystemRegistry();
+const context = registry.getContext();
 registry.setOrder(tickSystems, frameSystems);
+registry.init(context);
 
 const tickManager = new TickFrameManager({ tickRate: 60 });
 tickManager.onTick((tick) => registry.processAllTicks(tick));
@@ -330,6 +332,14 @@ class MySystem extends GameSystem implements IBeforeTick, IAfterTick {
 
 Type guards are also exported: `isBeforeTick`, `isAfterTick`, `isBeforeFrame`, `isAfterFrame`.
 
+`GameSystem.name` defaults to `constructor.name`. Tick names are part of `configHash`, and `before` / `after` refer to those names. A bundler can rename a class differently in a browser client and a Node server, so a game system in a multiplayer or bundled build sets an explicit string:
+
+```typescript
+class MovementSystem extends GameSystem {
+  public override readonly name = 'MovementSystem';
+}
+```
+
 ### SystemRegistry (Low-level)
 
 ```typescript
@@ -339,6 +349,7 @@ class SystemRegistry {
     tickSystems: readonly GameSystem[],
     frameSystems: readonly GameSystem[]
   ): void;
+  init(context?: SystemContext): void;
   processAllTicks(tick: number): void;
   updateAll(deltaTime: number): void;
   getContext(): SystemContext;

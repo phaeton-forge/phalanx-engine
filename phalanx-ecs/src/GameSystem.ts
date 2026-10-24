@@ -23,13 +23,12 @@ import type { IRandom } from './IRandom.js';
  */
 export abstract class GameSystem {
   /**
-   * Stable name. The ordered names are part of `configHash`, so a peer
-   * with a different system order rejects the match. Defaults to the
-   * class name; override when that name is not stable.
+   * Stable name. Tick names are part of `configHash`, and `before` /
+   * `after` refer to them. Defaults to the class name, which a minifier
+   * can rename. A bundled multiplayer build sets
+   * `override readonly name`.
    */
-  public get name(): string {
-    return this.constructor.name;
-  }
+  public readonly name: string = this.constructor.name;
 
   /** Shared system dependencies (assigned in init) */
   protected context!: SystemContext;

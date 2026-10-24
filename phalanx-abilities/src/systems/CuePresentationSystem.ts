@@ -13,6 +13,8 @@ import type { Cue, CueConfig, CueContext } from '../cues/index.js';
  * It performs no tick work — presentation runs only in afterFrame.
  */
 export class CuePresentationSystem extends GameSystem implements IAfterFrame {
+  public override readonly name = 'CuePresentationSystem';
+
   private cueContext!: CueContext;
   private activeCues: Cue[] = [];
 

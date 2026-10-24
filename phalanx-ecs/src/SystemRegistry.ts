@@ -36,13 +36,29 @@ export class SystemRegistry {
     this.owned.push(system);
   }
 
-  /** Replace the execution lists. `init` is the world's job. */
+  /**
+   * Replace the execution lists. {@link GameWorld} calls `init` inside
+   * `addSystem`. The low-level path calls {@link init} after this.
+   */
   public setOrder(
     tickSystems: readonly GameSystem[],
     frameSystems: readonly GameSystem[]
   ): void {
     this.tickSystems = [...tickSystems];
     this.frameSystems = [...frameSystems];
+  }
+
+  /**
+   * Call `init` on each ordered system, tick then frame. A system listed
+   * in both lanes is initialized once.
+   */
+  public init(context: SystemContext = this.context): void {
+    const seen = new Set<GameSystem>();
+    for (const system of [...this.tickSystems, ...this.frameSystems]) {
+      if (seen.has(system)) continue;
+      seen.add(system);
+      system.init(context);
+    }
   }
 
   public orderedTick(): readonly GameSystem[] {
