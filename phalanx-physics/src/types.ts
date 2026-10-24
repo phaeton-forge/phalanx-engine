@@ -63,6 +63,15 @@ export interface PhysicsConfig {
    * restitution. Ignored by the `'push'` response.
    */
   restitution?: FixedPoint;
+  /**
+   * `false` is collisions-only mode: the game moves bodies, physics
+   * separates them. One resolution pass per tick, no `subSteps`, friction,
+   * `maxVelocity` or `worldBounds`. The `'push'` force is
+   * `overlap × pushStrength` (no restitution). The push still writes
+   * `velocity`, but velocity is not integrated into position.
+   * Default: `true`.
+   */
+  integrate?: boolean;
   /** Spatial hash grid cell size */
   gridCellSize: FixedPoint;
   /** World bounds for position clamping (optional) */

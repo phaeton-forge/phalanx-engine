@@ -60,6 +60,7 @@ export class PhysicsWorld {
       worldBounds: config?.worldBounds,
       ejectOnBoundsExit: config?.ejectOnBoundsExit,
       collisionResponse: config?.collisionResponse,
+      integrate: config?.integrate,
       restitution: config?.restitution,
       gravity,
       gravityAxis,

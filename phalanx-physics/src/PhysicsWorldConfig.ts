@@ -39,6 +39,13 @@ export interface PhysicsWorldConfig {
   collisionResponse?: 'push' | 'impulse';
 
   /**
+   * `false` is collisions-only mode: no integration, friction, clamping or
+   * sub-steps; one resolution pass per tick. See `PhysicsConfig.integrate`.
+   * Default: `true`.
+   */
+  integrate?: boolean;
+
+  /**
    * Coefficient of restitution `e` for the `'impulse'` response.
    * Falls back to per-body restitution when omitted. Ignored by `'push'`.
    */

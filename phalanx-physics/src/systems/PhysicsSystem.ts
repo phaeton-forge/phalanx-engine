@@ -98,6 +98,11 @@ export class PhysicsSystem extends GameSystem {
    * Called by processTick() in default mode, or directly by a custom IPhysicsTickProvider.
    */
   public step(): void {
+    if (this.config.integrate === false) {
+      this.rebuildSpatialGrid();
+      this.detectAndResolve();
+      return;
+    }
     const subDt = FP.Div(
       this.config.tickDt,
       FP.FromFloat(this.config.subSteps)
@@ -376,11 +381,13 @@ export class PhysicsSystem extends GameSystem {
 
       if (!manifold) continue;
 
-      // Compute restitution: average of both bodies, default to 1.0 if both unset
+      // Average of both bodies, 1.0 if both unset. Collisions-only mode
+      // pushes with overlap × pushStrength and ignores restitution.
       const restitutionA = FP.FromRaw(physRestitution[physIndexA]);
       const restitutionB = FP.FromRaw(physRestitution[physIndexB]);
       const restitution =
-        FP.Eq(restitutionA, FP._0) && FP.Eq(restitutionB, FP._0)
+        this.config.integrate === false ||
+        (FP.Eq(restitutionA, FP._0) && FP.Eq(restitutionB, FP._0))
           ? FP._1
           : FP.Div(FP.Add(restitutionA, restitutionB), FP.FromFloat(2));
 
