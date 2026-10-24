@@ -14,7 +14,11 @@ export { GameSystem } from './GameSystem.js';
 
 // GameWorld facade
 export { GameWorld, GameWorldEvents, ValueComponent } from './GameWorld.js';
-export type { GameWorldConfig, GameWorldHooks } from './GameWorld.js';
+export type {
+  GameWorldConfig,
+  GameWorldHooks,
+  ModuleComponentOptions,
+} from './GameWorld.js';
 
 // Entity and Component
 export { Entity } from './Entity.js';

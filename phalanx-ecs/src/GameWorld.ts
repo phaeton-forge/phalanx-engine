@@ -81,6 +81,24 @@ export interface GameWorldConfig {
  * All hooks are optional. If omitted the corresponding step is simply skipped.
  * Rendering (e.g. scene.render()) should be called by the consumer in afterFrame.
  */
+/**
+ * Registration of an object component whose module saves, attaches and
+ * resets it. The world adds no save section for it, does not drop it when
+ * the entity returns to the pool, and `world.addComponent` throws with
+ * `attachWith`.
+ */
+export interface ModuleComponentOptions {
+  /** Module that owns the component, for error messages. */
+  readonly module: string;
+  /** How game code attaches it, e.g. `abilities.initComponent(init)`. */
+  readonly attachWith: string;
+}
+
+interface ModuleComponent extends ModuleComponentOptions {
+  readonly name: string;
+  readonly type: symbol;
+}
+
 export interface GameWorldHooks {
   /** Called before tick systems are processed (e.g. snapshot positions, execute commands) */
   beforeTick?: (
@@ -157,6 +175,9 @@ export class GameWorld {
 
   /** Object components. Saved as module sections, not SoA stores. */
   private readonly _objectComponents: StoredObjectComponent[] = [];
+
+  /** Object components saved and attached by their module. */
+  private readonly _moduleComponents: ModuleComponent[] = [];
 
   /** Transient components. Omitted from saves and from `configHash`. */
   private readonly _transientComponents: TransientComponentDef<object>[] = [];
@@ -370,13 +391,17 @@ export class GameWorld {
    * Object: `save` and `load` are required here. The component is written
    * as a module save section under its name. It is not a SoA schema.
    *
+   * Object with {@link ModuleComponentOptions}: the module saves, attaches
+   * and resets it; see that type.
+   *
    * Transient: not saved and not included in `configHash`.
    */
   public registerComponent<S extends SoASchemaDefinition>(
     component: ComponentRegistration<S>
   ): void;
   public registerComponent<T extends object>(
-    component: ObjectComponentDef<T>
+    component: ObjectComponentDef<T>,
+    options?: ModuleComponentOptions
   ): void;
   public registerComponent<T extends object>(
     component: TransientComponentDef<T>
@@ -385,9 +410,20 @@ export class GameWorld {
     component:
       | ComponentRegistration
       | ObjectComponentDef<object>
-      | TransientComponentDef<object>
+      | TransientComponentDef<object>,
+    options?: ModuleComponentOptions
   ): void {
     const kind = componentKind(component);
+    if (kind === 'object' && options !== undefined) {
+      this.assertNameFree(component.name);
+      this._moduleComponents.push({
+        name: component.name,
+        type: component.type,
+        module: options.module,
+        attachWith: options.attachWith,
+      });
+      return;
+    }
     if (kind === 'object') {
       this.registerObject(component as ObjectComponentDef<object>);
       return;
@@ -634,6 +670,14 @@ export class GameWorld {
   ): void {
     this.assertEntity(entity, 'world.addComponent');
     this.assertRegistered(component, 'world.addComponent');
+    const owned = this._moduleComponents.find(
+      (existing) => existing.type === component.type
+    );
+    if (owned !== undefined) {
+      throw new Error(
+        `world.addComponent: '${owned.name}' is owned by ${owned.module}; attach it with ${owned.attachWith}`
+      );
+    }
     if (componentKind(component) === 'soa') {
       this.addSoa(entity, component as SoaComponentDef, values);
       return;
@@ -893,6 +937,9 @@ export class GameWorld {
     if (this._objectComponents.some((existing) => existing.name === name)) {
       return true;
     }
+    if (this._moduleComponents.some((existing) => existing.name === name)) {
+      return true;
+    }
     if (this._transientComponents.some((existing) => existing.name === name)) {
       return true;
     }
@@ -930,6 +977,9 @@ export class GameWorld {
       return true;
     }
     if (this._objectComponents.some((existing) => existing.type === type)) {
+      return true;
+    }
+    if (this._moduleComponents.some((existing) => existing.type === type)) {
       return true;
     }
     return this._transientComponents.some((existing) => existing.type === type);

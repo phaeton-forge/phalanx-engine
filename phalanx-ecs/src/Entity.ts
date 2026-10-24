@@ -87,6 +87,11 @@ export class Entity {
     return component;
   }
 
+  /** {@link addComponent} for each component, in order. */
+  public addComponents(components: Iterable<IComponent>): void {
+    for (const component of components) this.addComponent(component);
+  }
+
   /**
    * Get a component by type with type assertion
    * Use: entity.getComponent<AttackComponent>(ComponentType.Attack)

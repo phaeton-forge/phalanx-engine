@@ -4,6 +4,7 @@ import {
   BinaryStateWriter,
   GameSystem,
   GameWorld,
+  ValueComponent,
   defineComponent,
   writeSorted,
 } from '../src/index.js';
@@ -17,6 +18,33 @@ function world(): GameWorld {
 }
 
 describe('defineComponent', () => {
+  it('leaves a module-owned object component to its module', () => {
+    const game = world();
+    const owned = defineComponent('Owned', {
+      kind: 'object',
+      create: () => ({ n: 0 }),
+      save(value, writer) {
+        writer.i32(value.n);
+      },
+      load: (reader) => ({ n: reader.i32() }),
+    });
+    game.registerComponent(owned, {
+      module: 'demo',
+      attachWith: 'demo.attach()',
+    });
+    expect(game.saveSections).toEqual([]);
+    expect(() => game.registerComponent(owned)).toThrow('already registered');
+
+    const entity = game.createEntityWithId(1);
+    expect(() => game.addComponent(entity, owned)).toThrow(
+      "world.addComponent: 'Owned' is owned by demo; attach it with demo.attach()"
+    );
+    entity.addComponents([new ValueComponent(owned.type, { n: 3 })]);
+    game.entityManager.onComponentAdded(entity, owned.type);
+    expect(game.getComponent(entity, owned)).toEqual({ n: 3 });
+    expect([...game.query(owned)].map(([e]) => e.id)).toEqual([1]);
+  });
+
   it('stores SoA, object, and transient values through the world', () => {
     const game = world();
     const hp = defineComponent('Hp', { hp: 'i64', armor: 'i32' });
