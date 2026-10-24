@@ -122,7 +122,8 @@ const combatDefinitions = defineAbilitySystem({
 // The host supplies the tick provider (a client, or TickFrameManager from runtime).
 const world = new GameWorld({ tickFrameProvider });
 
-// 2. Create the ability system and register tick systems on the world.
+// 2. Create the ability system. It registers its simulation systems in the
+//    `abilities` phase and CuePresentationSystem in `present`.
 const abilities = createAbilitySystem(world, {
   definitions: combatDefinitions,
   cues: {
@@ -130,9 +131,6 @@ const abilities = createAbilitySystem(world, {
   },
 });
 
-// createAbilitySystem already added abilities.tickSystems as module systems
-// (they run first). List the whole group to place it among your systems.
-world.registerSystems([...abilities.tickSystems], []);
 // Systems reach the facade through the Abilities service:
 // this.context.getService(Abilities).applyEffect(target, 'Effect.Hit');
 
@@ -160,7 +158,7 @@ createAbilitySystem(world, config)
 ├── AbilitySystemRegistries     (per-world: attributes, effects, abilities, hooks)
 ├── AbilitySystemRuntime        (activation queue, instance ids, GameplayCueBuffer)
 ├── AbilitySystemFacade         (applyEffect, activateAbility, …)
-└── tickSystems[]               (registered on GameWorld)
+└── pipeline systems            (abilities phase; cues in present)
 
 Per simulation tick (client GameWorld):
   AbilityActivationSystem       → CanActivate, cost/cooldown/self effects
@@ -612,7 +610,6 @@ createAbilitySystem(world: GameWorld, config: CreateAbilitySystemConfig): Abilit
 | `getAttribute` / `tryGetAttribute`                         | Read base/current                                                                                                                                                                                                                                                                                                                                                |
 | `hasTag` / `addTag` / `removeTag`                          | Tag queries and ad-hoc tags                                                                                                                                                                                                                                                                                                                                      |
 | `removeEffectsByTag` / `removeEffectsByDefId`              | Flag instances for removal next tick                                                                                                                                                                                                                                                                                                                             |
-| `tickSystems`                                              | Register on `GameWorld`                                                                                                                                                                                                                                                                                                                                          |
 | `exportRuntimeState()` / `importRuntimeState(state)`       | Copy or restore the instance-id counter, activation queue, current tick, and resolved activations. The cue buffer is not included and is left untouched. `importRuntimeState` rejects an `abilityId` that is not registered. `instanceId` must be `>=` every live effect instance id (caller responsibility). These two methods are required on `AbilitySystem`. |
 | `isAbilityRegistered(id)` / `isEffectRegistered(id)`       | Registry membership for this world. `readAbilities` uses them and throws with the entity id when a saved id is missing.                                                                                                                                                                                                                                          |
 | `instanceIdCounter`                                        | High-water mark. `InstanceIdCounter.set(n)` accepts any integer `>= 0`. The caller must keep it `>=` every live effect instance id.                                                                                                                                                                                                                              |
@@ -659,7 +656,7 @@ See `src/index.ts` for the full public surface.
 
 ## Integration checklist
 
-1. **phalanx-ecs**: `GameWorld`, `Entity`, register `abilities.tickSystems` in deterministic order alongside movement/physics/combat systems.
+1. **phalanx-ecs**: `GameWorld`, `Entity`. `createAbilitySystem` registers its systems in the `abilities` phase. Put movement in `input` and reactions that need ability results in `late`.
 2. **phalanx-math**: `FP.FromInt`, `FP.FromFloat`, `FP.Add`, `FP.Mul`, etc. for all magnitudes.
 3. **Client-only cues**: pass a non-empty `cues` map with `Cue` subclasses; presentation runs in `afterFrame`. Never mutate simulation from cue code.
 4. **User-owned systems**: projectiles, rockets, AoE searches, and Aura ticking stay in game code. Call `applyEffect` or `activateAbility` from these systems on deterministic events (collision, timer tick).

@@ -228,47 +228,51 @@ export class SimulationContainer {
     this.unitFactory = new UnitFactory(this.scene, this.world);
     this.formationSystem = new FormationSystem(this.unitFactory);
 
-    const gravitySystem = this.world.getSystem(GravitySystem);
-    const physicsSystem = this.world.getSystem(PhysicsSystem);
-    if (gravitySystem === undefined || physicsSystem === undefined) {
+    if (
+      this.world.getSystem(GravitySystem) === undefined ||
+      this.world.getSystem(PhysicsSystem) === undefined
+    ) {
       throw new Error('SimulationContainer: physics is not attached');
     }
-    // SAU order (documented): AttackSystem → abilities (Hook.SAU.Fire) →
-    // ArtilleryShellSystem → GravitySystem → physicsSystem →
-    // ShrapnelLandingSystem. The shell system spawns shrapnel before gravity +
-    // integration so fragments get their first arc step on their birth tick;
-    // the landing system runs after integration to sweep prev→cur for ground
-    // crossings.
-    this.world.registerSystems(
-      [
-        this.formationSystem,
-        new TargetingSystem(),
-        new AttackSystem(),
-        new MissileLauncherSystem(),
-        new VoltAttackSystem(),
-        new ChainLightningJumpSystem(),
-        new MovementSystem(),
-        new ProjectileMovementSystem(),
-        new MissileTargetingSystem(),
-        new MissileMovementSystem(),
-        new ArtilleryShellSystem(),
-        gravitySystem,
-        physicsSystem,
-        new ShrapnelLandingSystem(),
-        new HealingAuraSystem(),
-        new ProjectileCollisionSystem(),
-        new RotationSystem(),
-        new DeathSystem(),
-        new CubeTargetingSystem(),
-        new ProjectileDespawnQueueSystem(),
-        ...this.abilities.tickSystems,
-      ],
-      // InterpolationSystem (attached by physics) runs first. ShrapnelSpinSystem
-      // is cosmetic-only (rotates the shard mesh inside the
-      // MeshComponent root) and must run after RenderSyncSystem has positioned
-      // the roots for the frame.
-      [new RenderSyncSystem(), new ShrapnelSpinSystem()]
-    );
+    // Tick order: input (through artillery) → physics (gravity, then the
+    // physics step, then landing through despawn) → abilities → nothing in
+    // late. The shell system spawns shrapnel before gravity and integration
+    // so fragments get their first arc step on their birth tick; landing
+    // runs after integration. Ability systems are already in the abilities
+    // phase. Frame: interpolation, then render, then present.
+    const input = [
+      this.formationSystem,
+      new TargetingSystem(),
+      new AttackSystem(),
+      new MissileLauncherSystem(),
+      new VoltAttackSystem(),
+      new ChainLightningJumpSystem(),
+      new MovementSystem(),
+      new ProjectileMovementSystem(),
+      new MissileTargetingSystem(),
+      new MissileMovementSystem(),
+      new ArtilleryShellSystem(),
+    ];
+    for (const system of input) {
+      this.world.addSystem(system, { phase: 'input' });
+    }
+    const afterPhysics = [
+      new ShrapnelLandingSystem(),
+      new HealingAuraSystem(),
+      new ProjectileCollisionSystem(),
+      new RotationSystem(),
+      new DeathSystem(),
+      new CubeTargetingSystem(),
+      new ProjectileDespawnQueueSystem(),
+    ];
+    for (const system of afterPhysics) {
+      this.world.addSystem(system, {
+        phase: 'physics',
+        after: 'PhysicsSystem',
+      });
+    }
+    this.world.addSystem(new RenderSyncSystem(), { phase: 'render' });
+    this.world.addSystem(new ShrapnelSpinSystem(), { phase: 'present' });
 
     this.spawnSimulationState();
   }

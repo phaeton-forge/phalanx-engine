@@ -10,6 +10,8 @@ import type { AbilitySystemRuntime } from '../runtime/index.js';
  * cue events cannot leak across ticks.
  */
 export class CueBufferCleanupSystem extends GameSystem {
+  public override readonly name = 'CueBufferCleanupSystem';
+
   public constructor(private readonly runtime: AbilitySystemRuntime) {
     super();
   }

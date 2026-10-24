@@ -227,9 +227,10 @@ const world = new GameWorld({
   tickFrameProvider: client,
   random: new DeterministicRandom(seed), // @phalanx-engine/math
 });
-physicsWorld.attach(world); // wire services BEFORE registerSystems
+physicsWorld.attach(world); // physics phase + interpolation frame phase
 const abilities = createAbilitySystem(world, { definitions });
-world.registerSystems([...tickSystems], [...frameSystems]);
+world.addSystem(movement, { phase: 'input' });
+world.addSystem(scoring, { phase: 'late' });
 world.start({ beforeTick, afterTick, beforeFrame, afterFrame });
 client.sendReady();
 ```
@@ -246,8 +247,13 @@ client.sendReady();
   before `new GameWorld(...)`.
 - `PhalanxClient` owns match RNG: after `waitForGameStart()`, use
   `world.context.random` / `this.random` in tick systems.
-- **Registration order IS execution order.** It is part of the determinism
-  contract; changing it changes simulation results.
+- **Phase order, then registration order, is execution order.** Tick phases
+  are `input`, `physics`, `abilities`, `late`. Frame phases are
+  `interpolation`, `render`, `present`. `before` / `after` refine the order
+  inside one phase. The ordered tick system names are part of
+  `configHash`. Frame names are not. A game system in a bundled
+  multiplayer build sets `override readonly name` so a minifier cannot
+  change that string. Changing the tick order changes simulation results.
 - Never call `world.processAllTicks()` / `world.updateAll()` manually outside
   unit tests — `world.start()` owns the pipeline.
 - Lifecycle hooks (`IBeforeTick`, `IAfterTick`, `IBeforeFrame`, `IAfterFrame`)

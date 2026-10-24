@@ -76,7 +76,6 @@ function wiredWorld(cellSize: FixedPoint = FP.FromInt(4)): {
     subSteps: 1,
   });
   physics.attach(world);
-  world.registerSystems([], []);
   return { world, physics };
 }
 
@@ -169,7 +168,10 @@ describe('physics state helpers', () => {
       subSteps: 1,
     });
     physics.attach(both);
-    both.registerSystems([new PhysicsSystem(physicsConfig())], []);
+    class ExtraPhysics extends PhysicsSystem {
+      public override readonly name = 'ExtraPhysics';
+    }
+    both.addSystem(new ExtraPhysics(physicsConfig()), { phase: 'physics' });
     expect(both.saveSections.map((section) => section.key)).toEqual([
       'physics.broadphase',
     ]);
@@ -201,7 +203,7 @@ describe('physics state helpers', () => {
 
   it('registers physics.broadphase from PhysicsSystem without attach', () => {
     const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
-    world.registerSystems([new PhysicsSystem(physicsConfig())], []);
+    world.addSystem(new PhysicsSystem(physicsConfig()), { phase: 'physics' });
     expect(world.saveSections.map((section) => section.key)).toEqual([
       'physics.broadphase',
     ]);

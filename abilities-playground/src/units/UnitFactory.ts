@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { Entity, type GameWorld } from '@phalanx-engine/ecs';
+import { type Entity, type GameWorld } from '@phalanx-engine/ecs';
 import { FP, FPQuaternion } from '@phalanx-engine/math';
 import { AbilityOwner } from '@phalanx-engine/abilities';
 import type { TeamId } from '../components';
@@ -18,12 +18,11 @@ export class UnitFactory {
     this.world = world;
   }
 
-  /** Full deterministic battle entity (caller adds it to the world). */
+  /** Full deterministic battle entity, registered on this world. */
   spawnBattleUnit(
     type: UnitType,
     teamId: TeamId,
-    pos: { x: number; y: number; z: number },
-    id: number
+    pos: { x: number; y: number; z: number }
   ): Entity {
     const def = UNIT_DEFINITIONS[type];
     const refs = createUnitRenderRefs(this.scene, def, teamId);
@@ -33,7 +32,7 @@ export class UnitFactory {
     // so it never inherits the body's combat re-orientation.
     if (refs.auraRing) this.scene.add(refs.auraRing);
 
-    const entity = new Entity(id);
+    const entity = this.world.createEntity();
     assembleUnit(entity, def, teamId, pos, refs);
 
     refs.root.position.set(pos.x, pos.y, pos.z);

@@ -129,7 +129,7 @@ function collisionsOnlyRun(filter?: Filter): Run {
   if (physicsSystem === undefined) throw new Error('attach adds PhysicsSystem');
   const gravitySystem = world.getSystem(GravitySystem);
   if (gravitySystem === undefined) throw new Error('attach adds GravitySystem');
-  world.registerSystems([new MoveRight(), gravitySystem, physicsSystem], []);
+  world.addSystem(new MoveRight(), { phase: 'input' });
   populate(world);
   return { world, events: recordEvents(world) };
 }

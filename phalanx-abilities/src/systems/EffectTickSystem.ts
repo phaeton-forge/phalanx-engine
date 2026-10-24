@@ -51,6 +51,8 @@ import { type GameplayTagsState } from '../components/gameplayTags.js';
  * — that `queue` is sorted by `instanceId` ASC. It does not re-sort.
  */
 export class EffectTickSystem extends GameSystem {
+  public override readonly name = 'EffectTickSystem';
+
   public constructor(
     private readonly registries: AbilitySystemRegistries,
     private readonly runtime: AbilitySystemRuntime

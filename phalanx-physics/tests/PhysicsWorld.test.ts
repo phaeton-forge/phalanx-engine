@@ -62,7 +62,7 @@ describe('PhysicsWorld', () => {
     expect(order).toEqual(['gravity', 'physics', 'game']);
   });
 
-  it('keeps the position of attached systems the game lists explicitly', () => {
+  it('runs an input system before gravity and the physics step', () => {
     const order: string[] = [];
     class Probe extends GameSystem {
       public override processTick(): void {
@@ -78,28 +78,26 @@ describe('PhysicsWorld', () => {
       order.push('physics');
       physicsTick(tick);
     };
-    const gravitySystem = world.getSystem(GravitySystem);
-    if (gravitySystem === undefined) throw new Error('missing GravitySystem');
-    world.registerSystems([new Probe(), gravitySystem, physicsSystem], []);
+    world.addSystem(new Probe(), { phase: 'input' });
     world.processAllTicks(1);
     expect(order).toEqual(['game', 'physics']);
   });
 
-  it('listing only GravitySystem throws instead of reordering', () => {
+  it('rejects a second add of an attached system', () => {
     const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
     new PhysicsWorld().attach(world);
     const gravitySystem = world.getSystem(GravitySystem);
     if (gravitySystem === undefined) throw new Error('missing GravitySystem');
-    expect(() => world.registerSystems([gravitySystem], [])).toThrow(
-      'or none of them'
+    expect(() => world.addSystem(gravitySystem, { phase: 'physics' })).toThrow(
+      "world.addSystem: system instance 'GravitySystem' is already registered"
     );
   });
 
-  it('attach after registerSystems throws', () => {
+  it('attach after start throws', () => {
     const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
-    world.registerSystems([], []);
+    world.start();
     expect(() => new PhysicsWorld().attach(world)).toThrow(
-      'addModuleSystems: call before registerSystems'
+      'world.addSystem: system order is frozen'
     );
   });
 

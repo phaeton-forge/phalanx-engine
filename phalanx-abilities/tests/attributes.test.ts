@@ -64,8 +64,6 @@ describe('attributes and aggregation', () => {
       }),
       pipeline: 'attributes',
     });
-    world.registerSystems([...abilities.tickSystems], []);
-
     const entity = spawnEntity(world, abilities);
     expect(FP.ToFloat(abilities.getAttribute(entity.id, 'Overcap').base)).toBe(
       200
@@ -145,8 +143,6 @@ describe('attributes and aggregation', () => {
       }),
       pipeline: 'attributes',
     });
-    world.registerSystems([...abilities.tickSystems], []);
-
     const entity = spawnEntity(world, abilities);
     const component = gasOf(entity)!;
     const attributes = component.attributes;

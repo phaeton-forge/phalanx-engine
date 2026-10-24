@@ -34,6 +34,8 @@ export {
   isAfterTick,
   isBeforeFrame,
   isAfterFrame,
+  FRAME_PHASES,
+  TICK_PHASES,
   defineService,
 } from '@phalanx-engine/ecs';
 export type {
@@ -66,6 +68,11 @@ export type {
   IAfterTick,
   IBeforeFrame,
   IAfterFrame,
+  AddSystemOptions,
+  FramePhase,
+  SystemOrder,
+  SystemPhase,
+  TickPhase,
   IRandom,
   ITickFrameProvider,
   TickHandler,

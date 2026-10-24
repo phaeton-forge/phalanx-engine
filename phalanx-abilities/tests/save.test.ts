@@ -153,7 +153,6 @@ function makeWorld(pipeline: AbilitySystemPipeline = 'full'): {
 } {
   const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
   const abilities = createAbilitySystem(world, { definitions, pipeline });
-  world.registerSystems([...abilities.tickSystems], []);
   return { world, abilities };
 }
 
@@ -561,7 +560,6 @@ describe('ability state helpers', () => {
         }),
         pipeline,
       });
-      world.registerSystems([...abilities.tickSystems], []);
       const entity = world.createEntity();
       world.addComponent(entity, AbilityOwner, {});
       world.entityManager.addEntity(entity);

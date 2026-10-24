@@ -28,9 +28,10 @@ import type {
  * PhysicsWorld — high-level facade that owns GravitySystem, PhysicsSystem,
  * and InterpolationSystem.
  *
- * Consumers create a PhysicsWorld, call {@link attach} before
- * `world.registerSystems`, and read interpolated transforms for rendering
- * via getInterpolatedTransform().
+ * Consumers create a PhysicsWorld, call {@link attach}, and read
+ * interpolated transforms for rendering via getInterpolatedTransform().
+ * Gravity and the physics step run in the `physics` tick phase (gravity
+ * first). Interpolation runs in the `interpolation` frame phase.
  */
 export class PhysicsWorld {
   private readonly physicsSystem: PhysicsSystem;
@@ -77,14 +78,13 @@ export class PhysicsWorld {
   /**
    * Bind this facade to `world`. Registers `Transform`, `PhysicsBody` and
    * transient `Interpolation` (in that order), provides the {@link Physics}
-   * service, adds `GravitySystem` → `PhysicsSystem` as module tick systems
-   * and `InterpolationSystem` as a module frame system
-   * (`world.addModuleSystems`), and registers save section
-   * `physics.broadphase`. Call before `world.registerSystems`. A game that
-   * needs physics at a given position in its tick list passes
-   * `world.getSystem(GravitySystem)` / `world.getSystem(PhysicsSystem)`
-   * there. Calling again with the same world is a no-op. A different world
-   * throws.
+   * service, adds `GravitySystem` then `PhysicsSystem` to the `physics`
+   * tick phase (`PhysicsSystem` is `after` `GravitySystem`) and
+   * `InterpolationSystem` to the `interpolation` frame phase, and registers
+   * save section `physics.broadphase`. Call before `world.start()`. A game
+   * puts its own systems in `input` (before physics) or `late` (after
+   * abilities). Calling again with the same world is a no-op. A different
+   * world throws.
    */
   public attach(world: GameWorld): void {
     if (this.attachedWorld !== undefined) {
@@ -96,10 +96,12 @@ export class PhysicsWorld {
     world.registerComponent(PhysicsBody);
     world.registerComponent(Interpolation);
     world.provide(Physics, this);
-    world.addModuleSystems(
-      [this.gravitySystem, this.physicsSystem],
-      [this.interpolationSystem]
-    );
+    world.addSystem(this.gravitySystem, { phase: 'physics' });
+    world.addSystem(this.physicsSystem, {
+      phase: 'physics',
+      after: this.gravitySystem.name,
+    });
+    world.addSystem(this.interpolationSystem, { phase: 'interpolation' });
     ensureBroadphaseSection(world);
   }
 

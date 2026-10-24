@@ -59,10 +59,10 @@ const world = new GameWorld({
   maxFrameTime: 0.25,   // Max frame time cap in seconds (default: 0.25)
 });
 
-world.registerSystems(
-  [movementSystem, physicsSystem],     // Tick systems (deterministic)
-  [renderSystem, animationSystem],     // Frame systems (visual)
-);
+world.addSystem(movementSystem, { phase: 'input' });
+world.addSystem(physicsSystem, { phase: 'physics' });
+world.addSystem(renderSystem, { phase: 'render' });
+world.addSystem(animationSystem, { phase: 'present' });
 
 world.start();
 ```
@@ -79,7 +79,7 @@ const world = new GameWorld({
   tickFrameProvider: client,   // PhalanxClient implements ITickFrameProvider
 });
 
-world.registerSystems(tickSystems, frameSystems);
+world.addSystem(movementSystem, { phase: 'input' });
 
 world.start({
   beforeTick(tick, commands) {
@@ -97,24 +97,25 @@ world.start({
 
 ### 2. Wire Optional Services on SystemContext
 
-Provide services **before** `registerSystems()`. Physics and abilities do it for you:
+Provide services before the system that reads them. Physics and abilities do it for you:
 
 ```typescript
 import { PhysicsWorld } from '@phalanx-engine/physics';
 import { createAbilitySystem } from '@phalanx-engine/abilities';
 
 const physicsWorld = new PhysicsWorld({ tickRate: 20 });
-physicsWorld.attach(world); // also adds the physics systems (world.addModuleSystems)
+physicsWorld.attach(world); // physics phase + interpolation frame phase
 
 const abilities = createAbilitySystem(world, { definitions: combatDefs });
-// provides Abilities, registers its components, adds abilities.tickSystems
-// as module systems (list them in registerSystems only to place them)
+// provides Abilities, registers its components, adds pipeline systems
+// to the abilities phase (CuePresentationSystem goes to present)
 ```
 
-Modules add their own systems with `world.addModuleSystems(tick, frame)`
-before `registerSystems`. Module systems run before the systems passed to
-`registerSystems`; a module system listed there explicitly keeps that
-position. `addModuleSystems` after `registerSystems` throws.
+`world.addSystem(system, { phase, before?, after? })` places a system.
+Tick phases: `input`, `physics`, `abilities`, `late`. Frame phases:
+`interpolation`, `render`, `present`. Inside a phase, registration order
+holds unless `before` / `after` say otherwise. `world.start()` freezes
+the order.
 
 Systems read services by key (`Physics` from physics, `Abilities` from
 abilities, or your own `defineService<T>(name)` + `world.provide(key, impl)`):
@@ -548,20 +549,19 @@ const combatSystem = new CombatSystem();
 const physicsSystem = new PhysicsSystem();
 const renderSystem = new RenderSystem();
 
-world.registerSystems(
-  [physicsSystem, combatSystem],  // Tick systems: run in order, deterministically
-  [renderSystem],                 // Frame systems: run every render frame
-);
+world.addSystem(physicsSystem, { phase: 'physics' });
+world.addSystem(combatSystem, { phase: 'late' });
+world.addSystem(renderSystem, { phase: 'render' });
 ```
 
-A system can be registered as both tick and frame:
+A system is in one phase. Tick systems implement `processTick`; frame
+systems implement `update`.
 
-```typescript
-world.registerSystems(
-  [movementSystem],   // processTick() called per tick
-  [movementSystem],   // update() called per frame
-);
-```
+`GameSystem.name` defaults to `constructor.name`. Tick names are part of
+`configHash`, and `before` / `after` name systems. A minifier can rename
+the class differently in a browser bundle and a Node server, so a game
+system in a multiplayer or bundled build declares
+`override readonly name = '...'`.
 
 #### Accessing Other Systems
 
@@ -810,8 +810,8 @@ world.debugPanel;                      // DebugPanel | null (created in start() 
 world.context;                         // SystemContext (abilities, physics, pools)
 
 // System management
-world.registerSystems(tickSystems, frameSystems);
-world.addFrameSystem(system);          // For late-initialized systems
+world.addSystem(system, { phase: 'late', before?, after? });
+world.systemNames();                   // { tick, frame } in execution order
 world.getSystem(MySystem);             // Look up a registered system by class
 
 // Tick / Frame delegation (used internally — avoid calling manually)

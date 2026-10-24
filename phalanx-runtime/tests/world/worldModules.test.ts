@@ -388,7 +388,6 @@ describe('world modules', () => {
         },
       });
       world.registerComponent(unit);
-      world.registerSystems([], []);
       world.start();
       const pools = world.pools;
       if (pools === null) throw new Error('expected pools');

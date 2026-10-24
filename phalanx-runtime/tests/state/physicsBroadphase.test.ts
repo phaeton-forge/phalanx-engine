@@ -55,7 +55,6 @@ function wiredWorld(cellSize: FixedPoint = FP.FromInt(4)): {
     subSteps: 1,
   });
   physics.attach(world);
-  world.registerSystems([], []);
   return { world, physics };
 }
 
@@ -149,7 +148,6 @@ describe('physics broadphase save', () => {
       subSteps: 1,
     });
     sourcePhysics.attach(source);
-    source.registerSystems([], []);
     const disc = source.createEntity((id) => new Disc(id, 3, 4));
     source.entityManager.addEntity(disc);
     expect(disc.hasComponent(Interpolation.type)).toBe(false);
@@ -164,7 +162,6 @@ describe('physics broadphase save', () => {
       subSteps: 1,
     });
     restoredPhysics.attach(restored);
-    restored.registerSystems([], []);
     restoreWorld(restored, bytes);
 
     const entity = restored.entityManager.getEntity(disc.id);

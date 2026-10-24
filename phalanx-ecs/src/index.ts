@@ -19,6 +19,14 @@ export type {
   GameWorldHooks,
   ModuleComponentOptions,
 } from './GameWorld.js';
+export { FRAME_PHASES, TICK_PHASES } from './phases.js';
+export type {
+  AddSystemOptions,
+  FramePhase,
+  SystemOrder,
+  SystemPhase,
+  TickPhase,
+} from './phases.js';
 
 // Entity and Component
 export { Entity } from './Entity.js';

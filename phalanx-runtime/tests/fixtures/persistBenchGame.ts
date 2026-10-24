@@ -129,7 +129,7 @@ export function createPersistBenchGame(unitCount: number) {
       },
     },
     onStart: (ctx) => {
-      const abilities = createAbilitySystem(ctx.world, {
+      createAbilitySystem(ctx.world, {
         definitions,
         pipeline: 'effects',
       });
@@ -140,10 +140,7 @@ export function createPersistBenchGame(unitCount: number) {
         gravity: FP._0,
       });
       physics.attach(ctx.world);
-      ctx.world.registerSystems(
-        [...abilities.tickSystems, new HpDecaySystem()],
-        []
-      );
+      ctx.world.addSystem(new HpDecaySystem(), { phase: 'late' });
       ctx.open();
       if (ctx.purpose === 'fresh') {
         const pools = ctx.world.pools;

@@ -76,10 +76,8 @@ const world = new GameWorld({ tickFrameProvider: provider });
 const movementSystem = new MovementSystem();
 const renderSystem = new RenderSystem();
 
-world.registerSystems(
-  [movementSystem], // Tick systems (deterministic)
-  [renderSystem] // Frame systems (visual)
-);
+world.addSystem(movementSystem, { phase: 'input' });
+world.addSystem(renderSystem, { phase: 'render' });
 
 // The caller starts the provider. GameWorld only subscribes.
 provider.start();
@@ -107,7 +105,7 @@ const world = new GameWorld({
   random: new DeterministicRandom(seed),
 });
 
-world.registerSystems(tickSystems, frameSystems);
+world.addSystem(movementSystem, { phase: 'input' });
 
 // Start with lifecycle hooks (tick systems and frame systems run automatically)
 world.start({
@@ -143,7 +141,9 @@ import { SystemRegistry } from '@phalanx-engine/ecs';
 import { TickFrameManager } from '@phalanx-engine/runtime/advanced';
 
 const registry = new SystemRegistry();
-registry.registerSystems(tickSystems, frameSystems);
+const context = registry.getContext();
+registry.setOrder(tickSystems, frameSystems);
+registry.init(context);
 
 const tickManager = new TickFrameManager({ tickRate: 60 });
 tickManager.onTick((tick) => registry.processAllTicks(tick));
@@ -171,9 +171,9 @@ class GameWorld {
     systemClass: new (...args: any[]) => T
   ): T | undefined;
 
-  // System registration
-  registerSystems(tickSystems: GameSystem[], frameSystems: GameSystem[]): void;
-  addFrameSystem(system: GameSystem): void;
+  // System registration. Order freezes at start().
+  addSystem(system: GameSystem, options: AddSystemOptions): void;
+  systemNames(): SystemOrder;
 
   // Tick / Frame delegation
   processAllTicks(tick: number): void;
@@ -253,7 +253,7 @@ reference; the name is for error messages.
 import { defineService } from '@phalanx-engine/ecs';
 
 export const Clock = defineService<ClockService>('clock'); // module scope
-world.provide(Clock, new ClockService()); // before registerSystems()
+world.provide(Clock, new ClockService()); // before the system that reads it
 
 class MySystem extends GameSystem {
   processTick(): void {
@@ -268,10 +268,11 @@ package in the bundle). `getService` throws with the missing name and the
 provided ones. Services talk to each other through the world event bus;
 direct calls go through `getService`.
 
-`PhysicsWorld.attach(world)` provides `Physics` (`@phalanx-engine/physics`).
-`createAbilitySystem(world, ...)` provides `Abilities`
-(`@phalanx-engine/abilities`). Ability tick systems are not appended by
-`registerSystems`; pass `abilities.tickSystems` yourself.
+`PhysicsWorld.attach(world)` provides `Physics` (`@phalanx-engine/physics`)
+and adds `GravitySystem` then `PhysicsSystem` to the `physics` phase and
+`InterpolationSystem` to `interpolation`. `createAbilitySystem(world, ...)`
+provides `Abilities` (`@phalanx-engine/abilities`) and adds its simulation
+systems to the `abilities` phase (`CuePresentationSystem` goes to `present`).
 
 ### Query
 
@@ -331,12 +332,24 @@ class MySystem extends GameSystem implements IBeforeTick, IAfterTick {
 
 Type guards are also exported: `isBeforeTick`, `isAfterTick`, `isBeforeFrame`, `isAfterFrame`.
 
+`GameSystem.name` defaults to `constructor.name`. Tick names are part of `configHash`, and `before` / `after` refer to those names. A bundler can rename a class differently in a browser client and a Node server, so a game system in a multiplayer or bundled build sets an explicit string:
+
+```typescript
+class MovementSystem extends GameSystem {
+  public override readonly name = 'MovementSystem';
+}
+```
+
 ### SystemRegistry (Low-level)
 
 ```typescript
 class SystemRegistry {
   constructor();
-  registerSystems(tickSystems: GameSystem[], frameSystems: GameSystem[]): void;
+  setOrder(
+    tickSystems: readonly GameSystem[],
+    frameSystems: readonly GameSystem[]
+  ): void;
+  init(context?: SystemContext): void;
   processAllTicks(tick: number): void;
   updateAll(deltaTime: number): void;
   getContext(): SystemContext;

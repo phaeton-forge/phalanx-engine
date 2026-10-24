@@ -65,12 +65,6 @@ export interface CreateAbilitySystemConfig {
 }
 
 export interface AbilitySystem {
-  /**
-   * Ability systems in pipeline order. `createAbilitySystem` adds them as
-   * module systems; list the whole group in `registerSystems` only to place
-   * it among the game's systems.
-   */
-  readonly tickSystems: readonly GameSystem[];
   readonly gameplayCueBuffer: GameplayCueBufferView;
   /** High-water mark of allocated active-effect instance ids (for tests). */
   readonly instanceIdCounter: number;
@@ -150,9 +144,9 @@ export function createAbilitySystem(
 
   // The `abilities` section saves these; the pool hook below resets them.
   registerAbilityComponents(world, registries);
-  // Before world.registerSystems(), so system init() can read the service.
+  // Before the systems' init(), so init can read the service.
   world.provide(Abilities, abilitySystem);
-  world.addModuleSystems(abilitySystem.tickSystems, []);
+  registerAbilitySystems(world, abilitySystem.pipelineSystems);
   world.registerSaveSection(abilitiesSaveSection);
 
   // Free-list entities are omitted from the GAS snapshot. Clearing here
@@ -165,7 +159,8 @@ export function createAbilitySystem(
 }
 
 class AbilitySystemImpl implements AbilitySystem {
-  public readonly tickSystems: readonly GameSystem[];
+  /** Pipeline systems, not part of the public facade. */
+  public readonly pipelineSystems: readonly GameSystem[];
 
   public readonly gameplayCueBuffer: GameplayCueBufferView;
 
@@ -205,7 +200,7 @@ class AbilitySystemImpl implements AbilitySystem {
     cues: CueConfig
   ) {
     this.gameplayCueBuffer = facade.gameplayCueBufferInternal;
-    this.tickSystems = buildTickSystems(
+    this.pipelineSystems = buildTickSystems(
       registries,
       runtime,
       facade,
@@ -284,6 +279,30 @@ function registerDefinitions(
   }
   for (const ability of definitions.abilities ?? []) {
     registries.abilities.register(ability);
+  }
+}
+
+/**
+ * Simulation systems go in the `abilities` tick phase, in pipeline order.
+ * Cue presentation is a frame system (`present`); it does no tick work.
+ */
+function registerAbilitySystems(
+  world: GameWorld,
+  systems: readonly GameSystem[]
+): void {
+  let previous: string | undefined;
+  for (const system of systems) {
+    if (system instanceof CuePresentationSystem) {
+      world.addSystem(system, { phase: 'present' });
+      continue;
+    }
+    world.addSystem(
+      system,
+      previous === undefined
+        ? { phase: 'abilities' }
+        : { phase: 'abilities', after: previous }
+    );
+    previous = system.name;
   }
 }
 

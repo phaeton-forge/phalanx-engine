@@ -16,6 +16,7 @@ const COMPILER_OPTIONS: ts.CompilerOptions = {
 };
 
 const ROOT_NAMES: readonly string[] = [
+  'AddSystemOptions',
   'AnyGameDefinition',
   'AttachDebugOptions',
   'BOT_PLAYER_ID_PREFIX',
@@ -71,8 +72,10 @@ const ROOT_NAMES: readonly string[] = [
   'EventBus',
   'ExpectedSnapshotIdentity',
   'FIELD_BYTE_SIZES',
+  'FRAME_PHASES',
   'FastForwardOptions',
   'FrameHandler',
+  'FramePhase',
   'GameCommand',
   'GameComponent',
   'GameContext',
@@ -165,8 +168,12 @@ const ROOT_NAMES: readonly string[] = [
   'StateReader',
   'StateWriter',
   'SystemContext',
+  'SystemOrder',
+  'SystemPhase',
   'SystemRegistry',
+  'TICK_PHASES',
   'TickHandler',
+  'TickPhase',
   'TypedArrayLike',
   'Unsubscribe',
   'VersionDecision',
@@ -525,7 +532,7 @@ describe('@phalanx-engine/game subpath exports', () => {
     }
     expect(
       resolved.map((entry) => actual.get(entry.file)?.names.length)
-    ).toEqual([186, 9, 58, 88, 19, 3]);
+    ).toEqual([193, 9, 58, 88, 19, 3]);
   });
 
   it('keeps the name sets pairwise disjoint', () => {

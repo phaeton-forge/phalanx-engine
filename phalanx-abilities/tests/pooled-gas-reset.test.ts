@@ -76,7 +76,6 @@ describe('pooled GAS reset', () => {
       },
     });
     const abilities = createAbilitySystem(world, { definitions });
-    world.registerSystems([...abilities.tickSystems], []);
     const pools = world.pools;
     if (pools === null) throw new Error('expected pools');
 
@@ -133,7 +132,6 @@ describe('pooled GAS reset', () => {
       },
     });
     const abilities = createAbilitySystem(world, { definitions });
-    world.registerSystems([...abilities.tickSystems], []);
     const pools = world.pools;
     if (pools === null) throw new Error('expected pools');
 
@@ -173,7 +171,6 @@ describe('pooled GAS reset', () => {
       },
     });
     const abilities = createAbilitySystem(world, { definitions });
-    world.registerSystems([...abilities.tickSystems], []);
     const pools = world.pools;
     if (pools === null) throw new Error('expected pools');
 
@@ -212,7 +209,6 @@ describe('pooled GAS reset', () => {
     const abilities = createAbilitySystem(world, {
       definitions: reuseDefinitions,
     });
-    world.registerSystems([...abilities.tickSystems], []);
     const pools = world.pools;
     if (pools === null) throw new Error('expected pools');
 

@@ -12,7 +12,7 @@
  * Usage Pattern A: Single-player with the runtime provider
  * ```typescript
  * const world = new GameWorld({ tickFrameProvider: provider });
- * world.registerSystems(tickSystems, frameSystems);
+ * world.addSystem(movement, { phase: 'input' });
  * provider.start();
  * world.start();
  * ```
@@ -20,7 +20,7 @@
  * Usage Pattern B: Multiplayer with PhalanxClient
  * ```typescript
  * const world = new GameWorld({ tickFrameProvider: client });
- * world.registerSystems(tickSystems, frameSystems);
+ * world.addSystem(movement, { phase: 'input' });
  * world.start({
  *   beforeTick(tick, commands) { lockstepManager.processTick(tick, commands); },
  *   afterTick(tick) { cleanupDestroyedEntities(); },

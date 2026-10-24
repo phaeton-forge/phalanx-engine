@@ -22,6 +22,14 @@ import type { IRandom } from './IRandom.js';
  * - dispose() must be implemented (call super.dispose() for auto-cleanup)
  */
 export abstract class GameSystem {
+  /**
+   * Stable name. Tick names are part of `configHash`, and `before` /
+   * `after` refer to them. Defaults to the class name, which a minifier
+   * can rename. A bundled multiplayer build sets
+   * `override readonly name`.
+   */
+  public readonly name: string = this.constructor.name;
+
   /** Shared system dependencies (assigned in init) */
   protected context!: SystemContext;
 

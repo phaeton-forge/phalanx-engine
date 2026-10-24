@@ -36,6 +36,8 @@ const SEPARATION_HALF = FP.FromFloat(0.5);
  * positions from the shared TransformSoASchema store created in init().
  */
 export class PhysicsSystem extends GameSystem {
+  public override readonly name = 'PhysicsSystem';
+
   private physicsStore!: SoAComponentStore<typeof PhysicsSoASchema.definition>;
   private transformStore!: SoAComponentStore<
     typeof TransformSoASchema.definition

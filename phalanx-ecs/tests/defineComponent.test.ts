@@ -292,7 +292,7 @@ describe('defineComponent', () => {
         }
       }
     }
-    game.registerSystems([new Branch()], []);
+    game.addSystem(new Branch(), { phase: 'late' });
     expect(() => game.processAllTicks(1)).toThrow(
       "tick system must not branch on transient component 'Visual'"
     );
@@ -317,7 +317,7 @@ describe('defineComponent', () => {
       }
     }
     const branch = new Branch();
-    game.registerSystems([branch], []);
+    game.addSystem(branch, { phase: 'late' });
     expect(() => game.processAllTicks(1)).toThrow(
       "tick system must not branch on transient component 'Visual'"
     );
@@ -346,7 +346,8 @@ describe('defineComponent', () => {
       }
     }
     const read = new Read();
-    game.registerSystems([new Write(), new Read()], [read]);
+    game.addSystem(new Write(), { phase: 'late' });
+    game.addSystem(read, { phase: 'render' });
     game.processAllTicks(1);
     game.updateAll(0.016);
     expect(read.seen).toBe(3);
@@ -383,28 +384,36 @@ describe('defineComponent', () => {
         entity.getComponent(visual.type);
       }
     }
-    game.registerSystems([new ReadComponent()], []);
+    game.addSystem(new ReadComponent(), { phase: 'late' });
     expect(() => game.processAllTicks(1)).toThrow(
       "tick system must not branch on transient component 'Visual'"
     );
 
+    const presence = world();
+    presence.registerComponent(visual);
+    const presenceEntity = presence.createEntityWithId(1);
+    presence.addComponent(presenceEntity, visual);
     class ReadPresence extends GameSystem {
       public override processTick(): void {
-        entity.hasComponent(visual.type);
+        presenceEntity.hasComponent(visual.type);
       }
     }
-    game.registerSystems([new ReadPresence()], []);
-    expect(() => game.processAllTicks(1)).toThrow(
+    presence.addSystem(new ReadPresence(), { phase: 'late' });
+    expect(() => presence.processAllTicks(1)).toThrow(
       "tick system must not branch on transient component 'Visual'"
     );
 
+    const queried = world();
+    queried.registerComponent(visual);
+    const queriedEntity = queried.createEntityWithId(1);
+    queried.addComponent(queriedEntity, visual);
     class ReadQuery extends GameSystem {
       public override processTick(): void {
         this.entityManager.queryEntities(visual.type);
       }
     }
-    game.registerSystems([new ReadQuery()], []);
-    expect(() => game.processAllTicks(1)).toThrow(
+    queried.addSystem(new ReadQuery(), { phase: 'late' });
+    expect(() => queried.processAllTicks(1)).toThrow(
       "tick system must not branch on transient component 'Visual'"
     );
     expect(game.getComponent(entity, visual)?.x).toBe(1);
@@ -432,7 +441,7 @@ describe('defineComponent', () => {
     }
     const after = new After();
     let hookSeen: number | undefined;
-    game.registerSystems([after], []);
+    game.addSystem(after, { phase: 'late' });
     game.start({
       afterTick() {
         hookSeen = game.getComponent(entity, visual)?.x;

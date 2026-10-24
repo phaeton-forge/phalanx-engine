@@ -5,8 +5,6 @@ import {
   rejectCommand,
   type BotPolicy,
   type BotSlotInfo,
-  type GameSystem,
-  type GameWorld,
   type IRandom,
   type StateReader,
   type StateWriter,
@@ -14,8 +12,6 @@ import {
 import { createAbilitySystem } from '@phalanx-engine/game/abilities';
 import { FP } from '@phalanx-engine/game/math';
 import {
-  GravitySystem,
-  PhysicsSystem,
   PhysicsWorld,
   type CollisionEvent,
 } from '@phalanx-engine/game/physics';
@@ -128,18 +124,6 @@ const COMMANDS = defineCommands(
   }
 );
 
-/** A system `PhysicsWorld.attach` added, to place it in the tick list. */
-function requireSystem<T extends GameSystem>(
-  world: GameWorld,
-  system: abstract new (...args: never[]) => T
-): T {
-  const found = world.getSystem(system);
-  if (found === undefined) {
-    throw new Error(`skirmish: ${system.name} is not attached`);
-  }
-  return found;
-}
-
 export function createSkirmishGame(
   session: SkirmishSession,
   pools: { readonly armySize: number; readonly slotCount: number } = {
@@ -201,17 +185,12 @@ export function createSkirmishGame(
           sim.loadJobs(reader);
         },
       });
-      world.registerSystems(
-        [
-          new ClearContacts(sim),
-          requireSystem(world, GravitySystem),
-          requireSystem(world, PhysicsSystem),
-          new AuraSystem(sim),
-          ...abilities.tickSystems,
-          new LifeSystem(sim),
-        ],
-        []
-      );
+      world.addSystem(new ClearContacts(sim), { phase: 'input' });
+      world.addSystem(new AuraSystem(sim), {
+        phase: 'physics',
+        after: 'PhysicsSystem',
+      });
+      world.addSystem(new LifeSystem(sim), { phase: 'late' });
       ctx.open();
       physics.onCollision((event: CollisionEvent) => {
         sim.noteContact(event.entityA, event.entityB);
