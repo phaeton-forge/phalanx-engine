@@ -43,6 +43,7 @@ import type {
   MatchLogChunkEvent,
   ServerShutdownEvent,
   MatchResumeState,
+  MatchSnapshot,
   SessionTokenEvent,
 } from './types.js';
 
@@ -230,6 +231,7 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
         },
         onSessionToken: (event) => this.handleSessionToken(event),
         onSessionSuperseded: (event) => this.emit('sessionSuperseded', event),
+        onServerDesync: (event) => this.emit('serverDesync', event),
 
         // Tick events
         onTickSync: (data) => {
@@ -368,11 +370,16 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
     ) {
       return;
     }
+    const existing = this.sessionStore?.load() ?? null;
     this.sessionStore?.save({
       token: event.token,
       matchId: event.matchId,
       slot: event.slot,
       buildId: this.config.buildId ?? '',
+      ...(existing?.matchId === event.matchId &&
+      existing.matchConfig !== undefined
+        ? { matchConfig: existing.matchConfig }
+        : {}),
     });
     this.emit('sessionToken', { token: event.token });
   }
@@ -878,7 +885,16 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
     this.currentTick = 0;
     this.currentMatchId = data.matchId;
     this.initializeMatchRandom(data);
+    this.rememberMatchConfig(data);
     this.emit('gameStart', data);
+  }
+
+  /** A reloaded tab rebuilds the server-sim runner from this config. */
+  private rememberMatchConfig(event: GameStartEvent): void {
+    if (!isPlainObject(event.matchConfig)) return;
+    const session = this.sessionStore?.load() ?? null;
+    if (session === null || session.matchId !== event.matchId) return;
+    this.sessionStore?.save({ ...session, matchConfig: event.matchConfig });
   }
 
   private initializeMatchRandom(event: GameStartEvent): void {
@@ -1054,6 +1070,15 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
   // ============================================
 
   /**
+   * Server simulation: latest server snapshot of this match. Several
+   * callers within the server's one-second answer interval share one
+   * reply. Rejects when not connected, on disconnect and on `match-end`.
+   */
+  requestMatchSnapshot(): Promise<MatchSnapshot> {
+    return this.socketManager.requestMatchSnapshot();
+  }
+
+  /**
    * Submit state hash for desync detection
    * Call this after each simulation tick (or every N ticks based on your preference)
    *
@@ -1169,6 +1194,12 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
       console.log('[PhalanxClient]', ...args);
     }
   }
+}
+
+function isPlainObject(
+  value: unknown
+): value is { readonly [key: string]: unknown } {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 /** Server refusals. `'timeout'` is local and must keep the stored token. */

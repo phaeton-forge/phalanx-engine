@@ -26,6 +26,8 @@ import type {
   MatchPlayerInfo,
   MatchResumeErrorReason,
   MatchResumeState,
+  MatchSnapshot,
+  MatchSnapshotRequest,
   PlayerCommand,
   PlayerDisconnectedEvent,
   PlayerReadyEvent,
@@ -38,6 +40,7 @@ import type {
   RoomErrorEvent,
   RoomExpiredEvent,
   RoomRecoveredEvent,
+  ServerDesyncEvent,
   ServerShutdownEvent,
   SessionSupersededEvent,
   SessionTokenEvent,
@@ -309,6 +312,8 @@ export type {
   MatchPlayerInfo,
   MatchResumeErrorReason,
   MatchResumeState,
+  MatchSnapshot,
+  MatchSnapshotRequest,
   PlayerCommand,
   PlayerDisconnectedEvent,
   PlayerReadyEvent,
@@ -321,6 +326,7 @@ export type {
   RoomErrorEvent,
   RoomExpiredEvent,
   RoomRecoveredEvent,
+  ServerDesyncEvent,
   ServerShutdownEvent,
   SessionSupersededEvent,
   SessionTokenEvent,
@@ -508,6 +514,12 @@ export interface PhalanxClientEvents {
 
   // Desync detection events
   desync: (event: DesyncEvent) => void;
+  /**
+   * Server simulation: the server says `playerId` diverged at `tick`.
+   * Sent once per divergence; again only after a snapshot reached that
+   * player.
+   */
+  serverDesync: (event: ServerDesyncEvent) => void;
 
   // Private room events
   roomCreated: (event: RoomCreatedEvent) => void;
