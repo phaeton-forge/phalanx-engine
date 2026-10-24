@@ -1,10 +1,14 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { buildDepcruiseConfig, checkLayerDeps } from '../layers.mjs';
+import {
+  allowsAdapterDependency,
+  buildDepcruiseConfig,
+  checkLayerDeps,
+} from '../layers.mjs';
 
 const FIXTURE = join(process.cwd(), 'scripts/tests/fixtures');
 
@@ -149,4 +153,64 @@ test('generated rules catch each matrix violation exactly once', () => {
     const hit = violations.find((violation) => violation.from.endsWith(suffix));
     assert.equal(hit, undefined, `${suffix} violated ${hit?.rule.name}`);
   }
+});
+
+function writeWorkspace(packages) {
+  const dir = mkdtempSync(join(tmpdir(), 'layers-peer-'));
+  const folders = Object.keys(packages);
+  writeFileSync(
+    join(dir, 'pnpm-workspace.yaml'),
+    `packages:\n${folders.map((folder) => `  - ${folder}`).join('\n')}\n`
+  );
+  for (const [folder, raw] of Object.entries(packages)) {
+    mkdirSync(join(dir, folder));
+    writeFileSync(join(dir, folder, 'package.json'), JSON.stringify(raw));
+  }
+  return dir;
+}
+
+test('an optional peer is allowed through the runtime ./net adapter only', () => {
+  const client = {
+    name: '@x/client',
+    phalanx: { layer: 'infrastructure' },
+  };
+  const runtime = (subpaths, optional) => ({
+    name: '@x/runtime',
+    phalanx: { layer: 'application', subpaths },
+    exports: {
+      './net': { import: './dist/net/index.js' },
+      './server': { import: './dist/server/index.js' },
+    },
+    peerDependencies: { '@x/client': 'workspace:*' },
+    peerDependenciesMeta: { '@x/client': { optional } },
+  });
+  const cases = [
+    [{ './net': 'infrastructure' }, true, []],
+    [{ './server': 'infrastructure' }, true, ['@x/runtime']],
+    [{ './net': 'infrastructure' }, false, ['@x/runtime']],
+  ];
+  for (const [subpaths, optional, expected] of cases) {
+    const dir = writeWorkspace({
+      client,
+      runtime: runtime(subpaths, optional),
+    });
+    try {
+      const lines = checkLayerDeps(dir);
+      assert.deepEqual(
+        lines.map((line) => line.slice(0, line.indexOf(':'))),
+        expected,
+        lines.join('; ')
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+  assert.equal(
+    allowsAdapterDependency('runtime', './net', { short: 'client' }),
+    true
+  );
+  assert.equal(
+    allowsAdapterDependency('runtime', './server', { short: 'client' }),
+    false
+  );
 });
