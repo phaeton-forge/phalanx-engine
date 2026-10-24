@@ -1,7 +1,9 @@
+import { manualTickProvider } from './support/manualTickProvider.js';
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   Entity,
   EntityManager,
+  GameWorld,
   PoolManager,
   type IPoolableEntity,
 } from '../src';
@@ -96,8 +98,9 @@ describe('PoolManager', () => {
   beforeEach(() => {
     resetHookState();
     hookOrder.length = 0;
-    entityManager = new EntityManager();
-    manager = new PoolManager(entityManager);
+    const world = new GameWorld({ tickFrameProvider: manualTickProvider() });
+    entityManager = world.entityManager;
+    manager = new PoolManager(world);
   });
 
   it('spawn() returns entity registered in EntityManager with args applied', () => {

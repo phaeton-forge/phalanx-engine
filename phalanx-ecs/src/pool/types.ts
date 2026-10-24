@@ -1,4 +1,4 @@
-import type { EntityManager } from '../EntityManager.js';
+import type { GameWorld } from '../GameWorld.js';
 import type { Entity } from '../Entity.js';
 import type { IPoolableEntity } from './IPoolableEntity.js';
 
@@ -25,10 +25,10 @@ export interface EntityTypeConfig<
   T extends Entity & IPoolableEntity<never> = Entity & IPoolableEntity<never>,
 > {
   /**
-   * Receives the id this world assigned and the world's manager. Pass the
-   * id to the entity constructor.
+   * Receives the id this world assigned and the world. Pass the id to the
+   * entity constructor; attach components with `world.addComponent`.
    */
-  factory: (id: number, manager: EntityManager) => T;
+  factory: (id: number, world: GameWorld) => T;
   pool?: PoolConfig;
 }
 

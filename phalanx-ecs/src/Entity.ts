@@ -83,13 +83,9 @@ export class Entity {
     if (this._owner !== null && isStoreBound(component)) {
       component._bind(this._owner);
     }
+    this._manager?.onComponentAdded(this, component.type);
     invokeComponentHooks([component], 'onCreate');
     return component;
-  }
-
-  /** {@link addComponent} for each component, in order. */
-  public addComponents(components: Iterable<IComponent>): void {
-    for (const component of components) this.addComponent(component);
   }
 
   /**
@@ -135,7 +131,9 @@ export class Entity {
    * Remove a component from this entity
    */
   public removeComponent(type: symbol): boolean {
-    return this.components.delete(type);
+    const had = this.components.delete(type);
+    if (had) this._manager?.onComponentRemoved(this, type);
+    return had;
   }
 
   /**

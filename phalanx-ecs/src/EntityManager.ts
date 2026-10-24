@@ -22,6 +22,7 @@ export class EntityManager {
    * {@link allocateEntityId} returns this + 1.
    */
   private _entityIdCounter = 0;
+  private readonly constructingIds = new Set<number>();
 
   private entities: Map<number, Entity> = new Map();
 
@@ -525,6 +526,24 @@ export class EntityManager {
   public allocateEntityId(): number {
     this._entityIdCounter += 1;
     return this._entityIdCounter;
+  }
+
+  /**
+   * @internal Run `create` with `id` reserved, so a constructor that calls
+   * `world.addComponent` before the id is claimed is accepted.
+   */
+  public constructWithId<E>(id: number, create: () => E): E {
+    this.constructingIds.add(id);
+    try {
+      return create();
+    } finally {
+      this.constructingIds.delete(id);
+    }
+  }
+
+  /** @internal Allocated by this manager or reserved by {@link constructWithId}. */
+  public isAllocatedId(id: number): boolean {
+    return id <= this._entityIdCounter || this.constructingIds.has(id);
   }
 
   /**

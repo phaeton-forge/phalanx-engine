@@ -1,7 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Window } from 'happy-dom';
 import {
-  Entity,
   GameWorld,
   GameWorldEvents,
   type IComponent,
@@ -107,7 +106,7 @@ describe('attachDebug', () => {
     const world = new GameWorld({
       tickFrameProvider: bareProvider(),
     });
-    const entity = world.createEntity((id) => new Entity(id));
+    const entity = world.createEntity();
     entity.addComponent(new HealthComponent(50));
     world.entityManager.addEntity(entity);
     const attachment = attachDebug(world, { updateInterval: 0 });

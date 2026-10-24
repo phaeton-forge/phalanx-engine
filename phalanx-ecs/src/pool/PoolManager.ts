@@ -1,5 +1,6 @@
 import type { Entity } from '../Entity.js';
 import type { EntityManager } from '../EntityManager.js';
+import type { GameWorld } from '../GameWorld.js';
 import type { IPoolableEntity, SpawnArgsOf } from './IPoolableEntity.js';
 import { isPoolableComponent } from './IPoolableComponent.js';
 import { invokeComponentHooks } from '../lifecycle.js';
@@ -27,7 +28,11 @@ export class PoolManager {
    */
   private readonly returnToPoolHooks: Array<(entity: Entity) => void> = [];
 
-  constructor(private readonly entityManager: EntityManager) {}
+  private readonly entityManager: EntityManager;
+
+  constructor(private readonly world: GameWorld) {
+    this.entityManager = world.entityManager;
+  }
 
   /**
    * Register an entity type for pooling. The factory is wrapped so every
@@ -42,13 +47,11 @@ export class PoolManager {
       throw new Error(`Pool '${typeKey}' is already registered`);
     }
 
-    this.rawFactories.set(typeKey, (id) =>
-      config.factory(id, this.entityManager)
-    );
+    this.rawFactories.set(typeKey, (id) => config.factory(id, this.world));
 
     const factory = (): T => {
       const id = this.entityManager.allocateEntityId();
-      const entity = config.factory(id, this.entityManager);
+      const entity = config.factory(id, this.world);
       if (entity.id !== id) {
         throw new Error(
           `Pool '${typeKey}' factory must return the entity with id ${String(id)}`
@@ -220,7 +223,7 @@ export class PoolManager {
     if (!factory) {
       throw new Error(`Pool '${typeKey}' is not registered`);
     }
-    const entity = factory(id);
+    const entity = this.entityManager.constructWithId(id, () => factory(id));
     if (entity.id !== id) {
       throw new Error(
         `Pool '${typeKey}' factory must return the entity with id ${String(id)}`

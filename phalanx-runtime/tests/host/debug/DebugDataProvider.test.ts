@@ -1,7 +1,9 @@
+import { manualTickProvider } from '../../support/manualTickProvider.js';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   Entity,
   EntityManager,
+  GameWorld,
   PoolManager,
   defineSoASchema,
   type IComponent,
@@ -76,9 +78,11 @@ function createProvider(
 
 describe('DebugDataProvider', () => {
   let em: EntityManager;
+  let world: GameWorld;
 
   beforeEach(() => {
-    em = new EntityManager();
+    world = new GameWorld({ tickFrameProvider: manualTickProvider() });
+    em = world.entityManager;
   });
 
   // ── Snapshot content ────────────────────────────────────────────
@@ -213,7 +217,7 @@ describe('DebugDataProvider', () => {
     });
 
     it('collects pool stats when PoolManager is provided', () => {
-      const pools = new PoolManager(em);
+      const pools = new PoolManager(world);
       pools.registerEntityType('projectile', {
         factory: (id) => new PoolableEntity(id),
         pool: { initialSize: 10 },

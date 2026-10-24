@@ -22,7 +22,7 @@ export interface QueryComponent {
  */
 type QueryValue<C> = C extends { readonly kind: 'soa' }
   ? number
-  : C extends ObjectComponentDef<infer T>
+  : C extends ObjectComponentDef<infer T, unknown>
     ? T
     : C extends TransientComponentDef<infer T>
       ? T

@@ -425,12 +425,6 @@ function ensureRows(
       entity.addComponent(
         registration.create(entity.id, undefined, world.entityManager)
       );
-      // Shells are indexed when they are registered later. A startup
-      // entity is already in the manager, so the new component has to
-      // be published or queryEntities will not see it.
-      if (pending.get(id) === undefined) {
-        world.entityManager.onComponentAdded(entity, registration.type);
-      }
     } else if (store.indexOf(id) === -1) {
       // Keep a factory row holder. Its spawn defaults are the values
       // `create` stored; replacing the component would drop them.
@@ -462,7 +456,6 @@ function dropRow(
       invokeHook(component, 'onDisable');
       invokeHook(component, 'onDestroy');
       entity.removeComponent(registration.type);
-      world.entityManager.onComponentRemoved(entity, registration.type);
     }
   }
   store.remove(id);
@@ -500,7 +493,7 @@ export function spawn(
   if (names.length === 0) {
     throw new Error('spawn: spec is empty');
   }
-  const entity = world.createEntity((id) => new Entity(id));
+  const entity = world.createEntity();
   try {
     for (const name of names) {
       const component = requireComponent(world, name);
@@ -516,13 +509,12 @@ export function spawn(
     try {
       entity.dispose();
     } finally {
-      // create() inserts the SoA row before onCreate. A later failure
-      // must drop those rows; the entity was never registered.
+      // createEntity registers the entity and create() inserts the SoA
+      // row before onCreate. A later failure must drop both.
       world.entityManager.removeEntity(entity);
     }
     throw error;
   }
-  world.entityManager.addEntity(entity);
   invokeAll(entity, 'onEnable');
   return entity;
 }

@@ -45,8 +45,13 @@ export interface SoaComponentDef<
  * Object component. `save` and `load` may be omitted here; `registerComponent`
  * rejects the component until both are present.
  */
-export interface ObjectComponentDef<T extends object = object> {
+export interface ObjectComponentDef<
+  T extends object = object,
+  Init = Partial<T>,
+> {
   readonly kind: 'object';
+  /** Type-only: the `values` type `world.addComponent` accepts. Never set. */
+  readonly __init?: Init;
   readonly name: string;
   readonly type: symbol;
   create(): T;
@@ -63,7 +68,7 @@ export interface TransientComponentDef<T extends object = object> {
 }
 
 export type DefinedComponent =
-  SoaComponentDef | ObjectComponentDef | TransientComponentDef;
+  SoaComponentDef | ObjectComponentDef<object, unknown> | TransientComponentDef;
 
 interface ObjectSpec<T extends object> {
   readonly kind: 'object';
@@ -104,10 +109,10 @@ export function defineComponent<S extends IntegerSchema>(
   fields: S,
   options?: DefineSoaOptions<S>
 ): SoaComponentDef<S>;
-export function defineComponent<T extends object>(
+export function defineComponent<T extends object, Init = Partial<T>>(
   name: string,
   spec: ObjectSpec<T>
-): ObjectComponentDef<T>;
+): ObjectComponentDef<T, Init>;
 export function defineComponent<T extends object>(
   name: string,
   spec: TransientSpec<T>
