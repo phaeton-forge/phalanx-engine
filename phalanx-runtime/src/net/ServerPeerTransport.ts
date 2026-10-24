@@ -58,8 +58,7 @@ export class ServerPeerTransport implements Transport {
 
   public constructor(options: ServerPeerTransportOptions) {
     this.client = options.client;
-    this.store =
-      options.sessionStore ?? new MatchSessionStore(options.gameId);
+    this.store = options.sessionStore ?? new MatchSessionStore(options.gameId);
     this.unsubs.push(
       this.client.onTick((tick, batch) => {
         this.onClientTick(tick, batch);

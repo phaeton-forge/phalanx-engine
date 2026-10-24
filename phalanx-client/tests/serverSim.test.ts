@@ -1,8 +1,5 @@
 import { Phalanx } from '@phalanx-engine/server';
-import type {
-  ServerSimHook,
-  ServerSimRoom,
-} from '@phalanx-engine/protocol';
+import type { ServerSimHook, ServerSimRoom } from '@phalanx-engine/protocol';
 import type { Socket } from 'socket.io-client';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {

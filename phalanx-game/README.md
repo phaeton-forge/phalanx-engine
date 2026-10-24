@@ -1,6 +1,6 @@
 # @phalanx-engine/game
 
-Game-facing facade for engine 0.3. One package, six subpaths. Fixed-point
+Game-facing facade for engine 0.3. One package, seven subpaths. Fixed-point
 math is only on `/math`. The root does not re-export it.
 
 | Subpath      | Import                           | Contents                                               |
@@ -10,6 +10,7 @@ math is only on `/math`. The root does not re-export it.
 | `/physics`   | `@phalanx-engine/game/physics`   | `@phalanx-engine/physics`                              |
 | `/abilities` | `@phalanx-engine/game/abilities` | `@phalanx-engine/abilities`                            |
 | `/advanced`  | `@phalanx-engine/game/advanced`  | `@phalanx-engine/runtime/advanced`                     |
+| `/net`       | `@phalanx-engine/game/net`       | `@phalanx-engine/runtime/net`                          |
 | `/server`    | `@phalanx-engine/game/server`    | `@phalanx-engine/runtime/server`                       |
 
 ```ts
@@ -47,6 +48,21 @@ import { createServerSim } from '@phalanx-engine/game/server';
 new Phalanx({
   sim: createServerSim({ games: [{ module: './myGame.js' }] }),
 });
+```
+
+`ServerPeerTransport` and `ServerPeerTransportOptions` are
+`@phalanx-engine/game/net`. `@phalanx-engine/client` is an optional peer
+dependency used only by this subpath:
+
+```ts
+import { MatchRunner } from '@phalanx-engine/game';
+import { ServerPeerTransport } from '@phalanx-engine/game/net';
+import { PhalanxClient } from '@phalanx-engine/client';
+
+const runner = await MatchRunner.join(
+  MyGame,
+  new ServerPeerTransport({ client, gameId: MyGame.id })
+);
 ```
 
 `InterpolatedTransformSample` is `@phalanx-engine/game/physics`.

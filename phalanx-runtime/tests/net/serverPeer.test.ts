@@ -168,7 +168,8 @@ function agreedAfter(
 function expectNoMismatch(harness: Harness, joined: Joined): void {
   for (const [tick, digest] of joined.digests) {
     const server = harness.serverDigests.get(tick);
-    if (server !== undefined) expect(digest, `tick ${String(tick)}`).toBe(server);
+    if (server !== undefined)
+      expect(digest, `tick ${String(tick)}`).toBe(server);
   }
 }
 
@@ -257,10 +258,7 @@ describe('ServerPeerTransport + MatchRunner.join', () => {
       'p-desync',
       store
     );
-    const resyncs = vi.spyOn(
-      ServerPeerTransport.prototype,
-      'requestResync'
-    );
+    const resyncs = vi.spyOn(ServerPeerTransport.prototype, 'requestResync');
     for (let round = 1; round <= 2; round += 1) {
       await vi.waitFor(() => {
         expect(joined.runner.tick % 60).toBeGreaterThan(5);

@@ -213,10 +213,7 @@ describe('skeletons name their implementing task', () => {
 
   it('Task 12: join rejects a transport without join()', async () => {
     await expect(
-      runtime.MatchRunner.join(
-        {} as runtime.AnyGameDefinition,
-        {} as Transport
-      )
+      runtime.MatchRunner.join({} as runtime.AnyGameDefinition, {} as Transport)
     ).rejects.toThrow('MatchRunner.join: transport does not support join()');
   });
 

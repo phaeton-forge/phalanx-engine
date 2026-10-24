@@ -416,7 +416,16 @@ client.on('reconnectFailed', () => {
 
 client.on('sessionToken', ({ token }) => {
   // Store already saved { token, matchId, slot, buildId } when gameId is set.
+  // A server-sim game-start adds matchConfig to that record.
 });
+
+// Server simulation (simMode: 'server')
+client.on('serverDesync', ({ playerId, tick }) => {
+  // The server says playerId diverged at tick. Sent again only after a
+  // snapshot reached that player.
+});
+const snap = await client.requestMatchSnapshot(); // { tick, bytes, requestId }
+// MatchRunner.join + ServerPeerTransport (@phalanx-engine/game/net) do this for you.
 
 client.on('reconnectState', (event) => {
   // event contains command history for fast-forward replay
@@ -549,6 +558,7 @@ client.on('gameResumed', (event: GameResumedEvent) => {});
 
 // Desync
 client.on('desync', (event: DesyncEvent) => {});
+client.on('serverDesync', (event: ServerDesyncEvent) => {});
 
 // All listeners return unsubscribe functions
 const unsub = client.on('tick', handler);
@@ -618,6 +628,7 @@ import type {
   GamePausedEvent, GameResumedEvent,
   ReconnectStateEvent, MatchLogEntry, ReconnectStatusEvent,
   SubmitCommandsAck, HashComparisonEvent,
+  ServerDesyncEvent, MatchSnapshot, MatchSnapshotRequest,
   PhalanxError,
 } from '@phalanx-engine/client';
 

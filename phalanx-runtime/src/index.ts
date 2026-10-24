@@ -11,7 +11,8 @@
  * `IndexedDbMatchStore`) and `MatchRunner.resumeLocal`.
  * `StateHelpers`, `spawnWithId`, `CommandSchema` and `SaveHandler` live
  * in `@phalanx-engine/runtime/advanced`.
- * `MatchRunner.join` still throws `NotImplementedError` for Task 12. Design:
+ * `MatchRunner.join` joins a network match through `Transport.join()`;
+ * `ServerPeerTransport` is `@phalanx-engine/runtime/net`. Design:
  * docs/design/runtime-api.md.
  *
  * @packageDocumentation

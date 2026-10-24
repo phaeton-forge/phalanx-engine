@@ -75,10 +75,7 @@ import {
   LocalTransport,
   type PersistenceFlushReason,
 } from '../transport/LocalTransport.js';
-import type {
-  Transport,
-  TransportCatchUp,
-} from '../transport/Transport.js';
+import type { Transport, TransportCatchUp } from '../transport/Transport.js';
 import { BotHost } from './BotHost.js';
 import { CommandLog, type LogEntry } from './CommandLog.js';
 import {
@@ -892,12 +889,11 @@ export class MatchRunner<G extends AnyGameDefinition> {
 
   /** At most one resync in flight; reports land in the meantime are dropped. */
   private async resync(): Promise<void> {
-    const request = this.transport.requestResync;
-    if (this.resyncing || this.stopped || request === undefined) return;
+    if (this.resyncing || this.stopped) return;
     this.resyncing = true;
     try {
-      const catchUp = await request.call(this.transport);
-      if (this.stopped) return;
+      const catchUp = await this.transport.requestResync?.();
+      if (catchUp === undefined || this.stopped) return;
       await this.applyCatchUp(catchUp);
     } catch (error) {
       if (!this.stopped) this.errorListeners.emit(error, this.completedTick);
