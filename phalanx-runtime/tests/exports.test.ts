@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as runtime from '../src/index.js';
 import * as advanced from '../src/advanced/index.js';
+import * as net from '../src/net/index.js';
 import type { Transport } from '../src/transport/Transport.js';
 
 const VALUE_EXPORTS = [
@@ -77,22 +78,6 @@ const STATE_HELPERS = [
   'readModuleSections',
 ] as const;
 
-function expectTask(fn: () => unknown, task: number): void {
-  try {
-    fn();
-  } catch (error) {
-    expect(error).toBeInstanceOf(runtime.NotImplementedError);
-    expect((error as runtime.NotImplementedError).task).toBe(task);
-    expect((error as Error).message).toMatch(
-      new RegExp(
-        `^not implemented: .+ \\(Task ${String(task).padStart(2, '0')}\\)$`
-      )
-    );
-    return;
-  }
-  throw new Error('expected a NotImplementedError');
-}
-
 describe('public exports', () => {
   it.each(VALUE_EXPORTS)('exports %s', (name) => {
     expect(runtime[name]).toBeDefined();
@@ -134,6 +119,12 @@ describe('public exports', () => {
     expect(runtime.SNAPSHOT_MAGIC).toBe('PHXS');
     expect(runtime.DEFAULT_SERVER_SNAPSHOT_EVERY_TICKS).toBe(1000);
     expect(runtime.DEFAULT_CLIENT_SNAPSHOT_EVERY_TICKS).toBe(300);
+  });
+});
+
+describe('net subpath', () => {
+  it('exports only ServerPeerTransport', () => {
+    expect(Object.keys(net).sort()).toEqual(['ServerPeerTransport']);
   });
 });
 
@@ -220,15 +211,13 @@ describe('skeletons name their implementing task', () => {
     expect(runtime.MatchRunner).toBeTypeOf('function');
   });
 
-  it('Task 12: network join', () => {
-    expectTask(
-      () =>
-        runtime.MatchRunner.join(
-          {} as runtime.AnyGameDefinition,
-          {} as Transport
-        ),
-      12
-    );
+  it('Task 12: join rejects a transport without join()', async () => {
+    await expect(
+      runtime.MatchRunner.join(
+        {} as runtime.AnyGameDefinition,
+        {} as Transport
+      )
+    ).rejects.toThrow('MatchRunner.join: transport does not support join()');
   });
 
   it('errors are plain Error subclasses', () => {

@@ -61,6 +61,8 @@ const ROOT_NAMES = [
   'MatchResumeState',
   'MatchSession',
   'MatchSessionStore',
+  'MatchSnapshot',
+  'MatchSnapshotRequest',
   'MemoryKeyValueStorage',
   'MemoryStorageAdapter',
   'PauseConfig',
@@ -99,6 +101,7 @@ const ROOT_NAMES = [
   'RoomRecoveryStatusEvent',
   'RoomRole',
   'RoomTerminatedEvent',
+  'ServerDesyncEvent',
   'ServerShutdownEvent',
   'SessionSupersededEvent',
   'SessionTokenEvent',
@@ -277,7 +280,7 @@ describe('@phalanx-engine/client exports', () => {
     }
     expect(
       resolved.map((entry) => actual.get(entry.file)?.names.length)
-    ).toEqual([107, 18]);
+    ).toEqual([110, 18]);
     expect(
       resolved.map((entry) => actual.get(entry.file)?.values.length)
     ).toEqual([25, 5]);

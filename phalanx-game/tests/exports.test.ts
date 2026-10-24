@@ -424,6 +424,11 @@ const ENTRIES = [
     names: ADVANCED_NAMES,
   },
   {
+    specifier: '@phalanx-engine/game/net',
+    declaration: 'dist/net.d.ts',
+    names: ['ServerPeerTransport', 'ServerPeerTransportOptions'],
+  },
+  {
     specifier: '@phalanx-engine/game/server',
     declaration: 'dist/server.d.ts',
     names: ['GameModuleSpec', 'ServerSimConfig', 'createServerSim'],
@@ -532,7 +537,13 @@ describe('@phalanx-engine/game subpath exports', () => {
     }
     expect(
       resolved.map((entry) => actual.get(entry.file)?.names.length)
-    ).toEqual([193, 9, 58, 88, 19, 3]);
+    ).toEqual([193, 9, 58, 88, 19, 2, 3]);
+  });
+
+  it('matches the checked-in value counts', () => {
+    expect(
+      resolved.map((entry) => actual.get(entry.file)?.values.length)
+    ).toEqual([65, 6, 45, 39, 7, 1, 1]);
   });
 
   it('keeps the name sets pairwise disjoint', () => {
