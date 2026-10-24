@@ -970,3 +970,37 @@ Entries collected per package until the synchronized 0.3.0 release
   `PhysicsWorldConfig.tickProvider` and `PhysicsSystem.setTickProvider`
   (physics and game). Physics advances only on the world tick.
   `PhysicsSystem.step()` stays for tests and tools.
+- `PhysicsWorld.attach(world)` registers `Transform`, `PhysicsBody` and
+  transient `Interpolation` (in that order), provides `Physics`, adds
+  `GravitySystem` → `PhysicsSystem` as module tick systems and
+  `InterpolationSystem` as a module frame system, and registers
+  `physics.broadphase`. `PhysicsWorld.getSystems()` is removed; the
+  attached systems are found with `world.getSystem(PhysicsSystem)` and so
+  on. Games no longer create the `Transform` / `PhysicsBody` stores by hand
+  and must not register those components again.
+- New in ecs: `world.addModuleSystems(tickSystems, frameSystems)`. Call it
+  before `registerSystems`; `world.getSystem` finds the systems at once and
+  `registerSystems` initializes them. Module systems run before the systems
+  passed to `registerSystems` (tick and frame alike) unless the caller lists
+  one explicitly, which keeps the caller's position. After `registerSystems`
+  it throws `addModuleSystems: call before registerSystems (attach modules first)`,
+  so `PhysicsWorld.attach` after `registerSystems` throws too. Phases (A6d)
+  replace this ordering rule.
+- `PhysicsSystem` and `GravitySystem` iterate with `world.query(PhysicsBody,
+Transform)` / `world.query(PhysicsBody)` and read the typed arrays by row
+  index. Order is still ascending entity id. A row without a registered
+  entity (a bare `store.add`) is no longer simulated. `GravitySystem.init`
+  throws `GravitySystem.init: context.world is not set` without a world.
+- The integration skirmish and the playground list the attached gravity and
+  physics systems at their former positions. The runtime arena and persist
+  bench fixtures rely on the default (physics first, as before).
+- The `physics.broadphase` section format is unchanged.
+- Goldens: the snapshot goldens `arena-*` and `skirmish500-*` are
+  regenerated in a separate commit. The snapshot body and the state digest
+  are byte-identical; only the header `configHash` and the component schema
+  list change, because `Transform` and `PhysicsBody` are now registered
+  components (`componentSchemaHashes`). `tiny-*` is unchanged.
+- Export snapshots: physics names 61 → 58, values 47 → 45
+  (`CollisionSystem`, `ExternalPhysicsTickProvider`, type
+  `IPhysicsTickProvider`); game `[186, 9, 61, 88, 19, 3]` →
+  `[186, 9, 58, 88, 19, 3]`.
