@@ -126,7 +126,7 @@
 
 ## A6d. ecs: фазы систем
 
-Статус: реализовано. Отдельный PR после A8. В A6c фазы не входят.
+Статус: PR #93. Отдельный PR после A8. В A6c фазы не входят.
 
 Фазы tick: `input → physics → abilities → late`. Фазы frame: `interpolation → render → present`. `before` / `after` уточняют порядок внутри фазы. `GameSystem.name` по умолчанию `constructor.name`. `EntityManager.queryEntities` (symbol[]) остаётся: playground и часть движка всё ещё ищут сущности по символу компонента.
 
