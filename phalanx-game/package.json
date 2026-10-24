@@ -1,7 +1,6 @@
 {
   "name": "@phalanx-engine/game",
   "version": "0.3.0",
-  "private": true,
   "description": "Game-facing facade for Phalanx Engine 0.3. Root re-exports runtime and the explicit ecs surface. Math, physics, abilities and advanced helpers are subpath exports.",
   "type": "module",
   "main": "./dist/index.js",
@@ -71,6 +70,19 @@
   ],
   "author": "",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/phaeton-forge/phalanx-engine.git",
+    "directory": "phalanx-game"
+  },
+  "bugs": "https://github.com/phaeton-forge/phalanx-engine/issues",
+  "homepage": "https://github.com/phaeton-forge/phalanx-engine/tree/main/phalanx-game#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=24.0.0 <25.0.0"
+  },
   "files": [
     "dist",
     "README.md"

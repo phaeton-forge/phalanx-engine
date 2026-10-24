@@ -6,19 +6,27 @@ const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 const PACKAGE_DIRS = [
   'phalanx-math',
+  'phalanx-protocol',
   'phalanx-ecs',
-  'phalanx-server',
-  'phalanx-client',
   'phalanx-physics',
   'phalanx-abilities',
+  'phalanx-runtime',
+  'phalanx-game',
+  'phalanx-client',
+  'phalanx-server',
 ];
 
 const BUMP_TYPES = new Set(['patch', 'minor', 'major']);
 
 function parseArgs() {
   const arg = process.argv[2] ?? 'patch';
+  if (arg === '--check') {
+    return 'check';
+  }
   if (!BUMP_TYPES.has(arg)) {
-    console.error(`Invalid bump type "${arg}". Use patch, minor, or major.`);
+    console.error(
+      `Invalid bump type "${arg}". Use patch, minor, major, or --check.`
+    );
     process.exit(1);
   }
   return arg;
@@ -58,28 +66,51 @@ function readPackageJson(dir) {
   return { path, json };
 }
 
-const bumpType = parseArgs();
-const packages = PACKAGE_DIRS.map((dir) => ({ dir, ...readPackageJson(dir) }));
-const versions = packages.map((pkg) => pkg.json.version);
-const currentVersion = versions[0];
-
-const mismatched = packages.filter((pkg) => pkg.json.version !== currentVersion);
-if (mismatched.length > 0) {
-  console.warn('Warning: package versions are out of sync:');
-  for (const pkg of packages) {
-    console.warn(`  ${pkg.json.name}: ${pkg.json.version}`);
+function assertVersionsInSync(packages) {
+  const currentVersion = packages[0].json.version;
+  const inSync = packages.every((pkg) => pkg.json.version === currentVersion);
+  if (inSync) {
+    return currentVersion;
   }
-  console.warn(`Bumping all packages to the next ${bumpType} from ${currentVersion}.`);
+
+  console.error('package versions are out of sync:');
+  for (const pkg of packages) {
+    console.error(`${pkg.json.name}: ${pkg.json.version}`);
+  }
+  process.exit(1);
 }
 
-const nextVersion = bumpSemver(currentVersion, bumpType);
+function assertNotPrivate(packages) {
+  const privatePackages = packages.filter((pkg) => pkg.json.private === true);
+  if (privatePackages.length === 0) {
+    return;
+  }
 
-for (const pkg of packages) {
-  pkg.json.version = nextVersion;
-  writeFileSync(pkg.path, `${JSON.stringify(pkg.json, null, 2)}\n`, 'utf8');
+  for (const pkg of privatePackages) {
+    console.error(`${pkg.json.name}: package must not be private`);
+  }
+  process.exit(1);
 }
 
-console.log(`Bumped @phalanx-engine packages (${bumpType}): ${currentVersion} → ${nextVersion}`);
-for (const dir of PACKAGE_DIRS) {
-  console.log(`  ${dir}/package.json`);
+const mode = parseArgs();
+const packages = PACKAGE_DIRS.map((dir) => ({ dir, ...readPackageJson(dir) }));
+const currentVersion = assertVersionsInSync(packages);
+
+if (mode === 'check') {
+  assertNotPrivate(packages);
+  console.log(`@phalanx-engine packages are in sync at ${currentVersion}`);
+} else {
+  const nextVersion = bumpSemver(currentVersion, mode);
+
+  for (const pkg of packages) {
+    pkg.json.version = nextVersion;
+    writeFileSync(pkg.path, `${JSON.stringify(pkg.json, null, 2)}\n`, 'utf8');
+  }
+
+  console.log(
+    `Bumped @phalanx-engine packages (${mode}): ${currentVersion} → ${nextVersion}`
+  );
+  for (const dir of PACKAGE_DIRS) {
+    console.log(`  ${dir}/package.json`);
+  }
 }

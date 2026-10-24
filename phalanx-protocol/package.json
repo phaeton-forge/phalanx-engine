@@ -1,7 +1,6 @@
 {
   "name": "@phalanx-engine/protocol",
   "version": "0.3.0",
-  "private": true,
   "description": "Client-server wire contract for Phalanx Engine: message types and player-id constants. No runtime dependencies.",
   "type": "module",
   "sideEffects": false,
@@ -36,6 +35,12 @@
   },
   "bugs": "https://github.com/phaeton-forge/phalanx-engine/issues",
   "homepage": "https://github.com/phaeton-forge/phalanx-engine/tree/main/phalanx-protocol#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=24.0.0 <25.0.0"
+  },
   "files": [
     "dist",
     "README.md"

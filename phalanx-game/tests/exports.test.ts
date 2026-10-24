@@ -573,22 +573,19 @@ describe('@phalanx-engine/game subpath exports', () => {
 });
 
 describe('package metadata', () => {
-  // Task 13 removes `private` and deletes this test.
-  it('stays private at 0.3.0 until Task 13', () => {
+  it('is public at 0.3.0', () => {
     const parsed: unknown = JSON.parse(
       readFileSync(new URL('../package.json', import.meta.url), 'utf8')
     );
     if (
       typeof parsed !== 'object' ||
       parsed === null ||
-      !('private' in parsed) ||
       !('version' in parsed) ||
-      typeof parsed.private !== 'boolean' ||
       typeof parsed.version !== 'string'
     ) {
-      throw new Error('package.json is missing private or version');
+      throw new Error('package.json is missing version');
     }
-    expect(parsed.private).toBe(true);
+    expect('private' in parsed).toBe(false);
     expect(parsed.version).toBe('0.3.0');
   });
 });

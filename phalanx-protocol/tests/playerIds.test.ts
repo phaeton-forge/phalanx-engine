@@ -36,22 +36,20 @@ describe('player ids', () => {
 });
 
 describe('package metadata', () => {
-  it('stays private at 0.3.0 with the contracts layer and no dependencies', () => {
+  it('is public at 0.3.0 with the contracts layer and no dependencies', () => {
     const parsed: unknown = JSON.parse(
       readFileSync(new URL('../package.json', import.meta.url), 'utf8')
     );
     if (
       typeof parsed !== 'object' ||
       parsed === null ||
-      !('private' in parsed) ||
       !('version' in parsed) ||
       !('phalanx' in parsed) ||
-      typeof parsed.private !== 'boolean' ||
       typeof parsed.version !== 'string'
     ) {
-      throw new Error('package.json is missing private, version, or phalanx');
+      throw new Error('package.json is missing version or phalanx');
     }
-    expect(parsed.private).toBe(true);
+    expect('private' in parsed).toBe(false);
     expect(parsed.version).toBe('0.3.0');
     expect(parsed.phalanx).toEqual({ layer: 'contracts' });
     expect('dependencies' in parsed).toBe(false);
