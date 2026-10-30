@@ -36,7 +36,7 @@ describe('player ids', () => {
 });
 
 describe('package metadata', () => {
-  it('is public at 0.3.0 with the contracts layer and no dependencies', () => {
+  it('is public at 0.3.1 with the contracts layer and no dependencies', () => {
     const parsed: unknown = JSON.parse(
       readFileSync(new URL('../package.json', import.meta.url), 'utf8')
     );
@@ -50,7 +50,7 @@ describe('package metadata', () => {
       throw new Error('package.json is missing version or phalanx');
     }
     expect('private' in parsed).toBe(false);
-    expect(parsed.version).toBe('0.3.0');
+    expect(parsed.version).toBe('0.3.1');
     expect(parsed.phalanx).toEqual({ layer: 'contracts' });
     expect('dependencies' in parsed).toBe(false);
     expect('peerDependencies' in parsed).toBe(false);

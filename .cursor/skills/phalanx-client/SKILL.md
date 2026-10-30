@@ -563,6 +563,7 @@ client.on('commands', (event: CommandsBatchEvent) => {});
 // Player events
 client.on('playerDisconnected', (event: PlayerDisconnectedEvent) => {});
 client.on('playerReconnected', (event: PlayerReconnectedEvent) => {});
+client.on('playerAbsent', (event: PlayerAbsentEvent) => {});
 client.on('playerReady', (event: PlayerReadyEvent) => {});
 
 // Reconnection
@@ -581,6 +582,12 @@ client.on('serverDesync', (event: ServerDesyncEvent) => {});
 const unsub = client.on('tick', handler);
 unsub();
 ```
+
+`playerAbsent` is the client form of the server `player-absent` room
+event, sent when `absence` is enabled and a player becomes absent
+during `playing`. `PlayerAbsentEvent.deadlineMs` and `budgetLeftMs`
+are milliseconds remaining at send time, not an epoch. Count down
+from receipt. A return is still `playerReconnected`.
 
 ## Client State Machine
 
@@ -669,6 +676,7 @@ import type {
   TickSyncEvent,
   CommandsBatchEvent,
   QueueStatusEvent,
+  PlayerAbsentEvent,
   PlayerDisconnectedEvent,
   PlayerReconnectedEvent,
   PlayerReadyEvent,

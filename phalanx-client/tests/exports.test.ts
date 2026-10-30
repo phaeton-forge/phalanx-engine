@@ -76,6 +76,7 @@ const ROOT_NAMES = [
   'PhalanxClientEvents',
   'PhalanxError',
   'PhalanxRoomRecoveryConfig',
+  'PlayerAbsentEvent',
   'PlayerCommand',
   'PlayerDisconnectedEvent',
   'PlayerReadyEvent',
@@ -280,7 +281,7 @@ describe('@phalanx-engine/client exports', () => {
     }
     expect(
       resolved.map((entry) => actual.get(entry.file)?.names.length)
-    ).toEqual([110, 18]);
+    ).toEqual([111, 18]);
     expect(
       resolved.map((entry) => actual.get(entry.file)?.values.length)
     ).toEqual([25, 5]);

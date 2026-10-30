@@ -866,6 +866,7 @@ client.on('commands', (event) => {});
 // Player events
 client.on('playerDisconnected', (event) => {});
 client.on('playerReconnected', (event) => {});
+client.on('playerAbsent', (event) => {}); // { playerId, deadlineMs, budgetLeftMs }
 client.on('playerReady', (event) => {}); // A player reported ready (local or remote)
 
 // Reconnection events
@@ -909,6 +910,12 @@ client.off('tick', handler);
 // Remove all listeners
 client.removeAllListeners();
 ```
+
+`playerAbsent` is the client form of the server `player-absent` room
+event. The server sends it when `absence` is enabled and a player
+becomes absent during `playing`. `deadlineMs` and `budgetLeftMs` are
+milliseconds remaining at send time, not an epoch. Count down from
+receipt. A return is still `playerReconnected`.
 
 ## Advanced Topics
 

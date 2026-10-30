@@ -80,6 +80,10 @@ describe('client event parameters', () => {
       Parameters<Client.PhalanxClientEvents['playerReconnected']>[0]
     >().toEqualTypeOf<Protocol.PlayerReconnectedEvent>();
     expectTypeOf<
+      Parameters<Client.PhalanxClientEvents['playerAbsent']>[0]
+    >().toEqualTypeOf<Protocol.PlayerAbsentEvent>();
+    expectTypeOf<Client.PlayerAbsentEvent>().toEqualTypeOf<Protocol.PlayerAbsentEvent>();
+    expectTypeOf<
       Parameters<Client.PhalanxClientEvents['playerReady']>[0]
     >().toEqualTypeOf<Protocol.PlayerReadyEvent>();
     expectTypeOf<

@@ -1,6 +1,6 @@
 {
   "name": "@phalanx-engine/protocol",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Client-server wire contract for Phalanx Engine: message types and player-id constants. No runtime dependencies.",
   "type": "module",
   "sideEffects": false,

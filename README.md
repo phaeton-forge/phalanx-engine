@@ -5,7 +5,7 @@
 [![npm @phalanx-engine/client](https://img.shields.io/npm/v/@phalanx-engine/client)](https://www.npmjs.com/package/@phalanx-engine/client)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](#license)
 
-**Phalanx Engine 0.3.0** is a deterministic lockstep engine for TypeScript.
+**Phalanx Engine 0.3.1** is a deterministic lockstep engine for TypeScript.
 It is built for RTS, autobattlers, tactics, MOBAs, and turn-based games:
 every peer that replays the same commands arrives at the same world.
 

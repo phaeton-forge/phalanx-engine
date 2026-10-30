@@ -573,7 +573,7 @@ describe('@phalanx-engine/game subpath exports', () => {
 });
 
 describe('package metadata', () => {
-  it('is public at 0.3.0', () => {
+  it('is public at 0.3.1', () => {
     const parsed: unknown = JSON.parse(
       readFileSync(new URL('../package.json', import.meta.url), 'utf8')
     );
@@ -586,6 +586,6 @@ describe('package metadata', () => {
       throw new Error('package.json is missing version');
     }
     expect('private' in parsed).toBe(false);
-    expect(parsed.version).toBe('0.3.0');
+    expect(parsed.version).toBe('0.3.1');
   });
 });

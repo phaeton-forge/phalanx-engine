@@ -22,6 +22,7 @@ import type {
   RoomExpiredEvent,
   RoomCancelledEvent,
   RoomRecoveredEvent,
+  PlayerAbsentEvent,
   PlayerDisconnectedEvent,
   PlayerReconnectedEvent,
   PlayerReadyEvent,
@@ -117,6 +118,7 @@ export interface SocketManagerCallbacks {
   // Player events
   onPlayerDisconnected: (data: PlayerDisconnectedEvent) => void;
   onPlayerReconnected: (data: PlayerReconnectedEvent) => void;
+  onPlayerAbsent: (data: PlayerAbsentEvent) => void;
   onPlayerReady: (data: PlayerReadyEvent) => void;
 
   // Reconnection events
@@ -1025,6 +1027,10 @@ export class SocketManager {
 
     this.socket.on('player-reconnected', (data: PlayerReconnectedEvent) => {
       this.callbacks.onPlayerReconnected(data);
+    });
+
+    this.socket.on('player-absent', (data: PlayerAbsentEvent) => {
+      this.callbacks.onPlayerAbsent(data);
     });
 
     this.socket.on('player-ready', (data: PlayerReadyEvent) => {

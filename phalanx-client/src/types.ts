@@ -28,6 +28,7 @@ import type {
   MatchResumeState,
   MatchSnapshot,
   MatchSnapshotRequest,
+  PlayerAbsentEvent,
   PlayerCommand,
   PlayerDisconnectedEvent,
   PlayerReadyEvent,
@@ -314,6 +315,7 @@ export type {
   MatchResumeState,
   MatchSnapshot,
   MatchSnapshotRequest,
+  PlayerAbsentEvent,
   PlayerCommand,
   PlayerDisconnectedEvent,
   PlayerReadyEvent,
@@ -506,6 +508,12 @@ export interface PhalanxClientEvents {
   // Player events
   playerDisconnected: (event: PlayerDisconnectedEvent) => void;
   playerReconnected: (event: PlayerReconnectedEvent) => void;
+  /**
+   * A player is absent during `playing` when the server has `absence`
+   * enabled. `deadlineMs` and `budgetLeftMs` are milliseconds remaining
+   * at send time, not an epoch. Count down from receipt.
+   */
+  playerAbsent: (event: PlayerAbsentEvent) => void;
   playerReady: (event: PlayerReadyEvent) => void;
 
   // Reconnection events

@@ -248,6 +248,7 @@ export class PhalanxClient extends EventEmitter<PhalanxClientEvents> {
         // Player events
         onPlayerDisconnected: (data) => this.emit('playerDisconnected', data),
         onPlayerReconnected: (data) => this.emit('playerReconnected', data),
+        onPlayerAbsent: (data) => this.emit('playerAbsent', data),
         onPlayerReady: (data) => this.emit('playerReady', data),
 
         // Reconnection events
