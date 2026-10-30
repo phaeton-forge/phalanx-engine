@@ -1,6 +1,6 @@
 {
   "name": "@phalanx-engine/physics",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Deterministic fixed-point physics engine for Phalanx Engine - spatial hashing, collision detection, and resolution",
   "type": "module",
   "main": "./dist/index.js",

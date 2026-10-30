@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.1 — 2026-10-30
+
+### @phalanx-engine/client
+
+The client forwards the server `player-absent` room event.
+`PhalanxClient` emits `playerAbsent` with `PlayerAbsentEvent`
+(`playerId`, `deadlineMs`, `budgetLeftMs`). Both durations are
+milliseconds remaining at send time, not an epoch. Count down from
+receipt. A return is still `playerReconnected`.
+
 ## 0.3.0 — 2026-10-24
 
 All nine `@phalanx-engine/*` packages are published together at `0.3.0`.

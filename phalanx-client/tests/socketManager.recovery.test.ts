@@ -46,9 +46,10 @@ const baseConfig: SocketManagerConfig = {
   debug: false,
 };
 
-function createSocketManager(
-  callbacks: Partial<SocketManagerCallbacks>
-): { manager: SocketManager; mockSocket: MockSocket } {
+function createSocketManager(callbacks: Partial<SocketManagerCallbacks>): {
+  manager: SocketManager;
+  mockSocket: MockSocket;
+} {
   const mockSocket = createMockSocket();
   const onGameStart = vi.fn();
 
@@ -66,6 +67,7 @@ function createSocketManager(
     onCommandsBatch: vi.fn(),
     onPlayerDisconnected: vi.fn(),
     onPlayerReconnected: vi.fn(),
+    onPlayerAbsent: vi.fn(),
     onPlayerReady: vi.fn(),
     onReconnectState: vi.fn(),
     onReconnectStatus: vi.fn(),

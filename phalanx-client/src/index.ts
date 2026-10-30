@@ -165,6 +165,7 @@ export type {
   MatchResumeState,
   MatchSnapshot,
   MatchSnapshotRequest,
+  PlayerAbsentEvent,
   PlayerCommand,
   PlayerDisconnectedEvent,
   PlayerReadyEvent,

@@ -92,6 +92,7 @@ function callbacks(): SocketManagerCallbacks {
     onCommandsBatch: vi.fn(),
     onPlayerDisconnected: vi.fn(),
     onPlayerReconnected: vi.fn(),
+    onPlayerAbsent: vi.fn(),
     onPlayerReady: vi.fn(),
     onReconnectState: vi.fn(),
     onReconnectStatus: vi.fn(),

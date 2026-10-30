@@ -1,6 +1,6 @@
 {
   "name": "@phalanx-engine/game",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Game-facing facade for Phalanx Engine 0.3. Root re-exports runtime and the explicit ecs surface. Math, physics, abilities and advanced helpers are subpath exports.",
   "type": "module",
   "main": "./dist/index.js",
